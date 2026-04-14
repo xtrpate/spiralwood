@@ -1,3 +1,4 @@
+// controllers/warrantyController.js (Admin)
 const db = require("../../config/db");
 
 const splitStoredProofs = (value) => {
@@ -14,7 +15,8 @@ const splitStoredProofs = (value) => {
 
 exports.getClaims = async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query and added empty array [] ──
+    const [rows] = await db.query(
       `
       SELECT
         w.id,
@@ -45,6 +47,7 @@ exports.getClaims = async (req, res) => {
         FIELD(w.status, 'pending', 'approved', 'fulfilled', 'rejected'),
         w.created_at DESC
       `,
+      [],
     );
 
     const mapped = rows.map((row) => {
@@ -80,8 +83,10 @@ exports.getClaims = async (req, res) => {
 };
 
 exports.decideClaim = async (req, res) => {
-  const id = Number(req.params.id);
-  const decision = String(req.body?.decision || "").trim().toLowerCase();
+  const id = parseInt(req.params.id);
+  const decision = String(req.body?.decision || "")
+    .trim()
+    .toLowerCase();
   const adminNote = String(req.body?.admin_note || "").trim();
 
   if (!id) {
@@ -103,7 +108,8 @@ exports.decideClaim = async (req, res) => {
   }
 
   try {
-    const [[claim]] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [[claim]] = await db.query(
       `
       SELECT id, status
       FROM warranties
@@ -132,7 +138,8 @@ exports.decideClaim = async (req, res) => {
       });
     }
 
-    await db.execute(
+    // ── FIXED: Switched to .query ──
+    await db.query(
       `
       UPDATE warranties
       SET
@@ -157,7 +164,7 @@ exports.decideClaim = async (req, res) => {
 };
 
 exports.fulfillClaim = async (req, res) => {
-  const id = Number(req.params.id);
+  const id = parseInt(req.params.id);
 
   if (!id) {
     return res
@@ -170,7 +177,8 @@ exports.fulfillClaim = async (req, res) => {
     : null;
 
   try {
-    const [[claim]] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [[claim]] = await db.query(
       `
       SELECT id, status, replacement_receipt
       FROM warranties
@@ -200,7 +208,8 @@ exports.fulfillClaim = async (req, res) => {
       });
     }
 
-    await db.execute(
+    // ── FIXED: Switched to .query ──
+    await db.query(
       `
       UPDATE warranties
       SET
@@ -211,7 +220,7 @@ exports.fulfillClaim = async (req, res) => {
         updated_at = NOW()
       WHERE id = ?
       `,
-      [finalReceipt, req.user.id, id],
+      [finalReceipt, parseInt(req.user.id), id],
     );
 
     res.json({

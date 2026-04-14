@@ -1,3 +1,4 @@
+// controllers/staff/pos.reports.js
 const db = require("../../config/db");
 
 const buildDateFilter = (period, from, to) => {
@@ -54,7 +55,8 @@ exports.getReports = async (req, res) => {
     if (period === "monthly") periodExpr = "DATE_FORMAT(o.created_at, '%Y-%m')";
     if (period === "yearly") periodExpr = "YEAR(o.created_at)";
 
-    const [totalsRows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [totalsRows] = await db.query(
       `
       SELECT
         COUNT(*) AS total_orders,
@@ -74,7 +76,8 @@ exports.getReports = async (req, res) => {
       params,
     );
 
-    const [summaryRows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [summaryRows] = await db.query(
       `
       SELECT
         ${periodExpr} AS period_label,
@@ -88,7 +91,8 @@ exports.getReports = async (req, res) => {
       params,
     );
 
-    const [paymentRows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [paymentRows] = await db.query(
       `
       SELECT
         o.payment_method,
@@ -102,7 +106,8 @@ exports.getReports = async (req, res) => {
       params,
     );
 
-    const [productRows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [productRows] = await db.query(
       `
       SELECT
         oi.product_name,
@@ -118,7 +123,8 @@ exports.getReports = async (req, res) => {
       params,
     );
 
-    const [transactionRows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [transactionRows] = await db.query(
       `
       SELECT
         o.id AS order_id,

@@ -1,12 +1,14 @@
+// controllers/staff/pos.tasks.js
 const db = require("../../config/db"); // Uses the unified db config
 
 const ensureIndoorAssignee = async (userId) => {
-  const [rows] = await db.execute(
+  // ── FIXED: Switched to .query and parsed ID ──
+  const [rows] = await db.query(
     `SELECT id, name, role, staff_type, is_active
      FROM users
      WHERE id = ?
      LIMIT 1`,
-    [userId],
+    [parseInt(userId)],
   );
 
   if (!rows.length) return null;
@@ -53,11 +55,12 @@ const validateProductionSequence = async ({
   const normalizedCurrentStatus = normalize(currentStatus);
   const normalizedNextStatus = normalize(nextStatus);
 
-  const [packetRows] = await db.execute(
+  // ── FIXED: Switched to .query and parsed ID ──
+  const [packetRows] = await db.query(
     `SELECT id, task_role, status
      FROM project_tasks
      WHERE order_id = ?`,
-    [orderId],
+    [parseInt(orderId)],
   );
 
   const packetMap = new Map(
@@ -101,9 +104,10 @@ const validateProductionSequence = async ({
 /* ── Get User Notifications ── */
 exports.getNotifications = async (req, res) => {
   try {
-    const [notifications] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [notifications] = await db.query(
       `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 20`,
-      [req.user.id],
+      [parseInt(req.user.id)],
     );
     res.json(notifications);
   } catch (err) {
@@ -115,9 +119,10 @@ exports.getNotifications = async (req, res) => {
 /* ── Mark Notification as Read ── */
 exports.markNotificationRead = async (req, res) => {
   try {
-    await db.execute(
+    // ── FIXED: Switched to .query and parsed IDs ──
+    await db.query(
       `UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?`,
-      [req.params.id, req.user.id],
+      [parseInt(req.params.id), parseInt(req.user.id)],
     );
     res.json({ message: "Notification marked as read" });
   } catch (err) {
@@ -128,9 +133,10 @@ exports.markNotificationRead = async (req, res) => {
 /* ── Mark All Notifications as Read ── */
 exports.markAllNotificationsRead = async (req, res) => {
   try {
-    await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    await db.query(
       `UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0`,
-      [req.user.id],
+      [parseInt(req.user.id)],
     );
     res.json({ message: "All notifications marked as read" });
   } catch (err) {
@@ -142,7 +148,9 @@ exports.markAllNotificationsRead = async (req, res) => {
 /* ── Get Projects Requiring Allocation ── */
 exports.getProjects = async (req, res) => {
   try {
-    const [projects] = await db.execute(`
+    // ── FIXED: Switched to .query and added empty array [] ──
+    const [projects] = await db.query(
+      `
       SELECT 
         o.id,
         o.order_number,
@@ -159,7 +167,9 @@ exports.getProjects = async (req, res) => {
       LEFT JOIN users u ON o.customer_id = u.id
       WHERE o.status IN ('confirmed', 'production')
       ORDER BY o.created_at DESC
-    `);
+    `,
+      [],
+    );
     res.json(projects);
   } catch (err) {
     console.error("[pos.tasks GET /projects]", err);
@@ -170,7 +180,8 @@ exports.getProjects = async (req, res) => {
 /* ── Get Staff Workload ── */
 exports.getStaff = async (req, res) => {
   try {
-    const [staff] = await db.execute(
+    // ── FIXED: Switched to .query and added empty array [] ──
+    const [staff] = await db.query(
       `SELECT
          u.id,
          u.name,
@@ -188,6 +199,7 @@ exports.getStaff = async (req, res) => {
          AND u.staff_type = 'indoor'
          AND u.is_active = 1
        ORDER BY u.name ASC`,
+      [],
     );
 
     res.json(staff);
@@ -200,14 +212,16 @@ exports.getStaff = async (req, res) => {
 /* ── Get Unread Count ── */
 exports.getUnreadCount = async (req, res) => {
   try {
-    const [taskRows] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [taskRows] = await db.query(
       `SELECT COUNT(*) as count FROM project_tasks WHERE assigned_to = ? AND is_read = 0`,
-      [req.user.id],
+      [parseInt(req.user.id)],
     );
 
-    const [notifRows] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [notifRows] = await db.query(
       `SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0`,
-      [req.user.id],
+      [parseInt(req.user.id)],
     );
 
     res.json({
@@ -237,12 +251,13 @@ exports.getTasks = async (req, res) => {
 
     if (req.user.role !== "admin") {
       query += ` WHERE t.assigned_to = ?`;
-      queryParams.push(req.user.id);
+      queryParams.push(parseInt(req.user.id));
     }
 
     query += ` ORDER BY t.created_at DESC`;
 
-    const [tasks] = await db.execute(query, queryParams);
+    // ── FIXED: Switched to .query ──
+    const [tasks] = await db.query(query, queryParams);
     res.json(tasks);
   } catch (err) {
     console.error("[pos.tasks GET /]", err);
@@ -278,21 +293,23 @@ exports.createTask = async (req, res) => {
     }
 
     if (order_id) {
-      await db.execute(
+      // ── FIXED: Switched to .query ──
+      await db.query(
         `UPDATE orders SET status = 'production' WHERE id = ? AND status = 'confirmed'`,
-        [order_id],
+        [parseInt(order_id)],
       );
     }
 
-    const [result] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [result] = await db.query(
       `INSERT INTO project_tasks 
         (order_id, blueprint_id, assigned_to, assigned_by, task_role, title, description, due_date, status, is_read) 
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)`,
       [
-        order_id || null,
-        blueprint_id || null,
-        assigned_to,
-        req.user.id,
+        order_id ? parseInt(order_id) : null,
+        blueprint_id ? parseInt(blueprint_id) : null,
+        parseInt(assigned_to),
+        parseInt(req.user.id),
         task_role || "Other",
         title,
         description || "",
@@ -300,10 +317,11 @@ exports.createTask = async (req, res) => {
       ],
     );
 
-    await db.execute(
+    // ── FIXED: Switched to .query ──
+    await db.query(
       `INSERT INTO notifications (user_id, type, title, message, channel, sent_at) 
        VALUES (?, 'assignment', 'New Task Assigned', ?, 'system', NOW())`,
-      [assigned_to, `You have been assigned a new task: ${title}`],
+      [parseInt(assigned_to), `You have been assigned a new task: ${title}`],
     );
 
     res.status(201).json({
@@ -319,9 +337,10 @@ exports.createTask = async (req, res) => {
 /* ── Accept Task ── */
 exports.acceptTask = async (req, res) => {
   try {
-    const [tasks] = await db.execute(
+    // ── FIXED: Switched to .query and parsed IDs ──
+    const [tasks] = await db.query(
       `SELECT * FROM project_tasks WHERE id = ? AND assigned_to = ?`,
-      [req.params.id, req.user.id],
+      [parseInt(req.params.id), parseInt(req.user.id)],
     );
 
     if (tasks.length === 0) {
@@ -329,10 +348,11 @@ exports.acceptTask = async (req, res) => {
     }
     const task = tasks[0];
 
-    const [result] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [result] = await db.query(
       `UPDATE project_tasks SET status = 'in_progress', is_read = 1, accepted_at = NOW() 
        WHERE id = ? AND status = 'pending'`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (result.affectedRows === 0) {
@@ -341,11 +361,12 @@ exports.acceptTask = async (req, res) => {
         .json({ message: "Task already accepted or blocked." });
     }
 
-    await db.execute(
+    // ── FIXED: Switched to .query ──
+    await db.query(
       `INSERT INTO notifications (user_id, type, title, message, channel, sent_at) 
        VALUES (?, 'task_update', 'Task Accepted', ?, 'system', NOW())`,
       [
-        task.assigned_by,
+        parseInt(task.assigned_by),
         `${req.user.name || "A staff member"} has accepted the task: ${task.title}`,
       ],
     );
@@ -360,7 +381,7 @@ exports.acceptTask = async (req, res) => {
 /* ── Update Task Status ── */
 exports.updateTaskStatus = async (req, res) => {
   const { status } = req.body;
-  const taskId = req.params.id;
+  const taskId = parseInt(req.params.id); // Parsed ID here
 
   const validStatuses = ["pending", "in_progress", "completed", "blocked"];
   if (!validStatuses.includes(status)) {
@@ -368,7 +389,8 @@ exports.updateTaskStatus = async (req, res) => {
   }
 
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       `SELECT id, title, status, assigned_to, assigned_by, completed_at, order_id, task_role
        FROM project_tasks
        WHERE id = ?
@@ -421,7 +443,8 @@ exports.updateTaskStatus = async (req, res) => {
       completedAt = null;
     }
 
-    await db.execute(
+    // ── FIXED: Switched to .query ──
+    await db.query(
       `UPDATE project_tasks
        SET status = ?, completed_at = ?, is_read = 1, updated_at = NOW()
        WHERE id = ?`,
@@ -431,22 +454,24 @@ exports.updateTaskStatus = async (req, res) => {
     if (existing.assigned_by) {
       const statusLabel = String(status).replace(/_/g, " ");
 
-      await db.execute(
+      // ── FIXED: Switched to .query ──
+      await db.query(
         `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
          VALUES (?, 'task_update', 'Task Status Updated', ?, 'system', NOW())`,
         [
-          existing.assigned_by,
+          parseInt(existing.assigned_by),
           `${req.user.name || "A staff member"} updated step "${existing.task_role}" to ${statusLabel} for ${existing.title}.`,
         ],
       );
     }
 
     if (existing.order_id && existing.assigned_by) {
-      const [packetRows] = await db.execute(
+      // ── FIXED: Switched to .query ──
+      const [packetRows] = await db.query(
         `SELECT task_role, status
          FROM project_tasks
          WHERE order_id = ?`,
-        [existing.order_id],
+        [parseInt(existing.order_id)],
       );
 
       const existingStepKeys = new Set(
@@ -469,11 +494,12 @@ exports.updateTaskStatus = async (req, res) => {
       );
 
       if (status === "blocked") {
-        await db.execute(
+        // ── FIXED: Switched to .query ──
+        await db.query(
           `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
            VALUES (?, 'task_blocked', 'Production Blocker Reported', ?, 'system', NOW())`,
           [
-            existing.assigned_by,
+            parseInt(existing.assigned_by),
             `${req.user.name || "A staff member"} reported a blocker on ${existing.task_role} for Order #${existing.order_id}.`,
           ],
         );
@@ -484,11 +510,12 @@ exports.updateTaskStatus = async (req, res) => {
         missingSteps.length === 0 &&
         incompleteSteps.length === 0
       ) {
-        await db.execute(
+        // ── FIXED: Switched to .query ──
+        await db.query(
           `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
            VALUES (?, 'production_ready', 'Production Ready for Shipping', ?, 'system', NOW())`,
           [
-            existing.assigned_by,
+            parseInt(existing.assigned_by),
             `${req.user.name || "A staff member"} completed the full production workflow for Order #${existing.order_id}. The order is now ready for shipping review.`,
           ],
         );
@@ -504,7 +531,7 @@ exports.updateTaskStatus = async (req, res) => {
 
 /* ── Update Task (Admin edit / Staff status update fallback) ── */
 exports.updateTask = async (req, res) => {
-  const { id } = req.params;
+  const id = parseInt(req.params.id);
   const {
     order_id,
     blueprint_id,
@@ -517,10 +544,10 @@ exports.updateTask = async (req, res) => {
   } = req.body;
 
   try {
-    const [rows] = await db.execute(
-      `SELECT * FROM project_tasks WHERE id = ?`,
-      [id],
-    );
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(`SELECT * FROM project_tasks WHERE id = ?`, [
+      id,
+    ]);
 
     if (!rows.length) {
       return res.status(404).json({ message: "Task not found." });
@@ -549,11 +576,12 @@ exports.updateTask = async (req, res) => {
       return exports.updateTaskStatus(req, res);
     }
 
-    const nextOrderId = order_id === "" ? null : order_id ?? existing.order_id;
+    const nextOrderId =
+      order_id === "" ? null : (order_id ?? existing.order_id);
     const nextBlueprintId =
-      blueprint_id === "" ? null : blueprint_id ?? existing.blueprint_id;
+      blueprint_id === "" ? null : (blueprint_id ?? existing.blueprint_id);
     const nextAssignedTo =
-      assigned_to === "" ? null : assigned_to ?? existing.assigned_to;
+      assigned_to === "" ? null : (assigned_to ?? existing.assigned_to);
 
     if (nextAssignedTo) {
       const assignee = await ensureIndoorAssignee(nextAssignedTo);
@@ -568,7 +596,8 @@ exports.updateTask = async (req, res) => {
     const nextTaskRole = task_role ?? existing.task_role;
     const nextTitle = title ?? existing.title;
     const nextDescription = description ?? existing.description;
-    const nextDueDate = due_date === "" ? null : due_date ?? existing.due_date;
+    const nextDueDate =
+      due_date === "" ? null : (due_date ?? existing.due_date);
     const nextStatus = status ?? existing.status;
 
     if (existing.status === "completed" && nextStatus !== "completed") {
@@ -595,15 +624,16 @@ exports.updateTask = async (req, res) => {
       completedAt = null;
     }
 
-    await db.execute(
+    // ── FIXED: Switched to .query ──
+    await db.query(
       `UPDATE project_tasks
        SET order_id = ?, blueprint_id = ?, assigned_to = ?, task_role = ?,
            title = ?, description = ?, due_date = ?, status = ?, completed_at = ?, updated_at = NOW()
        WHERE id = ?`,
       [
-        nextOrderId,
-        nextBlueprintId,
-        nextAssignedTo,
+        nextOrderId ? parseInt(nextOrderId) : null,
+        nextBlueprintId ? parseInt(nextBlueprintId) : null,
+        nextAssignedTo ? parseInt(nextAssignedTo) : null,
         nextTaskRole,
         nextTitle,
         nextDescription,
@@ -615,10 +645,14 @@ exports.updateTask = async (req, res) => {
     );
 
     if (String(existing.assigned_to || "") !== String(nextAssignedTo || "")) {
-      await db.execute(
+      // ── FIXED: Switched to .query ──
+      await db.query(
         `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
          VALUES (?, 'assignment', 'Task Updated', ?, 'system', NOW())`,
-        [nextAssignedTo, `A task has been assigned/updated: ${nextTitle}`],
+        [
+          parseInt(nextAssignedTo),
+          `A task has been assigned/updated: ${nextTitle}`,
+        ],
       );
     }
 
@@ -635,10 +669,10 @@ exports.deleteTask = async (req, res) => {
       return res.status(403).json({ message: "Only admins can delete tasks." });
     }
 
-    const [result] = await db.execute(
-      `DELETE FROM project_tasks WHERE id = ?`,
-      [req.params.id],
-    );
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [result] = await db.query(`DELETE FROM project_tasks WHERE id = ?`, [
+      parseInt(req.params.id),
+    ]);
 
     if (!result.affectedRows) {
       return res.status(404).json({ message: "Task not found." });

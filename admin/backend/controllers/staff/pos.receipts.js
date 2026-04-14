@@ -1,9 +1,11 @@
+// controllers/staff/pos.receipts_reports.js (or similar)
 const db = require("../../config/db");
 
 /* ── Get Receipt by ID ── */
 exports.getReceiptById = async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [rows] = await db.query(
       `
       SELECT
         r.*,
@@ -23,7 +25,7 @@ exports.getReceiptById = async (req, res) => {
       WHERE r.id = ?
       LIMIT 1
       `,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (rows.length === 0) {
@@ -40,7 +42,8 @@ exports.getReceiptById = async (req, res) => {
 
     // IMPORTANT FIX:
     // website_settings uses column `value`, not `setting_value`
-    const [settings] = await db.execute(
+    // ── FIXED: Switched to .query and added empty array [] ──
+    const [settings] = await db.query(
       `
       SELECT setting_key, value
       FROM website_settings
@@ -52,6 +55,7 @@ exports.getReceiptById = async (req, res) => {
         'gcash_number'
       )
       `,
+      [],
     );
 
     const biz = {};
@@ -81,7 +85,8 @@ exports.getReceiptByOrderId = async (req, res) => {
   }
 
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [rows] = await db.query(
       `
       SELECT
         r.*,
@@ -102,7 +107,7 @@ exports.getReceiptByOrderId = async (req, res) => {
       ORDER BY r.id DESC
       LIMIT 1
       `,
-      [order_id],
+      [parseInt(order_id)],
     );
 
     if (rows.length === 0) {
@@ -170,13 +175,14 @@ exports.getReports = async (req, res) => {
 
     if (staff_id && req.user.role === "admin") {
       where += " AND r.issued_by = ?";
-      params.push(staff_id);
+      params.push(parseInt(staff_id)); // Added parseInt for safety
     } else if (req.user.role === "staff") {
       where += " AND r.issued_by = ?";
       params.push(req.user.id);
     }
 
-    const [summary] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [summary] = await db.query(
       `
       SELECT ${dateExpr} AS period_label,
              COUNT(o.id) AS order_count,
@@ -193,7 +199,8 @@ exports.getReports = async (req, res) => {
       params,
     );
 
-    const [totals] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [totals] = await db.query(
       `
       SELECT COUNT(o.id) AS total_orders,
              COALESCE(SUM(o.total), 0) AS grand_total,
@@ -205,11 +212,12 @@ exports.getReports = async (req, res) => {
       params,
     );
 
-    const [topProducts] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [topProducts] = await db.query(
       `
       SELECT oi.product_name,
-            SUM(oi.quantity) AS qty,
-            COALESCE(SUM(COALESCE(oi.subtotal, oi.unit_price * oi.quantity)), 0) AS revenue
+             SUM(oi.quantity) AS qty,
+             COALESCE(SUM(COALESCE(oi.subtotal, oi.unit_price * oi.quantity)), 0) AS revenue
       FROM order_items oi
       JOIN orders o ON o.id = oi.order_id
       ${receiptJoin}
@@ -221,7 +229,8 @@ exports.getReports = async (req, res) => {
       params,
     );
 
-    const [paymentBreakdown] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [paymentBreakdown] = await db.query(
       `
       SELECT o.payment_method, COUNT(*) AS count,
              COALESCE(SUM(o.total), 0) AS total

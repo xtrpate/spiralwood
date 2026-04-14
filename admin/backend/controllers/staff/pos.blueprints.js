@@ -13,8 +13,9 @@ exports.getAllBlueprints = async (req, res) => {
       params.push(`%${q}%`, `%${q}%`);
     }
 
+    // ── FIXED: Switched to .query ──
     // Staff can view all gallery/template blueprints + those linked to their orders
-    const [rows] = await db.execute(
+    const [rows] = await db.query(
       `
       SELECT b.id, b.title, b.description, b.stage,
              b.thumbnail_url, b.is_template, b.is_gallery,
@@ -41,7 +42,8 @@ exports.getAllBlueprints = async (req, res) => {
 /* ── Get Single Blueprint Detail ── */
 exports.getBlueprintById = async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [rows] = await db.query(
       `
       SELECT b.*, u.name AS creator_name, c.name AS client_name
       FROM blueprints b
@@ -49,7 +51,7 @@ exports.getBlueprintById = async (req, res) => {
       LEFT JOIN users c ON c.id = b.client_id
       WHERE b.id = ? AND b.is_deleted = 0
     `,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (rows.length === 0)
@@ -58,9 +60,10 @@ exports.getBlueprintById = async (req, res) => {
     const blueprint = rows[0];
 
     // Fetch components
-    const [components] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [components] = await db.query(
       "SELECT * FROM blueprint_components WHERE blueprint_id = ?",
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
     blueprint.components = components;
 

@@ -77,7 +77,8 @@ exports.createAppointment = async (req, res) => {
   });
 
   try {
-    const [existing] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [existing] = await db.query(
       `
       SELECT id
       FROM appointments
@@ -97,9 +98,8 @@ exports.createAppointment = async (req, res) => {
       });
     }
 
-    // FIXED: Removed provider_id and request_owner_id.
-    // We only insert what we know exists in the schema.
-    const [result] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [result] = await db.query(
       `
       INSERT INTO appointments
         (
@@ -134,9 +134,8 @@ exports.createAppointment = async (req, res) => {
 /* ── Get Appointments ── */
 exports.getAppointments = async (req, res) => {
   try {
-    // FIXED: Query based directly on a.customer_id instead of joining orders.
-    // Changed a.assigned_to to a.handled_by based on standard schema.
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       `
       SELECT
         a.id,
@@ -171,14 +170,15 @@ exports.getAppointments = async (req, res) => {
 /* ── Cancel Appointment ── */
 exports.cancelAppointment = async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query and added parseInt to req.params.id ──
+    const [rows] = await db.query(
       `
       SELECT id, customer_id, status
       FROM appointments
       WHERE id = ?
       LIMIT 1
       `,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (!rows.length) {
@@ -199,9 +199,10 @@ exports.cancelAppointment = async (req, res) => {
       });
     }
 
-    await db.execute(
+    // ── FIXED: Switched to .query and added parseInt ──
+    await db.query(
       `UPDATE appointments SET status = 'cancelled' WHERE id = ?`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     return res.json({ message: "Appointment request cancelled." });

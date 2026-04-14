@@ -1,3 +1,4 @@
+// controllers/customer/customer.warranty.js
 const db = require("../../config/db");
 
 /* ── Helper: split stored proof_url into separate frontend fields ── */
@@ -18,7 +19,8 @@ const splitStoredProofs = (value) => {
 ──────────────────────────────────────────────────────────────────────────── */
 const getEligibleOrders = async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       `
       SELECT
         o.id,
@@ -62,7 +64,8 @@ const getEligibleOrders = async (req, res) => {
 /* ── List My Warranty Claims ─────────────────────────────────────────────── */
 const getClaims = async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       `
       SELECT
         w.id,
@@ -125,7 +128,8 @@ const submitClaim = async (req, res) => {
 
   if (!String(order_id || "").trim() && !String(order_number || "").trim()) {
     return res.status(400).json({
-      message: "Please select or enter the completed paid order for this claim.",
+      message:
+        "Please select or enter the completed paid order for this claim.",
     });
   }
 
@@ -167,7 +171,7 @@ const submitClaim = async (req, res) => {
 
     if (String(order_id || "").trim()) {
       orderLookupSql += ` AND o.id = ?`;
-      params.push(order_id);
+      params.push(parseInt(order_id)); // ── FIXED: Parse ID ──
     } else {
       orderLookupSql += ` AND o.order_number = ?`;
       params.push(String(order_number).trim());
@@ -175,7 +179,8 @@ const submitClaim = async (req, res) => {
 
     orderLookupSql += ` LIMIT 1`;
 
-    const [orderRows] = await db.execute(orderLookupSql, params);
+    // ── FIXED: Switched to .query ──
+    const [orderRows] = await db.query(orderLookupSql, params);
 
     if (!orderRows.length) {
       return res.status(404).json({
@@ -207,7 +212,8 @@ const submitClaim = async (req, res) => {
       });
     }
 
-    const [[existingClaim]] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [existingClaims] = await db.query(
       `
       SELECT id, status
       FROM warranties
@@ -217,14 +223,15 @@ const submitClaim = async (req, res) => {
       [req.user.id, linkedOrder.id],
     );
 
-    if (existingClaim) {
+    if (existingClaims.length > 0) {
       return res.status(400).json({
         message:
           "A warranty claim already exists for this order. You cannot submit another claim for the same order.",
       });
     }
 
-    const [result] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [result] = await db.query(
       `
       INSERT INTO warranties
         (customer_id, order_id, product_name, reason, proof_url, warranty_expiry, status)

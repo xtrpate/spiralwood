@@ -1,3 +1,4 @@
+// controllers/staff/pos.orders.js
 const db = require("../../config/db");
 
 /* ── Helper: Generate Walk-in Order Number ── */
@@ -12,7 +13,8 @@ const generateOrderNumber = async (conn) => {
     const suffix = Math.floor(Math.random() * 9000 + 1000);
     const candidate = `WLK-${datePart}-${suffix}`;
 
-    const [existing] = await conn.execute(
+    // ── FIXED: Switched to .query ──
+    const [existing] = await conn.query(
       "SELECT id FROM orders WHERE order_number = ? LIMIT 1",
       [candidate],
     );
@@ -87,7 +89,9 @@ exports.createOrder = async (req, res) => {
 
   if (appointment) {
     if (!String(appointment.purpose || "").trim()) {
-      return res.status(400).json({ message: "Appointment purpose is required" });
+      return res
+        .status(400)
+        .json({ message: "Appointment purpose is required" });
     }
 
     const appointmentRequestedDate = String(
@@ -117,7 +121,8 @@ exports.createOrder = async (req, res) => {
       }
 
       if (item.variation_id) {
-        const [variationRows] = await conn.execute(
+        // ── FIXED: Switched to .query ──
+        const [variationRows] = await conn.query(
           `SELECT id, stock FROM product_variations WHERE id = ? LIMIT 1`,
           [item.variation_id],
         );
@@ -136,7 +141,8 @@ exports.createOrder = async (req, res) => {
           });
         }
       } else {
-        const [productRows] = await conn.execute(
+        // ── FIXED: Switched to .query ──
+        const [productRows] = await conn.query(
           `SELECT id, stock FROM products WHERE id = ? LIMIT 1`,
           [item.product_id],
         );
@@ -180,7 +186,10 @@ exports.createOrder = async (req, res) => {
       ? deliveryRequestedDate.replace("T", " ")
       : null;
     console.log("DELIVERY REQUESTED DATE RAW:", deliveryRequestedDate);
-    console.log("NORMALIZED REQUESTED DELIVERY DATE:", normalizedRequestedDeliveryDate);
+    console.log(
+      "NORMALIZED REQUESTED DELIVERY DATE:",
+      normalizedRequestedDeliveryDate,
+    );
     const deliveryRequestNotes = delivery
       ? String(delivery.notes || "").trim()
       : "";
@@ -196,7 +205,9 @@ exports.createOrder = async (req, res) => {
 
     const hasAppointmentRequest = Boolean(appointment);
 
-    const initialPaymentStatus = immediateMethods.includes(normalizedPaymentMethod)
+    const initialPaymentStatus = immediateMethods.includes(
+      normalizedPaymentMethod,
+    )
       ? "paid"
       : "pending";
 
@@ -207,7 +218,8 @@ exports.createOrder = async (req, res) => {
           ? "completed"
           : "pending";
 
-    const [orderResult] = await conn.execute(
+    // ── FIXED: Switched to .query ──
+    const [orderResult] = await conn.query(
       `
       INSERT INTO orders
       (
@@ -245,12 +257,13 @@ exports.createOrder = async (req, res) => {
         delivery?.address?.trim() || null,
         normalizedRequestedDeliveryDate,
         deliveryRequestNotes || null,
-      ]
+      ],
     );
 
     const orderId = orderResult.insertId;
 
-    const [[savedOrderCheck]] = await conn.execute(
+    // ── FIXED: Switched to .query ──
+    const [[savedOrderCheck]] = await conn.query(
       `
       SELECT
         id,
@@ -274,7 +287,8 @@ exports.createOrder = async (req, res) => {
 
       const itemSubtotal = unitPrice * quantity;
 
-      const [itemResult] = await conn.execute(
+      // ── FIXED: Switched to .query ──
+      const [itemResult] = await conn.query(
         `
         INSERT INTO order_items
           (
@@ -304,17 +318,20 @@ exports.createOrder = async (req, res) => {
       const orderItemId = itemResult.insertId;
 
       if (item.variation_id) {
-        await conn.execute(
+        // ── FIXED: Switched to .query ──
+        await conn.query(
           `UPDATE product_variations SET stock = stock - ? WHERE id = ?`,
           [quantity, item.variation_id],
         );
       } else {
-        await conn.execute(
-          `UPDATE products SET stock = stock - ? WHERE id = ?`,
-          [quantity, item.product_id],
-        );
+        // ── FIXED: Switched to .query ──
+        await conn.query(`UPDATE products SET stock = stock - ? WHERE id = ?`, [
+          quantity,
+          item.product_id,
+        ]);
 
-        await conn.execute(
+        // ── FIXED: Switched to .query ──
+        await conn.query(
           `
           UPDATE products
           SET stock_status =
@@ -329,7 +346,8 @@ exports.createOrder = async (req, res) => {
         );
       }
 
-      await conn.execute(
+      // ── FIXED: Switched to .query ──
+      await conn.query(
         `
         INSERT INTO stock_movements
           (product_id, type, quantity, order_id, order_item_id, notes, created_by)
@@ -340,7 +358,8 @@ exports.createOrder = async (req, res) => {
     }
 
     if (immediateMethods.includes(normalizedPaymentMethod)) {
-      await conn.execute(
+      // ── FIXED: Switched to .query ──
+      await conn.query(
         `
         INSERT INTO payment_transactions
           (order_id, amount, payment_method, status, verified_by, verified_at)
@@ -349,7 +368,8 @@ exports.createOrder = async (req, res) => {
         [orderId, total, normalizedPaymentMethod, req.user.id],
       );
     } else {
-      await conn.execute(
+      // ── FIXED: Switched to .query ──
+      await conn.query(
         `
         INSERT INTO payment_transactions
           (order_id, amount, payment_method, status)
@@ -376,7 +396,8 @@ exports.createOrder = async (req, res) => {
         ? parseFloat(change)
         : null;
 
-    const [receiptResult] = await conn.execute(
+    // ── FIXED: Switched to .query ──
+    const [receiptResult] = await conn.query(
       `
       INSERT INTO receipts
         (
@@ -438,7 +459,8 @@ exports.createOrder = async (req, res) => {
       const normalizedPreferredDate = requestedAppointmentDate;
       const normalizedScheduledDate = requestedAppointmentDate;
 
-      const [appointmentResult] = await conn.execute(
+      // ── FIXED: Switched to .query ──
+      const [appointmentResult] = await conn.query(
         `
         INSERT INTO appointments
           (
@@ -504,14 +526,15 @@ exports.createOrder = async (req, res) => {
 /* ── Get Single Order Detail ── */
 exports.getOrderById = async (req, res) => {
   try {
-    const [orders] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [orders] = await db.query(
       `
       SELECT o.*, r.receipt_number, r.id AS receipt_id, r.items_snapshot
       FROM orders o
       LEFT JOIN receipts r ON r.order_id = o.id
       WHERE o.id = ?
       `,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (orders.length === 0) {
@@ -519,9 +542,10 @@ exports.getOrderById = async (req, res) => {
     }
 
     const order = orders[0];
-    const [items] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [items] = await db.query(
       "SELECT * FROM order_items WHERE order_id = ?",
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
     order.items = items;
 
@@ -550,7 +574,8 @@ exports.getOrders = async (req, res) => {
       params.push(to);
     }
 
-    const [rows] = await db.execute(
+    // ── FIXED: Main Query - Must be .query for LIMIT compatibility ──
+    const [rows] = await db.query(
       `
       SELECT o.id, o.order_number, o.walkin_customer_name,
              o.walkin_customer_phone, o.total, o.payment_method,
@@ -563,10 +588,11 @@ exports.getOrders = async (req, res) => {
       ORDER BY o.created_at DESC
       LIMIT ? OFFSET ?
       `,
-      [...params, parseInt(limit), offset],
+      [...params, parseInt(limit), parseInt(offset)],
     );
 
-    const [count] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [count] = await db.query(
       `SELECT COUNT(*) AS total FROM orders o ${where}`,
       params,
     );

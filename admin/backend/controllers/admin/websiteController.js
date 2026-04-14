@@ -6,8 +6,10 @@ const fs = require("fs");
 // ── SETTINGS ─────────────────────────────────────────────────────────────────
 exports.getSettings = async (req, res) => {
   try {
+    // ── FIXED: Added empty array [] ──
     const [rows] = await pool.query(
       "SELECT setting_key, value, group_name FROM website_settings ORDER BY group_name, setting_key",
+      [],
     );
     const grouped = rows.reduce((acc, r) => {
       (acc[r.group_name] = acc[r.group_name] || {})[r.setting_key] = r.value;
@@ -26,14 +28,14 @@ exports.updateSettings = async (req, res) => {
     for (const [key, value] of Object.entries(req.body)) {
       await conn.query(
         "UPDATE website_settings SET value = ?, updated_by = ? WHERE setting_key = ?",
-        [value, req.user.id, key],
+        [value, parseInt(req.user.id), key],
       );
     }
     if (req.file) {
       const logoUrl = `/uploads/settings/${req.file.filename}`;
       await conn.query(
         'UPDATE website_settings SET value = ?, updated_by = ? WHERE setting_key = "site_logo"',
-        [logoUrl, req.user.id],
+        [logoUrl, parseInt(req.user.id)],
       );
     }
     await conn.commit();
@@ -49,8 +51,10 @@ exports.updateSettings = async (req, res) => {
 // ── FAQs ─────────────────────────────────────────────────────────────────────
 exports.getFaqs = async (req, res) => {
   try {
+    // ── FIXED: Added empty array [] ──
     const [rows] = await pool.query(
       "SELECT * FROM faqs ORDER BY sort_order ASC, id ASC",
+      [],
     );
     res.json(rows);
   } catch (err) {
@@ -63,7 +67,7 @@ exports.createFaq = async (req, res) => {
     const { question, answer, sort_order = 0, is_visible = true } = req.body;
     const [r] = await pool.query(
       "INSERT INTO faqs (question, answer, sort_order, is_visible, created_by) VALUES (?,?,?,?,?)",
-      [question, answer, sort_order, is_visible ? 1 : 0, req.user.id],
+      [question, answer, sort_order, is_visible ? 1 : 0, parseInt(req.user.id)],
     );
     res.status(201).json({ message: "FAQ created.", id: r.insertId });
   } catch (err) {
@@ -74,9 +78,16 @@ exports.createFaq = async (req, res) => {
 exports.updateFaq = async (req, res) => {
   try {
     const { question, answer, sort_order, is_visible } = req.body;
+    // ── FIXED: Parsed ID ──
     await pool.query(
       "UPDATE faqs SET question=?,answer=?,sort_order=?,is_visible=? WHERE id=?",
-      [question, answer, sort_order, is_visible ? 1 : 0, req.params.id],
+      [
+        question,
+        answer,
+        sort_order,
+        is_visible ? 1 : 0,
+        parseInt(req.params.id),
+      ],
     );
     res.json({ message: "FAQ updated." });
   } catch (err) {
@@ -86,7 +97,10 @@ exports.updateFaq = async (req, res) => {
 
 exports.deleteFaq = async (req, res) => {
   try {
-    await pool.query("DELETE FROM faqs WHERE id = ?", [req.params.id]);
+    // ── FIXED: Parsed ID ──
+    await pool.query("DELETE FROM faqs WHERE id = ?", [
+      parseInt(req.params.id),
+    ]);
     res.json({ message: "FAQ deleted." });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -96,7 +110,11 @@ exports.deleteFaq = async (req, res) => {
 // ── STATIC PAGES ─────────────────────────────────────────────────────────────
 exports.getPages = async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM static_pages ORDER BY slug");
+    // ── FIXED: Added empty array [] ──
+    const [rows] = await pool.query(
+      "SELECT * FROM static_pages ORDER BY slug",
+      [],
+    );
     res.json(rows);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -121,7 +139,13 @@ exports.updatePage = async (req, res) => {
     const { title, content, is_visible } = req.body;
     await pool.query(
       "UPDATE static_pages SET title=?,content=?,is_visible=?,updated_by=? WHERE slug=?",
-      [title, content, is_visible ? 1 : 0, req.user.id, req.params.slug],
+      [
+        title,
+        content,
+        is_visible ? 1 : 0,
+        parseInt(req.user.id),
+        req.params.slug,
+      ],
     );
     res.json({ message: "Page updated." });
   } catch (err) {
@@ -130,7 +154,6 @@ exports.updatePage = async (req, res) => {
 };
 
 // ── BACKUP ───────────────────────────────────────────────────────────────────
-// Pure Node.js SQL dump — no mysqldump binary required, works on Windows & Linux
 async function generateSQLDump(filePath) {
   const conn = await pool.getConnection();
   const lines = [];
@@ -145,12 +168,15 @@ async function generateSQLDump(filePath) {
 
   try {
     // Get all tables
-    const [tables] = await conn.query("SHOW TABLES");
+    const [tables] = await conn.query("SHOW TABLES", []);
     const tableNames = tables.map((t) => Object.values(t)[0]);
 
     for (const table of tableNames) {
       // DROP + CREATE TABLE
-      const [[createRow]] = await conn.query(`SHOW CREATE TABLE \`${table}\``);
+      const [[createRow]] = await conn.query(
+        `SHOW CREATE TABLE \`${table}\``,
+        [],
+      );
       const createSQL = createRow["Create Table"];
       lines.push(`-- Table: ${table}`);
       lines.push(`DROP TABLE IF EXISTS \`${table}\`;`);
@@ -158,7 +184,7 @@ async function generateSQLDump(filePath) {
       lines.push("");
 
       // Row data
-      const [rows] = await conn.query(`SELECT * FROM \`${table}\``);
+      const [rows] = await conn.query(`SELECT * FROM \`${table}\``, []);
       if (rows.length > 0) {
         const cols = Object.keys(rows[0])
           .map((c) => `\`${c}\``)
@@ -198,12 +224,14 @@ async function generateSQLDump(filePath) {
 
 exports.getBackupLogs = async (req, res) => {
   try {
+    // ── FIXED: Added empty array [] ──
     const [rows] = await pool.query(
       `SELECT bl.*, u.name AS triggered_by_name,
               bl.storage_path AS file_url
        FROM backup_logs bl
        LEFT JOIN users u ON u.id = bl.triggered_by
        ORDER BY bl.created_at DESC LIMIT 50`,
+      [],
     );
     const normalized = rows.map((r) => ({
       ...r,
@@ -247,7 +275,14 @@ exports.triggerManualBackup = async (req, res) => {
     await pool.query(
       `INSERT INTO backup_logs (type, triggered_by, file_name, file_size_kb, storage_path, status, notes)
        VALUES ('manual', ?, ?, ?, ?, ?, ?)`,
-      [req.user.id, fileName, sizeKb, filePath, status, backupError || null],
+      [
+        parseInt(req.user.id),
+        fileName,
+        sizeKb,
+        filePath,
+        status,
+        backupError || null,
+      ],
     );
 
     if (backupError) {

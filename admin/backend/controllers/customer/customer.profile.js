@@ -31,7 +31,8 @@ exports.uploadAvatar = async (req, res) => {
   if (!req.file) return res.status(400).json({ message: "No file uploaded." });
   try {
     /* Delete old avatar */
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       "SELECT profile_photo FROM users WHERE id=?",
       [req.user.id],
     );
@@ -40,7 +41,8 @@ exports.uploadAvatar = async (req, res) => {
       if (fs.existsSync(old)) fs.unlinkSync(old);
     }
 
-    await db.execute("UPDATE users SET profile_photo=? WHERE id=?", [
+    // ── FIXED: Switched to .query ──
+    await db.query("UPDATE users SET profile_photo=? WHERE id=?", [
       req.file.filename,
       req.user.id,
     ]);
@@ -59,7 +61,8 @@ exports.updateBasic = async (req, res) => {
   if (!name?.trim())
     return res.status(400).json({ message: "Name is required." });
   try {
-    await db.execute("UPDATE users SET name=?, address=? WHERE id=?", [
+    // ── FIXED: Switched to .query ──
+    await db.query("UPDATE users SET name=?, address=? WHERE id=?", [
       name.trim(),
       address?.trim() || "",
       req.user.id,
@@ -80,7 +83,8 @@ exports.requestEmailChange = async (req, res) => {
     return res.status(400).json({ message: "New email is required." });
 
   /* Check if email already taken */
-  const [exists] = await db.execute(
+  // ── FIXED: Switched to .query ──
+  const [exists] = await db.query(
     "SELECT id FROM users WHERE email=? AND id!=?",
     [new_email, req.user.id],
   );
@@ -92,7 +96,8 @@ exports.requestEmailChange = async (req, res) => {
 
   try {
     /* Store pending change */
-    await db.execute(
+    // ── FIXED: Switched to .query ──
+    await db.query(
       `UPDATE users
        SET otp_code=?, otp_expires=?, pending_email=?
        WHERE id=?`,
@@ -130,7 +135,8 @@ exports.requestEmailChange = async (req, res) => {
 exports.verifyEmailChange = async (req, res) => {
   const { otp } = req.body;
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       "SELECT otp_code, otp_expires, pending_email FROM users WHERE id=?",
       [req.user.id],
     );
@@ -140,7 +146,8 @@ exports.verifyEmailChange = async (req, res) => {
     if (new Date(u.otp_expires) < new Date())
       return res.status(400).json({ message: "OTP has expired." });
 
-    await db.execute(
+    // ── FIXED: Switched to .query ──
+    await db.query(
       `UPDATE users
        SET email=?, pending_email=NULL, otp_code=NULL, otp_expires=NULL
        WHERE id=?`,
@@ -168,7 +175,8 @@ exports.requestPhoneChange = async (req, res) => {
 
   try {
     /* Store pending phone in DB */
-    await db.execute(`UPDATE users SET pending_phone=? WHERE id=?`, [
+    // ── FIXED: Switched to .query ──
+    await db.query(`UPDATE users SET pending_phone=? WHERE id=?`, [
       new_phone.trim(),
       req.user.id,
     ]);
@@ -193,7 +201,8 @@ exports.requestPhoneChange = async (req, res) => {
 exports.verifyPhoneChange = async (req, res) => {
   const { otp } = req.body;
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       "SELECT pending_phone FROM users WHERE id=?",
       [req.user.id],
     );
@@ -217,10 +226,11 @@ exports.verifyPhoneChange = async (req, res) => {
       return res.status(400).json({ message: "Invalid or expired OTP." });
 
     /* Save new phone */
-    await db.execute(
-      `UPDATE users SET phone=?, pending_phone=NULL WHERE id=?`,
-      [pending_phone, req.user.id],
-    );
+    // ── FIXED: Switched to .query ──
+    await db.query(`UPDATE users SET phone=?, pending_phone=NULL WHERE id=?`, [
+      pending_phone,
+      req.user.id,
+    ]);
     res.json({ message: "Phone number updated successfully." });
   } catch (err) {
     console.error("[profile/verify-phone-change]", err);
@@ -236,7 +246,8 @@ exports.verifyPhoneChange = async (req, res) => {
 exports.requestPasswordChange = async (req, res) => {
   const { current_password } = req.body;
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       "SELECT password, email FROM users WHERE id=?",
       [req.user.id],
     );
@@ -249,7 +260,8 @@ exports.requestPasswordChange = async (req, res) => {
 
     const otp = genOtp();
     const expires = new Date(Date.now() + 15 * 60 * 1000);
-    await db.execute("UPDATE users SET otp_code=?, otp_expires=? WHERE id=?", [
+    // ── FIXED: Switched to .query ──
+    await db.query("UPDATE users SET otp_code=?, otp_expires=? WHERE id=?", [
       otp,
       expires,
       req.user.id,
@@ -288,7 +300,8 @@ exports.requestPasswordChange = async (req, res) => {
 exports.verifyPasswordChange = async (req, res) => {
   const { otp, new_password } = req.body;
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       "SELECT otp_code, otp_expires FROM users WHERE id=?",
       [req.user.id],
     );
@@ -299,7 +312,8 @@ exports.verifyPasswordChange = async (req, res) => {
       return res.status(400).json({ message: "OTP has expired." });
 
     const hashed = await bcrypt.hash(new_password, 12);
-    await db.execute(
+    // ── FIXED: Switched to .query ──
+    await db.query(
       "UPDATE users SET password=?, otp_code=NULL, otp_expires=NULL WHERE id=?",
       [hashed, req.user.id],
     );

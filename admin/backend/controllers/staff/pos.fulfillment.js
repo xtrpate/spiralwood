@@ -1,3 +1,4 @@
+// controllers/staff/pos.deliveries.js
 const db = require("../../config/db");
 
 const DELIVERY_STATUSES = ["scheduled", "in_transit", "delivered", "failed"];
@@ -78,7 +79,9 @@ exports.getDeliverableOrders = async (req, res) => {
     console.log("=== GET DELIVERABLE ORDERS HIT ===");
     console.log("ACTIVE FILE:", __filename);
 
-    const [rows] = await db.query(`
+    // ── FIXED: Added empty array [] to prevent driver panics ──
+    const [rows] = await db.query(
+      `
       SELECT
         o.id,
         o.order_number,
@@ -105,7 +108,9 @@ exports.getDeliverableOrders = async (req, res) => {
 
       ORDER BY o.created_at DESC, o.id DESC
       LIMIT 200
-    `);
+    `,
+      [], // Added this safety parameter
+    );
 
     console.log("DELIVERABLE ORDERS SAMPLE:", rows[0] || null);
 
@@ -290,7 +295,9 @@ exports.createDelivery = async (req, res) => {
       finalNotesParts.push(`Reschedule Reason: ${rescheduleReason}`);
     }
 
-    const finalNotes = finalNotesParts.length ? finalNotesParts.join("\n") : null;
+    const finalNotes = finalNotesParts.length
+      ? finalNotesParts.join("\n")
+      : null;
 
     const [result] = await db.query(
       `
@@ -371,7 +378,9 @@ exports.updateDeliveryStatus = async (req, res) => {
   const uploadedReceiptPath = buildSignedReceiptPath(req.file);
 
   const collectedAmount = toPositiveAmount(req.body.collected_amount);
-  const collectedPaymentMethod = normalizeText(req.body.payment_method).toLowerCase();
+  const collectedPaymentMethod = normalizeText(
+    req.body.payment_method,
+  ).toLowerCase();
   const collectionNotes = normalizeText(req.body.collection_notes) || "";
 
   if (!deliveryId) {
@@ -421,9 +430,12 @@ exports.updateDeliveryStatus = async (req, res) => {
       return res.status(404).json({ message: "Linked order not found." });
     }
 
-    const currentStatus = normalizeText(existing.status || "scheduled").toLowerCase();
-    const allowedNextStatuses =
-      DELIVERY_TRANSITIONS[currentStatus] || [currentStatus];
+    const currentStatus = normalizeText(
+      existing.status || "scheduled",
+    ).toLowerCase();
+    const allowedNextStatuses = DELIVERY_TRANSITIONS[currentStatus] || [
+      currentStatus,
+    ];
 
     if (!allowedNextStatuses.includes(requestedStatus)) {
       await conn.rollback();
@@ -443,7 +455,8 @@ exports.updateDeliveryStatus = async (req, res) => {
       });
     }
 
-    const nextSignedReceipt = uploadedReceiptPath || existing.signed_receipt || null;
+    const nextSignedReceipt =
+      uploadedReceiptPath || existing.signed_receipt || null;
 
     if (requestedStatus === "delivered" && !nextSignedReceipt) {
       await conn.rollback();
@@ -465,7 +478,9 @@ exports.updateDeliveryStatus = async (req, res) => {
     );
 
     const totalAmount = Number(order.total || 0);
-    const verifiedTotalBefore = Number(paymentSummaryBefore?.verified_total || 0);
+    const verifiedTotalBefore = Number(
+      paymentSummaryBefore?.verified_total || 0,
+    );
     const currentBalance = Math.max(0, totalAmount - verifiedTotalBefore);
 
     const isCompletingDeliveryNow =
@@ -502,7 +517,10 @@ exports.updateDeliveryStatus = async (req, res) => {
 
     if (requestedStatus === "delivered" && currentStatus !== "delivered") {
       deliveredDate = new Date();
-    } else if (requestedStatus === "delivered" && currentStatus === "delivered") {
+    } else if (
+      requestedStatus === "delivered" &&
+      currentStatus === "delivered"
+    ) {
       deliveredDate = existing.delivered_date || new Date();
     } else {
       deliveredDate = null;
@@ -521,7 +539,7 @@ exports.updateDeliveryStatus = async (req, res) => {
       `,
       [
         requestedStatus,
-        nextNotes !== undefined ? nextNotes : existing.notes ?? null,
+        nextNotes !== undefined ? nextNotes : (existing.notes ?? null),
         deliveredDate,
         nextSignedReceipt,
         deliveryId,

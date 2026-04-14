@@ -5,7 +5,8 @@ const db = require("../../config/db"); // Uses the unified db config
 exports.getDashboardMetrics = async (req, res) => {
   try {
     // Today's sales & order count (ALL orders, walkin + online)
-    const [salesToday] = await db.execute(`
+    // ── FIXED: Switched to .query ──
+    const [salesToday] = await db.query(`
       SELECT 
         COUNT(*) AS order_count,
         COALESCE(SUM(total), 0) AS total_sales
@@ -15,7 +16,8 @@ exports.getDashboardMetrics = async (req, res) => {
     `);
 
     // This week's sales
-    const [salesWeek] = await db.execute(`
+    // ── FIXED: Switched to .query ──
+    const [salesWeek] = await db.query(`
       SELECT COALESCE(SUM(total), 0) AS weekly_sales
       FROM orders
       WHERE YEARWEEK(created_at, 1) = YEARWEEK(NOW(), 1)
@@ -23,7 +25,8 @@ exports.getDashboardMetrics = async (req, res) => {
     `);
 
     // This month's sales
-    const [salesMonth] = await db.execute(`
+    // ── FIXED: Switched to .query ──
+    const [salesMonth] = await db.query(`
       SELECT COALESCE(SUM(total), 0) AS monthly_sales
       FROM orders
       WHERE MONTH(created_at) = MONTH(NOW())
@@ -33,7 +36,8 @@ exports.getDashboardMetrics = async (req, res) => {
 
     // Recent orders today
     // We use LEFT JOIN to get the user's name if it's an online order, otherwise use the walkin name
-    const [recentOrders] = await db.execute(`
+    // ── FIXED: Switched to .query ──
+    const [recentOrders] = await db.query(`
       SELECT o.id, o.order_number, 
              COALESCE(o.walkin_customer_name, u.name, 'Customer') as walkin_customer_name, 
              o.total, o.payment_method, o.status, o.created_at
@@ -45,7 +49,8 @@ exports.getDashboardMetrics = async (req, res) => {
     `);
 
     // Top 5 products today
-    const [topProducts] = await db.execute(`
+    // ── FIXED: Switched to .query ──
+    const [topProducts] = await db.query(`
       SELECT oi.product_name, SUM(oi.quantity) AS qty_sold,
              SUM(oi.subtotal) AS revenue
       FROM order_items oi
@@ -58,7 +63,8 @@ exports.getDashboardMetrics = async (req, res) => {
     `);
 
     // Low stock alerts — ALL low/out products
-    const [lowStock] = await db.execute(`
+    // ── FIXED: Switched to .query ──
+    const [lowStock] = await db.query(`
       SELECT id, name, stock, reorder_point, stock_status
       FROM products
       WHERE stock_status IN ('low_stock','out_of_stock')

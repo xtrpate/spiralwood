@@ -24,13 +24,10 @@ const BLUEPRINT_PRODUCTION_TASK_ROLE_OPTIONS = [
 const REQUIRED_BLUEPRINT_TASK_ROLES =
   BLUEPRINT_PRODUCTION_TASK_ROLE_OPTIONS.map(normalizeTaskRole);
 
-
-
 const getTaskRoleLabel = (role) =>
   BLUEPRINT_PRODUCTION_TASK_ROLE_OPTIONS.find(
     (label) => normalizeTaskRole(label) === normalizeTaskRole(role),
   ) || role;
-
 
 const safeParseJson = (value, fallback = null) => {
   try {
@@ -60,12 +57,9 @@ const normalizeCustomRequestItem = (item = {}) => {
       item.product_name ||
       "Custom Furniture",
     preview_image_url:
-      customization?.preview_image_url ||
-      customization?.image_url ||
-      "",
+      customization?.preview_image_url || customization?.image_url || "",
     requested_blueprint_id: Number(customization?.blueprint_id || 0) || null,
-    requested_base_blueprint_title:
-      customization?.base_blueprint_title || "",
+    requested_base_blueprint_title: customization?.base_blueprint_title || "",
     requested_wood_type: customization?.wood_type || "",
     requested_finish_color:
       customization?.finish_color || customization?.color || "",
@@ -138,8 +132,7 @@ const buildCustomRequestBlueprintPayload = ({
     "Custom Furniture";
 
   const worldSize =
-    editorSnapshot?.worldSize &&
-    typeof editorSnapshot.worldSize === "object"
+    editorSnapshot?.worldSize && typeof editorSnapshot.worldSize === "object"
       ? editorSnapshot.worldSize
       : baseDesign?.worldSize ||
         baseView3d?.worldSize || {
@@ -224,10 +217,10 @@ const getCustomRequestOrderForAdmin = async (conn, orderId) => {
         o.order_type,
         o.notes,
         o.blueprint_id
-     FROM orders o
-     WHERE o.id = ?
-     LIMIT 1`,
-    [orderId],
+      FROM orders o
+      WHERE o.id = ?
+      LIMIT 1`,
+    [parseInt(orderId)],
   );
 
   if (!order) {
@@ -250,7 +243,7 @@ exports.approveCustomRequest = async (req, res) => {
   const conn = await pool.getConnection();
 
   try {
-    const orderId = req.params.id;
+    const orderId = parseInt(req.params.id);
     const adminNote = String(req.body?.note || "").trim();
 
     await conn.beginTransaction();
@@ -413,7 +406,7 @@ exports.requestCustomRequestRevision = async (req, res) => {
   const conn = await pool.getConnection();
 
   try {
-    const orderId = req.params.id;
+    const orderId = parseInt(req.params.id);
     const adminNote = String(req.body?.note || "").trim();
 
     await conn.beginTransaction();
@@ -421,7 +414,9 @@ exports.requestCustomRequestRevision = async (req, res) => {
     const result = await getCustomRequestOrderForAdmin(conn, orderId);
     if (result.error) {
       await conn.rollback();
-      return res.status(result.error.code).json({ message: result.error.message });
+      return res
+        .status(result.error.code)
+        .json({ message: result.error.message });
     }
 
     const { order } = result;
@@ -461,7 +456,7 @@ exports.rejectCustomRequest = async (req, res) => {
   const conn = await pool.getConnection();
 
   try {
-    const orderId = req.params.id;
+    const orderId = parseInt(req.params.id);
     const reason = String(req.body?.reason || req.body?.note || "").trim();
 
     await conn.beginTransaction();
@@ -469,7 +464,9 @@ exports.rejectCustomRequest = async (req, res) => {
     const result = await getCustomRequestOrderForAdmin(conn, orderId);
     if (result.error) {
       await conn.rollback();
-      return res.status(result.error.code).json({ message: result.error.message });
+      return res
+        .status(result.error.code)
+        .json({ message: result.error.message });
     }
 
     const { order } = result;
@@ -525,7 +522,7 @@ exports.getAll = async (req, res) => {
       page = 1,
       limit = 20,
     } = req.query;
-    const offset = (page - 1) * limit;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     const where = ["1=1"];
     const params = [];
 
@@ -553,12 +550,12 @@ exports.getAll = async (req, res) => {
               o.total AS total_amount, o.payment_method, o.payment_status, o.created_at,
               (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
               COALESCE(u.name,  o.walkin_customer_name)  AS customer_name,
-              COALESCE(u.email, '')                       AS customer_email,
+              COALESCE(u.email, '')                      AS customer_email,
               COALESCE(u.phone, o.walkin_customer_phone)  AS customer_phone
        FROM orders o LEFT JOIN users u ON u.id = o.customer_id
        WHERE ${where.join(" AND ")}
        ORDER BY o.created_at DESC LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), offset],
+      [...params, parseInt(limit), parseInt(offset)],
     );
 
     const [[{ total }]] = await pool.query(
@@ -572,7 +569,6 @@ exports.getAll = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
-
 
 const path = require("path");
 
@@ -599,7 +595,8 @@ const adminInsertDiscussionNotificationSafe = async (
   if (!userId) return;
 
   try {
-    await conn.execute(
+    // ── FIXED: Switched to .query ──
+    await conn.query(
       `INSERT INTO notifications
         (user_id, type, title, message, is_read, channel, sent_at, created_at)
        VALUES (?, ?, ?, ?, 0, 'system', NOW(), NOW())`,
@@ -612,7 +609,7 @@ const adminInsertDiscussionNotificationSafe = async (
 
 exports.getOne = async (req, res) => {
   try {
-    const orderId = req.params.id;
+    const orderId = parseInt(req.params.id);
 
     const [[order]] = await pool.query(
       `SELECT 
@@ -640,7 +637,9 @@ exports.getOne = async (req, res) => {
 
     const items = rawItems.map(normalizeCustomRequestItem);
 
-    const customRequestItems = items.filter((item) => Boolean(item.customization));
+    const customRequestItems = items.filter((item) =>
+      Boolean(item.customization),
+    );
 
     const [payments] = await pool.query(
       `SELECT 
@@ -749,7 +748,6 @@ exports.getOne = async (req, res) => {
       custom_request_items: customRequestItems,
       has_custom_request_data: customRequestItems.length > 0,
       latest_estimation: latestEstimation,
-
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -789,7 +787,7 @@ exports.updateStatus = async (req, res) => {
        LEFT JOIN contracts c ON c.order_id = o.id
        WHERE o.id = ?
        LIMIT 1`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (!order) {
@@ -803,7 +801,8 @@ exports.updateStatus = async (req, res) => {
     const isWalkInOrder =
       currentChannel === "walkin" || currentChannel === "walk-in";
 
-    const blueprintId = order.contract_blueprint_id || order.blueprint_id || null;
+    const blueprintId =
+      order.contract_blueprint_id || order.blueprint_id || null;
     const isBlueprintOrder =
       normalize(order.order_type) === "blueprint" || Boolean(blueprintId);
 
@@ -816,8 +815,7 @@ exports.updateStatus = async (req, res) => {
     const isStandardPickupOrder =
       isStandardOrder && normalizedPaymentMethod === "cop";
 
-    const isStandardDeliveryOrder =
-      isStandardOrder && !isStandardPickupOrder;
+    const isStandardDeliveryOrder = isStandardOrder && !isStandardPickupOrder;
 
     const effectiveStatusTransitions = isBlueprintOrder
       ? isWalkInOrder
@@ -904,15 +902,13 @@ exports.updateStatus = async (req, res) => {
          ) AS verified_total
        FROM payment_transactions
        WHERE order_id = ?`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     const verifiedPaymentTotal = Number(paymentSummary?.verified_total || 0);
     const paymentBalance = Math.max(0, totalAmount - verifiedPaymentTotal);
 
-    const requiredBlueprintDownPayment = Number(
-      (totalAmount * 0.3).toFixed(2),
-    );
+    const requiredBlueprintDownPayment = Number((totalAmount * 0.3).toFixed(2));
 
     const paymentMarkedPaid = normalize(order.payment_status) === "paid";
     const hasRequiredBlueprintDownPayment =
@@ -937,7 +933,10 @@ exports.updateStatus = async (req, res) => {
     const estimationApproved =
       normalize(latestEstimation?.status) === "approved";
 
-    if (isBlueprintOrder && ["contract_released", "production"].includes(nextStatus)) {
+    if (
+      isBlueprintOrder &&
+      ["contract_released", "production"].includes(nextStatus)
+    ) {
       if (!blueprintId) {
         await conn.rollback();
         return res.status(400).json({
@@ -1006,7 +1005,6 @@ exports.updateStatus = async (req, res) => {
       }
     }
 
-
     if (
       isBlueprintOrder &&
       ["shipping", "delivered", "completed"].includes(nextStatus)
@@ -1015,7 +1013,7 @@ exports.updateStatus = async (req, res) => {
         `SELECT task_role, status
         FROM project_tasks
         WHERE order_id = ?`,
-        [req.params.id],
+        [parseInt(req.params.id)],
       );
 
       const existingRoleSet = new Set(
@@ -1073,7 +1071,8 @@ exports.updateStatus = async (req, res) => {
     if (nextStatus === "completed" && paymentBalance > 0) {
       await conn.rollback();
       return res.status(400).json({
-        message: "Order cannot be completed until the remaining balance is fully paid.",
+        message:
+          "Order cannot be completed until the remaining balance is fully paid.",
       });
     }
 
@@ -1081,7 +1080,7 @@ exports.updateStatus = async (req, res) => {
       `UPDATE orders
        SET status = ?
        WHERE id = ?`,
-      [nextStatus, req.params.id],
+      [nextStatus, parseInt(req.params.id)],
     );
 
     await conn.commit();
@@ -1101,7 +1100,7 @@ exports.accept = async (req, res) => {
   try {
     await pool.query(
       "UPDATE orders SET status = 'confirmed' WHERE id = ? AND status = 'pending'",
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
     res.json({ message: "Order accepted." });
   } catch (err) {
@@ -1114,7 +1113,7 @@ exports.decline = async (req, res) => {
     const { reason } = req.body;
     await pool.query(
       "UPDATE orders SET status = 'cancelled', cancellation_reason = ?, cancelled_at = NOW() WHERE id = ? AND status = 'pending'",
-      [reason || "", req.params.id],
+      [reason || "", parseInt(req.params.id)],
     );
     res.json({ message: "Order declined." });
   } catch (err) {
@@ -1140,7 +1139,7 @@ exports.verifyPayment = async (req, res) => {
        FROM payment_transactions
        WHERE id = ? AND order_id = ?
        LIMIT 1`,
-      [payment_id, req.params.id],
+      [parseInt(payment_id), parseInt(req.params.id)],
     );
 
     if (!payment) {
@@ -1159,7 +1158,12 @@ exports.verifyPayment = async (req, res) => {
       `UPDATE payment_transactions
        SET status = ?, verified_by = ?, verified_at = NOW()
        WHERE id = ? AND order_id = ?`,
-      [normalizedAction, req.user.id, payment_id, req.params.id],
+      [
+        normalizedAction,
+        req.user.id,
+        parseInt(payment_id),
+        parseInt(req.params.id),
+      ],
     );
 
     const [[order]] = await conn.query(
@@ -1167,7 +1171,7 @@ exports.verifyPayment = async (req, res) => {
        FROM orders
        WHERE id = ?
        LIMIT 1`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     const [[summary]] = await conn.query(
@@ -1177,7 +1181,7 @@ exports.verifyPayment = async (req, res) => {
          MAX(CASE WHEN LOWER(status) = 'rejected' THEN 1 ELSE 0 END) AS has_rejected
        FROM payment_transactions
        WHERE order_id = ?`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     const totalAmount = Number(order?.total || 0);
@@ -1199,7 +1203,7 @@ exports.verifyPayment = async (req, res) => {
       `UPDATE orders
        SET payment_status = ?
        WHERE id = ?`,
-      [nextPaymentStatus, req.params.id],
+      [nextPaymentStatus, parseInt(req.params.id)],
     );
 
     await conn.commit();
@@ -1222,7 +1226,7 @@ exports.uploadDeliveryReceipt = async (req, res) => {
       return res.status(400).json({ message: "No file uploaded." });
     }
 
-    const orderId = req.params.id;
+    const orderId = parseInt(req.params.id);
     const url = `/uploads/deliveries/${req.file.filename}`;
 
     const [result] = await pool.query(
@@ -1260,6 +1264,7 @@ exports.uploadDeliveryReceipt = async (req, res) => {
 
 exports.getCancellations = async (req, res) => {
   try {
+    // ── FIXED: Added empty array [] ──
     const [rows] = await pool.query(
       `SELECT c.*, o.total AS total_amount, o.type AS channel,
               COALESCE(u.name, o.walkin_customer_name) AS requested_by_name,
@@ -1269,6 +1274,7 @@ exports.getCancellations = async (req, res) => {
        LEFT JOIN users u ON u.id = c.requested_by
        LEFT JOIN users a ON a.id = c.approved_by
        ORDER BY c.created_at DESC`,
+      [],
     );
     res.json(rows);
   } catch (err) {
@@ -1283,12 +1289,12 @@ exports.processCancellation = async (req, res) => {
     const { approved, refund_amount, policy_applied } = req.body;
     await conn.query(
       "UPDATE cancellations SET approved_by = ?, approved_at = NOW(), refund_amount = ?, policy_applied = ? WHERE order_id = ?",
-      [req.user.id, refund_amount, policy_applied, req.params.id],
+      [req.user.id, refund_amount, policy_applied, parseInt(req.params.id)],
     );
     if (approved) {
       await conn.query(
         "UPDATE orders SET status = 'cancelled', refund_amount = ?, refund_status = 'pending', cancelled_at = NOW() WHERE id = ?",
-        [refund_amount, req.params.id],
+        [refund_amount, parseInt(req.params.id)],
       );
     }
     await conn.commit();
@@ -1303,7 +1309,7 @@ exports.processCancellation = async (req, res) => {
 
 exports.getAssignableStaff = async (req, res) => {
   try {
-    const orderId = req.params.id;
+    const orderId = parseInt(req.params.id);
 
     const [[order]] = await pool.query(
       `SELECT o.id, o.order_number, o.status, o.blueprint_id, c.blueprint_id AS contract_blueprint_id
@@ -1317,7 +1323,8 @@ exports.getAssignableStaff = async (req, res) => {
       return res.status(404).json({ message: "Order not found." });
     }
 
-    const blueprintId = order.contract_blueprint_id || order.blueprint_id || null;
+    const blueprintId =
+      order.contract_blueprint_id || order.blueprint_id || null;
 
     if (!blueprintId) {
       return res.status(400).json({
@@ -1325,6 +1332,7 @@ exports.getAssignableStaff = async (req, res) => {
       });
     }
 
+    // ── FIXED: Added empty array [] ──
     const [staff] = await pool.query(
       `SELECT
           u.id,
@@ -1342,6 +1350,7 @@ exports.getAssignableStaff = async (req, res) => {
         AND u.staff_type = 'indoor'
         AND u.is_active = 1
        ORDER BY active_task_count ASC, u.name ASC`,
+      [],
     );
 
     res.json({
@@ -1357,7 +1366,7 @@ exports.assignStaff = async (req, res) => {
   const conn = await pool.getConnection();
 
   try {
-    const orderId = req.params.id;
+    const orderId = parseInt(req.params.id);
     const { staff_id, due_date, note } = req.body;
 
     if (!staff_id || !due_date) {
@@ -1385,7 +1394,8 @@ exports.assignStaff = async (req, res) => {
       return res.status(404).json({ message: "Order not found." });
     }
 
-    const blueprintId = order.contract_blueprint_id || order.blueprint_id || null;
+    const blueprintId =
+      order.contract_blueprint_id || order.blueprint_id || null;
 
     if (!blueprintId) {
       return res.status(400).json({
@@ -1393,7 +1403,9 @@ exports.assignStaff = async (req, res) => {
       });
     }
 
-    if (!["contract_released", "production"].includes(normalize(order.status))) {
+    if (
+      !["contract_released", "production"].includes(normalize(order.status))
+    ) {
       return res.status(400).json({
         message:
           "Indoor staff assignment is only allowed after contract release or during production.",
@@ -1404,7 +1416,7 @@ exports.assignStaff = async (req, res) => {
       `SELECT id, name, role, staff_type, is_active
        FROM users
        WHERE id = ? AND role = 'staff' AND staff_type = 'indoor'`,
-      [staff_id],
+      [parseInt(staff_id)],
     );
 
     if (!staff || !staff.is_active) {
@@ -1415,7 +1427,9 @@ exports.assignStaff = async (req, res) => {
 
     await conn.beginTransaction();
 
-    const placeholders = REQUIRED_BLUEPRINT_TASK_ROLES.map(() => "?").join(", ");
+    const placeholders = REQUIRED_BLUEPRINT_TASK_ROLES.map(() => "?").join(
+      ", ",
+    );
 
     const [existingPacket] = await conn.query(
       `SELECT id, task_role, status, assigned_to
@@ -1457,7 +1471,7 @@ exports.assignStaff = async (req, res) => {
         [
           orderId,
           blueprintId,
-          staff_id,
+          parseInt(staff_id),
           req.user.id,
           stepLabel,
           title,
@@ -1472,7 +1486,7 @@ exports.assignStaff = async (req, res) => {
         (user_id, type, title, message, channel, sent_at)
        VALUES (?, 'assignment', 'New Production Order Assigned', ?, 'system', NOW())`,
       [
-        staff_id,
+        parseInt(staff_id),
         `You have been assigned the full production workflow for ${order.order_number || `Order #${orderId}`}. Complete Cutting Machine, Edge Banding, Horizontal Drilling, Retouching, and Packing.`,
       ],
     );
@@ -1489,7 +1503,8 @@ exports.assignStaff = async (req, res) => {
     await conn.commit();
 
     res.json({
-      message: "Indoor staff assigned to the full production workflow successfully.",
+      message:
+        "Indoor staff assigned to the full production workflow successfully.",
       steps_created: BLUEPRINT_PRODUCTION_TASK_ROLE_OPTIONS.length,
     });
   } catch (err) {
@@ -1502,8 +1517,8 @@ exports.assignStaff = async (req, res) => {
 
 exports.updateTaskStatus = async (req, res) => {
   try {
-    const orderId = req.params.id;
-    const taskId = req.params.taskId;
+    const orderId = parseInt(req.params.id);
+    const taskId = parseInt(req.params.taskId);
     const { status } = req.body;
 
     const valid = ["pending", "in_progress", "completed", "blocked"];
@@ -1517,7 +1532,9 @@ exports.updateTaskStatus = async (req, res) => {
     );
 
     if (!task) {
-      return res.status(404).json({ message: "Task not found for this order." });
+      return res
+        .status(404)
+        .json({ message: "Task not found for this order." });
     }
 
     const completedAt = status === "completed" ? new Date() : null;
@@ -1539,7 +1556,7 @@ exports.recordManualPayment = async (req, res) => {
   const conn = await pool.getConnection();
 
   try {
-    const orderId = req.params.id;
+    const orderId = parseInt(req.params.id);
     const amount = Number(req.body?.amount || 0);
     const paymentMethod = normalize(req.body?.payment_method || "cash");
     const notes = String(req.body?.notes || "").trim();
@@ -1678,7 +1695,8 @@ exports.getOrderDiscussion = async (req, res) => {
   try {
     conn = await pool.getConnection();
 
-    const [orders] = await conn.execute(
+    // ── FIXED: Switched to .query ──
+    const [orders] = await conn.query(
       `SELECT id, order_number, customer_id, order_type
        FROM orders
        WHERE id = ?
@@ -1692,13 +1710,19 @@ exports.getOrderDiscussion = async (req, res) => {
 
     const order = orders[0];
 
-    if (String(order.order_type || "").trim().toLowerCase() !== "blueprint") {
+    if (
+      String(order.order_type || "")
+        .trim()
+        .toLowerCase() !== "blueprint"
+    ) {
       return res.status(400).json({
-        message: "Discussion thread is available for blueprint custom orders only.",
+        message:
+          "Discussion thread is available for blueprint custom orders only.",
       });
     }
 
-    const [messageRows] = await conn.execute(
+    // ── FIXED: Switched to .query ──
+    const [messageRows] = await conn.query(
       `SELECT
           m.id,
           m.order_id,
@@ -1717,7 +1741,8 @@ exports.getOrderDiscussion = async (req, res) => {
       [orderId],
     );
 
-    const [attachmentRows] = await conn.execute(
+    // ── FIXED: Switched to .query ──
+    const [attachmentRows] = await conn.query(
       `SELECT
           id,
           order_id,
@@ -1807,7 +1832,8 @@ exports.postOrderDiscussionMessage = async (req, res) => {
     conn = await pool.getConnection();
     await conn.beginTransaction();
 
-    const [orders] = await conn.execute(
+    // ── FIXED: Switched to .query ──
+    const [orders] = await conn.query(
       `SELECT id, order_number, customer_id, order_type
        FROM orders
        WHERE id = ?
@@ -1822,19 +1848,27 @@ exports.postOrderDiscussionMessage = async (req, res) => {
 
     const order = orders[0];
 
-    if (String(order.order_type || "").trim().toLowerCase() !== "blueprint") {
+    if (
+      String(order.order_type || "")
+        .trim()
+        .toLowerCase() !== "blueprint"
+    ) {
       await conn.rollback();
       return res.status(400).json({
-        message: "Discussion thread is available for blueprint custom orders only.",
+        message:
+          "Discussion thread is available for blueprint custom orders only.",
       });
     }
 
     const senderRole =
-      String(req.user?.role || "").trim().toLowerCase() === "admin"
+      String(req.user?.role || "")
+        .trim()
+        .toLowerCase() === "admin"
         ? "admin"
         : "staff";
 
-    const [messageResult] = await conn.execute(
+    // ── FIXED: Switched to .query ──
+    const [messageResult] = await conn.query(
       `INSERT INTO custom_order_messages
         (order_id, order_item_id, sender_id, sender_role, message)
        VALUES (?, NULL, ?, ?, ?)`,
@@ -1849,7 +1883,8 @@ exports.postOrderDiscussionMessage = async (req, res) => {
     const messageId = messageResult.insertId;
 
     for (const file of files) {
-      await conn.execute(
+      // ── FIXED: Switched to .query ──
+      await conn.query(
         `INSERT INTO custom_order_attachments
           (order_id, order_item_id, message_id, uploaded_by, file_url, file_name, mime_type, file_size, attachment_type)
          VALUES (?, NULL, ?, ?, ?, ?, ?, ?, 'chat_attachment')`,

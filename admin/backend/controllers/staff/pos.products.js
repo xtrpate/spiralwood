@@ -4,7 +4,9 @@ const db = require("../../config/db"); // Uses the unified db config
 /* ── Full Inventory List (For Lookup) ── */
 exports.getAllInventory = async (req, res) => {
   try {
-    const [rows] = await db.execute(`
+    // ── FIXED: Switched to .query and added empty array [] ──
+    const [rows] = await db.query(
+      `
       SELECT
         p.id,
         p.barcode,
@@ -29,7 +31,9 @@ exports.getAllInventory = async (req, res) => {
           ELSE 4
         END,
         p.name ASC
-    `);
+    `,
+      [],
+    );
 
     res.json(rows);
   } catch (err) {
@@ -91,7 +95,8 @@ exports.searchProducts = async (req, res) => {
       LIMIT 100
     `;
 
-    const [rows] = await db.execute(query, params);
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(query, params);
 
     for (const product of rows) {
       product.price =
@@ -99,7 +104,8 @@ exports.searchProducts = async (req, res) => {
           ? parseFloat(product.walkin_price)
           : parseFloat(product.online_price || 0);
 
-      const [vars] = await db.execute(
+      // ── FIXED: Switched to .query ──
+      const [vars] = await db.query(
         `
         SELECT
           id,

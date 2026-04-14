@@ -1,3 +1,4 @@
+// controllers/customer/customer.blueprints.js
 const db = require("../../config/db");
 
 const IMAGE_FILE_TYPES = new Set(["png", "jpg", "jpeg", "webp", "svg"]);
@@ -27,9 +28,15 @@ const normalizeTemplateType = (
   furnitureType = "",
   title = "",
 ) => {
-  const rawTemplate = String(templateType || "").trim().toLowerCase();
-  const rawFurniture = String(furnitureType || "").trim().toLowerCase();
-  const rawTitle = String(title || "").trim().toLowerCase();
+  const rawTemplate = String(templateType || "")
+    .trim()
+    .toLowerCase();
+  const rawFurniture = String(furnitureType || "")
+    .trim()
+    .toLowerCase();
+  const rawTitle = String(title || "")
+    .trim()
+    .toLowerCase();
 
   if (
     rawTemplate.includes("chair") ||
@@ -101,7 +108,9 @@ const resolvePreviewImageUrl = (row = {}, designData = {}) => {
   const referencePreviewUrl = resolveReferencePreviewUrl(designData);
   if (referencePreviewUrl) return referencePreviewUrl;
 
-  const fileType = String(row.file_type || "").trim().toLowerCase();
+  const fileType = String(row.file_type || "")
+    .trim()
+    .toLowerCase();
   const fileUrl = String(row.file_url || "").trim();
 
   if (fileUrl && IMAGE_FILE_TYPES.has(fileType)) {
@@ -120,10 +129,7 @@ const computeBoundsFromComponents = (items = []) => {
       y: toNumber(item.y ?? item.position_y, 0),
       z: toNumber(item.z ?? item.position_z, 0),
       width: Math.max(1, toNumber(item.width ?? item.w ?? item.width_mm, 0)),
-      height: Math.max(
-        1,
-        toNumber(item.height ?? item.h ?? item.height_mm, 0),
-      ),
+      height: Math.max(1, toNumber(item.height ?? item.h ?? item.height_mm, 0)),
       depth: Math.max(1, toNumber(item.depth ?? item.d ?? item.depth_mm, 0)),
     }))
     .filter((item) => item.width > 0 && item.height > 0 && item.depth > 0);
@@ -146,8 +152,6 @@ const computeBoundsFromComponents = (items = []) => {
 };
 
 const resolveBaseDimensions = (row = {}, designData = {}, view3dData = {}) => {
-  // IMPORTANT:
-  // unahin ang actual admin scene bounds kaysa sa old import dimensions
   const exactSceneBounds =
     computeBoundsFromComponents(extractSceneItems(view3dData)) ||
     computeBoundsFromComponents(extractSceneItems(designData)) ||
@@ -201,7 +205,11 @@ const resolveBaseDimensions = (row = {}, designData = {}, view3dData = {}) => {
   };
 };
 
-const resolveCustomizationRules = (row = {}, designData = {}, view3dData = {}) => {
+const resolveCustomizationRules = (
+  row = {},
+  designData = {},
+  view3dData = {},
+) => {
   const baseDimensions = resolveBaseDimensions(row, designData, view3dData);
 
   const rawRules =
@@ -219,10 +227,7 @@ const resolveCustomizationRules = (row = {}, designData = {}, view3dData = {}) =
 
     const defaultValue =
       toNumber(
-        explicit.default ??
-          explicit.default_mm ??
-          explicit.value ??
-          seed,
+        explicit.default ?? explicit.default_mm ?? explicit.value ?? seed,
         0,
       ) || null;
 
@@ -298,7 +303,6 @@ const resolveCategoryLabel = (templateType = "", fallback = "") => {
   return String(fallback || "").trim() || "Furniture Template";
 };
 
-
 const inferTemplateTypeFromSceneItems = (items = [], fallback = "") => {
   const haystack = (Array.isArray(items) ? items : [])
     .flatMap((item) => [
@@ -310,7 +314,11 @@ const inferTemplateTypeFromSceneItems = (items = [], fallback = "") => {
       item?.templateType,
       item?.partCode,
     ])
-    .map((value) => String(value || "").trim().toLowerCase())
+    .map((value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase(),
+    )
     .join(" ");
 
   if (!haystack) {
@@ -328,10 +336,7 @@ const inferTemplateTypeFromSceneItems = (items = [], fallback = "") => {
     return "template_dining_chair";
   }
 
-  if (
-    haystack.includes("coffee table") ||
-    haystack.includes("coffee_table")
-  ) {
+  if (haystack.includes("coffee table") || haystack.includes("coffee_table")) {
     return "template_coffee_table";
   }
 
@@ -413,8 +418,7 @@ const enrichBlueprintForCustomer = (row = {}) => {
     ...(Array.isArray(row?.components) ? row.components : []),
   ];
 
-  const sceneBounds =
-    computeBoundsFromComponents(sceneItems) || null;
+  const sceneBounds = computeBoundsFromComponents(sceneItems) || null;
 
   const explicitTemplateType =
     row.preview_template_type ||
@@ -438,7 +442,11 @@ const enrichBlueprintForCustomer = (row = {}) => {
     normalizeTemplateType(explicitTemplateType, furnitureType, row.title);
 
   const defaultDimensions = resolveBaseDimensions(row, designData, view3dData);
-  const customizationRules = resolveCustomizationRules(row, designData, view3dData);
+  const customizationRules = resolveCustomizationRules(
+    row,
+    designData,
+    view3dData,
+  );
   const previewImageUrl = resolvePreviewImageUrl(row, designData);
 
   const exactAdmin3D = hasExactAdmin3DSource(row, designData, view3dData);
@@ -500,10 +508,7 @@ const enrichBlueprintForCustomer = (row = {}) => {
 
     customization_rules: customizationRules,
     primary_material:
-      designData?.woodType ||
-      designData?.material ||
-      row?.wood_type ||
-      "",
+      designData?.woodType || designData?.material || row?.wood_type || "",
     finish_color:
       designData?.finishColor ||
       designData?.finish_color ||
@@ -521,7 +526,8 @@ exports.getAllBlueprints = async (req, res) => {
   const { q, wood_type, sort = "newest", page = 1, limit = 24 } = req.query;
 
   try {
-    let where = "WHERE b.is_deleted = 0 AND b.is_template = 1 AND b.is_gallery = 1";
+    let where =
+      "WHERE b.is_deleted = 0 AND b.is_template = 1 AND b.is_gallery = 1";
     const params = [];
 
     if (q) {
@@ -547,31 +553,32 @@ exports.getAllBlueprints = async (req, res) => {
     const limitNum = Number.parseInt(limit, 10) || 24;
     const offset = (pageNum - 1) * limitNum;
 
-    const [rows] = await db.execute(
+    // ── FIXED: Main Query (Must be .query for LIMIT compatibility) ──
+    const [rows] = await db.query(
       `SELECT
-          b.id,
-          b.title,
-          b.description,
-          b.base_price,
-          b.wood_type,
-          b.thumbnail_url,
-          b.file_url,
-          b.file_type,
-          b.design_data,
-          b.view_3d_data,
-          b.is_template,
-          b.is_gallery,
-          b.stage,
-          b.source,
-          b.created_at,
-          b.updated_at,
-          u.name AS creator_name
-       FROM blueprints b
-       LEFT JOIN users u ON u.id = b.creator_id
-       ${where}
-       ORDER BY ${orderBy}
-       LIMIT ? OFFSET ?`,
-      [...params, limitNum, offset],
+        b.id,
+        b.title,
+        b.description,
+        b.base_price,
+        b.wood_type,
+        b.thumbnail_url,
+        b.file_url,
+        b.file_type,
+        b.design_data,
+        b.view_3d_data,
+        b.is_template,
+        b.is_gallery,
+        b.stage,
+        b.source,
+        b.created_at,
+        b.updated_at,
+        u.name AS creator_name
+      FROM blueprints b
+      LEFT JOIN users u ON u.id = b.creator_id
+      ${where}
+      ORDER BY ${orderBy}
+      LIMIT ? OFFSET ?`,
+      [...params, parseInt(limitNum), parseInt(offset)],
     );
 
     const blueprints = rows.map((row) => {
@@ -583,12 +590,9 @@ exports.getAllBlueprints = async (req, res) => {
         description: mapped.description,
         base_price: mapped.base_price,
         wood_type: mapped.wood_type,
-
-        // image
         thumbnail_url: mapped.thumbnail_url || mapped.preview_image_url || "",
-        preview_image_url: mapped.preview_image_url || mapped.thumbnail_url || "",
-
-        // type/category
+        preview_image_url:
+          mapped.preview_image_url || mapped.thumbnail_url || "",
         furniture_type: mapped.furniture_type || mapped.furnitureType || "",
         furnitureType: mapped.furnitureType || mapped.furniture_type || "",
         template_type: mapped.template_type || mapped.templateType || "",
@@ -596,7 +600,6 @@ exports.getAllBlueprints = async (req, res) => {
         preview_template_type: mapped.preview_template_type,
         category: mapped.category,
         category_label: mapped.category_label || mapped.category,
-
         is_template: mapped.is_template,
         is_gallery: mapped.is_gallery,
         stage: mapped.stage,
@@ -604,8 +607,6 @@ exports.getAllBlueprints = async (req, res) => {
         created_at: mapped.created_at,
         updated_at: mapped.updated_at,
         creator_name: mapped.creator_name,
-
-        // dimensions
         scene_bounds: mapped.scene_bounds,
         default_dimensions: mapped.default_dimensions,
         dimensions: mapped.dimensions,
@@ -613,35 +614,34 @@ exports.getAllBlueprints = async (req, res) => {
         width_mm: mapped.width_mm,
         height_mm: mapped.height_mm,
         depth_mm: mapped.depth_mm,
-
         customization_rules: mapped.customization_rules,
         primary_material: mapped.primary_material,
         finish_color: mapped.finish_color,
         hardware: mapped.hardware,
         door_style: mapped.door_style,
         has_saved_3d: mapped.has_saved_3d,
-
-        // IMPORTANT:
-        // ibalik sa customer card ang actual admin 3D data
         design_data: mapped.design_data,
         view_3d_data: mapped.view_3d_data,
       };
     });
 
-    const [countRows] = await db.execute(
+    // ── FIXED: Using .query here too for total count ──
+    const [countRows] = await db.query(
       `SELECT COUNT(*) AS total
        FROM blueprints b
        ${where}`,
       params,
     );
 
-    const [woodTypes] = await db.execute(
+    // ── FIXED: Using .query for wood types dropdown ──
+    const [woodTypes] = await db.query(
       `SELECT DISTINCT wood_type
        FROM blueprints
        WHERE is_deleted = 0
          AND (is_gallery = 1 OR is_template = 1)
          AND wood_type IS NOT NULL
          AND wood_type != ''`,
+      [], // Pass empty array for query safety
     );
 
     res.json({
@@ -660,7 +660,8 @@ exports.getAllBlueprints = async (req, res) => {
 /* ── GET /customer/blueprints/:id ─────────────────────────────────────────── */
 exports.getBlueprintById = async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [rows] = await db.query(
       `SELECT
           b.*,
           u.name AS creator_name
@@ -670,18 +671,18 @@ exports.getBlueprintById = async (req, res) => {
          AND b.is_deleted = 0
          AND (b.is_gallery = 1 OR b.is_template = 1)
        LIMIT 1`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (!rows.length) {
       return res.status(404).json({ message: "Blueprint not found." });
     }
 
-    const [components] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [components] = await db.query(
       `SELECT * FROM blueprint_components WHERE blueprint_id = ?`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
-
 
     const blueprint = enrichBlueprintForCustomer({
       ...rows[0],
@@ -690,25 +691,26 @@ exports.getBlueprintById = async (req, res) => {
 
     res.json({
       ...blueprint,
-      thumbnail_url: blueprint.thumbnail_url || blueprint.preview_image_url || "",
-      preview_image_url: blueprint.preview_image_url || blueprint.thumbnail_url || "",
+      thumbnail_url:
+        blueprint.thumbnail_url || blueprint.preview_image_url || "",
+      preview_image_url:
+        blueprint.preview_image_url || blueprint.thumbnail_url || "",
       furniture_type: blueprint.furniture_type || blueprint.furnitureType || "",
       furnitureType: blueprint.furnitureType || blueprint.furniture_type || "",
       template_type: blueprint.template_type || blueprint.templateType || "",
       templateType: blueprint.templateType || blueprint.template_type || "",
       category_label: blueprint.category_label || blueprint.category,
-      dimensions:
-        blueprint.dimensions || {
-          width_mm: blueprint.width_mm,
-          height_mm: blueprint.height_mm,
-          depth_mm: blueprint.depth_mm,
-          w: blueprint.width_mm,
-          h: blueprint.height_mm,
-          d: blueprint.depth_mm,
-          width: blueprint.width_mm,
-          height: blueprint.height_mm,
-          depth: blueprint.depth_mm,
-        },
+      dimensions: blueprint.dimensions || {
+        width_mm: blueprint.width_mm,
+        height_mm: blueprint.height_mm,
+        depth_mm: blueprint.depth_mm,
+        w: blueprint.width_mm,
+        h: blueprint.height_mm,
+        d: blueprint.depth_mm,
+        width: blueprint.width_mm,
+        height: blueprint.height_mm,
+        depth: blueprint.depth_mm,
+      },
       components,
     });
   } catch (err) {

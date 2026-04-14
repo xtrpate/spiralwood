@@ -13,7 +13,7 @@ exports.getAll = async (req, res) => {
       page = 1,
       limit = 20,
     } = req.query;
-    const offset = (page - 1) * limit;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     const where = ["1=1"];
     const params = [];
 
@@ -66,21 +66,21 @@ exports.getOne = async (req, res) => {
       `SELECT p.*, c.name AS category_name
        FROM products p LEFT JOIN categories c ON c.id = p.category_id
        WHERE p.id = ?`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
     if (!product)
       return res.status(404).json({ message: "Product not found." });
 
     const [variations] = await pool.query(
       "SELECT * FROM product_variations WHERE product_id = ?",
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
     const [bom] = await pool.query(
       `SELECT bom.*, rm.name AS material_name, rm.unit
        FROM bill_of_materials bom
        JOIN raw_materials rm ON rm.id = bom.raw_material_id
        WHERE bom.product_id = ?`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     res.json({ ...product, variations, bill_of_materials: bom });
@@ -123,7 +123,7 @@ exports.create = async (req, res) => {
         barcode,
         name,
         description,
-        category_id,
+        category_id ? parseInt(category_id) : null,
         type,
         image_url,
         is_featured ? 1 : 0,
@@ -171,7 +171,7 @@ exports.create = async (req, res) => {
     for (const b of parsedBOM) {
       await conn.query(
         "INSERT INTO bill_of_materials (product_id, raw_material_id, quantity) VALUES (?,?,?)",
-        [productId, b.raw_material_id, b.quantity],
+        [productId, parseInt(b.raw_material_id), b.quantity],
       );
     }
 
@@ -192,7 +192,7 @@ exports.update = async (req, res) => {
   try {
     await conn.beginTransaction();
     const [[old]] = await conn.query("SELECT * FROM products WHERE id = ?", [
-      req.params.id,
+      parseInt(req.params.id),
     ]);
     if (!old) return res.status(404).json({ message: "Product not found." });
 
@@ -204,7 +204,7 @@ exports.update = async (req, res) => {
     const sets = Object.keys(fields)
       .map((k) => `${k} = ?`)
       .join(", ");
-    const vals = [...Object.values(fields), req.params.id];
+    const vals = [...Object.values(fields), parseInt(req.params.id)];
     await conn.query(`UPDATE products SET ${sets} WHERE id = ?`, vals);
 
     // Recalculate stock_status
@@ -214,13 +214,13 @@ exports.update = async (req, res) => {
               WHEN stock <= reorder_point THEN 'low_stock'
               ELSE 'in_stock' END
        WHERE id = ?`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     // Replace variations if provided
     if (req.body.variations) {
       await conn.query("DELETE FROM product_variations WHERE product_id = ?", [
-        req.params.id,
+        parseInt(req.params.id),
       ]);
       for (const v of JSON.parse(req.body.variations)) {
         await conn.query(
@@ -229,7 +229,7 @@ exports.update = async (req, res) => {
               unit_cost, selling_price, stock)
            VALUES (?,?,?,?,?,?,?)`,
           [
-            req.params.id,
+            parseInt(req.params.id),
             v.type,
             v.value,
             v.name,
@@ -244,12 +244,12 @@ exports.update = async (req, res) => {
     // Replace BOM if provided
     if (req.body.bill_of_materials) {
       await conn.query("DELETE FROM bill_of_materials WHERE product_id = ?", [
-        req.params.id,
+        parseInt(req.params.id),
       ]);
       for (const b of JSON.parse(req.body.bill_of_materials)) {
         await conn.query(
           "INSERT INTO bill_of_materials (product_id, raw_material_id, quantity) VALUES (?,?,?)",
-          [req.params.id, b.raw_material_id, b.quantity],
+          [parseInt(req.params.id), parseInt(b.raw_material_id), b.quantity],
         );
       }
     }
@@ -270,11 +270,13 @@ exports.remove = async (req, res) => {
   try {
     const [[p]] = await pool.query(
       "SELECT id, name FROM products WHERE id = ?",
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
     if (!p) return res.status(404).json({ message: "Product not found." });
 
-    await pool.query("DELETE FROM products WHERE id = ?", [req.params.id]);
+    await pool.query("DELETE FROM products WHERE id = ?", [
+      parseInt(req.params.id),
+    ]);
     req.auditRecord = { id: req.params.id, old: p };
     res.json({ message: "Product deleted." });
   } catch (err) {
@@ -287,11 +289,11 @@ exports.toggleFeatured = async (req, res) => {
   try {
     await pool.query(
       "UPDATE products SET is_featured = NOT is_featured WHERE id = ?",
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
     const [[{ is_featured }]] = await pool.query(
       "SELECT is_featured FROM products WHERE id = ?",
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
     res.json({ is_featured: !!is_featured });
   } catch (err) {
@@ -302,12 +304,14 @@ exports.toggleFeatured = async (req, res) => {
 // ── GET /api/products/report ──────────────────────────────────────────────────
 exports.getReport = async (req, res) => {
   try {
+    // ── FIXED: Added empty array [] ──
     const [rows] = await pool.query(
       `SELECT p.barcode, p.name, c.name AS category, p.type,
               p.online_price, p.walkin_price, p.production_cost,
               p.profit_margin, p.stock, p.stock_status, p.is_featured
        FROM products p LEFT JOIN categories c ON c.id = p.category_id
        ORDER BY p.name ASC`,
+      [],
     );
     res.json(rows);
   } catch (err) {

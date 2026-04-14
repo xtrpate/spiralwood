@@ -54,7 +54,7 @@ exports.getRawMaterials = async (req, res) => {
        WHERE ${where.join(" AND ")}
        ORDER BY rm.name ASC
        LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), (page - 1) * parseInt(limit)],
+      [...params, parseInt(limit), parseInt(offset)],
     );
 
     const [[{ total }]] = await pool.query(
@@ -107,12 +107,12 @@ exports.createRawMaterial = async (req, res) => {
        VALUES (?,?,?,?,?,?,?,?)`,
       [
         String(name).trim(),
-        category_id || null,
+        category_id ? parseInt(category_id) : null,
         String(unit).trim(),
         qty,
         reorderPoint,
         unitCost,
-        supplier_id || null,
+        supplier_id ? parseInt(supplier_id) : null,
         status,
       ],
     );
@@ -163,14 +163,14 @@ exports.updateRawMaterial = async (req, res) => {
        WHERE id=?`,
       [
         String(name).trim(),
-        category_id || null,
+        category_id ? parseInt(category_id) : null,
         String(unit).trim(),
         qty,
         reorderPoint,
         unitCost,
-        supplier_id || null,
+        supplier_id ? parseInt(supplier_id) : null,
         status,
-        req.params.id,
+        parseInt(req.params.id),
       ],
     );
 
@@ -182,7 +182,9 @@ exports.updateRawMaterial = async (req, res) => {
 
 exports.deleteRawMaterial = async (req, res) => {
   try {
-    await pool.query("DELETE FROM raw_materials WHERE id = ?", [req.params.id]);
+    await pool.query("DELETE FROM raw_materials WHERE id = ?", [
+      parseInt(req.params.id),
+    ]);
     res.json({ message: "Raw material deleted." });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -204,6 +206,7 @@ exports.getStockMovements = async (req, res) => {
       page = 1,
       limit = 30,
     } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     const where = ["1=1"];
     const params = [];
 
@@ -236,7 +239,7 @@ exports.getStockMovements = async (req, res) => {
        WHERE ${where.join(" AND ")}
        ORDER BY sm.created_at DESC
        LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), (page - 1) * parseInt(limit)],
+      [...params, parseInt(limit), parseInt(offset)],
     );
 
     const [[{ total }]] = await pool.query(
@@ -309,7 +312,7 @@ exports.createStockMovement = async (req, res) => {
          FROM raw_materials
          WHERE id = ?
          FOR UPDATE`,
-        [material_id],
+        [parseInt(material_id)],
       );
 
       if (!material) {
@@ -332,15 +335,15 @@ exports.createStockMovement = async (req, res) => {
            (material_id, product_id, type, quantity, supplier_id, order_id, reference, notes, created_by)
          VALUES (?,?,?,?,?,?,?,?,?)`,
         [
-          material_id,
+          parseInt(material_id),
           null,
           type,
           movementQty,
-          supplier_id || null,
-          order_id || null,
+          supplier_id ? parseInt(supplier_id) : null,
+          order_id ? parseInt(order_id) : null,
           reference || null,
           notes || null,
-          req.user.id,
+          parseInt(req.user.id),
         ],
       );
 
@@ -351,7 +354,7 @@ exports.createStockMovement = async (req, res) => {
         [
           newQty,
           computeStockStatus(newQty, material.reorder_point),
-          material_id,
+          parseInt(material_id),
         ],
       );
 
@@ -370,7 +373,7 @@ exports.createStockMovement = async (req, res) => {
        FROM products
        WHERE id = ?
        FOR UPDATE`,
-      [product_id],
+      [parseInt(product_id)],
     );
 
     if (!product) {
@@ -394,7 +397,7 @@ exports.createStockMovement = async (req, res) => {
          INNER JOIN raw_materials rm ON rm.id = bom.raw_material_id
          WHERE bom.product_id = ?
          FOR UPDATE`,
-        [product_id],
+        [parseInt(product_id)],
       );
 
       if (!bomRows.length) {
@@ -440,14 +443,14 @@ exports.createStockMovement = async (req, res) => {
          VALUES (?,?,?,?,?,?,?,?,?)`,
         [
           null,
-          product_id,
+          parseInt(product_id),
           type,
           movementQty,
-          supplier_id || null,
-          order_id || null,
+          supplier_id ? parseInt(supplier_id) : null,
+          order_id ? parseInt(order_id) : null,
           reference || null,
           notes || null,
-          req.user.id,
+          parseInt(req.user.id),
         ],
       );
 
@@ -461,7 +464,7 @@ exports.createStockMovement = async (req, res) => {
         [
           newProductStock,
           computeStockStatus(newProductStock, product.reorder_point),
-          product_id,
+          parseInt(product_id),
         ],
       );
 
@@ -476,7 +479,7 @@ exports.createStockMovement = async (req, res) => {
           [
             newRawQty,
             computeStockStatus(newRawQty, item.reorder_point),
-            item.raw_material_id,
+            parseInt(item.raw_material_id),
           ],
         );
 
@@ -485,17 +488,17 @@ exports.createStockMovement = async (req, res) => {
              (material_id, product_id, type, quantity, supplier_id, order_id, reference, notes, created_by)
            VALUES (?,?,?,?,?,?,?,?,?)`,
           [
-            item.raw_material_id,
-            product_id,
+            parseInt(item.raw_material_id),
+            parseInt(product_id),
             "out",
             item.requiredQty,
             null,
-            order_id || null,
+            order_id ? parseInt(order_id) : null,
             reference || `PRODUCTION-${product_id}`,
             notes
               ? `${notes} | Auto-deducted for production of ${product.name}`
               : `Auto-deducted for production of ${product.name} x ${movementQty}`,
-            req.user.id,
+            parseInt(req.user.id),
           ],
         );
       }
@@ -524,14 +527,14 @@ exports.createStockMovement = async (req, res) => {
        VALUES (?,?,?,?,?,?,?,?,?)`,
       [
         null,
-        product_id,
+        parseInt(product_id),
         type,
         movementQty,
-        supplier_id || null,
-        order_id || null,
+        supplier_id ? parseInt(supplier_id) : null,
+        order_id ? parseInt(order_id) : null,
         reference || null,
         notes || null,
-        req.user.id,
+        parseInt(req.user.id),
       ],
     );
 
@@ -542,7 +545,7 @@ exports.createStockMovement = async (req, res) => {
       [
         newProductStock,
         computeStockStatus(newProductStock, product.reorder_point),
-        product_id,
+        parseInt(product_id),
       ],
     );
 
@@ -596,7 +599,7 @@ exports.updateSupplier = async (req, res) => {
     const { name, address, contact_number, email } = req.body;
     await pool.query(
       "UPDATE suppliers SET name=?,address=?,contact_number=?,email=? WHERE id=?",
-      [name, address, contact_number, email, req.params.id],
+      [name, address, contact_number, email, parseInt(req.params.id)],
     );
     res.json({ message: "Supplier updated." });
   } catch (err) {
@@ -606,7 +609,9 @@ exports.updateSupplier = async (req, res) => {
 
 exports.deleteSupplier = async (req, res) => {
   try {
-    await pool.query("DELETE FROM suppliers WHERE id = ?", [req.params.id]);
+    await pool.query("DELETE FROM suppliers WHERE id = ?", [
+      parseInt(req.params.id),
+    ]);
     res.json({ message: "Supplier deleted." });
   } catch (err) {
     res.status(500).json({ message: err.message });

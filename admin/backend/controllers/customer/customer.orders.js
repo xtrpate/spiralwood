@@ -5,7 +5,8 @@ const axios = require("axios");
 /* ── Get Settings (Payment Info) ── */
 exports.getSettings = async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       `SELECT setting_key, setting_value FROM settings
        WHERE setting_key IN ('gcash_number','bank_account_name','bank_account_number')`,
     );
@@ -60,7 +61,8 @@ exports.createOrder = async (req, res) => {
     const proof_path = req.file ? `uploads/proofs/${req.file.filename}` : null;
 
     /* Insert order */
-    const [orderRes] = await conn.execute(
+    // ── FIXED: Switched conn.execute to conn.query ──
+    const [orderRes] = await conn.query(
       `INSERT INTO orders
         (order_number, customer_id, type, order_type, status,
         payment_method, payment_status, payment_proof,
@@ -88,7 +90,8 @@ exports.createOrder = async (req, res) => {
     for (const item of items) {
       const unit_price = parseFloat(item.unit_price);
 
-      await conn.execute(
+      // ── FIXED: Switched conn.execute to conn.query ──
+      await conn.query(
         `INSERT INTO order_items
           (order_id, product_id, variation_id,
            product_name, quantity, unit_price, subtotal)
@@ -106,14 +109,16 @@ exports.createOrder = async (req, res) => {
 
       /* Deduct stock */
       if (item.variation_id) {
-        await conn.execute(
+        // ── FIXED: Switched conn.execute to conn.query ──
+        await conn.query(
           `UPDATE product_variations
            SET stock = GREATEST(0, stock - ?)
            WHERE id = ?`,
           [item.quantity, item.variation_id],
         );
       } else {
-        await conn.execute(
+        // ── FIXED: Switched conn.execute to conn.query ──
+        await conn.query(
           `UPDATE products
            SET stock = GREATEST(0, stock - ?)
            WHERE id = ?`,
@@ -122,7 +127,8 @@ exports.createOrder = async (req, res) => {
       }
 
       /* Update stock_status after deduction */
-      await conn.execute(
+      // ── FIXED: Switched conn.execute to conn.query ──
+      await conn.query(
         `UPDATE products
          SET stock_status = CASE
            WHEN stock <= 0              THEN 'out_of_stock'
@@ -221,7 +227,8 @@ exports.createOrder = async (req, res) => {
 /* ── List My Orders ── */
 exports.getOrders = async (req, res) => {
   try {
-    const [orders] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [orders] = await db.query(
       `SELECT id, order_number, status, payment_method,
               payment_status, subtotal, total,
               delivery_address, walkin_customer_name AS recipient_name,
@@ -233,7 +240,8 @@ exports.getOrders = async (req, res) => {
     );
 
     for (const order of orders) {
-      const [items] = await db.execute(
+      // ── FIXED: Switched to .query ──
+      const [items] = await db.query(
         `SELECT COUNT(*) AS cnt, SUM(quantity) AS qty
          FROM order_items WHERE order_id = ?`,
         [order.id],
@@ -252,16 +260,18 @@ exports.getOrders = async (req, res) => {
 /* ── Single Order Detail ── */
 exports.getOrderById = async (req, res) => {
   try {
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [rows] = await db.query(
       `SELECT * FROM orders
        WHERE id = ? AND customer_id = ?`,
-      [req.params.id, req.user.id],
+      [parseInt(req.params.id), req.user.id],
     );
     if (!rows.length)
       return res.status(404).json({ message: "Order not found." });
 
     const order = rows[0];
-    const [items] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [items] = await db.query(
       `SELECT oi.*, p.image_url
        FROM order_items oi
        LEFT JOIN products p ON p.id = oi.product_id
@@ -280,12 +290,13 @@ exports.getOrderById = async (req, res) => {
 /* ── Customer Confirms Delivery ── */
 exports.confirmOrder = async (req, res) => {
   try {
-    const [[order]] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [[order]] = await db.query(
       `SELECT id, status, payment_status, payment_method
        FROM orders
        WHERE id = ? AND customer_id = ?
        LIMIT 1`,
-      [req.params.id, req.user.id],
+      [parseInt(req.params.id), req.user.id],
     );
 
     if (!order) {
@@ -305,11 +316,12 @@ exports.confirmOrder = async (req, res) => {
       });
     }
 
-    const [result] = await db.execute(
+    // ── FIXED: Switched to .query and parsed ID ──
+    const [result] = await db.query(
       `UPDATE orders
        SET status = 'completed'
        WHERE id = ? AND customer_id = ? AND status = 'delivered' AND payment_status = 'paid'`,
-      [req.params.id, req.user.id],
+      [parseInt(req.params.id), req.user.id],
     );
 
     if (result.affectedRows === 0) {
@@ -334,7 +346,8 @@ exports.verifyPayment = async (req, res) => {
       return res.status(400).json({ message: "Order number is required." });
     }
 
-    const [result] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [result] = await db.query(
       `UPDATE orders 
        SET payment_status = 'paid', status = 'confirmed' 
        WHERE order_number = ? AND customer_id = ?`,
@@ -361,11 +374,12 @@ exports.cancelOrder = async (req, res) => {
     await conn.beginTransaction();
 
     const { reason } = req.body;
-    const orderId = req.params.id;
+    const orderId = parseInt(req.params.id); // ── FIXED: Parse ID ──
     const customerId = req.user.id;
 
     // 1. Update the order ONLY if it is still 'pending'
-    const [updateResult] = await conn.execute(
+    // ── FIXED: Switched conn.execute to conn.query ──
+    const [updateResult] = await conn.query(
       `UPDATE orders
        SET status = 'cancelled',
            notes = CONCAT(IFNULL(notes, ''), '\nCancellation Reason: ', ?)
@@ -382,14 +396,16 @@ exports.cancelOrder = async (req, res) => {
     }
 
     // 👉 NEW: 2. Insert the cancellation request so Admin can see it
-    await conn.execute(
+    // ── FIXED: Switched conn.execute to conn.query ──
+    await conn.query(
       `INSERT INTO cancellations (order_id, requested_by, reason, created_at)
        VALUES (?, ?, ?, NOW())`,
       [orderId, customerId, reason || "Cancelled by customer"],
     );
 
     // 3. Fetch all items associated with this cancelled order
-    const [items] = await conn.execute(
+    // ── FIXED: Switched conn.execute to conn.query ──
+    const [items] = await conn.query(
       `SELECT product_id, variation_id, quantity 
        FROM order_items 
        WHERE order_id = ?`,
@@ -399,14 +415,16 @@ exports.cancelOrder = async (req, res) => {
     // 4. Return the stock for each item
     for (const item of items) {
       if (item.variation_id) {
-        await conn.execute(
+        // ── FIXED: Switched conn.execute to conn.query ──
+        await conn.query(
           `UPDATE product_variations
            SET stock = stock + ?
            WHERE id = ?`,
           [item.quantity, item.variation_id],
         );
       } else {
-        await conn.execute(
+        // ── FIXED: Switched conn.execute to conn.query ──
+        await conn.query(
           `UPDATE products
            SET stock = stock + ?
            WHERE id = ?`,
@@ -414,7 +432,8 @@ exports.cancelOrder = async (req, res) => {
         );
       }
 
-      await conn.execute(
+      // ── FIXED: Switched conn.execute to conn.query ──
+      await conn.query(
         `UPDATE products
          SET stock_status = CASE
            WHEN stock <= 0              THEN 'out_of_stock'

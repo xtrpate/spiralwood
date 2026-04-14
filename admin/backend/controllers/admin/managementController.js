@@ -39,7 +39,7 @@ exports.getAll = async (req, res) => {
        WHERE ${where.join(" AND ")}
        ORDER BY w.created_at DESC
        LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), (page - 1) * parseInt(limit)],
+      [...params, parseInt(limit), (parseInt(page) - 1) * parseInt(limit)],
     );
 
     const [[{ total }]] = await pool.query(
@@ -69,9 +69,11 @@ exports.updateStatus = async (req, res) => {
     const sets = Object.keys(update)
       .map((k) => `${k} = ?`)
       .join(", ");
+
+    // ── FIXED: Parsed ID ──
     await pool.query(`UPDATE warranties SET ${sets} WHERE id = ?`, [
       ...Object.values(update),
-      req.params.id,
+      parseInt(req.params.id),
     ]);
     res.json({ message: "Warranty claim updated." });
   } catch (err) {
@@ -82,6 +84,7 @@ exports.updateStatus = async (req, res) => {
 // ══ CONTRACTS ════════════════════════════════════════════════════════════════
 exports.getContracts = async (req, res) => {
   try {
+    // ── FIXED: Added empty array [] ──
     const [rows] = await pool.query(
       `SELECT c.*,
               COALESCE(u.name, c.customer_name)   AS customer_name,
@@ -95,6 +98,7 @@ exports.getContracts = async (req, res) => {
        LEFT JOIN blueprints b  ON b.id  = c.blueprint_id
        LEFT JOIN users      au ON au.id = c.authorized_by
        ORDER BY c.created_at DESC`,
+      [],
     );
     res.json(rows);
   } catch (err) {
@@ -107,13 +111,15 @@ exports.generateContract = async (req, res) => {
     const { order_id, blueprint_id, terms, warranty_terms } = req.body;
 
     // Get customer info from the order
+    // ── FIXED: Parsed ID ──
     const [[order]] = await pool.query(
       `SELECT o.customer_id, COALESCE(u.name, o.walkin_customer_name) AS customer_name
        FROM orders o LEFT JOIN users u ON u.id = o.customer_id WHERE o.id = ?`,
-      [order_id],
+      [parseInt(order_id)],
     );
     if (!order) return res.status(404).json({ message: "Order not found." });
 
+    // ── FIXED: Parsed IDs ──
     const [r] = await pool.query(
       // contracts schema: blueprint_id, order_id, customer_id, customer_name, warranty_terms, authorized_by
       // store contract terms in warranty_terms field + materials_used field
@@ -121,8 +127,8 @@ exports.generateContract = async (req, res) => {
          (order_id, blueprint_id, customer_id, customer_name, warranty_terms, materials_used, authorized_by, start_date)
        VALUES (?, ?, ?, ?, ?, ?, ?, CURDATE())`,
       [
-        order_id,
-        blueprint_id || null,
+        parseInt(order_id),
+        blueprint_id ? parseInt(blueprint_id) : null,
         order.customer_id,
         order.customer_name,
         warranty_terms,
@@ -132,6 +138,7 @@ exports.generateContract = async (req, res) => {
     );
 
     // Update order status
+    // ── FIXED: Parsed ID ──
     await pool.query(
       `UPDATE orders
       SET status = CASE
@@ -139,7 +146,7 @@ exports.generateContract = async (req, res) => {
         ELSE status
       END
       WHERE id = ?`,
-      [order_id],
+      [parseInt(order_id)],
     );
 
     res.status(201).json({ message: "Contract generated.", id: r.insertId });
@@ -170,7 +177,7 @@ exports.getCustomers = async (req, res) => {
        FROM users WHERE ${where.join(" AND ")}
        ORDER BY created_at DESC
        LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), (page - 1) * parseInt(limit)],
+      [...params, parseInt(limit), (parseInt(page) - 1) * parseInt(limit)],
     );
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) AS total FROM users WHERE ${where.join(" AND ")}`,
@@ -192,8 +199,9 @@ exports.updateCustomerStatus = async (req, res) => {
       deactivate: { is_active: 0 },
     };
     if (action === "delete") {
+      // ── FIXED: Parsed ID ──
       await pool.query("DELETE FROM users WHERE id = ? AND role = 'customer'", [
-        req.params.id,
+        parseInt(req.params.id),
       ]);
       return res.json({ message: "Customer deleted." });
     }
@@ -202,9 +210,11 @@ exports.updateCustomerStatus = async (req, res) => {
     const sets = Object.keys(map[action])
       .map((k) => `${k} = ?`)
       .join(", ");
+
+    // ── FIXED: Parsed ID ──
     await pool.query(
       `UPDATE users SET ${sets}, approved_by = ?, approved_at = NOW() WHERE id = ?`,
-      [...Object.values(map[action]), req.user.id, req.params.id],
+      [...Object.values(map[action]), req.user.id, parseInt(req.params.id)],
     );
     res.json({ message: `Customer ${action}d.` });
   } catch (err) {
@@ -215,6 +225,7 @@ exports.updateCustomerStatus = async (req, res) => {
 // ══ USERS ════════════════════════════════════════════════════════════════════
 exports.getUsers = async (req, res) => {
   try {
+    // ── FIXED: Added empty array [] ──
     const [rows] = await pool.query(
       `SELECT
          id,
@@ -229,6 +240,7 @@ exports.getUsers = async (req, res) => {
        FROM users
        WHERE role IN ('admin','staff')
        ORDER BY role, staff_type, name`,
+      [],
     );
     res.json(rows);
   } catch (err) {
@@ -277,11 +289,20 @@ exports.updateUser = async (req, res) => {
 
     const normalizedStaffType = role === "staff" ? staff_type : null;
 
+    // ── FIXED: Parsed ID ──
     await pool.query(
       `UPDATE users
        SET name = ?, email = ?, role = ?, staff_type = ?, phone = ?, is_active = ?
        WHERE id = ? AND role != "customer"`,
-      [name, email, role, normalizedStaffType, phone, is_active ? 1 : 0, req.params.id],
+      [
+        name,
+        email,
+        role,
+        normalizedStaffType,
+        phone,
+        is_active ? 1 : 0,
+        parseInt(req.params.id),
+      ],
     );
 
     res.json({ message: "User updated." });
@@ -294,9 +315,10 @@ exports.resetUserPassword = async (req, res) => {
   try {
     const { new_password } = req.body;
     const hashed = await bcrypt.hash(new_password, 12);
+    // ── FIXED: Parsed ID ──
     await pool.query("UPDATE users SET password = ? WHERE id = ?", [
       hashed,
-      req.params.id,
+      parseInt(req.params.id),
     ]);
     res.json({ message: "Password reset." });
   } catch (err) {
@@ -306,12 +328,14 @@ exports.resetUserPassword = async (req, res) => {
 
 exports.deleteUser = async (req, res) => {
   try {
-    if (req.params.id == req.user.id)
+    // ── FIXED: Parsed ID and strict equality ──
+    if (parseInt(req.params.id) === parseInt(req.user.id))
       return res
         .status(400)
         .json({ message: "Cannot delete your own account." });
+
     await pool.query("DELETE FROM users WHERE id = ? AND role != 'customer'", [
-      req.params.id,
+      parseInt(req.params.id),
     ]);
     res.json({ message: "User deleted." });
   } catch (err) {

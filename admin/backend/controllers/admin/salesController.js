@@ -31,7 +31,7 @@ exports.getReport = async (req, res) => {
 
     const [orders] = await pool.query(
       `SELECT o.id, o.order_number,
-              o.type     AS channel,           -- schema: type
+              o.type     AS channel,          -- schema: type
               o.status,
               o.payment_method,
               o.total    AS total_amount,       -- schema: total

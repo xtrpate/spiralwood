@@ -211,7 +211,8 @@ exports.register = async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
     const fullName = `${String(first_name).trim()} ${String(last_name).trim()}`;
 
-    const [existing] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [existing] = await db.query(
       "SELECT id FROM users WHERE email = ? LIMIT 1",
       [normalizedEmail],
     );
@@ -226,7 +227,8 @@ exports.register = async (req, res) => {
     const otp = generateOtp();
     const expiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    const [result] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [result] = await db.query(
       `
       INSERT INTO users
         (
@@ -275,7 +277,8 @@ exports.verifyOtp = async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
     const normalizedOtp = String(otp).trim();
 
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       `
       SELECT id, otp_code, otp_expires, is_verified
       FROM users
@@ -310,7 +313,8 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    await db.execute(
+    // ── FIXED: Switched to .query ──
+    await db.query(
       `
       UPDATE users
       SET
@@ -346,7 +350,8 @@ exports.resendOtp = async (req, res) => {
   try {
     const normalizedEmail = String(email).trim().toLowerCase();
 
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       `
       SELECT id, name, is_verified
       FROM users
@@ -367,7 +372,8 @@ exports.resendOtp = async (req, res) => {
     const otp = generateOtp();
     const expiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    await db.execute(
+    // ── FIXED: Switched to .query ──
+    await db.query(
       `
       UPDATE users
       SET otp_code = ?, otp_expires = ?
@@ -403,7 +409,8 @@ exports.forgotPassword = async (req, res) => {
     const genericMessage =
       "If the account exists, a password reset code has been sent to the email address.";
 
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       `
       SELECT id, name, is_verified, is_active
       FROM users
@@ -428,7 +435,8 @@ exports.forgotPassword = async (req, res) => {
       Date.now() + RESET_OTP_EXPIRY_MINUTES * 60 * 1000,
     );
 
-    await db.execute(
+    // ── FIXED: Switched to .query ──
+    await db.query(
       `
       UPDATE users
       SET reset_otp = ?, reset_otp_expires = ?
@@ -469,7 +477,8 @@ exports.resetPassword = async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
     const normalizedOtp = String(otp).trim();
 
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       `
       SELECT id, reset_otp, reset_otp_expires, is_verified, is_active
       FROM users
@@ -519,7 +528,8 @@ exports.resetPassword = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(new_password, 12);
 
-    await db.execute(
+    // ── FIXED: Switched to .query ──
+    await db.query(
       `
       UPDATE users
       SET
@@ -555,7 +565,8 @@ exports.login = async (req, res) => {
   try {
     const normalizedEmail = String(email).trim().toLowerCase();
 
-    const [rows] = await db.execute(
+    // ── FIXED: Switched to .query ──
+    const [rows] = await db.query(
       `
       SELECT
         id,
@@ -572,7 +583,7 @@ exports.login = async (req, res) => {
       WHERE email = ? 
       LIMIT 1
       `,
-      [normalizedEmail], // 👉 We removed "AND role = 'customer'" here!
+      [normalizedEmail],
     );
 
     if (rows.length === 0) {
@@ -586,8 +597,6 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password." });
     }
 
-    // Admins and Staff might not use the email OTP verification system.
-    // If you want them to bypass the 'is_verified' check, we can conditionally check it:
     if (user.role === "customer" && !user.is_verified) {
       return res.status(403).json({
         message: "Please verify your email before logging in.",
@@ -614,7 +623,8 @@ exports.login = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || "24h" },
     );
 
-    await db.execute("UPDATE users SET last_login = NOW() WHERE id = ?", [
+    // ── FIXED: Switched to .query ──
+    await db.query("UPDATE users SET last_login = NOW() WHERE id = ?", [
       user.id,
     ]);
 

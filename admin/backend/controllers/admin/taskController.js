@@ -7,7 +7,7 @@ async function notify(userId, type, title, message) {
   await pool.query(
     `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
      VALUES (?, ?, ?, ?, 'system', NOW())`,
-    [userId, type, title, message],
+    [parseInt(userId), type, title, message],
   );
 }
 
@@ -39,7 +39,7 @@ exports.getAll = async (req, res) => {
          FIELD(pt.status, 'pending','in_progress','blocked','completed'),
          pt.due_date ASC,
          pt.created_at DESC`,
-      isAdmin ? [] : [req.user.id],
+      isAdmin ? [] : [parseInt(req.user.id)],
     );
     res.json(rows);
   } catch (err) {
@@ -62,12 +62,15 @@ exports.getOne = async (req, res) => {
        LEFT JOIN orders o ON o.id = pt.order_id
        LEFT JOIN blueprints b ON b.id = pt.blueprint_id
        WHERE pt.id = ?`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
     if (!row) return res.status(404).json({ message: "Task not found." });
 
     // Staff can only view their own tasks
-    if (req.user.role !== "admin" && row.assigned_to !== req.user.id) {
+    if (
+      req.user.role !== "admin" &&
+      Number(row.assigned_to) !== Number(req.user.id)
+    ) {
       return res.status(403).json({ message: "Access denied." });
     }
 
@@ -99,7 +102,7 @@ exports.create = async (req, res) => {
     // Verify the staff exists and is active
     const [[staff]] = await pool.query(
       `SELECT id, name FROM users WHERE id = ? AND is_active = 1`,
-      [assigned_to],
+      [parseInt(assigned_to)],
     );
     if (!staff)
       return res
@@ -113,18 +116,18 @@ exports.create = async (req, res) => {
       [
         title.trim(),
         description?.trim() || null,
-        assigned_to,
-        req.user.id,
+        parseInt(assigned_to),
+        parseInt(req.user.id),
         task_role || "Other",
         due_date || null,
-        order_id || null,
-        blueprint_id || null,
+        order_id ? parseInt(order_id) : null,
+        blueprint_id ? parseInt(blueprint_id) : null,
       ],
     );
 
     // Notify the assigned staff
     await notify(
-      assigned_to,
+      parseInt(assigned_to),
       "task_assigned",
       "New Task Assigned",
       `You have been assigned a new task: "${title.trim()}" by ${req.user.name}.`,
@@ -144,7 +147,7 @@ exports.create = async (req, res) => {
 // Admin: full update. Staff: can only update status (their own tasks only).
 exports.update = async (req, res) => {
   try {
-    const { id } = req.params;
+    const id = parseInt(req.params.id);
     const isAdmin = req.user.role === "admin";
 
     const [[task]] = await pool.query(
@@ -155,7 +158,7 @@ exports.update = async (req, res) => {
 
     // ── Staff update (status only) ──────────────────────────────────────────
     if (!isAdmin) {
-      if (task.assigned_to !== req.user.id) {
+      if (Number(task.assigned_to) !== Number(req.user.id)) {
         return res
           .status(403)
           .json({ message: "You can only update your own tasks." });
@@ -180,7 +183,7 @@ exports.update = async (req, res) => {
 
       // Notify the admin who assigned
       await notify(
-        task.assigned_by,
+        parseInt(task.assigned_by),
         "task_update",
         "Task Status Updated",
         `"${task.title}" has been marked as ${status} by ${req.user.name}.`,
@@ -219,20 +222,20 @@ exports.update = async (req, res) => {
       [
         title.trim(),
         description?.trim() || null,
-        assigned_to || task.assigned_to,
+        assigned_to ? parseInt(assigned_to) : task.assigned_to,
         task_role || task.task_role,
         status || task.status,
         due_date || null,
         completedAt,
-        order_id || task.order_id,
-        blueprint_id || task.blueprint_id,
+        order_id ? parseInt(order_id) : task.order_id,
+        blueprint_id ? parseInt(blueprint_id) : task.blueprint_id,
         id,
       ],
     );
 
     // Notify if reassigned to someone new
     const newAssignee = Number(assigned_to);
-    if (newAssignee && newAssignee !== task.assigned_to) {
+    if (newAssignee && newAssignee !== Number(task.assigned_to)) {
       await notify(
         newAssignee,
         "task_assigned",
@@ -254,11 +257,13 @@ exports.remove = async (req, res) => {
   try {
     const [[task]] = await pool.query(
       `SELECT id FROM project_tasks WHERE id = ?`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
     if (!task) return res.status(404).json({ message: "Task not found." });
 
-    await pool.query(`DELETE FROM project_tasks WHERE id = ?`, [req.params.id]);
+    await pool.query(`DELETE FROM project_tasks WHERE id = ?`, [
+      parseInt(req.params.id),
+    ]);
     res.json({ message: "Task deleted." });
   } catch (err) {
     res.status(500).json({ message: "Failed to delete task." });
@@ -275,7 +280,7 @@ exports.getNotifications = async (req, res) => {
        WHERE user_id = ?
        ORDER BY created_at DESC
        LIMIT 50`,
-      [req.user.id],
+      [parseInt(req.user.id)],
     );
     res.json(rows);
   } catch (err) {
@@ -287,7 +292,7 @@ exports.getNotifications = async (req, res) => {
 exports.markAllRead = async (req, res) => {
   try {
     await pool.query(`UPDATE notifications SET is_read = 1 WHERE user_id = ?`, [
-      req.user.id,
+      parseInt(req.user.id),
     ]);
     res.json({ message: "All notifications marked as read." });
   } catch (err) {
@@ -300,7 +305,7 @@ exports.markOneRead = async (req, res) => {
   try {
     await pool.query(
       `UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?`,
-      [req.params.id, req.user.id],
+      [parseInt(req.params.id), parseInt(req.user.id)],
     );
     res.json({ message: "Notification marked as read." });
   } catch (err) {
@@ -312,11 +317,13 @@ exports.markOneRead = async (req, res) => {
 // Returns all active admin/staff users for the assign dropdown
 exports.getStaffList = async (req, res) => {
   try {
+    // ── FIXED: Added empty array [] ──
     const [rows] = await pool.query(
       `SELECT id, name, email, role
        FROM users
        WHERE is_active = 1 AND role IN ('admin','staff')
        ORDER BY name ASC`,
+      [],
     );
     res.json(rows);
   } catch (err) {
@@ -328,12 +335,14 @@ exports.getStaffList = async (req, res) => {
 // Returns active orders for the order dropdown when creating tasks
 exports.getOrdersList = async (req, res) => {
   try {
+    // ── FIXED: Added empty array [] ──
     const [rows] = await pool.query(
       `SELECT id, order_number, status, total
        FROM orders
        WHERE status NOT IN ('cancelled','completed')
        ORDER BY created_at DESC
        LIMIT 100`,
+      [],
     );
     res.json(rows);
   } catch (err) {

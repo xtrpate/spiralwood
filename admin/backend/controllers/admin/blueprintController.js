@@ -41,7 +41,6 @@ function normalizeEstimationItems(items = []) {
     .filter((item) => item.name.trim() !== "");
 }
 
-
 function groupDraftItems(items = []) {
   const grouped = new Map();
 
@@ -52,9 +51,15 @@ function groupDraftItems(items = []) {
     const unitCost = Number(raw.unit_cost || 0) || 0;
     const key = [
       String(raw.raw_material_id || ""),
-      String(raw.name || "").trim().toLowerCase(),
-      String(raw.unit || "pc").trim().toLowerCase(),
-      String(raw.note || "").trim().toLowerCase(),
+      String(raw.name || "")
+        .trim()
+        .toLowerCase(),
+      String(raw.unit || "pc")
+        .trim()
+        .toLowerCase(),
+      String(raw.note || "")
+        .trim()
+        .toLowerCase(),
     ].join("|");
 
     if (!grouped.has(key)) {
@@ -95,13 +100,23 @@ function findRawMaterialMatch(rawMaterials = [], candidate = "") {
 
   return (
     rawMaterials.find(
-      (row) => String(row.name || "").trim().toLowerCase() === needle,
+      (row) =>
+        String(row.name || "")
+          .trim()
+          .toLowerCase() === needle,
     ) ||
     rawMaterials.find((row) =>
-      needle.includes(String(row.name || "").trim().toLowerCase()),
+      needle.includes(
+        String(row.name || "")
+          .trim()
+          .toLowerCase(),
+      ),
     ) ||
     rawMaterials.find((row) =>
-      String(row.name || "").trim().toLowerCase().includes(needle),
+      String(row.name || "")
+        .trim()
+        .toLowerCase()
+        .includes(needle),
     ) ||
     null
   );
@@ -149,7 +164,7 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
      FROM blueprints
      WHERE id = ?
      LIMIT 1`,
-    [blueprintId],
+    [parseInt(blueprintId)],
   );
 
   if (!blueprint) return null;
@@ -164,12 +179,12 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
         oi.product_name,
         oi.customization_json,
         COALESCE(NULLIF(oi.quantity, 0), 1) AS order_quantity
-     FROM orders o
-     LEFT JOIN order_items oi ON oi.order_id = o.id
-     WHERE o.blueprint_id = ?
-     ORDER BY oi.id ASC
-     LIMIT 1`,
-    [blueprintId],
+      FROM orders o
+      LEFT JOIN order_items oi ON oi.order_id = o.id
+      WHERE o.blueprint_id = ?
+      ORDER BY oi.id ASC
+      LIMIT 1`,
+    [parseInt(blueprintId)],
   );
 
   const orderQty = Math.max(1, Number(linkedOrder?.order_quantity) || 1);
@@ -177,10 +192,12 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
   const customization =
     safeJsonParse(linkedOrder?.customization_json, {}) || {};
 
+  // ── FIXED: Added empty array [] ──
   const [rawMaterialRows] = await conn.query(
     `SELECT id, name, unit, unit_cost
      FROM raw_materials
      ORDER BY name ASC`,
+    [],
   );
 
   let resolvedProductId = Number(linkedOrder?.product_id) || null;
@@ -208,10 +225,10 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
           rm.name AS material_name,
           rm.unit,
           rm.unit_cost
-       FROM bill_of_materials bom
-       INNER JOIN raw_materials rm ON rm.id = bom.raw_material_id
-       WHERE bom.product_id = ?
-       ORDER BY rm.name ASC`,
+        FROM bill_of_materials bom
+        INNER JOIN raw_materials rm ON rm.id = bom.raw_material_id
+        WHERE bom.product_id = ?
+        ORDER BY rm.name ASC`,
       [resolvedProductId],
     );
 
@@ -266,7 +283,11 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
           id: 1,
           component_id: null,
           raw_material_id: null,
-          name: product.name || linkedOrder?.product_name || blueprint.title || "Blueprint Product",
+          name:
+            product.name ||
+            linkedOrder?.product_name ||
+            blueprint.title ||
+            "Blueprint Product",
           description: "Fallback production-cost estimate",
           quantity: orderQty,
           unit: "unit",
@@ -303,13 +324,13 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
         rm.unit_cost,
         SUM(COALESCE(bc.quantity, 1)) AS component_quantity,
         COUNT(*) AS component_count
-     FROM blueprint_components bc
-     INNER JOIN raw_materials rm ON rm.id = bc.raw_material_id
-     WHERE bc.blueprint_id = ?
-       AND bc.raw_material_id IS NOT NULL
-     GROUP BY bc.raw_material_id, rm.name, rm.unit, rm.unit_cost
-     ORDER BY rm.name ASC`,
-    [blueprintId],
+      FROM blueprint_components bc
+      INNER JOIN raw_materials rm ON rm.id = bc.raw_material_id
+      WHERE bc.blueprint_id = ?
+        AND bc.raw_material_id IS NOT NULL
+      GROUP BY bc.raw_material_id, rm.name, rm.unit, rm.unit_cost
+      ORDER BY rm.name ASC`,
+    [parseInt(blueprintId)],
   );
 
   if (componentRows.length) {
@@ -343,7 +364,8 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
       source: "blueprint_components",
       status: "draft",
       version: 0,
-      notes: "No BOM found. Auto-generated from blueprint component raw material mapping.",
+      notes:
+        "No BOM found. Auto-generated from blueprint component raw material mapping.",
       items,
       ...totals,
     };
@@ -368,14 +390,13 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
         );
 
         const isAreaUnit =
-          String(row?.estimationUnit || "").trim().toLowerCase() ===
-          "panel_area";
+          String(row?.estimationUnit || "")
+            .trim()
+            .toLowerCase() === "panel_area";
 
         const quantity = isAreaUnit
           ? Number(
-              (
-                (Number(row?.totalAreaSqM || 0) || 0) * orderQty
-              ).toFixed(4),
+              ((Number(row?.totalAreaSqM || 0) || 0) * orderQty).toFixed(4),
             )
           : Math.max(1, (Number(row?.qty || 0) || 1) * orderQty);
 
@@ -421,7 +442,8 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
         source: "design_data_cutlist",
         status: "draft",
         version: 0,
-        notes: "Auto-generated from blueprint cut list data. Review and adjust before saving.",
+        notes:
+          "Auto-generated from blueprint cut list data. Review and adjust before saving.",
         items: groupedItems,
         ...totals,
       };
@@ -454,10 +476,7 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
         const depth = Number(row?.depth || row?.depthMm || 0);
 
         const name =
-          row?.label ||
-          row?.name ||
-          row?.type ||
-          `Component ${index + 1}`;
+          row?.label || row?.name || row?.type || `Component ${index + 1}`;
 
         const note = [
           materialName || null,
@@ -494,7 +513,8 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
         source: "design_data_components",
         status: "draft",
         version: 0,
-        notes: "Auto-generated from blueprint component data. Review and adjust before saving.",
+        notes:
+          "Auto-generated from blueprint component data. Review and adjust before saving.",
         items: groupedItems,
         ...totals,
       };
@@ -793,7 +813,7 @@ exports.getAll = async (req, res) => {
 
     if (tab === "my") {
       where.push("b.creator_id = ? AND b.is_deleted = 0");
-      params.push(req.user.id);
+      params.push(parseInt(req.user.id));
     }
 
     if (tab === "imports") {
@@ -856,7 +876,7 @@ exports.getAll = async (req, res) => {
          END DESC,
          b.id DESC
        LIMIT ? OFFSET ?`,
-      [...params, limitNum, offset],
+      [...params, parseInt(limitNum), parseInt(offset)],
     );
 
     const [[{ total }]] = await pool.query(
@@ -892,7 +912,7 @@ exports.getOne = async (req, res) => {
        JOIN users u ON u.id = b.creator_id
        LEFT JOIN users c ON c.id = b.client_id
        WHERE b.id = ?`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (!bp) {
@@ -901,7 +921,7 @@ exports.getOne = async (req, res) => {
 
     const [components] = await pool.query(
       "SELECT * FROM blueprint_components WHERE blueprint_id = ?",
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     const [revisions] = await pool.query(
@@ -910,7 +930,7 @@ exports.getOne = async (req, res) => {
        LEFT JOIN users u ON u.id = br.revised_by
        WHERE br.blueprint_id = ?
        ORDER BY br.revision_number DESC`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     const normalizedDesignData = mergeDesignData(bp.design_data, bp, bp.title);
@@ -981,8 +1001,8 @@ exports.create = async (req, res) => {
       [
         finalTitle,
         description || null,
-        req.user.id,
-        client_id || null,
+        parseInt(req.user.id),
+        client_id ? parseInt(client_id) : null,
         fileMeta.source || normalizedSource,
         finalStage,
         fileMeta.file_url,
@@ -1020,7 +1040,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const [[bp]] = await pool.query("SELECT * FROM blueprints WHERE id = ?", [
-      req.params.id,
+      parseInt(req.params.id),
     ]);
 
     if (!bp) {
@@ -1113,14 +1133,20 @@ exports.update = async (req, res) => {
         `SELECT COALESCE(MAX(revision_number), 0) AS maxRev
          FROM blueprint_revisions
          WHERE blueprint_id = ?`,
-        [req.params.id],
+        [parseInt(req.params.id)],
       );
 
       await pool.query(
         `INSERT INTO blueprint_revisions
           (blueprint_id, revision_number, stage_at_save, revision_data, revised_by)
          VALUES (?,?,?,?,?)`,
-        [req.params.id, maxRev + 1, bp.stage, bp.design_data, req.user.id],
+        [
+          parseInt(req.params.id),
+          maxRev + 1,
+          bp.stage,
+          bp.design_data,
+          parseInt(req.user.id),
+        ],
       );
     }
 
@@ -1132,7 +1158,7 @@ exports.update = async (req, res) => {
       `UPDATE blueprints
        SET ${sets}
        WHERE id = ?`,
-      [...Object.values(filtered), req.params.id],
+      [...Object.values(filtered), parseInt(req.params.id)],
     );
 
     res.json({
@@ -1156,7 +1182,7 @@ exports.archive = async (req, res) => {
        FROM blueprints
        WHERE id = ?
        LIMIT 1`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (!bp) {
@@ -1169,7 +1195,7 @@ exports.archive = async (req, res) => {
            stage = 'archived',
            archived_at = NOW()
        WHERE id = ?`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     res.json({ message: "Blueprint archived." });
@@ -1187,7 +1213,7 @@ exports.restore = async (req, res) => {
        FROM blueprints
        WHERE id = ?
        LIMIT 1`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (!bp) {
@@ -1203,7 +1229,7 @@ exports.restore = async (req, res) => {
              ELSE stage
            END
        WHERE id = ?`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     res.json({ message: "Blueprint restored." });
@@ -1225,7 +1251,7 @@ exports.permanentDelete = async (req, res) => {
        FROM blueprints
        WHERE id = ?
        LIMIT 1`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (!bp) {
@@ -1245,7 +1271,7 @@ exports.permanentDelete = async (req, res) => {
        FROM orders
        WHERE blueprint_id = ?
        LIMIT 1`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (linkedOrder) {
@@ -1278,16 +1304,16 @@ exports.getEstimation = async (req, res) => {
        WHERE blueprint_id = ?
        ORDER BY version DESC, id DESC
        LIMIT 1`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (!est) {
-  const conn = await pool.getConnection();
+      const conn = await pool.getConnection();
 
-  try {
-    const autoDraft = await buildAutoEstimationDraft(conn, req.params.id);
+      try {
+        const autoDraft = await buildAutoEstimationDraft(conn, req.params.id);
 
-    if (!autoDraft) {
+        if (!autoDraft) {
           return res.status(404).json({ message: "No estimation yet." });
         }
 
@@ -1322,7 +1348,7 @@ exports.getEstimation = async (req, res) => {
        FROM estimation_items
        WHERE estimation_id = ?
        ORDER BY id ASC`,
-      [est.id],
+      [parseInt(est.id)],
     );
 
     const meta = safeJsonParse(est.estimation_data, {});
@@ -1416,7 +1442,7 @@ exports.saveEstimation = async (req, res) => {
        FROM blueprints
        WHERE id = ?
        LIMIT 1`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     if (!bp) {
@@ -1456,7 +1482,7 @@ exports.saveEstimation = async (req, res) => {
        WHERE blueprint_id = ?
        ORDER BY version DESC, id DESC
        LIMIT 1`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     const version = existing ? Number(existing.version || 0) + 1 : 1;
@@ -1480,7 +1506,7 @@ exports.saveEstimation = async (req, res) => {
         (blueprint_id, version, material_cost, labor_cost, tax, discount, grand_total, estimation_data, status)
        VALUES (?,?,?,?,?,?,?,?,'draft')`,
       [
-        req.params.id,
+        parseInt(req.params.id),
         version,
         totals.material_cost,
         totals.labor_cost,
@@ -1512,26 +1538,26 @@ exports.saveEstimation = async (req, res) => {
       `UPDATE blueprints
        SET stage = 'estimation'
        WHERE id = ? AND is_deleted = 0`,
-      [req.params.id],
+      [parseInt(req.params.id)],
     );
 
     await conn.query(
       `UPDATE orders
-      SET subtotal = ?,
-          tax = ?,
-          discount = ?,
-          total = ?,
-          down_payment = ?,
-          updated_at = NOW()
-      WHERE blueprint_id = ?
-        AND order_type = 'blueprint'`,
+       SET subtotal = ?,
+           tax = ?,
+           discount = ?,
+           total = ?,
+           down_payment = ?,
+           updated_at = NOW()
+       WHERE blueprint_id = ?
+         AND order_type = 'blueprint'`,
       [
         totals.subtotal,
         totals.tax_amount,
         totals.discount,
         totals.grand_total,
         Number((totals.grand_total * 0.3).toFixed(2)),
-        req.params.id,
+        parseInt(req.params.id),
       ],
     );
 
@@ -1566,8 +1592,6 @@ exports.saveEstimation = async (req, res) => {
     conn.release();
   }
 };
-
-
 
 exports.approveEstimation = async (req, res) => {
   const conn = await pool.getConnection();
@@ -1646,7 +1670,7 @@ exports.approveEstimation = async (req, res) => {
            approved_at = NULL,
            updated_at = NOW()
        WHERE id = ?`,
-      [latestEstimation.id],
+      [parseInt(latestEstimation.id)],
     );
 
     await conn.query(
@@ -1663,7 +1687,7 @@ exports.approveEstimation = async (req, res) => {
             (user_id, type, title, message, is_read, channel, sent_at, created_at)
            VALUES (?, ?, ?, ?, 0, 'system', NOW(), NOW())`,
           [
-            bp.customer_id,
+            parseInt(bp.customer_id),
             "estimation_sent",
             "Quotation Ready for Review",
             `Your quotation for ${bp.order_number || `order #${bp.order_id || blueprintId}`} is ready. Please review it from your custom request page.`,
@@ -1679,7 +1703,7 @@ exports.approveEstimation = async (req, res) => {
        FROM estimations
        WHERE id = ?
        LIMIT 1`,
-      [latestEstimation.id],
+      [parseInt(latestEstimation.id)],
     );
 
     await conn.commit();
