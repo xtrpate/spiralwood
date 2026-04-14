@@ -90,12 +90,13 @@ exports.createOrder = async (req, res) => {
     for (const item of items) {
       const unit_price = parseFloat(item.unit_price);
 
-      // ── FIXED: Switched conn.execute to conn.query ──
+      // ── FIXED: Removed 'subtotal' from the column list and values ──
+      // MySQL will calculate this automatically because it is a generated column.
       await conn.query(
         `INSERT INTO order_items
           (order_id, product_id, variation_id,
-           product_name, quantity, unit_price, subtotal)
-         VALUES (?,?,?,?,?,?,?)`,
+           product_name, quantity, unit_price)
+         VALUES (?,?,?,?,?,?)`,
         [
           order_id,
           item.product_id,
@@ -103,13 +104,11 @@ exports.createOrder = async (req, res) => {
           item.product_name,
           item.quantity,
           unit_price,
-          unit_price * item.quantity,
         ],
       );
 
       /* Deduct stock */
       if (item.variation_id) {
-        // ── FIXED: Switched conn.execute to conn.query ──
         await conn.query(
           `UPDATE product_variations
            SET stock = GREATEST(0, stock - ?)
@@ -117,7 +116,6 @@ exports.createOrder = async (req, res) => {
           [item.quantity, item.variation_id],
         );
       } else {
-        // ── FIXED: Switched conn.execute to conn.query ──
         await conn.query(
           `UPDATE products
            SET stock = GREATEST(0, stock - ?)
@@ -127,7 +125,6 @@ exports.createOrder = async (req, res) => {
       }
 
       /* Update stock_status after deduction */
-      // ── FIXED: Switched conn.execute to conn.query ──
       await conn.query(
         `UPDATE products
          SET stock_status = CASE
