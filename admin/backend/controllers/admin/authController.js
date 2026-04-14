@@ -4,12 +4,13 @@ const jwt = require("jsonwebtoken");
 const pool = require("../../config/db");
 
 // ── POST /api/auth/login ───────────────────────────────────────────────────────
+// ── POST /api/auth/login ───────────────────────────────────────────────────────
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
     const [[user]] = await pool.query(
-      'SELECT * FROM users WHERE email = ? AND role IN ("admin","staff")',
+      `SELECT * FROM users WHERE email = ? AND role IN ('admin', 'staff')`,
       [email],
     );
 
