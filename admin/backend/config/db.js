@@ -8,13 +8,10 @@ const pool = mysql.createPool({
   user: process.env.DB_USER || "root",
   password: process.env.DB_PASSWORD || "",
   database: process.env.DB_NAME || "wisdom_db",
-  ssl: {
-    rejectUnauthorized: false,
-  },
   waitForConnections: true,
   connectionLimit: 20,
   queueLimit: 0,
-  timezone: "+08:00",
+  timezone: "+08:00", // Philippine Standard Time
   decimalNumbers: true,
 });
 
