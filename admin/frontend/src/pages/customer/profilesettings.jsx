@@ -1,0 +1,919 @@
+import { useState, useRef, useEffect } from "react";
+import axios from "axios";
+import {
+  User,
+  Mail,
+  Phone,
+  Lock,
+  Camera,
+  Check,
+  Pencil,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+} from "lucide-react";
+import "./profile.css";
+import useAuthStore from "../../store/authStore";
+
+/* ── Password strength helper ── */
+const getStrength = (pw) => {
+  if (!pw) return { score: 0, label: "" };
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  const labels = ["", "Weak", "Fair", "Good", "Strong"];
+  return { score, label: labels[score] };
+};
+
+const StrengthBar = ({ password }) => {
+  const { score, label } = getStrength(password);
+  const colors = ["", "weak", "fair", "good", "strong"];
+  return (
+    <div className="password-strength">
+      {[1, 2, 3, 4].map((i) => (
+        <div
+          key={i}
+          className={`strength-bar ${score >= i ? `filled-${colors[score]}` : ""}`}
+        />
+      ))}
+      <span className="strength-label">{label}</span>
+    </div>
+  );
+};
+
+/* ── Alert ── */
+const Alert = ({ type, msg }) =>
+  msg ? (
+    <div className={`alert alert-${type}`} style={{ marginBottom: 14 }}>
+      {msg}
+    </div>
+  ) : null;
+
+export default function ProfileSettings() {
+  const { user, setUser } = useAuthStore();
+  const fileRef = useRef(null);
+
+  /* ─ State ─ */
+  const [avatarPreview, setAvatarPreview] = useState(
+    user?.profile_photo ? `/uploads/avatars/${user.profile_photo}` : null,
+  );
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarMsg, setAvatarMsg] = useState({ type: "", text: "" });
+  const [avatarLoading, setAvatarLoading] = useState(false);
+
+  /* Basic info */
+  const [editBasic, setEditBasic] = useState(false);
+  const [basicForm, setBasicForm] = useState({
+    name: user?.name || "",
+    address: user?.address || "",
+  });
+  const [basicMsg, setBasicMsg] = useState({ type: "", text: "" });
+  const [basicLoading, setBasicLoading] = useState(false);
+
+  /* Email change */
+  const [editEmail, setEditEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [emailOtp, setEmailOtp] = useState("");
+  const [emailStep, setEmailStep] = useState(1);
+  const [emailMsg, setEmailMsg] = useState({ type: "", text: "" });
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailCooldown, setEmailCooldown] = useState(0);
+
+  /* Phone change */
+  const [editPhone, setEditPhone] = useState(false);
+  const [newPhone, setNewPhone] = useState("");
+  const [phoneOtp, setPhoneOtp] = useState("");
+  const [phoneStep, setPhoneStep] = useState(1);
+  const [phoneMsg, setPhoneMsg] = useState({ type: "", text: "" });
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  const [phoneCooldown, setPhoneCooldown] = useState(0);
+
+  /* Password change */
+  const [editPass, setEditPass] = useState(false);
+  const [passForm, setPassForm] = useState({
+    current: "",
+    newPass: "",
+    confirm: "",
+  });
+  const [passOtp, setPassOtp] = useState("");
+  const [passStep, setPassStep] = useState(1);
+  const [passMsg, setPassMsg] = useState({ type: "", text: "" });
+  const [passLoading, setPassLoading] = useState(false);
+  const [showPass, setShowPass] = useState({
+    current: false,
+    newPass: false,
+    confirm: false,
+  });
+  const [passCooldown, setPassCooldown] = useState(0);
+
+  /* Cooldown timer */
+  useEffect(() => {
+    const timers = [];
+    if (emailCooldown > 0)
+      timers.push(setTimeout(() => setEmailCooldown((c) => c - 1), 1000));
+    if (phoneCooldown > 0)
+      timers.push(setTimeout(() => setPhoneCooldown((c) => c - 1), 1000));
+    if (passCooldown > 0)
+      timers.push(setTimeout(() => setPassCooldown((c) => c - 1), 1000));
+    return () => timers.forEach(clearTimeout);
+  }, [emailCooldown, phoneCooldown, passCooldown]);
+
+  /* ════ AVATAR ════ */
+  const handleAvatarChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setAvatarFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setAvatarPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const saveAvatar = async () => {
+    if (!avatarFile) return;
+    setAvatarLoading(true);
+    setAvatarMsg({ type: "", text: "" });
+    try {
+      const fd = new FormData();
+      fd.append("avatar", avatarFile);
+      const res = await axios.post("/api/customer/profile/avatar", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setUser((prev) => ({ ...prev, profile_photo: res.data.profile_photo }));
+      setAvatarMsg({ type: "success", text: "Profile picture updated!" });
+      setAvatarFile(null);
+    } catch (err) {
+      setAvatarMsg({
+        type: "error",
+        text: err.response?.data?.message || "Upload failed.",
+      });
+    } finally {
+      setAvatarLoading(false);
+    }
+  };
+
+  /* ════ BASIC INFO ════ */
+  const saveBasic = async () => {
+    setBasicLoading(true);
+    setBasicMsg({ type: "", text: "" });
+    try {
+      const res = await axios.put("/api/customer/profile/basic", basicForm);
+      setUser((prev) => ({
+        ...prev,
+        name: basicForm.name,
+        address: basicForm.address,
+      }));
+      setBasicMsg({ type: "success", text: "Profile updated successfully!" });
+      setEditBasic(false);
+    } catch (err) {
+      setBasicMsg({
+        type: "error",
+        text: err.response?.data?.message || "Update failed.",
+      });
+    } finally {
+      setBasicLoading(false);
+    }
+  };
+
+  /* ════ EMAIL CHANGE ════ */
+  const sendEmailOtp = async () => {
+    if (!newEmail.trim())
+      return setEmailMsg({ type: "error", text: "Enter a new email address." });
+    setEmailLoading(true);
+    setEmailMsg({ type: "", text: "" });
+    try {
+      await axios.post("/api/customer/profile/request-email-change", {
+        new_email: newEmail,
+      });
+      setEmailStep(2);
+      setEmailCooldown(60);
+      setEmailMsg({ type: "success", text: `OTP sent to ${newEmail}` });
+    } catch (err) {
+      setEmailMsg({
+        type: "error",
+        text: err.response?.data?.message || "Failed to send OTP.",
+      });
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const verifyEmailOtp = async () => {
+    if (!emailOtp.trim())
+      return setEmailMsg({ type: "error", text: "Enter the OTP." });
+    setEmailLoading(true);
+    try {
+      await axios.post("/api/customer/profile/verify-email-change", {
+        otp: emailOtp,
+      });
+      setUser((prev) => ({ ...prev, email: newEmail }));
+      setEmailMsg({ type: "success", text: "Email updated successfully!" });
+      setEditEmail(false);
+      setEmailStep(1);
+      setNewEmail("");
+      setEmailOtp("");
+    } catch (err) {
+      setEmailMsg({
+        type: "error",
+        text: err.response?.data?.message || "Invalid OTP.",
+      });
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  /* ════ PHONE CHANGE ════ */
+  const sendPhoneOtp = async () => {
+    if (!newPhone.trim())
+      return setPhoneMsg({ type: "error", text: "Enter a phone number." });
+    setPhoneLoading(true);
+    setPhoneMsg({ type: "", text: "" });
+    try {
+      await axios.post("/api/customer/profile/request-phone-change", {
+        new_phone: newPhone,
+      });
+      setPhoneStep(2);
+      setPhoneCooldown(60);
+      setPhoneMsg({ type: "success", text: `SMS OTP sent to ${newPhone}` });
+    } catch (err) {
+      setPhoneMsg({
+        type: "error",
+        text: err.response?.data?.message || "Failed to send SMS.",
+      });
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
+  const verifyPhoneOtp = async () => {
+    if (!phoneOtp.trim())
+      return setPhoneMsg({ type: "error", text: "Enter the OTP." });
+    setPhoneLoading(true);
+    try {
+      await axios.post("/api/customer/profile/verify-phone-change", {
+        otp: phoneOtp,
+      });
+      setUser((prev) => ({ ...prev, phone: newPhone }));
+      setPhoneMsg({ type: "success", text: "Phone number updated!" });
+      setEditPhone(false);
+      setPhoneStep(1);
+      setNewPhone("");
+      setPhoneOtp("");
+    } catch (err) {
+      setPhoneMsg({
+        type: "error",
+        text: err.response?.data?.message || "Invalid OTP.",
+      });
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
+  /* ════ PASSWORD CHANGE ════ */
+  const requestPassOtp = async () => {
+    if (!passForm.current)
+      return setPassMsg({
+        type: "error",
+        text: "Enter your current password.",
+      });
+    if (!passForm.newPass)
+      return setPassMsg({ type: "error", text: "Enter a new password." });
+    if (passForm.newPass !== passForm.confirm)
+      return setPassMsg({ type: "error", text: "New passwords do not match." });
+    if (getStrength(passForm.newPass).score < 2)
+      return setPassMsg({ type: "error", text: "Password is too weak." });
+
+    setPassLoading(true);
+    setPassMsg({ type: "", text: "" });
+    try {
+      await axios.post("/api/customer/profile/request-password-change", {
+        current_password: passForm.current,
+      });
+      setPassStep(2);
+      setPassCooldown(60);
+      setPassMsg({ type: "success", text: `OTP sent to ${user?.email}` });
+    } catch (err) {
+      setPassMsg({
+        type: "error",
+        text: err.response?.data?.message || "Failed.",
+      });
+    } finally {
+      setPassLoading(false);
+    }
+  };
+
+  const verifyPassOtp = async () => {
+    if (!passOtp.trim())
+      return setPassMsg({ type: "error", text: "Enter the OTP." });
+    setPassLoading(true);
+    try {
+      await axios.post("/api/customer/profile/verify-password-change", {
+        otp: passOtp,
+        new_password: passForm.newPass,
+      });
+      setPassMsg({ type: "success", text: "Password changed successfully!" });
+      setEditPass(false);
+      setPassStep(1);
+      setPassForm({ current: "", newPass: "", confirm: "" });
+      setPassOtp("");
+    } catch (err) {
+      setPassMsg({
+        type: "error",
+        text: err.response?.data?.message || "Invalid OTP.",
+      });
+    } finally {
+      setPassLoading(false);
+    }
+  };
+
+  /* ── helper ── */
+  const cancelSection = (section) => {
+    if (section === "email") {
+      setEditEmail(false);
+      setEmailStep(1);
+      setNewEmail("");
+      setEmailOtp("");
+      setEmailMsg({ type: "", text: "" });
+    }
+    if (section === "phone") {
+      setEditPhone(false);
+      setPhoneStep(1);
+      setNewPhone("");
+      setPhoneOtp("");
+      setPhoneMsg({ type: "", text: "" });
+    }
+    if (section === "pass") {
+      setEditPass(false);
+      setPassStep(1);
+      setPassForm({ current: "", newPass: "", confirm: "" });
+      setPassOtp("");
+      setPassMsg({ type: "", text: "" });
+    }
+  };
+
+  const initials = user?.name?.charAt(0).toUpperCase() || "?";
+
+  return (
+    <div>
+      <div className="page-hero">
+        <h1>Profile Settings</h1>
+        <p>Manage your account information and security</p>
+      </div>
+
+      <div className="profile-layout">
+        <div className="profile-content">
+          {/* ══ AVATAR ══ */}
+          <div className="profile-section">
+            <div className="profile-section-header">
+              <h3>
+                <Camera size={16} /> Profile Picture
+              </h3>
+            </div>
+            <div className="profile-section-body">
+              <Alert type={avatarMsg.type} msg={avatarMsg.text} />
+              <div className="avatar-upload-area">
+                <div className="avatar-preview">
+                  {avatarPreview ? (
+                    <img src={avatarPreview} alt="preview" />
+                  ) : (
+                    initials
+                  )}
+                </div>
+                <div className="avatar-upload-info">
+                  <p>
+                    Upload a photo to personalize your account. JPG or PNG, max
+                    2MB.
+                  </p>
+                  <button
+                    className="avatar-upload-btn"
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <Camera size={14} /> Choose Photo
+                  </button>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    onChange={handleAvatarChange}
+                  />
+                </div>
+              </div>
+              {avatarFile && (
+                <div className="profile-form-actions" style={{ marginTop: 16 }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={saveAvatar}
+                    disabled={avatarLoading}
+                  >
+                    {avatarLoading ? "Uploading…" : "✓ Save Photo"}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setAvatarFile(null);
+                      setAvatarPreview(
+                        user?.profile_photo
+                          ? `/uploads/avatars/${user.profile_photo}`
+                          : null,
+                      );
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ══ BASIC INFO ══ */}
+          <div className="profile-section">
+            <div className="profile-section-header">
+              <h3>
+                <User size={16} /> Basic Information
+              </h3>
+              {!editBasic && (
+                <button
+                  className="edit-toggle"
+                  onClick={() => setEditBasic(true)}
+                >
+                  <Pencil size={13} /> Edit
+                </button>
+              )}
+            </div>
+            <div className="profile-section-body">
+              <Alert type={basicMsg.type} msg={basicMsg.text} />
+              {editBasic ? (
+                <div className="profile-form">
+                  <div className="form-row">
+                    <div className="form-field">
+                      <label>Full Name</label>
+                      <input
+                        type="text"
+                        value={basicForm.name}
+                        onChange={(e) =>
+                          setBasicForm((p) => ({ ...p, name: e.target.value }))
+                        }
+                        placeholder="Your full name"
+                      />
+                    </div>
+                  </div>
+                  <div className="form-field full">
+                    <label>Address</label>
+                    <input
+                      type="text"
+                      value={basicForm.address}
+                      onChange={(e) =>
+                        setBasicForm((p) => ({ ...p, address: e.target.value }))
+                      }
+                      placeholder="Street, Barangay, City"
+                    />
+                  </div>
+                  <div className="profile-form-actions">
+                    <button
+                      className="btn btn-primary"
+                      onClick={saveBasic}
+                      disabled={basicLoading}
+                    >
+                      {basicLoading ? (
+                        "Saving…"
+                      ) : (
+                        <>
+                          <Check size={14} /> Save Changes
+                        </>
+                      )}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setEditBasic(false);
+                        setBasicMsg({ type: "", text: "" });
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="field-display">
+                  <div className="field-row">
+                    <label>Full Name</label>
+                    <span className="field-val">
+                      {user?.name || (
+                        <span className="field-empty">Not set</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="field-row">
+                    <label>Address</label>
+                    <span
+                      className={user?.address ? "field-val" : "field-empty"}
+                    >
+                      {user?.address || "Not set"}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ══ EMAIL ══ */}
+          <div className="profile-section">
+            <div className="profile-section-header">
+              <h3>
+                <Mail size={16} /> Email Address
+              </h3>
+              {!editEmail && (
+                <button
+                  className="edit-toggle"
+                  onClick={() => setEditEmail(true)}
+                >
+                  <Pencil size={13} /> Change
+                </button>
+              )}
+            </div>
+            <div className="profile-section-body">
+              <Alert type={emailMsg.type} msg={emailMsg.text} />
+              {!editEmail ? (
+                <div className="field-display">
+                  <div className="field-row">
+                    <label>Current Email</label>
+                    <span className="field-val">{user?.email}</span>
+                  </div>
+                </div>
+              ) : emailStep === 1 ? (
+                <div className="profile-form">
+                  <div className="form-field">
+                    <label>Current Email</label>
+                    <input type="email" value={user?.email} disabled />
+                  </div>
+                  <div className="form-field">
+                    <label>New Email Address</label>
+                    <input
+                      type="email"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      placeholder="newemail@example.com"
+                    />
+                  </div>
+                  <div className="profile-form-actions">
+                    <button
+                      className="btn btn-primary"
+                      onClick={sendEmailOtp}
+                      disabled={emailLoading}
+                    >
+                      {emailLoading ? "Sending…" : "Send Verification OTP"}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => cancelSection("email")}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="verify-step">
+                  <h4>📧 Verify your new email</h4>
+                  <p>
+                    We sent a 6-digit OTP to <strong>{newEmail}</strong>. Enter
+                    it below to confirm.
+                  </p>
+                  <div className="otp-input-row">
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={emailOtp}
+                      onChange={(e) =>
+                        setEmailOtp(e.target.value.replace(/\D/g, ""))
+                      }
+                    />
+                    <button
+                      className="resend-btn"
+                      onClick={() => {
+                        setEmailCooldown(60);
+                        sendEmailOtp();
+                      }}
+                      disabled={emailCooldown > 0}
+                    >
+                      {emailCooldown > 0
+                        ? `Resend (${emailCooldown}s)`
+                        : "Resend"}
+                    </button>
+                  </div>
+                  <div
+                    className="profile-form-actions"
+                    style={{ marginTop: 14 }}
+                  >
+                    <button
+                      className="btn btn-primary"
+                      onClick={verifyEmailOtp}
+                      disabled={emailLoading}
+                    >
+                      {emailLoading ? (
+                        "Verifying…"
+                      ) : (
+                        <>
+                          <ShieldCheck size={14} /> Verify & Save
+                        </>
+                      )}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => cancelSection("email")}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ══ PHONE ══ */}
+          <div className="profile-section">
+            <div className="profile-section-header">
+              <h3>
+                <Phone size={16} /> Phone Number
+              </h3>
+              {!editPhone && (
+                <button
+                  className="edit-toggle"
+                  onClick={() => setEditPhone(true)}
+                >
+                  <Pencil size={13} /> Change
+                </button>
+              )}
+            </div>
+            <div className="profile-section-body">
+              <Alert type={phoneMsg.type} msg={phoneMsg.text} />
+              {!editPhone ? (
+                <div className="field-display">
+                  <div className="field-row">
+                    <label>Current Phone</label>
+                    <span className={user?.phone ? "field-val" : "field-empty"}>
+                      {user?.phone || "Not set"}
+                    </span>
+                  </div>
+                </div>
+              ) : phoneStep === 1 ? (
+                <div className="profile-form">
+                  <div className="form-field">
+                    <label>New Phone Number</label>
+                    <input
+                      type="tel"
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value)}
+                      placeholder="09XXXXXXXXX"
+                    />
+                  </div>
+                  <p style={{ fontSize: 12, color: "#888", marginTop: -6 }}>
+                    An SMS with a verification code will be sent to this number.
+                  </p>
+                  <div className="profile-form-actions">
+                    <button
+                      className="btn btn-primary"
+                      onClick={sendPhoneOtp}
+                      disabled={phoneLoading}
+                    >
+                      {phoneLoading ? "Sending SMS…" : "Send SMS OTP"}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => cancelSection("phone")}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="verify-step">
+                  <h4>📱 Verify your phone number</h4>
+                  <p>
+                    We sent a 6-digit OTP via SMS to <strong>{newPhone}</strong>
+                    .
+                  </p>
+                  <div className="otp-input-row">
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={phoneOtp}
+                      onChange={(e) =>
+                        setPhoneOtp(e.target.value.replace(/\D/g, ""))
+                      }
+                    />
+                    <button
+                      className="resend-btn"
+                      onClick={() => {
+                        setPhoneCooldown(60);
+                        sendPhoneOtp();
+                      }}
+                      disabled={phoneCooldown > 0}
+                    >
+                      {phoneCooldown > 0
+                        ? `Resend (${phoneCooldown}s)`
+                        : "Resend SMS"}
+                    </button>
+                  </div>
+                  <div
+                    className="profile-form-actions"
+                    style={{ marginTop: 14 }}
+                  >
+                    <button
+                      className="btn btn-primary"
+                      onClick={verifyPhoneOtp}
+                      disabled={phoneLoading}
+                    >
+                      {phoneLoading ? (
+                        "Verifying…"
+                      ) : (
+                        <>
+                          <ShieldCheck size={14} /> Verify & Save
+                        </>
+                      )}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => cancelSection("phone")}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ══ PASSWORD ══ */}
+          <div className="profile-section">
+            <div className="profile-section-header">
+              <h3>
+                <Lock size={16} /> Change Password
+              </h3>
+              {!editPass && (
+                <button
+                  className="edit-toggle"
+                  onClick={() => setEditPass(true)}
+                >
+                  <Pencil size={13} /> Change
+                </button>
+              )}
+            </div>
+            <div className="profile-section-body">
+              <Alert type={passMsg.type} msg={passMsg.text} />
+              {!editPass ? (
+                <div className="field-display">
+                  <div className="field-row">
+                    <label>Password</label>
+                    <span className="field-val">••••••••••</span>
+                  </div>
+                </div>
+              ) : passStep === 1 ? (
+                <div className="profile-form">
+                  {[
+                    {
+                      key: "current",
+                      label: "Current Password",
+                      ph: "Enter current password",
+                    },
+                    {
+                      key: "newPass",
+                      label: "New Password",
+                      ph: "Enter new password",
+                    },
+                    {
+                      key: "confirm",
+                      label: "Confirm New Password",
+                      ph: "Repeat new password",
+                    },
+                  ].map((f) => (
+                    <div className="form-field" key={f.key}>
+                      <label>{f.label}</label>
+                      <div style={{ position: "relative" }}>
+                        <input
+                          type={showPass[f.key] ? "text" : "password"}
+                          placeholder={f.ph}
+                          value={passForm[f.key]}
+                          onChange={(e) =>
+                            setPassForm((p) => ({
+                              ...p,
+                              [f.key]: e.target.value,
+                            }))
+                          }
+                          style={{ width: "100%", paddingRight: 40 }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowPass((p) => ({ ...p, [f.key]: !p[f.key] }))
+                          }
+                          style={{
+                            position: "absolute",
+                            right: 10,
+                            top: "50%",
+                            transform: "translateY(-50%)",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "#aaa",
+                          }}
+                        >
+                          {showPass[f.key] ? (
+                            <EyeOff size={16} />
+                          ) : (
+                            <Eye size={16} />
+                          )}
+                        </button>
+                      </div>
+                      {f.key === "newPass" && passForm.newPass && (
+                        <StrengthBar password={passForm.newPass} />
+                      )}
+                    </div>
+                  ))}
+                  <p style={{ fontSize: 12, color: "#888" }}>
+                    After verifying your current password, we'll send an OTP to{" "}
+                    <strong>{user?.email}</strong>.
+                  </p>
+                  <div className="profile-form-actions">
+                    <button
+                      className="btn btn-primary"
+                      onClick={requestPassOtp}
+                      disabled={passLoading}
+                    >
+                      {passLoading
+                        ? "Sending OTP…"
+                        : "Continue → Verify via Email"}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => cancelSection("pass")}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="verify-step">
+                  <h4>📧 Confirm password change</h4>
+                  <p>
+                    We sent a 6-digit OTP to <strong>{user?.email}</strong>.
+                  </p>
+                  <div className="otp-input-row">
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={passOtp}
+                      onChange={(e) =>
+                        setPassOtp(e.target.value.replace(/\D/g, ""))
+                      }
+                    />
+                    <button
+                      className="resend-btn"
+                      onClick={() => {
+                        setPassCooldown(60);
+                        requestPassOtp();
+                      }}
+                      disabled={passCooldown > 0}
+                    >
+                      {passCooldown > 0
+                        ? `Resend (${passCooldown}s)`
+                        : "Resend"}
+                    </button>
+                  </div>
+                  <div
+                    className="profile-form-actions"
+                    style={{ marginTop: 14 }}
+                  >
+                    <button
+                      className="btn btn-primary"
+                      onClick={verifyPassOtp}
+                      disabled={passLoading}
+                    >
+                      {passLoading ? (
+                        "Changing…"
+                      ) : (
+                        <>
+                          <ShieldCheck size={14} /> Confirm Change
+                        </>
+                      )}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => cancelSection("pass")}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

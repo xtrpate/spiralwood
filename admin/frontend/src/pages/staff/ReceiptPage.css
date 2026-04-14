@@ -1,0 +1,204 @@
+.receipt-wrapper {
+  display: flex;
+  justify-content: center;
+  padding: 20px;
+}
+.receipt {
+  background: white;
+  width: 380px;
+  padding: 28px 24px;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  color: #1a1a1a;
+}
+
+.receipt-header { text-align: center; margin-bottom: 12px; }
+.receipt-logo { max-width: 80px; margin-bottom: 8px; }
+.biz-name { font-size: 16px; font-weight: 800; margin: 0 0 4px; font-family: 'Segoe UI', sans-serif; }
+.biz-info { font-size: 11px; color: #666; margin: 2px 0; }
+.receipt-title { font-size: 13px; font-weight: 700; letter-spacing: 2px; margin-top: 8px; }
+
+.receipt-divider {
+  border: none;
+  border-top: 1px dashed #ccc;
+  margin: 12px 0;
+}
+
+.receipt-meta { margin-bottom: 4px; }
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+.meta-row span:first-child { color: #666; }
+.meta-row span:last-child { font-weight: 600; }
+
+.receipt-items {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.receipt-items th {
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  border-bottom: 1px solid #ddd;
+  padding: 4px 0;
+}
+.receipt-items td { padding: 5px 0; border-bottom: 1px dotted #eee; }
+
+.receipt-totals { margin-top: 4px; }
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.total-row.grand {
+  font-size: 16px;
+  font-weight: 800;
+  margin-top: 8px;
+  color: #8B4513;
+}
+
+.receipt-footer {
+  text-align: center;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #444;
+}
+
+.signature-block {
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.signature-img { max-width: 120px; height: 50px; object-fit: contain; }
+.signature-label { font-size: 11px; color: #888; border-top: 1px solid #ccc; padding-top: 4px; width: 140px; text-align: center; margin-top: 4px; }
+
+.total-row:not(.grand) span:last-child {
+  font-weight: 600;
+}
+
+
+/* Print layout */
+@page {
+  size: A4 portrait;
+  margin: 10mm;
+}
+
+@media print {
+  html,
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body {
+    min-height: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .page-header,
+  .btn,
+  aside,
+  nav {
+    display: none !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .receipt-wrapper,
+  .receipt-wrapper * ,
+  #receipt-print,
+  #receipt-print * {
+    visibility: visible !important;
+  }
+
+  .receipt-wrapper {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: flex-start !important;
+    background: #fff !important;
+  }
+
+  #receipt-print {
+    position: static !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    min-width: 80mm !important;
+    margin: 0 auto !important;
+    padding: 8mm 6mm !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    border: none !important;
+    transform: none !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .receipt {
+    width: 80mm !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    font-size: 12px !important;
+  }
+
+  .biz-name {
+    font-size: 16px !important;
+  }
+
+  .biz-info,
+  .meta-row,
+  .receipt-items,
+  .receipt-footer {
+    font-size: 11px !important;
+  }
+
+  .receipt-title {
+    font-size: 12px !important;
+    letter-spacing: 2px !important;
+  }
+
+  .receipt-divider {
+    margin: 10px 0 !important;
+  }
+}
+
+.receipt-items th:nth-child(1),
+.receipt-items td:nth-child(1) {
+  width: 52%;
+  word-break: break-word;
+}
+
+.receipt-items th:nth-child(2),
+.receipt-items td:nth-child(2) {
+  width: 10%;
+}
+
+.receipt-items th:nth-child(3),
+.receipt-items td:nth-child(3) {
+  width: 19%;
+}
+
+.receipt-items th:nth-child(4),
+.receipt-items td:nth-child(4) {
+  width: 19%;
+}

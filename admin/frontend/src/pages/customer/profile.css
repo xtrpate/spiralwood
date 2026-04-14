@@ -1,0 +1,460 @@
+/* ── Dropdown menu on navbar ── */
+.nav-user-wrapper {
+  position: relative;
+}
+
+.nav-user-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.nav-user-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #8b4513, #d2691e);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
+  color: white;
+  overflow: hidden;
+}
+
+.nav-username {
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+}
+
+.nav-hamburger-dots {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 2px;
+  margin-left: 4px;
+}
+
+.nav-hamburger-dots span {
+  display: block;
+  width: 16px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 2px;
+  transition: background 0.15s;
+}
+
+.nav-user-btn:hover .nav-hamburger-dots span {
+  background: white;
+}
+
+.nav-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
+  z-index: 300;
+  overflow: hidden;
+  animation: dropIn 0.15s ease;
+}
+
+@keyframes dropIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.nav-dropdown-user {
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-dropdown-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #8b4513, #d2691e);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 800;
+  color: white;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.nav-dropdown-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.nav-dropdown-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: white;
+  display: block;
+}
+
+.nav-dropdown-email {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+
+.nav-dropdown-divider {
+  height: 1px;
+  background: #f0f0f0;
+  margin: 4px 0;
+}
+
+.nav-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  font-family: "DM Sans", sans-serif;
+  transition: background 0.15s;
+  text-decoration: none;
+}
+
+.nav-dropdown-item:hover {
+  background: #f7f8fb;
+  color: #1a1a2e;
+}
+
+.nav-dropdown-item.danger {
+  color: #c62828;
+}
+
+.nav-dropdown-item.danger:hover {
+  background: #fce4ec;
+}
+/* ── Profile Settings Page ── */
+.profile-layout {
+  max-width: 800px;
+  margin: 0 auto; /* Centers the whole layout */
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* ── Profile content panels ── */
+.profile-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.profile-section {
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.profile-section-header {
+  padding: 18px 24px;
+  border-bottom: 1px solid #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.profile-section-header h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1a1a2e;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.profile-section-body {
+  padding: 24px;
+}
+
+/* Edit toggle */
+.edit-toggle {
+  background: none;
+  border: none;
+  color: #8b4513;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: "DM Sans", sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.edit-toggle:hover {
+  background: #fff3e0;
+}
+
+/* Read-only field display */
+.field-display {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.field-row label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.field-row .field-val {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a2e;
+}
+.field-row .field-empty {
+  font-size: 14px;
+  color: #bbb;
+  font-style: italic;
+}
+
+/* Form fields */
+.profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.profile-form .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.profile-form .form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.profile-form .form-field.full {
+  grid-column: 1/-1;
+}
+.profile-form label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #444;
+}
+.profile-form input {
+  padding: 11px 13px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 9px;
+  font-size: 14px;
+  font-family: "DM Sans", sans-serif;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+.profile-form input:focus {
+  border-color: #8b4513;
+  box-shadow: 0 0 0 3px rgba(139, 69, 19, 0.08);
+}
+.profile-form input:disabled {
+  background: #f7f8fb;
+  color: #aaa;
+  cursor: not-allowed;
+}
+
+.profile-form-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* OTP verification step */
+.verify-step {
+  background: #fff3e0;
+  border: 1px solid #ffe0b2;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 16px;
+}
+.verify-step h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: #8b4513;
+  margin-bottom: 6px;
+}
+.verify-step p {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 14px;
+  line-height: 1.6;
+}
+.otp-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.otp-input-row input {
+  flex: 1;
+  padding: 11px 13px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 9px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  text-align: center;
+  font-family: "DM Sans", sans-serif;
+  outline: none;
+}
+.otp-input-row input:focus {
+  border-color: #8b4513;
+}
+.resend-btn {
+  background: none;
+  border: none;
+  color: #8b4513;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: "DM Sans", sans-serif;
+  white-space: nowrap;
+}
+.resend-btn:disabled {
+  color: #aaa;
+  cursor: not-allowed;
+}
+
+/* Profile picture upload */
+.avatar-upload-area {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.avatar-preview {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f7f0e8, #ede0d0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  font-weight: 800;
+  color: #8b4513;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 3px solid #e0e0e0;
+}
+.avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-upload-info {
+  flex: 1;
+}
+.avatar-upload-info p {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.avatar-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  background: #f0f0f0;
+  color: #444;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: "DM Sans", sans-serif;
+  transition: background 0.2s;
+}
+.avatar-upload-btn:hover {
+  background: #e0e0e0;
+}
+
+/* Password strength */
+.password-strength {
+  margin-top: 6px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.strength-bar {
+  height: 4px;
+  flex: 1;
+  border-radius: 2px;
+  background: #e0e0e0;
+  transition: background 0.3s;
+}
+.strength-bar.filled-weak {
+  background: #c62828;
+}
+.strength-bar.filled-fair {
+  background: #f57f17;
+}
+.strength-bar.filled-good {
+  background: #2e7d32;
+}
+.strength-bar.filled-strong {
+  background: #1565c0;
+}
+.strength-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  min-width: 50px;
+  text-align: right;
+}
+
+/* Responsive */
+@media (max-width: 860px) {
+  .profile-form .form-row {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,185 @@
+/* blueprintgallery.css
+   Reuses all product catalog classes — only adds blueprint-specific styles
+*/
+
+/* ── Spinner ── */
+.bp-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #eee;
+  border-top-color: #8b4513;
+  border-radius: 50%;
+  animation: bpSpin 0.7s linear infinite;
+  margin: 0 auto 12px;
+}
+@keyframes bpSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Blueprint Modal body ── */
+.bp-modal-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  min-height: 420px;
+}
+
+.bp-modal-img-side {
+  padding: 28px 24px 28px 28px;
+  background: #f5f0eb;
+  border-radius: 14px 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+}
+.bp-modal-img-wrap {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #ede5dc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bp-modal-main-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.bp-modal-info-side {
+  padding: 28px 28px 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.bp-modal-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #1a1a2e;
+  margin: 0;
+  line-height: 1.25;
+}
+.bp-modal-desc {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.6;
+  margin: 0;
+}
+.bp-modal-price {
+  font-size: 22px;
+  font-weight: 900;
+  color: #d2691e;
+}
+.bp-price-note {
+  font-size: 12px;
+  font-weight: 500;
+  color: #aaa;
+}
+.bp-price-tbd {
+  font-size: 14px;
+  color: #aaa;
+  font-weight: 500;
+}
+
+/* ── Components list in modal ── */
+.bp-modal-components {
+  background: #faf7f4;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.bp-comp-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+.bp-comp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 130px;
+  overflow-y: auto;
+}
+.bp-comp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.bp-comp-name {
+  font-weight: 700;
+  color: #1a1a2e;
+  flex: 1;
+  min-width: 80px;
+}
+.bp-comp-qty {
+  background: #f0e6de;
+  color: #8b4513;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 11px;
+}
+.bp-comp-mat {
+  color: #888;
+  font-size: 11px;
+}
+.bp-comp-dim {
+  color: #bbb;
+  font-size: 11px;
+}
+
+/* ── Modal actions (qty + add button) ── */
+.bp-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid #f0ebe5;
+}
+
+/* btn-added state */
+.btn-add-cart.btn-added {
+  background: linear-gradient(135deg, #2e7d32, #388e3c) !important;
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .bp-modal-body {
+    grid-template-columns: 1fr;
+  }
+  .bp-modal-img-side {
+    border-radius: 14px 14px 0 0;
+    padding: 20px;
+  }
+  .bp-modal-img-wrap {
+    aspect-ratio: 16/9;
+  }
+  .bp-modal-info-side {
+    padding: 20px;
+    border-radius: 0 0 14px 14px;
+  }
+}
+
+/* ── Embedded mode (shown inside Product Catalog) ── */
+.bp-embedded {
+  width: 100%;
+}
+.bp-embedded-layout {
+  width: 100%;
+}
+.bp-embedded .catalog-main {
+  width: 100%;
+}

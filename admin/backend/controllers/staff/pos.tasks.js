@@ -1,0 +1,652 @@
+const db = require("../../config/db"); // Uses the unified db config
+
+const ensureIndoorAssignee = async (userId) => {
+  const [rows] = await db.execute(
+    `SELECT id, name, role, staff_type, is_active
+     FROM users
+     WHERE id = ?
+     LIMIT 1`,
+    [userId],
+  );
+
+  if (!rows.length) return null;
+
+  const user = rows[0];
+
+  if (user.role !== "staff") return null;
+  if (user.staff_type !== "indoor") return null;
+  if (!user.is_active) return null;
+
+  return user;
+};
+
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+
+const REQUIRED_PRODUCTION_STEPS = [
+  "Cutting Machine",
+  "Edge Banding",
+  "Horizontal Drilling",
+  "Retouching",
+  "Packing",
+];
+
+const REQUIRED_PRODUCTION_STEP_KEYS = REQUIRED_PRODUCTION_STEPS.map(normalize);
+
+const validateProductionSequence = async ({
+  orderId,
+  taskRole,
+  currentStatus,
+  nextStatus,
+}) => {
+  const currentTaskRoleKey = normalize(taskRole);
+  const currentStepIndex =
+    REQUIRED_PRODUCTION_STEP_KEYS.indexOf(currentTaskRoleKey);
+
+  if (!orderId || currentStepIndex === -1) {
+    return null;
+  }
+
+  const normalizedCurrentStatus = normalize(currentStatus);
+  const normalizedNextStatus = normalize(nextStatus);
+
+  const [packetRows] = await db.execute(
+    `SELECT id, task_role, status
+     FROM project_tasks
+     WHERE order_id = ?`,
+    [orderId],
+  );
+
+  const packetMap = new Map(
+    packetRows.map((row) => [normalize(row.task_role), row]),
+  );
+
+  for (let i = 0; i < currentStepIndex; i += 1) {
+    const previousStepLabel = REQUIRED_PRODUCTION_STEPS[i];
+    const previousStepKey = REQUIRED_PRODUCTION_STEP_KEYS[i];
+    const previousStep = packetMap.get(previousStepKey);
+
+    if (!previousStep || normalize(previousStep.status) !== "completed") {
+      return `Complete ${previousStepLabel} first before starting ${taskRole}.`;
+    }
+  }
+
+  if (
+    normalizedNextStatus === "in_progress" &&
+    !["pending", "blocked"].includes(normalizedCurrentStatus)
+  ) {
+    return "Only a pending or blocked step can be started.";
+  }
+
+  if (
+    normalizedNextStatus === "completed" &&
+    normalizedCurrentStatus !== "in_progress"
+  ) {
+    return "Only an in-progress step can be marked as completed.";
+  }
+
+  if (
+    normalizedNextStatus === "blocked" &&
+    normalizedCurrentStatus !== "in_progress"
+  ) {
+    return "Only an in-progress step can be marked as blocked.";
+  }
+
+  return null;
+};
+
+/* ── Get User Notifications ── */
+exports.getNotifications = async (req, res) => {
+  try {
+    const [notifications] = await db.execute(
+      `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 20`,
+      [req.user.id],
+    );
+    res.json(notifications);
+  } catch (err) {
+    console.error("[pos.tasks GET /notifications]", err);
+    res.status(500).json({ message: "Error fetching notifications" });
+  }
+};
+
+/* ── Mark Notification as Read ── */
+exports.markNotificationRead = async (req, res) => {
+  try {
+    await db.execute(
+      `UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?`,
+      [req.params.id, req.user.id],
+    );
+    res.json({ message: "Notification marked as read" });
+  } catch (err) {
+    res.status(500).json({ message: "Error updating notification" });
+  }
+};
+
+/* ── Mark All Notifications as Read ── */
+exports.markAllNotificationsRead = async (req, res) => {
+  try {
+    await db.execute(
+      `UPDATE notifications SET is_read = 1 WHERE user_id = ? AND is_read = 0`,
+      [req.user.id],
+    );
+    res.json({ message: "All notifications marked as read" });
+  } catch (err) {
+    console.error("[pos.tasks PATCH /notifications/read-all]", err);
+    res.status(500).json({ message: "Error updating notifications" });
+  }
+};
+
+/* ── Get Projects Requiring Allocation ── */
+exports.getProjects = async (req, res) => {
+  try {
+    const [projects] = await db.execute(`
+      SELECT 
+        o.id,
+        o.order_number,
+        COALESCE(u.name, o.walkin_customer_name, 'Walk-in Customer') AS customer_name,
+        o.status,
+        o.delivery_address,
+        o.created_at,
+        (
+          SELECT COUNT(*)
+          FROM project_tasks pt
+          WHERE pt.order_id = o.id
+        ) AS assigned_tasks_count
+      FROM orders o
+      LEFT JOIN users u ON o.customer_id = u.id
+      WHERE o.status IN ('confirmed', 'production')
+      ORDER BY o.created_at DESC
+    `);
+    res.json(projects);
+  } catch (err) {
+    console.error("[pos.tasks GET /projects]", err);
+    res.status(500).json({ message: "Server error.", error: err.message });
+  }
+};
+
+/* ── Get Staff Workload ── */
+exports.getStaff = async (req, res) => {
+  try {
+    const [staff] = await db.execute(
+      `SELECT
+         u.id,
+         u.name,
+         u.role,
+         u.staff_type,
+         u.phone,
+         (
+           SELECT COUNT(*)
+           FROM project_tasks pt
+           WHERE pt.assigned_to = u.id
+             AND pt.status IN ('pending', 'in_progress')
+         ) AS active_tasks
+       FROM users u
+       WHERE u.role = 'staff'
+         AND u.staff_type = 'indoor'
+         AND u.is_active = 1
+       ORDER BY u.name ASC`,
+    );
+
+    res.json(staff);
+  } catch (err) {
+    console.error("[pos.tasks GET /staff]", err);
+    res.status(500).json({ message: "Server error.", error: err.message });
+  }
+};
+
+/* ── Get Unread Count ── */
+exports.getUnreadCount = async (req, res) => {
+  try {
+    const [taskRows] = await db.execute(
+      `SELECT COUNT(*) as count FROM project_tasks WHERE assigned_to = ? AND is_read = 0`,
+      [req.user.id],
+    );
+
+    const [notifRows] = await db.execute(
+      `SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0`,
+      [req.user.id],
+    );
+
+    res.json({
+      task_count: taskRows[0].count,
+      notification_count: notifRows[0].count,
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Error fetching unread count" });
+  }
+};
+
+/* ── Get Tasks (Admin sees all, Staff sees theirs) ── */
+exports.getTasks = async (req, res) => {
+  try {
+    let query = `
+      SELECT t.*, 
+             assignee.name AS assigned_to_name, 
+             assigner.name AS assigned_by_name, 
+             o.order_number,
+             o.delivery_address
+      FROM project_tasks t
+      LEFT JOIN users assignee ON t.assigned_to = assignee.id
+      LEFT JOIN users assigner ON t.assigned_by = assigner.id
+      LEFT JOIN orders o ON t.order_id = o.id
+    `;
+    const queryParams = [];
+
+    if (req.user.role !== "admin") {
+      query += ` WHERE t.assigned_to = ?`;
+      queryParams.push(req.user.id);
+    }
+
+    query += ` ORDER BY t.created_at DESC`;
+
+    const [tasks] = await db.execute(query, queryParams);
+    res.json(tasks);
+  } catch (err) {
+    console.error("[pos.tasks GET /]", err);
+    res.status(500).json({ message: "Server error.", error: err.message });
+  }
+};
+
+/* ── Create/Assign Task ── */
+exports.createTask = async (req, res) => {
+  const {
+    order_id,
+    blueprint_id,
+    assigned_to,
+    task_role,
+    title,
+    description,
+    due_date,
+  } = req.body;
+
+  if (!assigned_to || !title) {
+    return res
+      .status(400)
+      .json({ message: "Assigned staff and task title are required." });
+  }
+
+  try {
+    const assignee = await ensureIndoorAssignee(assigned_to);
+
+    if (!assignee) {
+      return res.status(400).json({
+        message: "Only active indoor staff can be assigned to project tasks.",
+      });
+    }
+
+    if (order_id) {
+      await db.execute(
+        `UPDATE orders SET status = 'production' WHERE id = ? AND status = 'confirmed'`,
+        [order_id],
+      );
+    }
+
+    const [result] = await db.execute(
+      `INSERT INTO project_tasks 
+        (order_id, blueprint_id, assigned_to, assigned_by, task_role, title, description, due_date, status, is_read) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0)`,
+      [
+        order_id || null,
+        blueprint_id || null,
+        assigned_to,
+        req.user.id,
+        task_role || "Other",
+        title,
+        description || "",
+        due_date || null,
+      ],
+    );
+
+    await db.execute(
+      `INSERT INTO notifications (user_id, type, title, message, channel, sent_at) 
+       VALUES (?, 'assignment', 'New Task Assigned', ?, 'system', NOW())`,
+      [assigned_to, `You have been assigned a new task: ${title}`],
+    );
+
+    res.status(201).json({
+      message: "Task assigned successfully.",
+      task_id: result.insertId,
+    });
+  } catch (err) {
+    console.error("[pos.tasks POST /]", err);
+    res.status(500).json({ message: "Server error.", error: err.message });
+  }
+};
+
+/* ── Accept Task ── */
+exports.acceptTask = async (req, res) => {
+  try {
+    const [tasks] = await db.execute(
+      `SELECT * FROM project_tasks WHERE id = ? AND assigned_to = ?`,
+      [req.params.id, req.user.id],
+    );
+
+    if (tasks.length === 0) {
+      return res.status(400).json({ message: "Task not found." });
+    }
+    const task = tasks[0];
+
+    const [result] = await db.execute(
+      `UPDATE project_tasks SET status = 'in_progress', is_read = 1, accepted_at = NOW() 
+       WHERE id = ? AND status = 'pending'`,
+      [req.params.id],
+    );
+
+    if (result.affectedRows === 0) {
+      return res
+        .status(400)
+        .json({ message: "Task already accepted or blocked." });
+    }
+
+    await db.execute(
+      `INSERT INTO notifications (user_id, type, title, message, channel, sent_at) 
+       VALUES (?, 'task_update', 'Task Accepted', ?, 'system', NOW())`,
+      [
+        task.assigned_by,
+        `${req.user.name || "A staff member"} has accepted the task: ${task.title}`,
+      ],
+    );
+
+    res.json({ message: "Assignment accepted." });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error accepting task" });
+  }
+};
+
+/* ── Update Task Status ── */
+exports.updateTaskStatus = async (req, res) => {
+  const { status } = req.body;
+  const taskId = req.params.id;
+
+  const validStatuses = ["pending", "in_progress", "completed", "blocked"];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ message: "Invalid status." });
+  }
+
+  try {
+    const [rows] = await db.execute(
+      `SELECT id, title, status, assigned_to, assigned_by, completed_at, order_id, task_role
+       FROM project_tasks
+       WHERE id = ?
+       LIMIT 1`,
+      [taskId],
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Task not found." });
+    }
+
+    const existing = rows[0];
+    const isAdmin = req.user.role === "admin";
+    const isOwner = Number(existing.assigned_to) === Number(req.user.id);
+
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({
+        message: "You can only update tasks assigned to you.",
+      });
+    }
+
+    if (existing.status === "completed" && status !== "completed") {
+      return res.status(400).json({
+        message: "Completed tasks can no longer be changed.",
+      });
+    }
+
+    if (!isAdmin && status === "pending") {
+      return res.status(400).json({
+        message: "Staff cannot move a task back to pending.",
+      });
+    }
+
+    const sequenceError = await validateProductionSequence({
+      orderId: existing.order_id,
+      taskRole: existing.task_role,
+      currentStatus: existing.status,
+      nextStatus: status,
+    });
+
+    if (sequenceError) {
+      return res.status(400).json({ message: sequenceError });
+    }
+
+    let completedAt = existing.completed_at || null;
+
+    if (status === "completed" && existing.status !== "completed") {
+      completedAt = new Date();
+    } else if (status !== "completed") {
+      completedAt = null;
+    }
+
+    await db.execute(
+      `UPDATE project_tasks
+       SET status = ?, completed_at = ?, is_read = 1, updated_at = NOW()
+       WHERE id = ?`,
+      [status, completedAt, taskId],
+    );
+
+    if (existing.assigned_by) {
+      const statusLabel = String(status).replace(/_/g, " ");
+
+      await db.execute(
+        `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
+         VALUES (?, 'task_update', 'Task Status Updated', ?, 'system', NOW())`,
+        [
+          existing.assigned_by,
+          `${req.user.name || "A staff member"} updated step "${existing.task_role}" to ${statusLabel} for ${existing.title}.`,
+        ],
+      );
+    }
+
+    if (existing.order_id && existing.assigned_by) {
+      const [packetRows] = await db.execute(
+        `SELECT task_role, status
+         FROM project_tasks
+         WHERE order_id = ?`,
+        [existing.order_id],
+      );
+
+      const existingStepKeys = new Set(
+        packetRows.map((row) => normalize(row.task_role)).filter(Boolean),
+      );
+
+      const completedStepKeys = new Set(
+        packetRows
+          .filter((row) => normalize(row.status) === "completed")
+          .map((row) => normalize(row.task_role))
+          .filter(Boolean),
+      );
+
+      const missingSteps = REQUIRED_PRODUCTION_STEP_KEYS.filter(
+        (step) => !existingStepKeys.has(step),
+      );
+
+      const incompleteSteps = REQUIRED_PRODUCTION_STEP_KEYS.filter(
+        (step) => !completedStepKeys.has(step),
+      );
+
+      if (status === "blocked") {
+        await db.execute(
+          `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
+           VALUES (?, 'task_blocked', 'Production Blocker Reported', ?, 'system', NOW())`,
+          [
+            existing.assigned_by,
+            `${req.user.name || "A staff member"} reported a blocker on ${existing.task_role} for Order #${existing.order_id}.`,
+          ],
+        );
+      }
+
+      if (
+        status === "completed" &&
+        missingSteps.length === 0 &&
+        incompleteSteps.length === 0
+      ) {
+        await db.execute(
+          `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
+           VALUES (?, 'production_ready', 'Production Ready for Shipping', ?, 'system', NOW())`,
+          [
+            existing.assigned_by,
+            `${req.user.name || "A staff member"} completed the full production workflow for Order #${existing.order_id}. The order is now ready for shipping review.`,
+          ],
+        );
+      }
+    }
+
+    res.json({ message: "Task status updated successfully." });
+  } catch (err) {
+    console.error("[pos.tasks PUT /:id/status]", err);
+    res.status(500).json({ message: "Server error.", error: err.message });
+  }
+};
+
+/* ── Update Task (Admin edit / Staff status update fallback) ── */
+exports.updateTask = async (req, res) => {
+  const { id } = req.params;
+  const {
+    order_id,
+    blueprint_id,
+    assigned_to,
+    task_role,
+    title,
+    description,
+    due_date,
+    status,
+  } = req.body;
+
+  try {
+    const [rows] = await db.execute(
+      `SELECT * FROM project_tasks WHERE id = ?`,
+      [id],
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ message: "Task not found." });
+    }
+
+    const existing = rows[0];
+
+    if (req.user.role !== "admin") {
+      const triedToEditProtectedFields = [
+        order_id,
+        blueprint_id,
+        assigned_to,
+        task_role,
+        title,
+        description,
+        due_date,
+      ].some((value) => value !== undefined);
+
+      if (triedToEditProtectedFields) {
+        return res.status(403).json({
+          message: "Staff can only update the status of their own task.",
+        });
+      }
+
+      req.body = { status: status ?? existing.status };
+      return exports.updateTaskStatus(req, res);
+    }
+
+    const nextOrderId = order_id === "" ? null : order_id ?? existing.order_id;
+    const nextBlueprintId =
+      blueprint_id === "" ? null : blueprint_id ?? existing.blueprint_id;
+    const nextAssignedTo =
+      assigned_to === "" ? null : assigned_to ?? existing.assigned_to;
+
+    if (nextAssignedTo) {
+      const assignee = await ensureIndoorAssignee(nextAssignedTo);
+
+      if (!assignee) {
+        return res.status(400).json({
+          message: "Only active indoor staff can be assigned to project tasks.",
+        });
+      }
+    }
+
+    const nextTaskRole = task_role ?? existing.task_role;
+    const nextTitle = title ?? existing.title;
+    const nextDescription = description ?? existing.description;
+    const nextDueDate = due_date === "" ? null : due_date ?? existing.due_date;
+    const nextStatus = status ?? existing.status;
+
+    if (existing.status === "completed" && nextStatus !== "completed") {
+      return res.status(400).json({
+        message: "Completed tasks can no longer be changed.",
+      });
+    }
+
+    const sequenceError = await validateProductionSequence({
+      orderId: nextOrderId,
+      taskRole: nextTaskRole,
+      currentStatus: existing.status,
+      nextStatus: nextStatus,
+    });
+
+    if (sequenceError) {
+      return res.status(400).json({ message: sequenceError });
+    }
+
+    let completedAt = existing.completed_at;
+    if (nextStatus === "completed" && existing.status !== "completed") {
+      completedAt = new Date();
+    } else if (nextStatus !== "completed") {
+      completedAt = null;
+    }
+
+    await db.execute(
+      `UPDATE project_tasks
+       SET order_id = ?, blueprint_id = ?, assigned_to = ?, task_role = ?,
+           title = ?, description = ?, due_date = ?, status = ?, completed_at = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [
+        nextOrderId,
+        nextBlueprintId,
+        nextAssignedTo,
+        nextTaskRole,
+        nextTitle,
+        nextDescription,
+        nextDueDate,
+        nextStatus,
+        completedAt,
+        id,
+      ],
+    );
+
+    if (String(existing.assigned_to || "") !== String(nextAssignedTo || "")) {
+      await db.execute(
+        `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
+         VALUES (?, 'assignment', 'Task Updated', ?, 'system', NOW())`,
+        [nextAssignedTo, `A task has been assigned/updated: ${nextTitle}`],
+      );
+    }
+
+    res.json({ message: "Task updated successfully." });
+  } catch (err) {
+    console.error("[pos.tasks PUT /:id]", err);
+    res.status(500).json({ message: "Server error.", error: err.message });
+  }
+};
+
+exports.deleteTask = async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ message: "Only admins can delete tasks." });
+    }
+
+    const [result] = await db.execute(
+      `DELETE FROM project_tasks WHERE id = ?`,
+      [req.params.id],
+    );
+
+    if (!result.affectedRows) {
+      return res.status(404).json({ message: "Task not found." });
+    }
+
+    res.json({ message: "Task deleted successfully." });
+  } catch (err) {
+    console.error("[pos.tasks DELETE /:id]", err);
+    res.status(500).json({ message: "Server error.", error: err.message });
+  }
+};

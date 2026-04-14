@@ -1,0 +1,1047 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import api, { buildAssetUrl } from "../../services/api";
+import useAuthStore from "../../store/authStore";
+
+const normalize = (value) => String(value || "").toLowerCase();
+
+const formatDateTime = (value) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const formatStatus = (value) => {
+  if (!value) return "—";
+  return String(value)
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const getStatusMeta = (status) =>
+  ({
+    scheduled: {
+      bg: "#eff6ff",
+      border: "#bfdbfe",
+      text: "#1d4ed8",
+      badge: "badge-blue",
+    },
+    in_transit: {
+      bg: "#fffbeb",
+      border: "#fde68a",
+      text: "#b45309",
+      badge: "badge-yellow",
+    },
+    delivered: {
+      bg: "#ecfdf5",
+      border: "#bbf7d0",
+      text: "#15803d",
+      badge: "badge-green",
+    },
+    failed: {
+      bg: "#fef2f2",
+      border: "#fecaca",
+      text: "#dc2626",
+      badge: "badge-red",
+    },
+  })[normalize(status)] || {
+    bg: "#f8fafc",
+    border: "#e5e7eb",
+    text: "#475569",
+    badge: "badge-gray",
+  };
+
+export default function DeliveryManagement() {
+  const { user } = useAuthStore();
+  const isDeliveryRider =
+    user?.role === "staff" && user?.staff_type === "delivery_rider";
+
+  const [deliveries, setDeliveries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [savingId, setSavingId] = useState(null);
+  const [receiptFiles, setReceiptFiles] = useState({});
+  const [collectionForms, setCollectionForms] = useState({});
+  
+  const [search, setSearch] = useState("");
+
+  const loadDeliveries = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const res = await api.get("/pos/deliveries");
+      const list = Array.isArray(res.data) ? res.data : [];
+      setDeliveries(list);
+    } catch (err) {
+      console.error("Delivery load error:", err?.response?.data || err);
+      setError(
+        err?.response?.data?.message ||
+          `Failed to load deliveries.${
+            err?.response?.status ? ` (HTTP ${err.response.status})` : ""
+          }`,
+      );
+      setDeliveries([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDeliveries();
+  }, [loadDeliveries]);
+
+  const handleReceiptChange = (id, file) => {
+    setReceiptFiles((prev) => ({
+      ...prev,
+      [id]: file || null,
+    }));
+  };
+
+  const getCollectionForm = (delivery) => {
+    const defaultAmount =
+      Number(delivery.payment_balance || 0) > 0
+        ? Number(delivery.payment_balance || 0).toFixed(2)
+        : "";
+
+    const saved = collectionForms[delivery.id] || {};
+
+    return {
+      amount: defaultAmount,
+      payment_method: saved.payment_method || "cash",
+      collection_notes: saved.collection_notes || "",
+    };
+  };
+
+  const updateCollectionForm = (deliveryId, key, value) => {
+    setCollectionForms((prev) => {
+      const current = prev[deliveryId] || {
+        amount: "",
+        payment_method: "cash",
+        collection_notes: "",
+      };
+
+      return {
+        ...prev,
+        [deliveryId]: {
+          ...current,
+          [key]: value,
+        },
+      };
+    });
+  };
+
+  const validateReceiptFile = (file) => {
+    if (!file) return null;
+
+    const isImage = String(file.type || "").startsWith("image/");
+    const isPdf = file.type === "application/pdf";
+
+    if (!isImage && !isPdf) {
+      return "Only image or PDF files are allowed for signed receipt upload.";
+    }
+
+    const maxFileSize = 5 * 1024 * 1024;
+    if (file.size > maxFileSize) {
+      return "Signed receipt file is too large. Maximum allowed size is 5 MB.";
+    }
+
+    return null;
+  };
+
+  const validateCollectionForm = (
+    delivery,
+    collectionForm,
+    { requireAmount = false } = {},
+  ) => {
+    const paymentBalance = Number(delivery.payment_balance || 0);
+    const rawAmount = String(collectionForm?.amount ?? "").trim();
+    const amount = Number(rawAmount || 0);
+    const paymentMethod = String(
+      collectionForm?.payment_method || "cash",
+    ).toLowerCase();
+
+    if (paymentBalance <= 0.009) {
+      return "";
+    }
+
+    if (!["cash", "gcash", "bank_transfer"].includes(paymentMethod)) {
+      return "Please select a valid payment method.";
+    }
+
+    if (requireAmount && !rawAmount) {
+      return "Please enter the amount collected by the rider before completing this delivery.";
+    }
+
+    if (rawAmount && (!Number.isFinite(amount) || amount <= 0)) {
+      return "Collected amount must be greater than zero.";
+    }
+
+    if (rawAmount && amount > paymentBalance + 0.01) {
+      return `Collected amount cannot exceed the remaining balance of ₱${paymentBalance.toLocaleString(
+        "en-PH",
+        { minimumFractionDigits: 2 },
+      )}.`;
+    }
+
+    return "";
+  };
+
+  const saveDeliveryUpdate = async ({
+    delivery,
+    nextStatus,
+    requireReceipt = false,
+    allowReceiptOnly = false,
+    successMessage,
+  }) => {
+    const selectedFile = receiptFiles[delivery.id] || null;
+    const hasExistingReceipt = Boolean(delivery.signed_receipt);
+    const currentStatus = normalize(delivery.status || "scheduled");
+    const targetStatus = normalize(nextStatus || currentStatus);
+    const collectionForm = getCollectionForm(delivery);
+
+    const collectionError = validateCollectionForm(delivery, collectionForm, {
+      requireAmount: targetStatus === "delivered",
+    });
+
+    if (collectionError) {
+      setError(collectionError);
+      setSuccess("");
+      return;
+    }
+
+    const fileError = validateReceiptFile(selectedFile);
+    if (fileError) {
+      setError(fileError);
+      setSuccess("");
+      return;
+    }
+
+    if (requireReceipt && !hasExistingReceipt && !selectedFile) {
+      setError("Please upload the proof of delivery first.");
+      setSuccess("");
+      return;
+    }
+
+    if (!allowReceiptOnly && targetStatus === currentStatus && !selectedFile) {
+      setSuccess("No changes to save.");
+      return;
+    }
+
+    setSavingId(delivery.id);
+    setError("");
+    setSuccess("");
+
+    try {
+      const fd = new FormData();
+      fd.append("status", targetStatus);
+      fd.append("notes", delivery.notes ?? "");
+
+      if (targetStatus === "delivered") {
+        fd.append("collected_amount", collectionForm.amount || "");
+        fd.append("payment_method", collectionForm.payment_method || "cash");
+        fd.append("collection_notes", collectionForm.collection_notes || "");
+      }
+
+      if (selectedFile) {
+        fd.append("receipt", selectedFile);
+      }
+
+      await api.patch(`/pos/deliveries/${delivery.id}/status`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      setReceiptFiles((prev) => ({
+        ...prev,
+        [delivery.id]: null,
+      }));
+
+      if (targetStatus === "delivered") {
+        setCollectionForms((prev) => ({
+          ...prev,
+          [delivery.id]: {
+            amount: "",
+            payment_method: "cash",
+            collection_notes: "",
+          },
+        }));
+      }
+
+      setSuccess(
+        successMessage ||
+          (selectedFile
+            ? "Delivery proof uploaded successfully."
+            : "Delivery updated successfully."),
+      );
+
+      await loadDeliveries();
+    } catch (err) {
+      console.error("Delivery update error:", err?.response?.data || err);
+      setError(
+        err?.response?.data?.message ||
+          `Failed to update delivery.${
+            err?.response?.status ? ` (HTTP ${err.response.status})` : ""
+          }`,
+      );
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+ 
+
+  const filteredDeliveries = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return deliveries;
+
+    return deliveries.filter((item) =>
+      [
+        String(item.order_number || ""),
+        String(item.customer_name || ""),
+        String(item.address || ""),
+        String(item.status || ""),
+        String(item.driver_name || ""),
+      ].some((field) => field.toLowerCase().includes(keyword)),
+    );
+  }, [deliveries, search]);
+
+  return (
+    <div style={pageShell}>
+      <div style={heroCard}>
+        <div>
+          <h2 style={pageTitle}>
+            {isDeliveryRider ? "My Deliveries" : "Delivery Management"}
+          </h2>
+          <p style={pageSubtitle}>
+            {isDeliveryRider
+              ? "View assigned deliveries, update transit status, and upload proof of delivery."
+              : "Monitor assigned deliveries and review delivery proof uploads."}
+          </p>
+        </div>
+      </div>
+
+      <div style={searchCard}>
+        <input
+          type="text"
+          placeholder="Search by order, customer, address, driver, or status"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={searchInput}
+        />
+      </div>
+
+      {error ? <div style={alertError}>{error}</div> : null}
+      {success ? <div style={alertSuccess}>{success}</div> : null}
+
+      {loading ? (
+        <div style={emptyCard}>Loading deliveries...</div>
+      ) : filteredDeliveries.length === 0 ? (
+        <div style={emptyCard}>No deliveries found.</div>
+      ) : (
+        <div style={cardList}>
+          {filteredDeliveries.map((delivery) => {
+            const status = normalize(delivery.status || "scheduled");
+            const statusMeta = getStatusMeta(status);
+            const selectedFile = receiptFiles[delivery.id] || null;
+            const hasReceipt = Boolean(delivery.signed_receipt);
+            const canStartTransit = status === "scheduled";
+            const canCompleteDelivery = status === "in_transit";
+            const isDelivered = status === "delivered";
+            const isFailed = status === "failed";
+
+            const paymentBalance = Number(delivery.payment_balance || 0);
+            const collectionForm = getCollectionForm(delivery);
+
+            const hasOutstandingBalance = paymentBalance > 0.009;
+            const rawCollectedAmount = String(collectionForm.amount ?? "").trim();
+            const parsedCollectedAmount = Number(rawCollectedAmount || 0);
+
+            const hasCollectedAmountValue = rawCollectedAmount !== "";
+            const collectedAmountInvalid =
+              hasCollectedAmountValue &&
+              (!Number.isFinite(parsedCollectedAmount) || parsedCollectedAmount <= 0);
+
+            const collectedAmountExceedsBalance =
+              hasCollectedAmountValue &&
+              parsedCollectedAmount > paymentBalance + 0.01;
+
+            const completeDeliveryDisabled =
+              savingId === delivery.id ||
+              (!hasReceipt && !selectedFile) ||
+              (canCompleteDelivery &&
+                hasOutstandingBalance &&
+                (!hasCollectedAmountValue ||
+                  collectedAmountInvalid ||
+                  collectedAmountExceedsBalance));
+            const canUploadProof =
+              !canCompleteDelivery ||
+              !hasOutstandingBalance ||
+              (hasCollectedAmountValue &&
+                !collectedAmountInvalid &&
+                !collectedAmountExceedsBalance);      
+                        return (
+              <div
+                key={delivery.id}
+                style={{
+                  ...deliveryCard,
+                  borderColor: statusMeta.border,
+                  background: "#ffffff",
+                }}
+              >
+                <div style={deliveryHeader}>
+                  <div>
+                    <div style={deliveryOrderNo}>
+                      {delivery.order_number || "—"}
+                    </div>
+                    <div style={deliveryCustomer}>
+                      {delivery.customer_name || "Walk-in Customer"}
+                    </div>
+                  </div>
+
+                  <span
+                    className={`badge ${statusMeta.badge}`}
+                    style={{
+                      alignSelf: "flex-start",
+                    }}
+                  >
+                    {formatStatus(delivery.status)}
+                  </span>
+                </div>
+
+                <div style={detailsGrid}>
+                  <InfoCard
+                    label="Address"
+                    value={delivery.address || "—"}
+                  />
+                  <InfoCard
+                    label="Scheduled"
+                    value={formatDateTime(delivery.scheduled_date)}
+                  />
+                  <InfoCard
+                    label="Driver"
+                    value={delivery.driver_name || "Unassigned"}
+                  />
+                  <InfoCard
+                    label="Proof Status"
+                    value={hasReceipt ? "Uploaded" : "Awaiting upload"}
+                    tone={hasReceipt ? "#15803d" : "#b45309"}
+                  />
+                  <InfoCard
+                    label="Remaining Balance"
+                    value={`₱ ${paymentBalance.toLocaleString("en-PH", {
+                      minimumFractionDigits: 2,
+                    })}`}
+                    tone={paymentBalance > 0 ? "#b45309" : "#15803d"}
+                  />
+                </div>
+
+                {delivery.notes ? (
+                  <div style={notesBox}>
+                    <div style={notesLabel}>Notes</div>
+                    <div style={notesText}>{delivery.notes}</div>
+                  </div>
+                ) : null}
+                
+                {canStartTransit && (
+                  <div style={actionSection}>
+                    <div style={sectionTitle}>Next Action</div>
+                    <div style={helperText}>
+                      Start the trip once the furniture is loaded and ready to
+                      leave the shop.
+                    </div>
+
+                    <div style={buttonRow}>
+                      <button
+                        onClick={() =>
+                          saveDeliveryUpdate({
+                            delivery,
+                            nextStatus: "in_transit",
+                            successMessage:
+                              "Delivery marked as in transit successfully.",
+                          })
+                        }
+                        disabled={savingId === delivery.id}
+                        style={btnPrimary}
+                      >
+                        {savingId === delivery.id ? "Saving..." : "Start Transit"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+
+                {canCompleteDelivery && (
+                  <div style={actionSection}>
+                    {hasOutstandingBalance && (
+                      <div style={{ marginBottom: "16px" }}>
+                        <div style={sectionTitle}>Remaining Balance Collection</div>
+                        <div style={helperText}>
+                          Record the amount collected from the customer during delivery. Admin will
+                          verify this payment before the order can be completed.
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: "12px",
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                            gap: "12px",
+                          }}
+                        >
+                          <div>
+                            <label style={infoLabel}>Collected Amount</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max={paymentBalance.toFixed(2)}
+                              step="0.01"
+                              value={collectionForm.amount}
+                              onChange={(e) =>
+                                updateCollectionForm(delivery.id, "amount", e.target.value)
+                              }
+                              style={searchInput}
+                              placeholder={`Max ${paymentBalance.toFixed(2)}`}
+                            />
+                            {(!hasCollectedAmountValue ||
+                              collectedAmountInvalid ||
+                              collectedAmountExceedsBalance) && (
+                              <div
+                                style={{
+                                  marginTop: 6,
+                                  fontSize: "12px",
+                                  color: "#b91c1c",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                {!hasCollectedAmountValue
+                                  ? "Collected amount is required before completing delivery."
+                                  : collectedAmountInvalid
+                                    ? "Collected amount must be greater than zero."
+                                    : `Collected amount cannot exceed ₱${paymentBalance.toLocaleString(
+                                        "en-PH",
+                                        { minimumFractionDigits: 2 },
+                                      )}.`}
+                              </div>
+                            )}
+                          </div>
+
+                          <div>
+                            <label style={infoLabel}>Payment Method</label>
+                            <select
+                              value={collectionForm.payment_method}
+                              onChange={(e) =>
+                                updateCollectionForm(delivery.id, "payment_method", e.target.value)
+                              }
+                              style={searchInput}
+                            >
+                              <option value="cash">Cash</option>
+                              <option value="gcash">GCash</option>
+                              <option value="bank_transfer">Bank Transfer</option>
+                            </select>
+                          </div>
+
+                          <div style={{ gridColumn: "1 / -1" }}>
+                            <label style={infoLabel}>Collection Note</label>
+                            <textarea
+                              rows={2}
+                              value={collectionForm.collection_notes}
+                              onChange={(e) =>
+                                updateCollectionForm(
+                                  delivery.id,
+                                  "collection_notes",
+                                  e.target.value,
+                                )
+                              }
+                              style={{
+                                ...searchInput,
+                                minHeight: 88,
+                                resize: "vertical",
+                              }}
+                              placeholder="Example: Full remaining balance collected during turnover."
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={sectionTitle}>Proof of Delivery</div>
+                    <div style={helperText}>
+                      Upload the signed receipt or customer handoff photo first,
+                      then complete the delivery.
+                    </div>
+
+                    <div style={proofPanel}>
+                      <div style={proofStatusRow}>
+                        <span style={proofStatusLabel}>
+                          {hasReceipt ? "Proof already uploaded" : "No proof uploaded yet"}
+                        </span>
+
+                        {hasReceipt && delivery.signed_receipt ? (
+                          <a
+                            href={buildAssetUrl(delivery.signed_receipt)}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={viewLink}
+                          >
+                            View Current Proof
+                          </a>
+                        ) : null}
+                      </div>
+
+                      <input
+                        type="file"
+                        accept="image/*,.pdf"
+                        disabled={savingId === delivery.id || !canUploadProof}
+                        onChange={(e) =>
+                          handleReceiptChange(
+                            delivery.id,
+                            e.target.files?.[0] || null,
+                          )
+                        }
+                        style={{
+                          ...fileInput,
+                          opacity: savingId === delivery.id || !canUploadProof ? 0.6 : 1,
+                          cursor:
+                            savingId === delivery.id || !canUploadProof
+                              ? "not-allowed"
+                              : "pointer",
+                        }}
+                      />
+
+                      {!canUploadProof && (
+                        <div
+                          style={{
+                            marginTop: "8px",
+                            fontSize: "12px",
+                            color: "#b91c1c",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Enter a valid collected amount first before uploading proof of delivery.
+                        </div>
+                      )}
+
+                      {selectedFile ? (
+                        <div style={selectedFileText}>
+                          Selected file: {selectedFile.name}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div style={buttonRow}>
+                      <button
+                        onClick={() =>
+                          saveDeliveryUpdate({
+                            delivery,
+                            nextStatus: delivery.status,
+                            allowReceiptOnly: true,
+                            successMessage:
+                              "Proof of delivery uploaded successfully.",
+                          })
+                        }
+                        disabled={savingId === delivery.id || !selectedFile || !canUploadProof}
+                        style={
+                          savingId === delivery.id || !selectedFile || !canUploadProof
+                            ? btnDisabled
+                            : btnSecondary
+                        }
+                      >
+                        {savingId === delivery.id ? "Saving..." : "Upload Proof"}
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          saveDeliveryUpdate({
+                            delivery,
+                            nextStatus: "delivered",
+                            requireReceipt: true,
+                            successMessage:
+                              "Delivery completed successfully with proof of delivery.",
+                          })
+                        }
+                        disabled={completeDeliveryDisabled}
+                        style={completeDeliveryDisabled ? btnDisabled : btnPrimary}
+                      >
+                        {savingId === delivery.id
+                          ? "Saving..."
+                          : "Complete Delivery"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {isDelivered && (
+                  <div style={actionSection}>
+                    <div style={sectionTitle}>Delivery Summary</div>
+                    <div style={helperText}>
+                      This delivery has already been completed.
+                    </div>
+
+                    <div style={summaryRow}>
+                      <div style={summaryItem}>
+                        <span style={summaryLabel}>Delivered On</span>
+                        <span style={summaryValue}>
+                          {formatDateTime(delivery.delivered_date)}
+                        </span>
+                      </div>
+
+                      <div style={summaryItem}>
+                        <span style={summaryLabel}>Proof</span>
+                        <span style={summaryValue}>
+                          {hasReceipt ? "Uploaded" : "Not uploaded"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {hasReceipt && delivery.signed_receipt ? (
+                      <div style={{ marginTop: 12 }}>
+                        <a
+                          href={buildAssetUrl(delivery.signed_receipt)}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={viewLink}
+                        >
+                          View Uploaded Proof
+                        </a>
+                      </div>
+                    ) : (
+                      <div style={helperText}>
+                        This older record has no uploaded proof yet.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {isFailed && (
+                  <div style={actionSection}>
+                    <div style={sectionTitle}>Delivery Failed</div>
+                    <div style={helperText}>
+                      This delivery was marked as failed. Contact the admin for
+                      reassignment or rescheduling.
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InfoCard({ label, value, tone }) {
+  return (
+    <div style={infoCard}>
+      <div style={infoLabel}>{label}</div>
+      <div style={{ ...infoValue, color: tone || "#0f172a" }}>{value}</div>
+    </div>
+  );
+}
+
+const pageShell = {
+  padding: "24px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "16px",
+};
+
+const heroCard = {
+  background: "#ffffff",
+  border: "1px solid #e5e7eb",
+  borderRadius: "16px",
+  padding: "18px 20px",
+};
+
+const pageTitle = {
+  margin: 0,
+  fontSize: "20px",
+  fontWeight: 700,
+  color: "#0f172a",
+};
+
+const pageSubtitle = {
+  margin: "8px 0 0",
+  color: "#64748b",
+  fontSize: "13px",
+  lineHeight: 1.6,
+};
+
+const searchCard = {
+  background: "#ffffff",
+  border: "1px solid #e5e7eb",
+  borderRadius: "14px",
+  padding: "14px",
+};
+
+const searchInput = {
+  width: "100%",
+  padding: "12px 14px",
+  borderRadius: "10px",
+  border: "1px solid #d1d5db",
+  outline: "none",
+  fontSize: "14px",
+};
+
+const alertError = {
+  padding: "12px 14px",
+  borderRadius: "12px",
+  background: "#fef2f2",
+  border: "1px solid #fecaca",
+  color: "#b91c1c",
+  fontSize: "14px",
+  fontWeight: 600,
+};
+
+const alertSuccess = {
+  padding: "12px 14px",
+  borderRadius: "12px",
+  background: "#ecfdf5",
+  border: "1px solid #bbf7d0",
+  color: "#166534",
+  fontSize: "14px",
+  fontWeight: 600,
+};
+
+const emptyCard = {
+  background: "#ffffff",
+  border: "1px solid #e5e7eb",
+  borderRadius: "16px",
+  padding: "24px",
+  color: "#64748b",
+  fontSize: "14px",
+  fontWeight: 600,
+};
+
+const cardList = {
+  display: "grid",
+  gap: "16px",
+};
+
+const deliveryCard = {
+  background: "#ffffff",
+  border: "1px solid #e5e7eb",
+  borderRadius: "18px",
+  padding: "18px",
+  boxShadow: "0 2px 10px rgba(15, 23, 42, 0.04)",
+};
+
+const deliveryHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: "12px",
+  marginBottom: "14px",
+  flexWrap: "wrap",
+};
+
+const deliveryOrderNo = {
+  fontSize: "16px",
+  fontWeight: 800,
+  color: "#0f172a",
+  marginBottom: "4px",
+};
+
+const deliveryCustomer = {
+  fontSize: "14px",
+  color: "#475569",
+  fontWeight: 600,
+};
+
+const detailsGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: "12px",
+};
+
+const infoCard = {
+  border: "1px solid #e5e7eb",
+  borderRadius: "12px",
+  padding: "12px",
+  background: "#f8fafc",
+};
+
+const infoLabel = {
+  fontSize: "11px",
+  fontWeight: 700,
+  color: "#94a3b8",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  marginBottom: "6px",
+};
+
+const infoValue = {
+  fontSize: "14px",
+  fontWeight: 700,
+  color: "#0f172a",
+  lineHeight: 1.5,
+  wordBreak: "break-word",
+};
+
+const notesBox = {
+  marginTop: "14px",
+  padding: "12px",
+  border: "1px solid #e2e8f0",
+  borderRadius: "12px",
+  background: "#f8fafc",
+};
+
+const notesLabel = {
+  fontSize: "11px",
+  fontWeight: 700,
+  color: "#94a3b8",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  marginBottom: "6px",
+};
+
+const notesText = {
+  fontSize: "13px",
+  color: "#334155",
+  lineHeight: 1.6,
+};
+
+const actionSection = {
+  marginTop: "16px",
+  paddingTop: "16px",
+  borderTop: "1px solid #e5e7eb",
+};
+
+const sectionTitle = {
+  fontSize: "14px",
+  fontWeight: 800,
+  color: "#0f172a",
+  marginBottom: "6px",
+};
+
+const helperText = {
+  fontSize: "13px",
+  color: "#64748b",
+  lineHeight: 1.6,
+};
+
+const proofPanel = {
+  marginTop: "12px",
+  padding: "14px",
+  border: "1px dashed #cbd5e1",
+  borderRadius: "12px",
+  background: "#f8fafc",
+};
+
+const proofStatusRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "12px",
+  flexWrap: "wrap",
+  marginBottom: "10px",
+};
+
+const proofStatusLabel = {
+  fontSize: "13px",
+  fontWeight: 700,
+  color: "#334155",
+};
+
+const fileInput = {
+  fontSize: "13px",
+  marginBottom: "8px",
+};
+
+const selectedFileText = {
+  fontSize: "12px",
+  color: "#64748b",
+  fontWeight: 600,
+};
+
+const buttonRow = {
+  display: "flex",
+  gap: "10px",
+  flexWrap: "wrap",
+  marginTop: "14px",
+};
+
+const btnPrimary = {
+  padding: "10px 16px",
+  borderRadius: "10px",
+  border: "none",
+  background: "#111827",
+  color: "#ffffff",
+  cursor: "pointer",
+  fontSize: "13px",
+  fontWeight: 700,
+};
+
+const btnSecondary = {
+  padding: "10px 16px",
+  borderRadius: "10px",
+  border: "1px solid #d1d5db",
+  background: "#ffffff",
+  color: "#111827",
+  cursor: "pointer",
+  fontSize: "13px",
+  fontWeight: 700,
+};
+
+const btnDisabled = {
+  padding: "10px 16px",
+  borderRadius: "10px",
+  border: "none",
+  background: "#9ca3af",
+  color: "#ffffff",
+  cursor: "not-allowed",
+  fontSize: "13px",
+  fontWeight: 700,
+};
+
+const summaryRow = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: "12px",
+  marginTop: "12px",
+};
+
+const summaryItem = {
+  border: "1px solid #e5e7eb",
+  borderRadius: "12px",
+  padding: "12px",
+  background: "#f8fafc",
+};
+
+const summaryLabel = {
+  display: "block",
+  fontSize: "11px",
+  fontWeight: 700,
+  color: "#94a3b8",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  marginBottom: "6px",
+};
+
+const summaryValue = {
+  display: "block",
+  fontSize: "14px",
+  fontWeight: 700,
+  color: "#0f172a",
+};
+
+const viewLink = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "8px 12px",
+  borderRadius: "10px",
+  background: "#eff6ff",
+  color: "#1d4ed8",
+  textDecoration: "none",
+  fontSize: "12px",
+  fontWeight: 700,
+};
