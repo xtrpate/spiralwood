@@ -60,20 +60,20 @@ exports.getAllProducts = async (req, res) => {
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
     /* ── Products query ── */
-    const [products] = await db.execute(
+    const [products] = await db.query(
       `
-      SELECT
-        p.id, p.barcode, p.name, p.description,
-        p.category_id, p.type, p.image_url,
-        p.is_featured, p.online_price, p.production_cost,
-        p.stock, p.stock_status, p.reorder_point,
-        c.name AS category
-      FROM products p
-      LEFT JOIN categories c ON c.id = p.category_id
-      ${where}
-      ORDER BY ${orderBy}
-      LIMIT ? OFFSET ?
-    `,
+  SELECT
+    p.id, p.barcode, p.name, p.description,
+    p.category_id, p.type, p.image_url,
+    p.is_featured, p.online_price, p.production_cost,
+    p.stock, p.stock_status, p.reorder_point,
+    c.name AS category
+  FROM products p
+  LEFT JOIN categories c ON c.id = p.category_id
+  ${where}
+  ORDER BY ${orderBy}
+  LIMIT ? OFFSET ?
+`,
       [...params, parseInt(limit), offset],
     );
 
@@ -89,13 +89,13 @@ exports.getAllProducts = async (req, res) => {
     }
 
     /* ── Total count ── */
-    const [countRows] = await db.execute(
+    const [countRows] = await db.query(
       `SELECT COUNT(*) AS total FROM products p ${where}`,
       params,
     );
 
     /* ── Categories for sidebar ── */
-    const [categories] = await db.execute(
+    const [categories] = await db.query(
       `SELECT id, name FROM categories ORDER BY name`,
     );
 
