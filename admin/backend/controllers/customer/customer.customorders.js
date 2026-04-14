@@ -53,7 +53,9 @@ const toSafeReferencePhotos = (value) => {
     .slice(0, 4)
     .map((item) => ({
       name: String(item?.name || "").trim(),
-      type: String(item?.type || "").trim().toLowerCase(),
+      type: String(item?.type || "")
+        .trim()
+        .toLowerCase(),
       size: Number(item?.size || 0) || 0,
       data_url: String(item?.data_url || item?.dataUrl || "").trim(),
     }))
@@ -76,7 +78,9 @@ const slugifyFilename = (value = "file") => {
 };
 
 const getExtFromMime = (mime = "") => {
-  const clean = String(mime || "").trim().toLowerCase();
+  const clean = String(mime || "")
+    .trim()
+    .toLowerCase();
 
   if (clean.includes("jpeg") || clean.includes("jpg")) return ".jpg";
   if (clean.includes("png")) return ".png";
@@ -92,7 +96,9 @@ const saveBase64ReferencePhoto = async (fileLike = {}) => {
 
   if (!match) return null;
 
-  const mimeType = String(match[1] || "").trim().toLowerCase();
+  const mimeType = String(match[1] || "")
+    .trim()
+    .toLowerCase();
   const base64Body = match[2];
 
   if (
@@ -179,7 +185,13 @@ const sanitizeCustomizationSnapshotForStorage = (snapshot = null) => {
 
 const insertCustomOrderMessage = async (
   conn,
-  { orderId, orderItemId = null, senderId = null, senderRole = "customer", message = null },
+  {
+    orderId,
+    orderItemId = null,
+    senderId = null,
+    senderRole = "customer",
+    message = null,
+  },
 ) => {
   const cleanMessage = toTrimmedStringOrNull(message);
 
@@ -424,9 +436,7 @@ exports.createCustomOrder = async (req, res) => {
     .filter((item) => item.product_name);
 
   if (cleanedItems.length === 0) {
-    return res
-      .status(400)
-      .json({ message: "Custom order items are invalid." });
+    return res.status(400).json({ message: "Custom order items are invalid." });
   }
 
   const blueprintIds = [
@@ -548,7 +558,9 @@ exports.createCustomOrder = async (req, res) => {
       const orderItemId = itemResult.insertId;
 
       let linkedMessageId = null;
-      const hasReferencePhotos = Array.isArray(item.reference_photos) && item.reference_photos.length > 0;
+      const hasReferencePhotos =
+        Array.isArray(item.reference_photos) &&
+        item.reference_photos.length > 0;
 
       if (item.initial_message || hasReferencePhotos) {
         linkedMessageId = await insertCustomOrderMessage(conn, {
@@ -757,13 +769,16 @@ exports.getCustomOrderById = async (req, res) => {
     );
 
     const downPaymentDue = roundMoney(
-      order.down_payment || (quotedTotal > 0 ? calcDownPaymentAmount(quotedTotal) : 0),
+      order.down_payment ||
+        (quotedTotal > 0 ? calcDownPaymentAmount(quotedTotal) : 0),
     );
 
     const hasVerifiedDownPayment =
       downPaymentDue > 0 && totalVerifiedPayments + 0.0001 >= downPaymentDue;
 
-    const balanceDue = roundMoney(Math.max(quotedTotal - totalVerifiedPayments, 0));
+    const balanceDue = roundMoney(
+      Math.max(quotedTotal - totalVerifiedPayments, 0),
+    );
 
     return res.json({
       ...order,
@@ -851,27 +866,31 @@ const insertNotificationSafe = async (
 const getLatestEstimationForBlueprint = async (conn, blueprintId) => {
   if (!Number(blueprintId)) return null;
 
-  const [rows] = await conn.execute(
+  const [rows] = await db.query(
     `SELECT
-        id,
-        blueprint_id,
-        version,
-        material_cost,
-        labor_cost,
-        tax,
-        discount,
-        grand_total,
-        estimation_data,
-        status,
-        approved_by,
-        approved_at,
-        created_at,
-        updated_at
-     FROM estimations
-     WHERE blueprint_id = ?
-     ORDER BY version DESC, id DESC
-     LIMIT 1`,
-    [blueprintId],
+      b.id,
+      b.title,
+      b.description,
+      b.base_price,
+      b.wood_type,
+      b.thumbnail_url,
+      b.file_url,
+      b.file_type,
+      b.design_data,
+      b.view_3d_data,
+      b.is_template,
+      b.is_gallery,
+      b.stage,
+      b.source,
+      b.created_at,
+      b.updated_at,
+      u.name AS creator_name
+   FROM blueprints b
+   LEFT JOIN users u ON u.id = b.creator_id
+   WHERE b.is_deleted = 0 AND b.is_template = 1 AND b.is_gallery = 1
+   ORDER BY COALESCE(b.updated_at, b.created_at) DESC
+   LIMIT ? OFFSET ?`,
+    [...params, parseInt(limit), parseInt(offset)],
   );
 
   if (!rows.length) return null;
@@ -1019,14 +1038,7 @@ exports.acceptEstimation = async (req, res) => {
            payment_status = 'unpaid',
            updated_at = NOW()
        WHERE id = ?`,
-      [
-        subtotal,
-        tax,
-        discount,
-        quotedTotal,
-        downPaymentAmount,
-        order.id,
-      ],
+      [subtotal, tax, discount, quotedTotal, downPaymentAmount, order.id],
     );
 
     const [bpRows] = await conn.execute(
