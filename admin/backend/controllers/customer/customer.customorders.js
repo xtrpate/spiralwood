@@ -402,7 +402,9 @@ exports.createCustomOrder = async (req, res) => {
     .map((item) => ({
       product_id: toPositiveInt(item.product_id, 0) || null,
       blueprint_id: toPositiveInt(item.blueprint_id, 0) || null,
-      product_name: String(item.product_name || "").trim(),
+      product_name: String(
+        item.product_name || item.base_blueprint_title || "Custom Blueprint",
+      ).trim(),
       quantity: toPositiveInt(item.quantity, 1),
 
       image_url: toTrimmedStringOrNull(item.image_url),
@@ -866,31 +868,27 @@ const insertNotificationSafe = async (
 const getLatestEstimationForBlueprint = async (conn, blueprintId) => {
   if (!Number(blueprintId)) return null;
 
-  const [rows] = await db.query(
+  const [rows] = await conn.execute(
     `SELECT
-      b.id,
-      b.title,
-      b.description,
-      b.base_price,
-      b.wood_type,
-      b.thumbnail_url,
-      b.file_url,
-      b.file_type,
-      b.design_data,
-      b.view_3d_data,
-      b.is_template,
-      b.is_gallery,
-      b.stage,
-      b.source,
-      b.created_at,
-      b.updated_at,
-      u.name AS creator_name
-   FROM blueprints b
-   LEFT JOIN users u ON u.id = b.creator_id
-   WHERE b.is_deleted = 0 AND b.is_template = 1 AND b.is_gallery = 1
-   ORDER BY COALESCE(b.updated_at, b.created_at) DESC
-   LIMIT ? OFFSET ?`,
-    [...params, parseInt(limit), parseInt(offset)],
+      e.id,
+      e.blueprint_id,
+      e.version,
+      e.status,
+      e.material_cost,
+      e.labor_cost,
+      e.tax,
+      e.discount,
+      e.grand_total,
+      e.estimation_data,
+      e.approved_by,
+      e.approved_at,
+      e.created_at,
+      e.updated_at
+   FROM estimations e
+   WHERE e.blueprint_id = ?
+   ORDER BY e.created_at DESC
+   LIMIT 1`,
+    [blueprintId],
   );
 
   if (!rows.length) return null;
