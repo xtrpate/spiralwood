@@ -1362,7 +1362,10 @@ exports.submitDownPayment = async (req, res) => {
       });
     }
 
-    const requiredDownPayment = roundMoney(order.down_payment || 0);
+    const requiredDownPayment = roundMoney(
+      order.down_payment ||
+        (order.total > 0 ? calcDownPaymentAmount(order.total) : 0),
+    );
 
     if (!(requiredDownPayment > 0)) {
       await conn.rollback();
