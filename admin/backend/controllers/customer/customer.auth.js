@@ -101,6 +101,7 @@ const sendOtpEmail = async (email, otp, name) => {
     });
   } catch (err) {
     console.error("CRITICAL: Failed to send verification email.", err.message);
+    throw new Error("EMAIL_FAILED");
   }
 };
 
@@ -252,13 +253,26 @@ exports.register = async (req, res) => {
       [fullName, normalizedEmail, hashed, phone, address, otp, expiry],
     );
 
-    await sendOtpEmail(normalizedEmail, otp, String(first_name).trim());
+    try {
+      // 1. Try to send the email
+      await sendOtpEmail(normalizedEmail, otp, String(first_name).trim());
 
-    return res.status(201).json({
-      message:
-        "Registration successful. Please check your email for the 6-digit verification code.",
-      user_id: result.insertId,
-    });
+      // 2. If email succeeds, tell frontend to show the OTP tab!
+      return res.status(201).json({
+        message:
+          "Registration successful. Please check your email for the 6-digit verification code.",
+        user_id: result.insertId,
+      });
+    } catch (emailError) {
+      // 3. IF EMAIL FAILS: Delete the stuck user from the database!
+      console.log("Email failed! Rolling back user creation...");
+      await db.query("DELETE FROM users WHERE id = ?", [result.insertId]);
+
+      return res.status(500).json({
+        message: "We couldn't send the verification email. Please try again.",
+      });
+    }
+    // -----------------------
   } catch (err) {
     console.error("[register]", err);
     return res.status(500).json({
