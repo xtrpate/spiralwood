@@ -24,170 +24,169 @@ const transporter = nodemailer.createTransport({
 
 /* ── Registration OTP email ── */
 const sendOtpEmail = async (email, otp, name) => {
-  await transporter.sendMail({
-    from:
-      process.env.MAIL_FROM ||
-      `"Spiral Wood Services" <${process.env.MAIL_USER}>`,
-    to: email,
-    subject: "Your Spiral Wood Verification Code",
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <body style="margin:0;padding:0;background:#f4f6f9;font-family:'Segoe UI',sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
-            <tr>
-              <td align="center">
-                <table width="480" cellpadding="0" cellspacing="0"
-                  style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-
-                  <tr>
-                    <td style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
-                      <div style="width:56px;height:56px;background:linear-gradient(135deg,#8B4513,#D2691E);
-                                  border-radius:14px;display:inline-flex;align-items:center;justify-content:center;
-                                  font-size:26px;font-weight:900;color:white;font-family:Georgia,serif;
-                                  line-height:56px;">W</div>
-                      <h1 style="color:#ffffff;font-size:20px;font-weight:800;margin:12px 0 4px;
-                                 letter-spacing:2px;">SPIRAL WOOD SERVICES</h1>
-                      <p style="color:rgba(255,255,255,0.5);font-size:13px;margin:0;">
-                        Email Verification
-                      </p>
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td style="padding:36px 40px;">
-                      <p style="font-size:16px;color:#1a1a2e;margin:0 0 8px;">
-                        Hi <strong>${name}</strong>,
-                      </p>
-                      <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 28px;">
-                        Thank you for registering with Spiral Wood Services.
-                        Use the verification code below to verify your email address.
-                      </p>
-
-                      <div style="background:#fff3e0;border:2px dashed #D2691E;border-radius:12px;
-                                  padding:24px;text-align:center;margin-bottom:28px;">
-                        <p style="font-size:12px;color:#8B4513;font-weight:700;
-                                  letter-spacing:2px;margin:0 0 10px;text-transform:uppercase;">
-                          Your Verification Code
+  try {
+    await transporter.sendMail({
+      from:
+        process.env.MAIL_FROM ||
+        `"Spiral Wood Services" <${process.env.MAIL_USER}>`,
+      to: email,
+      subject: "Your Spiral Wood Verification Code",
+      html: `
+        <!DOCTYPE html>
+        <html>
+          <body style="margin:0;padding:0;background:#f4f6f9;font-family:'Segoe UI',sans-serif;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
+              <tr>
+                <td align="center">
+                  <table width="480" cellpadding="0" cellspacing="0"
+                    style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+                    <tr>
+                      <td style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
+                        <div style="width:56px;height:56px;background:linear-gradient(135deg,#8B4513,#D2691E);
+                                    border-radius:14px;display:inline-flex;align-items:center;justify-content:center;
+                                    font-size:26px;font-weight:900;color:white;font-family:Georgia,serif;
+                                    line-height:56px;">W</div>
+                        <h1 style="color:#ffffff;font-size:20px;font-weight:800;margin:12px 0 4px;
+                                   letter-spacing:2px;">SPIRAL WOOD SERVICES</h1>
+                        <p style="color:rgba(255,255,255,0.5);font-size:13px;margin:0;">
+                          Email Verification
                         </p>
-                        <div style="font-size:42px;font-weight:900;color:#8B4513;
-                                    letter-spacing:12px;font-family:'Courier New',monospace;">
-                          ${otp}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:36px 40px;">
+                        <p style="font-size:16px;color:#1a1a2e;margin:0 0 8px;">
+                          Hi <strong>${name}</strong>,
+                        </p>
+                        <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 28px;">
+                          Thank you for registering with Spiral Wood Services.
+                          Use the verification code below to verify your email address.
+                        </p>
+                        <div style="background:#fff3e0;border:2px dashed #D2691E;border-radius:12px;
+                                    padding:24px;text-align:center;margin-bottom:28px;">
+                          <p style="font-size:12px;color:#8B4513;font-weight:700;
+                                    letter-spacing:2px;margin:0 0 10px;text-transform:uppercase;">
+                            Your Verification Code
+                          </p>
+                          <div style="font-size:42px;font-weight:900;color:#8B4513;
+                                      letter-spacing:12px;font-family:'Courier New',monospace;">
+                            ${otp}
+                          </div>
+                          <p style="font-size:12px;color:#aaa;margin:10px 0 0;">
+                            Expires in <strong>${OTP_EXPIRY_MINUTES} minutes</strong>
+                          </p>
                         </div>
-                        <p style="font-size:12px;color:#aaa;margin:10px 0 0;">
-                          Expires in <strong>${OTP_EXPIRY_MINUTES} minutes</strong>
+                        <p style="font-size:13px;color:#888;line-height:1.7;margin:0;">
+                          Enter this code on the verification page to finish creating your account.
+                          If you did not create an account, please ignore this email.
                         </p>
-                      </div>
-
-                      <p style="font-size:13px;color:#888;line-height:1.7;margin:0;">
-                        Enter this code on the verification page to finish creating your account.
-                        If you did not create an account, please ignore this email.
-                      </p>
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td style="background:#f7f8fa;padding:20px 40px;text-align:center;
-                               border-top:1px solid #eee;">
-                      <p style="font-size:12px;color:#aaa;margin:0;line-height:1.6;">
-                        © ${new Date().getFullYear()} Spiral Wood Services. All rights reserved.<br/>
-                        This is an automated email — please do not reply.
-                      </p>
-                    </td>
-                  </tr>
-
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-    `,
-  });
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="background:#f7f8fa;padding:20px 40px;text-align:center;
+                                 border-top:1px solid #eee;">
+                        <p style="font-size:12px;color:#aaa;margin:0;line-height:1.6;">
+                          © ${new Date().getFullYear()} Spiral Wood Services. All rights reserved.<br/>
+                          This is an automated email — please do not reply.
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+        </html>
+      `,
+    });
+  } catch (err) {
+    console.error("CRITICAL: Failed to send verification email.", err.message);
+  }
 };
 
 /* ── Password reset OTP email ── */
 const sendResetOtpEmail = async (email, otp, name) => {
-  await transporter.sendMail({
-    from:
-      process.env.MAIL_FROM ||
-      `"Spiral Wood Services" <${process.env.MAIL_USER}>`,
-    to: email,
-    subject: "Your Spiral Wood Password Reset Code",
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <body style="margin:0;padding:0;background:#f4f6f9;font-family:'Segoe UI',sans-serif;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
-            <tr>
-              <td align="center">
-                <table width="480" cellpadding="0" cellspacing="0"
-                  style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
-
-                  <tr>
-                    <td style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
-                      <div style="width:56px;height:56px;background:linear-gradient(135deg,#8B4513,#D2691E);
-                                  border-radius:14px;display:inline-flex;align-items:center;justify-content:center;
-                                  font-size:26px;font-weight:900;color:white;font-family:Georgia,serif;
-                                  line-height:56px;">W</div>
-                      <h1 style="color:#ffffff;font-size:20px;font-weight:800;margin:12px 0 4px;
-                                 letter-spacing:2px;">SPIRAL WOOD SERVICES</h1>
-                      <p style="color:rgba(255,255,255,0.5);font-size:13px;margin:0;">
-                        Password Reset
-                      </p>
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td style="padding:36px 40px;">
-                      <p style="font-size:16px;color:#1a1a2e;margin:0 0 8px;">
-                        Hi <strong>${name}</strong>,
-                      </p>
-                      <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 28px;">
-                        We received a request to reset your password.
-                        Use the code below to continue.
-                      </p>
-
-                      <div style="background:#fff3e0;border:2px dashed #D2691E;border-radius:12px;
-                                  padding:24px;text-align:center;margin-bottom:28px;">
-                        <p style="font-size:12px;color:#8B4513;font-weight:700;
-                                  letter-spacing:2px;margin:0 0 10px;text-transform:uppercase;">
-                          Password Reset Code
+  try {
+    await transporter.sendMail({
+      from:
+        process.env.MAIL_FROM ||
+        `"Spiral Wood Services" <${process.env.MAIL_USER}>`,
+      to: email,
+      subject: "Your Spiral Wood Password Reset Code",
+      html: `
+        <!DOCTYPE html>
+        <html>
+          <body style="margin:0;padding:0;background:#f4f6f9;font-family:'Segoe UI',sans-serif;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 0;">
+              <tr>
+                <td align="center">
+                  <table width="480" cellpadding="0" cellspacing="0"
+                    style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+                    <tr>
+                      <td style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
+                        <div style="width:56px;height:56px;background:linear-gradient(135deg,#8B4513,#D2691E);
+                                    border-radius:14px;display:inline-flex;align-items:center;justify-content:center;
+                                    font-size:26px;font-weight:900;color:white;font-family:Georgia,serif;
+                                    line-height:56px;">W</div>
+                        <h1 style="color:#ffffff;font-size:20px;font-weight:800;margin:12px 0 4px;
+                                   letter-spacing:2px;">SPIRAL WOOD SERVICES</h1>
+                        <p style="color:rgba(255,255,255,0.5);font-size:13px;margin:0;">
+                          Password Reset
                         </p>
-                        <div style="font-size:42px;font-weight:900;color:#8B4513;
-                                    letter-spacing:12px;font-family:'Courier New',monospace;">
-                          ${otp}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:36px 40px;">
+                        <p style="font-size:16px;color:#1a1a2e;margin:0 0 8px;">
+                          Hi <strong>${name}</strong>,
+                        </p>
+                        <p style="font-size:14px;color:#666;line-height:1.7;margin:0 0 28px;">
+                          We received a request to reset your password.
+                          Use the code below to continue.
+                        </p>
+                        <div style="background:#fff3e0;border:2px dashed #D2691E;border-radius:12px;
+                                    padding:24px;text-align:center;margin-bottom:28px;">
+                          <p style="font-size:12px;color:#8B4513;font-weight:700;
+                                    letter-spacing:2px;margin:0 0 10px;text-transform:uppercase;">
+                            Password Reset Code
+                          </p>
+                          <div style="font-size:42px;font-weight:900;color:#8B4513;
+                                      letter-spacing:12px;font-family:'Courier New',monospace;">
+                            ${otp}
+                          </div>
+                          <p style="font-size:12px;color:#aaa;margin:10px 0 0;">
+                            Expires in <strong>${RESET_OTP_EXPIRY_MINUTES} minutes</strong>
+                          </p>
                         </div>
-                        <p style="font-size:12px;color:#aaa;margin:10px 0 0;">
-                          Expires in <strong>${RESET_OTP_EXPIRY_MINUTES} minutes</strong>
+                        <p style="font-size:13px;color:#888;line-height:1.7;margin:0;">
+                          Enter this code on the password reset page and create a new password.
+                          If you did not request a reset, please ignore this email.
                         </p>
-                      </div>
-
-                      <p style="font-size:13px;color:#888;line-height:1.7;margin:0;">
-                        Enter this code on the password reset page and create a new password.
-                        If you did not request a reset, please ignore this email.
-                      </p>
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td style="background:#f7f8fa;padding:20px 40px;text-align:center;
-                               border-top:1px solid #eee;">
-                      <p style="font-size:12px;color:#aaa;margin:0;line-height:1.6;">
-                        © ${new Date().getFullYear()} Spiral Wood Services. All rights reserved.<br/>
-                        This is an automated email — please do not reply.
-                      </p>
-                    </td>
-                  </tr>
-
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-    `,
-  });
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="background:#f7f8fa;padding:20px 40px;text-align:center;
+                                 border-top:1px solid #eee;">
+                        <p style="font-size:12px;color:#aaa;margin:0;line-height:1.6;">
+                          © ${new Date().getFullYear()} Spiral Wood Services. All rights reserved.<br/>
+                          This is an automated email — please do not reply.
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+        </html>
+      `,
+    });
+  } catch (err) {
+    console.error(
+      "CRITICAL: Failed to send password reset email.",
+      err.message,
+    );
+  }
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -195,9 +194,14 @@ const sendResetOtpEmail = async (email, otp, name) => {
 ══════════════════════════════════════════════════════════════ */
 
 exports.register = async (req, res) => {
+  // MAGIC DEBUG LINE: This prints everything React sends us!
+  console.log("=== INCOMING REGISTRATION DATA ===");
+  console.log(req.body);
+
   const { first_name, last_name, email, phone, address, password } = req.body;
 
   if (!first_name || !last_name || !email || !phone || !address || !password) {
+    console.log("Validation Failed: Missing a field.");
     return res.status(400).json({ message: "All fields are required." });
   }
 
@@ -211,7 +215,6 @@ exports.register = async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
     const fullName = `${String(first_name).trim()} ${String(last_name).trim()}`;
 
-    // ── FIXED: Switched to .query ──
     const [existing] = await db.query(
       "SELECT id FROM users WHERE email = ? LIMIT 1",
       [normalizedEmail],
@@ -227,7 +230,6 @@ exports.register = async (req, res) => {
     const otp = generateOtp();
     const expiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    // ── FIXED: Switched to .query ──
     const [result] = await db.query(
       `
       INSERT INTO users
@@ -277,7 +279,6 @@ exports.verifyOtp = async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
     const normalizedOtp = String(otp).trim();
 
-    // ── FIXED: Switched to .query ──
     const [rows] = await db.query(
       `
       SELECT id, otp_code, otp_expires, is_verified
@@ -313,7 +314,6 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    // ── FIXED: Switched to .query ──
     await db.query(
       `
       UPDATE users
@@ -350,7 +350,6 @@ exports.resendOtp = async (req, res) => {
   try {
     const normalizedEmail = String(email).trim().toLowerCase();
 
-    // ── FIXED: Switched to .query ──
     const [rows] = await db.query(
       `
       SELECT id, name, is_verified
@@ -372,7 +371,6 @@ exports.resendOtp = async (req, res) => {
     const otp = generateOtp();
     const expiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    // ── FIXED: Switched to .query ──
     await db.query(
       `
       UPDATE users
@@ -409,7 +407,6 @@ exports.forgotPassword = async (req, res) => {
     const genericMessage =
       "If the account exists, a password reset code has been sent to the email address.";
 
-    // ── FIXED: Switched to .query ──
     const [rows] = await db.query(
       `
       SELECT id, name, is_verified, is_active
@@ -435,7 +432,6 @@ exports.forgotPassword = async (req, res) => {
       Date.now() + RESET_OTP_EXPIRY_MINUTES * 60 * 1000,
     );
 
-    // ── FIXED: Switched to .query ──
     await db.query(
       `
       UPDATE users
@@ -477,7 +473,6 @@ exports.resetPassword = async (req, res) => {
     const normalizedEmail = String(email).trim().toLowerCase();
     const normalizedOtp = String(otp).trim();
 
-    // ── FIXED: Switched to .query ──
     const [rows] = await db.query(
       `
       SELECT id, reset_otp, reset_otp_expires, is_verified, is_active
@@ -528,7 +523,6 @@ exports.resetPassword = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(new_password, 12);
 
-    // ── FIXED: Switched to .query ──
     await db.query(
       `
       UPDATE users
@@ -565,7 +559,6 @@ exports.login = async (req, res) => {
   try {
     const normalizedEmail = String(email).trim().toLowerCase();
 
-    // ── FIXED: Switched to .query ──
     const [rows] = await db.query(
       `
       SELECT
@@ -623,7 +616,6 @@ exports.login = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || "24h" },
     );
 
-    // ── FIXED: Switched to .query ──
     await db.query("UPDATE users SET last_login = NOW() WHERE id = ?", [
       user.id,
     ]);
