@@ -831,7 +831,7 @@ const toAllowedBlueprintPaymentMethod = (value) => {
 const toPaymentTransactionMethod = (value) => {
   const key = toAllowedBlueprintPaymentMethod(value);
   if (!key) return null;
-  return key === "bank_transfer" ? "bank transfer" : key;
+  return key;
 };
 
 const resolveExistingProductId = async (conn, value) => {
