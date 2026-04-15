@@ -546,8 +546,8 @@ exports.createCustomOrder = async (req, res) => {
 
       const [itemResult] = await conn.execute(
         `INSERT INTO order_items
-          (order_id, product_id, product_name, quantity, unit_price, subtotal, variation_id, customization_json)
-        VALUES (?, ?, ?, ?, 0, 0, NULL, ?)`,
+          (order_id, product_id, product_name, quantity, unit_price, variation_id, customization_json)
+        VALUES (?, ?, ?, ?, 0, NULL, ?)`,
         [
           order_id,
           resolvedProductId,
