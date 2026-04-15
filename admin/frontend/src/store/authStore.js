@@ -82,6 +82,11 @@ const useAuthStore = create((set, get) => ({
     }
   },
 
+  register: async (userData) => {
+    const { data } = await api.post("/customer/auth/register", userData);
+    return data;
+  },
+
   verifyOtp: async (email, otp) => {
     const { data } = await api.post("/customer/auth/verify-otp", {
       email,
