@@ -31,15 +31,15 @@ exports.getReport = async (req, res) => {
 
     const [orders] = await pool.query(
       `SELECT o.id, o.order_number,
-              o.type     AS channel,          -- schema: type
+              o.type     AS channel,          
               o.status,
               o.payment_method,
-              o.total    AS total_amount,       -- schema: total
+              o.total    AS total_amount,       
               o.created_at,
-              COALESCE(u.name,  o.walkin_customer_name)  AS customer_name,
-              COALESCE(u.phone, o.walkin_customer_phone)  AS customer_phone,
-              r.receipt_number,
-              d.status   AS delivery_status,
+              MAX(COALESCE(u.name,  o.walkin_customer_name))  AS customer_name,
+              MAX(COALESCE(u.phone, o.walkin_customer_phone)) AS customer_phone,
+              MAX(r.receipt_number) AS receipt_number,
+              MAX(d.status)  AS delivery_status,
               COALESCE(SUM(oi.profit_margin * oi.quantity), 0) AS total_profit
        FROM orders o
        LEFT JOIN users u       ON u.id  = o.customer_id
