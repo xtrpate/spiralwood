@@ -1362,18 +1362,19 @@ exports.submitDownPayment = async (req, res) => {
       });
     }
 
-    const requiredDownPayment = roundMoney(
-      order.down_payment ||
-        (order.total > 0 ? calcDownPaymentAmount(order.total) : 0),
+    const latestEstimation = await getLatestEstimationForBlueprint(
+      conn,
+      order.blueprint_id,
     );
 
-    if (!(requiredDownPayment > 0)) {
-      await conn.rollback();
-      return res.status(400).json({
-        message:
-          "Down payment amount is not ready yet. Please refresh the quotation page.",
-      });
-    }
+    const quotedTotal = roundMoney(
+      latestEstimation?.grand_total || order.total || 0,
+    );
+
+    const requiredDownPayment = roundMoney(
+      order.down_payment ||
+        (quotedTotal > 0 ? calcDownPaymentAmount(quotedTotal) : 0),
+    );
 
     const [paymentRows] = await conn.execute(
       `SELECT id, amount, status
