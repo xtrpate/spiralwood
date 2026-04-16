@@ -17,7 +17,7 @@ const WORLD_H = 3200;
 const WORLD_D = 5200;
 const FLOOR_OFFSET = 40;
 const MAX_HISTORY = 60;
-const SELECTION_COLOR = 0x38bdf8; // Blue highlight color
+const SELECTION_COLOR = 0x38bdf8;
 const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 const isHexColor = (value) => HEX_COLOR_RE.test(String(value || "").trim());
@@ -72,9 +72,6 @@ const clampNumber = (value, min, max) => {
 };
 
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value ?? null));
-const uniqueIds = (items = []) => [
-  ...new Set((Array.isArray(items) ? items : []).filter(Boolean)),
-];
 
 const buildBoundsFromComponents = (items = []) => {
   if (!Array.isArray(items) || !items.length) {
@@ -225,6 +222,7 @@ const normalizeViewerComponent = (comp = {}) => {
     material:
       String(comp?.material || comp?.wood_type || "Marine Plywood").trim() ||
       "Marine Plywood",
+    label: comp?.label || comp?.name || comp?.type || "Part", // Fallback label
   };
 };
 
@@ -280,11 +278,10 @@ export default function Customer3DViewer({
   );
   const [selectedCompIds, setSelectedCompIds] = useState([]);
 
-  // 👉 NEW STATES
   const [unit, setUnit] = useState("cm");
   const [showPerson, setShowPerson] = useState(true);
   const [personHeightMm, setPersonHeightMm] = useState(1700);
-  const [selectionMode, setSelectionMode] = useState(false); // Controls if they can click parts
+  const [selectionMode, setSelectionMode] = useState(false);
   const [activeView, setActiveView] = useState("3D");
   const [customHex, setCustomHex] = useState("#1e293b");
 
@@ -301,6 +298,33 @@ export default function Customer3DViewer({
     height: "",
     depth: "",
   });
+
+  // 👉 AUTO-GROUPING FOR SHORTCUT BUTTONS
+  const partGroups = useMemo(() => {
+    const groups = [];
+    components.forEach((c) => {
+      const existing = groups.find(
+        (g) =>
+          Math.abs(g.width - c.width) < 1 &&
+          Math.abs(g.height - c.height) < 1 &&
+          Math.abs(g.depth - c.depth) < 1 &&
+          g.material === c.material,
+      );
+      if (existing) {
+        existing.ids.push(c.id);
+      } else {
+        groups.push({
+          label: c.label,
+          width: c.width,
+          height: c.height,
+          depth: c.depth,
+          material: c.material,
+          ids: [c.id],
+        });
+      }
+    });
+    return groups;
+  }, [components]);
 
   const pushHistorySnapshot = useCallback((snapshot) => {
     historyRef.current.past.push(cloneDeep(snapshot));
@@ -340,7 +364,6 @@ export default function Customer3DViewer({
     [pushHistorySnapshot],
   );
 
-  // UNIT CONVERSION UTILS
   const convertMmToUnit = useCallback((mmVal, targetUnit) => {
     if (!mmVal) return "";
     if (targetUnit === "cm") return (mmVal / 10).toFixed(1);
@@ -388,7 +411,6 @@ export default function Customer3DViewer({
     return normalizeDimensions(initialDimensions || {});
   }, [components, initialDimensions]);
 
-  // 👉 SIBLING SELECTION LOGIC (Find identical parts)
   const selectedGroup = useMemo(() => {
     if (!selectedCompIds.length) return [];
     return components.filter((c) => selectedCompIds.includes(c.id));
@@ -490,67 +512,6 @@ export default function Customer3DViewer({
 
     window.addEventListener("resize", handleResize);
 
-    // 👉 RAYCASTER FOR SIBLING SELECTION
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-    let startX = 0;
-    let startY = 0;
-
-    const onPointerDown = (e) => {
-      startX = e.clientX;
-      startY = e.clientY;
-    };
-    const onPointerUp = (event) => {
-      if (!selectionMode || readOnly) return;
-
-      const dragDist = Math.hypot(
-        event.clientX - startX,
-        event.clientY - startY,
-      );
-      if (dragDist > 5) return; // They were rotating the camera
-
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(rootGroup.children, true);
-
-      if (intersects.length > 0) {
-        let obj = intersects[0].object;
-        while (obj && !obj.userData?.id && obj.parent) {
-          obj = obj.parent;
-        }
-
-        if (obj?.userData?.id) {
-          const clickedId = obj.userData.id;
-
-          // Find the blueprint component that was clicked
-          setComponents((prevComps) => {
-            const target = prevComps.find((c) => c.id === clickedId);
-            if (!target) return prevComps;
-
-            // FIND SIBLINGS: Any component with exact same W, H, D, and Material
-            const siblings = prevComps.filter(
-              (c) =>
-                Math.abs(c.width - target.width) < 1 &&
-                Math.abs(c.height - target.height) < 1 &&
-                Math.abs(c.depth - target.depth) < 1 &&
-                c.material === target.material,
-            );
-
-            setSelectedCompIds(siblings.map((s) => s.id));
-            return prevComps;
-          });
-        }
-      } else {
-        setSelectedCompIds([]); // Clicked empty space
-      }
-    };
-
-    renderer.domElement.addEventListener("pointerdown", onPointerDown);
-    renderer.domElement.addEventListener("pointerup", onPointerUp);
-
     let animId;
     const animate = () => {
       animId = requestAnimationFrame(animate);
@@ -602,8 +563,6 @@ export default function Customer3DViewer({
 
     return () => {
       window.removeEventListener("resize", handleResize);
-      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
-      renderer.domElement.removeEventListener("pointerup", onPointerUp);
       cancelAnimationFrame(animId);
       orbit.dispose();
       renderer.dispose();
@@ -611,9 +570,77 @@ export default function Customer3DViewer({
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [selectionMode, readOnly]);
+  }, []);
 
-  // BUILD 3D OBJECTS & HIGHLIGHTS
+  // 👉 SEPARATE EFFECT FOR SELECTION CLICKS
+  useEffect(() => {
+    if (!rendererRef.current || !cameraRef.current || !rootGroupRef.current)
+      return;
+    const renderer = rendererRef.current;
+    const camera = cameraRef.current;
+    const rootGroup = rootGroupRef.current;
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let startX = 0;
+    let startY = 0;
+
+    const onPointerDown = (e) => {
+      startX = e.clientX;
+      startY = e.clientY;
+    };
+    const onPointerUp = (event) => {
+      if (!selectionMode || readOnly) return;
+
+      const dragDist = Math.hypot(
+        event.clientX - startX,
+        event.clientY - startY,
+      );
+      if (dragDist > 5) return; // User was spinning the camera
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(rootGroup.children, true);
+
+      if (intersects.length > 0) {
+        let obj = intersects[0].object;
+        while (obj && !obj.userData?.id && obj.parent) {
+          obj = obj.parent;
+        }
+
+        if (obj?.userData?.id) {
+          const clickedId = obj.userData.id;
+          const target = components.find((c) => c.id === clickedId);
+          if (target) {
+            // Find Siblings
+            const siblings = components.filter(
+              (c) =>
+                Math.abs(c.width - target.width) < 1 &&
+                Math.abs(c.height - target.height) < 1 &&
+                Math.abs(c.depth - target.depth) < 1 &&
+                c.material === target.material,
+            );
+            setSelectedCompIds(siblings.map((s) => s.id));
+          }
+        }
+      } else {
+        setSelectedCompIds([]); // Clicked empty space
+      }
+    };
+
+    renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    renderer.domElement.addEventListener("pointerup", onPointerUp);
+
+    return () => {
+      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      renderer.domElement.removeEventListener("pointerup", onPointerUp);
+    };
+  }, [selectionMode, readOnly, components]);
+
+  // BUILD 3D OBJECTS (Runs ONLY when components change, stops disappearing bug)
   useEffect(() => {
     const rootGroup = rootGroupRef.current;
     if (!rootGroup) return;
@@ -630,14 +657,6 @@ export default function Customer3DViewer({
         }
       });
     }
-
-    // Clear old highlights
-    selectionHelpersRef.current.forEach((h) => {
-      sceneRef.current?.remove(h);
-      if (h.geometry) h.geometry.dispose();
-      if (h.material) h.material.dispose();
-    });
-    selectionHelpersRef.current = [];
 
     const dummySelectable = [];
     const boundsBox = new THREE.Box3();
@@ -675,19 +694,8 @@ export default function Customer3DViewer({
 
         rootGroup.add(obj);
         boundsBox.expandByObject(obj);
-
-        // 👉 ADD HIGHLIGHT IF SELECTED
-        if (selectedCompIds.includes(comp.id)) {
-          const helper = new THREE.BoxHelper(obj, SELECTION_COLOR);
-          helper.material.depthTest = false;
-          helper.material.transparent = true;
-          helper.material.opacity = 0.95;
-          helper.renderOrder = 999;
-          sceneRef.current.add(helper);
-          selectionHelpersRef.current.push(helper);
-        }
       } catch (error) {
-        console.error("Customer3DViewer render component failed:", comp, error);
+        console.error("Customer3DViewer render failed:", comp, error);
       }
     });
 
@@ -698,7 +706,6 @@ export default function Customer3DViewer({
       const tick = 25;
       const linePoints = [];
 
-      // WIDTH
       linePoints.push(
         boundsBox.min.x,
         boundsBox.min.y,
@@ -729,7 +736,7 @@ export default function Customer3DViewer({
         boundsBox.min.y,
         boundsBox.max.z + offset + tick,
       );
-      // HEIGHT
+
       linePoints.push(
         boundsBox.max.x + offset,
         boundsBox.min.y,
@@ -760,7 +767,7 @@ export default function Customer3DViewer({
         boundsBox.max.y,
         boundsBox.max.z,
       );
-      // DEPTH
+
       linePoints.push(
         boundsBox.max.x + offset,
         boundsBox.min.y,
@@ -801,7 +808,38 @@ export default function Customer3DViewer({
       const dimensionLines = new THREE.LineSegments(lineGeo, lineMat);
       rootGroup.add(dimensionLines);
     }
-  }, [components, selectedCompIds]);
+  }, [components]); // 👉 Separated to stop disappearing bug
+
+  // 👉 SEPARATE EFFECT JUST FOR HIGHLIGHTS
+  useEffect(() => {
+    if (!sceneRef.current || !rootGroupRef.current) return;
+
+    selectionHelpersRef.current.forEach((h) => {
+      sceneRef.current.remove(h);
+      if (h.geometry) h.geometry.dispose();
+      if (h.material) h.material.dispose();
+    });
+    selectionHelpersRef.current = [];
+
+    if (!selectedCompIds.length) return;
+
+    selectedCompIds.forEach((id) => {
+      let target = null;
+      rootGroupRef.current.traverse((child) => {
+        if (child.userData?.id === id && !target) target = child;
+      });
+
+      if (target) {
+        const helper = new THREE.BoxHelper(target, SELECTION_COLOR);
+        helper.material.depthTest = false;
+        helper.material.transparent = true;
+        helper.material.opacity = 0.95;
+        helper.renderOrder = 999;
+        sceneRef.current.add(helper);
+        selectionHelpersRef.current.push(helper);
+      }
+    });
+  }, [selectedCompIds, components]);
 
   // BUILD THE PERSON
   useEffect(() => {
@@ -935,7 +973,7 @@ export default function Customer3DViewer({
     }
   }, [showPerson, personHeightMm, components]);
 
-  // 👉 RULE 4: CAMERA VIEW CONTROLLER
+  // 👉 CAMERA CONTROLLER (Locks 2D Views)
   const changeCameraView = (viewMode) => {
     if (
       !boundsBoxRef.current ||
@@ -952,23 +990,29 @@ export default function Customer3DViewer({
     box.getSize(size);
 
     const maxDim = Math.max(size.x, size.y, size.z);
-    const distance = maxDim * 1.8 + 500; // Keep camera far enough back
+    const distance = maxDim * 1.8 + 500;
+
+    // Lock camera rotation if it's a flat orthographic view
+    orbitRef.current.enableRotate = viewMode === "3D";
 
     switch (viewMode) {
       case "Front":
         cameraRef.current.position.set(center.x, center.y, center.z + distance);
         break;
+      case "Back":
+        cameraRef.current.position.set(center.x, center.y, center.z - distance);
+        break;
       case "Side":
-        // Left side view
         cameraRef.current.position.set(center.x - distance, center.y, center.z);
         break;
       case "Top":
-        // Look from straight down
         cameraRef.current.position.set(center.x, center.y + distance, center.z);
+        break;
+      case "Bottom":
+        cameraRef.current.position.set(center.x, center.y - distance, center.z);
         break;
       case "3D":
       default:
-        // Perspective angle
         cameraRef.current.position.set(
           center.x + distance * 0.8,
           center.y + distance * 0.6,
@@ -982,7 +1026,6 @@ export default function Customer3DViewer({
     setActiveView(viewMode);
   };
 
-  // --- SCALING LOGIC ---
   const handleOverallDraftChange = (axis, value) => {
     setOverallDrafts((prev) => ({ ...prev, [axis]: value }));
   };
@@ -1023,20 +1066,18 @@ export default function Customer3DViewer({
 
     commitComponents((prev) =>
       prev.map((c) => {
-        if (axis === "width") {
+        if (axis === "width")
           return {
             ...c,
             x: Math.round(centerX + (Number(c.x || 0) - centerX) * scale),
             width: Math.max(1, Math.round(Number(c.width || 0) * scale)),
           };
-        }
-        if (axis === "height") {
+        if (axis === "height")
           return {
             ...c,
             y: Math.round(bottomY - (bottomY - Number(c.y || 0)) * scale),
             height: Math.max(1, Math.round(Number(c.height || 0) * scale)),
           };
-        }
         return {
           ...c,
           z: Math.round(centerZ + (Number(c.z || 0) - centerZ) * scale),
@@ -1046,7 +1087,6 @@ export default function Customer3DViewer({
     );
   };
 
-  // 👉 SIBLING PART SCALING
   const commitPartDimension = (axis, rawUnitValue) => {
     if (!isCustomizable || readOnly || !selectedGroup.length) return;
 
@@ -1058,26 +1098,21 @@ export default function Customer3DViewer({
     const nextValueMm = Math.max(1, Math.round(parsedMmValue));
     if (nextValueMm === currentValueMm) return;
 
-    // Apply to ALL selected components (which are identical siblings)
     commitComponents((prev) =>
       prev.map((c) => {
         if (!selectedCompIds.includes(c.id)) return c;
-
-        // Scale from center to prevent shifting out of alignment
-        if (axis === "width") {
+        if (axis === "width")
           return {
             ...c,
             x: c.x - (nextValueMm - c.width) / 2,
             width: nextValueMm,
           };
-        }
-        if (axis === "height") {
+        if (axis === "height")
           return {
             ...c,
             y: c.y - (nextValueMm - c.height) / 2,
             height: nextValueMm,
           };
-        }
         return {
           ...c,
           z: c.z - (nextValueMm - c.depth) / 2,
@@ -1087,11 +1122,8 @@ export default function Customer3DViewer({
     );
   };
 
-  // --- COLORS ---
   const handleFinishChange = (finishId) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
-
-    // If parts are selected, color ONLY those parts. Otherwise color everything.
     const targetIds = selectedCompIds.length
       ? selectedCompIds
       : components.map((c) => c.id);
@@ -1122,7 +1154,7 @@ export default function Customer3DViewer({
 
   const handleColorChange = (hex) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
-    setCustomHex(hex); // Keep input in sync
+    setCustomHex(hex);
 
     const targetIds = selectedCompIds.length
       ? selectedCompIds
@@ -1229,9 +1261,8 @@ export default function Customer3DViewer({
 
       <div style={styles.viewerShell}>
         <div style={styles.canvasWrap}>
-          {/* 👉 CAMERA TOOLBAR */}
           <div style={styles.cameraToolbar}>
-            {["3D", "Front", "Side", "Top"].map((view) => (
+            {["3D", "Front", "Back", "Side", "Top", "Bottom"].map((view) => (
               <button
                 key={view}
                 onClick={() => changeCameraView(view)}
@@ -1269,7 +1300,6 @@ export default function Customer3DViewer({
               </p>
             </div>
 
-            {/* 👉 PART SELECTION TOGGLE */}
             <div
               style={{
                 ...styles.sidebarBlock,
@@ -1300,15 +1330,42 @@ export default function Customer3DViewer({
               </div>
 
               {selectionMode && (
-                <div style={styles.helperText}>
-                  Click any part in the 3D viewer. The system will auto-select
-                  all identical parts (e.g. all 4 legs) so you can resize them
-                  together!
-                </div>
+                <>
+                  <div style={styles.helperText}>
+                    Tap a part in the 3D view, or use the quick-select buttons
+                    below:
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "6px",
+                      flexWrap: "wrap",
+                      marginTop: "4px",
+                    }}
+                  >
+                    {partGroups.map((g, i) => {
+                      const isSelected =
+                        selectedCompIds.length > 0 &&
+                        selectedCompIds.includes(g.ids[0]);
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => setSelectedCompIds(g.ids)}
+                          style={{
+                            ...styles.miniBtn,
+                            background: isSelected ? "#38bdf8" : "#e2e8f0",
+                            color: isSelected ? "#fff" : "#334155",
+                          }}
+                        >
+                          {g.label} ({g.ids.length})
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </div>
 
-            {/* IF PARTS SELECTED, SHOW PART EDITOR. OTHERWISE, SHOW OVERALL EDITOR */}
             {selectionMode && selectedGroup.length > 0 && sampleSelectedPart ? (
               <div
                 style={{
@@ -1454,7 +1511,6 @@ export default function Customer3DViewer({
               </div>
             )}
 
-            {/* 👉 FINISHES & CUSTOM COLOR PICKER */}
             <div
               style={{
                 ...styles.sidebarBlock,
@@ -1486,14 +1542,12 @@ export default function Customer3DViewer({
                 Custom Solid Paint (HEX Code)
               </span>
               <div style={{ display: "flex", gap: "8px" }}>
-                {/* Native HTML Color Picker */}
                 <input
                   type="color"
                   value={customHex}
                   onChange={(e) => handleColorChange(e.target.value)}
                   style={styles.colorPicker}
                 />
-                {/* Text input for direct HEX typing */}
                 <input
                   type="text"
                   value={customHex}
@@ -1674,14 +1728,14 @@ const styles = {
     minHeight: 520,
     backgroundColor: "#f8fafc",
   },
-
-  // 👉 CAMERA TOOLBAR STYLES
   cameraToolbar: {
     position: "absolute",
     top: 12,
     left: 12,
     display: "flex",
     gap: "6px",
+    flexWrap: "wrap",
+    maxWidth: "200px",
     zIndex: 10,
     background: "rgba(255,255,255,0.9)",
     padding: "4px",
@@ -1690,7 +1744,7 @@ const styles = {
     border: "1px solid #e2e8f0",
   },
   cameraBtn: {
-    padding: "6px 12px",
+    padding: "6px 10px",
     fontSize: "11px",
     fontWeight: "bold",
     border: "none",
@@ -1698,8 +1752,6 @@ const styles = {
     cursor: "pointer",
     transition: "all 0.2s",
   },
-
-  // 👉 COLOR PICKER STYLES
   colorPicker: {
     width: "40px",
     height: "40px",
@@ -1714,12 +1766,11 @@ const styles = {
     padding: "4px 8px",
     fontSize: "11px",
     background: "#e2e8f0",
-    border: "none",
+    border: "1px solid #cbd5e1",
     borderRadius: "6px",
     cursor: "pointer",
     fontWeight: "bold",
   },
-
   floatingLabel: {
     position: "absolute",
     left: 0,
@@ -1738,7 +1789,6 @@ const styles = {
     boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
     zIndex: 10,
   },
-
   sidebar: {
     minWidth: 0,
     minHeight: 0,
