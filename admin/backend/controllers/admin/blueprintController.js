@@ -1521,7 +1521,7 @@ exports.saveEstimation = async (req, res) => {
       await conn.query(
         `INSERT INTO estimation_items
           (estimation_id, component_id, raw_material_id, description, quantity, unit_cost)
-        VALUES (?,?,?,?,?,?,?)`,
+        VALUES (?,?,?,?,?,?)`,
         [
           insertResult.insertId,
           item.component_id || null,
