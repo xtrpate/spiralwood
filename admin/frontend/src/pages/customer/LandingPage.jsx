@@ -36,6 +36,9 @@ export default function LandingPage() {
         backgroundColor: "#fdfbf9",
         minHeight: "100vh",
         fontFamily: "sans-serif",
+        width: "100vw",
+        marginLeft: "calc(50% - 50vw)",
+        marginRight: "calc(50% - 50vw)",
       }}
     >
       {/* 👉 1. HERO SECTION (Full Edge-to-Edge Background) */}
