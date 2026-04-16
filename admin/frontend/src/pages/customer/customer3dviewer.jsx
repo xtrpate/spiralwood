@@ -16,7 +16,7 @@ const WORLD_W = 6400;
 const WORLD_H = 3200;
 const WORLD_D = 5200;
 const FLOOR_OFFSET = 40;
-const MAX_HISTORY = 60; // 👉 Added back for Undo/Redo
+const MAX_HISTORY = 60;
 const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 const isHexColor = (value) => HEX_COLOR_RE.test(String(value || "").trim());
@@ -249,24 +249,24 @@ export default function Customer3DViewer({
   const personGroupRef = useRef(null);
   const boundsBoxRef = useRef(new THREE.Box3());
 
-  // 👉 PERFORMANCE FIX: Cache canvas size to stop layout thrashing
   const canvasSizeRef = useRef({ width: 1, height: 1 });
 
-  // Refs for 3D Labels
   const labelWRef = useRef(null);
   const labelHRef = useRef(null);
   const labelDRef = useRef(null);
 
-  // 👉 UNDO/REDO MEMORY
   const historyRef = useRef({ past: [], future: [] });
 
   const [components, setComponents] = useState(() =>
     normalizeViewerComponents(initialComponents),
   );
 
+  // 👉 ADDED ALL UNITS
   const [unit, setUnit] = useState("cm");
   const [showPerson, setShowPerson] = useState(true);
-  const [personHeightInput, setPersonHeightInput] = useState("5.6");
+
+  // 👉 PERSON SYNCED TO MASTER UNIT (Defaults to 1700mm / ~5'7")
+  const [personHeightMm, setPersonHeightMm] = useState(1700);
 
   const [quantity, setQuantity] = useState(1);
   const [comments, setComments] = useState("");
@@ -277,7 +277,6 @@ export default function Customer3DViewer({
     depth: "",
   });
 
-  // --- UNDO / REDO FUNCTIONS ---
   const pushHistorySnapshot = useCallback((snapshot) => {
     historyRef.current.past.push(cloneDeep(snapshot));
     if (historyRef.current.past.length > MAX_HISTORY) {
@@ -316,7 +315,6 @@ export default function Customer3DViewer({
     [pushHistorySnapshot],
   );
 
-  // Keyboard Shortcuts for Undo/Redo
   useEffect(() => {
     const handleKeyDown = (event) => {
       const tag = String(event.target?.tagName || "").toLowerCase();
@@ -344,20 +342,26 @@ export default function Customer3DViewer({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleUndo, handleRedo, readOnly]);
 
-  // --- UNIT CONVERSION UTILS ---
+  // 👉 EXPANDED UNIT MATH
   const convertMmToUnit = useCallback((mmVal, targetUnit) => {
     if (!mmVal) return "";
     if (targetUnit === "cm") return (mmVal / 10).toFixed(1);
+    if (targetUnit === "m") return (mmVal / 1000).toFixed(2);
     if (targetUnit === "inches") return (mmVal / 25.4).toFixed(1);
-    return Math.round(mmVal).toString();
+    if (targetUnit === "ft") return (mmVal / 304.8).toFixed(2);
+    if (targetUnit === "yd") return (mmVal / 914.4).toFixed(2);
+    return Math.round(mmVal).toString(); // mm
   }, []);
 
   const convertUnitToMm = useCallback((unitVal, currentUnit) => {
     const num = parseFloat(unitVal);
     if (isNaN(num)) return 0;
     if (currentUnit === "cm") return num * 10;
+    if (currentUnit === "m") return num * 1000;
     if (currentUnit === "inches") return num * 25.4;
-    return num;
+    if (currentUnit === "ft") return num * 304.8;
+    if (currentUnit === "yd") return num * 914.4;
+    return num; // mm
   }, []);
 
   const formatUnitLabel = useCallback(
@@ -387,13 +391,6 @@ export default function Customer3DViewer({
     [customizationRules],
   );
 
-  const personHeightMm = useMemo(() => {
-    const parts = String(personHeightInput).split(".");
-    const ft = parseInt(parts[0], 10) || 0;
-    const inc = parts[1] ? parseInt(parts[1].substring(0, 2), 10) : 0;
-    return (ft * 12 + inc) * 25.4;
-  }, [personHeightInput]);
-
   const overallBounds = useMemo(() => {
     const current = buildBoundsFromComponents(components);
     if (current.width_mm > 0 || current.height_mm > 0 || current.depth_mm > 0)
@@ -416,7 +413,7 @@ export default function Customer3DViewer({
 
     const w = mount.clientWidth || 1;
     const h = mount.clientHeight || 1;
-    canvasSizeRef.current = { width: w, height: h }; // Initialize cache
+    canvasSizeRef.current = { width: w, height: h };
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(w, h);
@@ -479,10 +476,7 @@ export default function Customer3DViewer({
       if (!mountRef.current) return;
       const newW = Math.max(1, mountRef.current.clientWidth);
       const newH = Math.max(1, mountRef.current.clientHeight);
-
-      // Update our cache so the animation loop doesn't have to calculate it!
       canvasSizeRef.current = { width: newW, height: newH };
-
       renderer.setSize(newW, newH);
       camera.aspect = newW / newH;
       camera.updateProjectionMatrix();
@@ -490,7 +484,6 @@ export default function Customer3DViewer({
 
     window.addEventListener("resize", handleResize);
 
-    // 👉 PERFORMANCE FIX: Use cached width/height instead of getBoundingClientRect
     let animId;
     const animate = () => {
       animId = requestAnimationFrame(animate);
@@ -501,9 +494,8 @@ export default function Customer3DViewer({
         const box = boundsBoxRef.current;
         const cWidth = canvasSizeRef.current.width;
         const cHeight = canvasSizeRef.current.height;
-        const offset = 100; // Match the offset we used for the 3D lines
+        const offset = 100;
 
-        // Find the center points of the 3D I-Lines we draw in the other useEffect
         const pW = new THREE.Vector3(
           (box.min.x + box.max.x) / 2,
           box.min.y,
@@ -530,7 +522,6 @@ export default function Customer3DViewer({
           }
           divRef.current.style.display = "block";
 
-          // Use cached width/height for instant math (No Reflow Lag!)
           const x = (projected.x * 0.5 + 0.5) * cWidth;
           const y = (-projected.y * 0.5 + 0.5) * cHeight;
           divRef.current.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
@@ -612,25 +603,23 @@ export default function Customer3DViewer({
 
     boundsBoxRef.current.copy(boundsBox);
 
-    // 👉 DRAW THE 3D "I-LINES" (DIMENSION LINES)
     if (!boundsBox.isEmpty()) {
-      const offset = 100; // How far away the lines float from the wood
-      const tick = 25; // The size of the 'I' caps at the ends
+      const offset = 100;
+      const tick = 25;
 
       const linePoints = [];
 
-      // 1. WIDTH LINE (Bottom Front)
+      // WIDTH LINE (Bottom Front)
       linePoints.push(
         boundsBox.min.x,
         boundsBox.min.y,
         boundsBox.max.z + offset,
-      ); // Start
+      );
       linePoints.push(
         boundsBox.max.x,
         boundsBox.min.y,
         boundsBox.max.z + offset,
-      ); // End
-      // Width Left Tick
+      );
       linePoints.push(
         boundsBox.min.x,
         boundsBox.min.y,
@@ -641,7 +630,6 @@ export default function Customer3DViewer({
         boundsBox.min.y,
         boundsBox.max.z + offset + tick,
       );
-      // Width Right Tick
       linePoints.push(
         boundsBox.max.x,
         boundsBox.min.y,
@@ -653,18 +641,17 @@ export default function Customer3DViewer({
         boundsBox.max.z + offset + tick,
       );
 
-      // 2. HEIGHT LINE (Right Front)
+      // HEIGHT LINE (Right Front)
       linePoints.push(
         boundsBox.max.x + offset,
         boundsBox.min.y,
         boundsBox.max.z,
-      ); // Start
+      );
       linePoints.push(
         boundsBox.max.x + offset,
         boundsBox.max.y,
         boundsBox.max.z,
-      ); // End
-      // Height Bottom Tick
+      );
       linePoints.push(
         boundsBox.max.x + offset - tick,
         boundsBox.min.y,
@@ -675,7 +662,6 @@ export default function Customer3DViewer({
         boundsBox.min.y,
         boundsBox.max.z,
       );
-      // Height Top Tick
       linePoints.push(
         boundsBox.max.x + offset - tick,
         boundsBox.max.y,
@@ -687,18 +673,17 @@ export default function Customer3DViewer({
         boundsBox.max.z,
       );
 
-      // 3. DEPTH LINE (Right Bottom)
+      // DEPTH LINE (Right Bottom)
       linePoints.push(
         boundsBox.max.x + offset,
         boundsBox.min.y,
         boundsBox.min.z,
-      ); // Start
+      );
       linePoints.push(
         boundsBox.max.x + offset,
         boundsBox.min.y,
         boundsBox.max.z,
-      ); // End
-      // Depth Back Tick
+      );
       linePoints.push(
         boundsBox.max.x + offset - tick,
         boundsBox.min.y,
@@ -709,7 +694,6 @@ export default function Customer3DViewer({
         boundsBox.min.y,
         boundsBox.min.z,
       );
-      // Depth Front Tick (Shares position with Height Bottom tick, but we draw it again for safety)
       linePoints.push(
         boundsBox.max.x + offset - tick,
         boundsBox.min.y,
@@ -721,17 +705,15 @@ export default function Customer3DViewer({
         boundsBox.max.z,
       );
 
-      // Render the lines into the 3D space
       const lineGeo = new THREE.BufferGeometry();
       lineGeo.setAttribute(
         "position",
         new THREE.Float32BufferAttribute(linePoints, 3),
       );
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x334155 }); // Dark slate line color
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x334155 });
       const dimensionLines = new THREE.LineSegments(lineGeo, lineMat);
       rootGroup.add(dimensionLines);
 
-      // Update Orbit Center
       if (orbitRef.current) {
         const center = new THREE.Vector3();
         boundsBox.getCenter(center);
@@ -877,6 +859,7 @@ export default function Customer3DViewer({
     setOverallDrafts((prev) => ({ ...prev, [axis]: value }));
   };
 
+  // 👉 FIXED: SCALING ORIGINS TO PREVENT FLOATING
   const commitOverallDimension = (axis) => {
     if (!isCustomizable || readOnly) return;
     if (!Array.isArray(components) || !components.length) return;
@@ -907,31 +890,30 @@ export default function Customer3DViewer({
 
     if (!extents || !Number.isFinite(scale) || scale <= 0) return;
 
+    // Anchor points: Center X, Center Z, Bottom Y (maxY)
+    const centerX = (extents.minX + extents.maxX) / 2;
+    const centerZ = (extents.minZ + extents.maxZ) / 2;
+    const bottomY = extents.maxY;
+
     commitComponents((prev) =>
       prev.map((c) => {
         if (axis === "width") {
           return {
             ...c,
-            x: Math.round(
-              extents.minX + (Number(c.x || 0) - extents.minX) * scale,
-            ),
+            x: Math.round(centerX + (Number(c.x || 0) - centerX) * scale),
             width: Math.max(1, Math.round(Number(c.width || 0) * scale)),
           };
         }
         if (axis === "height") {
           return {
             ...c,
-            y: Math.round(
-              extents.minY + (Number(c.y || 0) - extents.minY) * scale,
-            ),
+            y: Math.round(bottomY - (bottomY - Number(c.y || 0)) * scale), // Scales upwards!
             height: Math.max(1, Math.round(Number(c.height || 0) * scale)),
           };
         }
         return {
           ...c,
-          z: Math.round(
-            extents.minZ + (Number(c.z || 0) - extents.minZ) * scale,
-          ),
+          z: Math.round(centerZ + (Number(c.z || 0) - centerZ) * scale),
           depth: Math.max(1, Math.round(Number(c.depth || 0) * scale)),
         };
       }),
@@ -1026,7 +1008,6 @@ export default function Customer3DViewer({
         </div>
 
         <div style={styles.topBarActions}>
-          {/* 👉 UNDO / REDO BUTTONS */}
           {!readOnly && (
             <div style={styles.undoRedoGroup}>
               <button
@@ -1052,9 +1033,9 @@ export default function Customer3DViewer({
             </div>
           )}
 
-          {/* Unit Toggle Buttons */}
+          {/* 👉 NEW: Extended Unit Toggle */}
           <div style={styles.unitToggleGroup}>
-            {["cm", "inches", "mm"].map((u) => (
+            {["cm", "m", "inches", "ft", "yd", "mm"].map((u) => (
               <button
                 key={u}
                 onClick={() => setUnit(u)}
@@ -1085,7 +1066,6 @@ export default function Customer3DViewer({
         <div style={styles.canvasWrap}>
           <div ref={mountRef} style={styles.canvasContainer} />
 
-          {/* 👉 3D PROJECTION LABELS (Styled to match I-Lines) */}
           <div ref={labelWRef} style={styles.floatingLabel}>
             {formatUnitLabel(overallBounds.width_mm)}
           </div>
@@ -1123,12 +1103,14 @@ export default function Customer3DViewer({
 
               {showPerson ? (
                 <div>
-                  <span style={styles.dimLabel}>Height (Feet.Inches)</span>
+                  <span style={styles.dimLabel}>Height ({unit})</span>
                   <input
                     type="number"
                     step="0.1"
-                    value={personHeightInput}
-                    onChange={(e) => setPersonHeightInput(e.target.value)}
+                    value={convertMmToUnit(personHeightMm, unit)}
+                    onChange={(e) =>
+                      setPersonHeightMm(convertUnitToMm(e.target.value, unit))
+                    }
                     style={styles.input}
                   />
                 </div>
@@ -1362,7 +1344,7 @@ const styles = {
     border: "1px solid #cbd5e1",
   },
   unitBtn: {
-    padding: "4px 10px",
+    padding: "4px 8px",
     fontSize: 12,
     fontWeight: "bold",
     border: "none",
@@ -1399,13 +1381,12 @@ const styles = {
     backgroundColor: "#f8fafc",
   },
 
-  // 👉 3D Label Styles Updated to look clean over the I-Lines
   floatingLabel: {
     position: "absolute",
     left: 0,
     top: 0,
-    background: "rgba(255, 255, 255, 0.85)", // White translucent pill
-    color: "#0f172a", // Dark bold text
+    background: "rgba(255, 255, 255, 0.85)",
+    color: "#0f172a",
     padding: "4px 8px",
     borderRadius: "6px",
     fontSize: "12px",
@@ -1413,7 +1394,7 @@ const styles = {
     border: "1px solid rgba(15, 23, 42, 0.1)",
     pointerEvents: "none",
     transform: "translate(-50%, -50%)",
-    display: "none", // Hidden by default until projection math runs
+    display: "none",
     whiteSpace: "nowrap",
     boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
     zIndex: 10,
