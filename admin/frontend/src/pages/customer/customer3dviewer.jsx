@@ -16,6 +16,7 @@ const WORLD_W = 6400;
 const WORLD_H = 3200;
 const WORLD_D = 5200;
 const FLOOR_OFFSET = 40;
+const MAX_HISTORY = 60; // 👉 Added back for Undo/Redo
 const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 const isHexColor = (value) => HEX_COLOR_RE.test(String(value || "").trim());
@@ -26,7 +27,6 @@ const getSolidColorHex = (component = {}) => {
     component?.color,
     component?.finish_color,
   ];
-
   for (const value of candidates) {
     const text = String(value || "").trim();
     if (isHexColor(text)) return text;
@@ -39,7 +39,6 @@ const applySolidColorOverride = (object3d, hex) => {
 
   object3d.traverse((child) => {
     if (!child?.isMesh || !child.material) return;
-
     const patchMaterial = (material) => {
       if (!material) return material;
       const cloned = material.clone();
@@ -51,7 +50,6 @@ const applySolidColorOverride = (object3d, hex) => {
       cloned.needsUpdate = true;
       return cloned;
     };
-
     if (Array.isArray(child.material)) {
       child.material = child.material.map(patchMaterial);
     } else {
@@ -97,7 +95,6 @@ const buildBoundsFromComponents = (items = []) => {
   const minX = Math.min(...normalized.map((c) => c.x));
   const minY = Math.min(...normalized.map((c) => c.y));
   const minZ = Math.min(...normalized.map((c) => c.z));
-
   const maxX = Math.max(...normalized.map((c) => c.x + c.width));
   const maxY = Math.max(...normalized.map((c) => c.y + c.height));
   const maxZ = Math.max(...normalized.map((c) => c.z + c.depth));
@@ -128,19 +125,11 @@ const getComponentExtents = (items = []) => {
   const minX = Math.min(...normalized.map((c) => c.x));
   const minY = Math.min(...normalized.map((c) => c.y));
   const minZ = Math.min(...normalized.map((c) => c.z));
-
   const maxX = Math.max(...normalized.map((c) => c.x + c.width));
   const maxY = Math.max(...normalized.map((c) => c.y + c.height));
   const maxZ = Math.max(...normalized.map((c) => c.z + c.depth));
 
-  return {
-    minX,
-    minY,
-    minZ,
-    maxX,
-    maxY,
-    maxZ,
-  };
+  return { minX, minY, minZ, maxX, maxY, maxZ };
 };
 
 const normalizeDimensions = (source = {}) => ({
@@ -260,17 +249,22 @@ export default function Customer3DViewer({
   const personGroupRef = useRef(null);
   const boundsBoxRef = useRef(new THREE.Box3());
 
+  // 👉 PERFORMANCE FIX: Cache canvas size to stop layout thrashing
+  const canvasSizeRef = useRef({ width: 1, height: 1 });
+
   // Refs for 3D Labels
   const labelWRef = useRef(null);
   const labelHRef = useRef(null);
   const labelDRef = useRef(null);
 
+  // 👉 UNDO/REDO MEMORY
+  const historyRef = useRef({ past: [], future: [] });
+
   const [components, setComponents] = useState(() =>
     normalizeViewerComponents(initialComponents),
   );
 
-  // 👉 RULE 2: Unit State
-  const [unit, setUnit] = useState("cm"); // cm, inches, mm
+  const [unit, setUnit] = useState("cm");
   const [showPerson, setShowPerson] = useState(true);
   const [personHeightInput, setPersonHeightInput] = useState("5.6");
 
@@ -282,6 +276,73 @@ export default function Customer3DViewer({
     height: "",
     depth: "",
   });
+
+  // --- UNDO / REDO FUNCTIONS ---
+  const pushHistorySnapshot = useCallback((snapshot) => {
+    historyRef.current.past.push(cloneDeep(snapshot));
+    if (historyRef.current.past.length > MAX_HISTORY) {
+      historyRef.current.past.shift();
+    }
+    historyRef.current.future = [];
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (!historyRef.current.past.length || readOnly) return;
+    const currentSnapshot = cloneDeep(components);
+    const previousSnapshot = historyRef.current.past.pop();
+    historyRef.current.future.unshift(currentSnapshot);
+    setComponents(normalizeViewerComponents(previousSnapshot));
+  }, [components, readOnly]);
+
+  const handleRedo = useCallback(() => {
+    if (!historyRef.current.future.length || readOnly) return;
+    const currentSnapshot = cloneDeep(components);
+    const nextSnapshot = historyRef.current.future.shift();
+    historyRef.current.past.push(currentSnapshot);
+    setComponents(normalizeViewerComponents(nextSnapshot));
+  }, [components, readOnly]);
+
+  const commitComponents = useCallback(
+    (updater) => {
+      setComponents((prev) => {
+        const prevNormalized = normalizeViewerComponents(prev);
+        const nextRaw =
+          typeof updater === "function" ? updater(prevNormalized) : updater;
+        const nextNormalized = normalizeViewerComponents(nextRaw);
+        pushHistorySnapshot(prevNormalized);
+        return nextNormalized;
+      });
+    },
+    [pushHistorySnapshot],
+  );
+
+  // Keyboard Shortcuts for Undo/Redo
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      const tag = String(event.target?.tagName || "").toLowerCase();
+      const isTyping =
+        ["input", "textarea", "select"].includes(tag) ||
+        event.target?.isContentEditable;
+      if (isTyping || readOnly) return;
+
+      const hasModifier = event.ctrlKey || event.metaKey;
+      const lowerKey = String(event.key || "").toLowerCase();
+
+      if (hasModifier && lowerKey === "z" && !event.shiftKey) {
+        event.preventDefault();
+        handleUndo();
+      }
+      if (
+        (hasModifier && lowerKey === "y") ||
+        (hasModifier && event.shiftKey && lowerKey === "z")
+      ) {
+        event.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleUndo, handleRedo, readOnly]);
 
   // --- UNIT CONVERSION UTILS ---
   const convertMmToUnit = useCallback((mmVal, targetUnit) => {
@@ -306,17 +367,9 @@ export default function Customer3DViewer({
     [unit, convertMmToUnit],
   );
 
-  const commitComponents = useCallback((updater) => {
-    setComponents((prev) => {
-      const prevNormalized = normalizeViewerComponents(prev);
-      const nextRaw =
-        typeof updater === "function" ? updater(prevNormalized) : updater;
-      return normalizeViewerComponents(nextRaw);
-    });
-  }, []);
-
   useEffect(() => {
     const normalizedInitial = normalizeViewerComponents(initialComponents);
+    historyRef.current = { past: [], future: [] };
     setComponents(normalizedInitial);
     setQuantity(1);
     setComments("");
@@ -343,13 +396,11 @@ export default function Customer3DViewer({
 
   const overallBounds = useMemo(() => {
     const current = buildBoundsFromComponents(components);
-    if (current.width_mm > 0 || current.height_mm > 0 || current.depth_mm > 0) {
+    if (current.width_mm > 0 || current.height_mm > 0 || current.depth_mm > 0)
       return current;
-    }
     return normalizeDimensions(initialDimensions || {});
   }, [components, initialDimensions]);
 
-  // Update drafts when bounds or units change
   useEffect(() => {
     setOverallDrafts({
       width: convertMmToUnit(overallBounds.width_mm, unit),
@@ -365,6 +416,7 @@ export default function Customer3DViewer({
 
     const w = mount.clientWidth || 1;
     const h = mount.clientHeight || 1;
+    canvasSizeRef.current = { width: w, height: h }; // Initialize cache
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(w, h);
@@ -427,6 +479,10 @@ export default function Customer3DViewer({
       if (!mountRef.current) return;
       const newW = Math.max(1, mountRef.current.clientWidth);
       const newH = Math.max(1, mountRef.current.clientHeight);
+
+      // Update our cache so the animation loop doesn't have to calculate it!
+      canvasSizeRef.current = { width: newW, height: newH };
+
       renderer.setSize(newW, newH);
       camera.aspect = newW / newH;
       camera.updateProjectionMatrix();
@@ -434,51 +490,49 @@ export default function Customer3DViewer({
 
     window.addEventListener("resize", handleResize);
 
-    // 👉 RULE 3: Project 3D bounds to 2D labels in animation loop
+    // 👉 PERFORMANCE FIX: Use cached width/height instead of getBoundingClientRect
     let animId;
     const animate = () => {
       animId = requestAnimationFrame(animate);
       orbit.update();
       renderer.render(scene, camera);
 
-      if (
-        boundsBoxRef.current &&
-        !boundsBoxRef.current.isEmpty() &&
-        mountRef.current
-      ) {
+      if (boundsBoxRef.current && !boundsBoxRef.current.isEmpty()) {
         const box = boundsBoxRef.current;
-        const rect = mountRef.current.getBoundingClientRect();
+        const cWidth = canvasSizeRef.current.width;
+        const cHeight = canvasSizeRef.current.height;
+        const offset = 100; // Match the offset we used for the 3D lines
 
-        // Calculate midpoints of edges for labels
+        // Find the center points of the 3D I-Lines we draw in the other useEffect
         const pW = new THREE.Vector3(
           (box.min.x + box.max.x) / 2,
           box.min.y,
-          box.max.z,
-        ); // Front Bottom (Width)
+          box.max.z + offset,
+        );
         const pH = new THREE.Vector3(
-          box.max.x,
+          box.max.x + offset,
           (box.min.y + box.max.y) / 2,
           box.max.z,
-        ); // Right Front (Height)
+        );
         const pD = new THREE.Vector3(
-          box.max.x,
+          box.max.x + offset,
           box.min.y,
           (box.min.z + box.max.z) / 2,
-        ); // Right Bottom (Depth)
+        );
 
         const updateDiv = (divRef, vec) => {
           if (!divRef.current) return;
           const projected = vec.clone().project(camera);
 
-          // Hide label if it goes behind the camera
           if (projected.z > 1) {
             divRef.current.style.display = "none";
             return;
           }
           divRef.current.style.display = "block";
 
-          const x = (projected.x * 0.5 + 0.5) * rect.width;
-          const y = (-projected.y * 0.5 + 0.5) * rect.height;
+          // Use cached width/height for instant math (No Reflow Lag!)
+          const x = (projected.x * 0.5 + 0.5) * cWidth;
+          const y = (-projected.y * 0.5 + 0.5) * cHeight;
           divRef.current.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
         };
 
@@ -500,7 +554,7 @@ export default function Customer3DViewer({
     };
   }, []);
 
-  // BUILD THE 3D OBJECTS
+  // BUILD THE 3D OBJECTS & 3D I-LINES
   useEffect(() => {
     const rootGroup = rootGroupRef.current;
     if (!rootGroup) return;
@@ -556,20 +610,140 @@ export default function Customer3DViewer({
       }
     });
 
-    boundsBoxRef.current.copy(boundsBox); // Save bounds for labels
+    boundsBoxRef.current.copy(boundsBox);
 
-    if (!boundsBox.isEmpty() && orbitRef.current) {
-      const center = new THREE.Vector3();
-      boundsBox.getCenter(center);
-      orbitRef.current.target.copy(center);
-      orbitRef.current.update();
+    // 👉 DRAW THE 3D "I-LINES" (DIMENSION LINES)
+    if (!boundsBox.isEmpty()) {
+      const offset = 100; // How far away the lines float from the wood
+      const tick = 25; // The size of the 'I' caps at the ends
+
+      const linePoints = [];
+
+      // 1. WIDTH LINE (Bottom Front)
+      linePoints.push(
+        boundsBox.min.x,
+        boundsBox.min.y,
+        boundsBox.max.z + offset,
+      ); // Start
+      linePoints.push(
+        boundsBox.max.x,
+        boundsBox.min.y,
+        boundsBox.max.z + offset,
+      ); // End
+      // Width Left Tick
+      linePoints.push(
+        boundsBox.min.x,
+        boundsBox.min.y,
+        boundsBox.max.z + offset - tick,
+      );
+      linePoints.push(
+        boundsBox.min.x,
+        boundsBox.min.y,
+        boundsBox.max.z + offset + tick,
+      );
+      // Width Right Tick
+      linePoints.push(
+        boundsBox.max.x,
+        boundsBox.min.y,
+        boundsBox.max.z + offset - tick,
+      );
+      linePoints.push(
+        boundsBox.max.x,
+        boundsBox.min.y,
+        boundsBox.max.z + offset + tick,
+      );
+
+      // 2. HEIGHT LINE (Right Front)
+      linePoints.push(
+        boundsBox.max.x + offset,
+        boundsBox.min.y,
+        boundsBox.max.z,
+      ); // Start
+      linePoints.push(
+        boundsBox.max.x + offset,
+        boundsBox.max.y,
+        boundsBox.max.z,
+      ); // End
+      // Height Bottom Tick
+      linePoints.push(
+        boundsBox.max.x + offset - tick,
+        boundsBox.min.y,
+        boundsBox.max.z,
+      );
+      linePoints.push(
+        boundsBox.max.x + offset + tick,
+        boundsBox.min.y,
+        boundsBox.max.z,
+      );
+      // Height Top Tick
+      linePoints.push(
+        boundsBox.max.x + offset - tick,
+        boundsBox.max.y,
+        boundsBox.max.z,
+      );
+      linePoints.push(
+        boundsBox.max.x + offset + tick,
+        boundsBox.max.y,
+        boundsBox.max.z,
+      );
+
+      // 3. DEPTH LINE (Right Bottom)
+      linePoints.push(
+        boundsBox.max.x + offset,
+        boundsBox.min.y,
+        boundsBox.min.z,
+      ); // Start
+      linePoints.push(
+        boundsBox.max.x + offset,
+        boundsBox.min.y,
+        boundsBox.max.z,
+      ); // End
+      // Depth Back Tick
+      linePoints.push(
+        boundsBox.max.x + offset - tick,
+        boundsBox.min.y,
+        boundsBox.min.z,
+      );
+      linePoints.push(
+        boundsBox.max.x + offset + tick,
+        boundsBox.min.y,
+        boundsBox.min.z,
+      );
+      // Depth Front Tick (Shares position with Height Bottom tick, but we draw it again for safety)
+      linePoints.push(
+        boundsBox.max.x + offset - tick,
+        boundsBox.min.y,
+        boundsBox.max.z,
+      );
+      linePoints.push(
+        boundsBox.max.x + offset + tick,
+        boundsBox.min.y,
+        boundsBox.max.z,
+      );
+
+      // Render the lines into the 3D space
+      const lineGeo = new THREE.BufferGeometry();
+      lineGeo.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(linePoints, 3),
+      );
+      const lineMat = new THREE.LineBasicMaterial({ color: 0x334155 }); // Dark slate line color
+      const dimensionLines = new THREE.LineSegments(lineGeo, lineMat);
+      rootGroup.add(dimensionLines);
+
+      // Update Orbit Center
+      if (orbitRef.current) {
+        const center = new THREE.Vector3();
+        boundsBox.getCenter(center);
+        orbitRef.current.target.copy(center);
+        orbitRef.current.update();
+      }
     }
   }, [components]);
 
   // BUILD THE PERSON
   useEffect(() => {
     if (!personGroupRef.current || !rootGroupRef.current) return;
-
     const group = personGroupRef.current;
     group.clear();
 
@@ -703,7 +877,6 @@ export default function Customer3DViewer({
     setOverallDrafts((prev) => ({ ...prev, [axis]: value }));
   };
 
-  // SCALE THE WHOLE FURNITURE PROPORTIONALLY
   const commitOverallDimension = (axis) => {
     if (!isCustomizable || readOnly) return;
     if (!Array.isArray(components) || !components.length) return;
@@ -765,10 +938,8 @@ export default function Customer3DViewer({
     );
   };
 
-  // APPLY FINISH TO THE WHOLE ITEM
   const handleFinishChange = (finishId) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
-
     commitComponents((prev) =>
       prev.map((c) => {
         const next = applyWoodFinish(c, finishId);
@@ -776,7 +947,6 @@ export default function Customer3DViewer({
           finishId,
           next?.fill || c.fill || c.color || "",
         );
-
         return {
           ...c,
           ...next,
@@ -792,23 +962,19 @@ export default function Customer3DViewer({
     );
   };
 
-  // APPLY SOLID COLOR TO THE WHOLE ITEM
   const handleColorChange = (hex) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
-
     commitComponents((prev) =>
-      prev.map((c) => {
-        return {
-          ...c,
-          fill: hex,
-          color: hex,
-          finish_color: hex,
-          finish: "",
-          finish_id: "",
-          woodFinish: "",
-          color_mode: "solid",
-        };
-      }),
+      prev.map((c) => ({
+        ...c,
+        fill: hex,
+        color: hex,
+        finish_color: hex,
+        finish: "",
+        finish_id: "",
+        woodFinish: "",
+        color_mode: "solid",
+      })),
     );
   };
 
@@ -833,6 +999,8 @@ export default function Customer3DViewer({
     });
   };
 
+  const undoDisabled = !historyRef.current.past.length;
+  const redoDisabled = !historyRef.current.future.length;
   const swatchColors = [
     "#ffffff",
     "#1e293b",
@@ -858,6 +1026,32 @@ export default function Customer3DViewer({
         </div>
 
         <div style={styles.topBarActions}>
+          {/* 👉 UNDO / REDO BUTTONS */}
+          {!readOnly && (
+            <div style={styles.undoRedoGroup}>
+              <button
+                onClick={handleUndo}
+                disabled={undoDisabled}
+                style={{
+                  ...styles.toolBtn,
+                  ...(undoDisabled ? styles.toolBtnDisabled : {}),
+                }}
+              >
+                Undo
+              </button>
+              <button
+                onClick={handleRedo}
+                disabled={redoDisabled}
+                style={{
+                  ...styles.toolBtn,
+                  ...(redoDisabled ? styles.toolBtnDisabled : {}),
+                }}
+              >
+                Redo
+              </button>
+            </div>
+          )}
+
           {/* Unit Toggle Buttons */}
           <div style={styles.unitToggleGroup}>
             {["cm", "inches", "mm"].map((u) => (
@@ -891,15 +1085,15 @@ export default function Customer3DViewer({
         <div style={styles.canvasWrap}>
           <div ref={mountRef} style={styles.canvasContainer} />
 
-          {/* 👉 3D PROJECTION LABELS */}
+          {/* 👉 3D PROJECTION LABELS (Styled to match I-Lines) */}
           <div ref={labelWRef} style={styles.floatingLabel}>
-            W: {formatUnitLabel(overallBounds.width_mm)}
+            {formatUnitLabel(overallBounds.width_mm)}
           </div>
           <div ref={labelHRef} style={styles.floatingLabel}>
-            H: {formatUnitLabel(overallBounds.height_mm)}
+            {formatUnitLabel(overallBounds.height_mm)}
           </div>
           <div ref={labelDRef} style={styles.floatingLabel}>
-            D: {formatUnitLabel(overallBounds.depth_mm)}
+            {formatUnitLabel(overallBounds.depth_mm)}
           </div>
         </div>
 
@@ -1148,6 +1342,19 @@ const styles = {
     gap: 8,
     flexWrap: "wrap",
   },
+  undoRedoGroup: { display: "flex", gap: "4px" },
+  toolBtn: {
+    height: 30,
+    padding: "0 12px",
+    borderRadius: 8,
+    border: "1px solid #cbd5e1",
+    background: "#ffffff",
+    color: "#334155",
+    fontWeight: 800,
+    fontSize: 12,
+    cursor: "pointer",
+  },
+  toolBtnDisabled: { opacity: 0.5, cursor: "not-allowed" },
   unitToggleGroup: {
     display: "flex",
     borderRadius: 8,
@@ -1192,22 +1399,23 @@ const styles = {
     backgroundColor: "#f8fafc",
   },
 
-  // 👉 3D Label Styles
+  // 👉 3D Label Styles Updated to look clean over the I-Lines
   floatingLabel: {
     position: "absolute",
     left: 0,
     top: 0,
-    background: "rgba(15, 23, 42, 0.8)",
-    color: "#fff",
+    background: "rgba(255, 255, 255, 0.85)", // White translucent pill
+    color: "#0f172a", // Dark bold text
     padding: "4px 8px",
     borderRadius: "6px",
     fontSize: "12px",
-    fontWeight: "bold",
+    fontWeight: "800",
+    border: "1px solid rgba(15, 23, 42, 0.1)",
     pointerEvents: "none",
     transform: "translate(-50%, -50%)",
     display: "none", // Hidden by default until projection math runs
     whiteSpace: "nowrap",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
     zIndex: 10,
   },
 
