@@ -50,11 +50,29 @@ export default function CustomerLayout() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
+  // 👉 1. THE SCROLL STATE
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      // Trigger transparency when scrolled down more than 50px
+      setIsScrolled(window.scrollY > 50);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // 👉 2. THE NAVIGATION BOUNCER
   const visibleNavItems = navItems.filter((item) => {
-    if (item.label === "Home" && customerUser) {
-      return false;
+    if (!customerUser) {
+      // Guests ONLY see these 4 links
+      return ["Home", "Products", "Customize", "Cart"].includes(item.label);
+    } else {
+      // Logged-in users see everything EXCEPT Home (using logo instead)
+      if (item.label === "Home") return false;
+      return true;
     }
-    return true;
   });
 
   useEffect(() => {
@@ -98,11 +116,23 @@ export default function CustomerLayout() {
 
   return (
     <div className="cust-root">
-      <header className="cust-navbar">
+      {/* 👉 3. DYNAMIC SCROLL STYLING */}
+      <header
+        className="cust-navbar"
+        style={{
+          backgroundColor: isScrolled ? "rgba(26, 26, 46, 0.85)" : "#1a1a2e",
+          backdropFilter: isScrolled ? "blur(12px)" : "none",
+          borderBottom: isScrolled
+            ? "1px solid rgba(255,255,255,0.05)"
+            : "none",
+          transition: "all 0.3s ease-in-out",
+        }}
+      >
         <div className="navbar-inner">
           <div
             className="navbar-brand"
             onClick={() => navigate(customerUser ? "/catalog" : "/")}
+            style={{ cursor: "pointer" }}
           >
             <div className="nav-logo">W</div>
             <div className="nav-brand-text">
@@ -258,6 +288,19 @@ export default function CustomerLayout() {
                 <button
                   className="nav-signin-btn"
                   onClick={() => navigate("/login")}
+                  style={{
+                    padding: "8px 20px",
+                    backgroundColor: "transparent",
+                    color: "#d2b48c",
+                    border: "1px solid transparent",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    transition: "all 0.2s",
+                  }}
+                  onMouseEnter={(e) => (e.target.style.borderColor = "#d2b48c")}
+                  onMouseLeave={(e) =>
+                    (e.target.style.borderColor = "transparent")
+                  }
                 >
                   Sign In
                 </button>
@@ -268,11 +311,16 @@ export default function CustomerLayout() {
                     background: "#8B4513",
                     color: "white",
                     border: "none",
-                    borderRadius: "6px",
+                    borderRadius: "20px",
                     fontWeight: "600",
                     cursor: "pointer",
-                    padding: "8px 16px",
+                    padding: "8px 24px",
+                    transition: "transform 0.2s",
                   }}
+                  onMouseEnter={(e) =>
+                    (e.target.style.transform = "scale(1.05)")
+                  }
+                  onMouseLeave={(e) => (e.target.style.transform = "scale(1)")}
                 >
                   Sign Up
                 </button>
