@@ -11,7 +11,7 @@ import {
 import useAuthStore from "../../store/authStore";
 
 // 🏠 Relative path to your cabinet image based on your description
-import cabinetImg from "../../assets/cabinet.png";
+import cabinetImg from "../assets/cabinet.png";
 
 // ==========================================
 // INTERNAL NAVBAR COMPONENT (transparent -> solid on scroll)
