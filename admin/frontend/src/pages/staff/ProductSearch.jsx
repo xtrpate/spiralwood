@@ -23,8 +23,6 @@ const formatStockStatus = (value) =>
     .replaceAll("_", " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
-
-
 export default function ProductSearch() {
   const [query, setQuery] = useState("");
   const [barcode, setBarcode] = useState("");
@@ -60,7 +58,7 @@ export default function ProductSearch() {
   const normalizeProduct = useCallback((product) => {
     const stock = Number(product?.stock ?? 0);
     const walkinPrice = Number(
-      product?.walkin_price ?? product?.online_price ?? 0
+      product?.walkin_price ?? product?.online_price ?? 0,
     );
     const productionCost = Number(product?.production_cost ?? 0);
 
@@ -86,18 +84,27 @@ export default function ProductSearch() {
               variation?.variation_name || variation?.name || "Variation",
             stock: variationStock,
             selling_price: Number(
-              variation?.selling_price ?? variation?.walkin_price ?? walkinPrice
+              variation?.selling_price ??
+                variation?.walkin_price ??
+                walkinPrice,
             ),
             unit_cost: Number(variation?.unit_cost ?? productionCost),
             stock_status:
               variationStock <= 0
                 ? "out_of_stock"
                 : variationStock <= 5
-                ? "low_stock"
-                : "in_stock",
+                  ? "low_stock"
+                  : "in_stock",
           };
         })
       : [];
+
+    // 👉 RULE 7: Smart Dimension Formatting
+    const w = product?.width_mm || product?.width || 0;
+    const h = product?.height_mm || product?.height || 0;
+    const d = product?.depth_mm || product?.depth || 0;
+    const dims =
+      w || h || d ? `${w}W x ${d}D x ${h}H mm` : product?.dimensions || "";
 
     return {
       ...product,
@@ -112,12 +119,20 @@ export default function ProductSearch() {
           product?.product_image ||
           product?.image ||
           product?.photo ||
-          ""
+          "",
       ),
       category:
-        product?.category_name || product?.category || product?.type || "Product",
+        product?.category_name ||
+        product?.category ||
+        product?.type ||
+        "Product",
       stock_status: stockStatus,
       variations,
+
+      // 👉 RULE 7: Extract Rich Details
+      description: product?.description || "",
+      material: product?.material || product?.wood_type || "",
+      dimensions: dims,
     };
   }, []);
 
@@ -130,7 +145,9 @@ export default function ProductSearch() {
         ? res.data
             .map(normalizeProduct)
             .filter(
-              (product) => String(product?.type || "standard").toLowerCase() === "standard"
+              (product) =>
+                String(product?.type || "standard").toLowerCase() ===
+                "standard",
             )
         : [];
 
@@ -142,7 +159,7 @@ export default function ProductSearch() {
       setProducts([]);
       showMessage(
         "Unable to load products right now. Please refresh and try again.",
-        "error"
+        "error",
       );
     } finally {
       setSearching(false);
@@ -178,11 +195,14 @@ export default function ProductSearch() {
           product.name,
           product.barcode,
           product.category,
+          product.material, // 👉 Let them search by wood type too!
           ...variationNames,
         ];
 
         return haystacks.some((value) =>
-          String(value || "").toLowerCase().includes(trimmed)
+          String(value || "")
+            .toLowerCase()
+            .includes(trimmed),
         );
       });
 
@@ -224,9 +244,7 @@ export default function ProductSearch() {
           feedback = `${existing.product_name} quantity has been updated in the cart.`;
 
           return prev.map((item) =>
-            item.key === key
-              ? { ...item, quantity: item.quantity + 1 }
-              : item
+            item.key === key ? { ...item, quantity: item.quantity + 1 } : item,
           );
         }
 
@@ -241,13 +259,17 @@ export default function ProductSearch() {
             variation_id: variation?.id || null,
             product_name: displayName,
             unit_price: Number(
-              variation?.selling_price ?? product?.walkin_price ?? 0
+              variation?.selling_price ?? product?.walkin_price ?? 0,
             ),
             production_cost: Number(
-              variation?.unit_cost ?? product?.production_cost ?? 0
+              variation?.unit_cost ?? product?.production_cost ?? 0,
             ),
             quantity: 1,
             max_stock: stockLimit,
+
+            // 👉 RULE 7: Send details to checkout screen
+            wood_type: product.material,
+            dimensions: product.dimensions,
           },
         ];
       });
@@ -258,7 +280,7 @@ export default function ProductSearch() {
 
       return added;
     },
-    [showMessage]
+    [showMessage],
   );
 
   const searchByBarcode = useCallback(
@@ -278,26 +300,28 @@ export default function ProductSearch() {
         let product =
           allProducts.find(
             (item) =>
-              String(item.barcode || "").toLowerCase() === code.toLowerCase()
+              String(item.barcode || "").toLowerCase() === code.toLowerCase(),
           ) || null;
 
         if (!product) {
           const res = await api.get(
-            `/pos/products?barcode=${encodeURIComponent(code)}`
+            `/pos/products?barcode=${encodeURIComponent(code)}`,
           );
 
           const results = Array.isArray(res.data)
             ? res.data
                 .map(normalizeProduct)
                 .filter(
-                  (item) => String(item?.type || "standard").toLowerCase() === "standard"
+                  (item) =>
+                    String(item?.type || "standard").toLowerCase() ===
+                    "standard",
                 )
             : [];
 
           product =
             results.find(
               (item) =>
-                String(item.barcode || "").toLowerCase() === code.toLowerCase()
+                String(item.barcode || "").toLowerCase() === code.toLowerCase(),
             ) || null;
         }
 
@@ -312,7 +336,7 @@ export default function ProductSearch() {
         if (product.variations?.length > 0) {
           showMessage(
             `${product.name} was found. Please choose a variation to continue.`,
-            "info"
+            "info",
           );
           return;
         }
@@ -332,14 +356,14 @@ export default function ProductSearch() {
         setProducts([]);
         showMessage(
           "Barcode search could not be completed. Please try again.",
-          "error"
+          "error",
         );
       } finally {
         setBarcodeLoading(false);
         barcodeRef.current?.focus();
       }
     },
-    [addToCart, allProducts, normalizeProduct, showMessage]
+    [addToCart, allProducts, normalizeProduct, showMessage],
   );
 
   const updateQty = useCallback(
@@ -365,14 +389,14 @@ export default function ProductSearch() {
 
             return { ...item, quantity: newQty };
           })
-          .filter(Boolean)
+          .filter(Boolean),
       );
 
       if (feedback) {
         showMessage(feedback, feedbackType);
       }
     },
-    [showMessage]
+    [showMessage],
   );
 
   const removeItem = useCallback(
@@ -389,24 +413,24 @@ export default function ProductSearch() {
         showMessage(`${removedName} has been removed from the cart.`, "info");
       }
     },
-    [showMessage]
+    [showMessage],
   );
 
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.unit_price * item.quantity, 0),
-    [cart]
+    [cart],
   );
 
   const cartItemCount = useMemo(
     () => cart.reduce((sum, item) => sum + item.quantity, 0),
-    [cart]
+    [cart],
   );
 
   const proceedToCheckout = useCallback(() => {
     if (cart.length === 0) {
       showMessage(
         "Your cart is empty. Please add at least one product before checkout.",
-        "info"
+        "info",
       );
       return;
     }
@@ -464,7 +488,7 @@ export default function ProductSearch() {
           <Search size={18} className="search-icon" />
           <input
             type="text"
-            placeholder="Search products by name, category, variation, or barcode..."
+            placeholder="Search products by name, category, material, or barcode..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => {
@@ -490,98 +514,183 @@ export default function ProductSearch() {
             <p className="search-hint">No products found for "{query}".</p>
           )}
 
-          {!searching && !query.trim() && !barcode.trim() && products.length > 0 && (
-            <p className="search-hint">
-              Showing available products. Use the search box or scan a barcode
-              above.
-            </p>
-          )}
+          {!searching &&
+            !query.trim() &&
+            !barcode.trim() &&
+            products.length > 0 && (
+              <p className="search-hint">
+                Showing available products. Use the search box or scan a barcode
+                above.
+              </p>
+            )}
 
-          {!searching && !query.trim() && !barcode.trim() && products.length === 0 && (
-            <p className="search-hint">No available products found.</p>
-          )}
+          {!searching &&
+            !query.trim() &&
+            !barcode.trim() &&
+            products.length === 0 && (
+              <p className="search-hint">No available products found.</p>
+            )}
 
           <div className="product-grid">
             {products
               .filter(
-                (product) => String(product?.type || "standard").toLowerCase() === "standard"
+                (product) =>
+                  String(product?.type || "standard").toLowerCase() ===
+                  "standard",
               )
               .map((product) => {
-              const statusClass =
-                product.stock <= 0
-                  ? "out_of_stock"
-                  : product.stock_status === "low_stock"
-                  ? "low_stock"
-                  : "in_stock";
+                const statusClass =
+                  product.stock <= 0
+                    ? "out_of_stock"
+                    : product.stock_status === "low_stock"
+                      ? "low_stock"
+                      : "in_stock";
 
-              return (
-                <div key={product.id} className="product-card">
-                  {product.image_url && !brokenImages[product.id] ? (
-                    <img
-                      src={product.image_url}
-                      alt={product.name}
-                      className="product-img"
-                      onError={() =>
-                        setBrokenImages((prev) => ({
-                          ...prev,
-                          [product.id]: true,
-                        }))
-                      }
-                    />
-                  ) : (
-                    <div className="product-img-placeholder">📦</div>
-                  )}
+                return (
+                  <div key={product.id} className="product-card">
+                    {product.image_url && !brokenImages[product.id] ? (
+                      <img
+                        src={product.image_url}
+                        alt={product.name}
+                        className="product-img"
+                        onError={() =>
+                          setBrokenImages((prev) => ({
+                            ...prev,
+                            [product.id]: true,
+                          }))
+                        }
+                      />
+                    ) : (
+                      <div className="product-img-placeholder">📦</div>
+                    )}
 
-                  <div className="product-info">
-                    <div className="product-name">{product.name}</div>
-                    <div className="product-category">{product.category}</div>
-                    <div className="product-price">
-                      ₱{formatCurrency(product.walkin_price)}
+                    <div className="product-info">
+                      <div className="product-name">{product.name}</div>
+                      <div className="product-category">{product.category}</div>
+
+                      {/* 👉 RULE 7: The "Rich Specs" View for Cashier */}
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: "#64748b",
+                          margin: "10px 0",
+                          padding: "8px",
+                          background: "#f8fafc",
+                          borderRadius: "6px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "6px",
+                        }}
+                      >
+                        {product.dimensions && (
+                          <div style={{ display: "flex" }}>
+                            <span
+                              style={{
+                                fontWeight: "700",
+                                color: "#334155",
+                                width: "45px",
+                              }}
+                            >
+                              Size:
+                            </span>
+                            <span style={{ flex: 1 }}>
+                              {product.dimensions}
+                            </span>
+                          </div>
+                        )}
+                        {product.material && (
+                          <div style={{ display: "flex" }}>
+                            <span
+                              style={{
+                                fontWeight: "700",
+                                color: "#334155",
+                                width: "45px",
+                              }}
+                            >
+                              Mat:
+                            </span>
+                            <span style={{ flex: 1 }}>{product.material}</span>
+                          </div>
+                        )}
+                        {product.description && (
+                          <div
+                            style={{
+                              display: "-webkit-box",
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              marginTop: "2px",
+                            }}
+                            title={product.description}
+                          >
+                            <span
+                              style={{ fontWeight: "700", color: "#334155" }}
+                            >
+                              Info:{" "}
+                            </span>
+                            {product.description}
+                          </div>
+                        )}
+                        {!product.dimensions &&
+                          !product.material &&
+                          !product.description && (
+                            <div style={{ fontStyle: "italic", opacity: 0.6 }}>
+                              No extra details provided.
+                            </div>
+                          )}
+                      </div>
+
+                      <div
+                        className="product-price"
+                        style={{ marginTop: "auto" }}
+                      >
+                        ₱{formatCurrency(product.walkin_price)}
+                      </div>
+
+                      <div className={`stock-chip ${statusClass}`}>
+                        {formatStockStatus(product.stock_status || statusClass)}{" "}
+                        ({product.stock})
+                      </div>
                     </div>
 
-                    <div className={`stock-chip ${statusClass}`}>
-                      {formatStockStatus(product.stock_status || statusClass)} (
-                      {product.stock})
-                    </div>
+                    {product.variations?.length > 0 ? (
+                      <div className="variation-list">
+                        {product.variations.map((variation) => (
+                          <button
+                            key={variation.id}
+                            type="button"
+                            className="var-btn"
+                            onClick={() => addToCart(product, variation)}
+                            disabled={variation.stock <= 0}
+                            title={
+                              variation.stock <= 0
+                                ? "Out of stock"
+                                : `Add ${variation.variation_name}`
+                            }
+                          >
+                            <span>
+                              {variation.variation_name} ({variation.stock})
+                            </span>
+                            <span>
+                              ₱{formatCurrency(variation.selling_price)}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="add-btn"
+                        onClick={() => addToCart(product)}
+                        disabled={product.stock <= 0}
+                      >
+                        <Plus size={16} /> Add to Cart
+                      </button>
+                    )}
                   </div>
-
-                  {product.variations?.length > 0 ? (
-                    <div className="variation-list">
-                      {product.variations.map((variation) => (
-                        <button
-                          key={variation.id}
-                          type="button"
-                          className="var-btn"
-                          onClick={() => addToCart(product, variation)}
-                          disabled={variation.stock <= 0}
-                          title={
-                            variation.stock <= 0
-                              ? "Out of stock"
-                              : `Add ${variation.variation_name}`
-                          }
-                        >
-                          <span>
-                            {variation.variation_name} ({variation.stock})
-                          </span>
-                          <span>
-                            ₱{formatCurrency(variation.selling_price)}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      className="add-btn"
-                      onClick={() => addToCart(product)}
-                      disabled={product.stock <= 0}
-                    >
-                      <Plus size={16} /> Add to Cart
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         </div>
       </div>
@@ -610,11 +719,17 @@ export default function ProductSearch() {
                     ₱{formatCurrency(item.unit_price * item.quantity)}
                   </div>
                   <div className="cart-item-controls">
-                    <button type="button" onClick={() => updateQty(item.key, -1)}>
+                    <button
+                      type="button"
+                      onClick={() => updateQty(item.key, -1)}
+                    >
                       <Minus size={13} />
                     </button>
                     <span>{item.quantity}</span>
-                    <button type="button" onClick={() => updateQty(item.key, 1)}>
+                    <button
+                      type="button"
+                      onClick={() => updateQty(item.key, 1)}
+                    >
                       <Plus size={13} />
                     </button>
                     <button

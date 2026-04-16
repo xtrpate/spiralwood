@@ -13,7 +13,6 @@ export default function ReceiptPage() {
 
   useEffect(() => {
     let isMounted = true;
-
     const fetchReceipt = async () => {
       try {
         const { data } = await api.get(`/pos/receipts/${id}`);
@@ -30,26 +29,24 @@ export default function ReceiptPage() {
         if (isMounted) setLoading(false);
       }
     };
-
     fetchReceipt();
-
     return () => {
       isMounted = false;
     };
   }, [id]);
 
   if (loading) return <div className="loading-screen">Loading receipt...</div>;
-  if (!receipt) {
+  if (!receipt)
     return (
       <div className="page-header">
         <p>{error || "Receipt not found."}</p>
       </div>
     );
-  }
 
   const items = Array.isArray(receipt.items) ? receipt.items : [];
-
-  const paymentMethod = String(receipt.payment_method || '').trim().toLowerCase();
+  const paymentMethod = String(receipt.payment_method || "")
+    .trim()
+    .toLowerCase();
 
   const subtotal = Number(receipt.subtotal ?? 0);
   const discount = Number(receipt.discount ?? 0);
@@ -58,17 +55,15 @@ export default function ReceiptPage() {
   const hasCashReceived =
     receipt.cash_received !== null &&
     receipt.cash_received !== undefined &&
-    receipt.cash_received !== '' &&
+    receipt.cash_received !== "" &&
     !Number.isNaN(Number(receipt.cash_received));
-
   const cashReceived = hasCashReceived ? Number(receipt.cash_received) : null;
 
   const hasBackendChange =
     receipt.change_amount !== null &&
     receipt.change_amount !== undefined &&
-    receipt.change_amount !== '' &&
+    receipt.change_amount !== "" &&
     !Number.isNaN(Number(receipt.change_amount));
-
   const backendChange = hasBackendChange ? Number(receipt.change_amount) : 0;
 
   const change =
@@ -79,15 +74,26 @@ export default function ReceiptPage() {
       : 0;
 
   const receiptDate = receipt.created_at || receipt.printed_at;
+
   return (
     <div>
-      <div className="page-header" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+      <div
+        className="page-header"
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
         <div>
           <h1>Official Receipt</h1>
           <p>Receipt #{receipt.receipt_number}</p>
         </div>
-        <div style={{ display:'flex', gap:10 }}>
-          <button className="btn btn-secondary" onClick={() => navigate("/staff/products")}>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => navigate("/staff/products")}
+          >
             <ArrowLeft size={16} /> Back
           </button>
           <button className="btn btn-primary" onClick={() => window.print()}>
@@ -107,9 +113,13 @@ export default function ReceiptPage() {
                 className="receipt-logo"
               />
             )}
-            <h2 className="biz-name">{receipt.business?.business_name || 'Spiral Wood Services'}</h2>
-            <p className="biz-info">{receipt.business?.business_address || ''}</p>
-            <p className="biz-info">{receipt.business?.business_phone || ''}</p>
+            <h2 className="biz-name">
+              {receipt.business?.business_name || "Spiral Wood Services"}
+            </h2>
+            <p className="biz-info">
+              {receipt.business?.business_address || ""}
+            </p>
+            <p className="biz-info">{receipt.business?.business_phone || ""}</p>
             <div className="receipt-divider" />
             <p className="receipt-title">OFFICIAL RECEIPT</p>
           </div>
@@ -127,17 +137,19 @@ export default function ReceiptPage() {
             <div className="meta-row">
               <span>Date:</span>
               <span>
-                {receiptDate ? new Date(receiptDate).toLocaleString("en-PH") : "—"}
+                {receiptDate
+                  ? new Date(receiptDate).toLocaleString("en-PH")
+                  : "—"}
               </span>
             </div>
             <div className="meta-row">
               <span>Customer:</span>
-              <span>{receipt.walkin_customer_name || 'Walk-in Customer'}</span>
+              <span>{receipt.walkin_customer_name || "Walk-in Customer"}</span>
             </div>
             <div className="meta-row">
               <span>Payment:</span>
-              <span style={{ textTransform:'capitalize' }}>
-                {paymentMethod.replace('_', ' ') || 'N/A'}
+              <span style={{ textTransform: "capitalize" }}>
+                {paymentMethod.replace("_", " ") || "N/A"}
               </span>
             </div>
             {receipt.walkin_customer_phone && (
@@ -159,19 +171,35 @@ export default function ReceiptPage() {
             <thead>
               <tr>
                 <th>Item</th>
-                <th style={{ textAlign:'center' }}>Qty</th>
-                <th style={{ textAlign:'right' }}>Price</th>
-                <th style={{ textAlign:'right' }}>Subtotal</th>
+                <th style={{ textAlign: "center" }}>Qty</th>
+                <th style={{ textAlign: "right" }}>Price</th>
+                <th style={{ textAlign: "right" }}>Subtotal</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item, i) => (
                 <tr key={i}>
-                  <td>{item.product_name}</td>
-                  <td style={{ textAlign:'center' }}>{item.quantity}</td>
-                  <td style={{ textAlign:'right' }}>₱{parseFloat(item.unit_price).toLocaleString('en-PH', { minimumFractionDigits:2 })}</td>
-                  <td style={{ textAlign:'right' }}>
-                    ₱{(parseFloat(item.unit_price || 0) * parseFloat(item.quantity || 0)).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                  <td>
+                    {item.product_name}
+                    {item.wood_type && (
+                      <div style={{ fontSize: "10px", color: "#666" }}>
+                        {item.wood_type}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ textAlign: "center" }}>{item.quantity}</td>
+                  <td style={{ textAlign: "right" }}>
+                    ₱
+                    {parseFloat(item.unit_price).toLocaleString("en-PH", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    ₱
+                    {(
+                      parseFloat(item.unit_price || 0) *
+                      parseFloat(item.quantity || 0)
+                    ).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
               ))}
@@ -179,51 +207,66 @@ export default function ReceiptPage() {
           </table>
 
           <div className="receipt-divider" />
+
           {/* Totals */}
           <div className="receipt-totals">
             <div className="total-row">
               <span>Subtotal</span>
-              <span>₱{subtotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+              <span>
+                ₱
+                {subtotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+              </span>
             </div>
 
             {discount > 0 && (
-              <div className="total-row" style={{ color: '#2e7d32' }}>
+              <div className="total-row" style={{ color: "#2e7d32" }}>
                 <span>Discount</span>
-                <span>-₱{discount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+                <span>
+                  -₱
+                  {discount.toLocaleString("en-PH", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
               </div>
             )}
 
             <div className="total-row grand">
               <span>TOTAL</span>
-              <span>₱{total.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+              <span>
+                ₱{total.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+              </span>
             </div>
 
-            {paymentMethod === 'cash' && (
+            {paymentMethod === "cash" && (
               <div className="total-row">
                 <span>Cash Received</span>
                 <span>
                   {cashReceived !== null
-                    ? `₱${cashReceived.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
-                    : '—'}
+                    ? `₱${cashReceived.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
+                    : "—"}
                 </span>
               </div>
             )}
 
-            {paymentMethod === 'cash' && (
-              <div className="total-row">
-                <span>Change</span>
-                <span>₱{change.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+            {paymentMethod === "cash" && (
+              <div className="total-row" style={{ fontWeight: "bold" }}>
+                {/* 👉 RULE 8: Explicitly labeled Sukli */}
+                <span>Change (Sukli)</span>
+                <span>
+                  ₱
+                  {change.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                </span>
               </div>
             )}
 
-            {receipt.payment_method === 'gcash' && receipt.business?.gcash_number && (
-              <div className="meta-row">
-                <span>GCash #:</span>
-                <span>{receipt.business.gcash_number}</span>
-              </div>
-            )}
+            {receipt.payment_method === "gcash" &&
+              receipt.business?.gcash_number && (
+                <div className="meta-row" style={{ marginTop: 10 }}>
+                  <span>GCash #:</span>
+                  <span>{receipt.business.gcash_number}</span>
+                </div>
+              )}
           </div>
-          
 
           <div className="receipt-divider" />
 
@@ -231,13 +274,18 @@ export default function ReceiptPage() {
           <div className="receipt-footer">
             {receipt.signature_url && (
               <div className="signature-block">
-                <img src={buildAssetUrl(receipt.signature_url)} alt="signature" className="signature-img" />
+                <img
+                  src={buildAssetUrl(receipt.signature_url)}
+                  alt="signature"
+                  className="signature-img"
+                />
                 <div className="signature-label">Authorized Signature</div>
               </div>
             )}
             <p>Thank you for your purchase!</p>
-            <p style={{ fontSize:11, color:'#aaa', marginTop:4 }}>
-              This is your official receipt. Items sold are non-refundable unless covered by warranty.
+            <p style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>
+              This is your official receipt. Items sold are non-refundable
+              unless covered by warranty.
             </p>
           </div>
         </div>

@@ -16,13 +16,18 @@ export default function ProcessOrder() {
     customer_phone: "",
     payment_method: "cash",
     cash_received: "",
-    discount: 0,
-    notes: "",
+
+    // 👉 NEW: Smart Discount System
+    discount_type: "amount", // Defaults to Peso amount
+    discount: "",
 
     need_delivery: false,
     delivery_address: "",
     delivery_requested_date: "",
     delivery_notes: "",
+
+    // 👉 MOVED TO BOTTOM OF FORM
+    notes: "",
   });
 
   const [loading, setLoading] = useState(false);
@@ -35,8 +40,16 @@ export default function ProcessOrder() {
   }, []);
 
   const subtotal = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0);
-  const discountPercent = parseFloat(form.discount) || 0;
-  const discountAmount = subtotal * (discountPercent / 100);
+
+  // 👉 NEW: Discount Calculation Logic
+  const discountInput = parseFloat(form.discount) || 0;
+  let discountAmount = 0;
+  if (form.discount_type === "percent") {
+    discountAmount = subtotal * (discountInput / 100);
+  } else {
+    discountAmount = discountInput;
+  }
+
   const total = Math.max(subtotal - discountAmount, 0);
   const cashReceived = parseFloat(form.cash_received) || 0;
   const change =
@@ -46,7 +59,12 @@ export default function ProcessOrder() {
   const phoneIsRequired = form.need_delivery;
   const phoneIsValid = !normalizedPhone || isValidPHPhone(normalizedPhone);
 
-  const discountIsValid = discountPercent >= 0 && discountPercent <= 100;
+  // 👉 NEW: Discount Validation
+  const discountIsValid =
+    form.discount_type === "percent"
+      ? discountInput >= 0 && discountInput <= 100
+      : discountInput >= 0 && discountInput <= subtotal;
+
   const cashIsValid =
     form.payment_method !== "cash" ||
     (!Number.isNaN(parseFloat(form.cash_received)) && cashReceived >= total);
@@ -69,50 +87,31 @@ export default function ProcessOrder() {
     e.preventDefault();
     setError("");
 
-    if (cart.length === 0) {
-      return setError("Cart is empty.");
-    }
-
-    if (!form.customer_name.trim()) {
+    if (cart.length === 0) return setError("Cart is empty.");
+    if (!form.customer_name.trim())
       return setError("Customer name is required.");
-    }
-
-    if (phoneIsRequired && !normalizedPhone) {
+    if (phoneIsRequired && !normalizedPhone)
       return setError("Phone number is required for delivery.");
-    }
-
-    if (normalizedPhone && !isValidPHPhone(normalizedPhone)) {
+    if (normalizedPhone && !isValidPHPhone(normalizedPhone))
       return setError(
         "Enter a valid 11-digit PH mobile number starting with 09.",
       );
-    }
-
-    if (discountPercent < 0) {
-      return setError("Discount percent cannot be negative.");
-    }
-
-    if (discountPercent > 100) {
-      return setError("Discount percent cannot be greater than 100.");
-    }
+    if (!discountIsValid) return setError("Invalid discount amount.");
 
     if (form.payment_method === "cash") {
       if (!form.cash_received || Number.isNaN(parseFloat(form.cash_received))) {
         return setError("Cash received is required for cash payments.");
       }
-
       if (cashReceived < total) {
         return setError("Cash received cannot be less than the total amount.");
       }
     }
 
     if (form.need_delivery) {
-      if (!form.delivery_address.trim()) {
+      if (!form.delivery_address.trim())
         return setError("Delivery address is required.");
-      }
-
-      if (!form.delivery_requested_date) {
+      if (!form.delivery_requested_date)
         return setError("Preferred delivery date and time is required.");
-      }
     }
 
     setLoading(true);
@@ -124,7 +123,7 @@ export default function ProcessOrder() {
         payment_method: form.payment_method,
         cash_received: form.payment_method === "cash" ? cashReceived : null,
         change: form.payment_method === "cash" ? change : null,
-        discount: discountPercent,
+        discount: discountAmount, // Send the final computed ₱ amount to DB
         notes: form.notes,
         items: cart,
         delivery: form.need_delivery
@@ -215,14 +214,18 @@ export default function ProcessOrder() {
                       )}
                     </strong>
                   </p>
-                  <p style={{ color: "#666", marginBottom: 0 }}>
-                    Change:{" "}
-                    <strong>
-                      ₱
-                      {parseFloat(success.change || 0).toLocaleString("en-PH", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </strong>
+                  <p
+                    style={{
+                      color: "#2e7d32",
+                      marginBottom: 0,
+                      fontWeight: "bold",
+                      fontSize: "1.1rem",
+                    }}
+                  >
+                    Change (Sukli): ₱
+                    {parseFloat(success.change || 0).toLocaleString("en-PH", {
+                      minimumFractionDigits: 2,
+                    })}
                   </p>
                 </>
               )}
@@ -252,7 +255,8 @@ export default function ProcessOrder() {
                   customer_phone: "",
                   payment_method: "cash",
                   cash_received: "",
-                  discount: 0,
+                  discount_type: "amount",
+                  discount: "",
                   notes: "",
                   need_delivery: false,
                   delivery_address: "",
@@ -307,113 +311,140 @@ export default function ProcessOrder() {
           </h3>
 
           <form onSubmit={handleSubmit}>
-            <div className="form-grid">
-              <div className="form-field">
-                <label>Customer Name *</label>
-                <input
-                  type="text"
-                  placeholder="Walk-in Customer"
-                  value={form.customer_name}
-                  onChange={(e) =>
-                    setForm({ ...form, customer_name: e.target.value })
-                  }
-                  required
-                />
-              </div>
+            <div className="form-field">
+              <label>Customer Name *</label>
+              <input
+                type="text"
+                placeholder="Walk-in Customer"
+                value={form.customer_name}
+                onChange={(e) =>
+                  setForm({ ...form, customer_name: e.target.value })
+                }
+                required
+              />
+            </div>
 
-              <div className="form-field">
-                <label>Phone Number{phoneIsRequired ? " *" : ""}</label>
-                <input
-                  type="tel"
-                  placeholder="09XXXXXXXXX"
-                  value={form.customer_phone}
-                  maxLength={11}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      customer_phone: e.target.value
-                        .replace(/\D/g, "")
-                        .slice(0, 11),
-                    })
-                  }
-                />
-                {form.customer_phone && !phoneIsValid && (
-                  <div
-                    style={{ color: "#c62828", fontSize: 12, marginTop: 6 }}
-                  >
-                    Enter a valid 11-digit PH mobile number starting with 09.
-                  </div>
-                )}
-              </div>
+            <div className="form-field">
+              <label>Phone Number{phoneIsRequired ? " *" : ""}</label>
+              <input
+                type="tel"
+                placeholder="09XXXXXXXXX"
+                value={form.customer_phone}
+                maxLength={11}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    customer_phone: e.target.value
+                      .replace(/\D/g, "")
+                      .slice(0, 11),
+                  })
+                }
+              />
+              {form.customer_phone && !phoneIsValid && (
+                <div style={{ color: "#c62828", fontSize: 12, marginTop: 6 }}>
+                  Enter a valid 11-digit PH mobile number starting with 09.
+                </div>
+              )}
+            </div>
 
-              <div className="form-field">
-                <label>Payment Method *</label>
+            <div className="form-field">
+              <label>Payment Method *</label>
+              <select
+                value={form.payment_method}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    payment_method: e.target.value,
+                    cash_received:
+                      e.target.value === "cash" ? form.cash_received : "",
+                  })
+                }
+                required
+              >
+                <option value="cash">Cash</option>
+                <option value="gcash">GCash</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="cod">Cash on Delivery (COD)</option>
+                <option value="cop">Cash on Pick-up (COP)</option>
+              </select>
+            </div>
+
+            {/* 👉 NEW: Smart Discount System UI */}
+            <div className="form-field">
+              <label>Discount</label>
+              <div style={{ display: "flex", gap: "8px" }}>
                 <select
-                  value={form.payment_method}
+                  value={form.discount_type}
                   onChange={(e) =>
                     setForm({
                       ...form,
-                      payment_method: e.target.value,
-                      cash_received:
-                        e.target.value === "cash" ? form.cash_received : "",
+                      discount_type: e.target.value,
+                      discount: "",
                     })
                   }
-                  required
+                  style={{
+                    width: "80px",
+                    padding: "12px 14px",
+                    border: "1.5px solid #e0e0e0",
+                    borderRadius: 8,
+                  }}
                 >
-                  <option value="cash">Cash</option>
-                  <option value="gcash">GCash</option>
-                  <option value="bank_transfer">Bank Transfer</option>
-                  <option value="cod">Cash on Delivery (COD)</option>
-                  <option value="cop">Cash on Pick-up (COP)</option>
+                  <option value="amount">₱</option>
+                  <option value="percent">%</option>
                 </select>
-              </div>
-
-              <div className="form-field">
-                <label>Discount (%)</label>
                 <input
                   type="number"
                   min="0"
-                  max="100"
                   step="0.01"
-                  placeholder="Enter discount percent"
+                  placeholder={
+                    form.discount_type === "amount"
+                      ? "Amount (e.g. 500)"
+                      : "Percent (e.g. 20)"
+                  }
                   value={form.discount}
-                  onChange={(e) => setForm({ ...form, discount: e.target.value })}
-                />
-              </div>
-
-              {form.payment_method === "cash" && (
-                <div className="form-field">
-                  <label>Cash Received (₱) *</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="Enter amount received"
-                    value={form.cash_received}
-                    onChange={(e) =>
-                      setForm({ ...form, cash_received: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-              )}
-
-              <div className="form-field full">
-                <label>Notes / Special Instructions</label>
-                <textarea
-                  rows={3}
-                  placeholder="Any special notes..."
-                  value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, discount: e.target.value })
+                  }
+                  style={{
+                    flex: 1,
+                    padding: "12px 14px",
+                    border: "1.5px solid #e0e0e0",
+                    borderRadius: 8,
+                    boxSizing: "border-box",
+                  }}
                 />
               </div>
             </div>
 
-            <div className="card" style={{ marginTop: 20, background: "#faf7f4" }}>
+            {form.payment_method === "cash" && (
+              <div className="form-field">
+                <label>Cash Received (₱) *</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Enter amount received"
+                  value={form.cash_received}
+                  onChange={(e) =>
+                    setForm({ ...form, cash_received: e.target.value })
+                  }
+                  required
+                />
+              </div>
+            )}
+
+            <div
+              className="card"
+              style={{
+                marginTop: 20,
+                marginBottom: 20,
+                background: "#faf7f4",
+                border: "1px solid #e2e8f0",
+              }}
+            >
               <h4 style={{ marginBottom: 14, fontWeight: 700 }}>
                 Fulfillment Options
               </h4>
-
               <div
                 style={{ display: "flex", flexDirection: "column", gap: 12 }}
               >
@@ -460,10 +491,7 @@ export default function ProcessOrder() {
                         placeholder="Full delivery address"
                         value={form.delivery_address}
                         onChange={(e) =>
-                          setForm({
-                            ...form,
-                            delivery_address: e.target.value,
-                          })
+                          setForm({ ...form, delivery_address: e.target.value })
                         }
                         required={form.need_delivery}
                         style={{
@@ -475,7 +503,6 @@ export default function ProcessOrder() {
                         }}
                       />
                     </div>
-
                     <div>
                       <label
                         style={{
@@ -485,7 +512,7 @@ export default function ProcessOrder() {
                           fontWeight: 600,
                         }}
                       >
-                        Preferred Delivery Date & Time *
+                        Preferred Date & Time *
                       </label>
                       <input
                         type="datetime-local"
@@ -506,7 +533,6 @@ export default function ProcessOrder() {
                         }}
                       />
                     </div>
-
                     <div>
                       <label
                         style={{
@@ -534,24 +560,23 @@ export default function ProcessOrder() {
                         }}
                       />
                     </div>
-
-                    <div
-                      style={{
-                        gridColumn: "1 / -1",
-                        background: "#f8fafc",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: 10,
-                        padding: "12px 14px",
-                        fontSize: 13,
-                        color: "#475569",
-                      }}
-                    >
-                      Delivery request only. Admin will review and create the
-                      final delivery schedule.
-                    </div>
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* 👉 MOVED NOTES TO BOTTOM */}
+            <div
+              className="form-field full"
+              style={{ borderTop: "1px solid #e2e8f0", paddingTop: "20px" }}
+            >
+              <label>Additional Notes / Special Instructions</label>
+              <textarea
+                rows={3}
+                placeholder="Add any final instructions for the admin or build team here..."
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              />
             </div>
 
             {error && (
@@ -575,14 +600,16 @@ export default function ProcessOrder() {
                 className="btn btn-secondary"
                 onClick={() => navigate("/staff/products")}
               >
-                ← Back to Cart
+                ← Back to Catalog
               </button>
               <button
                 type="submit"
                 className="btn btn-primary"
                 disabled={!canSubmit}
               >
-                {loading ? "Processing..." : "✓ Confirm Order & Process Payment"}
+                {loading
+                  ? "Processing..."
+                  : "✓ Confirm Order & Process Payment"}
               </button>
             </div>
           </form>
@@ -590,7 +617,6 @@ export default function ProcessOrder() {
 
         <div className="card" style={{ height: "fit-content" }}>
           <h3 style={{ marginBottom: 16, fontWeight: 700 }}>Order Summary</h3>
-
           <div style={{ maxHeight: 280, overflowY: "auto" }}>
             {cart.map((item) => (
               <div
@@ -605,7 +631,14 @@ export default function ProcessOrder() {
               >
                 <div>
                   <div style={{ fontWeight: 600 }}>{item.product_name}</div>
-                  <div style={{ color: "#888" }}>
+                  {/* 👉 PREPARED FOR RULE 7: Shows details if they exist */}
+                  {(item.wood_type || item.dimensions) && (
+                    <div style={{ fontSize: 11, color: "#64748b" }}>
+                      {item.wood_type}{" "}
+                      {item.dimensions ? `(${item.dimensions})` : ""}
+                    </div>
+                  )}
+                  <div style={{ color: "#888", marginTop: 2 }}>
                     x{item.quantity} @ ₱{item.unit_price.toLocaleString()}
                   </div>
                 </div>
@@ -637,13 +670,11 @@ export default function ProcessOrder() {
               <span>Subtotal</span>
               <span>
                 ₱
-                {subtotal.toLocaleString("en-PH", {
-                  minimumFractionDigits: 2,
-                })}
+                {subtotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
               </span>
             </div>
 
-            {discountPercent > 0 && (
+            {discountAmount > 0 && (
               <div
                 style={{
                   display: "flex",
@@ -653,7 +684,12 @@ export default function ProcessOrder() {
                   color: "#2e7d32",
                 }}
               >
-                <span>Discount ({discountPercent}%)</span>
+                <span>
+                  Discount{" "}
+                  {form.discount_type === "percent"
+                    ? `(${discountInput}%)`
+                    : `(Flat)`}
+                </span>
                 <span>
                   -₱
                   {discountAmount.toLocaleString("en-PH", {
@@ -675,10 +711,7 @@ export default function ProcessOrder() {
             >
               <span>TOTAL</span>
               <span>
-                ₱
-                {total.toLocaleString("en-PH", {
-                  minimumFractionDigits: 2,
-                })}
+                ₱{total.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
               </span>
             </div>
 
@@ -700,7 +733,6 @@ export default function ProcessOrder() {
                     })}
                   </span>
                 </div>
-
                 <div
                   style={{
                     display: "flex",
@@ -708,9 +740,14 @@ export default function ProcessOrder() {
                     fontSize: 13,
                     marginTop: 6,
                     color: cashReceived >= total ? "#2e7d32" : "#c62828",
+                    fontWeight: "bold",
                   }}
                 >
-                  <span>{cashReceived >= total ? "Change" : "Insufficient Cash"}</span>
+                  <span>
+                    {cashReceived >= total
+                      ? "Change (Sukli)"
+                      : "Insufficient Cash"}
+                  </span>
                   <span>
                     ₱
                     {Math.abs(cashReceived - total).toLocaleString("en-PH", {
