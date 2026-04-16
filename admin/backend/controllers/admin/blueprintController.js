@@ -1520,7 +1520,7 @@ exports.saveEstimation = async (req, res) => {
     for (const item of normalizedItems) {
       await conn.query(
         `INSERT INTO estimation_items
-          (estimation_id, component_id, raw_material_id, description, quantity, unit_cost, subtotal)
+          (estimation_id, component_id, raw_material_id, description, quantity, unit_cost)
         VALUES (?,?,?,?,?,?,?)`,
         [
           insertResult.insertId,
