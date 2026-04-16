@@ -13,7 +13,6 @@ const generateOrderNumber = async (conn) => {
     const suffix = Math.floor(Math.random() * 9000 + 1000);
     const candidate = `WLK-${datePart}-${suffix}`;
 
-    // ── FIXED: Switched to .query ──
     const [existing] = await conn.query(
       "SELECT id FROM orders WHERE order_number = ? LIMIT 1",
       [candidate],
@@ -35,14 +34,11 @@ exports.createOrder = async (req, res) => {
     cash_received = null,
     change = null,
     discount = 0,
+    delivery_fee = 0, // 👉 NEW: Catch the delivery fee from frontend
     notes,
     delivery = null,
     appointment = null,
   } = req.body;
-
-  console.log("=== CREATE ORDER HIT ===");
-  console.log("ACTIVE FILE:", __filename);
-  console.log("REQ BODY DELIVERY:", req.body.delivery);
 
   const normalizedPaymentMethod = String(payment_method || "")
     .trim()
@@ -50,62 +46,26 @@ exports.createOrder = async (req, res) => {
   const immediateMethods = ["cash", "gcash", "bank_transfer"];
   const deferredMethods = ["cod", "cop"];
 
-  if (!Array.isArray(items) || items.length === 0) {
+  if (!Array.isArray(items) || items.length === 0)
     return res.status(400).json({ message: "No items in order" });
-  }
-
-  if (!normalizedPaymentMethod) {
+  if (!normalizedPaymentMethod)
     return res.status(400).json({ message: "Payment method is required" });
-  }
-
   if (
     ![...immediateMethods, ...deferredMethods].includes(normalizedPaymentMethod)
-  ) {
+  )
     return res.status(400).json({ message: "Invalid payment method" });
-  }
 
   if (normalizedPaymentMethod === "cash") {
     const normalizedCash = parseFloat(cash_received);
-    if (Number.isNaN(normalizedCash)) {
+    if (Number.isNaN(normalizedCash))
       return res
         .status(400)
         .json({ message: "Cash received is required for cash payments" });
-    }
-  }
-
-  const discountPercent = parseFloat(discount) || 0;
-
-  if (discountPercent < 0 || discountPercent > 100) {
-    return res
-      .status(400)
-      .json({ message: "Discount percent must be between 0 and 100" });
   }
 
   if (delivery) {
-    if (!String(delivery.address || "").trim()) {
+    if (!String(delivery.address || "").trim())
       return res.status(400).json({ message: "Delivery address is required" });
-    }
-  }
-
-  if (appointment) {
-    if (!String(appointment.purpose || "").trim()) {
-      return res
-        .status(400)
-        .json({ message: "Appointment purpose is required" });
-    }
-
-    const appointmentRequestedDate = String(
-      appointment.preferred_date ||
-        appointment.requested_date ||
-        appointment.scheduled_date ||
-        "",
-    ).trim();
-
-    if (!appointmentRequestedDate) {
-      return res.status(400).json({
-        message: "Preferred appointment date and time is required",
-      });
-    }
   }
 
   const conn = await db.getConnection();
@@ -121,44 +81,46 @@ exports.createOrder = async (req, res) => {
       }
 
       if (item.variation_id) {
-        // ── FIXED: Switched to .query ──
         const [variationRows] = await conn.query(
           `SELECT id, stock FROM product_variations WHERE id = ? LIMIT 1`,
           [item.variation_id],
         );
-
         if (!variationRows.length) {
           await conn.rollback();
-          return res.status(404).json({
-            message: `Variation not found for ${item.product_name || "item"}`,
-          });
+          return res
+            .status(404)
+            .json({
+              message: `Variation not found for ${item.product_name || "item"}`,
+            });
         }
-
         if (Number(variationRows[0].stock || 0) < qty) {
           await conn.rollback();
-          return res.status(400).json({
-            message: `Insufficient stock for ${item.product_name || "item"}`,
-          });
+          return res
+            .status(400)
+            .json({
+              message: `Insufficient stock for ${item.product_name || "item"}`,
+            });
         }
       } else {
-        // ── FIXED: Switched to .query ──
         const [productRows] = await conn.query(
           `SELECT id, stock FROM products WHERE id = ? LIMIT 1`,
           [item.product_id],
         );
-
         if (!productRows.length) {
           await conn.rollback();
-          return res.status(404).json({
-            message: `Product not found for ${item.product_name || "item"}`,
-          });
+          return res
+            .status(404)
+            .json({
+              message: `Product not found for ${item.product_name || "item"}`,
+            });
         }
-
         if (Number(productRows[0].stock || 0) < qty) {
           await conn.rollback();
-          return res.status(400).json({
-            message: `Insufficient stock for ${item.product_name || "item"}`,
-          });
+          return res
+            .status(400)
+            .json({
+              message: `Insufficient stock for ${item.product_name || "item"}`,
+            });
         }
       }
     }
@@ -170,77 +132,48 @@ exports.createOrder = async (req, res) => {
     }
 
     const tax = 0;
-    const discountAmt = subtotal * (discountPercent / 100);
-    const total = Math.max(subtotal + tax - discountAmt, 0);
+    const discountAmt = parseFloat(discount) || 0;
+    const deliveryFeeAmt = parseFloat(delivery_fee) || 0; // 👉 Compute Delivery Fee
+
+    // 👉 FINAL TOTAL MATH: (Items - Discount) + Delivery
+    const total = Math.max(subtotal + tax - discountAmt + deliveryFeeAmt, 0);
 
     const deliveryRequestedDate = delivery
-      ? String(
-          delivery.requested_date ||
-            delivery.preferred_date ||
-            delivery.scheduled_date ||
-            "",
-        ).trim()
+      ? String(delivery.requested_date || "").trim()
       : "";
-
     const normalizedRequestedDeliveryDate = deliveryRequestedDate
       ? deliveryRequestedDate.replace("T", " ")
       : null;
-    console.log("DELIVERY REQUESTED DATE RAW:", deliveryRequestedDate);
-    console.log(
-      "NORMALIZED REQUESTED DELIVERY DATE:",
-      normalizedRequestedDeliveryDate,
-    );
     const deliveryRequestNotes = delivery
       ? String(delivery.notes || "").trim()
       : "";
-
-    const baseOrderNotes = String(notes || "").trim();
-    const storedOrderNotes = baseOrderNotes || null;
+    const storedOrderNotes = String(notes || "").trim() || null;
 
     const orderNumber = await generateOrderNumber(conn);
-
     const hasDeliveryRequest = Boolean(
       delivery && String(delivery.address || "").trim(),
     );
-
-    const hasAppointmentRequest = Boolean(appointment);
-
     const initialPaymentStatus = immediateMethods.includes(
       normalizedPaymentMethod,
     )
       ? "paid"
       : "pending";
+    const initialOrderStatus = hasDeliveryRequest
+      ? "confirmed"
+      : immediateMethods.includes(normalizedPaymentMethod)
+        ? "completed"
+        : "pending";
 
-    const initialOrderStatus =
-      hasDeliveryRequest || hasAppointmentRequest
-        ? "confirmed"
-        : immediateMethods.includes(normalizedPaymentMethod)
-          ? "completed"
-          : "pending";
-
-    // ── FIXED: Switched to .query ──
+    // 👉 FIX: The SQL Crash is fixed here!
     const [orderResult] = await conn.query(
       `
       INSERT INTO orders
       (
-        order_number,
-        walkin_customer_name,
-        walkin_customer_phone,
-        type,
-        order_type,
-        status,
-        payment_method,
-        payment_status,
-        subtotal,
-        tax,
-        discount,
-        total,
-        notes,
-        delivery_address,
-        requested_delivery_date,
-        delivery_request_notes
+        order_number, walkin_customer_name, walkin_customer_phone, type, order_type,
+        status, payment_method, payment_status, subtotal, tax, discount, delivery_fee, total,
+        notes, delivery_address, requested_delivery_date, delivery_request_notes
       )
-    VALUES (?, ?, ?, 'walkin', 'standard', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, 'walkin', 'standard', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         orderNumber,
@@ -252,7 +185,8 @@ exports.createOrder = async (req, res) => {
         subtotal,
         tax,
         discountAmt,
-        total,
+        deliveryFeeAmt,
+        total, // 👉 Added delivery_fee to array
         storedOrderNotes,
         delivery?.address?.trim() || null,
         normalizedRequestedDeliveryDate,
@@ -262,45 +196,16 @@ exports.createOrder = async (req, res) => {
 
     const orderId = orderResult.insertId;
 
-    // ── FIXED: Switched to .query ──
-    const [[savedOrderCheck]] = await conn.query(
-      `
-      SELECT
-        id,
-        order_number,
-        delivery_address,
-        requested_delivery_date,
-        delivery_request_notes
-      FROM orders
-      WHERE id = ?
-      LIMIT 1
-      `,
-      [orderId],
-    );
-
-    console.log("ORDER AFTER INSERT:", savedOrderCheck);
-
     for (const item of items) {
       const quantity = parseInt(item.quantity, 10);
       const unitPrice = parseFloat(item.unit_price || 0);
       const productionCost = parseFloat(item.production_cost || 0);
-
       const itemSubtotal = unitPrice * quantity;
 
-      // ── FIXED: Switched to .query ──
       const [itemResult] = await conn.query(
         `
         INSERT INTO order_items
-          (
-            order_id,
-            product_id,
-            variation_id,
-            product_name,
-            quantity,
-            unit_price,
-            subtotal,
-            production_cost
-          )
+          (order_id, product_id, variation_id, product_name, quantity, unit_price, subtotal, production_cost)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
@@ -318,19 +223,15 @@ exports.createOrder = async (req, res) => {
       const orderItemId = itemResult.insertId;
 
       if (item.variation_id) {
-        // ── FIXED: Switched to .query ──
         await conn.query(
           `UPDATE product_variations SET stock = stock - ? WHERE id = ?`,
           [quantity, item.variation_id],
         );
       } else {
-        // ── FIXED: Switched to .query ──
         await conn.query(`UPDATE products SET stock = stock - ? WHERE id = ?`, [
           quantity,
           item.product_id,
         ]);
-
-        // ── FIXED: Switched to .query ──
         await conn.query(
           `
           UPDATE products
@@ -346,7 +247,6 @@ exports.createOrder = async (req, res) => {
         );
       }
 
-      // ── FIXED: Switched to .query ──
       await conn.query(
         `
         INSERT INTO stock_movements
@@ -358,37 +258,25 @@ exports.createOrder = async (req, res) => {
     }
 
     if (immediateMethods.includes(normalizedPaymentMethod)) {
-      // ── FIXED: Switched to .query ──
       await conn.query(
-        `
-        INSERT INTO payment_transactions
-          (order_id, amount, payment_method, status, verified_by, verified_at)
-        VALUES (?, ?, ?, 'verified', ?, NOW())
-        `,
+        `INSERT INTO payment_transactions (order_id, amount, payment_method, status, verified_by, verified_at) VALUES (?, ?, ?, 'verified', ?, NOW())`,
         [orderId, total, normalizedPaymentMethod, req.user.id],
       );
     } else {
-      // ── FIXED: Switched to .query ──
       await conn.query(
-        `
-        INSERT INTO payment_transactions
-          (order_id, amount, payment_method, status)
-        VALUES (?, ?, ?, 'pending')
-        `,
+        `INSERT INTO payment_transactions (order_id, amount, payment_method, status) VALUES (?, ?, ?, 'pending')`,
         [orderId, total, normalizedPaymentMethod],
       );
     }
 
     const receiptNumber = `OR-${Date.now()}`;
     const itemsSnapshot = JSON.stringify(items);
-
     const normalizedCashReceived =
       normalizedPaymentMethod === "cash" &&
       cash_received !== null &&
       cash_received !== undefined
         ? parseFloat(cash_received)
         : null;
-
     const normalizedChange =
       normalizedPaymentMethod === "cash" &&
       change !== null &&
@@ -396,21 +284,10 @@ exports.createOrder = async (req, res) => {
         ? parseFloat(change)
         : null;
 
-    // ── FIXED: Switched to .query ──
     const [receiptResult] = await conn.query(
       `
       INSERT INTO receipts
-        (
-          order_id,
-          receipt_number,
-          issued_to,
-          issued_by,
-          total_amount,
-          cash_received,
-          change_amount,
-          items_snapshot,
-          printed_at
-        )
+        (order_id, receipt_number, issued_to, issued_by, total_amount, cash_received, change_amount, items_snapshot, printed_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
       `,
       [
@@ -427,75 +304,21 @@ exports.createOrder = async (req, res) => {
 
     let createdDelivery = null;
     if (delivery) {
-      createdDelivery = {
-        order_id: orderId,
-        address: delivery.address.trim(),
-        requested_date:
-          String(
-            delivery.requested_date ||
-              delivery.preferred_date ||
-              delivery.scheduled_date ||
-              "",
-          ).trim() || null,
-        status: "awaiting_admin_schedule",
-        scheduled_date: null,
-        assigned_driver: null,
-      };
-    }
-
-    let createdAppointment = null;
-    if (appointment) {
-      const normalizedPurpose = String(appointment.purpose || "")
-        .trim()
-        .toLowerCase();
-
-      const requestedAppointmentDate = String(
-        appointment.preferred_date ||
-          appointment.requested_date ||
-          appointment.scheduled_date ||
-          "",
-      ).replace("T", " ");
-
-      const normalizedPreferredDate = requestedAppointmentDate;
-      const normalizedScheduledDate = requestedAppointmentDate;
-
-      // ── FIXED: Switched to .query ──
-      const [appointmentResult] = await conn.query(
+      const [deliveryResult] = await conn.query(
         `
-        INSERT INTO appointments
-          (
-            order_id,
-            customer_id,
-            handled_by,
-            provider_id,
-            request_owner_id,
-            purpose,
-            scheduled_date,
-            preferred_date,
-            status,
-            notes
-          )
-        VALUES (?, NULL, NULL, NULL, ?, ?, ?, ?, 'pending', ?)
+        INSERT INTO deliveries
+          (order_id, address, requested_date, status)
+        VALUES (?, ?, ?, 'awaiting_admin_schedule')
         `,
-        [
-          orderId,
-          req.user.id,
-          normalizedPurpose,
-          normalizedScheduledDate,
-          normalizedPreferredDate,
-          String(appointment.notes || "").trim() || null,
-        ],
+        [orderId, delivery.address.trim(), normalizedRequestedDeliveryDate],
       );
 
-      createdAppointment = {
-        id: appointmentResult.insertId,
+      createdDelivery = {
+        id: deliveryResult.insertId,
         order_id: orderId,
-        purpose: normalizedPurpose,
-        scheduled_date: normalizedScheduledDate,
-        preferred_date: normalizedPreferredDate,
-        status: "pending",
-        handled_by: null,
-        assigned_to: null,
+        address: delivery.address.trim(),
+        requested_date: normalizedRequestedDeliveryDate,
+        status: "awaiting_admin_schedule",
       };
     }
 
@@ -512,7 +335,6 @@ exports.createOrder = async (req, res) => {
       change: normalizedChange,
       payment_status: initialPaymentStatus,
       delivery: createdDelivery,
-      appointment: createdAppointment,
     });
   } catch (err) {
     await conn.rollback();
@@ -526,7 +348,6 @@ exports.createOrder = async (req, res) => {
 /* ── Get Single Order Detail ── */
 exports.getOrderById = async (req, res) => {
   try {
-    // ── FIXED: Switched to .query and parsed ID ──
     const [orders] = await db.query(
       `
       SELECT o.*, r.receipt_number, r.id AS receipt_id, r.items_snapshot
@@ -537,12 +358,10 @@ exports.getOrderById = async (req, res) => {
       [parseInt(req.params.id)],
     );
 
-    if (orders.length === 0) {
+    if (orders.length === 0)
       return res.status(404).json({ message: "Order not found" });
-    }
 
     const order = orders[0];
-    // ── FIXED: Switched to .query and parsed ID ──
     const [items] = await db.query(
       "SELECT * FROM order_items WHERE order_id = ?",
       [parseInt(req.params.id)],
@@ -574,7 +393,6 @@ exports.getOrders = async (req, res) => {
       params.push(to);
     }
 
-    // ── FIXED: Main Query - Must be .query for LIMIT compatibility ──
     const [rows] = await db.query(
       `
       SELECT o.id, o.order_number, o.walkin_customer_name,
@@ -591,7 +409,6 @@ exports.getOrders = async (req, res) => {
       [...params, parseInt(limit), parseInt(offset)],
     );
 
-    // ── FIXED: Switched to .query ──
     const [count] = await db.query(
       `SELECT COUNT(*) AS total FROM orders o ${where}`,
       params,
