@@ -16,8 +16,6 @@ const WORLD_W = 6400;
 const WORLD_H = 3200;
 const WORLD_D = 5200;
 const FLOOR_OFFSET = 40;
-const MAX_HISTORY = 60;
-const SELECTION_COLOR = 0x38bdf8;
 const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 const isHexColor = (value) => HEX_COLOR_RE.test(String(value || "").trim());
@@ -33,7 +31,6 @@ const getSolidColorHex = (component = {}) => {
     const text = String(value || "").trim();
     if (isHexColor(text)) return text;
   }
-
   return "";
 };
 
@@ -45,21 +42,12 @@ const applySolidColorOverride = (object3d, hex) => {
 
     const patchMaterial = (material) => {
       if (!material) return material;
-
       const cloned = material.clone();
       cloned.map = null;
       cloned.normalMap = null;
       cloned.roughnessMap = null;
       cloned.metalnessMap = null;
-      cloned.aoMap = null;
-      cloned.emissiveMap = null;
-      cloned.bumpMap = null;
-      cloned.alphaMap = null;
-
-      if (cloned.color) {
-        cloned.color = new THREE.Color(hex);
-      }
-
+      if (cloned.color) cloned.color = new THREE.Color(hex);
       cloned.needsUpdate = true;
       return cloned;
     };
@@ -85,10 +73,6 @@ const clampNumber = (value, min, max) => {
 };
 
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value ?? null));
-
-const uniqueIds = (items = []) => [
-  ...new Set((Array.isArray(items) ? items : []).filter(Boolean)),
-];
 
 const buildBoundsFromComponents = (items = []) => {
   if (!Array.isArray(items) || !items.length) {
@@ -156,9 +140,6 @@ const getComponentExtents = (items = []) => {
     maxX,
     maxY,
     maxZ,
-    width: Math.max(1, Math.round(maxX - minX)),
-    height: Math.max(1, Math.round(maxY - minY)),
-    depth: Math.max(1, Math.round(maxZ - minZ)),
   };
 };
 
@@ -170,7 +151,6 @@ const normalizeDimensions = (source = {}) => ({
 
 const summarizeMetadata = (items = []) => {
   const first = Array.isArray(items) ? items.find(Boolean) : null;
-
   return {
     wood_type: String(first?.material || "").trim(),
     finish_color: String(
@@ -185,39 +165,10 @@ const summarizeMetadata = (items = []) => {
   };
 };
 
-const formatMm = (value) => {
-  const n = Number(value);
-  return Number.isFinite(n) && n > 0 ? `${Math.round(n)} mm` : "—";
-};
-
-const getPartAxisLabels = (comp) => {
-  const text = `${comp?.label || ""} ${comp?.type || ""}`.toLowerCase();
-
-  const flatKeywords = [
-    "panel",
-    "seat",
-    "shelf",
-    "top",
-    "slat",
-    "rail",
-    "board",
-    "surface",
-  ];
-
-  const looksFlat = flatKeywords.some((keyword) => text.includes(keyword));
-
-  return {
-    width: "Width (mm)",
-    height: looksFlat ? "Thickness (mm)" : "Height (mm)",
-    depth: "Depth (mm)",
-  };
-};
-
 const getFinishPreviewColor = (finishId, fallback = "") => {
   const match = Array.isArray(WOOD_FINISHES)
     ? WOOD_FINISHES.find((item) => item.id === finishId)
     : null;
-
   return (
     match?.color ||
     match?.hex ||
@@ -285,27 +236,6 @@ const normalizeViewerComponents = (items = []) =>
         item.depth > 0,
     );
 
-const getComponentFinishValue = (comp = {}) =>
-  String(comp?.finish_id || comp?.woodFinish || comp?.finish || "").trim();
-
-const getComponentColorValue = (comp = {}) =>
-  String(comp?.fill || comp?.color || "")
-    .trim()
-    .toLowerCase();
-
-const getSharedSelectionValue = (
-  components = [],
-  selectedIds = [],
-  resolver,
-) => {
-  if (!selectedIds.length) return "";
-  const selected = components.filter((comp) => selectedIds.includes(comp.id));
-  const values = [
-    ...new Set(selected.map((item) => resolver(item)).filter(Boolean)),
-  ];
-  return values.length === 1 ? values[0] : "";
-};
-
 export default function Customer3DViewer({
   initialComponents = [],
   initialDimensions = null,
@@ -327,39 +257,25 @@ export default function Customer3DViewer({
   const cameraRef = useRef(null);
   const orbitRef = useRef(null);
   const rootGroupRef = useRef(null);
-
   const personGroupRef = useRef(null);
-  const selectionHelpersRef = useRef([]);
-  const pointerStateRef = useRef({
-    isDown: false,
-    startX: 0,
-    startY: 0,
-    shiftMode: false,
-    moved: false,
-  });
-  const selectedIdsRef = useRef([]);
-  const historyRef = useRef({
-    past: [],
-    future: [],
-  });
+  const boundsBoxRef = useRef(new THREE.Box3());
+
+  // Refs for 3D Labels
+  const labelWRef = useRef(null);
+  const labelHRef = useRef(null);
+  const labelDRef = useRef(null);
 
   const [components, setComponents] = useState(() =>
     normalizeViewerComponents(initialComponents),
   );
-  const [selectedCompIds, setSelectedCompIds] = useState([]);
-  const [marqueeRect, setMarqueeRect] = useState(null);
 
+  // 👉 RULE 2: Unit State
+  const [unit, setUnit] = useState("cm"); // cm, inches, mm
   const [showPerson, setShowPerson] = useState(true);
   const [personHeightInput, setPersonHeightInput] = useState("5.6");
 
   const [quantity, setQuantity] = useState(1);
   const [comments, setComments] = useState("");
-
-  const [dimensionDrafts, setDimensionDrafts] = useState({
-    width: "",
-    height: "",
-    depth: "",
-  });
 
   const [overallDrafts, setOverallDrafts] = useState({
     width: "",
@@ -367,117 +283,41 @@ export default function Customer3DViewer({
     depth: "",
   });
 
-  useEffect(() => {
-    selectedIdsRef.current = selectedCompIds;
-  }, [selectedCompIds]);
-
-  const pushHistorySnapshot = useCallback((snapshot) => {
-    historyRef.current.past.push(cloneDeep(snapshot));
-    if (historyRef.current.past.length > MAX_HISTORY) {
-      historyRef.current.past.shift();
-    }
-    historyRef.current.future = [];
+  // --- UNIT CONVERSION UTILS ---
+  const convertMmToUnit = useCallback((mmVal, targetUnit) => {
+    if (!mmVal) return "";
+    if (targetUnit === "cm") return (mmVal / 10).toFixed(1);
+    if (targetUnit === "inches") return (mmVal / 25.4).toFixed(1);
+    return Math.round(mmVal).toString();
   }, []);
 
-  const restoreSnapshot = useCallback((snapshot, preferredSelection = []) => {
-    const normalized = normalizeViewerComponents(snapshot);
-
-    setComponents(normalized);
-
-    const availableIds = new Set(normalized.map((item) => item.id));
-    const nextSelection = uniqueIds(preferredSelection).filter((id) =>
-      availableIds.has(id),
-    );
-
-    setSelectedCompIds(nextSelection);
+  const convertUnitToMm = useCallback((unitVal, currentUnit) => {
+    const num = parseFloat(unitVal);
+    if (isNaN(num)) return 0;
+    if (currentUnit === "cm") return num * 10;
+    if (currentUnit === "inches") return num * 25.4;
+    return num;
   }, []);
 
-  const commitComponents = useCallback(
-    (updater, options = {}) => {
-      setComponents((prev) => {
-        const prevNormalized = normalizeViewerComponents(prev);
-        const nextRaw =
-          typeof updater === "function" ? updater(prevNormalized) : updater;
-        const nextNormalized = normalizeViewerComponents(nextRaw);
-
-        pushHistorySnapshot(prevNormalized);
-
-        const availableIds = new Set(nextNormalized.map((item) => item.id));
-        const nextSelectionBase = Array.isArray(options.nextSelectionIds)
-          ? options.nextSelectionIds
-          : selectedIdsRef.current;
-
-        const filteredSelection = uniqueIds(nextSelectionBase).filter((id) =>
-          availableIds.has(id),
-        );
-
-        const fallbackSelection =
-          filteredSelection.length > 0
-            ? filteredSelection
-            : options.keepEmptySelection
-              ? []
-              : nextNormalized[0]
-                ? [nextNormalized[0].id]
-                : [];
-
-        setSelectedCompIds(fallbackSelection);
-
-        return nextNormalized;
-      });
+  const formatUnitLabel = useCallback(
+    (mmVal) => {
+      return `${convertMmToUnit(mmVal, unit)} ${unit}`;
     },
-    [pushHistorySnapshot],
+    [unit, convertMmToUnit],
   );
 
-  const handleUndo = useCallback(() => {
-    if (!historyRef.current.past.length) return;
-
-    const currentSnapshot = cloneDeep(components);
-    const previousSnapshot = historyRef.current.past.pop();
-
-    historyRef.current.future.unshift(currentSnapshot);
-    restoreSnapshot(previousSnapshot, selectedIdsRef.current);
-  }, [components, restoreSnapshot]);
-
-  const handleRedo = useCallback(() => {
-    if (!historyRef.current.future.length) return;
-
-    const currentSnapshot = cloneDeep(components);
-    const nextSnapshot = historyRef.current.future.shift();
-
-    historyRef.current.past.push(currentSnapshot);
-    restoreSnapshot(nextSnapshot, selectedIdsRef.current);
-  }, [components, restoreSnapshot]);
-
-  const selectAllParts = useCallback(() => {
-    setSelectedCompIds(components.map((item) => item.id));
-  }, [components]);
-
-  const clearSelection = useCallback(() => {
-    setSelectedCompIds([]);
-  }, []);
-
-  const deleteSelected = useCallback(() => {
-    if (readOnly) return;
-    if (!selectedIdsRef.current.length) return;
-
-    const toDelete = new Set(selectedIdsRef.current);
-    const remaining = components.filter((item) => !toDelete.has(item.id));
-    const nextSelection = remaining[0] ? [remaining[0].id] : [];
-
-    commitComponents((prev) => prev.filter((item) => !toDelete.has(item.id)), {
-      nextSelectionIds: nextSelection,
-      keepEmptySelection: !nextSelection.length,
+  const commitComponents = useCallback((updater) => {
+    setComponents((prev) => {
+      const prevNormalized = normalizeViewerComponents(prev);
+      const nextRaw =
+        typeof updater === "function" ? updater(prevNormalized) : updater;
+      return normalizeViewerComponents(nextRaw);
     });
-  }, [commitComponents, components, readOnly]);
+  }, []);
 
   useEffect(() => {
     const normalizedInitial = normalizeViewerComponents(initialComponents);
-
-    historyRef.current = { past: [], future: [] };
     setComponents(normalizedInitial);
-    setSelectedCompIds(
-      !readOnly && normalizedInitial[0] ? [normalizedInitial[0].id] : [],
-    );
     setQuantity(1);
     setComments("");
   }, [initialComponents, readOnly]);
@@ -487,7 +327,6 @@ export default function Customer3DViewer({
       width: customizationRules?.editable?.width !== false,
       height: customizationRules?.editable?.height !== false,
       depth: customizationRules?.editable?.depth !== false,
-      wood_type: customizationRules?.editable?.wood_type !== false,
       finish_color: customizationRules?.editable?.finish_color !== false,
       comments: customizationRules?.editable?.comments !== false,
       quantity: customizationRules?.editable?.quantity !== false,
@@ -502,159 +341,24 @@ export default function Customer3DViewer({
     return (ft * 12 + inc) * 25.4;
   }, [personHeightInput]);
 
-  const isAllSelected =
-    components.length > 0 && selectedCompIds.length === components.length;
-
-  const selectedComp = useMemo(() => {
-    if (selectedCompIds.length !== 1) return null;
-    return components.find((c) => c.id === selectedCompIds[0]) || null;
-  }, [components, selectedCompIds]);
-
-  const selectedAxisLabels = useMemo(
-    () => getPartAxisLabels(selectedComp),
-    [selectedComp],
-  );
-
-  const selectionLabel = useMemo(() => {
-    if (!selectedCompIds.length) return "Select a part";
-    if (selectedCompIds.length === 1) {
-      return `Editing: ${selectedComp?.label || "Selected Part"}`;
-    }
-    return `Editing: ${selectedCompIds.length} parts`;
-  }, [selectedComp, selectedCompIds]);
-
-  const selectedFinishValue = useMemo(
-    () =>
-      getSharedSelectionValue(
-        components,
-        selectedCompIds,
-        getComponentFinishValue,
-      ),
-    [components, selectedCompIds],
-  );
-
-  const selectedColorValue = useMemo(
-    () =>
-      getSharedSelectionValue(
-        components,
-        selectedCompIds,
-        getComponentColorValue,
-      ),
-    [components, selectedCompIds],
-  );
-
-  useEffect(() => {
-    if (!selectedComp) {
-      setDimensionDrafts({
-        width: "",
-        height: "",
-        depth: "",
-      });
-      return;
-    }
-
-    setDimensionDrafts({
-      width: String(selectedComp.width ?? ""),
-      height: String(selectedComp.height ?? ""),
-      depth: String(selectedComp.depth ?? ""),
-    });
-  }, [selectedComp]);
-
   const overallBounds = useMemo(() => {
     const current = buildBoundsFromComponents(components);
-
     if (current.width_mm > 0 || current.height_mm > 0 || current.depth_mm > 0) {
       return current;
     }
-
     return normalizeDimensions(initialDimensions || {});
   }, [components, initialDimensions]);
 
+  // Update drafts when bounds or units change
   useEffect(() => {
     setOverallDrafts({
-      width: String(overallBounds.width_mm || ""),
-      height: String(overallBounds.height_mm || ""),
-      depth: String(overallBounds.depth_mm || ""),
+      width: convertMmToUnit(overallBounds.width_mm, unit),
+      height: convertMmToUnit(overallBounds.height_mm, unit),
+      depth: convertMmToUnit(overallBounds.depth_mm, unit),
     });
-  }, [overallBounds.width_mm, overallBounds.height_mm, overallBounds.depth_mm]);
+  }, [overallBounds, unit, convertMmToUnit]);
 
-  const clearSelectionHelpers = useCallback(() => {
-    const scene = sceneRef.current;
-    if (!scene) return;
-
-    selectionHelpersRef.current.forEach((helper) => {
-      scene.remove(helper);
-
-      if (helper.geometry) helper.geometry.dispose();
-
-      if (helper.material) {
-        if (Array.isArray(helper.material)) {
-          helper.material.forEach((mat) => mat.dispose?.());
-        } else {
-          helper.material.dispose?.();
-        }
-      }
-    });
-
-    selectionHelpersRef.current = [];
-  }, []);
-
-  const findTopLevelObjectById = useCallback((id) => {
-    const root = rootGroupRef.current;
-    if (!root) return null;
-
-    for (const child of root.children) {
-      if (child.userData?.id === id) return child;
-    }
-
-    let found = null;
-    root.traverse((child) => {
-      if (!found && child.userData?.id === id) {
-        found = child;
-      }
-    });
-
-    return found;
-  }, []);
-
-  const getIdsInSelectionRect = useCallback((clientRect) => {
-    const root = rootGroupRef.current;
-    const camera = cameraRef.current;
-    const renderer = rendererRef.current;
-
-    if (!root || !camera || !renderer) return [];
-
-    const ids = [];
-    const canvasRect = renderer.domElement.getBoundingClientRect();
-
-    root.children.forEach((object) => {
-      const id = object.userData?.id;
-      if (!id) return;
-
-      const box = new THREE.Box3().setFromObject(object);
-      if (box.isEmpty()) return;
-
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      center.project(camera);
-
-      const screenX = ((center.x + 1) / 2) * canvasRect.width + canvasRect.left;
-      const screenY =
-        ((-center.y + 1) / 2) * canvasRect.height + canvasRect.top;
-
-      if (
-        screenX >= clientRect.left &&
-        screenX <= clientRect.right &&
-        screenY >= clientRect.top &&
-        screenY <= clientRect.bottom
-      ) {
-        ids.push(id);
-      }
-    });
-
-    return uniqueIds(ids);
-  }, []);
-
+  // THREE.JS SETUP
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return undefined;
@@ -719,133 +423,6 @@ export default function Customer3DViewer({
     scene.add(rootGroup);
     rootGroupRef.current = rootGroup;
 
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-
-    const onPointerDown = (event) => {
-      pointerStateRef.current = {
-        isDown: true,
-        startX: event.clientX,
-        startY: event.clientY,
-        shiftMode: !!event.shiftKey,
-        moved: false,
-      };
-
-      if (event.shiftKey) {
-        orbit.enabled = false;
-
-        const rect = renderer.domElement.getBoundingClientRect();
-        setMarqueeRect({
-          left: event.clientX - rect.left,
-          top: event.clientY - rect.top,
-          width: 0,
-          height: 0,
-        });
-      }
-    };
-
-    const onPointerMove = (event) => {
-      const pointer = pointerStateRef.current;
-      if (!pointer.isDown) return;
-
-      const dx = event.clientX - pointer.startX;
-      const dy = event.clientY - pointer.startY;
-      const distance = Math.hypot(dx, dy);
-
-      if (distance > 4) {
-        pointer.moved = true;
-      }
-
-      if (!pointer.shiftMode) return;
-
-      const rect = renderer.domElement.getBoundingClientRect();
-      const left = Math.min(pointer.startX, event.clientX) - rect.left;
-      const top = Math.min(pointer.startY, event.clientY) - rect.top;
-      const width = Math.abs(event.clientX - pointer.startX);
-      const height = Math.abs(event.clientY - pointer.startY);
-
-      setMarqueeRect({
-        left,
-        top,
-        width,
-        height,
-      });
-    };
-
-    const onPointerUp = (event) => {
-      const pointer = pointerStateRef.current;
-      pointer.isDown = false;
-
-      orbit.enabled = true;
-
-      const dragDistance = Math.hypot(
-        event.clientX - pointer.startX,
-        event.clientY - pointer.startY,
-      );
-
-      if (pointer.shiftMode && pointer.moved) {
-        const clientRect = {
-          left: Math.min(pointer.startX, event.clientX),
-          top: Math.min(pointer.startY, event.clientY),
-          right: Math.max(pointer.startX, event.clientX),
-          bottom: Math.max(pointer.startY, event.clientY),
-        };
-
-        const idsInBox = getIdsInSelectionRect(clientRect);
-        if (idsInBox.length) {
-          setSelectedCompIds((prev) => uniqueIds([...prev, ...idsInBox]));
-        }
-
-        setMarqueeRect(null);
-        return;
-      }
-
-      setMarqueeRect(null);
-
-      if (dragDistance > 5) return;
-
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(rootGroup.children, true);
-
-      let clickedId = null;
-
-      if (intersects.length > 0) {
-        let obj = intersects[0].object;
-        while (obj && !obj.userData?.id && obj.parent) {
-          obj = obj.parent;
-        }
-
-        if (obj?.userData?.id) {
-          clickedId = obj.userData.id;
-        }
-      }
-
-      if (clickedId) {
-        if (event.shiftKey) {
-          setSelectedCompIds((prev) =>
-            prev.includes(clickedId)
-              ? prev.filter((id) => id !== clickedId)
-              : [...prev, clickedId],
-          );
-        } else {
-          setSelectedCompIds([clickedId]);
-        }
-        return;
-      }
-
-      if (!event.shiftKey) {
-        setSelectedCompIds([]);
-      }
-    };
-
-    renderer.domElement.addEventListener("pointerdown", onPointerDown);
-    renderer.domElement.addEventListener("pointermove", onPointerMove);
-    renderer.domElement.addEventListener("pointerup", onPointerUp);
-
     const handleResize = () => {
       if (!mountRef.current) return;
       const newW = Math.max(1, mountRef.current.clientWidth);
@@ -857,30 +434,73 @@ export default function Customer3DViewer({
 
     window.addEventListener("resize", handleResize);
 
+    // 👉 RULE 3: Project 3D bounds to 2D labels in animation loop
     let animId;
     const animate = () => {
       animId = requestAnimationFrame(animate);
       orbit.update();
       renderer.render(scene, camera);
+
+      if (
+        boundsBoxRef.current &&
+        !boundsBoxRef.current.isEmpty() &&
+        mountRef.current
+      ) {
+        const box = boundsBoxRef.current;
+        const rect = mountRef.current.getBoundingClientRect();
+
+        // Calculate midpoints of edges for labels
+        const pW = new THREE.Vector3(
+          (box.min.x + box.max.x) / 2,
+          box.min.y,
+          box.max.z,
+        ); // Front Bottom (Width)
+        const pH = new THREE.Vector3(
+          box.max.x,
+          (box.min.y + box.max.y) / 2,
+          box.max.z,
+        ); // Right Front (Height)
+        const pD = new THREE.Vector3(
+          box.max.x,
+          box.min.y,
+          (box.min.z + box.max.z) / 2,
+        ); // Right Bottom (Depth)
+
+        const updateDiv = (divRef, vec) => {
+          if (!divRef.current) return;
+          const projected = vec.clone().project(camera);
+
+          // Hide label if it goes behind the camera
+          if (projected.z > 1) {
+            divRef.current.style.display = "none";
+            return;
+          }
+          divRef.current.style.display = "block";
+
+          const x = (projected.x * 0.5 + 0.5) * rect.width;
+          const y = (-projected.y * 0.5 + 0.5) * rect.height;
+          divRef.current.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
+        };
+
+        updateDiv(labelWRef, pW);
+        updateDiv(labelHRef, pH);
+        updateDiv(labelDRef, pD);
+      }
     };
     animate();
 
     return () => {
-      clearSelectionHelpers();
       window.removeEventListener("resize", handleResize);
-      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
-      renderer.domElement.removeEventListener("pointermove", onPointerMove);
-      renderer.domElement.removeEventListener("pointerup", onPointerUp);
       cancelAnimationFrame(animId);
       orbit.dispose();
       renderer.dispose();
-
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [clearSelectionHelpers, getIdsInSelectionRect]);
+  }, []);
 
+  // BUILD THE 3D OBJECTS
   useEffect(() => {
     const rootGroup = rootGroupRef.current;
     if (!rootGroup) return;
@@ -909,14 +529,6 @@ export default function Customer3DViewer({
         const obj = createFurnitureObject(comp, false, false, dummySelectable);
         if (!obj) return;
 
-        obj.userData.id = comp.id;
-
-        obj.traverse((child) => {
-          if (child.isMesh) {
-            child.userData.id = comp.id;
-          }
-        });
-
         const solidHex = getSolidColorHex(comp);
         if (
           solidHex &&
@@ -944,6 +556,8 @@ export default function Customer3DViewer({
       }
     });
 
+    boundsBoxRef.current.copy(boundsBox); // Save bounds for labels
+
     if (!boundsBox.isEmpty() && orbitRef.current) {
       const center = new THREE.Vector3();
       boundsBox.getCenter(center);
@@ -952,54 +566,12 @@ export default function Customer3DViewer({
     }
   }, [components]);
 
-  useEffect(() => {
-    if (!sceneRef.current) return;
-
-    clearSelectionHelpers();
-
-    if (!selectedCompIds.length) return;
-
-    selectedCompIds.forEach((id) => {
-      const target = findTopLevelObjectById(id);
-      if (!target) return;
-
-      const helper = new THREE.BoxHelper(target, SELECTION_COLOR);
-
-      if (helper.material) {
-        const mats = Array.isArray(helper.material)
-          ? helper.material
-          : [helper.material];
-
-        mats.forEach((mat) => {
-          mat.depthTest = false;
-          mat.transparent = true;
-          mat.opacity = 0.95;
-        });
-      }
-
-      helper.renderOrder = 999;
-      sceneRef.current.add(helper);
-      selectionHelpersRef.current.push(helper);
-    });
-
-    return () => {
-      clearSelectionHelpers();
-    };
-  }, [
-    clearSelectionHelpers,
-    findTopLevelObjectById,
-    selectedCompIds,
-    components,
-  ]);
-
+  // BUILD THE PERSON
   useEffect(() => {
     if (!personGroupRef.current || !rootGroupRef.current) return;
 
     const group = personGroupRef.current;
     group.clear();
-    group.position.set(0, 0, 0);
-    group.rotation.set(0, 0, 0);
-    group.scale.set(1, 1, 1);
 
     if (!showPerson || components.length === 0) return;
 
@@ -1020,11 +592,9 @@ export default function Customer3DViewer({
 
     const shoulderWidth = Math.max(180, Math.round(personHeight * 0.16));
     const torsoDepth = Math.max(110, Math.round(personHeight * 0.08));
-
     const legWidth = Math.max(55, Math.round(personHeight * 0.032));
     const legDepth = Math.max(55, Math.round(personHeight * 0.032));
     const legGap = Math.max(26, Math.round(shoulderWidth * 0.18));
-
     const footWidth = legWidth + 24;
     const footHeight = 24;
     const footDepth = legDepth + 90;
@@ -1032,19 +602,14 @@ export default function Customer3DViewer({
     const bodyMat = new THREE.MeshStandardMaterial({
       color: 0x94a3b8,
       roughness: 0.95,
-      metalness: 0.02,
     });
-
     const headMat = new THREE.MeshStandardMaterial({
       color: 0xcbd5e1,
       roughness: 0.95,
-      metalness: 0.02,
     });
-
     const footMat = new THREE.MeshStandardMaterial({
       color: 0x64748b,
       roughness: 1,
-      metalness: 0,
     });
 
     const leftFoot = new THREE.Mesh(
@@ -1119,14 +684,13 @@ export default function Customer3DViewer({
       group.add(mesh);
     });
 
-    const box = new THREE.Box3().setFromObject(rootGroupRef.current);
+    const box = boundsBoxRef.current;
     if (!box.isEmpty()) {
       const furnitureWidth = Math.max(1, box.max.x - box.min.x);
       const gap = Math.max(
         220,
         Math.min(420, Math.round(furnitureWidth * 0.18)),
       );
-
       group.position.set(
         box.min.x - gap - shoulderWidth / 2,
         0,
@@ -1135,91 +699,37 @@ export default function Customer3DViewer({
     }
   }, [showPerson, personHeightMm, components]);
 
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      const tag = String(event.target?.tagName || "").toLowerCase();
-      const isTyping =
-        ["input", "textarea", "select"].includes(tag) ||
-        event.target?.isContentEditable;
-
-      const hasModifier = event.ctrlKey || event.metaKey;
-      const lowerKey = String(event.key || "").toLowerCase();
-
-      if (hasModifier && lowerKey === "a") {
-        event.preventDefault();
-        selectAllParts();
-        return;
-      }
-
-      if (hasModifier && lowerKey === "z" && !event.shiftKey) {
-        event.preventDefault();
-        handleUndo();
-        return;
-      }
-
-      if (
-        (hasModifier && lowerKey === "y") ||
-        (hasModifier && event.shiftKey && lowerKey === "z")
-      ) {
-        event.preventDefault();
-        handleRedo();
-        return;
-      }
-
-      if (isTyping) return;
-
-      if ((event.key === "Delete" || event.key === "Backspace") && !readOnly) {
-        if (selectedIdsRef.current.length) {
-          event.preventDefault();
-          deleteSelected();
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [deleteSelected, handleRedo, handleUndo, readOnly, selectAllParts]);
-
-  const handleDimensionDraftChange = (axis, value) => {
-    setDimensionDrafts((prev) => ({
-      ...prev,
-      [axis]: value,
-    }));
-  };
-
   const handleOverallDraftChange = (axis, value) => {
-    setOverallDrafts((prev) => ({
-      ...prev,
-      [axis]: value,
-    }));
+    setOverallDrafts((prev) => ({ ...prev, [axis]: value }));
   };
 
+  // SCALE THE WHOLE FURNITURE PROPORTIONALLY
   const commitOverallDimension = (axis) => {
     if (!isCustomizable || readOnly) return;
     if (!Array.isArray(components) || !components.length) return;
 
-    const rawValue = overallDrafts?.[axis];
-    const parsed = Number(rawValue);
+    const rawUnitValue = overallDrafts?.[axis];
+    const parsedMmValue = convertUnitToMm(rawUnitValue, unit);
 
-    const currentValue =
+    const currentValueMm =
       axis === "width"
         ? Number(overallBounds.width_mm || 0)
         : axis === "height"
           ? Number(overallBounds.height_mm || 0)
           : Number(overallBounds.depth_mm || 0);
 
-    if (!Number.isFinite(parsed) || parsed <= 0 || currentValue <= 0) {
+    if (parsedMmValue <= 0 || currentValueMm <= 0) {
       setOverallDrafts((prev) => ({
         ...prev,
-        [axis]: String(currentValue || ""),
+        [axis]: String(convertMmToUnit(currentValueMm, unit)),
       }));
       return;
     }
 
-    const nextValue = Math.max(1, Math.round(parsed));
-    if (nextValue === currentValue) return;
+    const nextValueMm = Math.max(1, Math.round(parsedMmValue));
+    if (nextValueMm === currentValueMm) return;
 
-    const scale = nextValue / currentValue;
+    const scale = nextValueMm / currentValueMm;
     const extents = getComponentExtents(components);
 
     if (!extents || !Number.isFinite(scale) || scale <= 0) return;
@@ -1235,7 +745,6 @@ export default function Customer3DViewer({
             width: Math.max(1, Math.round(Number(c.width || 0) * scale)),
           };
         }
-
         if (axis === "height") {
           return {
             ...c,
@@ -1245,7 +754,6 @@ export default function Customer3DViewer({
             height: Math.max(1, Math.round(Number(c.height || 0) * scale)),
           };
         }
-
         return {
           ...c,
           z: Math.round(
@@ -1255,48 +763,12 @@ export default function Customer3DViewer({
         };
       }),
     );
-
-    setOverallDrafts((prev) => ({
-      ...prev,
-      [axis]: String(nextValue),
-    }));
   };
 
-  const commitComponentDimension = (axis) => {
-    if (!isCustomizable || readOnly) return;
-    if (selectedCompIds.length !== 1 || !selectedComp) return;
-
-    const rawValue = dimensionDrafts?.[axis];
-    const parsed = Number(rawValue);
-    const currentValue = Number(selectedComp?.[axis] || 0);
-
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      setDimensionDrafts((prev) => ({
-        ...prev,
-        [axis]: String(currentValue || ""),
-      }));
-      return;
-    }
-
-    const nextValue = Math.max(1, Math.round(parsed));
-    if (nextValue === currentValue) return;
-
-    const selectedId = selectedComp.id;
-
-    commitComponents((prev) =>
-      prev.map((c) => (c.id === selectedId ? { ...c, [axis]: nextValue } : c)),
-    );
-
-    setDimensionDrafts((prev) => ({
-      ...prev,
-      [axis]: String(nextValue),
-    }));
-  };
-
+  // APPLY FINISH TO THE WHOLE ITEM
   const handleFinishChange = (finishId) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
 
-    // Apply to ALL components, not just selected ones!
     commitComponents((prev) =>
       prev.map((c) => {
         const next = applyWoodFinish(c, finishId);
@@ -1320,10 +792,10 @@ export default function Customer3DViewer({
     );
   };
 
+  // APPLY SOLID COLOR TO THE WHOLE ITEM
   const handleColorChange = (hex) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
 
-    // Apply to ALL components!
     commitComponents((prev) =>
       prev.map((c) => {
         return {
@@ -1342,7 +814,6 @@ export default function Customer3DViewer({
 
   const handleApply = () => {
     if (typeof onApply !== "function") return;
-
     onApply({
       quantity: Math.max(1, Number(quantity || 1)),
       comments: String(comments || "").trim(),
@@ -1356,26 +827,11 @@ export default function Customer3DViewer({
         height_mm: overallBounds.height_mm,
         depth_mm: overallBounds.depth_mm,
       },
-      worldSize: {
-        width_mm: WORLD_W,
-        height_mm: WORLD_H,
-        depth_mm: WORLD_D,
-      },
+      worldSize: { width_mm: WORLD_W, height_mm: WORLD_H, depth_mm: WORLD_D },
       components: cloneDeep(components),
       metadata: summarizeMetadata(components),
     });
   };
-
-  const finishDisabled =
-    !selectedCompIds.length ||
-    !isCustomizable ||
-    readOnly ||
-    !editable.finish_color;
-
-  const undoDisabled = !historyRef.current.past.length;
-  const redoDisabled = !historyRef.current.future.length;
-  const deleteDisabled = readOnly || !selectedCompIds.length;
-  const singleSelectionOnly = selectedCompIds.length !== 1;
 
   const swatchColors = [
     "#ffffff",
@@ -1395,66 +851,29 @@ export default function Customer3DViewer({
             {readOnly ? "Template Preview" : "Live Configurator"}
           </div>
           <div style={styles.topBarDims}>
-            {formatMm(overallBounds.width_mm)} ×{" "}
-            {formatMm(overallBounds.height_mm)} ×{" "}
-            {formatMm(overallBounds.depth_mm)}
+            {formatUnitLabel(overallBounds.width_mm)} ×{" "}
+            {formatUnitLabel(overallBounds.height_mm)} ×{" "}
+            {formatUnitLabel(overallBounds.depth_mm)}
           </div>
         </div>
 
         <div style={styles.topBarActions}>
-          {!readOnly ? (
-            <>
+          {/* Unit Toggle Buttons */}
+          <div style={styles.unitToggleGroup}>
+            {["cm", "inches", "mm"].map((u) => (
               <button
-                type="button"
-                onClick={handleUndo}
-                disabled={undoDisabled}
+                key={u}
+                onClick={() => setUnit(u)}
                 style={{
-                  ...styles.toolBtn,
-                  ...(undoDisabled ? styles.toolBtnDisabled : null),
+                  ...styles.unitBtn,
+                  background: unit === u ? "#0f172a" : "#fff",
+                  color: unit === u ? "#fff" : "#64748b",
                 }}
               >
-                Undo
+                {u}
               </button>
-
-              <button
-                type="button"
-                onClick={handleRedo}
-                disabled={redoDisabled}
-                style={{
-                  ...styles.toolBtn,
-                  ...(redoDisabled ? styles.toolBtnDisabled : null),
-                }}
-              >
-                Redo
-              </button>
-
-              <button
-                type="button"
-                onClick={isAllSelected ? clearSelection : selectAllParts}
-                disabled={!components.length}
-                style={{
-                  ...styles.toolBtn,
-                  ...styles.primaryToolBtn,
-                  ...(!components.length ? styles.toolBtnDisabled : null),
-                }}
-              >
-                {isAllSelected ? "Clear" : "Select All"}
-              </button>
-
-              <button
-                type="button"
-                onClick={deleteSelected}
-                disabled={deleteDisabled}
-                style={{
-                  ...styles.toolBtn,
-                  ...styles.dangerToolBtn,
-                  ...(deleteDisabled ? styles.toolBtnDisabled : null),
-                }}
-              >
-                Delete
-              </button>
-            </>
-          ) : null}
+            ))}
+          </div>
 
           <span
             style={{
@@ -1471,23 +890,23 @@ export default function Customer3DViewer({
       <div style={styles.viewerShell}>
         <div style={styles.canvasWrap}>
           <div ref={mountRef} style={styles.canvasContainer} />
-          {marqueeRect ? (
-            <div
-              style={{
-                ...styles.marqueeBox,
-                left: marqueeRect.left,
-                top: marqueeRect.top,
-                width: marqueeRect.width,
-                height: marqueeRect.height,
-              }}
-            />
-          ) : null}
+
+          {/* 👉 3D PROJECTION LABELS */}
+          <div ref={labelWRef} style={styles.floatingLabel}>
+            W: {formatUnitLabel(overallBounds.width_mm)}
+          </div>
+          <div ref={labelHRef} style={styles.floatingLabel}>
+            H: {formatUnitLabel(overallBounds.height_mm)}
+          </div>
+          <div ref={labelDRef} style={styles.floatingLabel}>
+            D: {formatUnitLabel(overallBounds.depth_mm)}
+          </div>
         </div>
 
         <aside style={styles.sidebar}>
           <div style={styles.sidebarScroll}>
             <div style={styles.sidebarBlock}>
-              <h3 style={styles.sidebarTitle}>Template Customization</h3>
+              <h3 style={styles.sidebarTitle}>Template Configurator</h3>
               <p style={styles.helpText}>
                 Adjust the overall dimensions below. The system will
                 automatically scale all parts of the furniture proportionally to
@@ -1495,7 +914,6 @@ export default function Customer3DViewer({
               </p>
             </div>
 
-            {/* PERSON SCALE SECTION */}
             <div style={styles.sidebarBlock}>
               <div style={styles.sectionRow}>
                 <label style={styles.label}>Person Scale</label>
@@ -1523,16 +941,15 @@ export default function Customer3DViewer({
               ) : null}
             </div>
 
-            {/* OVERALL SIZE SECTION (This is the only size editor they get!) */}
             <div style={styles.sidebarBlock}>
               <div style={styles.sectionRow}>
-                <label style={styles.label}>Overall Dimensions</label>
-                <span style={styles.miniPill}>Proportional Scaling</span>
+                <label style={styles.label}>Overall Dimensions ({unit})</label>
+                <span style={styles.miniPill}>Proportional</span>
               </div>
 
               <div style={styles.dimGrid}>
                 <div>
-                  <span style={styles.dimLabel}>Width (mm)</span>
+                  <span style={styles.dimLabel}>Width</span>
                   <input
                     type="number"
                     value={overallDrafts.width}
@@ -1551,7 +968,7 @@ export default function Customer3DViewer({
                   />
                 </div>
                 <div>
-                  <span style={styles.dimLabel}>Height (mm)</span>
+                  <span style={styles.dimLabel}>Height</span>
                   <input
                     type="number"
                     value={overallDrafts.height}
@@ -1570,7 +987,7 @@ export default function Customer3DViewer({
                   />
                 </div>
                 <div>
-                  <span style={styles.dimLabel}>Depth (mm)</span>
+                  <span style={styles.dimLabel}>Depth</span>
                   <input
                     type="number"
                     value={overallDrafts.depth}
@@ -1591,7 +1008,6 @@ export default function Customer3DViewer({
               </div>
             </div>
 
-            {/* FINISHES & COLORS (Now applies to the whole item) */}
             <div
               style={{
                 ...styles.sidebarBlock,
@@ -1599,7 +1015,7 @@ export default function Customer3DViewer({
                 pointerEvents: readOnly ? "none" : "auto",
               }}
             >
-              <label style={styles.label}>Wood Finish</label>
+              <label style={styles.label}>Wood Finish (Applies to all)</label>
               <select
                 onChange={(e) => handleFinishChange(e.target.value)}
                 style={styles.input}
@@ -1653,9 +1069,7 @@ export default function Customer3DViewer({
                   >
                     −
                   </button>
-
                   <strong style={styles.qtyValue}>{quantity}</strong>
-
                   <button
                     type="button"
                     disabled={!editable.quantity}
@@ -1678,12 +1092,10 @@ export default function Customer3DViewer({
                   placeholder={commentsPlaceholder}
                   style={styles.textarea}
                 />
-                <div style={styles.counterText}>{comments.length}/500</div>
               </div>
 
               <div style={styles.footerField}>
                 <label style={styles.footerLabel}>Reference Photos</label>
-
                 <input
                   type="file"
                   accept=".jpg,.jpeg,.png,.webp"
@@ -1691,42 +1103,13 @@ export default function Customer3DViewer({
                   onChange={onPickReferencePhotos}
                   style={styles.uploadInput}
                 />
-
                 {uploadError ? (
                   <div style={styles.errorText}>{uploadError}</div>
                 ) : (
                   <div style={styles.helperText}>
-                    Upload pegs, inspiration images, actual space photos, or
-                    sketches.
+                    Upload space photos or inspiration.
                   </div>
                 )}
-
-                {Array.isArray(referencePhotos) && referencePhotos.length ? (
-                  <div style={styles.photoGrid}>
-                    {referencePhotos.map((photo) => (
-                      <div key={photo.id} style={styles.photoCard}>
-                        <img
-                          src={photo.data_url}
-                          alt={photo.name || "Reference"}
-                          style={styles.photoThumb}
-                        />
-
-                        <div style={styles.photoMeta}>
-                          <div style={styles.photoName}>
-                            {photo.name || "Reference Photo"}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => onRemoveReferencePhoto?.(photo.id)}
-                            style={styles.photoRemoveBtn}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
               </div>
 
               <button
@@ -1745,12 +1128,7 @@ export default function Customer3DViewer({
 }
 
 const styles = {
-  root: {
-    display: "grid",
-    gap: 10,
-    minHeight: 0,
-  },
-
+  root: { display: "grid", gap: 10, minHeight: 0 },
   topBar: {
     display: "flex",
     alignItems: "center",
@@ -1762,57 +1140,28 @@ const styles = {
     borderRadius: 14,
     background: "#f8fafc",
   },
-
-  topBarTitle: {
-    fontSize: 14,
-    fontWeight: 800,
-    color: "#0f172a",
-  },
-
-  topBarDims: {
-    fontSize: 12,
-    color: "#64748b",
-    marginTop: 4,
-    fontWeight: 600,
-  },
-
+  topBarTitle: { fontSize: 14, fontWeight: 800, color: "#0f172a" },
+  topBarDims: { fontSize: 12, color: "#64748b", marginTop: 4, fontWeight: 600 },
   topBarActions: {
     display: "flex",
     alignItems: "center",
     gap: 8,
     flexWrap: "wrap",
-    justifyContent: "flex-end",
   },
-
-  toolBtn: {
-    height: 36,
-    padding: "0 12px",
-    borderRadius: 10,
+  unitToggleGroup: {
+    display: "flex",
+    borderRadius: 8,
+    overflow: "hidden",
     border: "1px solid #cbd5e1",
-    background: "#ffffff",
-    color: "#334155",
-    fontWeight: 800,
+  },
+  unitBtn: {
+    padding: "4px 10px",
     fontSize: 12,
+    fontWeight: "bold",
+    border: "none",
     cursor: "pointer",
+    borderRight: "1px solid #cbd5e1",
   },
-
-  primaryToolBtn: {
-    background: "#eff6ff",
-    border: "1px solid #93c5fd",
-    color: "#1d4ed8",
-  },
-
-  dangerToolBtn: {
-    background: "#fff1f2",
-    border: "1px solid #fecdd3",
-    color: "#be123c",
-  },
-
-  toolBtnDisabled: {
-    opacity: 0.5,
-    cursor: "not-allowed",
-  },
-
   modeBadge: {
     fontSize: 12,
     fontWeight: 800,
@@ -1820,7 +1169,6 @@ const styles = {
     borderRadius: 999,
     whiteSpace: "nowrap",
   },
-
   viewerShell: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) 340px",
@@ -1831,14 +1179,12 @@ const styles = {
     background: "#ffffff",
     border: "1px solid rgba(15, 23, 42, 0.08)",
   },
-
   canvasWrap: {
     minWidth: 0,
     minHeight: 0,
     position: "relative",
     background: "#f8fafc",
   },
-
   canvasContainer: {
     width: "100%",
     height: "100%",
@@ -1846,12 +1192,23 @@ const styles = {
     backgroundColor: "#f8fafc",
   },
 
-  marqueeBox: {
+  // 👉 3D Label Styles
+  floatingLabel: {
     position: "absolute",
-    border: "1px dashed #0ea5e9",
-    background: "rgba(14, 165, 233, 0.12)",
+    left: 0,
+    top: 0,
+    background: "rgba(15, 23, 42, 0.8)",
+    color: "#fff",
+    padding: "4px 8px",
+    borderRadius: "6px",
+    fontSize: "12px",
+    fontWeight: "bold",
     pointerEvents: "none",
-    zIndex: 5,
+    transform: "translate(-50%, -50%)",
+    display: "none", // Hidden by default until projection math runs
+    whiteSpace: "nowrap",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+    zIndex: 10,
   },
 
   sidebar: {
@@ -1862,7 +1219,6 @@ const styles = {
     display: "grid",
     gridTemplateRows: "minmax(0, 1fr) auto",
   },
-
   sidebarScroll: {
     minHeight: 0,
     overflowY: "auto",
@@ -1871,7 +1227,6 @@ const styles = {
     flexDirection: "column",
     gap: 12,
   },
-
   sidebarBlock: {
     display: "grid",
     gap: 8,
@@ -1880,63 +1235,15 @@ const styles = {
     borderRadius: 14,
     background: "#ffffff",
   },
-
-  quickHintRow: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-
-  quickHint: {
-    padding: "6px 10px",
-    borderRadius: 999,
-    background: "#eff6ff",
-    color: "#1d4ed8",
-    fontSize: 11,
-    fontWeight: 800,
-  },
-
-  sidebarTitle: {
-    margin: 0,
-    fontSize: 18,
-    fontWeight: 800,
-    color: "#0f172a",
-  },
-
-  helpText: {
-    margin: 0,
-    fontSize: 13,
-    color: "#64748b",
-    lineHeight: 1.5,
-  },
-
+  sidebarTitle: { margin: 0, fontSize: 18, fontWeight: 800, color: "#0f172a" },
+  helpText: { margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.5 },
   sectionRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
   },
-
-  sectionHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-
-  sectionActionRow: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-
-  label: {
-    fontSize: 14,
-    fontWeight: 800,
-    color: "#334155",
-  },
-
+  label: { fontSize: 14, fontWeight: 800, color: "#334155" },
   inlineCheck: {
     display: "flex",
     alignItems: "center",
@@ -1944,7 +1251,6 @@ const styles = {
     fontSize: 13,
     color: "#475569",
   },
-
   miniPill: {
     fontSize: 11,
     fontWeight: 800,
@@ -1954,13 +1260,7 @@ const styles = {
     padding: "6px 10px",
     whiteSpace: "nowrap",
   },
-
-  dimGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr 1fr",
-    gap: 8,
-  },
-
+  dimGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 },
   dimLabel: {
     fontSize: 11,
     color: "#64748b",
@@ -1968,7 +1268,6 @@ const styles = {
     marginBottom: 4,
     fontWeight: 700,
   },
-
   input: {
     width: "100%",
     padding: "8px 10px",
@@ -1979,41 +1278,7 @@ const styles = {
     boxSizing: "border-box",
     background: "#fff",
   },
-
-  helperText: {
-    fontSize: 12,
-    color: "#64748b",
-    lineHeight: 1.45,
-  },
-
-  actionBtn: {
-    padding: "7px 10px",
-    backgroundColor: "#e2e8f0",
-    border: "none",
-    borderRadius: 10,
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: 800,
-    color: "#334155",
-    whiteSpace: "nowrap",
-  },
-
-  deleteActionBtn: {
-    backgroundColor: "#fff1f2",
-    color: "#be123c",
-  },
-
-  actionBtnDisabled: {
-    opacity: 0.5,
-    cursor: "not-allowed",
-  },
-
-  colorRow: {
-    display: "flex",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-
+  colorRow: { display: "flex", gap: 8, flexWrap: "wrap" },
   colorSwatch: {
     width: 30,
     height: 30,
@@ -2021,12 +1286,6 @@ const styles = {
     border: "2px solid #cbd5e1",
     cursor: "pointer",
   },
-
-  colorSwatchActive: {
-    boxShadow: "0 0 0 3px rgba(56, 189, 248, 0.35)",
-    transform: "scale(1.04)",
-  },
-
   sidebarFooter: {
     borderTop: "1px solid #e2e8f0",
     background: "#ffffff",
@@ -2035,26 +1294,14 @@ const styles = {
     gap: 12,
     boxShadow: "0 -8px 24px rgba(15, 23, 42, 0.05)",
   },
-
   footerTopRow: {
     display: "flex",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
   },
-
-  footerTitle: {
-    fontSize: 15,
-    fontWeight: 800,
-    color: "#0f172a",
-  },
-
-  footerSubtext: {
-    fontSize: 12,
-    color: "#64748b",
-    marginTop: 3,
-  },
-
+  footerTitle: { fontSize: 15, fontWeight: 800, color: "#0f172a" },
+  footerSubtext: { fontSize: 12, color: "#64748b", marginTop: 3 },
   qtyBox: {
     display: "flex",
     alignItems: "center",
@@ -2064,7 +1311,6 @@ const styles = {
     background: "#f8fafc",
     border: "1px solid #e2e8f0",
   },
-
   qtyBtn: {
     width: 34,
     height: 34,
@@ -2075,25 +1321,14 @@ const styles = {
     fontSize: 18,
     lineHeight: 1,
   },
-
   qtyValue: {
     minWidth: 24,
     textAlign: "center",
     fontSize: 15,
     color: "#0f172a",
   },
-
-  footerField: {
-    display: "grid",
-    gap: 6,
-  },
-
-  footerLabel: {
-    fontSize: 13,
-    fontWeight: 800,
-    color: "#334155",
-  },
-
+  footerField: { display: "grid", gap: 6 },
+  footerLabel: { fontSize: 13, fontWeight: 800, color: "#334155" },
   textarea: {
     width: "100%",
     resize: "none",
@@ -2104,13 +1339,6 @@ const styles = {
     boxSizing: "border-box",
     background: "#fff",
   },
-
-  counterText: {
-    fontSize: 12,
-    color: "#64748b",
-    textAlign: "right",
-  },
-
   applyBtn: {
     height: 46,
     borderRadius: 12,
@@ -2121,66 +1349,6 @@ const styles = {
     fontSize: 14,
     cursor: "pointer",
   },
-
-  uploadInput: {
-    width: "100%",
-    font: "inherit",
-  },
-
-  errorText: {
-    fontSize: 12,
-    color: "#b91c1c",
-    fontWeight: 700,
-  },
-
-  photoGrid: {
-    display: "grid",
-    gap: 8,
-  },
-
-  photoCard: {
-    display: "grid",
-    gridTemplateColumns: "56px minmax(0, 1fr)",
-    gap: 10,
-    alignItems: "center",
-    padding: 8,
-    borderRadius: 12,
-    border: "1px solid #e2e8f0",
-    background: "#f8fafc",
-  },
-
-  photoThumb: {
-    width: 56,
-    height: 56,
-    objectFit: "cover",
-    borderRadius: 10,
-    border: "1px solid #cbd5e1",
-  },
-
-  photoMeta: {
-    minWidth: 0,
-    display: "grid",
-    gap: 6,
-  },
-
-  photoName: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: "#334155",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-
-  photoRemoveBtn: {
-    width: "fit-content",
-    padding: "6px 10px",
-    borderRadius: 10,
-    border: "1px solid #fecaca",
-    background: "#fff1f2",
-    color: "#be123c",
-    fontSize: 12,
-    fontWeight: 800,
-    cursor: "pointer",
-  },
+  uploadInput: { width: "100%", font: "inherit" },
+  errorText: { fontSize: 12, color: "#b91c1c", fontWeight: 700 },
 };
