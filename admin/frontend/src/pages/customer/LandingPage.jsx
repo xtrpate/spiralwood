@@ -41,26 +41,28 @@ export default function LandingPage() {
       {/* 👉 1. HERO SECTION (Full Edge-to-Edge Background) */}
       <section
         style={{
-          width: "100%",
-          minHeight: "85vh",
-          backgroundImage: `url(${cabinetImg})`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
+          width: "100%", // Ensures full width
+          minHeight: "85vh", // Height slightly less than full screen to keep global nav visible
           display: "flex",
           alignItems: "center",
           justifyContent: "flex-end", // Pushes the card to the right
-          padding: "5% 8%", // Keeps the card away from the exact edges
+          backgroundImage: `url(${cabinetImg})`, // imported image
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
+          padding: "0", // 👈 REMOVED SECTION PADDING FOR FULL WIDTH
           boxSizing: "border-box",
         }}
       >
-        {/* 👉 Solid White Promo Card (Like the reference image) */}
+        {/* 👉 Solid White Promo Card (Pushed from the right edge with margin) */}
         <div
           style={{
             backgroundColor: "#ffffff",
             padding: "60px 40px",
             maxWidth: "550px",
-            textAlign: "center",
+            textAlign: "center", // Centered like the other picture reference
+            marginRight: "8%", // Space from right edge
+            marginBottom: "5%", // Space from bottom edge
             boxShadow: "0 15px 40px rgba(0,0,0,0.15)", // Soft shadow to lift it off the image
           }}
         >
@@ -79,7 +81,7 @@ export default function LandingPage() {
             <span style={{ color: "#d2b48c" }}>Built to Last.</span>
           </h1>
 
-          {/* Subtle divider line like in the reference */}
+          {/* Subtle divider line like in reference image */}
           <div
             style={{
               height: "2px",
@@ -109,7 +111,7 @@ export default function LandingPage() {
               flexWrap: "wrap",
             }}
           >
-            {/* Primary Button */}
+            {/* Primary Funnel to the Catalog */}
             <button
               onClick={() => navigate("/catalog")}
               style={{
@@ -131,7 +133,7 @@ export default function LandingPage() {
               Shop the Catalog <ArrowRight size={18} />
             </button>
 
-            {/* Secondary Button */}
+            {/* Secondary Funnel to Appointments */}
             <button
               onClick={() => navigate("/appointment")}
               style={{
@@ -159,7 +161,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* 2. THE "WHY CHOOSE US" SECTION */}
+      {/* 2. THE "WHY CHOOSE US" SECTION (Remains the same) */}
       <section
         style={{ padding: "100px 20px", maxWidth: "1200px", margin: "0 auto" }}
       >
