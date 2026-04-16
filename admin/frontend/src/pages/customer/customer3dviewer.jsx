@@ -995,7 +995,6 @@ export default function Customer3DViewer({
     // Lock camera rotation if it's a flat orthographic view
     orbitRef.current.enableRotate = viewMode === "3D";
 
-    // 👉 THE FIX: Remove the "floor" limit for 2D views so Bottom view works!
     if (viewMode === "3D") {
       orbitRef.current.maxPolarAngle = Math.PI / 2 - 0.05; // Puts the floor back
     } else {
@@ -1013,10 +1012,20 @@ export default function Customer3DViewer({
         cameraRef.current.position.set(center.x - distance, center.y, center.z);
         break;
       case "Top":
-        cameraRef.current.position.set(center.x, center.y + distance, center.z);
+        // 👉 FIX: Added + 0.1 to Z to prevent Gimbal Lock
+        cameraRef.current.position.set(
+          center.x,
+          center.y + distance,
+          center.z + 0.1,
+        );
         break;
       case "Bottom":
-        cameraRef.current.position.set(center.x, center.y - distance, center.z);
+        // 👉 FIX: Added + 0.1 to Z to prevent Gimbal Lock
+        cameraRef.current.position.set(
+          center.x,
+          center.y - distance,
+          center.z + 0.1,
+        );
         break;
       case "3D":
       default:
