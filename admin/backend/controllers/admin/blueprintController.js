@@ -1529,7 +1529,6 @@ exports.saveEstimation = async (req, res) => {
           item.name,
           item.quantity,
           item.unit_cost,
-          item.subtotal,
         ],
       );
     }
