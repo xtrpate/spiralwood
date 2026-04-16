@@ -17,16 +17,15 @@ export default function ProcessOrder() {
     payment_method: "cash",
     cash_received: "",
 
-    // 👉 NEW: Smart Discount System
-    discount_type: "amount", // Defaults to Peso amount
+    discount_type: "amount",
     discount: "",
 
     need_delivery: false,
+    delivery_fee: "", // 👉 STATE FOR DELIVERY FEE
     delivery_address: "",
     delivery_requested_date: "",
     delivery_notes: "",
 
-    // 👉 MOVED TO BOTTOM OF FORM
     notes: "",
   });
 
@@ -41,7 +40,6 @@ export default function ProcessOrder() {
 
   const subtotal = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0);
 
-  // 👉 NEW: Discount Calculation Logic
   const discountInput = parseFloat(form.discount) || 0;
   let discountAmount = 0;
   if (form.discount_type === "percent") {
@@ -50,7 +48,13 @@ export default function ProcessOrder() {
     discountAmount = discountInput;
   }
 
-  const total = Math.max(subtotal - discountAmount, 0);
+  // 👉 MATH: Include delivery fee in total
+  const deliveryFeeAmt = parseFloat(form.delivery_fee) || 0;
+  const total = Math.max(
+    subtotal - discountAmount + (form.need_delivery ? deliveryFeeAmt : 0),
+    0,
+  );
+
   const cashReceived = parseFloat(form.cash_received) || 0;
   const change =
     form.payment_method === "cash" ? Math.max(cashReceived - total, 0) : 0;
@@ -59,7 +63,6 @@ export default function ProcessOrder() {
   const phoneIsRequired = form.need_delivery;
   const phoneIsValid = !normalizedPhone || isValidPHPhone(normalizedPhone);
 
-  // 👉 NEW: Discount Validation
   const discountIsValid =
     form.discount_type === "percent"
       ? discountInput >= 0 && discountInput <= 100
@@ -123,7 +126,8 @@ export default function ProcessOrder() {
         payment_method: form.payment_method,
         cash_received: form.payment_method === "cash" ? cashReceived : null,
         change: form.payment_method === "cash" ? change : null,
-        discount: discountAmount, // Send the final computed ₱ amount to DB
+        discount: discountAmount,
+        delivery_fee: form.need_delivery ? deliveryFeeAmt : 0, // 👉 Send Delivery Fee to Backend
         notes: form.notes,
         items: cart,
         delivery: form.need_delivery
@@ -180,9 +184,6 @@ export default function ProcessOrder() {
           {success.delivery && (
             <p style={{ color: "#666", marginBottom: 6 }}>
               Delivery Request Saved
-              {success.delivery.assigned_driver?.name
-                ? ` • Driver: ${success.delivery.assigned_driver.name}`
-                : ""}
             </p>
           )}
 
@@ -257,6 +258,7 @@ export default function ProcessOrder() {
                   cash_received: "",
                   discount_type: "amount",
                   discount: "",
+                  delivery_fee: "",
                   notes: "",
                   need_delivery: false,
                   delivery_address: "",
@@ -369,7 +371,6 @@ export default function ProcessOrder() {
               </select>
             </div>
 
-            {/* 👉 NEW: Smart Discount System UI */}
             <div className="form-field">
               <label>Discount</label>
               <div style={{ display: "flex", gap: "8px" }}>
@@ -475,33 +476,75 @@ export default function ProcessOrder() {
                       gap: 14,
                     }}
                   >
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <label
-                        style={{
-                          display: "block",
-                          marginBottom: 6,
-                          fontSize: 13,
-                          fontWeight: 600,
-                        }}
-                      >
-                        Delivery Address *
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Full delivery address"
-                        value={form.delivery_address}
-                        onChange={(e) =>
-                          setForm({ ...form, delivery_address: e.target.value })
-                        }
-                        required={form.need_delivery}
-                        style={{
-                          width: "100%",
-                          padding: "12px 14px",
-                          border: "1.5px solid #e0e0e0",
-                          borderRadius: 8,
-                          boxSizing: "border-box",
-                        }}
-                      />
+                    {/* 👉 THE FIX: Delivery Address and Delivery Fee side-by-side! */}
+                    <div
+                      style={{
+                        gridColumn: "1 / -1",
+                        display: "flex",
+                        gap: "10px",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div style={{ flex: 2, minWidth: "200px" }}>
+                        <label
+                          style={{
+                            display: "block",
+                            marginBottom: 6,
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          Delivery Address *
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Full delivery address"
+                          value={form.delivery_address}
+                          onChange={(e) =>
+                            setForm({
+                              ...form,
+                              delivery_address: e.target.value,
+                            })
+                          }
+                          required={form.need_delivery}
+                          style={{
+                            width: "100%",
+                            padding: "12px 14px",
+                            border: "1.5px solid #e0e0e0",
+                            borderRadius: 8,
+                            boxSizing: "border-box",
+                          }}
+                        />
+                      </div>
+                      <div style={{ flex: 1, minWidth: "120px" }}>
+                        <label
+                          style={{
+                            display: "block",
+                            marginBottom: 6,
+                            fontSize: 13,
+                            fontWeight: 600,
+                          }}
+                        >
+                          Delivery Fee (₱)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="e.g. 150"
+                          value={form.delivery_fee}
+                          onChange={(e) =>
+                            setForm({ ...form, delivery_fee: e.target.value })
+                          }
+                          style={{
+                            width: "100%",
+                            padding: "12px 14px",
+                            border: "1.5px solid #e0e0e0",
+                            borderRadius: 8,
+                            boxSizing: "border-box",
+                          }}
+                        />
+                      </div>
                     </div>
                     <div>
                       <label
@@ -565,7 +608,6 @@ export default function ProcessOrder() {
               </div>
             </div>
 
-            {/* 👉 MOVED NOTES TO BOTTOM */}
             <div
               className="form-field full"
               style={{ borderTop: "1px solid #e2e8f0", paddingTop: "20px" }}
@@ -631,7 +673,6 @@ export default function ProcessOrder() {
               >
                 <div>
                   <div style={{ fontWeight: 600 }}>{item.product_name}</div>
-                  {/* 👉 PREPARED FOR RULE 7: Shows details if they exist */}
                   {(item.wood_type || item.dimensions) && (
                     <div style={{ fontSize: 11, color: "#64748b" }}>
                       {item.wood_type}{" "}
@@ -693,6 +734,27 @@ export default function ProcessOrder() {
                 <span>
                   -₱
                   {discountAmount.toLocaleString("en-PH", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+            )}
+
+            {/* 👉 Show Delivery Fee in Summary */}
+            {form.need_delivery && deliveryFeeAmt > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 13,
+                  marginBottom: 6,
+                  color: "#475569",
+                }}
+              >
+                <span>Delivery Fee</span>
+                <span>
+                  +₱
+                  {deliveryFeeAmt.toLocaleString("en-PH", {
                     minimumFractionDigits: 2,
                   })}
                 </span>
