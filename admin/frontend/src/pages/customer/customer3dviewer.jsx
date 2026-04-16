@@ -86,7 +86,9 @@ const clampNumber = (value, min, max) => {
 
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value ?? null));
 
-const uniqueIds = (items = []) => [...new Set((Array.isArray(items) ? items : []).filter(Boolean))];
+const uniqueIds = (items = []) => [
+  ...new Set((Array.isArray(items) ? items : []).filter(Boolean)),
+];
 
 const buildBoundsFromComponents = (items = []) => {
   if (!Array.isArray(items) || !items.length) {
@@ -172,7 +174,11 @@ const summarizeMetadata = (items = []) => {
   return {
     wood_type: String(first?.material || "").trim(),
     finish_color: String(
-      first?.finish_id || first?.woodFinish || first?.finish || first?.fill || ""
+      first?.finish_id ||
+        first?.woodFinish ||
+        first?.finish ||
+        first?.fill ||
+        "",
     ).trim(),
     hardware: "",
     door_style: "",
@@ -226,15 +232,13 @@ const normalizeViewerComponent = (comp = {}) => {
   const fill = String(comp?.fill ?? comp?.color ?? "").trim();
   const color = String(comp?.color ?? comp?.fill ?? "").trim();
   const finish = String(
-    comp?.finish ?? comp?.finish_id ?? comp?.woodFinish ?? ""
+    comp?.finish ?? comp?.finish_id ?? comp?.woodFinish ?? "",
   ).trim();
-  const finishColor = String(
-    comp?.finish_color ?? color ?? fill ?? ""
-  ).trim();
+  const finishColor = String(comp?.finish_color ?? color ?? fill ?? "").trim();
 
   const colorMode =
     String(comp?.color_mode || "").trim() ||
-    ((isHexColor(fill || color || finishColor) && !finish)
+    (isHexColor(fill || color || finishColor) && !finish
       ? "solid"
       : finish
         ? "wood"
@@ -285,12 +289,20 @@ const getComponentFinishValue = (comp = {}) =>
   String(comp?.finish_id || comp?.woodFinish || comp?.finish || "").trim();
 
 const getComponentColorValue = (comp = {}) =>
-  String(comp?.fill || comp?.color || "").trim().toLowerCase();
+  String(comp?.fill || comp?.color || "")
+    .trim()
+    .toLowerCase();
 
-const getSharedSelectionValue = (components = [], selectedIds = [], resolver) => {
+const getSharedSelectionValue = (
+  components = [],
+  selectedIds = [],
+  resolver,
+) => {
   if (!selectedIds.length) return "";
   const selected = components.filter((comp) => selectedIds.includes(comp.id));
-  const values = [...new Set(selected.map((item) => resolver(item)).filter(Boolean))];
+  const values = [
+    ...new Set(selected.map((item) => resolver(item)).filter(Boolean)),
+  ];
   return values.length === 1 ? values[0] : "";
 };
 
@@ -452,13 +464,10 @@ export default function Customer3DViewer({
     const remaining = components.filter((item) => !toDelete.has(item.id));
     const nextSelection = remaining[0] ? [remaining[0].id] : [];
 
-    commitComponents(
-      (prev) => prev.filter((item) => !toDelete.has(item.id)),
-      {
-        nextSelectionIds: nextSelection,
-        keepEmptySelection: !nextSelection.length,
-      },
-    );
+    commitComponents((prev) => prev.filter((item) => !toDelete.has(item.id)), {
+      nextSelectionIds: nextSelection,
+      keepEmptySelection: !nextSelection.length,
+    });
   }, [commitComponents, components, readOnly]);
 
   useEffect(() => {
@@ -567,11 +576,7 @@ export default function Customer3DViewer({
       height: String(overallBounds.height_mm || ""),
       depth: String(overallBounds.depth_mm || ""),
     });
-  }, [
-    overallBounds.width_mm,
-    overallBounds.height_mm,
-    overallBounds.depth_mm,
-  ]);
+  }, [overallBounds.width_mm, overallBounds.height_mm, overallBounds.depth_mm]);
 
   const clearSelectionHelpers = useCallback(() => {
     const scene = sceneRef.current;
@@ -633,8 +638,7 @@ export default function Customer3DViewer({
       box.getCenter(center);
       center.project(camera);
 
-      const screenX =
-        ((center.x + 1) / 2) * canvasRect.width + canvasRect.left;
+      const screenX = ((center.x + 1) / 2) * canvasRect.width + canvasRect.left;
       const screenY =
         ((-center.y + 1) / 2) * canvasRect.height + canvasRect.top;
 
@@ -916,10 +920,8 @@ export default function Customer3DViewer({
         const solidHex = getSolidColorHex(comp);
         if (
           solidHex &&
-          (
-            comp?.color_mode === "solid" ||
-            (!comp?.finish && !comp?.finish_id && !comp?.woodFinish)
-          )
+          (comp?.color_mode === "solid" ||
+            (!comp?.finish && !comp?.finish_id && !comp?.woodFinish))
         ) {
           applySolidColorOverride(obj, solidHex);
         }
@@ -983,7 +985,12 @@ export default function Customer3DViewer({
     return () => {
       clearSelectionHelpers();
     };
-  }, [clearSelectionHelpers, findTopLevelObjectById, selectedCompIds, components]);
+  }, [
+    clearSelectionHelpers,
+    findTopLevelObjectById,
+    selectedCompIds,
+    components,
+  ]);
 
   useEffect(() => {
     if (!personGroupRef.current || !rootGroupRef.current) return;
@@ -1277,9 +1284,7 @@ export default function Customer3DViewer({
     const selectedId = selectedComp.id;
 
     commitComponents((prev) =>
-      prev.map((c) =>
-        c.id === selectedId ? { ...c, [axis]: nextValue } : c,
-      ),
+      prev.map((c) => (c.id === selectedId ? { ...c, [axis]: nextValue } : c)),
     );
 
     setDimensionDrafts((prev) => ({
@@ -1290,18 +1295,14 @@ export default function Customer3DViewer({
 
   const handleFinishChange = (finishId) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
-    if (!selectedCompIds.length) return;
 
-    const selectedSet = new Set(selectedCompIds);
-
+    // Apply to ALL components, not just selected ones!
     commitComponents((prev) =>
       prev.map((c) => {
-        if (!selectedSet.has(c.id)) return c;
-
         const next = applyWoodFinish(c, finishId);
         const previewHex = getFinishPreviewColor(
           finishId,
-          next?.fill || c.fill || c.color || ""
+          next?.fill || c.fill || c.color || "",
         );
 
         return {
@@ -1321,14 +1322,10 @@ export default function Customer3DViewer({
 
   const handleColorChange = (hex) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
-    if (!selectedCompIds.length) return;
 
-    const selectedSet = new Set(selectedCompIds);
-
+    // Apply to ALL components!
     commitComponents((prev) =>
       prev.map((c) => {
-        if (!selectedSet.has(c.id)) return c;
-
         return {
           ...c,
           fill: hex,
@@ -1398,7 +1395,8 @@ export default function Customer3DViewer({
             {readOnly ? "Template Preview" : "Live Configurator"}
           </div>
           <div style={styles.topBarDims}>
-            {formatMm(overallBounds.width_mm)} × {formatMm(overallBounds.height_mm)} ×{" "}
+            {formatMm(overallBounds.width_mm)} ×{" "}
+            {formatMm(overallBounds.height_mm)} ×{" "}
             {formatMm(overallBounds.depth_mm)}
           </div>
         </div>
@@ -1489,25 +1487,18 @@ export default function Customer3DViewer({
         <aside style={styles.sidebar}>
           <div style={styles.sidebarScroll}>
             <div style={styles.sidebarBlock}>
-              <h3 style={styles.sidebarTitle}>Product Configuration</h3>
+              <h3 style={styles.sidebarTitle}>Template Customization</h3>
               <p style={styles.helpText}>
-                Click to select one part. Shift + click or Shift + drag to multi-select.
-                Ctrl/Cmd + A selects all. Delete removes selected parts. Ctrl/Cmd + Z / Y
-                handles undo and redo.
+                Adjust the overall dimensions below. The system will
+                automatically scale all parts of the furniture proportionally to
+                maintain the design.
               </p>
             </div>
 
-            <div style={styles.quickHintRow}>
-              <span style={styles.quickHint}>Ctrl/Cmd + A</span>
-              <span style={styles.quickHint}>Shift + Drag</span>
-              <span style={styles.quickHint}>Delete</span>
-              <span style={styles.quickHint}>Ctrl/Cmd + Z</span>
-            </div>
-
+            {/* PERSON SCALE SECTION */}
             <div style={styles.sidebarBlock}>
               <div style={styles.sectionRow}>
                 <label style={styles.label}>Person Scale</label>
-
                 <label style={styles.inlineCheck}>
                   <input
                     type="checkbox"
@@ -1532,15 +1523,16 @@ export default function Customer3DViewer({
               ) : null}
             </div>
 
+            {/* OVERALL SIZE SECTION (This is the only size editor they get!) */}
             <div style={styles.sidebarBlock}>
               <div style={styles.sectionRow}>
-                <label style={styles.label}>Overall Size</label>
-                <span style={styles.miniPill}>Whole furniture</span>
+                <label style={styles.label}>Overall Dimensions</label>
+                <span style={styles.miniPill}>Proportional Scaling</span>
               </div>
 
               <div style={styles.dimGrid}>
                 <div>
-                  <span style={styles.dimLabel}>Width</span>
+                  <span style={styles.dimLabel}>Width (mm)</span>
                   <input
                     type="number"
                     value={overallDrafts.width}
@@ -1558,9 +1550,8 @@ export default function Customer3DViewer({
                     style={styles.input}
                   />
                 </div>
-
                 <div>
-                  <span style={styles.dimLabel}>Height</span>
+                  <span style={styles.dimLabel}>Height (mm)</span>
                   <input
                     type="number"
                     value={overallDrafts.height}
@@ -1578,9 +1569,8 @@ export default function Customer3DViewer({
                     style={styles.input}
                   />
                 </div>
-
                 <div>
-                  <span style={styles.dimLabel}>Depth</span>
+                  <span style={styles.dimLabel}>Depth (mm)</span>
                   <input
                     type="number"
                     value={overallDrafts.depth}
@@ -1599,123 +1589,18 @@ export default function Customer3DViewer({
                   />
                 </div>
               </div>
-
-              <div style={styles.helperText}>
-                Use this to resize the whole furniture.
-              </div>
             </div>
 
-            <div style={styles.sidebarBlock}>
-              <div style={styles.sectionHeader}>
-                <label style={styles.label}>{selectionLabel}</label>
-
-                <div style={styles.sectionActionRow}>
-                  <button
-                    type="button"
-                    onClick={isAllSelected ? clearSelection : selectAllParts}
-                    style={styles.actionBtn}
-                  >
-                    {isAllSelected ? "Clear" : "Select All"}
-                  </button>
-
-                  {!readOnly ? (
-                    <button
-                      type="button"
-                      onClick={deleteSelected}
-                      disabled={deleteDisabled}
-                      style={{
-                        ...styles.actionBtn,
-                        ...styles.deleteActionBtn,
-                        ...(deleteDisabled ? styles.actionBtnDisabled : null),
-                      }}
-                    >
-                      Delete
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
-              {singleSelectionOnly ? (
-                <div style={styles.helperText}>
-                  {selectedCompIds.length
-                    ? "Part size editing is available for single selection only."
-                    : "Click a visible part in the preview."}
-                </div>
-              ) : selectedComp ? (
-                <div style={styles.dimGrid}>
-                  <div>
-                    <span style={styles.dimLabel}>{selectedAxisLabels.width}</span>
-                    <input
-                      type="number"
-                      value={dimensionDrafts.width}
-                      disabled={!isCustomizable || readOnly || !editable.width}
-                      onChange={(e) =>
-                        handleDimensionDraftChange("width", e.target.value)
-                      }
-                      onBlur={() => commitComponentDimension("width")}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          commitComponentDimension("width");
-                        }
-                      }}
-                      style={styles.input}
-                    />
-                  </div>
-
-                  <div>
-                    <span style={styles.dimLabel}>{selectedAxisLabels.height}</span>
-                    <input
-                      type="number"
-                      value={dimensionDrafts.height}
-                      disabled={!isCustomizable || readOnly || !editable.height}
-                      onChange={(e) =>
-                        handleDimensionDraftChange("height", e.target.value)
-                      }
-                      onBlur={() => commitComponentDimension("height")}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          commitComponentDimension("height");
-                        }
-                      }}
-                      style={styles.input}
-                    />
-                  </div>
-
-                  <div>
-                    <span style={styles.dimLabel}>{selectedAxisLabels.depth}</span>
-                    <input
-                      type="number"
-                      value={dimensionDrafts.depth}
-                      disabled={!isCustomizable || readOnly || !editable.depth}
-                      onChange={(e) =>
-                        handleDimensionDraftChange("depth", e.target.value)
-                      }
-                      onBlur={() => commitComponentDimension("depth")}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          commitComponentDimension("depth");
-                        }
-                      }}
-                      style={styles.input}
-                    />
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
+            {/* FINISHES & COLORS (Now applies to the whole item) */}
             <div
               style={{
                 ...styles.sidebarBlock,
-                opacity: finishDisabled ? 0.5 : 1,
-                pointerEvents: finishDisabled ? "none" : "auto",
+                opacity: readOnly ? 0.5 : 1,
+                pointerEvents: readOnly ? "none" : "auto",
               }}
             >
               <label style={styles.label}>Wood Finish</label>
               <select
-                value={selectedFinishValue}
                 onChange={(e) => handleFinishChange(e.target.value)}
                 style={styles.input}
               >
@@ -1726,42 +1611,25 @@ export default function Customer3DViewer({
                   </option>
                 ))}
               </select>
-
-              <div style={styles.helperText}>
-                Applies to the currently selected part or selected parts.
-              </div>
             </div>
 
             <div
               style={{
                 ...styles.sidebarBlock,
-                opacity: finishDisabled ? 0.5 : 1,
-                pointerEvents: finishDisabled ? "none" : "auto",
+                opacity: readOnly ? 0.5 : 1,
+                pointerEvents: readOnly ? "none" : "auto",
               }}
             >
               <label style={styles.label}>Solid Color</label>
-
               <div style={styles.colorRow}>
-                {swatchColors.map((color) => {
-                  const isActive = selectedColorValue === color.toLowerCase();
-
-                  return (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => handleColorChange(color)}
-                      style={{
-                        ...styles.colorSwatch,
-                        background: color,
-                        ...(isActive ? styles.colorSwatchActive : null),
-                      }}
-                    />
-                  );
-                })}
-              </div>
-
-              <div style={styles.helperText}>
-                Picking a solid color will clear the wood finish on the selected parts.
+                {swatchColors.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => handleColorChange(color)}
+                    style={{ ...styles.colorSwatch, background: color }}
+                  />
+                ))}
               </div>
             </div>
           </div>
@@ -1828,7 +1696,8 @@ export default function Customer3DViewer({
                   <div style={styles.errorText}>{uploadError}</div>
                 ) : (
                   <div style={styles.helperText}>
-                    Upload pegs, inspiration images, actual space photos, or sketches.
+                    Upload pegs, inspiration images, actual space photos, or
+                    sketches.
                   </div>
                 )}
 
@@ -1843,7 +1712,9 @@ export default function Customer3DViewer({
                         />
 
                         <div style={styles.photoMeta}>
-                          <div style={styles.photoName}>{photo.name || "Reference Photo"}</div>
+                          <div style={styles.photoName}>
+                            {photo.name || "Reference Photo"}
+                          </div>
                           <button
                             type="button"
                             onClick={() => onRemoveReferencePhoto?.(photo.id)}
@@ -2313,4 +2184,3 @@ const styles = {
     cursor: "pointer",
   },
 };
-
