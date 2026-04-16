@@ -17,6 +17,7 @@ const WORLD_H = 3200;
 const WORLD_D = 5200;
 const FLOOR_OFFSET = 40;
 const MAX_HISTORY = 60;
+const SELECTION_COLOR = 0x38bdf8; // Blue highlight color
 const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 const isHexColor = (value) => HEX_COLOR_RE.test(String(value || "").trim());
@@ -71,12 +72,14 @@ const clampNumber = (value, min, max) => {
 };
 
 const cloneDeep = (value) => JSON.parse(JSON.stringify(value ?? null));
+const uniqueIds = (items = []) => [
+  ...new Set((Array.isArray(items) ? items : []).filter(Boolean)),
+];
 
 const buildBoundsFromComponents = (items = []) => {
   if (!Array.isArray(items) || !items.length) {
     return { width_mm: 0, height_mm: 0, depth_mm: 0 };
   }
-
   const normalized = items
     .map((item) => ({
       x: toNum(item?.x, 0),
@@ -88,9 +91,7 @@ const buildBoundsFromComponents = (items = []) => {
     }))
     .filter((item) => item.width > 0 && item.height > 0 && item.depth > 0);
 
-  if (!normalized.length) {
-    return { width_mm: 0, height_mm: 0, depth_mm: 0 };
-  }
+  if (!normalized.length) return { width_mm: 0, height_mm: 0, depth_mm: 0 };
 
   const minX = Math.min(...normalized.map((c) => c.x));
   const minY = Math.min(...normalized.map((c) => c.y));
@@ -108,7 +109,6 @@ const buildBoundsFromComponents = (items = []) => {
 
 const getComponentExtents = (items = []) => {
   if (!Array.isArray(items) || !items.length) return null;
-
   const normalized = items
     .map((item) => ({
       x: toNum(item?.x, 0),
@@ -121,7 +121,6 @@ const getComponentExtents = (items = []) => {
     .filter((item) => item.width > 0 && item.height > 0 && item.depth > 0);
 
   if (!normalized.length) return null;
-
   const minX = Math.min(...normalized.map((c) => c.x));
   const minY = Math.min(...normalized.map((c) => c.y));
   const minZ = Math.min(...normalized.map((c) => c.z));
@@ -166,6 +165,26 @@ const getFinishPreviewColor = (finishId, fallback = "") => {
     fallback ||
     ""
   );
+};
+
+const getPartAxisLabels = (comp) => {
+  const text = `${comp?.label || ""} ${comp?.type || ""}`.toLowerCase();
+  const flatKeywords = [
+    "panel",
+    "seat",
+    "shelf",
+    "top",
+    "slat",
+    "rail",
+    "board",
+    "surface",
+  ];
+  const looksFlat = flatKeywords.some((keyword) => text.includes(keyword));
+  return {
+    width: "Width",
+    height: looksFlat ? "Thickness" : "Height",
+    depth: "Depth",
+  };
 };
 
 const normalizeViewerComponent = (comp = {}) => {
@@ -248,30 +267,36 @@ export default function Customer3DViewer({
   const rootGroupRef = useRef(null);
   const personGroupRef = useRef(null);
   const boundsBoxRef = useRef(new THREE.Box3());
+  const selectionHelpersRef = useRef([]);
 
   const canvasSizeRef = useRef({ width: 1, height: 1 });
-
   const labelWRef = useRef(null);
   const labelHRef = useRef(null);
   const labelDRef = useRef(null);
-
   const historyRef = useRef({ past: [], future: [] });
 
   const [components, setComponents] = useState(() =>
     normalizeViewerComponents(initialComponents),
   );
+  const [selectedCompIds, setSelectedCompIds] = useState([]);
 
-  // 👉 ADDED ALL UNITS
+  // 👉 NEW STATES
   const [unit, setUnit] = useState("cm");
   const [showPerson, setShowPerson] = useState(true);
-
-  // 👉 PERSON SYNCED TO MASTER UNIT (Defaults to 1700mm / ~5'7")
   const [personHeightMm, setPersonHeightMm] = useState(1700);
+  const [selectionMode, setSelectionMode] = useState(false); // Controls if they can click parts
+  const [activeView, setActiveView] = useState("3D");
+  const [customHex, setCustomHex] = useState("#1e293b");
 
   const [quantity, setQuantity] = useState(1);
   const [comments, setComments] = useState("");
 
   const [overallDrafts, setOverallDrafts] = useState({
+    width: "",
+    height: "",
+    depth: "",
+  });
+  const [partDrafts, setPartDrafts] = useState({
     width: "",
     height: "",
     depth: "",
@@ -315,34 +340,7 @@ export default function Customer3DViewer({
     [pushHistorySnapshot],
   );
 
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      const tag = String(event.target?.tagName || "").toLowerCase();
-      const isTyping =
-        ["input", "textarea", "select"].includes(tag) ||
-        event.target?.isContentEditable;
-      if (isTyping || readOnly) return;
-
-      const hasModifier = event.ctrlKey || event.metaKey;
-      const lowerKey = String(event.key || "").toLowerCase();
-
-      if (hasModifier && lowerKey === "z" && !event.shiftKey) {
-        event.preventDefault();
-        handleUndo();
-      }
-      if (
-        (hasModifier && lowerKey === "y") ||
-        (hasModifier && event.shiftKey && lowerKey === "z")
-      ) {
-        event.preventDefault();
-        handleRedo();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleUndo, handleRedo, readOnly]);
-
-  // 👉 EXPANDED UNIT MATH
+  // UNIT CONVERSION UTILS
   const convertMmToUnit = useCallback((mmVal, targetUnit) => {
     if (!mmVal) return "";
     if (targetUnit === "cm") return (mmVal / 10).toFixed(1);
@@ -350,7 +348,7 @@ export default function Customer3DViewer({
     if (targetUnit === "inches") return (mmVal / 25.4).toFixed(1);
     if (targetUnit === "ft") return (mmVal / 304.8).toFixed(2);
     if (targetUnit === "yd") return (mmVal / 914.4).toFixed(2);
-    return Math.round(mmVal).toString(); // mm
+    return Math.round(mmVal).toString();
   }, []);
 
   const convertUnitToMm = useCallback((unitVal, currentUnit) => {
@@ -361,7 +359,7 @@ export default function Customer3DViewer({
     if (currentUnit === "inches") return num * 25.4;
     if (currentUnit === "ft") return num * 304.8;
     if (currentUnit === "yd") return num * 914.4;
-    return num; // mm
+    return num;
   }, []);
 
   const formatUnitLabel = useCallback(
@@ -370,14 +368,6 @@ export default function Customer3DViewer({
     },
     [unit, convertMmToUnit],
   );
-
-  useEffect(() => {
-    const normalizedInitial = normalizeViewerComponents(initialComponents);
-    historyRef.current = { past: [], future: [] };
-    setComponents(normalizedInitial);
-    setQuantity(1);
-    setComments("");
-  }, [initialComponents, readOnly]);
 
   const editable = useMemo(
     () => ({
@@ -398,15 +388,31 @@ export default function Customer3DViewer({
     return normalizeDimensions(initialDimensions || {});
   }, [components, initialDimensions]);
 
+  // 👉 SIBLING SELECTION LOGIC (Find identical parts)
+  const selectedGroup = useMemo(() => {
+    if (!selectedCompIds.length) return [];
+    return components.filter((c) => selectedCompIds.includes(c.id));
+  }, [components, selectedCompIds]);
+
+  const sampleSelectedPart = selectedGroup[0] || null;
+
   useEffect(() => {
     setOverallDrafts({
       width: convertMmToUnit(overallBounds.width_mm, unit),
       height: convertMmToUnit(overallBounds.height_mm, unit),
       depth: convertMmToUnit(overallBounds.depth_mm, unit),
     });
-  }, [overallBounds, unit, convertMmToUnit]);
 
-  // THREE.JS SETUP
+    if (sampleSelectedPart) {
+      setPartDrafts({
+        width: convertMmToUnit(sampleSelectedPart.width, unit),
+        height: convertMmToUnit(sampleSelectedPart.height, unit),
+        depth: convertMmToUnit(sampleSelectedPart.depth, unit),
+      });
+    }
+  }, [overallBounds, sampleSelectedPart, unit, convertMmToUnit]);
+
+  // THREE.JS INIT
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return undefined;
@@ -484,6 +490,67 @@ export default function Customer3DViewer({
 
     window.addEventListener("resize", handleResize);
 
+    // 👉 RAYCASTER FOR SIBLING SELECTION
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let startX = 0;
+    let startY = 0;
+
+    const onPointerDown = (e) => {
+      startX = e.clientX;
+      startY = e.clientY;
+    };
+    const onPointerUp = (event) => {
+      if (!selectionMode || readOnly) return;
+
+      const dragDist = Math.hypot(
+        event.clientX - startX,
+        event.clientY - startY,
+      );
+      if (dragDist > 5) return; // They were rotating the camera
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(rootGroup.children, true);
+
+      if (intersects.length > 0) {
+        let obj = intersects[0].object;
+        while (obj && !obj.userData?.id && obj.parent) {
+          obj = obj.parent;
+        }
+
+        if (obj?.userData?.id) {
+          const clickedId = obj.userData.id;
+
+          // Find the blueprint component that was clicked
+          setComponents((prevComps) => {
+            const target = prevComps.find((c) => c.id === clickedId);
+            if (!target) return prevComps;
+
+            // FIND SIBLINGS: Any component with exact same W, H, D, and Material
+            const siblings = prevComps.filter(
+              (c) =>
+                Math.abs(c.width - target.width) < 1 &&
+                Math.abs(c.height - target.height) < 1 &&
+                Math.abs(c.depth - target.depth) < 1 &&
+                c.material === target.material,
+            );
+
+            setSelectedCompIds(siblings.map((s) => s.id));
+            return prevComps;
+          });
+        }
+      } else {
+        setSelectedCompIds([]); // Clicked empty space
+      }
+    };
+
+    renderer.domElement.addEventListener("pointerdown", onPointerDown);
+    renderer.domElement.addEventListener("pointerup", onPointerUp);
+
     let animId;
     const animate = () => {
       animId = requestAnimationFrame(animate);
@@ -521,7 +588,6 @@ export default function Customer3DViewer({
             return;
           }
           divRef.current.style.display = "block";
-
           const x = (projected.x * 0.5 + 0.5) * cWidth;
           const y = (-projected.y * 0.5 + 0.5) * cHeight;
           divRef.current.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
@@ -536,6 +602,8 @@ export default function Customer3DViewer({
 
     return () => {
       window.removeEventListener("resize", handleResize);
+      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
+      renderer.domElement.removeEventListener("pointerup", onPointerUp);
       cancelAnimationFrame(animId);
       orbit.dispose();
       renderer.dispose();
@@ -543,9 +611,9 @@ export default function Customer3DViewer({
         mount.removeChild(renderer.domElement);
       }
     };
-  }, []);
+  }, [selectionMode, readOnly]);
 
-  // BUILD THE 3D OBJECTS & 3D I-LINES
+  // BUILD 3D OBJECTS & HIGHLIGHTS
   useEffect(() => {
     const rootGroup = rootGroupRef.current;
     if (!rootGroup) return;
@@ -556,14 +624,20 @@ export default function Customer3DViewer({
       child.traverse?.((obj) => {
         if (obj.geometry) obj.geometry.dispose();
         if (obj.material) {
-          if (Array.isArray(obj.material)) {
+          if (Array.isArray(obj.material))
             obj.material.forEach((m) => m.dispose?.());
-          } else {
-            obj.material.dispose?.();
-          }
+          else obj.material.dispose?.();
         }
       });
     }
+
+    // Clear old highlights
+    selectionHelpersRef.current.forEach((h) => {
+      sceneRef.current?.remove(h);
+      if (h.geometry) h.geometry.dispose();
+      if (h.material) h.material.dispose();
+    });
+    selectionHelpersRef.current = [];
 
     const dummySelectable = [];
     const boundsBox = new THREE.Box3();
@@ -573,6 +647,11 @@ export default function Customer3DViewer({
       try {
         const obj = createFurnitureObject(comp, false, false, dummySelectable);
         if (!obj) return;
+
+        obj.userData.id = comp.id;
+        obj.traverse((child) => {
+          if (child.isMesh) child.userData.id = comp.id;
+        });
 
         const solidHex = getSolidColorHex(comp);
         if (
@@ -596,6 +675,17 @@ export default function Customer3DViewer({
 
         rootGroup.add(obj);
         boundsBox.expandByObject(obj);
+
+        // 👉 ADD HIGHLIGHT IF SELECTED
+        if (selectedCompIds.includes(comp.id)) {
+          const helper = new THREE.BoxHelper(obj, SELECTION_COLOR);
+          helper.material.depthTest = false;
+          helper.material.transparent = true;
+          helper.material.opacity = 0.95;
+          helper.renderOrder = 999;
+          sceneRef.current.add(helper);
+          selectionHelpersRef.current.push(helper);
+        }
       } catch (error) {
         console.error("Customer3DViewer render component failed:", comp, error);
       }
@@ -606,10 +696,9 @@ export default function Customer3DViewer({
     if (!boundsBox.isEmpty()) {
       const offset = 100;
       const tick = 25;
-
       const linePoints = [];
 
-      // WIDTH LINE (Bottom Front)
+      // WIDTH
       linePoints.push(
         boundsBox.min.x,
         boundsBox.min.y,
@@ -640,8 +729,7 @@ export default function Customer3DViewer({
         boundsBox.min.y,
         boundsBox.max.z + offset + tick,
       );
-
-      // HEIGHT LINE (Right Front)
+      // HEIGHT
       linePoints.push(
         boundsBox.max.x + offset,
         boundsBox.min.y,
@@ -672,8 +760,7 @@ export default function Customer3DViewer({
         boundsBox.max.y,
         boundsBox.max.z,
       );
-
-      // DEPTH LINE (Right Bottom)
+      // DEPTH
       linePoints.push(
         boundsBox.max.x + offset,
         boundsBox.min.y,
@@ -713,15 +800,8 @@ export default function Customer3DViewer({
       const lineMat = new THREE.LineBasicMaterial({ color: 0x334155 });
       const dimensionLines = new THREE.LineSegments(lineGeo, lineMat);
       rootGroup.add(dimensionLines);
-
-      if (orbitRef.current) {
-        const center = new THREE.Vector3();
-        boundsBox.getCenter(center);
-        orbitRef.current.target.copy(center);
-        orbitRef.current.update();
-      }
     }
-  }, [components]);
+  }, [components, selectedCompIds]);
 
   // BUILD THE PERSON
   useEffect(() => {
@@ -855,11 +935,58 @@ export default function Customer3DViewer({
     }
   }, [showPerson, personHeightMm, components]);
 
+  // 👉 RULE 4: CAMERA VIEW CONTROLLER
+  const changeCameraView = (viewMode) => {
+    if (
+      !boundsBoxRef.current ||
+      boundsBoxRef.current.isEmpty() ||
+      !cameraRef.current ||
+      !orbitRef.current
+    )
+      return;
+
+    const box = boundsBoxRef.current;
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const distance = maxDim * 1.8 + 500; // Keep camera far enough back
+
+    switch (viewMode) {
+      case "Front":
+        cameraRef.current.position.set(center.x, center.y, center.z + distance);
+        break;
+      case "Side":
+        // Left side view
+        cameraRef.current.position.set(center.x - distance, center.y, center.z);
+        break;
+      case "Top":
+        // Look from straight down
+        cameraRef.current.position.set(center.x, center.y + distance, center.z);
+        break;
+      case "3D":
+      default:
+        // Perspective angle
+        cameraRef.current.position.set(
+          center.x + distance * 0.8,
+          center.y + distance * 0.6,
+          center.z + distance * 0.8,
+        );
+        break;
+    }
+
+    orbitRef.current.target.copy(center);
+    orbitRef.current.update();
+    setActiveView(viewMode);
+  };
+
+  // --- SCALING LOGIC ---
   const handleOverallDraftChange = (axis, value) => {
     setOverallDrafts((prev) => ({ ...prev, [axis]: value }));
   };
 
-  // 👉 FIXED: SCALING ORIGINS TO PREVENT FLOATING
   const commitOverallDimension = (axis) => {
     if (!isCustomizable || readOnly) return;
     if (!Array.isArray(components) || !components.length) return;
@@ -890,7 +1017,6 @@ export default function Customer3DViewer({
 
     if (!extents || !Number.isFinite(scale) || scale <= 0) return;
 
-    // Anchor points: Center X, Center Z, Bottom Y (maxY)
     const centerX = (extents.minX + extents.maxX) / 2;
     const centerZ = (extents.minZ + extents.maxZ) / 2;
     const bottomY = extents.maxY;
@@ -907,7 +1033,7 @@ export default function Customer3DViewer({
         if (axis === "height") {
           return {
             ...c,
-            y: Math.round(bottomY - (bottomY - Number(c.y || 0)) * scale), // Scales upwards!
+            y: Math.round(bottomY - (bottomY - Number(c.y || 0)) * scale),
             height: Math.max(1, Math.round(Number(c.height || 0) * scale)),
           };
         }
@@ -920,10 +1046,60 @@ export default function Customer3DViewer({
     );
   };
 
-  const handleFinishChange = (finishId) => {
-    if (!isCustomizable || readOnly || !editable.finish_color) return;
+  // 👉 SIBLING PART SCALING
+  const commitPartDimension = (axis, rawUnitValue) => {
+    if (!isCustomizable || readOnly || !selectedGroup.length) return;
+
+    const parsedMmValue = convertUnitToMm(rawUnitValue, unit);
+    const currentValueMm = Number(sampleSelectedPart?.[axis] || 0);
+
+    if (parsedMmValue <= 0 || currentValueMm <= 0) return;
+
+    const nextValueMm = Math.max(1, Math.round(parsedMmValue));
+    if (nextValueMm === currentValueMm) return;
+
+    // Apply to ALL selected components (which are identical siblings)
     commitComponents((prev) =>
       prev.map((c) => {
+        if (!selectedCompIds.includes(c.id)) return c;
+
+        // Scale from center to prevent shifting out of alignment
+        if (axis === "width") {
+          return {
+            ...c,
+            x: c.x - (nextValueMm - c.width) / 2,
+            width: nextValueMm,
+          };
+        }
+        if (axis === "height") {
+          return {
+            ...c,
+            y: c.y - (nextValueMm - c.height) / 2,
+            height: nextValueMm,
+          };
+        }
+        return {
+          ...c,
+          z: c.z - (nextValueMm - c.depth) / 2,
+          depth: nextValueMm,
+        };
+      }),
+    );
+  };
+
+  // --- COLORS ---
+  const handleFinishChange = (finishId) => {
+    if (!isCustomizable || readOnly || !editable.finish_color) return;
+
+    // If parts are selected, color ONLY those parts. Otherwise color everything.
+    const targetIds = selectedCompIds.length
+      ? selectedCompIds
+      : components.map((c) => c.id);
+
+    commitComponents((prev) =>
+      prev.map((c) => {
+        if (!targetIds.includes(c.id)) return c;
+
         const next = applyWoodFinish(c, finishId);
         const previewHex = getFinishPreviewColor(
           finishId,
@@ -946,17 +1122,26 @@ export default function Customer3DViewer({
 
   const handleColorChange = (hex) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
+    setCustomHex(hex); // Keep input in sync
+
+    const targetIds = selectedCompIds.length
+      ? selectedCompIds
+      : components.map((c) => c.id);
+
     commitComponents((prev) =>
-      prev.map((c) => ({
-        ...c,
-        fill: hex,
-        color: hex,
-        finish_color: hex,
-        finish: "",
-        finish_id: "",
-        woodFinish: "",
-        color_mode: "solid",
-      })),
+      prev.map((c) => {
+        if (!targetIds.includes(c.id)) return c;
+        return {
+          ...c,
+          fill: hex,
+          color: hex,
+          finish_color: hex,
+          finish: "",
+          finish_id: "",
+          woodFinish: "",
+          color_mode: "solid",
+        };
+      }),
     );
   };
 
@@ -983,15 +1168,6 @@ export default function Customer3DViewer({
 
   const undoDisabled = !historyRef.current.past.length;
   const redoDisabled = !historyRef.current.future.length;
-  const swatchColors = [
-    "#ffffff",
-    "#1e293b",
-    "#dc2626",
-    "#16a34a",
-    "#2563eb",
-    "#d97706",
-    "#6d28d9",
-  ];
 
   return (
     <div style={styles.root}>
@@ -1033,7 +1209,6 @@ export default function Customer3DViewer({
             </div>
           )}
 
-          {/* 👉 NEW: Extended Unit Toggle */}
           <div style={styles.unitToggleGroup}>
             {["cm", "m", "inches", "ft", "yd", "mm"].map((u) => (
               <button
@@ -1049,21 +1224,28 @@ export default function Customer3DViewer({
               </button>
             ))}
           </div>
-
-          <span
-            style={{
-              ...styles.modeBadge,
-              background: readOnly ? "#e2e8f0" : "#dcfce7",
-              color: readOnly ? "#475569" : "#166534",
-            }}
-          >
-            {readOnly ? "Read Only" : "Editable"}
-          </span>
         </div>
       </div>
 
       <div style={styles.viewerShell}>
         <div style={styles.canvasWrap}>
+          {/* 👉 CAMERA TOOLBAR */}
+          <div style={styles.cameraToolbar}>
+            {["3D", "Front", "Side", "Top"].map((view) => (
+              <button
+                key={view}
+                onClick={() => changeCameraView(view)}
+                style={{
+                  ...styles.cameraBtn,
+                  background: activeView === view ? "#1d4ed8" : "#ffffff",
+                  color: activeView === view ? "#ffffff" : "#334155",
+                }}
+              >
+                {view}
+              </button>
+            ))}
+          </div>
+
           <div ref={mountRef} style={styles.canvasContainer} />
 
           <div ref={labelWRef} style={styles.floatingLabel}>
@@ -1082,10 +1264,248 @@ export default function Customer3DViewer({
             <div style={styles.sidebarBlock}>
               <h3 style={styles.sidebarTitle}>Template Configurator</h3>
               <p style={styles.helpText}>
-                Adjust the overall dimensions below. The system will
-                automatically scale all parts of the furniture proportionally to
-                maintain the design.
+                Adjust overall dimensions, or turn on Part Selection to edit
+                specific groups of wood (like legs or panels).
               </p>
+            </div>
+
+            {/* 👉 PART SELECTION TOGGLE */}
+            <div
+              style={{
+                ...styles.sidebarBlock,
+                background: selectionMode ? "#eff6ff" : "#fff",
+                borderColor: selectionMode ? "#bfdbfe" : "#e2e8f0",
+              }}
+            >
+              <div style={styles.sectionRow}>
+                <label style={styles.label}>Specific Part Editing</label>
+                <label style={styles.inlineCheck}>
+                  <input
+                    type="checkbox"
+                    checked={selectionMode}
+                    onChange={(e) => {
+                      setSelectionMode(e.target.checked);
+                      if (!e.target.checked) setSelectedCompIds([]);
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontWeight: "bold",
+                      color: selectionMode ? "#1d4ed8" : "#475569",
+                    }}
+                  >
+                    Select Parts
+                  </span>
+                </label>
+              </div>
+
+              {selectionMode && (
+                <div style={styles.helperText}>
+                  Click any part in the 3D viewer. The system will auto-select
+                  all identical parts (e.g. all 4 legs) so you can resize them
+                  together!
+                </div>
+              )}
+            </div>
+
+            {/* IF PARTS SELECTED, SHOW PART EDITOR. OTHERWISE, SHOW OVERALL EDITOR */}
+            {selectionMode && selectedGroup.length > 0 && sampleSelectedPart ? (
+              <div
+                style={{
+                  ...styles.sidebarBlock,
+                  borderColor: "#38bdf8",
+                  borderWidth: "2px",
+                }}
+              >
+                <div style={styles.sectionRow}>
+                  <label style={styles.label}>
+                    Editing {selectedGroup.length} Identical Part(s)
+                  </label>
+                  <button
+                    onClick={() => setSelectedCompIds([])}
+                    style={styles.miniBtn}
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                <div style={styles.dimGrid}>
+                  <div>
+                    <span style={styles.dimLabel}>
+                      {getPartAxisLabels(sampleSelectedPart).width}
+                    </span>
+                    <input
+                      type="number"
+                      value={partDrafts.width}
+                      onChange={(e) =>
+                        setPartDrafts((p) => ({ ...p, width: e.target.value }))
+                      }
+                      onBlur={(e) =>
+                        commitPartDimension("width", e.target.value)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter")
+                          commitPartDimension("width", e.target.value);
+                      }}
+                      style={styles.input}
+                    />
+                  </div>
+                  <div>
+                    <span style={styles.dimLabel}>
+                      {getPartAxisLabels(sampleSelectedPart).height}
+                    </span>
+                    <input
+                      type="number"
+                      value={partDrafts.height}
+                      onChange={(e) =>
+                        setPartDrafts((p) => ({ ...p, height: e.target.value }))
+                      }
+                      onBlur={(e) =>
+                        commitPartDimension("height", e.target.value)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter")
+                          commitPartDimension("height", e.target.value);
+                      }}
+                      style={styles.input}
+                    />
+                  </div>
+                  <div>
+                    <span style={styles.dimLabel}>
+                      {getPartAxisLabels(sampleSelectedPart).depth}
+                    </span>
+                    <input
+                      type="number"
+                      value={partDrafts.depth}
+                      onChange={(e) =>
+                        setPartDrafts((p) => ({ ...p, depth: e.target.value }))
+                      }
+                      onBlur={(e) =>
+                        commitPartDimension("depth", e.target.value)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter")
+                          commitPartDimension("depth", e.target.value);
+                      }}
+                      style={styles.input}
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={styles.sidebarBlock}>
+                <div style={styles.sectionRow}>
+                  <label style={styles.label}>
+                    Overall Dimensions ({unit})
+                  </label>
+                  <span style={styles.miniPill}>Proportional</span>
+                </div>
+
+                <div style={styles.dimGrid}>
+                  <div>
+                    <span style={styles.dimLabel}>Width</span>
+                    <input
+                      type="number"
+                      value={overallDrafts.width}
+                      disabled={!isCustomizable || readOnly}
+                      onChange={(e) =>
+                        handleOverallDraftChange("width", e.target.value)
+                      }
+                      onBlur={() => commitOverallDimension("width")}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitOverallDimension("width");
+                      }}
+                      style={styles.input}
+                    />
+                  </div>
+                  <div>
+                    <span style={styles.dimLabel}>Height</span>
+                    <input
+                      type="number"
+                      value={overallDrafts.height}
+                      disabled={!isCustomizable || readOnly}
+                      onChange={(e) =>
+                        handleOverallDraftChange("height", e.target.value)
+                      }
+                      onBlur={() => commitOverallDimension("height")}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitOverallDimension("height");
+                      }}
+                      style={styles.input}
+                    />
+                  </div>
+                  <div>
+                    <span style={styles.dimLabel}>Depth</span>
+                    <input
+                      type="number"
+                      value={overallDrafts.depth}
+                      disabled={!isCustomizable || readOnly}
+                      onChange={(e) =>
+                        handleOverallDraftChange("depth", e.target.value)
+                      }
+                      onBlur={() => commitOverallDimension("depth")}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitOverallDimension("depth");
+                      }}
+                      style={styles.input}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 👉 FINISHES & CUSTOM COLOR PICKER */}
+            <div
+              style={{
+                ...styles.sidebarBlock,
+                opacity: readOnly ? 0.5 : 1,
+                pointerEvents: readOnly ? "none" : "auto",
+              }}
+            >
+              <div style={styles.sectionRow}>
+                <label style={styles.label}>Paint & Finish</label>
+                {selectedGroup.length > 0 && (
+                  <span style={styles.miniPill}>Applies to selection</span>
+                )}
+              </div>
+
+              <span style={styles.dimLabel}>Standard Wood Finishes</span>
+              <select
+                onChange={(e) => handleFinishChange(e.target.value)}
+                style={styles.input}
+              >
+                <option value="">Original / Custom</option>
+                {WOOD_FINISHES?.map((finish) => (
+                  <option key={finish.id} value={finish.id}>
+                    {finish.label}
+                  </option>
+                ))}
+              </select>
+
+              <span style={{ ...styles.dimLabel, marginTop: "10px" }}>
+                Custom Solid Paint (HEX Code)
+              </span>
+              <div style={{ display: "flex", gap: "8px" }}>
+                {/* Native HTML Color Picker */}
+                <input
+                  type="color"
+                  value={customHex}
+                  onChange={(e) => handleColorChange(e.target.value)}
+                  style={styles.colorPicker}
+                />
+                {/* Text input for direct HEX typing */}
+                <input
+                  type="text"
+                  value={customHex}
+                  onChange={(e) => setCustomHex(e.target.value)}
+                  onBlur={(e) => handleColorChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleColorChange(e.target.value);
+                  }}
+                  placeholder="#HexCode"
+                  style={{ ...styles.input, fontFamily: "monospace" }}
+                />
+              </div>
             </div>
 
             <div style={styles.sidebarBlock}>
@@ -1115,114 +1535,6 @@ export default function Customer3DViewer({
                   />
                 </div>
               ) : null}
-            </div>
-
-            <div style={styles.sidebarBlock}>
-              <div style={styles.sectionRow}>
-                <label style={styles.label}>Overall Dimensions ({unit})</label>
-                <span style={styles.miniPill}>Proportional</span>
-              </div>
-
-              <div style={styles.dimGrid}>
-                <div>
-                  <span style={styles.dimLabel}>Width</span>
-                  <input
-                    type="number"
-                    value={overallDrafts.width}
-                    disabled={!isCustomizable || readOnly}
-                    onChange={(e) =>
-                      handleOverallDraftChange("width", e.target.value)
-                    }
-                    onBlur={() => commitOverallDimension("width")}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        commitOverallDimension("width");
-                      }
-                    }}
-                    style={styles.input}
-                  />
-                </div>
-                <div>
-                  <span style={styles.dimLabel}>Height</span>
-                  <input
-                    type="number"
-                    value={overallDrafts.height}
-                    disabled={!isCustomizable || readOnly}
-                    onChange={(e) =>
-                      handleOverallDraftChange("height", e.target.value)
-                    }
-                    onBlur={() => commitOverallDimension("height")}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        commitOverallDimension("height");
-                      }
-                    }}
-                    style={styles.input}
-                  />
-                </div>
-                <div>
-                  <span style={styles.dimLabel}>Depth</span>
-                  <input
-                    type="number"
-                    value={overallDrafts.depth}
-                    disabled={!isCustomizable || readOnly}
-                    onChange={(e) =>
-                      handleOverallDraftChange("depth", e.target.value)
-                    }
-                    onBlur={() => commitOverallDimension("depth")}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        commitOverallDimension("depth");
-                      }
-                    }}
-                    style={styles.input}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                ...styles.sidebarBlock,
-                opacity: readOnly ? 0.5 : 1,
-                pointerEvents: readOnly ? "none" : "auto",
-              }}
-            >
-              <label style={styles.label}>Wood Finish (Applies to all)</label>
-              <select
-                onChange={(e) => handleFinishChange(e.target.value)}
-                style={styles.input}
-              >
-                <option value="">Original / Custom</option>
-                {WOOD_FINISHES?.map((finish) => (
-                  <option key={finish.id} value={finish.id}>
-                    {finish.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div
-              style={{
-                ...styles.sidebarBlock,
-                opacity: readOnly ? 0.5 : 1,
-                pointerEvents: readOnly ? "none" : "auto",
-              }}
-            >
-              <label style={styles.label}>Solid Color</label>
-              <div style={styles.colorRow}>
-                {swatchColors.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => handleColorChange(color)}
-                    style={{ ...styles.colorSwatch, background: color }}
-                  />
-                ))}
-              </div>
             </div>
           </div>
 
@@ -1268,24 +1580,6 @@ export default function Customer3DViewer({
                   placeholder={commentsPlaceholder}
                   style={styles.textarea}
                 />
-              </div>
-
-              <div style={styles.footerField}>
-                <label style={styles.footerLabel}>Reference Photos</label>
-                <input
-                  type="file"
-                  accept=".jpg,.jpeg,.png,.webp"
-                  multiple
-                  onChange={onPickReferencePhotos}
-                  style={styles.uploadInput}
-                />
-                {uploadError ? (
-                  <div style={styles.errorText}>{uploadError}</div>
-                ) : (
-                  <div style={styles.helperText}>
-                    Upload space photos or inspiration.
-                  </div>
-                )}
               </div>
 
               <button
@@ -1381,6 +1675,51 @@ const styles = {
     backgroundColor: "#f8fafc",
   },
 
+  // 👉 CAMERA TOOLBAR STYLES
+  cameraToolbar: {
+    position: "absolute",
+    top: 12,
+    left: 12,
+    display: "flex",
+    gap: "6px",
+    zIndex: 10,
+    background: "rgba(255,255,255,0.9)",
+    padding: "4px",
+    borderRadius: "10px",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
+    border: "1px solid #e2e8f0",
+  },
+  cameraBtn: {
+    padding: "6px 12px",
+    fontSize: "11px",
+    fontWeight: "bold",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    transition: "all 0.2s",
+  },
+
+  // 👉 COLOR PICKER STYLES
+  colorPicker: {
+    width: "40px",
+    height: "40px",
+    padding: "0",
+    border: "none",
+    borderRadius: "8px",
+    cursor: "pointer",
+    overflow: "hidden",
+    background: "none",
+  },
+  miniBtn: {
+    padding: "4px 8px",
+    fontSize: "11px",
+    background: "#e2e8f0",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontWeight: "bold",
+  },
+
   floatingLabel: {
     position: "absolute",
     left: 0,
@@ -1423,9 +1762,19 @@ const styles = {
     border: "1px solid #e2e8f0",
     borderRadius: 14,
     background: "#ffffff",
+    transition: "all 0.2s",
   },
   sidebarTitle: { margin: 0, fontSize: 18, fontWeight: 800, color: "#0f172a" },
   helpText: { margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.5 },
+  helperText: {
+    fontSize: 12,
+    color: "#1d4ed8",
+    lineHeight: 1.4,
+    background: "#fff",
+    padding: "8px",
+    borderRadius: "8px",
+    border: "1px dashed #93c5fd",
+  },
   sectionRow: {
     display: "flex",
     alignItems: "center",
@@ -1439,6 +1788,7 @@ const styles = {
     gap: 6,
     fontSize: 13,
     color: "#475569",
+    cursor: "pointer",
   },
   miniPill: {
     fontSize: 11,
@@ -1538,6 +1888,4 @@ const styles = {
     fontSize: 14,
     cursor: "pointer",
   },
-  uploadInput: { width: "100%", font: "inherit" },
-  errorText: { fontSize: 12, color: "#b91c1c", fontWeight: 700 },
 };
