@@ -973,7 +973,7 @@ export default function Customer3DViewer({
     }
   }, [showPerson, personHeightMm, components]);
 
-  // 👉 CAMERA CONTROLLER (Locks 2D Views)
+  // 👉 RULE 4: CAMERA CONTROLLER (Locks 2D Views & Unlocks the Floor)
   const changeCameraView = (viewMode) => {
     if (
       !boundsBoxRef.current ||
@@ -994,6 +994,13 @@ export default function Customer3DViewer({
 
     // Lock camera rotation if it's a flat orthographic view
     orbitRef.current.enableRotate = viewMode === "3D";
+
+    // 👉 THE FIX: Remove the "floor" limit for 2D views so Bottom view works!
+    if (viewMode === "3D") {
+      orbitRef.current.maxPolarAngle = Math.PI / 2 - 0.05; // Puts the floor back
+    } else {
+      orbitRef.current.maxPolarAngle = Math.PI; // Allows camera to go 100% underneath
+    }
 
     switch (viewMode) {
       case "Front":
