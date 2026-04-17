@@ -1,3 +1,4 @@
+// admin/frontend/src/pages/staff/Dashboard.jsx
 import { useState, useEffect } from "react";
 import api from "../../services/api";
 
@@ -43,7 +44,7 @@ export default function Dashboard() {
       } catch (err) {
         console.error(
           "Dashboard load error:",
-          err.response?.data || err.message
+          err.response?.data || err.message,
         );
         if (isMounted) setData(null);
       } finally {
@@ -111,7 +112,7 @@ export default function Dashboard() {
                 "en-PH",
                 {
                   minimumFractionDigits: 2,
-                }
+                },
               )}
             </div>
             <div className="stat-label">Sales Today</div>

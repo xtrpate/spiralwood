@@ -6,8 +6,7 @@ import {
   useState,
   useRef,
 } from "react";
-import api from "../../services/api"; // Make sure this path is correct
-import useAuthStore from "../../store/authStore"; // Import your auth store
+import api from "../../services/api";
 
 const CartContext = createContext(null);
 
@@ -105,7 +104,11 @@ const parseStoredArray = (raw) => {
 };
 
 export function CartProvider({ children }) {
-
+  // 👉 THE FIX: Added the missing state variables back!
+  const [cart, setCart] = useState(() =>
+    parseStoredArray(localStorage.getItem(STORAGE_KEY)),
+  );
+  const [miniCartOpen, setMiniCartOpen] = useState(false);
 
   const { user } = useAuthStore();
   const isInitialMount = useRef(true);
@@ -120,7 +123,6 @@ export function CartProvider({ children }) {
 
           setCart((currentLocalCart) => {
             let merged = [...cloudCart];
-            // If the guest added stuff before logging in, merge it into the cloud cart!
             currentLocalCart.forEach((localItem) => {
               const existingIndex = merged.findIndex(
                 (c) => c.key === localItem.key,
@@ -143,7 +145,6 @@ export function CartProvider({ children }) {
 
   // 👉 INDUSTRY STANDARD: Background Syncing
   useEffect(() => {
-    // Save to LocalStorage instantly for snappy UI
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
     const customOnly = cart.filter((item) => item.cart_type === "blueprint");
     sessionStorage.setItem(
@@ -151,10 +152,7 @@ export function CartProvider({ children }) {
       JSON.stringify(customOnly),
     );
 
-    // If logged in, quietly update the database so it survives logouts/device switches
     if (user && user.role === "customer" && !isInitialMount.current) {
-      // Note: Debouncing this call in a massive production app is recommended,
-      // but direct calling is perfectly fine for this scale.
       api
         .post("/customer/cart/sync", { cart })
         .catch((err) => console.error("Cloud sync failed", err));
@@ -223,7 +221,6 @@ export function CartProvider({ children }) {
     sessionStorage.removeItem("cust_selected_keys");
     sessionStorage.removeItem("cust_selected_custom_checkout");
 
-    // Clear cloud cart too if logged in
     if (user && user.role === "customer") {
       api.post("/customer/cart/sync", { cart: [] }).catch(console.error);
     }
@@ -262,6 +259,7 @@ export function CartProvider({ children }) {
   const value = useMemo(
     () => ({
       cart,
+      miniCartOpen,
       setCartState: setCart,
       standardCart,
       customCart,
