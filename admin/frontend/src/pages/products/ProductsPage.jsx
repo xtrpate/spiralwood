@@ -14,6 +14,10 @@ export default function ProductsPage() {
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // 👉 NEW: State to track selected products for bulk publishing
+  const [selectedIds, setSelectedIds] = useState([]);
+
   const [filters, setFilters] = useState({
     search: "",
     type: "",
@@ -29,6 +33,7 @@ export default function ProductsPage() {
       });
       setProducts(data.products);
       setTotal(data.total);
+      setSelectedIds([]); // Clear selection when page changes
     } finally {
       setLoading(false);
     }
@@ -48,19 +53,24 @@ export default function ProductsPage() {
     } catch {}
   };
 
-  // 👉 NEW: Toggle Published Status Function
-  const togglePublished = async (id, currentStatus) => {
+  // 👉 NEW: Bulk Publish Function
+  const handleBulkPublish = async (is_published) => {
+    if (selectedIds.length === 0) {
+      return toast.error("Please select at least one product first.");
+    }
+
     try {
-      // We pass the opposite of the current status to the backend
-      const { data } = await api.patch(`/products/${id}/publish`, {
-        is_published: !currentStatus,
+      // We will create this backend route next!
+      await api.patch("/products/bulk-publish", {
+        ids: selectedIds,
+        is_published,
       });
       toast.success(
-        data.is_published ? "Product is now Live." : "Product moved to Draft.",
+        `Selected products marked as ${is_published ? "Live" : "Draft"}.`,
       );
       load();
     } catch (err) {
-      toast.error("Failed to change publish status.");
+      toast.error("Failed to update publish status.");
     }
   };
 
@@ -71,6 +81,24 @@ export default function ProductsPage() {
       toast.success("Product deleted.");
       load();
     } catch {}
+  };
+
+  // Handle Select All Checkbox
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedIds(products.map((p) => p.id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  // Handle Individual Checkbox
+  const handleSelectOne = (id, checked) => {
+    if (checked) {
+      setSelectedIds((prev) => [...prev, id]);
+    } else {
+      setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
+    }
   };
 
   return (
@@ -105,41 +133,69 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* 👉 NEW: Filters & Bulk Actions Row */}
       <div
-        style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 16,
+          flexWrap: "wrap",
+          gap: 16,
+        }}
       >
-        <input
-          placeholder="Search name or barcode..."
-          value={filters.search}
-          onChange={(e) =>
-            setFilters((f) => ({ ...f, search: e.target.value, page: 1 }))
-          }
-          style={inputSm}
-        />
-        <select
-          value={filters.type}
-          onChange={(e) =>
-            setFilters((f) => ({ ...f, type: e.target.value, page: 1 }))
-          }
-          style={inputSm}
-        >
-          <option value="">All Types</option>
-          <option value="standard">Standard Prefab</option>
-          <option value="blueprint">Blueprint</option>
-        </select>
-        <select
-          value={filters.status}
-          onChange={(e) =>
-            setFilters((f) => ({ ...f, status: e.target.value, page: 1 }))
-          }
-          style={inputSm}
-        >
-          <option value="">All Stock Status</option>
-          <option value="in_stock">In Stock</option>
-          <option value="low_stock">Low Stock</option>
-          <option value="out_of_stock">Out of Stock</option>
-        </select>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <input
+            placeholder="Search name or barcode..."
+            value={filters.search}
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, search: e.target.value, page: 1 }))
+            }
+            style={inputSm}
+          />
+          <select
+            value={filters.type}
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, type: e.target.value, page: 1 }))
+            }
+            style={inputSm}
+          >
+            <option value="">All Types</option>
+            <option value="standard">Standard Prefab</option>
+            <option value="blueprint">Blueprint</option>
+          </select>
+          <select
+            value={filters.status}
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, status: e.target.value, page: 1 }))
+            }
+            style={inputSm}
+          >
+            <option value="">All Stock Status</option>
+            <option value="in_stock">In Stock</option>
+            <option value="low_stock">Low Stock</option>
+            <option value="out_of_stock">Out of Stock</option>
+          </select>
+        </div>
+
+        {/* The Publish Buttons */}
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <span style={{ fontSize: 13, color: "#64748b", fontWeight: 600 }}>
+            {selectedIds.length} Selected
+          </span>
+          <button
+            onClick={() => handleBulkPublish(true)}
+            style={btnPublishLive}
+          >
+            ✓ Set Live
+          </button>
+          <button
+            onClick={() => handleBulkPublish(false)}
+            style={btnPublishDraft}
+          >
+            ⨯ Set Draft
+          </button>
+        </div>
       </div>
 
       {/* Table */}
@@ -161,16 +217,28 @@ export default function ProductsPage() {
                 borderBottom: "1px solid #e2e8f0",
               }}
             >
+              <th style={{ ...th, width: 40, textAlign: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={
+                    products.length > 0 &&
+                    selectedIds.length === products.length
+                  }
+                  onChange={handleSelectAll}
+                  style={{ cursor: "pointer" }}
+                />
+              </th>
               {[
                 "Image",
                 "Barcode",
                 "Name",
+                "Category", // 👉 NEW Column
                 "Type",
                 "Online Price",
                 "Walk-in",
                 "Stock",
                 "Status",
-                "Published", // 👉 NEW: Column Header
+                "Published",
                 "Featured",
                 "Actions",
               ].map((h) => (
@@ -184,7 +252,7 @@ export default function ProductsPage() {
             {loading ? (
               <tr>
                 <td
-                  colSpan={11} // Increased colSpan
+                  colSpan={13} // Increased for checkboxes & category
                   style={{ textAlign: "center", padding: 40, color: "#64748b" }}
                 >
                   Loading...
@@ -193,7 +261,7 @@ export default function ProductsPage() {
             ) : products.length === 0 ? (
               <tr>
                 <td
-                  colSpan={11} // Increased colSpan
+                  colSpan={13}
                   style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}
                 >
                   No products found.
@@ -203,7 +271,25 @@ export default function ProductsPage() {
               products.map((p) => {
                 const sb = STOCK_BADGE[p.stock_status] || {};
                 return (
-                  <tr key={p.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <tr
+                    key={p.id}
+                    style={{
+                      borderBottom: "1px solid #f1f5f9",
+                      background: selectedIds.includes(p.id)
+                        ? "#f8fafc"
+                        : "white",
+                    }}
+                  >
+                    <td style={{ ...td, textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(p.id)}
+                        onChange={(e) =>
+                          handleSelectOne(p.id, e.target.checked)
+                        }
+                        style={{ cursor: "pointer" }}
+                      />
+                    </td>
                     <td style={td}>
                       {p.image_url ? (
                         <img
@@ -237,6 +323,12 @@ export default function ProductsPage() {
                     <td style={{ ...td, fontWeight: 500, maxWidth: 180 }}>
                       {p.name}
                     </td>
+
+                    {/* 👉 NEW: Category Cell */}
+                    <td style={td}>
+                      {p.category_name || p.category_id || "—"}
+                    </td>
+
                     <td style={td}>
                       <span
                         style={{
@@ -273,29 +365,20 @@ export default function ProductsPage() {
                       </span>
                     </td>
 
-                    {/* 👉 NEW: Published Toggle Button */}
-                    <td style={{ ...td, textAlign: "center" }}>
-                      <button
-                        onClick={() => togglePublished(p.id, p.is_published)}
+                    {/* Published Status Badge */}
+                    <td style={td}>
+                      <span
                         style={{
                           background: p.is_published ? "#d1fae5" : "#fee2e2",
                           color: p.is_published ? "#065f46" : "#991b1b",
-                          border: `1px solid ${p.is_published ? "#34d399" : "#f87171"}`,
-                          cursor: "pointer",
-                          padding: "4px 10px",
+                          padding: "4px 8px",
                           borderRadius: 12,
                           fontSize: 11,
                           fontWeight: 600,
-                          transition: "all 0.2s",
                         }}
-                        title={
-                          p.is_published
-                            ? "Click to set as Draft"
-                            : "Click to Publish"
-                        }
                       >
                         {p.is_published ? "Live" : "Draft"}
-                      </button>
+                      </span>
                     </td>
 
                     <td style={{ ...td, textAlign: "center" }}>
@@ -402,6 +485,26 @@ const inputSm = {
 const btnPrimary = {
   padding: "8px 18px",
   background: "#1e40af",
+  color: "#fff",
+  border: "none",
+  borderRadius: 6,
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 600,
+};
+const btnPublishLive = {
+  padding: "7px 14px",
+  background: "#10b981",
+  color: "#fff",
+  border: "none",
+  borderRadius: 6,
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 600,
+};
+const btnPublishDraft = {
+  padding: "7px 14px",
+  background: "#ef4444",
   color: "#fff",
   border: "none",
   borderRadius: 6,

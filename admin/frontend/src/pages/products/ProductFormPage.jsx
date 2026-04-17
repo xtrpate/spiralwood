@@ -18,6 +18,18 @@ const DEFAULT = {
   is_featured: false,
 };
 
+// 👉 NEW: Hardcoded categories matching your shop design perfectly
+const SHOP_CATEGORIES = [
+  { id: 1, name: "Bedroom Furniture" },
+  { id: 2, name: "Kitchen Furniture" },
+  { id: 3, name: "Bathroom Furniture" },
+  { id: 4, name: "Office Furniture" },
+  { id: 5, name: "Living Room Furniture" },
+  { id: 6, name: "Dining Room Furniture" },
+  { id: 7, name: "Wardrobe & Closet" },
+  { id: 8, name: "TV Console & Storage" },
+];
+
 export default function ProductFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -26,7 +38,7 @@ export default function ProductFormPage() {
   const [form, setForm] = useState(DEFAULT);
   const [image, setImage] = useState(null);
   const [preview, setPreview] = useState("");
-  const [categories, setCategories] = useState([]);
+  const [categories, setCategories] = useState(SHOP_CATEGORIES); // Set to our new list
   const [rawMats, setRawMats] = useState([]);
   const [variations, setVariations] = useState([]);
   const [bom, setBom] = useState([]);
@@ -35,10 +47,7 @@ export default function ProductFormPage() {
   useEffect(() => {
     api.get("/inventory/raw").then((r) => setRawMats(r.data.rows || []));
 
-    api.get("/products/report").then((r) => {
-      const rows = Array.isArray(r.data?.categories) ? r.data.categories : [];
-      setCategories(rows);
-    });
+    // We removed the broken API fetch for categories here since we use the static list now.
 
     if (isEdit) {
       api.get(`/products/${id}`).then((r) => {
@@ -100,6 +109,8 @@ export default function ProductFormPage() {
         toast.success("Product created.");
       }
       navigate("/admin/products");
+    } catch (err) {
+      toast.error("Failed to save product.");
     } finally {
       setSaving(false);
     }
