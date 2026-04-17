@@ -4,10 +4,7 @@ const db = require("../../config/db");
 /* ── Helper: Generate Walk-in Order Number ── */
 const generateOrderNumber = async (conn) => {
   const now = new Date();
-  const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(
-    2,
-    "0",
-  )}${String(now.getDate()).padStart(2, "0")}`;
+  const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const suffix = Math.floor(Math.random() * 9000 + 1000);
@@ -34,7 +31,7 @@ exports.createOrder = async (req, res) => {
     cash_received = null,
     change = null,
     discount = 0,
-    delivery_fee = 0, // 👉 NEW: Catch the delivery fee from frontend
+    delivery_fee = 0, // 👉 Captures the fee from frontend
     notes,
     delivery = null,
     appointment = null,
@@ -63,9 +60,8 @@ exports.createOrder = async (req, res) => {
         .json({ message: "Cash received is required for cash payments" });
   }
 
-  if (delivery) {
-    if (!String(delivery.address || "").trim())
-      return res.status(400).json({ message: "Delivery address is required" });
+  if (delivery && !String(delivery.address || "").trim()) {
+    return res.status(400).json({ message: "Delivery address is required" });
   }
 
   const conn = await db.getConnection();
@@ -133,13 +129,17 @@ exports.createOrder = async (req, res) => {
 
     const tax = 0;
     const discountAmt = parseFloat(discount) || 0;
-    const deliveryFeeAmt = parseFloat(delivery_fee) || 0; // 👉 Compute Delivery Fee
+    const deliveryFeeAmt = parseFloat(delivery_fee) || 0;
 
-    // 👉 FINAL TOTAL MATH: (Items - Discount) + Delivery
     const total = Math.max(subtotal + tax - discountAmt + deliveryFeeAmt, 0);
 
     const deliveryRequestedDate = delivery
-      ? String(delivery.requested_date || "").trim()
+      ? String(
+          delivery.requested_date ||
+            delivery.preferred_date ||
+            delivery.scheduled_date ||
+            "",
+        ).trim()
       : "";
     const normalizedRequestedDeliveryDate = deliveryRequestedDate
       ? deliveryRequestedDate.replace("T", " ")
@@ -164,7 +164,6 @@ exports.createOrder = async (req, res) => {
         ? "completed"
         : "pending";
 
-    // 👉 FIX: The SQL Crash is fixed here!
     const [orderResult] = await conn.query(
       `
       INSERT INTO orders
@@ -186,7 +185,7 @@ exports.createOrder = async (req, res) => {
         tax,
         discountAmt,
         deliveryFeeAmt,
-        total, // 👉 Added delivery_fee to array
+        total,
         storedOrderNotes,
         delivery?.address?.trim() || null,
         normalizedRequestedDeliveryDate,
@@ -302,23 +301,57 @@ exports.createOrder = async (req, res) => {
       ],
     );
 
+    // 👉 THE FIX: Removed the "INSERT INTO deliveries" query that caused the crash.
     let createdDelivery = null;
     if (delivery) {
-      const [deliveryResult] = await conn.query(
-        `
-        INSERT INTO deliveries
-          (order_id, address, requested_date, status)
-        VALUES (?, ?, ?, 'awaiting_admin_schedule')
-        `,
-        [orderId, delivery.address.trim(), normalizedRequestedDeliveryDate],
-      );
-
       createdDelivery = {
-        id: deliveryResult.insertId,
         order_id: orderId,
         address: delivery.address.trim(),
         requested_date: normalizedRequestedDeliveryDate,
         status: "awaiting_admin_schedule",
+        scheduled_date: null,
+        assigned_driver: null,
+      };
+    }
+
+    // 👉 RESTORED: Your original appointment tracking logic
+    let createdAppointment = null;
+    if (appointment) {
+      const normalizedPurpose = String(appointment.purpose || "")
+        .trim()
+        .toLowerCase();
+      const requestedAppointmentDate = String(
+        appointment.preferred_date ||
+          appointment.requested_date ||
+          appointment.scheduled_date ||
+          "",
+      ).replace("T", " ");
+
+      const [appointmentResult] = await conn.query(
+        `
+        INSERT INTO appointments
+          (order_id, customer_id, handled_by, provider_id, request_owner_id, purpose, scheduled_date, preferred_date, status, notes)
+        VALUES (?, NULL, NULL, NULL, ?, ?, ?, ?, 'pending', ?)
+        `,
+        [
+          orderId,
+          req.user.id,
+          normalizedPurpose,
+          requestedAppointmentDate,
+          requestedAppointmentDate,
+          String(appointment.notes || "").trim() || null,
+        ],
+      );
+
+      createdAppointment = {
+        id: appointmentResult.insertId,
+        order_id: orderId,
+        purpose: normalizedPurpose,
+        scheduled_date: requestedAppointmentDate,
+        preferred_date: requestedAppointmentDate,
+        status: "pending",
+        handled_by: null,
+        assigned_to: null,
       };
     }
 
@@ -335,6 +368,7 @@ exports.createOrder = async (req, res) => {
       change: normalizedChange,
       payment_status: initialPaymentStatus,
       delivery: createdDelivery,
+      appointment: createdAppointment,
     });
   } catch (err) {
     await conn.rollback();
