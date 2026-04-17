@@ -3,9 +3,8 @@ const express = require("express");
 const router = express.Router();
 const authController = require("../controllers/customer/customer.auth");
 
-// 👉 You likely have an auth middleware somewhere in your project.
-// Adjust this path if your middleware is named differently or in a different folder!
-const { verifyToken } = require("../middleware/auth");
+// 👉 THE FIX: Changed 'verifyToken' to 'authenticate' to match your middleware file
+const { authenticate } = require("../middleware/auth");
 
 /* ══════════════════════════════════════════════════════════════
    CUSTOMER AUTHENTICATION ROUTES
@@ -20,8 +19,8 @@ router.post("/login", authController.login);
 /* ══════════════════════════════════════════════════════════════
    CLOUD CART OMNICHANNEL ROUTES (Protected)
 ══════════════════════════════════════════════════════════════ */
-// Notice how we pass verifyToken so only logged-in users can sync!
-router.get("/cart", verifyToken, authController.getCloudCart);
-router.post("/cart/sync", verifyToken, authController.syncCloudCart);
+// 👉 THE FIX: Changed 'verifyToken' to 'authenticate' here as well
+router.get("/cart", authenticate, authController.getCloudCart);
+router.post("/cart/sync", authenticate, authController.syncCloudCart);
 
 module.exports = router;
