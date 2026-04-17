@@ -23,10 +23,8 @@ export default function POSLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const isAdmin = user?.role === "admin";
-  const isCashier =
-    user?.role === "staff" && user?.staff_type === "cashier";
-  const isIndoorStaff =
-    user?.role === "staff" && user?.staff_type === "indoor";
+  const isCashier = user?.role === "staff" && user?.staff_type === "cashier";
+  const isIndoorStaff = user?.role === "staff" && user?.staff_type === "indoor";
   const isDeliveryRider =
     user?.role === "staff" && user?.staff_type === "delivery_rider";
 
@@ -43,57 +41,33 @@ export default function POSLayout() {
 
     if (isCashier) {
       return [
+        { to: "/staff/products", icon: Search, label: "Product Search" },
+        { to: "/staff/order", icon: ShoppingCart, label: "Process Order" },
+        // 👉 NEW: Transaction History Link
         {
-          to: "/staff/products",
-          icon: Search,
-          label: "Product Search",
+          to: "/staff/history",
+          icon: ClipboardList,
+          label: "Transaction History",
         },
-        {
-          to: "/staff/order",
-          icon: ShoppingCart,
-          label: "Process Order",
-        },
-        {
-          to: "/staff/reports",
-          icon: BarChart3,
-          label: "Sales Reports",
-        },
+        { to: "/staff/reports", icon: BarChart3, label: "Sales Reports" },
       ];
     }
 
     if (isIndoorStaff) {
       return [
-        {
-          to: "/staff/dashboard",
-          icon: LayoutDashboard,
-          label: "Dashboard",
-        },
-        {
-          to: "/staff/tasks",
-          icon: ClipboardList,
-          label: "My Tasks",
-        },
+        { to: "/staff/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+        { to: "/staff/tasks", icon: ClipboardList, label: "My Tasks" },
         {
           to: "/staff/appointment",
           icon: CalendarClock,
           label: "Appointments",
         },
-        {
-          to: "/staff/inventory",
-          icon: Package,
-          label: "Inventory Lookup",
-        },
+        { to: "/staff/inventory", icon: Package, label: "Inventory Lookup" },
       ];
     }
 
     if (isDeliveryRider) {
-      return [
-        {
-          to: "/staff/deliveries",
-          icon: Truck,
-          label: "My Deliveries",
-        },
-      ];
+      return [{ to: "/staff/deliveries", icon: Truck, label: "My Deliveries" }];
     }
 
     return [];
@@ -129,7 +103,6 @@ export default function POSLayout() {
               </div>
             )}
           </div>
-
           <button
             className="sidebar-toggle"
             onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -159,7 +132,6 @@ export default function POSLayout() {
             <div className="user-avatar">
               {user?.name?.charAt(0)?.toUpperCase() || "U"}
             </div>
-
             {sidebarOpen && (
               <div className="user-details">
                 <span className="user-name">{user?.name}</span>
@@ -167,7 +139,6 @@ export default function POSLayout() {
               </div>
             )}
           </div>
-
           <button className="logout-btn" onClick={handleLogout} title="Logout">
             <LogOut size={18} />
           </button>

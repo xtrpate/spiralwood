@@ -1,6 +1,5 @@
 // src/App.jsx – WISDOM Admin Panel root with React Router
 
-
 import {
   BrowserRouter,
   Routes,
@@ -97,6 +96,7 @@ import POSReceiptPage from "./pages/staff/ReceiptPage";
 import POSSalesReports from "./pages/staff/SalesReports";
 import POSBlueprintView from "./pages/staff/BlueprintView";
 import POSInventoryLookup from "./pages/staff/InventoryLookup";
+import POSOrderHistory from "./pages/staff/OrderHistory";
 
 window.addEventListener("error", (e) => {
   if (
@@ -107,10 +107,6 @@ window.addEventListener("error", (e) => {
     e.stopImmediatePropagation();
   }
 });
-
-
-
-
 
 // ── Auth Guard ────────────────────────────────────────────────────────────────
 function RequireAuth({ children, roles }) {
@@ -236,7 +232,10 @@ export default function App() {
               <Route path="catalog" element={<ProductCatalog />} />
               <Route path="cart" element={<CartPage />} />
               <Route path="customize" element={<CustomizePage />} />
-              <Route path="custom-cart" element={<Navigate to="/cart" replace />} />
+              <Route
+                path="custom-cart"
+                element={<Navigate to="/cart" replace />}
+              />
 
               <Route
                 path="checkout"
@@ -263,7 +262,6 @@ export default function App() {
                   </RequireAuth>
                 }
               />
-
 
               <Route
                 path="appointment"
@@ -474,6 +472,15 @@ export default function App() {
               element={
                 <RequireStaffType allowedTypes={["cashier"]}>
                   <POSProcessOrder />
+                </RequireStaffType>
+              }
+            />
+
+            <Route
+              path="history"
+              element={
+                <RequireStaffType allowedTypes={["cashier"]}>
+                  <POSOrderHistory />
                 </RequireStaffType>
               }
             />
