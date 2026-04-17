@@ -1,10 +1,6 @@
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import useAuthStore from "../../store/authStore";
 import { useCart } from "./cartcontext";
-<<<<<<< HEAD
-// 👉 FIX: Removed the raw axios import
-=======
->>>>>>> e0754d8c228afd1fa087871ba6560f0f5bd1a3d4
 import api, { buildAssetUrl } from "../../services/api";
 import {
   Home,
@@ -112,24 +108,9 @@ export default function CustomerLayout() {
   }, []);
 
   useEffect(() => {
-<<<<<<< HEAD
-    if (customerUser) {
-      // 👉 FIX: Swapped axios for your authenticated 'api' instance
-      api
-        .get("/customer/orders")
-        .then((res) => {
-          const activeOrders = res.data.filter(
-            (o) => !["completed", "cancelled"].includes(o.status),
-          );
-          setActiveOrdersCount(activeOrders.length);
-        })
-        .catch(console.error);
-    } else {
-=======
     let active = true;
 
     if (!customerUser) {
->>>>>>> e0754d8c228afd1fa087871ba6560f0f5bd1a3d4
       setActiveOrdersCount(0);
       return;
     }
@@ -194,7 +175,7 @@ export default function CustomerLayout() {
     return <span className="cust-count-badge">{count}</span>;
   };
 
-   const formatPeso = (value) =>
+  const formatPeso = (value) =>
     `₱${Number(value || 0).toLocaleString("en-PH", {
       minimumFractionDigits: 2,
     })}`;
@@ -536,7 +517,7 @@ export default function CustomerLayout() {
             </NavLink>
           ))}
         </nav>
-         {customerUser ? (
+        {customerUser ? (
           <div className="cust-side-footer">
             <button
               type="button"
@@ -559,7 +540,7 @@ export default function CustomerLayout() {
               Sign Out
             </button>
           </div>
-        ) : null}  
+        ) : null}
       </aside>
 
       <aside className={`cust-mini-cart-drawer ${miniCartOpen ? "open" : ""}`}>
