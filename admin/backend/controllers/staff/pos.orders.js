@@ -83,19 +83,15 @@ exports.createOrder = async (req, res) => {
         );
         if (!variationRows.length) {
           await conn.rollback();
-          return res
-            .status(404)
-            .json({
-              message: `Variation not found for ${item.product_name || "item"}`,
-            });
+          return res.status(404).json({
+            message: `Variation not found for ${item.product_name || "item"}`,
+          });
         }
         if (Number(variationRows[0].stock || 0) < qty) {
           await conn.rollback();
-          return res
-            .status(400)
-            .json({
-              message: `Insufficient stock for ${item.product_name || "item"}`,
-            });
+          return res.status(400).json({
+            message: `Insufficient stock for ${item.product_name || "item"}`,
+          });
         }
       } else {
         const [productRows] = await conn.query(
@@ -104,19 +100,15 @@ exports.createOrder = async (req, res) => {
         );
         if (!productRows.length) {
           await conn.rollback();
-          return res
-            .status(404)
-            .json({
-              message: `Product not found for ${item.product_name || "item"}`,
-            });
+          return res.status(404).json({
+            message: `Product not found for ${item.product_name || "item"}`,
+          });
         }
         if (Number(productRows[0].stock || 0) < qty) {
           await conn.rollback();
-          return res
-            .status(400)
-            .json({
-              message: `Insufficient stock for ${item.product_name || "item"}`,
-            });
+          return res.status(400).json({
+            message: `Insufficient stock for ${item.product_name || "item"}`,
+          });
         }
       }
     }
@@ -204,8 +196,8 @@ exports.createOrder = async (req, res) => {
       const [itemResult] = await conn.query(
         `
         INSERT INTO order_items
-          (order_id, product_id, variation_id, product_name, quantity, unit_price, subtotal, production_cost)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          (order_id, product_id, variation_id, product_name, quantity, unit_price, production_cost)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         `,
         [
           orderId,
@@ -214,7 +206,6 @@ exports.createOrder = async (req, res) => {
           item.product_name,
           quantity,
           unitPrice,
-          itemSubtotal,
           productionCost,
         ],
       );
