@@ -1,4 +1,3 @@
-// src/pages/products/ProductsPage.jsx
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
@@ -49,6 +48,22 @@ export default function ProductsPage() {
     } catch {}
   };
 
+  // 👉 NEW: Toggle Published Status Function
+  const togglePublished = async (id, currentStatus) => {
+    try {
+      // We pass the opposite of the current status to the backend
+      const { data } = await api.patch(`/products/${id}/publish`, {
+        is_published: !currentStatus,
+      });
+      toast.success(
+        data.is_published ? "Product is now Live." : "Product moved to Draft.",
+      );
+      load();
+    } catch (err) {
+      toast.error("Failed to change publish status.");
+    }
+  };
+
   const deleteProduct = async (id, name) => {
     if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
     try {
@@ -81,7 +96,10 @@ export default function ProductsPage() {
           >
             📄 Export Report
           </button>
-          <button onClick={() => navigate("/admin/products/new")} style={btnPrimary}>
+          <button
+            onClick={() => navigate("/admin/products/new")}
+            style={btnPrimary}
+          >
             + Add Product
           </button>
         </div>
@@ -152,6 +170,7 @@ export default function ProductsPage() {
                 "Walk-in",
                 "Stock",
                 "Status",
+                "Published", // 👉 NEW: Column Header
                 "Featured",
                 "Actions",
               ].map((h) => (
@@ -165,7 +184,7 @@ export default function ProductsPage() {
             {loading ? (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={11} // Increased colSpan
                   style={{ textAlign: "center", padding: 40, color: "#64748b" }}
                 >
                   Loading...
@@ -174,7 +193,7 @@ export default function ProductsPage() {
             ) : products.length === 0 ? (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={11} // Increased colSpan
                   style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}
                 >
                   No products found.
@@ -253,6 +272,32 @@ export default function ProductsPage() {
                         {p.stock_status?.replace("_", " ")}
                       </span>
                     </td>
+
+                    {/* 👉 NEW: Published Toggle Button */}
+                    <td style={{ ...td, textAlign: "center" }}>
+                      <button
+                        onClick={() => togglePublished(p.id, p.is_published)}
+                        style={{
+                          background: p.is_published ? "#d1fae5" : "#fee2e2",
+                          color: p.is_published ? "#065f46" : "#991b1b",
+                          border: `1px solid ${p.is_published ? "#34d399" : "#f87171"}`,
+                          cursor: "pointer",
+                          padding: "4px 10px",
+                          borderRadius: 12,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          transition: "all 0.2s",
+                        }}
+                        title={
+                          p.is_published
+                            ? "Click to set as Draft"
+                            : "Click to Publish"
+                        }
+                      >
+                        {p.is_published ? "Live" : "Draft"}
+                      </button>
+                    </td>
+
                     <td style={{ ...td, textAlign: "center" }}>
                       <button
                         onClick={() => toggleFeatured(p.id)}
@@ -274,7 +319,9 @@ export default function ProductsPage() {
                     <td style={td}>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button
-                          onClick={() => navigate(`/admin/products/${p.id}/edit`)}
+                          onClick={() =>
+                            navigate(`/admin/products/${p.id}/edit`)
+                          }
                           style={btnEdit}
                         >
                           Edit
