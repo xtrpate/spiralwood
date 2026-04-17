@@ -115,6 +115,7 @@ router.get("/dashboard", adminStaff, dashboard.getDashboard);
 // ══════════════════════════════════════════════════════════════════════════════
 router.get("/products/report", adminStaff, products.getReport);
 router.get("/products", adminStaff, products.getAll);
+router.patch("/products/bulk-publish", adminOnly, products.bulkPublish);
 router.get("/products/:id", adminStaff, products.getOne);
 router.post("/products", adminOnly, upload.uploadProductImage, products.create);
 router.put(
@@ -124,6 +125,7 @@ router.put(
   products.update,
 );
 router.delete("/products/:id", adminOnly, products.remove);
+router.patch("/products/:id/publish", adminOnly, products.togglePublish);
 router.patch("/products/:id/featured", adminOnly, products.toggleFeatured);
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -205,11 +207,7 @@ router.post("/orders/:id/decline", adminOnly, orders.decline);
 
 router.post("/orders/:id/verify-payment", adminOnly, orders.verifyPayment);
 
-router.get(
-  "/orders/:id/discussion",
-  adminStaff,
-  orders.getOrderDiscussion,
-);
+router.get("/orders/:id/discussion", adminStaff, orders.getOrderDiscussion);
 
 router.post(
   "/orders/:id/discussion",

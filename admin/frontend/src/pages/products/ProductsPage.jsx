@@ -187,13 +187,13 @@ export default function ProductsPage() {
             onClick={() => handleBulkPublish(true)}
             style={btnPublishLive}
           >
-            ✓ Set Live
+            Publish Product
           </button>
           <button
             onClick={() => handleBulkPublish(false)}
             style={btnPublishDraft}
           >
-            ⨯ Set Draft
+            Unpublish Product
           </button>
         </div>
       </div>

@@ -318,3 +318,46 @@ exports.getReport = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+// ── PATCH /api/products/bulk-publish ─────────────────────────────────────────
+exports.bulkPublish = async (req, res) => {
+  try {
+    const { ids, is_published } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: "No product IDs provided." });
+    }
+
+    // Convert true/false to MySQL's 1/0
+    const publishValue = is_published ? 1 : 0;
+
+    // The (?) automatically unpacks the array of IDs for MySQL
+    await pool.query("UPDATE products SET is_published = ? WHERE id IN (?)", [
+      publishValue,
+      ids,
+    ]);
+
+    res.json({ message: "Products updated successfully." });
+  } catch (err) {
+    console.error("[bulkPublish Error]:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── PATCH /api/products/:id/publish ─────────────────────────────────────────
+exports.togglePublish = async (req, res) => {
+  try {
+    const { is_published } = req.body;
+    const publishValue = is_published ? 1 : 0;
+
+    await pool.query("UPDATE products SET is_published = ? WHERE id = ?", [
+      publishValue,
+      parseInt(req.params.id),
+    ]);
+
+    res.json({ is_published: !!publishValue });
+  } catch (err) {
+    console.error("[togglePublish Error]:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
