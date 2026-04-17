@@ -1,4 +1,3 @@
-// src/App.jsx – WISDOM Admin Panel root with React Router
 
 import {
   BrowserRouter,
@@ -196,26 +195,7 @@ export default function App() {
       <BrowserRouter>
         <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
         <Routes>
-          {/* ══════════════════════════════════════════════════════════════════
-              CUSTOMER PORTAL
-          ══════════════════════════════════════════════════════════════════ */}
           <Route element={<Outlet />}>
-            {/* Standalone Pages (No Navbar) */}
-            <Route
-              path="login"
-              element={
-                <RedirectIfAuthenticated>
-                  <LoginPage />
-                </RedirectIfAuthenticated>
-              }
-            />
-            <Route path="register" element={<RegisterPage />} />
-            <Route path="forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="reset-password" element={<ResetPasswordPage />} />
-            <Route path="verify-otp" element={<VerifyOtpPage />} />
-            <Route path="pending-approval" element={<PendingApprovalPage />} />
-
-            {/* Pages with Navbar */}
             <Route
               path="/"
               element={
@@ -229,6 +209,46 @@ export default function App() {
               }
             >
               <Route index element={<LandingPage />} />
+
+              <Route
+                path="login"
+                element={
+                  <RedirectIfAuthenticated>
+                    <LoginPage />
+                  </RedirectIfAuthenticated>
+                }
+              />
+
+              <Route
+                path="register"
+                element={
+                  <RedirectIfAuthenticated>
+                    <RegisterPage />
+                  </RedirectIfAuthenticated>
+                }
+              />
+
+              <Route
+                path="forgot-password"
+                element={
+                  <RedirectIfAuthenticated>
+                    <ForgotPasswordPage />
+                  </RedirectIfAuthenticated>
+                }
+              />
+
+              <Route
+                path="reset-password"
+                element={
+                  <RedirectIfAuthenticated>
+                    <ResetPasswordPage />
+                  </RedirectIfAuthenticated>
+                }
+              />
+
+              <Route path="verify-otp" element={<VerifyOtpPage />} />
+              <Route path="pending-approval" element={<PendingApprovalPage />} />
+
               <Route path="catalog" element={<ProductCatalog />} />
               <Route path="cart" element={<CartPage />} />
               <Route path="customize" element={<CustomizePage />} />
@@ -254,6 +274,7 @@ export default function App() {
                   </RequireAuth>
                 }
               />
+
               <Route
                 path="custom-requests/:id"
                 element={
@@ -300,9 +321,6 @@ export default function App() {
               />
             </Route>
           </Route>
-          {/* ══════════════════════════════════════════════════════════════════
-              ADMIN & STAFF PUBLIC ROUTES
-          ══════════════════════════════════════════════════════════════════ */}
 
           <Route
             path="/admin/blueprints/:id/import"
@@ -313,9 +331,6 @@ export default function App() {
             }
           />
 
-          {/* ══════════════════════════════════════════════════════════════════
-              ADMIN PORTAL
-          ══════════════════════════════════════════════════════════════════ */}
           <Route
             path="/admin"
             element={
@@ -330,18 +345,18 @@ export default function App() {
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
 
-            {/* Products */}
             <Route path="products" element={<ProductsPage />} />
             <Route path="products/new" element={<ProductFormPage />} />
             <Route path="products/:id/edit" element={<ProductFormPage />} />
 
-            {/* Inventory */}
             <Route path="inventory/raw" element={<RawMaterialsPage />} />
             <Route path="inventory/build" element={<BuildMaterialsPage />} />
-            <Route path="inventory/movements" element={<StockMovementPage />} />
+            <Route
+              path="inventory/movements"
+              element={<StockMovementPage />}
+            />
             <Route path="inventory/suppliers" element={<SuppliersPage />} />
 
-            {/* Blueprints */}
             <Route path="blueprints" element={<BlueprintsPage />} />
             <Route path="blueprints/:id/design" element={<BlueprintDesign />} />
             <Route
@@ -350,7 +365,6 @@ export default function App() {
             />
             <Route path="contracts" element={<ContractsPage />} />
 
-            {/* Orders */}
             <Route path="orders" element={<OrdersPage />} />
             <Route path="orders/:id" element={<OrderDetailPage />} />
             <Route
@@ -358,13 +372,9 @@ export default function App() {
               element={<CancellationsPage />}
             />
 
-            {/* Sales */}
             <Route path="sales" element={<SalesReportPage />} />
-
-            {/* Warranty */}
             <Route path="warranty" element={<WarrantyPage />} />
 
-            {/* Management – admin only */}
             <Route
               path="customers"
               element={
@@ -382,7 +392,6 @@ export default function App() {
               }
             />
 
-            {/* Website Maintenance – admin only */}
             <Route
               path="website/settings"
               element={
@@ -408,7 +417,6 @@ export default function App() {
               }
             />
 
-            {/* Backup – admin only */}
             <Route
               path="backup"
               element={
@@ -419,9 +427,6 @@ export default function App() {
             />
           </Route>
 
-          {/* ══════════════════════════════════════════════════════════════════
-              STAFF PORTAL
-          ══════════════════════════════════════════════════════════════════ */}
           <Route
             path="/staff"
             element={
@@ -549,7 +554,6 @@ export default function App() {
             />
           </Route>
 
-          {/* Catch-all */}
           <Route path="*" element={<Navigate to="/catalog" replace />} />
         </Routes>
       </BrowserRouter>

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Mail } from "lucide-react";
 import "./authpages.css";
 import useAuthStore from "../../store/authStore";
 
@@ -38,21 +37,17 @@ export default function ForgotPasswordPage() {
   return (
     <div className="auth-root">
       <div className="auth-split">
-        <div className="auth-brand-panel">
-          <div className="brand-logo">W</div>
-          <h1>
-            Reset Your
-            <br />
-            <span>Password</span>
-          </h1>
-          <p>
-            Enter your email address and we will send you a password reset code.
-          </p>
-        </div>
-
         <div className="auth-card-panel">
+          <button
+            type="button"
+            className="auth-close"
+            onClick={() => navigate("/")}
+            aria-label="Close"
+          >
+            ×
+          </button>
+
           <div className="auth-card-header">
-            <div className="mobile-logo">W</div>
             <h2>Forgot Password</h2>
             <p>Enter your registered email to continue.</p>
           </div>
@@ -63,10 +58,10 @@ export default function ForgotPasswordPage() {
             <div className="field">
               <label>Email Address</label>
               <div className="field-input-wrap">
-                <Mail size={15} />
                 <input
                   type="email"
-                  placeholder="you@example.com"
+                  className="no-icon"
+                  placeholder=""
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -76,12 +71,21 @@ export default function ForgotPasswordPage() {
             </div>
 
             <button type="submit" className="btn-auth" disabled={loading}>
-              {loading ? "Sending code…" : "Send Reset Code"}
+              {loading ? "Sending code..." : "Send Reset Code"}
             </button>
           </form>
 
-          <div className="auth-switch" style={{ marginTop: 16 }}>
-            <button onClick={() => navigate("/login")}>← Back to Login</button>
+          <div className="auth-switch">
+            <button type="button" onClick={() => navigate("/login")}>
+              Back to Login
+            </button>
+          </div>
+
+          <div className="auth-switch">
+            No account yet?{" "}
+            <button type="button" onClick={() => navigate("/register")}>
+              Create Account
+            </button>
           </div>
         </div>
       </div>

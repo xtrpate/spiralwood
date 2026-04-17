@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import useAuthStore from "../store/authStore";
+import "./customer/authpages.css";
 
 const getDefaultRouteForUser = (user) => {
   if (!user) return "/login";
@@ -19,6 +20,7 @@ const getDefaultRouteForUser = (user) => {
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const login = useAuthStore((state) => state.login);
 
   const [form, setForm] = useState({
@@ -34,10 +36,15 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
 
+    const redirectTo =
+      location.state?.from?.pathname
+        ? `${location.state.from.pathname}${location.state.from.search || ""}`
+        : location.state?.redirectTo || null;
+
     try {
       const user = await login(form.email, form.password);
       toast.success("Login successful.");
-      navigate(getDefaultRouteForUser(user), { replace: true });
+      navigate(redirectTo || getDefaultRouteForUser(user), { replace: true });
     } catch (err) {
       toast.error(err?.response?.data?.message || "Login failed.");
     } finally {
@@ -46,96 +53,93 @@ export default function LoginPage() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        placeItems: "center",
-        background: "#f8fafc",
-        padding: 20,
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 420,
-          background: "#fff",
-          border: "1px solid #e2e8f0",
-          borderRadius: 18,
-          padding: 24,
-          boxShadow: "0 10px 30px rgba(15,23,42,.06)",
-        }}
-      >
-        <h1 style={{ margin: 0, fontSize: 24, color: "#0f172a" }}>WISDOM Login</h1>
-        <p style={{ margin: "8px 0 20px", color: "#64748b", fontSize: 14 }}>
-          One login form for admin, indoor staff, delivery rider, and customer.
-        </p>
-
-        <form onSubmit={handleSubmit}>
-          <label style={labelStyle}>Email</label>
-          <input
-            type="email"
-            value={form.email}
-            onChange={(e) => setField("email", e.target.value)}
-            style={inputStyle}
-            required
-          />
-
-          <label style={labelStyle}>Password</label>
-          <input
-            type="password"
-            value={form.password}
-            onChange={(e) => setField("password", e.target.value)}
-            style={inputStyle}
-            required
-          />
-
+    <div className="auth-root">
+      <div className="auth-split">
+        <div className="auth-card-panel">
           <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: "100%",
-              marginTop: 18,
-              padding: "12px 14px",
-              borderRadius: 10,
-              border: "none",
-              background: "#1d4ed8",
-              color: "#fff",
-              fontWeight: 700,
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
+            type="button"
+            className="auth-close"
+            onClick={() => navigate("/")}
+            aria-label="Close"
           >
-            {loading ? "Signing in..." : "Sign In"}
+            ×
           </button>
-        </form>
 
-        <div style={{ marginTop: 16, fontSize: 13, color: "#64748b" }}>
-          <div style={{ marginBottom: 6 }}>
-            Customer? <Link to="/register">Create account</Link>
+          <div className="auth-card-header">
+            <h2>Login</h2>
           </div>
-          <div>
-            Forgot password? <Link to="/forgot-password">Reset here</Link>
+
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <div className="field">
+              <label>Username or email address *</label>
+              <div className="field-input-wrap">
+                <input
+                  type="email"
+                  className="no-icon"
+                  placeholder=""
+                  value={form.email}
+                  onChange={(e) => setField("email", e.target.value)}
+                  required
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="field">
+              <label>Password *</label>
+              <div className="field-input-wrap">
+                <input
+                  type="password"
+                  className="no-icon"
+                  placeholder=""
+                  value={form.password}
+                  onChange={(e) => setField("password", e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginTop: -2,
+                marginBottom: 2,
+              }}
+            >
+              <input
+                id="remember-me"
+                type="checkbox"
+                style={{ width: 16, height: 16, cursor: "pointer" }}
+              />
+              <label
+                htmlFor="remember-me"
+                style={{ fontSize: 14, color: "#111111", cursor: "pointer" }}
+              >
+                Remember me
+              </label>
+            </div>
+
+            <button type="submit" className="btn-auth" disabled={loading}>
+              {loading ? "Logging in..." : "Log in"}
+            </button>
+          </form>
+
+          <div className="auth-switch">
+            <button type="button" onClick={() => navigate("/forgot-password")}>
+              Lost your password?
+            </button>
+          </div>
+
+          <div className="auth-switch">
+            No account yet?{" "}
+            <button type="button" onClick={() => navigate("/register")}>
+              Create Account
+            </button>
           </div>
         </div>
       </div>
     </div>
   );
 }
-
-const labelStyle = {
-  display: "block",
-  marginBottom: 6,
-  marginTop: 12,
-  fontSize: 13,
-  fontWeight: 600,
-  color: "#334155",
-};
-
-const inputStyle = {
-  width: "100%",
-  padding: "11px 12px",
-  borderRadius: 10,
-  border: "1px solid #cbd5e1",
-  fontSize: 14,
-  boxSizing: "border-box",
-};

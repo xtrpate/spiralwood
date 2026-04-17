@@ -8,7 +8,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ShoppingCart,
   Trash2,
   Plus,
   Minus,
@@ -17,9 +16,11 @@ import {
   Scissors,
   Package,
   AlertCircle,
+  ChevronRight,
 } from "lucide-react";
 import { buildAssetUrl } from "../../services/api";
 import { useCart } from "./cartcontext";
+import useAuthStore from "../../store/authStore";
 import "./cart.css";
 
 const resolveImageSrc = (value) => {
@@ -53,6 +54,8 @@ const formatPeso = (value) =>
 
 export default function CartPage() {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const customerUser = user?.role === "customer" ? user : null;
   const { cart, updateQty, removeItem, clearCart } = useCart();
 
   const [selected, setSelected] = useState(new Set());
@@ -111,19 +114,24 @@ export default function CartPage() {
     return sum + Number(item.unit_price || 0) * Number(item.quantity || 0);
   }, 0);
 
-  const hasBlueprintSelected = selectedItems.some((item) => isBlueprintItem(item));
-  const hasStandardSelected = selectedItems.some((item) => !isBlueprintItem(item));
-
+  const hasBlueprintSelected = selectedItems.some((item) =>
+    isBlueprintItem(item),
+  );
+  const hasStandardSelected = selectedItems.some(
+    (item) => !isBlueprintItem(item),
+  );
   const isMixedSelection = hasBlueprintSelected && hasStandardSelected;
 
   const mixedSelectionMessage =
-    "Your selection contains ready-made and custom items. Please check out them separately.";
+    "Your selection contains ready-made and custom items. Please check them out separately.";
 
-  const checkoutButtonLabel = isMixedSelection
-    ? "Select One Order Type"
-    : hasBlueprintSelected
-      ? "Proceed to Custom Checkout"
-      : "Proceed to Checkout";
+  const checkoutButtonLabel = !customerUser
+    ? "Sign in to Continue"
+    : isMixedSelection
+      ? "Select One Order Type"
+      : hasBlueprintSelected
+        ? "Proceed to Custom Checkout"
+        : "Proceed to Checkout";
 
   const checkoutButtonDisabled = selected.size === 0 || isMixedSelection;
 
@@ -134,6 +142,15 @@ export default function CartPage() {
 
     if (isMixedSelection) {
       setCheckoutError(mixedSelectionMessage);
+      return;
+    }
+
+    if (!customerUser) {
+      navigate("/login", {
+        state: {
+          redirectTo: "/cart",
+        },
+      });
       return;
     }
 
@@ -152,296 +169,313 @@ export default function CartPage() {
     navigate("/checkout");
   };
 
-  return (
-    <div>
-      <div className="page-hero">
-        <h1>Shopping Cart</h1>
-        <p>Review your items before proceeding to checkout</p>
-      </div>
+  const summaryNote = isMixedSelection
+    ? "You selected both ready-made and custom items. Please separate them before continuing."
+    : hasBlueprintSelected
+      ? "Custom / blueprint items follow quotation-based checkout."
+      : "Shipping and final totals will be confirmed during checkout.";
 
-      {cart.length === 0 ? (
-        <div className="cart-items-panel">
-          <div className="cart-empty">
-            <div className="cart-empty-icon">🛒</div>
-            <h3>Your cart is empty</h3>
-            <p>
-              Browse ready-made products or customize a furniture template to add
-              items here.
-            </p>
+  if (cart.length === 0) {
+    return (
+      <div className="fm-cart-shell">
+        <div className="fm-cart-progress">
+          <div className="fm-cart-step active">
+            <span className="fm-cart-step-num">1</span>
+            <span>Shopping Cart</span>
+          </div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                justifyContent: "center",
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                className="btn btn-primary"
-                onClick={() => navigate("/catalog")}
-              >
-                <ShoppingBag size={16} /> Browse Products
-              </button>
+          <ChevronRight size={16} className="fm-cart-progress-arrow" />
 
-              <button
-                className="btn btn-secondary"
-                onClick={() => navigate("/customize")}
-              >
-                <Scissors size={16} /> Go to Customize
-              </button>
-            </div>
+          <div className="fm-cart-step">
+            <span className="fm-cart-step-num">2</span>
+            <span>Checkout Details</span>
+          </div>
+
+          <ChevronRight size={16} className="fm-cart-progress-arrow" />
+
+          <div className="fm-cart-step">
+            <span className="fm-cart-step-num">3</span>
+            <span>Order Complete</span>
           </div>
         </div>
-      ) : (
-        <div className="cart-layout">
-          <div className="cart-items-panel">
-            <div className="cart-panel-header">
-              <h2>
-                <ShoppingCart
-                  size={18}
-                  style={{
-                    display: "inline",
-                    marginRight: 8,
-                    verticalAlign: "middle",
-                  }}
-                />
-                Cart Items
-              </h2>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                <span>
-                  {cart.length} line{cart.length !== 1 ? "s" : ""}
-                </span>
-                <button className="cart-clear-btn" onClick={clearCart}>
-                  Clear all
-                </button>
-              </div>
-            </div>
+        <div className="fm-cart-empty">
+          <div className="fm-cart-empty-icon">🛒</div>
+          <h2>Your shopping cart is empty</h2>
+          <p>
+            Browse ready-made products or customize a furniture template to add
+            items here.
+          </p>
 
-            <div className="cart-select-all-row">
-              <label className="cart-select-all-label">
-                <input
-                  type="checkbox"
-                  checked={allChecked}
-                  onChange={toggleAll}
-                />
-                <span>Select All</span>
-              </label>
-            </div>
+          <div className="fm-cart-empty-actions">
+            <button
+              type="button"
+              className="fm-cart-primary-btn"
+              onClick={() => navigate("/catalog")}
+            >
+              <ShoppingBag size={16} />
+              Browse Products
+            </button>
 
+            <button
+              type="button"
+              className="fm-cart-secondary-btn"
+              onClick={() => navigate("/customize")}
+            >
+              <Scissors size={16} />
+              Customize Furniture
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fm-cart-shell">
+      <div className="fm-cart-progress">
+        <div className="fm-cart-step active">
+          <span className="fm-cart-step-num">1</span>
+          <span>Shopping Cart</span>
+        </div>
+
+        <ChevronRight size={16} className="fm-cart-progress-arrow" />
+
+        <div className="fm-cart-step">
+          <span className="fm-cart-step-num">2</span>
+          <span>Checkout Details</span>
+        </div>
+
+        <ChevronRight size={16} className="fm-cart-progress-arrow" />
+
+        <div className="fm-cart-step">
+          <span className="fm-cart-step-num">3</span>
+          <span>Order Complete</span>
+        </div>
+      </div>
+
+      <div className="fm-cart-grid">
+        <section className="fm-cart-main">
+          <div className="fm-cart-head-row">
+            <div className="fm-cart-head-col product">Product</div>
+            <div className="fm-cart-head-col price">Price</div>
+            <div className="fm-cart-head-col qty">Quantity</div>
+            <div className="fm-cart-head-col subtotal">Subtotal</div>
+          </div>
+
+          <div className="fm-cart-toolbar">
+            <label className="fm-cart-select-all">
+              <input
+                type="checkbox"
+                checked={allChecked}
+                onChange={toggleAll}
+              />
+              <span>Select all</span>
+            </label>
+
+            <button
+              type="button"
+              className="fm-cart-clear-btn"
+              onClick={clearCart}
+            >
+              Clear all
+            </button>
+          </div>
+
+          <div className="fm-cart-items">
             {cart.map((item) => {
               const isChecked = selected.has(item.key);
               const blueprint = isBlueprintItem(item);
               const imageSrc = resolveImageSrc(
                 item.image_url || item.preview_image_url,
               );
+              const lineSubtotal =
+                Number(item.unit_price || 0) * Number(item.quantity || 0);
 
               return (
-                <div
+                <article
                   key={item.key}
-                  className={`cart-item-row ${
-                    isChecked ? "cart-item-selected" : "cart-item-dimmed"
+                  className={`fm-cart-item ${
+                    isChecked ? "selected" : "dimmed"
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    className="cart-item-checkbox"
-                    checked={isChecked}
-                    onChange={() => toggleItem(item.key)}
-                  />
+                  <div className="fm-cart-product-cell">
+                    <div className="fm-cart-product-top">
+                      <button
+                        type="button"
+                        className="fm-cart-remove-circle"
+                        onClick={() => removeItem(item.key)}
+                        aria-label={`Remove ${item.product_name}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
 
-                  <div className="cart-item-img">
-                    {imageSrc ? (
-                      <img
-                        src={imageSrc}
-                        alt={item.product_name}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          borderRadius: 8,
-                          filter:
-                            item.stock_status === "out_of_stock"
-                              ? "grayscale(100%)"
-                              : "none",
-                        }}
-                        onError={(e) => {
-                          e.target.style.display = "none";
-                          if (e.target.nextSibling) {
-                            e.target.nextSibling.style.display = "block";
-                          }
-                        }}
+                      <input
+                        type="checkbox"
+                        className="fm-cart-item-check"
+                        checked={isChecked}
+                        onChange={() => toggleItem(item.key)}
                       />
-                    ) : null}
 
-                    <span style={{ display: imageSrc ? "none" : "block" }}>
-                      {blueprint ? "📐" : "🪵"}
-                    </span>
-                  </div>
+                      <div className="fm-cart-thumb">
+                        {imageSrc ? (
+                          <img
+                            src={imageSrc}
+                            alt={item.product_name}
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                              const fallback =
+                                e.currentTarget.parentElement?.querySelector(
+                                  ".fm-cart-thumb-fallback",
+                                );
+                              if (fallback) fallback.style.display = "flex";
+                            }}
+                          />
+                        ) : null}
 
-                  <div className="cart-item-info">
-                    <div className="cart-item-name">
-                      {item.base_blueprint_title || item.product_name}
+                        <div
+                          className="fm-cart-thumb-fallback"
+                          style={{ display: imageSrc ? "none" : "flex" }}
+                        >
+                          {blueprint ? "📐" : "🪵"}
+                        </div>
+                      </div>
+
+                      <div className="fm-cart-product-copy">
+                        <h3>{item.base_blueprint_title || item.product_name}</h3>
+
+                        <div className="fm-cart-meta-line status">
+                          {blueprint ? (
+                            <>
+                              <Scissors size={14} />
+                              <span>Custom / Blueprint Request</span>
+                            </>
+                          ) : (
+                            <>
+                              <Package size={14} />
+                              <span>Ready-Made Product</span>
+                            </>
+                          )}
+                        </div>
+
+                        {item.wood_type ? (
+                          <div className="fm-cart-meta-line">
+                            <span>{item.wood_type}</span>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
+                  </div>
 
-                    {item.wood_type && (
-                      <div className="cart-item-meta">{item.wood_type}</div>
-                    )}
+                  <div className="fm-cart-price-cell" data-label="Price">
+                    {blueprint ? "Price to be quoted" : formatPeso(item.unit_price)}
+                  </div>
 
-                    <div
-                      className="cart-item-meta"
-                      style={{
-                        color: blueprint ? "#8B4513" : "#475569",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                      }}
-                    >
-                      {blueprint ? (
-                        <>
-                          <Scissors size={14} />
-                          Custom / Blueprint Request
-                        </>
-                      ) : (
-                        <>
-                          <Package size={14} />
-                          Ready-Made Product
-                        </>
-                      )}
-                    </div>
+                  <div className="fm-cart-qty-cell" data-label="Quantity">
+                    <div className="fm-cart-qty-box">
+                      <button
+                        type="button"
+                        className="fm-cart-qty-btn"
+                        onClick={() => updateQty(item.key, -1)}
+                      >
+                        <Minus size={14} />
+                      </button>
 
-                    <div className="cart-item-unit-price">
-                      {blueprint
-                        ? "Price to be quoted"
-                        : formatPeso(item.unit_price) + " each"}
+                      <span className="fm-cart-qty-value">{item.quantity}</span>
+
+                      <button
+                        type="button"
+                        className="fm-cart-qty-btn"
+                        onClick={() => updateQty(item.key, 1)}
+                      >
+                        <Plus size={14} />
+                      </button>
                     </div>
                   </div>
 
-                  <div className="cart-item-controls">
-                    <button
-                      className="cart-qty-btn"
-                      onClick={() => updateQty(item.key, -1)}
-                    >
-                      <Minus size={13} />
-                    </button>
-
-                    <span className="cart-qty-val">{item.quantity}</span>
-
-                    <button
-                      className="cart-qty-btn"
-                      onClick={() => updateQty(item.key, 1)}
-                    >
-                      <Plus size={13} />
-                    </button>
+                  <div className="fm-cart-subtotal-cell" data-label="Subtotal">
+                    {blueprint ? "TBD" : formatPeso(lineSubtotal)}
                   </div>
-
-                  <div className="cart-item-subtotal">
-                    {blueprint ? (
-                      <span style={{ fontSize: 12, color: "#aaa" }}>TBD</span>
-                    ) : (
-                      formatPeso(Number(item.unit_price || 0) * Number(item.quantity || 0))
-                    )}
-                  </div>
-
-                  <button
-                    className="cart-item-remove"
-                    onClick={() => removeItem(item.key)}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
+                </article>
               );
             })}
+          </div>
 
-            {selected.size > 0 && selected.size < cart.length && (
-              <div className="cart-selection-bar">
-                {selected.size} of {cart.length} line
-                {cart.length !== 1 ? "s" : ""} selected for checkout
+          {selected.size > 0 && selected.size < cart.length && (
+            <div className="fm-cart-selection-note">
+              {selected.size} of {cart.length} line
+              {cart.length !== 1 ? "s" : ""} selected
+            </div>
+          )}
+
+          <div className="fm-cart-bottom-actions">
+            <button
+              type="button"
+              className="fm-cart-secondary-btn"
+              onClick={() => navigate("/catalog")}
+            >
+              ← Continue shopping
+            </button>
+          </div>
+        </section>
+
+        <aside className="fm-cart-summary">
+          <div className="fm-cart-summary-card">
+            <h2>Cart Totals</h2>
+
+            <div className="fm-cart-summary-row">
+              <span>
+                Selected ({selectedLineCount} line
+                {selectedLineCount !== 1 ? "s" : ""} • {selectedUnits} unit
+                {selectedUnits !== 1 ? "s" : ""})
+              </span>
+              <strong>{formatPeso(selectedPricedSubtotal)}</strong>
+            </div>
+
+            <div className="fm-cart-summary-row">
+              <span>Shipping</span>
+              <strong className="green">Calculated at checkout</strong>
+            </div>
+
+            <div className="fm-cart-summary-divider" />
+
+            <div className="fm-cart-summary-total">
+              <span>Total</span>
+              <strong>{formatPeso(selectedPricedSubtotal)}</strong>
+            </div>
+
+            <p className="fm-cart-summary-note">{summaryNote}</p>
+
+            {selected.size === 0 && (
+              <p className="fm-cart-warning-note">
+                Select at least one item to continue.
+              </p>
+            )}
+
+            {(isMixedSelection || checkoutError) && (
+              <div className="fm-cart-alert">
+                <AlertCircle size={16} />
+                <span>{isMixedSelection ? mixedSelectionMessage : checkoutError}</span>
               </div>
             )}
+
+            <button
+              type="button"
+              className={`fm-cart-checkout-btn ${
+                !customerUser ? "guest" : ""
+              }`}
+              onClick={handleCheckout}
+              disabled={checkoutButtonDisabled}
+              title={
+                isMixedSelection ? "Select only one order type to continue." : ""
+              }
+            >
+              <span>{checkoutButtonLabel}</span>
+              <ArrowRight size={16} />
+            </button>
           </div>
-
-          <div className="order-summary-panel">
-            <div className="summary-header">
-              <h2>Order Summary</h2>
-            </div>
-
-            <div className="summary-body">
-              <div className="summary-row">
-                <span>
-                  Selected ({selectedLineCount} line
-                  {selectedLineCount !== 1 ? "s" : ""} • {selectedUnits} unit
-                  {selectedUnits !== 1 ? "s" : ""})
-                </span>
-                <span>{formatPeso(selectedPricedSubtotal)}</span>
-              </div>
-
-              <div className="summary-row">
-                <span>Shipping</span>
-                <span style={{ color: "#2e7d32", fontWeight: 700 }}>
-                  Calculated at checkout
-                </span>
-              </div>
-
-              <hr className="summary-divider" />
-
-              <div className="summary-total">
-                <span>Total</span>
-                <span>{formatPeso(selectedPricedSubtotal)}</span>
-              </div>
-
-              <p className="summary-note">
-                Ready-made items use standard checkout. Custom / blueprint items
-                continue to quotation-based checkout.
-              </p>
-
-              {selected.size === 0 && (
-                <p className="cart-no-selection-note">
-                  ☝️ Select at least one item to proceed
-                </p>
-              )}
-
-              {(isMixedSelection || checkoutError) && (
-                <div
-                  style={{
-                    marginBottom: 14,
-                    borderRadius: 12,
-                    padding: "12px 14px",
-                    background: "#fff7ed",
-                    border: "1px solid #fdba74",
-                    color: "#9a3412",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 8,
-                  }}
-                >
-                  <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
-                  <span>{isMixedSelection ? mixedSelectionMessage : checkoutError}</span>
-                </div>
-              )}
-
-              <button
-                className="checkout-btn"
-                onClick={handleCheckout}
-                disabled={checkoutButtonDisabled}
-                title={isMixedSelection ? "Select only one order type to continue." : ""}
-              >
-                {checkoutButtonLabel} <ArrowRight size={16} />
-              </button>
-
-              <button
-                className="continue-shopping"
-                onClick={() => navigate("/catalog")}
-              >
-                ← Continue Shopping
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        </aside>
+      </div>
     </div>
   );
 }
