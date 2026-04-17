@@ -1097,7 +1097,6 @@ a {
 .cust-mini-cart-checkout {
   width: 100%;
   min-height: 50px;
-  border: none;
   border-radius: 0;
   font-weight: 700;
   font-size: 0.95rem;
@@ -1105,20 +1104,28 @@ a {
   cursor: pointer;
 }
 
+/* View cart = black */
 .cust-mini-cart-view {
+  border: 1px solid #111111;
   background: #111111;
   color: #ffffff;
 }
 
-.cust-mini-cart-checkout {
-  background: #111111;
+.cust-mini-cart-view:hover {
+  background: #000000;
   color: #ffffff;
+}
+
+/* Checkout = white */
+.cust-mini-cart-checkout {
   border: 1px solid #111111;
+  background: #ffffff;
+  color: #111111;
 }
 
 .cust-mini-cart-checkout:hover {
-  background: #000000;
-  color: #ffffff;
+  background: #f7f7f7;
+  color: #111111;
 }
 
 .cust-mini-cart-checkout-guest {
