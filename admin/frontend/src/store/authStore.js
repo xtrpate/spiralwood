@@ -34,12 +34,20 @@ const persistSession = (token, user) => {
 };
 
 const clearSession = () => {
+  // 1. Clear Auth Keys
   localStorage.removeItem("wisdom_token");
   localStorage.removeItem("wisdom_user");
   localStorage.removeItem("token");
   localStorage.removeItem("user");
   localStorage.removeItem("pos_token");
   localStorage.removeItem("pos_user");
+
+  // 👉 THE FIX: 2. Clear ALL Cart & Customization Keys
+  localStorage.removeItem("cust_cart");
+  sessionStorage.removeItem("cust_custom_cart");
+  sessionStorage.removeItem("cust_selected_keys");
+  sessionStorage.removeItem("cust_selected_custom_checkout");
+  sessionStorage.removeItem("pos_cart");
 
   delete api.defaults.headers.common.Authorization;
 };
