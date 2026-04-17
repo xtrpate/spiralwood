@@ -105,11 +105,7 @@ const parseStoredArray = (raw) => {
 };
 
 export function CartProvider({ children }) {
-  // 1. Initial load from LocalStorage ONLY (Guest Mode)
-  const [cart, setCart] = useState(() => {
-    const local = parseStoredArray(localStorage.getItem(STORAGE_KEY));
-    return local.map(normalizeCartItem).filter(Boolean);
-  });
+
 
   const { user } = useAuthStore();
   const isInitialMount = useRef(true);
@@ -179,6 +175,10 @@ export function CartProvider({ children }) {
     });
   };
 
+  const openMiniCart = () => setMiniCartOpen(true);
+  const closeMiniCart = () => setMiniCartOpen(false);
+  const toggleMiniCart = () => setMiniCartOpen((prev) => !prev);
+
   const updateQty = (key, delta) => {
     const cleanKey = String(key || "").trim();
     if (!cleanKey) return;
@@ -216,6 +216,7 @@ export function CartProvider({ children }) {
   };
 
   const clearCart = () => {
+    setMiniCartOpen(false);
     setCart([]);
     localStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem(LEGACY_CUSTOM_STORAGE_KEY);
@@ -272,8 +273,19 @@ export function CartProvider({ children }) {
       removeItem,
       removeMany,
       clearCart,
+      openMiniCart,
+      closeMiniCart,
+      toggleMiniCart,
     }),
-    [cart, standardCart, customCart, cartCount, customCartCount, cartTotal],
+    [
+      cart,
+      miniCartOpen,
+      standardCart,
+      customCart,
+      cartCount,
+      customCartCount,
+      cartTotal,
+    ],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

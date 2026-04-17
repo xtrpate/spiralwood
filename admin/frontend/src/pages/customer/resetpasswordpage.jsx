@@ -90,22 +90,17 @@ export default function ResetPasswordPage() {
   return (
     <div className="auth-root">
       <div className="auth-split">
-        <div className="auth-brand-panel">
-          <div className="brand-logo">W</div>
-          <h1>
-            Create New
-            <br />
-            <span>Password</span>
-          </h1>
-          <p>
-            Enter the code sent to your email and choose a new password for your
-            account.
-          </p>
-        </div>
-
         <div className="auth-card-panel">
+          <button
+            type="button"
+            className="auth-close"
+            onClick={() => navigate("/")}
+            aria-label="Close"
+          >
+            ×
+          </button>
+
           <div className="auth-card-header">
-            <div className="mobile-logo">W</div>
             <h2>Reset Password</h2>
             <p>Complete the fields below to update your password.</p>
           </div>
@@ -120,7 +115,7 @@ export default function ResetPasswordPage() {
                 <Mail size={15} />
                 <input
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder=""
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -190,21 +185,16 @@ export default function ResetPasswordPage() {
             </div>
 
             <button type="submit" className="btn-auth" disabled={loading}>
-              {loading ? "Resetting password…" : "Reset Password"}
+              {loading ? "Resetting password..." : "Reset Password"}
             </button>
           </form>
 
           <div
             className="auth-switch"
-            style={{
-              marginTop: 16,
-              display: "flex",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
+            style={{ display: "flex", gap: 14, flexWrap: "wrap" }}
           >
             <button onClick={handleResend} disabled={resending}>
-              {resending ? "Sending again…" : "Send another code"}
+              {resending ? "Sending again..." : "Send another code"}
             </button>
             <button onClick={() => navigate("/login")}>Back to Login</button>
           </div>

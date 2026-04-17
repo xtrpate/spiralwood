@@ -194,7 +194,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
-        {/* 👉 THE FIX: Moved Providers outside so the entire app can access the Cart */}
+        {/* 👉 THE FIX: Providers hoisted outside of Routes so Admin/Staff can access them */}
         <CartProvider>
           <CustomCartProvider>
             <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
@@ -203,28 +203,6 @@ export default function App() {
                   CUSTOMER PORTAL
               ══════════════════════════════════════════════════════════════════ */}
               <Route element={<Outlet />}>
-                {/* Standalone Pages (No Navbar) */}
-                <Route
-                  path="login"
-                  element={
-                    <RedirectIfAuthenticated>
-                      <LoginPage />
-                    </RedirectIfAuthenticated>
-                  }
-                />
-                <Route path="register" element={<RegisterPage />} />
-                <Route
-                  path="forgot-password"
-                  element={<ForgotPasswordPage />}
-                />
-                <Route path="reset-password" element={<ResetPasswordPage />} />
-                <Route path="verify-otp" element={<VerifyOtpPage />} />
-                <Route
-                  path="pending-approval"
-                  element={<PendingApprovalPage />}
-                />
-
-                {/* Pages with Navbar */}
                 <Route
                   path="/"
                   element={
@@ -234,6 +212,49 @@ export default function App() {
                   }
                 >
                   <Route index element={<LandingPage />} />
+
+                  <Route
+                    path="login"
+                    element={
+                      <RedirectIfAuthenticated>
+                        <LoginPage />
+                      </RedirectIfAuthenticated>
+                    }
+                  />
+
+                  <Route
+                    path="register"
+                    element={
+                      <RedirectIfAuthenticated>
+                        <RegisterPage />
+                      </RedirectIfAuthenticated>
+                    }
+                  />
+
+                  <Route
+                    path="forgot-password"
+                    element={
+                      <RedirectIfAuthenticated>
+                        <ForgotPasswordPage />
+                      </RedirectIfAuthenticated>
+                    }
+                  />
+
+                  <Route
+                    path="reset-password"
+                    element={
+                      <RedirectIfAuthenticated>
+                        <ResetPasswordPage />
+                      </RedirectIfAuthenticated>
+                    }
+                  />
+
+                  <Route path="verify-otp" element={<VerifyOtpPage />} />
+                  <Route
+                    path="pending-approval"
+                    element={<PendingApprovalPage />}
+                  />
+
                   <Route path="catalog" element={<ProductCatalog />} />
                   <Route path="cart" element={<CartPage />} />
                   <Route path="customize" element={<CustomizePage />} />
@@ -259,6 +280,7 @@ export default function App() {
                       </RequireAuth>
                     }
                   />
+
                   <Route
                     path="custom-requests/:id"
                     element={
@@ -305,10 +327,10 @@ export default function App() {
                   />
                 </Route>
               </Route>
+
               {/* ══════════════════════════════════════════════════════════════════
                   ADMIN & STAFF PUBLIC ROUTES
               ══════════════════════════════════════════════════════════════════ */}
-
               <Route
                 path="/admin/blueprints/:id/import"
                 element={
@@ -375,13 +397,11 @@ export default function App() {
                   element={<CancellationsPage />}
                 />
 
-                {/* Sales */}
+                {/* Sales & Warranty */}
                 <Route path="sales" element={<SalesReportPage />} />
-
-                {/* Warranty */}
                 <Route path="warranty" element={<WarrantyPage />} />
 
-                {/* Management – admin only */}
+                {/* Management */}
                 <Route
                   path="customers"
                   element={
@@ -399,7 +419,7 @@ export default function App() {
                   }
                 />
 
-                {/* Website Maintenance – admin only */}
+                {/* Website Settings */}
                 <Route
                   path="website/settings"
                   element={
@@ -425,7 +445,7 @@ export default function App() {
                   }
                 />
 
-                {/* Backup – admin only */}
+                {/* Backup */}
                 <Route
                   path="backup"
                   element={

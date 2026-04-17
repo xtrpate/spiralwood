@@ -35,8 +35,25 @@ const api = axios.create({
   withCredentials: true,
 });
 
+const isPublicGuestRequest = (url = "") => {
+  const requestUrl = String(url || "");
+
+  return (
+    requestUrl.includes("/customer/products") ||
+    requestUrl.includes("/customer/blueprints") ||
+    requestUrl.includes("/customer/auth/login") ||
+    requestUrl.includes("/customer/auth/register") ||
+    requestUrl.includes("/customer/auth/verify-otp") ||
+    requestUrl.includes("/customer/auth/resend-otp") ||
+    requestUrl.includes("/customer/auth/forgot-password") ||
+    requestUrl.includes("/customer/auth/reset-password")
+  );
+};
+
 api.interceptors.request.use(
   (config) => {
+    const requestUrl = config?.url || "";
+
     const token =
       localStorage.getItem("wisdom_token") ||
       localStorage.getItem("cust_token") ||
@@ -47,7 +64,7 @@ api.interceptors.request.use(
       sessionStorage.getItem("token") ||
       sessionStorage.getItem("pos_token");
 
-    if (token) {
+    if (token && !isPublicGuestRequest(requestUrl)) {
       config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -65,15 +82,9 @@ api.interceptors.response.use(
     const requestUrl = error.config?.url || "";
 
     if (status === 401) {
-      const isPublicAuthRequest =
-        requestUrl.includes("/customer/auth/login") ||
-        requestUrl.includes("/customer/auth/register") ||
-        requestUrl.includes("/customer/auth/verify-otp") ||
-        requestUrl.includes("/customer/auth/resend-otp") ||
-        requestUrl.includes("/customer/auth/forgot-password") ||
-        requestUrl.includes("/customer/auth/reset-password");
+      const isPublicRequest = isPublicGuestRequest(requestUrl);
 
-      if (!isPublicAuthRequest) {
+      if (!isPublicRequest) {
         localStorage.removeItem("wisdom_token");
         localStorage.removeItem("wisdom_user");
         localStorage.removeItem("cust_token");

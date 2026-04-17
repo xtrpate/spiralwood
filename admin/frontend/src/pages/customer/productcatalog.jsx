@@ -1,17 +1,31 @@
-/**
- * pages/ProductCatalog.jsx
- * Updated: Connected to global CartContext and removed floating orange cart
- */
 import { useState, useEffect, useCallback } from "react";
-import { Search, ShoppingCart, Eye, Plus, Minus } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Search } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
 import toast from "react-hot-toast";
 import api, { buildAssetUrl } from "../../services/api";
 import "./productcatalog.css";
 import { useCart } from "./cartcontext";
 
+const clampNumber = (value, min, max) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return min;
+  if (num < min) return min;
+  if (num > max) return max;
+  return num;
+};
 
-/* ── Image component with fallback ── */
+const formatPeso = (value) =>
+  `₱${Number(value || 0).toLocaleString("en-PH", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`;
+
+const formatTypeLabel = (type) => {
+  const raw = String(type || "standard").replace(/_/g, " ").trim();
+  if (!raw) return "Standard";
+  return raw.replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
 const ProductImage = ({ src, alt, className, style, imgStyle }) => {
   const [errored, setErrored] = useState(false);
   const resolvedSrc = buildAssetUrl(src);
@@ -33,7 +47,7 @@ const ProductImage = ({ src, alt, className, style, imgStyle }) => {
       style={{
         width: "100%",
         height: "100%",
-        objectFit: "cover",
+        objectFit: "contain",
         ...style,
         ...imgStyle,
       }}
@@ -42,7 +56,6 @@ const ProductImage = ({ src, alt, className, style, imgStyle }) => {
   );
 };
 
-/* ── Skeleton loader card ── */
 const SkeletonCard = () => (
   <div className="product-skeleton">
     <div className="skeleton-img" />
@@ -54,93 +67,155 @@ const SkeletonCard = () => (
   </div>
 );
 
-/* ── Stock badge ── */
 const StockBadge = ({ status }) => {
   const map = {
     in_stock: { cls: "badge-green", label: "In Stock" },
     low_stock: { cls: "badge-yellow", label: "Low Stock" },
     out_of_stock: { cls: "badge-red", label: "Out of Stock" },
   };
-  const { cls, label } = map[status] || { cls: "badge-gray", label: status };
+
+  const { cls, label } = map[status] || {
+    cls: "badge-gray",
+    label: status || "Available",
+  };
+
   return <span className={`badge ${cls} product-card-stock`}>{label}</span>;
 };
 
 export default function ProductCatalog() {
   const navigate = useNavigate();
+  const location = useLocation();
+
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [total, setTotal] = useState(0);
 
-  // 👉 NEW: Tap directly into the official CartContext
-  const { addToCart } = useCart();
+  const { addToCart, openMiniCart } = useCart();
 
-  /* Filters */
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("standard");
   const [stockFilter, setStockFilter] = useState("all");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
+  const [tempPriceMin, setTempPriceMin] = useState("");
+  const [tempPriceMax, setTempPriceMax] = useState("");
+  const [priceBounds, setPriceBounds] = useState({ min: 0, max: 0 });
   const [sortBy, setSortBy] = useState("name_asc");
 
-  /* Modal state */
   const [selVariation, setSelVariation] = useState(null);
   const [qty, setQty] = useState(1);
   const [cartMsg, setCartMsg] = useState("");
 
-  /* ── Fetch products ── */
   const fetchProducts = useCallback(async () => {
     setLoading(true);
 
     try {
-      const params = {};
+      const params = {
+        type: "standard",
+        sort: sortBy,
+      };
+
       if (search) params.q = search;
       if (catFilter !== "all") params.category_id = catFilter;
-            params.type = "standard";
       if (stockFilter !== "all") params.stock_status = stockFilter;
-      if (priceMin) params.price_min = priceMin;
-      if (priceMax) params.price_max = priceMax;
-      params.sort = sortBy;
+      if (priceMin !== "") params.price_min = priceMin;
+      if (priceMax !== "") params.price_max = priceMax;
 
       const res = await api.get("/customer/products", { params });
 
-      const rawProducts = Array.isArray(res.data?.products) ? res.data.products : [];
+      const rawProducts = Array.isArray(res.data?.products)
+        ? res.data.products
+        : [];
+
       const visibleProducts = rawProducts.filter(
         (item) => String(item?.type || "").toLowerCase() !== "blueprint",
       );
 
+      const backendCategories = Array.isArray(res.data?.categories)
+        ? res.data.categories
+        : [];
+
+      const nextMin = Number(res.data?.priceRange?.min || 0);
+      const nextMax = Number(res.data?.priceRange?.max || 0);
+
       setProducts(visibleProducts);
-      setCategories(
-        Array.isArray(res.data?.categories) ? res.data.categories : [],
-      );
+      setCategories(backendCategories);
+      setTotal(Number(res.data?.total || visibleProducts.length || 0));
+      setPriceBounds({
+        min: nextMin,
+        max: nextMax,
+      });
+
+      setTempPriceMin((prev) => {
+        if (!nextMax) return "";
+        if (priceMin !== "" || priceMax !== "") {
+          const current = Number(prev || priceMin || nextMin);
+          return String(clampNumber(current, nextMin, nextMax));
+        }
+        return String(nextMin);
+      });
+
+      setTempPriceMax((prev) => {
+        if (!nextMax) return "";
+        if (priceMin !== "" || priceMax !== "") {
+          const current = Number(prev || priceMax || nextMax);
+          return String(clampNumber(current, nextMin, nextMax));
+        }
+        return String(nextMax);
+      });
     } catch (err) {
       console.error(err);
       setProducts([]);
       setCategories([]);
+      setTotal(0);
       toast.error(
         err?.response?.data?.message || "Failed to load catalog products.",
       );
     } finally {
       setLoading(false);
     }
-  }, [search, catFilter, typeFilter, stockFilter, priceMin, priceMax, sortBy]);
+  }, [search, catFilter, stockFilter, priceMin, priceMax, sortBy]);
 
   useEffect(() => {
-    const t = setTimeout(fetchProducts, 350);
-    return () => clearTimeout(t);
+    const timer = setTimeout(fetchProducts, 300);
+    return () => clearTimeout(timer);
   }, [fetchProducts]);
 
-  /* Open modal */
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const q = params.get("q") || "";
+    const categoryName = params.get("category");
+
+    setSearch(q);
+
+    if (!categoryName) {
+      setCatFilter("all");
+      return;
+    }
+
+    if (categories.length === 0) return;
+
+    const match = categories.find(
+      (cat) =>
+        String(cat.name || "").toLowerCase() === categoryName.toLowerCase(),
+    );
+
+    if (match) {
+      setCatFilter(String(match.id));
+    }
+  }, [location.search, categories]);
+
+  const needsOptionSelection = (product) =>
+    (product?.variations?.length || 0) > 0;
+
   const openProduct = (product) => {
     setSelected(product);
     setSelVariation(null);
     setQty(1);
     setCartMsg("");
   };
-
-  const needsOptionSelection = (product) =>
-    (product.variations?.length || 0) > 0;
 
   const quickAddToCart = (product) => {
     if (!product || product.stock_status === "out_of_stock") return;
@@ -153,7 +228,6 @@ export default function ProductCatalog() {
     const stock = Number(product.stock || 0);
     if (stock <= 0) return;
 
-    // 👉 Send data to the official CartContext
     addToCart({
       key: `${product.id}`,
       product_id: product.id,
@@ -165,26 +239,46 @@ export default function ProductCatalog() {
       max_stock: stock,
       image_url: product.image_url || null,
     });
+
+    openMiniCart();
+    toast.success(`Added "${product.name}" to cart.`);
   };
 
-  /* Add to cart from Modal */
+  const handleCardAddToCart = (product) => {
+    if (!product || product.stock_status === "out_of_stock") return;
+
+    if (needsOptionSelection(product)) {
+      openProduct(product);
+      return;
+    }
+
+    quickAddToCart(product);
+  };
+
   const handleModalAddToCart = () => {
     if (!selected) return;
+
     const hasVariations = selected.variations?.length > 0;
     if (hasVariations && !selVariation) {
       setCartMsg("Please select a variation first.");
       return;
     }
+
     const key = selVariation
       ? `${selected.id}-${selVariation.id}`
       : `${selected.id}`;
+
     const price = selVariation?.selling_price ?? selected.online_price;
-    const stock = selVariation?.stock ?? selected.stock;
+    const stock = Number(selVariation?.stock ?? selected.stock ?? 0);
     const name = selVariation
       ? `${selected.name} (${selVariation.variation_name})`
       : selected.name;
 
-    // 👉 Send data to the official CartContext
+    if (stock <= 0) {
+      setCartMsg("This item is currently out of stock.");
+      return;
+    }
+
     addToCart({
       key,
       product_id: selected.id,
@@ -197,90 +291,111 @@ export default function ProductCatalog() {
       image_url: selected.image_url || null,
     });
 
-    setCartMsg(`✓ Added ${qty} × "${name}" to cart!`);
-    setTimeout(() => setCartMsg(""), 3000);
+    toast.success(`Added ${qty} × "${name}" to cart.`);
+    setSelected(null);
+    openMiniCart();
   };
 
   const clearFilters = () => {
     setSearch("");
     setCatFilter("all");
-    setTypeFilter("standard");
     setStockFilter("all");
     setPriceMin("");
     setPriceMax("");
     setSortBy("name_asc");
+
+    if (priceBounds.max > 0) {
+      setTempPriceMin(String(priceBounds.min));
+      setTempPriceMax(String(priceBounds.max));
+    } else {
+      setTempPriceMin("");
+      setTempPriceMax("");
+    }
+  };
+
+  const applyPriceFilter = () => {
+    if (!priceBounds.max) return;
+
+    let nextMin = Number(tempPriceMin || priceBounds.min);
+    let nextMax = Number(tempPriceMax || priceBounds.max);
+
+    if (!Number.isFinite(nextMin)) nextMin = priceBounds.min;
+    if (!Number.isFinite(nextMax)) nextMax = priceBounds.max;
+
+    nextMin = clampNumber(nextMin, priceBounds.min, priceBounds.max);
+    nextMax = clampNumber(nextMax, priceBounds.min, priceBounds.max);
+
+    if (nextMin > nextMax) {
+      [nextMin, nextMax] = [nextMax, nextMin];
+    }
+
+    setTempPriceMin(String(nextMin));
+    setTempPriceMax(String(nextMax));
+
+    if (nextMin === priceBounds.min && nextMax === priceBounds.max) {
+      setPriceMin("");
+      setPriceMax("");
+      return;
+    }
+
+    setPriceMin(String(nextMin));
+    setPriceMax(String(nextMax));
+  };
+
+  const resetPriceFilter = () => {
+    if (!priceBounds.max) return;
+    setPriceMin("");
+    setPriceMax("");
+    setTempPriceMin(String(priceBounds.min));
+    setTempPriceMax(String(priceBounds.max));
   };
 
   const hasActiveFilters =
     search ||
     catFilter !== "all" ||
-    typeFilter !== "all" ||
     stockFilter !== "all" ||
-    priceMin ||
-    priceMax;
+    priceMin !== "" ||
+    priceMax !== "";
 
-  const formatTypeLabel = (type) => {
-    if (!type) return "";
-    if (type === "standard") return "Ready-Made";
-    if (type === "blueprint") return "Blueprint / Custom";
-    return type.replace(/_/g, " ");
-  };
+  const sliderMin = Number(priceBounds.min || 0);
+  const sliderMax = Number(priceBounds.max || 0);
+  const safeSliderMax = sliderMax > sliderMin ? sliderMax : sliderMin + 1;
 
-  const formatStockLabel = (status) => {
-    if (status === "in_stock") return "In Stock";
-    if (status === "low_stock") return "Low Stock";
-    if (status === "out_of_stock") return "Out of Stock";
-    return status || "Available";
-  };
+  const currentMin = clampNumber(
+    Number(tempPriceMin || sliderMin),
+    sliderMin,
+    safeSliderMax,
+  );
+  const currentMax = clampNumber(
+    Number(tempPriceMax || safeSliderMax),
+    sliderMin,
+    safeSliderMax,
+  );
 
-  const getProductSpecs = (product) =>
-    [
-      formatTypeLabel(product.type),
-      product.material || product.wood_type || product.finish,
-      product.dimensions,
-    ]
-      .filter(Boolean)
-      .slice(0, 3);
+  const normalizedMin = Math.min(currentMin, currentMax);
+  const normalizedMax = Math.max(currentMin, currentMax);
 
-  const activeFilterChips = [
-    search && {
-      key: "search",
-      label: `Search: ${search}`,
-      onRemove: () => setSearch(""),
-    },
-    catFilter !== "all" && {
-      key: "category",
-      label: `Category: ${
-        categories.find((cat) => String(cat.id) === catFilter)?.name ||
-        "Selected"
-      }`,
-      onRemove: () => setCatFilter("all"),
-    },
-    typeFilter !== "all" && {
-      key: "type",
-      label: `Type: ${formatTypeLabel(typeFilter)}`,
-      onRemove: () => setTypeFilter("all"),
-    },
-    stockFilter !== "all" && {
-      key: "stock",
-      label: `Availability: ${formatStockLabel(stockFilter)}`,
-      onRemove: () => setStockFilter("all"),
-    },
-    priceMin && {
-      key: "priceMin",
-      label: `Min: ₱${Number(priceMin).toLocaleString("en-PH")}`,
-      onRemove: () => setPriceMin(""),
-    },
-    priceMax && {
-      key: "priceMax",
-      label: `Max: ₱${Number(priceMax).toLocaleString("en-PH")}`,
-      onRemove: () => setPriceMax(""),
-    },
-  ].filter(Boolean);
+  const minPercent =
+    ((normalizedMin - sliderMin) / (safeSliderMax - sliderMin)) * 100;
+  const maxPercent =
+    ((normalizedMax - sliderMin) / (safeSliderMax - sliderMin)) * 100;
+
+  const detailRows = selected
+    ? [
+        { label: "CATEGORY", value: selected.category || "—" },
+        { label: "TYPE", value: formatTypeLabel(selected.type) },
+        {
+          label: "STOCK",
+          value: `${Number(selected.stock || 0).toLocaleString("en-PH")} units`,
+        },
+        ...(selected.barcode
+          ? [{ label: "BARCODE", value: selected.barcode }]
+          : []),
+      ]
+    : [];
 
   return (
-    <div>
-      {/* Page hero */}
+    <div className="catalog-page-shell">
       <div className="catalog-breadcrumbs">
         <button type="button" onClick={() => navigate("/")}>
           Home
@@ -289,60 +404,70 @@ export default function ProductCatalog() {
         <span>Products</span>
       </div>
 
-      <div className="page-hero catalog-hero">
-        <div className="catalog-hero-copy">
-          <span className="catalog-eyebrow">Spiral Wood Collection</span>
+      <div className="catalog-page-head">
+        <div className="catalog-page-copy">
           <h1>Product Catalog</h1>
           <p>
             Browse ready-made furniture and cabinet products designed for
             premium spaces, everyday storage, and custom woodwork needs.
           </p>
-
-          <div className="catalog-trust-row">
-            <span className="catalog-trust-pill">Premium Woodwork</span>
-            <span className="catalog-trust-pill">Ready-Made &amp; Custom</span>
-            <span className="catalog-trust-pill">Order Tracking Available</span>
-            <span className="catalog-trust-pill">Warranty Supported</span>
-          </div>
         </div>
 
-        {/* 👉 THE ORANGE BOX WAS DELETED FROM HERE! */}
+        <div className="catalog-page-meta">
+          {!loading && (
+            <div className="catalog-results-info">
+              Showing {products.length} product{products.length !== 1 ? "s" : ""}
+            </div>
+          )}
+
+          <div className="catalog-sort">
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+              <option value="name_asc">Name A–Z</option>
+              <option value="name_desc">Name Z–A</option>
+              <option value="price_asc">Price: Low to High</option>
+              <option value="price_desc">Price: High to Low</option>
+              <option value="newest">Newest First</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <div className="catalog-layout">
-        {/* ── Sidebar ── */}
         <aside className="catalog-sidebar">
-          <div className="sidebar-title">Filters</div>
+          <div className="sidebar-title">Refine by Category</div>
 
           <div className="filter-section">
-            <span className="filter-label">Category</span>
             <div className="filter-options">
               <button
+                type="button"
                 className={`filter-option ${catFilter === "all" ? "active" : ""}`}
                 onClick={() => setCatFilter("all")}
               >
-                All Categories{" "}
-                <span className="filter-count">{products.length}</span>
+                <span>All Categories</span>
+                <span className="filter-count">{total}</span>
               </button>
+
               {categories.map((cat) => (
                 <button
+                  type="button"
                   key={cat.id}
-                  className={`filter-option ${catFilter === String(cat.id) ? "active" : ""}`}
+                  className={`filter-option ${
+                    catFilter === String(cat.id) ? "active" : ""
+                  }`}
                   onClick={() => setCatFilter(String(cat.id))}
                 >
-                  {cat.name}
+                  <span>{cat.name}</span>
                   <span className="filter-count">
-                    {products.filter((p) => p.category_id === cat.id).length}
+                    {Number(cat.product_count || 0)}
                   </span>
                 </button>
               ))}
             </div>
           </div>
 
-          
-
           <div className="filter-section">
-            <span className="filter-label">Availability</span>
+            <div className="sidebar-title sidebar-subtitle">Availability</div>
+
             <div className="filter-options">
               {[
                 { val: "all", label: "All" },
@@ -351,43 +476,120 @@ export default function ProductCatalog() {
                 { val: "out_of_stock", label: "Out of Stock" },
               ].map((opt) => (
                 <button
+                  type="button"
                   key={opt.val}
-                  className={`filter-option ${stockFilter === opt.val ? "active" : ""}`}
+                  className={`filter-option ${
+                    stockFilter === opt.val ? "active" : ""
+                  }`}
                   onClick={() => setStockFilter(opt.val)}
                 >
-                  {opt.label}
+                  <span>{opt.label}</span>
                 </button>
               ))}
             </div>
           </div>
 
           <div className="filter-section">
-            <span className="filter-label">Price Range (₱)</span>
-            <div className="price-inputs">
-              <input
-                type="number"
-                placeholder="Min"
-                value={priceMin}
-                onChange={(e) => setPriceMin(e.target.value)}
-              />
-              <span>—</span>
-              <input
-                type="number"
-                placeholder="Max"
-                value={priceMax}
-                onChange={(e) => setPriceMax(e.target.value)}
-              />
+            <div className="sidebar-title sidebar-subtitle">Filter by Price</div>
+
+            <div className="price-slider-shell">
+              <div className="price-slider-label">
+                Price: {formatPeso(normalizedMin)} — {formatPeso(normalizedMax)}
+              </div>
+
+              <div className="price-slider-wrap">
+                <div className="price-slider-track" />
+                <div
+                  className="price-slider-progress"
+                  style={{
+                    left: `${minPercent}%`,
+                    right: `${100 - maxPercent}%`,
+                  }}
+                />
+
+                <input
+                  type="range"
+                  min={sliderMin}
+                  max={safeSliderMax}
+                  value={normalizedMin}
+                  onChange={(e) => {
+                    const nextValue = Math.min(
+                      Number(e.target.value),
+                      Number(tempPriceMax || safeSliderMax),
+                    );
+                    setTempPriceMin(String(nextValue));
+                  }}
+                  className="price-range-input"
+                  disabled={!sliderMax}
+                />
+
+                <input
+                  type="range"
+                  min={sliderMin}
+                  max={safeSliderMax}
+                  value={normalizedMax}
+                  onChange={(e) => {
+                    const nextValue = Math.max(
+                      Number(e.target.value),
+                      Number(tempPriceMin || sliderMin),
+                    );
+                    setTempPriceMax(String(nextValue));
+                  }}
+                  className="price-range-input"
+                  disabled={!sliderMax}
+                />
+              </div>
+
+              <div className="price-inputs">
+                <input
+                  type="number"
+                  min={sliderMin}
+                  max={safeSliderMax}
+                  placeholder="Min"
+                  value={tempPriceMin}
+                  onChange={(e) => setTempPriceMin(e.target.value)}
+                />
+                <span>—</span>
+                <input
+                  type="number"
+                  min={sliderMin}
+                  max={safeSliderMax}
+                  placeholder="Max"
+                  value={tempPriceMax}
+                  onChange={(e) => setTempPriceMax(e.target.value)}
+                />
+              </div>
+
+              <div className="price-filter-actions">
+                <button
+                  type="button"
+                  className="price-apply-btn"
+                  onClick={applyPriceFilter}
+                  disabled={!sliderMax}
+                >
+                  Filter
+                </button>
+
+                {(priceMin !== "" || priceMax !== "") && (
+                  <button
+                    type="button"
+                    className="price-reset-btn"
+                    onClick={resetPriceFilter}
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
           {hasActiveFilters && (
-            <button className="clear-filters" onClick={clearFilters}>
-              ✕ Clear All Filters
+            <button type="button" className="clear-filters" onClick={clearFilters}>
+              Clear All Filters
             </button>
           )}
         </aside>
 
-        {/* ── Main ── */}
         <div className="catalog-main">
           <div className="catalog-toolbar">
             <div className="catalog-search">
@@ -400,29 +602,6 @@ export default function ProductCatalog() {
               />
             </div>
 
-            <div className="catalog-sort">
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-              >
-                <option value="name_asc">Name A–Z</option>
-                <option value="name_desc">Name Z–A</option>
-                <option value="price_asc">Price: Low to High</option>
-                <option value="price_desc">Price: High to Low</option>
-                <option value="newest">Newest First</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="catalog-results-bar">
-            {!loading && (
-              <div className="catalog-results-info">
-                Showing <strong>{products.length}</strong> product
-                {products.length !== 1 ? "s" : ""}
-                {hasActiveFilters && " (filtered)"}
-              </div>
-            )}
-
             {hasActiveFilters && (
               <button
                 type="button"
@@ -433,21 +612,6 @@ export default function ProductCatalog() {
               </button>
             )}
           </div>
-
-          {activeFilterChips.length > 0 && (
-            <div className="catalog-active-filters">
-              {activeFilterChips.map((chip) => (
-                <button
-                  key={chip.key}
-                  type="button"
-                  className="active-filter-chip"
-                  onClick={chip.onRemove}
-                >
-                  <span>{chip.label}</span> ×
-                </button>
-              ))}
-            </div>
-          )}
 
           <div className="product-grid">
             {loading ? (
@@ -463,43 +627,38 @@ export default function ProductCatalog() {
             ) : (
               products.map((product) => (
                 <div key={product.id} className="product-card">
-                  {/* ── Product image ── */}
-                  <div
-                    className="product-img-box"
+                  <button
+                    type="button"
+                    className="product-card-image-button"
                     onClick={() => openProduct(product)}
                   >
-                    <div className="product-card-badges">
-                      {Boolean(Number(product.is_featured)) && (
-                        <span className="badge badge-brown">Featured</span>
-                      )}
-                      {product.type === "blueprint" && (
-                        <span className="badge badge-blue">Custom</span>
-                      )}
+                    <div className="product-img-box">
+                      <ProductImage
+                        src={product.image_url}
+                        alt={product.name}
+                        className="product-img-fallback"
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 8,
+                          width: "100%",
+                          height: "100%",
+                          position: "absolute",
+                          inset: 0,
+                        }}
+                        imgStyle={{
+                          position: "absolute",
+                          inset: 0,
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "contain",
+                          padding: "22px",
+                        }}
+                      />
                     </div>
-                    <ProductImage
-                      src={product.image_url}
-                      alt={product.name}
-                      className="product-img-fallback"
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 8,
-                        width: "100%",
-                        height: "100%",
-                        position: "absolute",
-                        inset: 0,
-                      }}
-                      imgStyle={{
-                        position: "absolute",
-                        inset: 0,
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                      }}
-                    />
-                  </div>
+                  </button>
 
                   <div className="product-card-body">
                     <div className="product-card-category">
@@ -508,74 +667,41 @@ export default function ProductCatalog() {
 
                     <div className="product-card-name">{product.name}</div>
 
+                    <div className="product-card-price">
+                      ₱
+                      {parseFloat(product.online_price).toLocaleString("en-PH", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </div>
+
+                    <div className="product-card-stock-wrap">
+                      <StockBadge status={product.stock_status} />
+                    </div>
+
                     <div className="product-card-desc">
                       {product.description || "Premium quality wood product."}
                     </div>
 
-                    {getProductSpecs(product).length > 0 && (
-                      <div className="product-card-specs">
-                        {getProductSpecs(product).map((spec, index) => (
-                          <span
-                            key={`${product.id}-spec-${index}`}
-                            className="product-spec-chip"
-                          >
-                            {spec}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="product-card-footer">
-                      <div className="product-card-price-wrap">
-                        <span className="product-card-price-label">
-                          {product.type === "blueprint"
-                            ? "Starting at"
-                            : "Price"}
-                        </span>
-                        <div className="product-card-price">
-                          ₱
-                          {parseFloat(product.online_price).toLocaleString(
-                            "en-PH",
-                            { minimumFractionDigits: 2 },
-                          )}
-                        </div>
-                      </div>
-
-                      <StockBadge status={product.stock_status} />
-                    </div>
-                  </div>
-
-                  <div className="product-card-actions">
-                    {needsOptionSelection(product) ? (
+                    <div className="product-card-actions">
                       <button
-                        className="btn-view single-action"
+                        type="button"
+                        className="btn-view"
                         onClick={() => openProduct(product)}
                       >
-                        <Eye size={15} />
-                        View Options
+                        View
                       </button>
-                    ) : (
-                      <>
-                        <button
-                          className="btn-view"
-                          onClick={() => openProduct(product)}
-                        >
-                          <Eye size={15} />
-                          View Details
-                        </button>
 
-                        <button
-                          className="btn-add-cart"
-                          disabled={product.stock_status === "out_of_stock"}
-                          onClick={() => quickAddToCart(product)}
-                        >
-                          <ShoppingCart size={15} />
-                          {product.stock_status === "out_of_stock"
-                            ? "Out of Stock"
-                            : "Add to Cart"}
-                        </button>
-                      </>
-                    )}
+                      <button
+                        type="button"
+                        className="btn-add-cart"
+                        disabled={product.stock_status === "out_of_stock"}
+                        onClick={() => handleCardAddToCart(product)}
+                      >
+                        {product.stock_status === "out_of_stock"
+                          ? "Out of Stock"
+                          : "Add to Cart"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))
@@ -584,152 +710,172 @@ export default function ProductCatalog() {
         </div>
       </div>
 
-      {/* ── Product Detail Modal ── */}
       {selected && (
         <div
-          className="modal-overlay"
+          className="detail-modal-overlay"
           onClick={(e) => e.target === e.currentTarget && setSelected(null)}
         >
-          <div className="modal-box">
-            {/* Modal image */}
-            <div className="modal-img-box">
-              <button className="modal-close" onClick={() => setSelected(null)}>
-                ×
-              </button>
-              <ProductImage
-                src={selected.image_url}
-                alt={selected.name}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  borderRadius: "16px 16px 0 0",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 10,
-                }}
-                imgStyle={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  borderRadius: "16px 16px 0 0",
-                }}
-              />
+          <div className="detail-modal">
+            <div className="detail-modal-left">
+              
+
+              <div className="detail-main-image">
+                <ProductImage
+                  src={selected.image_url}
+                  alt={selected.name}
+                  className="product-img-fallback"
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    width: "100%",
+                    height: "100%",
+                  }}
+                  imgStyle={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                    padding: "28px",
+                  }}
+                />
+              </div>
+
+              <div className="detail-thumb-row">
+                <div className="detail-thumb active">
+                  <ProductImage
+                    src={selected.image_url}
+                    alt={selected.name}
+                    className="product-img-fallback"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: "100%",
+                      height: "100%",
+                    }}
+                    imgStyle={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                      padding: "10px",
+                    }}
+                  />
+                </div>
+              </div>
             </div>
 
-            <div className="modal-body">
-              <div className="modal-category">
+            <div className="detail-modal-right">
+              <div className="detail-category">
                 {selected.category || "Uncategorized"}
               </div>
-              <div className="modal-name">{selected.name}</div>
-              <div className="modal-price">
+
+              <h2 className="detail-name">{selected.name}</h2>
+
+              <div className="detail-price">
                 ₱
                 {parseFloat(
                   selVariation?.selling_price ?? selected.online_price,
-                ).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                ).toLocaleString("en-PH", {
+                  minimumFractionDigits: 2,
+                })}
               </div>
 
-              {selected.description && (
-                <p className="modal-desc">{selected.description}</p>
-              )}
-
-              <div className="modal-meta">
-                <div className="modal-meta-item">
-                  <label>Type</label>
-                  <span style={{ textTransform: "capitalize" }}>
-                    {selected.type}
-                  </span>
-                </div>
-                <div className="modal-meta-item">
-                  <label>Availability</label>
-                  <StockBadge status={selected.stock_status} />
-                </div>
-                <div className="modal-meta-item">
-                  <label>Stock</label>
-                  <span>{selected.stock} units</span>
-                </div>
-                <div className="modal-meta-item">
-                  <label>Category</label>
-                  <span>{selected.category || "—"}</span>
-                </div>
-              </div>
+              {selected.description ? (
+                <p className="detail-description">{selected.description}</p>
+              ) : null}
 
               {selected.variations?.length > 0 && (
-                <div className="modal-variations">
-                  <h4>Select Variation</h4>
+                <div className="detail-section">
+                  <h4>Available Options</h4>
+
                   <div className="variation-grid">
-                    {selected.variations.map((v) => (
+                    {selected.variations.map((variation) => (
                       <button
-                        key={v.id}
-                        className={`var-chip ${selVariation?.id === v.id ? "selected" : ""}`}
-                        onClick={() => setSelVariation(v)}
-                        disabled={v.stock <= 0}
+                        type="button"
+                        key={variation.id}
+                        className={`var-chip ${
+                          selVariation?.id === variation.id ? "selected" : ""
+                        }`}
+                        onClick={() => setSelVariation(variation)}
+                        disabled={variation.stock <= 0}
                       >
-                        {v.variation_name}
-                        {v.stock <= 0 && " (Out)"}
-                        {v.stock > 0 &&
-                          ` — ₱${parseFloat(v.selling_price).toLocaleString("en-PH")}`}
+                        {variation.variation_name}
+                        {variation.stock > 0
+                          ? ` — ₱${parseFloat(
+                              variation.selling_price,
+                            ).toLocaleString("en-PH")}`
+                          : " (Out)"}
                       </button>
                     ))}
                   </div>
                 </div>
               )}
 
-              <div className="modal-qty">
-                <label>Quantity</label>
-                <div className="qty-controls">
+              <div className="detail-section">
+                <div className="detail-info-table">
+                  {detailRows.map((row) => (
+                    <div key={row.label} className="detail-info-row">
+                      <span>{row.label}</span>
+                      <strong>{row.value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="detail-action-row">
+                <div className="detail-qty-block">
+                  <span className="detail-qty-label">Quantity</span>
+
+                  <div className="qty-controls">
+                    <button
+                      type="button"
+                      className="qty-btn"
+                      onClick={() => setQty((value) => Math.max(1, value - 1))}
+                    >
+                      -
+                    </button>
+
+                    <span className="qty-val">{qty}</span>
+
+                    <button
+                      type="button"
+                      className="qty-btn"
+                      onClick={() => {
+                        const maxStock =
+                          Number(selVariation?.stock ?? selected.stock ?? 1) || 1;
+                        setQty((value) => Math.min(value + 1, maxStock));
+                      }}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                <div className="detail-button-row">
                   <button
-                    className="qty-btn"
-                    onClick={() => setQty((q) => Math.max(1, q - 1))}
+                    type="button"
+                    className="detail-add-btn"
+                    disabled={selected.stock_status === "out_of_stock"}
+                    onClick={handleModalAddToCart}
                   >
-                    <Minus size={14} />
+                    {selected.stock_status === "out_of_stock"
+                      ? "Out of Stock"
+                      : "Add to Cart"}
                   </button>
-                  <span className="qty-val">{qty}</span>
+
                   <button
-                    className="qty-btn"
-                    onClick={() => {
-                      const maxStock = selVariation?.stock ?? selected.stock;
-                      setQty((q) => Math.min(q + 1, maxStock));
-                    }}
+                    type="button"
+                    className="detail-close-btn"
+                    onClick={() => setSelected(null)}
                   >
-                    <Plus size={14} />
+                    Close
                   </button>
                 </div>
               </div>
 
-              {cartMsg && (
-                <div
-                  style={{
-                    background: cartMsg.startsWith("✓") ? "#e8f5e9" : "#fce4ec",
-                    color: cartMsg.startsWith("✓") ? "#2e7d32" : "#c62828",
-                    padding: "10px 14px",
-                    borderRadius: 8,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    marginBottom: 16,
-                  }}
-                >
-                  {cartMsg}
-                </div>
-              )}
-
-              <div className="modal-actions">
-                <button
-                  className="btn btn-primary"
-                  style={{ flex: 1, justifyContent: "center" }}
-                  disabled={selected.stock_status === "out_of_stock"}
-                  onClick={handleModalAddToCart}
-                >
-                  <ShoppingCart size={16} /> Add to Cart
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setSelected(null)}
-                >
-                  Close
-                </button>
-              </div>
+              {cartMsg ? <div className="detail-message">{cartMsg}</div> : null}
             </div>
           </div>
         </div>

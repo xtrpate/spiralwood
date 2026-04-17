@@ -1,18 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
-import {
-  Search,
-  Scissors,
-  Eye,
-  X,
-  Lock,
-  Ruler,
-  Box,
-  ShoppingBag,
-} from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useCustomCart } from "./customcartcontext";
 import { useCart } from "./cartcontext";
+import useAuthStore from "../../store/authStore";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import "./customizepage.css";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
@@ -898,11 +890,10 @@ function ViewModal({ product, onClose, onCustomize }) {
 
             <button
               type="button"
-              className="cust-primary-btn"
+              className="cust-customize-btn"
               onClick={() => onCustomize?.(blueprint)}
             >
-              <Scissors size={16} />
-              Customize This Template
+              Customize
             </button>
           </div>
         </div>
@@ -1015,7 +1006,6 @@ function ProductCard({ product, onView, onCustomize }) {
             className="cust-view-btn"
             onClick={() => onView(product)}
           >
-            <Eye size={16} />
             View
           </button>
 
@@ -1024,7 +1014,6 @@ function ProductCard({ product, onView, onCustomize }) {
             className="cust-customize-btn"
             onClick={() => onCustomize(product)}
           >
-            <Scissors size={16} />
             Customize
           </button>
         </div>
@@ -1035,6 +1024,8 @@ function ProductCard({ product, onView, onCustomize }) {
 
 export default function CustomizePage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuthStore();
   const { addToCustomCart } = useCustomCart();
   const { cartCount } = useCart();
 
@@ -1045,6 +1036,52 @@ export default function CustomizePage() {
   const [viewingProduct, setViewingProduct] = useState(null);
   const [customizingProduct, setCustomizingProduct] = useState(null);
   const [toastMessage, setToastMessage] = useState("");
+
+  const requireCustomerLogin = useCallback(
+    (product = null) => {
+      if (user?.role === "customer") return true;
+
+      const params = new URLSearchParams(location.search);
+      if (product?.id) {
+        params.set("template", String(product.id));
+      }
+
+      const searchString = params.toString();
+      const redirectTo = `${location.pathname}${
+        searchString ? `?${searchString}` : ""
+      }`;
+
+      navigate("/login", {
+        replace: false,
+        state: {
+          from: {
+            pathname: location.pathname,
+            search: searchString ? `?${searchString}` : "",
+          },
+          redirectTo,
+        },
+      });
+
+      return false;
+    },
+    [user, navigate, location.pathname, location.search]
+  );
+
+  const closeCustomizeModal = useCallback(() => {
+    setCustomizingProduct(null);
+
+    const params = new URLSearchParams(location.search);
+    if (params.has("template")) {
+      params.delete("template");
+      const nextSearch = params.toString();
+      navigate(
+        `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}`,
+        { replace: true }
+      );
+    }
+  }, [location.pathname, location.search, navigate]);
+
+
 
   const fetchProducts = useCallback(
     async (query = search) => {
@@ -1082,12 +1119,29 @@ export default function CustomizePage() {
     return () => clearTimeout(timer);
   }, [toastMessage]);
 
+  useEffect(() => {
+    if (user?.role !== "customer" || !products.length) return;
+
+    const params = new URLSearchParams(location.search);
+    const templateId = Number(params.get("template") || 0);
+    if (!templateId) return;
+
+    const matched = products.find((item) => Number(item.id) === templateId);
+    if (matched) {
+      setCustomizingProduct((prev) =>
+        Number(prev?.id) === templateId ? prev : matched
+      );
+    }
+  }, [user, products, location.search]);
+
   const handleSearch = (event) => {
     event.preventDefault();
     fetchProducts(search);
   };
 
+
   const handleAdd = (product, draft = {}) => {
+    if (!requireCustomerLogin(product)) return;
     const profile = resolveSavedTemplateProfile(product || {});
     const bounds = draft?.bounds || {};
     const defaultDimensions = draft?.defaultDimensions || {};
@@ -1224,7 +1278,10 @@ export default function CustomizePage() {
         key={product.id}
         product={product}
         onView={setViewingProduct}
-        onCustomize={setCustomizingProduct}
+        onCustomize={(selectedProduct) => {
+          if (!requireCustomerLogin(selectedProduct)) return;
+          setCustomizingProduct(selectedProduct);
+        }}
       />
     ));
   }, [loading, products]);
@@ -1233,7 +1290,6 @@ export default function CustomizePage() {
     <div className="cust-page">
       {toastMessage ? (
         <div className="cust-floating-toast">
-          <Scissors size={16} />
           {toastMessage}
         </div>
       ) : null}
@@ -1252,7 +1308,6 @@ export default function CustomizePage() {
           className="cust-primary-btn"
           onClick={() => navigate("/cart")}
         >
-          <ShoppingBag size={16} />
           View Cart {cartCount > 0 ? `(${cartCount})` : ""}
         </button>
       </div>
@@ -1293,7 +1348,7 @@ export default function CustomizePage() {
       {customizingProduct ? (
         <CustomizeModal
           product={customizingProduct}
-          onClose={() => setCustomizingProduct(null)}
+          onClose={closeCustomizeModal}
           onAdd={handleAdd}
         />
       ) : null}
