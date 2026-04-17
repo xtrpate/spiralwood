@@ -654,3 +654,61 @@ exports.login = async (req, res) => {
     });
   }
 };
+
+/* ══════════════════════════════════════════════════════════════
+   CLOUD CART SYNC (OMNICHANNEL RECONCILIATION)
+══════════════════════════════════════════════════════════════ */
+
+exports.getCloudCart = async (req, res) => {
+  // req.user comes from your JWT authentication middleware
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  try {
+    const [rows] = await db.query(
+      "SELECT cart_data FROM customer_carts WHERE customer_id = ?",
+      [req.user.id],
+    );
+
+    if (rows.length > 0) {
+      return res.json({ cart: rows[0].cart_data });
+    }
+    return res.json({ cart: [] });
+  } catch (err) {
+    console.error("[getCloudCart]", err);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: err.message });
+  }
+};
+
+exports.syncCloudCart = async (req, res) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  const { cart } = req.body;
+
+  try {
+    // Convert the cart array into a JSON string to store in the database
+    const cartJson = JSON.stringify(cart || []);
+
+    // Industry Standard: "Upsert" (Insert if new, Update if exists)
+    await db.query(
+      `
+      INSERT INTO customer_carts (customer_id, cart_data) 
+      VALUES (?, ?) 
+      ON DUPLICATE KEY UPDATE cart_data = VALUES(cart_data)
+      `,
+      [req.user.id, cartJson],
+    );
+
+    return res.json({ success: true, message: "Cart synced to cloud." });
+  } catch (err) {
+    console.error("[syncCloudCart]", err);
+    return res
+      .status(500)
+      .json({ message: "Server error", error: err.message });
+  }
+};

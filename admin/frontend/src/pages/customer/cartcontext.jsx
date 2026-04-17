@@ -1,11 +1,13 @@
-/**
- * src/pages/customer/cartcontext.jsx
- * Unified customer cart state
- * Handles both:
- * - standard / ready-made items
- * - blueprint / custom template items
- */
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+} from "react";
+import api from "../../services/api"; // Make sure this path is correct
+import useAuthStore from "../../store/authStore"; // Import your auth store
 
 const CartContext = createContext(null);
 
@@ -26,11 +28,7 @@ const normalizeCartType = (item = {}) => {
   const rawType = String(item?.cart_type || item?.item_type || "")
     .trim()
     .toLowerCase();
-
-  if (["blueprint", "custom", "template"].includes(rawType)) {
-    return "blueprint";
-  }
-
+  if (["blueprint", "custom", "template"].includes(rawType)) return "blueprint";
   if (
     item?.blueprint_id ||
     item?.template_profile ||
@@ -38,22 +36,18 @@ const normalizeCartType = (item = {}) => {
     item?.customization_snapshot ||
     item?.editor_snapshot ||
     item?.base_blueprint_title
-  ) {
+  )
     return "blueprint";
-  }
-
   return "standard";
 };
 
 const normalizeCartItem = (item = {}) => {
   const key = String(item?.key || "").trim();
   if (!key) return null;
-
   const cartType = normalizeCartType(item);
   const maxStockRaw = Number(item?.max_stock);
   const maxStock =
     Number.isFinite(maxStockRaw) && maxStockRaw > 0 ? maxStockRaw : null;
-
   return {
     ...item,
     key,
@@ -77,7 +71,6 @@ const normalizeCartItem = (item = {}) => {
 const mergeLineItem = (existing, incoming) => {
   const base = normalizeCartItem(existing);
   const next = normalizeCartItem(incoming);
-
   if (!base || !next) return base || next || null;
 
   const mergedType = next.cart_type || base.cart_type || "standard";
@@ -87,15 +80,11 @@ const mergeLineItem = (existing, incoming) => {
       : Number.isFinite(Number(base.max_stock)) && Number(base.max_stock) > 0
         ? Number(base.max_stock)
         : null;
-
   const currentQty = toPositiveInt(base.quantity, 1);
   const incomingQty = toPositiveInt(next.quantity, 1);
-
   let mergedQty = currentQty + incomingQty;
-
-  if (mergedType === "standard" && mergedMaxStock) {
+  if (mergedType === "standard" && mergedMaxStock)
     mergedQty = Math.min(mergedQty, mergedMaxStock);
-  }
 
   return normalizeCartItem({
     ...base,
@@ -109,57 +98,83 @@ const mergeLineItem = (existing, incoming) => {
 
 const parseStoredArray = (raw) => {
   try {
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-const buildInitialCart = () => {
-  try {
-    const mainCart = parseStoredArray(localStorage.getItem(STORAGE_KEY));
-
-    return mainCart
-      .map(normalizeCartItem)
-      .filter(Boolean);
+    return Array.isArray(JSON.parse(raw)) ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 };
 
 export function CartProvider({ children }) {
-  const [cart, setCart] = useState(buildInitialCart);
+  // 1. Initial load from LocalStorage ONLY (Guest Mode)
+  const [cart, setCart] = useState(() => {
+    const local = parseStoredArray(localStorage.getItem(STORAGE_KEY));
+    return local.map(normalizeCartItem).filter(Boolean);
+  });
 
+  const { user } = useAuthStore();
+  const isInitialMount = useRef(true);
+
+  // 👉 INDUSTRY STANDARD: The "Handshake" (Merge Local + Cloud on Login)
   useEffect(() => {
-  try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+    if (user && user.role === "customer") {
+      api
+        .get("/customer/cart")
+        .then((res) => {
+          const cloudCart = res.data.cart || [];
 
-      const customOnly = cart.filter((item) => item.cart_type === "blueprint");
-      sessionStorage.setItem(
-        LEGACY_CUSTOM_STORAGE_KEY,
-        JSON.stringify(customOnly),
-      );
-    } catch (error) {
-      console.error("[cart] failed to persist unified cart", error);
+          setCart((currentLocalCart) => {
+            let merged = [...cloudCart];
+            // If the guest added stuff before logging in, merge it into the cloud cart!
+            currentLocalCart.forEach((localItem) => {
+              const existingIndex = merged.findIndex(
+                (c) => c.key === localItem.key,
+              );
+              if (existingIndex >= 0) {
+                merged[existingIndex] = mergeLineItem(
+                  merged[existingIndex],
+                  localItem,
+                );
+              } else {
+                merged.push(localItem);
+              }
+            });
+            return merged;
+          });
+        })
+        .catch((err) => console.error("Failed to fetch cloud cart", err));
     }
-  }, [cart]);
+  }, [user]);
+
+  // 👉 INDUSTRY STANDARD: Background Syncing
+  useEffect(() => {
+    // Save to LocalStorage instantly for snappy UI
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
+    const customOnly = cart.filter((item) => item.cart_type === "blueprint");
+    sessionStorage.setItem(
+      LEGACY_CUSTOM_STORAGE_KEY,
+      JSON.stringify(customOnly),
+    );
+
+    // If logged in, quietly update the database so it survives logouts/device switches
+    if (user && user.role === "customer" && !isInitialMount.current) {
+      // Note: Debouncing this call in a massive production app is recommended,
+      // but direct calling is perfectly fine for this scale.
+      api
+        .post("/customer/cart/sync", { cart })
+        .catch((err) => console.error("Cloud sync failed", err));
+    }
+
+    isInitialMount.current = false;
+  }, [cart, user]);
 
   const addToCart = (item) => {
     const normalized = normalizeCartItem(item);
     if (!normalized) return;
-
     setCart((prev) => {
       const existing = prev.find((entry) => entry.key === normalized.key);
-
-      if (!existing) {
-        return [...prev, normalized];
-      }
-
+      if (!existing) return [...prev, normalized];
       return prev.map((entry) =>
-        entry.key === normalized.key
-          ? mergeLineItem(entry, normalized)
-          : entry,
+        entry.key === normalized.key ? mergeLineItem(entry, normalized) : entry,
       );
     });
   };
@@ -167,62 +182,49 @@ export function CartProvider({ children }) {
   const updateQty = (key, delta) => {
     const cleanKey = String(key || "").trim();
     if (!cleanKey) return;
-
     setCart((prev) =>
       prev
         .map((item) => {
           if (item.key !== cleanKey) return item;
-
-          const currentQty = toPositiveInt(item.quantity, 1);
-          const nextQty = currentQty + Number(delta || 0);
-
+          const nextQty = toPositiveInt(item.quantity, 1) + Number(delta || 0);
           if (nextQty <= 0) return null;
-
           if (
             item.cart_type === "standard" &&
             item.max_stock &&
             nextQty > item.max_stock
-          ) {
+          )
             return item;
-          }
-
-          return {
-            ...item,
-            quantity: nextQty,
-          };
+          return { ...item, quantity: nextQty };
         })
         .filter(Boolean),
     );
   };
 
-  const removeItem = (key) => {
-    const cleanKey = String(key || "").trim();
-    if (!cleanKey) return;
-
-    setCart((prev) => prev.filter((item) => item.key !== cleanKey));
-  };
+  const removeItem = (key) =>
+    setCart((prev) =>
+      prev.filter((item) => item.key !== String(key || "").trim()),
+    );
 
   const removeMany = (keys = []) => {
     const keySet = new Set(
       (Array.isArray(keys) ? keys : [])
-        .map((key) => String(key || "").trim())
+        .map((k) => String(k || "").trim())
         .filter(Boolean),
     );
-
     if (!keySet.size) return;
-
     setCart((prev) => prev.filter((item) => !keySet.has(item.key)));
   };
 
   const clearCart = () => {
     setCart([]);
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-      sessionStorage.removeItem(LEGACY_CUSTOM_STORAGE_KEY);
-      sessionStorage.removeItem("cust_selected_keys");
-      sessionStorage.removeItem("cust_selected_custom_checkout");
-    } catch {
-      // ignore storage errors
+    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(LEGACY_CUSTOM_STORAGE_KEY);
+    sessionStorage.removeItem("cust_selected_keys");
+    sessionStorage.removeItem("cust_selected_custom_checkout");
+
+    // Clear cloud cart too if logged in
+    if (user && user.role === "customer") {
+      api.post("/customer/cart/sync", { cart: [] }).catch(console.error);
     }
   };
 
@@ -230,18 +232,14 @@ export function CartProvider({ children }) {
     () => cart.filter((item) => item.cart_type === "standard"),
     [cart],
   );
-
   const customCart = useMemo(
     () => cart.filter((item) => item.cart_type === "blueprint"),
     [cart],
   );
-
   const cartCount = useMemo(
-    () =>
-      cart.reduce((sum, item) => sum + toPositiveInt(item.quantity, 1), 0),
+    () => cart.reduce((sum, item) => sum + toPositiveInt(item.quantity, 1), 0),
     [cart],
   );
-
   const customCartCount = useMemo(
     () =>
       customCart.reduce(
@@ -250,7 +248,6 @@ export function CartProvider({ children }) {
       ),
     [customCart],
   );
-
   const cartTotal = useMemo(
     () =>
       cart.reduce(
@@ -265,14 +262,11 @@ export function CartProvider({ children }) {
     () => ({
       cart,
       setCartState: setCart,
-
       standardCart,
       customCart,
-
       cartCount,
       customCartCount,
       cartTotal,
-
       addToCart,
       updateQty,
       removeItem,
@@ -287,10 +281,6 @@ export function CartProvider({ children }) {
 
 export const useCart = () => {
   const context = useContext(CartContext);
-
-  if (!context) {
-    throw new Error("useCart must be used inside CartProvider");
-  }
-
+  if (!context) throw new Error("useCart must be used inside CartProvider");
   return context;
 };
