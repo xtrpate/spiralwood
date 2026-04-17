@@ -65,12 +65,10 @@ export default function ProductsPage() {
         ids: selectedIds,
         is_published,
       });
-      toast.success(
-        `Selected products marked as ${is_published ? "Live" : "Draft"}.`,
-      );
+      toast.success(`Product Published successfully!`);
       load();
     } catch (err) {
-      toast.error("Failed to update publish status.");
+      toast.error("Failed to publish product.");
     }
   };
 

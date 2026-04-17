@@ -8,7 +8,8 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import useAuthStore from "../../store/authStore";
 import { useCart } from "./cartcontext";
-import axios from "axios";
+// 👉 FIX: Removed the raw axios import
+import api, { buildAssetUrl } from "../../services/api";
 import {
   Home,
   Scissors,
@@ -28,7 +29,6 @@ import {
 import { useState, useEffect, useRef } from "react";
 import "./customerlayout.css";
 import "./profile.css";
-import { buildAssetUrl } from "../../services/api";
 
 const navItems = [
   { to: "/", icon: Home, label: "Home" },
@@ -96,8 +96,9 @@ export default function CustomerLayout() {
 
   useEffect(() => {
     if (customerUser) {
-      axios
-        .get("/api/customer/orders")
+      // 👉 FIX: Swapped axios for your authenticated 'api' instance
+      api
+        .get("/customer/orders")
         .then((res) => {
           const activeOrders = res.data.filter(
             (o) => !["completed", "cancelled"].includes(o.status),

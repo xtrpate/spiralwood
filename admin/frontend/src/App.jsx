@@ -194,364 +194,383 @@ export default function App() {
   return (
     <ErrorBoundary>
       <BrowserRouter>
-        <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
-        <Routes>
-          {/* ══════════════════════════════════════════════════════════════════
-              CUSTOMER PORTAL
-          ══════════════════════════════════════════════════════════════════ */}
-          <Route element={<Outlet />}>
-            {/* Standalone Pages (No Navbar) */}
-            <Route
-              path="login"
-              element={
-                <RedirectIfAuthenticated>
-                  <LoginPage />
-                </RedirectIfAuthenticated>
-              }
-            />
-            <Route path="register" element={<RegisterPage />} />
-            <Route path="forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="reset-password" element={<ResetPasswordPage />} />
-            <Route path="verify-otp" element={<VerifyOtpPage />} />
-            <Route path="pending-approval" element={<PendingApprovalPage />} />
-
-            {/* Pages with Navbar */}
-            <Route
-              path="/"
-              element={
-                <BlockNonCustomerPortal>
-                  <CartProvider>
-                    <CustomCartProvider>
-                      <CustomerLayout />
-                    </CustomCartProvider>
-                  </CartProvider>
-                </BlockNonCustomerPortal>
-              }
-            >
-              <Route index element={<LandingPage />} />
-              <Route path="catalog" element={<ProductCatalog />} />
-              <Route path="cart" element={<CartPage />} />
-              <Route path="customize" element={<CustomizePage />} />
-              <Route
-                path="custom-cart"
-                element={<Navigate to="/cart" replace />}
-              />
-
-              <Route
-                path="checkout"
-                element={
-                  <RequireAuth roles={["customer"]}>
-                    <CheckoutPage />
-                  </RequireAuth>
-                }
-              />
-
-              <Route
-                path="custom-checkout"
-                element={
-                  <RequireAuth roles={["customer"]}>
-                    <CustomCheckoutPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="custom-requests/:id"
-                element={
-                  <RequireAuth roles={["customer"]}>
-                    <CustomRequestDetailPage />
-                  </RequireAuth>
-                }
-              />
-
-              <Route
-                path="appointment"
-                element={
-                  <RequireAuth roles={["customer"]}>
-                    <AppointmentPage />
-                  </RequireAuth>
-                }
-              />
-
-              <Route
-                path="orders"
-                element={
-                  <RequireAuth roles={["customer"]}>
-                    <OrdersPageCustomer />
-                  </RequireAuth>
-                }
-              />
-
-              <Route
-                path="warranty"
-                element={
-                  <RequireAuth roles={["customer"]}>
-                    <WarrantyPageCustomer />
-                  </RequireAuth>
-                }
-              />
-
-              <Route
-                path="profilesettings"
-                element={
-                  <RequireAuth roles={["customer"]}>
-                    <ProfileSettings />
-                  </RequireAuth>
-                }
-              />
-            </Route>
-          </Route>
-          {/* ══════════════════════════════════════════════════════════════════
-              ADMIN & STAFF PUBLIC ROUTES
-          ══════════════════════════════════════════════════════════════════ */}
-
-          <Route
-            path="/admin/blueprints/:id/import"
-            element={
-              <RequireAuth roles={["admin"]}>
-                <ImportPage />
-              </RequireAuth>
-            }
-          />
-
-          {/* ══════════════════════════════════════════════════════════════════
-              ADMIN PORTAL
-          ══════════════════════════════════════════════════════════════════ */}
-          <Route
-            path="/admin"
-            element={
-              <RequireAuth roles={["admin"]}>
-                <AdminLayout />
-              </RequireAuth>
-            }
-          >
-            <Route path="tasks" element={<TasksPage />} />
-            <Route path="appointments" element={<POSAppointmentScheduling />} />
-            <Route path="delivery" element={<POSDeliveryScheduling />} />
-            <Route index element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard" element={<DashboardPage />} />
-
-            {/* Products */}
-            <Route path="products" element={<ProductsPage />} />
-            <Route path="products/new" element={<ProductFormPage />} />
-            <Route path="products/:id/edit" element={<ProductFormPage />} />
-
-            {/* Inventory */}
-            <Route path="inventory/raw" element={<RawMaterialsPage />} />
-            <Route path="inventory/build" element={<BuildMaterialsPage />} />
-            <Route path="inventory/movements" element={<StockMovementPage />} />
-            <Route path="inventory/suppliers" element={<SuppliersPage />} />
-
-            {/* Blueprints */}
-            <Route path="blueprints" element={<BlueprintsPage />} />
-            <Route path="blueprints/:id/design" element={<BlueprintDesign />} />
-            <Route
-              path="blueprints/:id/estimation"
-              element={<EstimationPage />}
-            />
-            <Route path="contracts" element={<ContractsPage />} />
-
-            {/* Orders */}
-            <Route path="orders" element={<OrdersPage />} />
-            <Route path="orders/:id" element={<OrderDetailPage />} />
-            <Route
-              path="orders/cancellations"
-              element={<CancellationsPage />}
-            />
-
-            {/* Sales */}
-            <Route path="sales" element={<SalesReportPage />} />
-
-            {/* Warranty */}
-            <Route path="warranty" element={<WarrantyPage />} />
-
-            {/* Management – admin only */}
-            <Route
-              path="customers"
-              element={
-                <RequireAuth roles={["admin"]}>
-                  <CustomersPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="users"
-              element={
-                <RequireAuth roles={["admin"]}>
-                  <UsersPage />
-                </RequireAuth>
-              }
-            />
-
-            {/* Website Maintenance – admin only */}
-            <Route
-              path="website/settings"
-              element={
-                <RequireAuth roles={["admin"]}>
-                  <WebsiteSettingsPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="website/faqs"
-              element={
-                <RequireAuth roles={["admin"]}>
-                  <FaqsPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="website/pages"
-              element={
-                <RequireAuth roles={["admin"]}>
-                  <StaticPagesPage />
-                </RequireAuth>
-              }
-            />
-
-            {/* Backup – admin only */}
-            <Route
-              path="backup"
-              element={
-                <RequireAuth roles={["admin"]}>
-                  <BackupPage />
-                </RequireAuth>
-              }
-            />
-          </Route>
-
-          {/* ══════════════════════════════════════════════════════════════════
-              STAFF PORTAL
-          ══════════════════════════════════════════════════════════════════ */}
-          <Route
-            path="/staff"
-            element={
-              <RequireAuth roles={["admin", "staff"]}>
-                <POSLayout />
-              </RequireAuth>
-            }
-          >
-            <Route
-              index
-              element={
-                <Navigate
-                  to={getDefaultRouteForUser(useAuthStore.getState().user)}
-                  replace
+        {/* 👉 THE FIX: Moved Providers outside so the entire app can access the Cart */}
+        <CartProvider>
+          <CustomCartProvider>
+            <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
+            <Routes>
+              {/* ══════════════════════════════════════════════════════════════════
+                  CUSTOMER PORTAL
+              ══════════════════════════════════════════════════════════════════ */}
+              <Route element={<Outlet />}>
+                {/* Standalone Pages (No Navbar) */}
+                <Route
+                  path="login"
+                  element={
+                    <RedirectIfAuthenticated>
+                      <LoginPage />
+                    </RedirectIfAuthenticated>
+                  }
                 />
-              }
-            />
+                <Route path="register" element={<RegisterPage />} />
+                <Route
+                  path="forgot-password"
+                  element={<ForgotPasswordPage />}
+                />
+                <Route path="reset-password" element={<ResetPasswordPage />} />
+                <Route path="verify-otp" element={<VerifyOtpPage />} />
+                <Route
+                  path="pending-approval"
+                  element={<PendingApprovalPage />}
+                />
 
-            <Route
-              path="dashboard"
-              element={
-                <RequireStaffType allowedTypes={["indoor"]}>
-                  <POSDashboard />
-                </RequireStaffType>
-              }
-            />
+                {/* Pages with Navbar */}
+                <Route
+                  path="/"
+                  element={
+                    <BlockNonCustomerPortal>
+                      <CustomerLayout />
+                    </BlockNonCustomerPortal>
+                  }
+                >
+                  <Route index element={<LandingPage />} />
+                  <Route path="catalog" element={<ProductCatalog />} />
+                  <Route path="cart" element={<CartPage />} />
+                  <Route path="customize" element={<CustomizePage />} />
+                  <Route
+                    path="custom-cart"
+                    element={<Navigate to="/cart" replace />}
+                  />
 
-            <Route
-              path="products"
-              element={
-                <RequireStaffType allowedTypes={["cashier"]}>
-                  <POSProductSearch />
-                </RequireStaffType>
-              }
-            />
+                  <Route
+                    path="checkout"
+                    element={
+                      <RequireAuth roles={["customer"]}>
+                        <CheckoutPage />
+                      </RequireAuth>
+                    }
+                  />
 
-            <Route
-              path="tasks"
-              element={
-                <RequireStaffType allowedTypes={["indoor"]}>
-                  <MyTasks />
-                </RequireStaffType>
-              }
-            />
+                  <Route
+                    path="custom-checkout"
+                    element={
+                      <RequireAuth roles={["customer"]}>
+                        <CustomCheckoutPage />
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
+                    path="custom-requests/:id"
+                    element={
+                      <RequireAuth roles={["customer"]}>
+                        <CustomRequestDetailPage />
+                      </RequireAuth>
+                    }
+                  />
 
-            <Route
-              path="order"
-              element={
-                <RequireStaffType allowedTypes={["cashier"]}>
-                  <POSProcessOrder />
-                </RequireStaffType>
-              }
-            />
+                  <Route
+                    path="appointment"
+                    element={
+                      <RequireAuth roles={["customer"]}>
+                        <AppointmentPage />
+                      </RequireAuth>
+                    }
+                  />
 
-            <Route
-              path="history"
-              element={
-                <RequireStaffType allowedTypes={["cashier"]}>
-                  <POSOrderHistory />
-                </RequireStaffType>
-              }
-            />
+                  <Route
+                    path="orders"
+                    element={
+                      <RequireAuth roles={["customer"]}>
+                        <OrdersPageCustomer />
+                      </RequireAuth>
+                    }
+                  />
 
-            <Route
-              path="delivery"
-              element={
-                <RequireAuth roles={["admin"]}>
-                  <POSDeliveryScheduling />
-                </RequireAuth>
-              }
-            />
+                  <Route
+                    path="warranty"
+                    element={
+                      <RequireAuth roles={["customer"]}>
+                        <WarrantyPageCustomer />
+                      </RequireAuth>
+                    }
+                  />
 
-            <Route
-              path="deliveries"
-              element={
-                <RequireStaffType allowedTypes={["delivery_rider"]}>
-                  <POSDeliveryManagement />
-                </RequireStaffType>
-              }
-            />
+                  <Route
+                    path="profilesettings"
+                    element={
+                      <RequireAuth roles={["customer"]}>
+                        <ProfileSettings />
+                      </RequireAuth>
+                    }
+                  />
+                </Route>
+              </Route>
+              {/* ══════════════════════════════════════════════════════════════════
+                  ADMIN & STAFF PUBLIC ROUTES
+              ══════════════════════════════════════════════════════════════════ */}
 
-            <Route
-              path="appointment"
-              element={
-                <RequireStaffOnlyType allowedTypes={["indoor"]}>
-                  <POSAppointmentScheduling />
-                </RequireStaffOnlyType>
-              }
-            />
+              <Route
+                path="/admin/blueprints/:id/import"
+                element={
+                  <RequireAuth roles={["admin"]}>
+                    <ImportPage />
+                  </RequireAuth>
+                }
+              />
 
-            <Route
-              path="receipt/:id"
-              element={
-                <RequireStaffType allowedTypes={["cashier"]}>
-                  <POSReceiptPage />
-                </RequireStaffType>
-              }
-            />
+              {/* ══════════════════════════════════════════════════════════════════
+                  ADMIN PORTAL
+              ══════════════════════════════════════════════════════════════════ */}
+              <Route
+                path="/admin"
+                element={
+                  <RequireAuth roles={["admin"]}>
+                    <AdminLayout />
+                  </RequireAuth>
+                }
+              >
+                <Route path="tasks" element={<TasksPage />} />
+                <Route
+                  path="appointments"
+                  element={<POSAppointmentScheduling />}
+                />
+                <Route path="delivery" element={<POSDeliveryScheduling />} />
+                <Route index element={<Navigate to="dashboard" replace />} />
+                <Route path="dashboard" element={<DashboardPage />} />
 
-            <Route
-              path="reports"
-              element={
-                <RequireStaffType allowedTypes={["cashier"]}>
-                  <POSSalesReports />
-                </RequireStaffType>
-              }
-            />
+                {/* Products */}
+                <Route path="products" element={<ProductsPage />} />
+                <Route path="products/new" element={<ProductFormPage />} />
+                <Route path="products/:id/edit" element={<ProductFormPage />} />
 
-            <Route
-              path="inventory"
-              element={
-                <RequireStaffType allowedTypes={["indoor"]}>
-                  <POSInventoryLookup />
-                </RequireStaffType>
-              }
-            />
+                {/* Inventory */}
+                <Route path="inventory/raw" element={<RawMaterialsPage />} />
+                <Route
+                  path="inventory/build"
+                  element={<BuildMaterialsPage />}
+                />
+                <Route
+                  path="inventory/movements"
+                  element={<StockMovementPage />}
+                />
+                <Route path="inventory/suppliers" element={<SuppliersPage />} />
 
-            <Route
-              path="blueprints"
-              element={
-                <RequireAuth roles={["admin"]}>
-                  <POSBlueprintView />
-                </RequireAuth>
-              }
-            />
-          </Route>
+                {/* Blueprints */}
+                <Route path="blueprints" element={<BlueprintsPage />} />
+                <Route
+                  path="blueprints/:id/design"
+                  element={<BlueprintDesign />}
+                />
+                <Route
+                  path="blueprints/:id/estimation"
+                  element={<EstimationPage />}
+                />
+                <Route path="contracts" element={<ContractsPage />} />
 
-          {/* Catch-all */}
-          <Route path="*" element={<Navigate to="/catalog" replace />} />
-        </Routes>
+                {/* Orders */}
+                <Route path="orders" element={<OrdersPage />} />
+                <Route path="orders/:id" element={<OrderDetailPage />} />
+                <Route
+                  path="orders/cancellations"
+                  element={<CancellationsPage />}
+                />
+
+                {/* Sales */}
+                <Route path="sales" element={<SalesReportPage />} />
+
+                {/* Warranty */}
+                <Route path="warranty" element={<WarrantyPage />} />
+
+                {/* Management – admin only */}
+                <Route
+                  path="customers"
+                  element={
+                    <RequireAuth roles={["admin"]}>
+                      <CustomersPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="users"
+                  element={
+                    <RequireAuth roles={["admin"]}>
+                      <UsersPage />
+                    </RequireAuth>
+                  }
+                />
+
+                {/* Website Maintenance – admin only */}
+                <Route
+                  path="website/settings"
+                  element={
+                    <RequireAuth roles={["admin"]}>
+                      <WebsiteSettingsPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="website/faqs"
+                  element={
+                    <RequireAuth roles={["admin"]}>
+                      <FaqsPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  path="website/pages"
+                  element={
+                    <RequireAuth roles={["admin"]}>
+                      <StaticPagesPage />
+                    </RequireAuth>
+                  }
+                />
+
+                {/* Backup – admin only */}
+                <Route
+                  path="backup"
+                  element={
+                    <RequireAuth roles={["admin"]}>
+                      <BackupPage />
+                    </RequireAuth>
+                  }
+                />
+              </Route>
+
+              {/* ══════════════════════════════════════════════════════════════════
+                  STAFF PORTAL
+              ══════════════════════════════════════════════════════════════════ */}
+              <Route
+                path="/staff"
+                element={
+                  <RequireAuth roles={["admin", "staff"]}>
+                    <POSLayout />
+                  </RequireAuth>
+                }
+              >
+                <Route
+                  index
+                  element={
+                    <Navigate
+                      to={getDefaultRouteForUser(useAuthStore.getState().user)}
+                      replace
+                    />
+                  }
+                />
+
+                <Route
+                  path="dashboard"
+                  element={
+                    <RequireStaffType allowedTypes={["indoor"]}>
+                      <POSDashboard />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="products"
+                  element={
+                    <RequireStaffType allowedTypes={["cashier"]}>
+                      <POSProductSearch />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="tasks"
+                  element={
+                    <RequireStaffType allowedTypes={["indoor"]}>
+                      <MyTasks />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="order"
+                  element={
+                    <RequireStaffType allowedTypes={["cashier"]}>
+                      <POSProcessOrder />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="history"
+                  element={
+                    <RequireStaffType allowedTypes={["cashier"]}>
+                      <POSOrderHistory />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="delivery"
+                  element={
+                    <RequireAuth roles={["admin"]}>
+                      <POSDeliveryScheduling />
+                    </RequireAuth>
+                  }
+                />
+
+                <Route
+                  path="deliveries"
+                  element={
+                    <RequireStaffType allowedTypes={["delivery_rider"]}>
+                      <POSDeliveryManagement />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="appointment"
+                  element={
+                    <RequireStaffOnlyType allowedTypes={["indoor"]}>
+                      <POSAppointmentScheduling />
+                    </RequireStaffOnlyType>
+                  }
+                />
+
+                <Route
+                  path="receipt/:id"
+                  element={
+                    <RequireStaffType allowedTypes={["cashier"]}>
+                      <POSReceiptPage />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="reports"
+                  element={
+                    <RequireStaffType allowedTypes={["cashier"]}>
+                      <POSSalesReports />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="inventory"
+                  element={
+                    <RequireStaffType allowedTypes={["indoor"]}>
+                      <POSInventoryLookup />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="blueprints"
+                  element={
+                    <RequireAuth roles={["admin"]}>
+                      <POSBlueprintView />
+                    </RequireAuth>
+                  }
+                />
+              </Route>
+
+              {/* Catch-all */}
+              <Route path="*" element={<Navigate to="/catalog" replace />} />
+            </Routes>
+          </CustomCartProvider>
+        </CartProvider>
       </BrowserRouter>
     </ErrorBoundary>
   );

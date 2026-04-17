@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import axios from "axios";
+// 👉 FIX: Removed raw axios, imported your authenticated api
+import api from "../../services/api";
 import {
   User,
   Mail,
@@ -81,14 +82,11 @@ export default function ProfileSettings() {
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailCooldown, setEmailCooldown] = useState(0);
 
-  /* Phone change */
+  /* Phone change (Simplified - No OTP) */
   const [editPhone, setEditPhone] = useState(false);
-  const [newPhone, setNewPhone] = useState("");
-  const [phoneOtp, setPhoneOtp] = useState("");
-  const [phoneStep, setPhoneStep] = useState(1);
+  const [newPhone, setNewPhone] = useState(user?.phone || "");
   const [phoneMsg, setPhoneMsg] = useState({ type: "", text: "" });
   const [phoneLoading, setPhoneLoading] = useState(false);
-  const [phoneCooldown, setPhoneCooldown] = useState(0);
 
   /* Password change */
   const [editPass, setEditPass] = useState(false);
@@ -113,12 +111,10 @@ export default function ProfileSettings() {
     const timers = [];
     if (emailCooldown > 0)
       timers.push(setTimeout(() => setEmailCooldown((c) => c - 1), 1000));
-    if (phoneCooldown > 0)
-      timers.push(setTimeout(() => setPhoneCooldown((c) => c - 1), 1000));
     if (passCooldown > 0)
       timers.push(setTimeout(() => setPassCooldown((c) => c - 1), 1000));
     return () => timers.forEach(clearTimeout);
-  }, [emailCooldown, phoneCooldown, passCooldown]);
+  }, [emailCooldown, passCooldown]);
 
   /* ════ AVATAR ════ */
   const handleAvatarChange = (e) => {
@@ -137,7 +133,8 @@ export default function ProfileSettings() {
     try {
       const fd = new FormData();
       fd.append("avatar", avatarFile);
-      const res = await axios.post("/api/customer/profile/avatar", fd, {
+      // 👉 FIX: Uses your custom api instance
+      const res = await api.post("/customer/profile/avatar", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setUser((prev) => ({ ...prev, profile_photo: res.data.profile_photo }));
@@ -158,7 +155,7 @@ export default function ProfileSettings() {
     setBasicLoading(true);
     setBasicMsg({ type: "", text: "" });
     try {
-      const res = await axios.put("/api/customer/profile/basic", basicForm);
+      await api.put("/customer/profile/basic", basicForm);
       setUser((prev) => ({
         ...prev,
         name: basicForm.name,
@@ -183,7 +180,7 @@ export default function ProfileSettings() {
     setEmailLoading(true);
     setEmailMsg({ type: "", text: "" });
     try {
-      await axios.post("/api/customer/profile/request-email-change", {
+      await api.post("/customer/profile/request-email-change", {
         new_email: newEmail,
       });
       setEmailStep(2);
@@ -204,7 +201,7 @@ export default function ProfileSettings() {
       return setEmailMsg({ type: "error", text: "Enter the OTP." });
     setEmailLoading(true);
     try {
-      await axios.post("/api/customer/profile/verify-email-change", {
+      await api.post("/customer/profile/verify-email-change", {
         otp: emailOtp,
       });
       setUser((prev) => ({ ...prev, email: newEmail }));
@@ -223,47 +220,22 @@ export default function ProfileSettings() {
     }
   };
 
-  /* ════ PHONE CHANGE ════ */
-  const sendPhoneOtp = async () => {
+  /* ════ PHONE CHANGE (Simplified) ════ */
+  const savePhone = async () => {
     if (!newPhone.trim())
       return setPhoneMsg({ type: "error", text: "Enter a phone number." });
+
     setPhoneLoading(true);
     setPhoneMsg({ type: "", text: "" });
     try {
-      await axios.post("/api/customer/profile/request-phone-change", {
-        new_phone: newPhone,
-      });
-      setPhoneStep(2);
-      setPhoneCooldown(60);
-      setPhoneMsg({ type: "success", text: `SMS OTP sent to ${newPhone}` });
-    } catch (err) {
-      setPhoneMsg({
-        type: "error",
-        text: err.response?.data?.message || "Failed to send SMS.",
-      });
-    } finally {
-      setPhoneLoading(false);
-    }
-  };
-
-  const verifyPhoneOtp = async () => {
-    if (!phoneOtp.trim())
-      return setPhoneMsg({ type: "error", text: "Enter the OTP." });
-    setPhoneLoading(true);
-    try {
-      await axios.post("/api/customer/profile/verify-phone-change", {
-        otp: phoneOtp,
-      });
+      await api.put("/customer/profile/phone", { phone: newPhone });
       setUser((prev) => ({ ...prev, phone: newPhone }));
       setPhoneMsg({ type: "success", text: "Phone number updated!" });
       setEditPhone(false);
-      setPhoneStep(1);
-      setNewPhone("");
-      setPhoneOtp("");
     } catch (err) {
       setPhoneMsg({
         type: "error",
-        text: err.response?.data?.message || "Invalid OTP.",
+        text: err.response?.data?.message || "Update failed.",
       });
     } finally {
       setPhoneLoading(false);
@@ -287,7 +259,7 @@ export default function ProfileSettings() {
     setPassLoading(true);
     setPassMsg({ type: "", text: "" });
     try {
-      await axios.post("/api/customer/profile/request-password-change", {
+      await api.post("/customer/profile/request-password-change", {
         current_password: passForm.current,
       });
       setPassStep(2);
@@ -308,7 +280,7 @@ export default function ProfileSettings() {
       return setPassMsg({ type: "error", text: "Enter the OTP." });
     setPassLoading(true);
     try {
-      await axios.post("/api/customer/profile/verify-password-change", {
+      await api.post("/customer/profile/verify-password-change", {
         otp: passOtp,
         new_password: passForm.newPass,
       });
@@ -338,9 +310,7 @@ export default function ProfileSettings() {
     }
     if (section === "phone") {
       setEditPhone(false);
-      setPhoneStep(1);
-      setNewPhone("");
-      setPhoneOtp("");
+      setNewPhone(user?.phone || "");
       setPhoneMsg({ type: "", text: "" });
     }
     if (section === "pass") {
@@ -643,7 +613,7 @@ export default function ProfileSettings() {
                   className="edit-toggle"
                   onClick={() => setEditPhone(true)}
                 >
-                  <Pencil size={13} /> Change
+                  <Pencil size={13} /> Edit
                 </button>
               )}
             </div>
@@ -658,10 +628,10 @@ export default function ProfileSettings() {
                     </span>
                   </div>
                 </div>
-              ) : phoneStep === 1 ? (
+              ) : (
                 <div className="profile-form">
                   <div className="form-field">
-                    <label>New Phone Number</label>
+                    <label>Phone Number</label>
                     <input
                       type="tel"
                       value={newPhone}
@@ -669,71 +639,13 @@ export default function ProfileSettings() {
                       placeholder="09XXXXXXXXX"
                     />
                   </div>
-                  <p style={{ fontSize: 12, color: "#888", marginTop: -6 }}>
-                    An SMS with a verification code will be sent to this number.
-                  </p>
                   <div className="profile-form-actions">
                     <button
                       className="btn btn-primary"
-                      onClick={sendPhoneOtp}
+                      onClick={savePhone}
                       disabled={phoneLoading}
                     >
-                      {phoneLoading ? "Sending SMS…" : "Send SMS OTP"}
-                    </button>
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => cancelSection("phone")}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="verify-step">
-                  <h4>📱 Verify your phone number</h4>
-                  <p>
-                    We sent a 6-digit OTP via SMS to <strong>{newPhone}</strong>
-                    .
-                  </p>
-                  <div className="otp-input-row">
-                    <input
-                      type="text"
-                      maxLength={6}
-                      placeholder="000000"
-                      value={phoneOtp}
-                      onChange={(e) =>
-                        setPhoneOtp(e.target.value.replace(/\D/g, ""))
-                      }
-                    />
-                    <button
-                      className="resend-btn"
-                      onClick={() => {
-                        setPhoneCooldown(60);
-                        sendPhoneOtp();
-                      }}
-                      disabled={phoneCooldown > 0}
-                    >
-                      {phoneCooldown > 0
-                        ? `Resend (${phoneCooldown}s)`
-                        : "Resend SMS"}
-                    </button>
-                  </div>
-                  <div
-                    className="profile-form-actions"
-                    style={{ marginTop: 14 }}
-                  >
-                    <button
-                      className="btn btn-primary"
-                      onClick={verifyPhoneOtp}
-                      disabled={phoneLoading}
-                    >
-                      {phoneLoading ? (
-                        "Verifying…"
-                      ) : (
-                        <>
-                          <ShieldCheck size={14} /> Verify & Save
-                        </>
-                      )}
+                      {phoneLoading ? "Saving…" : "Save Changes"}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -833,19 +745,14 @@ export default function ProfileSettings() {
                       )}
                     </div>
                   ))}
-                  <p style={{ fontSize: 12, color: "#888" }}>
-                    After verifying your current password, we'll send an OTP to{" "}
-                    <strong>{user?.email}</strong>.
-                  </p>
                   <div className="profile-form-actions">
                     <button
                       className="btn btn-primary"
                       onClick={requestPassOtp}
                       disabled={passLoading}
                     >
-                      {passLoading
-                        ? "Sending OTP…"
-                        : "Continue → Verify via Email"}
+                      {/* 👉 FIX: Button label changed as requested */}
+                      {passLoading ? "Sending OTP…" : "Continue"}
                     </button>
                     <button
                       className="btn btn-secondary"

@@ -9,9 +9,26 @@ const ROLE_STYLE = {
   staff: { bg: "#dbeafe", color: "#1e40af", label: "Staff / POS" },
 };
 
+// 👉 FIX: Added Cashier and descriptions to the style object
 const STAFF_TYPE_STYLE = {
-  indoor: { bg: "#ecfeff", color: "#155e75", label: "Indoor Staff" },
-  delivery_rider: { bg: "#fff7ed", color: "#c2410c", label: "Delivery Rider" },
+  cashier: {
+    bg: "#dcfce7",
+    color: "#065f46",
+    label: "Cashier",
+    desc: "Handles POS and Walk-in orders",
+  },
+  indoor: {
+    bg: "#ecfeff",
+    color: "#155e75",
+    label: "Indoor Staff",
+    desc: "Project tasks / appointments",
+  },
+  delivery_rider: {
+    bg: "#fff7ed",
+    color: "#c2410c",
+    label: "Delivery Rider",
+    desc: "Delivery assignment only",
+  },
 };
 
 const BLANK_FORM = {
@@ -19,7 +36,7 @@ const BLANK_FORM = {
   email: "",
   password: "",
   role: "staff",
-  staff_type: "indoor",
+  staff_type: "cashier", // Default to cashier when creating staff
   phone: "",
   is_active: true,
 };
@@ -59,7 +76,7 @@ export default function UsersPage() {
       name: u.name,
       email: u.email,
       role: u.role,
-      staff_type: u.staff_type || "indoor",
+      staff_type: u.staff_type || "cashier",
       phone: u.phone || "",
       is_active: !!u.is_active,
       password: "",
@@ -305,7 +322,7 @@ export default function UsersPage() {
                           if (key !== "staff") {
                             setF("staff_type", "");
                           } else if (!form.staff_type) {
-                            setF("staff_type", "indoor");
+                            setF("staff_type", "cashier");
                           }
                         }}
                         style={{ accentColor: rs.color }}
@@ -327,7 +344,14 @@ export default function UsersPage() {
 
               {form.role === "staff" && (
                 <Field label="Staff Type *">
-                  <div style={{ display: "flex", gap: 12 }}>
+                  {/* 👉 FIX: Changed to Grid layout so 3 buttons fit perfectly */}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 12,
+                    }}
+                  >
                     {Object.entries(STAFF_TYPE_STYLE).map(([key, rs]) => (
                       <label
                         key={key}
@@ -339,7 +363,6 @@ export default function UsersPage() {
                           padding: "10px 16px",
                           border: `2px solid ${form.staff_type === key ? rs.color : "#e2e8f0"}`,
                           borderRadius: 8,
-                          flex: 1,
                           fontSize: 13,
                           background: form.staff_type === key ? rs.bg : "#fff",
                         }}
@@ -355,10 +378,9 @@ export default function UsersPage() {
                           <div style={{ fontWeight: 600, color: rs.color }}>
                             {rs.label}
                           </div>
+                          {/* 👉 FIX: Pulls the description dynamically */}
                           <div style={{ fontSize: 11, color: "#64748b" }}>
-                            {key === "indoor"
-                              ? "Project task / appointment side"
-                              : "Delivery assignment only"}
+                            {rs.desc}
                           </div>
                         </div>
                       </label>
@@ -492,7 +514,15 @@ export default function UsersPage() {
   );
 }
 
-function UserTable({ title, users, loading, me, onEdit, onPassword, onDelete }) {
+function UserTable({
+  title,
+  users,
+  loading,
+  me,
+  onEdit,
+  onPassword,
+  onDelete,
+}) {
   return (
     <div style={card}>
       <div
@@ -613,14 +643,16 @@ function UserTable({ title, users, loading, me, onEdit, onPassword, onDelete }) 
                             background:
                               STAFF_TYPE_STYLE[u.staff_type]?.bg || "#f1f5f9",
                             color:
-                              STAFF_TYPE_STYLE[u.staff_type]?.color || "#475569",
+                              STAFF_TYPE_STYLE[u.staff_type]?.color ||
+                              "#475569",
                             padding: "2px 10px",
                             borderRadius: 12,
                             fontSize: 11,
                             fontWeight: 600,
                           }}
                         >
-                          {STAFF_TYPE_STYLE[u.staff_type]?.label || u.staff_type}
+                          {STAFF_TYPE_STYLE[u.staff_type]?.label ||
+                            u.staff_type}
                         </span>
                       )}
                     </div>
