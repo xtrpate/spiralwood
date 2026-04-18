@@ -147,8 +147,8 @@ export default function AdminLayout() {
   }, [user, navigate]);
 
   const handleLogout = () => {
-    clearCart();
     logout();
+    clearCart(false);
     toast.success("Logged out.");
     navigate("/login");
   };

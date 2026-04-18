@@ -86,8 +86,8 @@ export default function POSLayout() {
           : user?.role || "User";
 
   const handleLogout = () => {
-    clearCart();
     logout();
+    clearCart(false);
     window.location.href = "/login";
   };
 

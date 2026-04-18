@@ -150,7 +150,6 @@ const getInitialCart = () => {
 };
 
 export function CartProvider({ children }) {
-  // 👉 THE FIX: Restored the missing variables that your friend deleted!
   const { user } = useAuthStore();
   const isInitialMount = useRef(true);
   const [cart, setCart] = useState(getInitialCart);
@@ -191,7 +190,6 @@ export function CartProvider({ children }) {
     );
 
     if (user && user.role === "customer" && !isInitialMount.current) {
-      // 👉 THE FIX: Restored the API call your friend accidentally deleted!
       api.post("/customer/cart/sync", { cart }).catch((err) => {
         console.error("Cloud sync failed", err);
       });
@@ -266,17 +264,17 @@ export function CartProvider({ children }) {
     setCart((prev) => prev.filter((item) => !keySet.has(item.key)));
   };
 
-  const clearCart = () => {
+  // 👉 THE FIX: We added a switch here so it only deletes the database if syncToCloud is true!
+  const clearCart = (syncToCloud = true) => {
     setMiniCartOpen(false);
     setCart([]);
 
-    // 👉 THE FIX: Restored the storage cleanup your friend deleted
     localStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem(LEGACY_CUSTOM_STORAGE_KEY);
     sessionStorage.removeItem("cust_selected_keys");
     sessionStorage.removeItem("cust_selected_custom_checkout");
 
-    if (user && user.role === "customer") {
+    if (syncToCloud && user && user.role === "customer") {
       api.post("/customer/cart/sync", { cart: [] }).catch((err) => {
         console.error("Cloud clear cart sync failed", err);
       });
@@ -317,7 +315,6 @@ export function CartProvider({ children }) {
     [cart],
   );
 
-  // 👉 THE FIX: Restored the value object your friend deleted!
   const value = useMemo(
     () => ({
       cart,
