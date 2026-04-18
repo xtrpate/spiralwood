@@ -4,8 +4,13 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+
+// Your existing auth middlewares
 const { authenticate, requireCustomer } = require("../middleware/auth");
 const orderController = require("../controllers/customer/customer.orders");
+
+// 👉 ADDED: We must import the new cart controller so the routes can use it!
+const cartController = require("../controllers/customer/customer.cart");
 
 /* ── Multer — proof of payment upload ── */
 const uploadDir = path.join(__dirname, "../uploads/proofs");
@@ -40,7 +45,7 @@ router.get(
   orderController.getSettings,
 );
 
-// 👉 NEW: Route to catch the PayMongo Redirect Success
+// Route to catch the PayMongo Redirect Success
 router.post(
   "/verify-payment",
   authenticate,
@@ -71,7 +76,12 @@ router.put(
   orderController.cancelOrder,
 );
 
-router.get("/cart", requireAuth, cartController.getCart);
-router.post("/cart/sync", requireAuth, cartController.syncCart);
+router.get("/cart", authenticate, requireCustomer, cartController.getCart);
+router.post(
+  "/cart/sync",
+  authenticate,
+  requireCustomer,
+  cartController.syncCart,
+);
 
 module.exports = router;
