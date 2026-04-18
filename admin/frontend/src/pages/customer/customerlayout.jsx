@@ -56,6 +56,9 @@ export default function CustomerLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [headerSearch, setHeaderSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeOrdersCount, setActiveOrdersCount] = useState(0);
 
@@ -167,6 +170,36 @@ export default function CustomerLayout() {
       active = false;
     };
   }, [customerUser]);
+
+  // 👉 ADD THIS EFFECT: Fetches products for the Top Navbar dropdown
+  useEffect(() => {
+    if (!headerSearch.trim() || !searchFocused) {
+      setSearchResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const res = await api.get("/customer/products", {
+          params: { q: headerSearch, limit: 5 }, // Only grab the top 5 matches
+        });
+        const rawProducts = Array.isArray(res.data?.products)
+          ? res.data.products
+          : [];
+        const visibleProducts = rawProducts.filter(
+          (item) => String(item?.type || "").toLowerCase() !== "blueprint",
+        );
+        setSearchResults(visibleProducts);
+      } catch (err) {
+        console.error("Navbar search error", err);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [headerSearch, searchFocused]);
 
   const avatarSrc = customerUser?.profile_photo
     ? buildAssetUrl(customerUser.profile_photo)
@@ -345,17 +378,143 @@ export default function CustomerLayout() {
               <span>Menu</span>
             </button>
 
-            <form className="cust-header-search" onSubmit={handleHeaderSearch}>
-              <input
-                type="text"
-                placeholder="Search furniture..."
-                value={headerSearch}
-                onChange={(e) => setHeaderSearch(e.target.value)}
-              />
-              <button type="submit" aria-label="Search">
-                <Search size={20} />
-              </button>
-            </form>
+            <div style={{ position: "relative" }}>
+              <form
+                className="cust-header-search"
+                onSubmit={handleHeaderSearch}
+                style={{ margin: 0 }}
+              >
+                <input
+                  type="text"
+                  placeholder="Search furniture..."
+                  value={headerSearch}
+                  onChange={(e) => setHeaderSearch(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
+                />
+                <button type="submit" aria-label="Search">
+                  <Search size={20} />
+                </button>
+              </form>
+
+              {/* 👉 TOP NAVBAR DROPDOWN */}
+              {searchFocused && headerSearch.trim().length > 0 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 8px)",
+                    left: 0,
+                    width: "350px", // Fixed width so it drops down cleanly
+                    background: "#ffffff",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)",
+                    maxHeight: "350px",
+                    overflowY: "auto",
+                    zIndex: 1000,
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  {searchLoading ? (
+                    <div
+                      style={{
+                        padding: "16px",
+                        color: "#64748b",
+                        fontSize: "13px",
+                        textAlign: "center",
+                      }}
+                    >
+                      Searching...
+                    </div>
+                  ) : searchResults.length === 0 ? (
+                    <div
+                      style={{
+                        padding: "16px",
+                        color: "#64748b",
+                        fontSize: "13px",
+                        textAlign: "center",
+                      }}
+                    >
+                      No results found for "{headerSearch}"
+                    </div>
+                  ) : (
+                    searchResults.map((product) => (
+                      <div
+                        key={product.id}
+                        onClick={() => {
+                          setSearchFocused(false);
+                          // Navigate to Catalog with this exact product targeted
+                          navigate(
+                            `/catalog?q=${encodeURIComponent(product.name)}`,
+                          );
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          padding: "12px 16px",
+                          cursor: "pointer",
+                          borderBottom: "1px solid #f1f5f9",
+                          transition: "background 0.2s",
+                        }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.background = "#f8fafc")
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.background = "#ffffff")
+                        }
+                      >
+                        <div
+                          style={{
+                            width: "40px",
+                            height: "40px",
+                            borderRadius: "6px",
+                            background: "#f8fafc",
+                            overflow: "hidden",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <img
+                            src={buildAssetUrl(product.image_url)}
+                            alt={product.name}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                            }}
+                            onError={(e) =>
+                              (e.currentTarget.style.display = "none")
+                            }
+                          />
+                        </div>
+                        <div style={{ flex: 1, overflow: "hidden" }}>
+                          <div
+                            style={{
+                              fontSize: "13px",
+                              fontWeight: "600",
+                              color: "#0f172a",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {product.name}
+                          </div>
+                          <div style={{ fontSize: "12px", color: "#64748b" }}>
+                            ₱
+                            {parseFloat(product.online_price).toLocaleString(
+                              "en-PH",
+                              { minimumFractionDigits: 2 },
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           <button
