@@ -218,8 +218,7 @@ export default function CustomerLayout() {
   const handleLogout = () => {
     setAccountOpen(false);
     closeMiniCart();
-    setCart([]);
-    clearCart();
+    clearCart(false);
     logout();
     navigate("/login");
   };
