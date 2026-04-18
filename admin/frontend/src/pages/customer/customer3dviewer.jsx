@@ -1220,11 +1220,11 @@ export default function Customer3DViewer({
   return (
     <div style={styles.root}>
       <div style={styles.topBar}>
-        <div>
-          <div style={styles.topBarTitle}>
-            {readOnly ? "Template Preview" : "Live Configurator"}
+        <div style={styles.topBarMeta}>
+          <div style={styles.topBarEyebrow}>
+            {readOnly ? "Approved Template Preview" : "Live Configurator"}
           </div>
-          <div style={styles.topBarDims}>
+          <div style={styles.topBarTitle}>
             {formatUnitLabel(overallBounds.width_mm)} ×{" "}
             {formatUnitLabel(overallBounds.height_mm)} ×{" "}
             {formatUnitLabel(overallBounds.depth_mm)}
@@ -1232,9 +1232,10 @@ export default function Customer3DViewer({
         </div>
 
         <div style={styles.topBarActions}>
-          {!readOnly && (
-            <div style={styles.undoRedoGroup}>
+          {!readOnly ? (
+            <div style={styles.compactGroup}>
               <button
+                type="button"
                 onClick={handleUndo}
                 disabled={undoDisabled}
                 style={{
@@ -1244,7 +1245,9 @@ export default function Customer3DViewer({
               >
                 Undo
               </button>
+
               <button
+                type="button"
                 onClick={handleRedo}
                 disabled={redoDisabled}
                 style={{
@@ -1255,17 +1258,18 @@ export default function Customer3DViewer({
                 Redo
               </button>
             </div>
-          )}
+          ) : null}
 
           <div style={styles.unitToggleGroup}>
-            {["cm", "m", "inches", "ft", "yd", "mm"].map((u) => (
+            {["cm", "m", "inches", "ft", "yd", "mm"].map((u, index, arr) => (
               <button
                 key={u}
+                type="button"
                 onClick={() => setUnit(u)}
                 style={{
                   ...styles.unitBtn,
-                  background: unit === u ? "#0f172a" : "#fff",
-                  color: unit === u ? "#fff" : "#64748b",
+                  ...(index !== arr.length - 1 ? styles.unitBtnDivider : {}),
+                  ...(unit === u ? styles.unitBtnActive : {}),
                 }}
               >
                 {u}
@@ -1281,11 +1285,11 @@ export default function Customer3DViewer({
             {["3D", "Front", "Back", "Side", "Top", "Bottom"].map((view) => (
               <button
                 key={view}
+                type="button"
                 onClick={() => changeCameraView(view)}
                 style={{
                   ...styles.cameraBtn,
-                  background: activeView === view ? "#1d4ed8" : "#ffffff",
-                  color: activeView === view ? "#ffffff" : "#334155",
+                  ...(activeView === view ? styles.cameraBtnActive : {}),
                 }}
               >
                 {view}
@@ -1308,23 +1312,49 @@ export default function Customer3DViewer({
 
         <aside style={styles.sidebar}>
           <div style={styles.sidebarScroll}>
-            <div style={styles.sidebarBlock}>
-              <h3 style={styles.sidebarTitle}>Template Configurator</h3>
-              <p style={styles.helpText}>
-                Adjust overall dimensions, or turn on Part Selection to edit
-                specific groups of wood (like legs or panels).
-              </p>
-            </div>
+            <section style={styles.sidebarSection}>
+              <div style={styles.sidebarSectionHeader}>
+                <div style={styles.sidebarSectionTitle}>Template Configurator</div>
+              </div>
 
-            <div
+              <p style={styles.sidebarSectionNote}>
+                Adjust only the admin-approved values. Structure stays based on the
+                saved template.
+              </p>
+
+              <div style={styles.metricsGrid}>
+                <div style={styles.metricCard}>
+                  <span style={styles.metricLabel}>Width</span>
+                  <strong style={styles.metricValue}>
+                    {formatUnitLabel(overallBounds.width_mm)}
+                  </strong>
+                </div>
+
+                <div style={styles.metricCard}>
+                  <span style={styles.metricLabel}>Height</span>
+                  <strong style={styles.metricValue}>
+                    {formatUnitLabel(overallBounds.height_mm)}
+                  </strong>
+                </div>
+
+                <div style={styles.metricCard}>
+                  <span style={styles.metricLabel}>Depth</span>
+                  <strong style={styles.metricValue}>
+                    {formatUnitLabel(overallBounds.depth_mm)}
+                  </strong>
+                </div>
+              </div>
+            </section>
+
+            <section
               style={{
-                ...styles.sidebarBlock,
-                background: selectionMode ? "#eff6ff" : "#fff",
-                borderColor: selectionMode ? "#bfdbfe" : "#e2e8f0",
+                ...styles.sidebarSection,
+                ...(selectionMode ? styles.sidebarSectionActive : {}),
               }}
             >
               <div style={styles.sectionRow}>
                 <label style={styles.label}>Specific Part Editing</label>
+
                 <label style={styles.inlineCheck}>
                   <input
                     type="checkbox"
@@ -1334,76 +1364,67 @@ export default function Customer3DViewer({
                       if (!e.target.checked) setSelectedCompIds([]);
                     }}
                   />
-                  <span
-                    style={{
-                      fontWeight: "bold",
-                      color: selectionMode ? "#1d4ed8" : "#475569",
-                    }}
-                  >
+                  <span style={selectionMode ? styles.inlineCheckActive : null}>
                     Select Parts
                   </span>
                 </label>
               </div>
 
-              {selectionMode && (
+              {selectionMode ? (
                 <>
                   <div style={styles.helperText}>
                     Tap a part in the 3D view, or use the quick-select buttons
-                    below:
+                    below.
                   </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "6px",
-                      flexWrap: "wrap",
-                      marginTop: "4px",
-                    }}
-                  >
-                    {partGroups.map((g, i) => {
+
+                  <div style={styles.chipRow}>
+                    {partGroups.map((group, index) => {
                       const isSelected =
                         selectedCompIds.length > 0 &&
-                        selectedCompIds.includes(g.ids[0]);
+                        selectedCompIds.includes(group.ids[0]);
+
                       return (
                         <button
-                          key={i}
-                          onClick={() => setSelectedCompIds(g.ids)}
+                          key={index}
+                          type="button"
+                          onClick={() => setSelectedCompIds(group.ids)}
                           style={{
                             ...styles.miniBtn,
-                            background: isSelected ? "#38bdf8" : "#e2e8f0",
-                            color: isSelected ? "#fff" : "#334155",
+                            ...(isSelected ? styles.miniBtnActive : {}),
                           }}
                         >
-                          {g.label} ({g.ids.length})
+                          {group.label} ({group.ids.length})
                         </button>
                       );
                     })}
                   </div>
                 </>
+              ) : (
+                <div style={styles.helperTextMuted}>
+                  Turn this on if you want to edit a repeated group like legs,
+                  shelves, or panels instead of scaling the whole furniture.
+                </div>
               )}
-            </div>
+            </section>
 
             {selectionMode && selectedGroup.length > 0 && sampleSelectedPart ? (
-              <div
-                style={{
-                  ...styles.sidebarBlock,
-                  borderColor: "#38bdf8",
-                  borderWidth: "2px",
-                }}
-              >
+              <section style={styles.sidebarSection}>
                 <div style={styles.sectionRow}>
                   <label style={styles.label}>
                     Editing {selectedGroup.length} Identical Part(s)
                   </label>
+
                   <button
+                    type="button"
                     onClick={() => setSelectedCompIds([])}
-                    style={styles.miniBtn}
+                    style={styles.clearBtn}
                   >
                     Clear
                   </button>
                 </div>
 
-                <div style={styles.dimGrid}>
-                  <div>
+                <div style={styles.dimensionGrid}>
+                  <div style={styles.inputGroup}>
                     <span style={styles.dimLabel}>
                       {getPartAxisLabels(sampleSelectedPart).width}
                     </span>
@@ -1411,19 +1432,22 @@ export default function Customer3DViewer({
                       type="number"
                       value={partDrafts.width}
                       onChange={(e) =>
-                        setPartDrafts((p) => ({ ...p, width: e.target.value }))
+                        setPartDrafts((prev) => ({
+                          ...prev,
+                          width: e.target.value,
+                        }))
                       }
-                      onBlur={(e) =>
-                        commitPartDimension("width", e.target.value)
-                      }
+                      onBlur={(e) => commitPartDimension("width", e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter")
+                        if (e.key === "Enter") {
                           commitPartDimension("width", e.target.value);
+                        }
                       }}
                       style={styles.input}
                     />
                   </div>
-                  <div>
+
+                  <div style={styles.inputGroup}>
                     <span style={styles.dimLabel}>
                       {getPartAxisLabels(sampleSelectedPart).height}
                     </span>
@@ -1431,19 +1455,24 @@ export default function Customer3DViewer({
                       type="number"
                       value={partDrafts.height}
                       onChange={(e) =>
-                        setPartDrafts((p) => ({ ...p, height: e.target.value }))
+                        setPartDrafts((prev) => ({
+                          ...prev,
+                          height: e.target.value,
+                        }))
                       }
                       onBlur={(e) =>
                         commitPartDimension("height", e.target.value)
                       }
                       onKeyDown={(e) => {
-                        if (e.key === "Enter")
+                        if (e.key === "Enter") {
                           commitPartDimension("height", e.target.value);
+                        }
                       }}
                       style={styles.input}
                     />
                   </div>
-                  <div>
+
+                  <div style={styles.inputGroup}>
                     <span style={styles.dimLabel}>
                       {getPartAxisLabels(sampleSelectedPart).depth}
                     </span>
@@ -1451,31 +1480,31 @@ export default function Customer3DViewer({
                       type="number"
                       value={partDrafts.depth}
                       onChange={(e) =>
-                        setPartDrafts((p) => ({ ...p, depth: e.target.value }))
+                        setPartDrafts((prev) => ({
+                          ...prev,
+                          depth: e.target.value,
+                        }))
                       }
-                      onBlur={(e) =>
-                        commitPartDimension("depth", e.target.value)
-                      }
+                      onBlur={(e) => commitPartDimension("depth", e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter")
+                        if (e.key === "Enter") {
                           commitPartDimension("depth", e.target.value);
+                        }
                       }}
                       style={styles.input}
                     />
                   </div>
                 </div>
-              </div>
+              </section>
             ) : (
-              <div style={styles.sidebarBlock}>
+              <section style={styles.sidebarSection}>
                 <div style={styles.sectionRow}>
-                  <label style={styles.label}>
-                    Overall Dimensions ({unit})
-                  </label>
-                  <span style={styles.miniPill}>Proportional</span>
+                  <label style={styles.label}>Overall Dimensions ({unit})</label>
+                  <span style={styles.pill}>Proportional</span>
                 </div>
 
-                <div style={styles.dimGrid}>
-                  <div>
+                <div style={styles.dimensionGrid}>
+                  <div style={styles.inputGroup}>
                     <span style={styles.dimLabel}>Width</span>
                     <input
                       type="number"
@@ -1491,7 +1520,8 @@ export default function Customer3DViewer({
                       style={styles.input}
                     />
                   </div>
-                  <div>
+
+                  <div style={styles.inputGroup}>
                     <span style={styles.dimLabel}>Height</span>
                     <input
                       type="number"
@@ -1507,7 +1537,8 @@ export default function Customer3DViewer({
                       style={styles.input}
                     />
                   </div>
-                  <div>
+
+                  <div style={styles.inputGroup}>
                     <span style={styles.dimLabel}>Depth</span>
                     <input
                       type="number"
@@ -1524,46 +1555,49 @@ export default function Customer3DViewer({
                     />
                   </div>
                 </div>
-              </div>
+              </section>
             )}
 
-            <div
+            <section
               style={{
-                ...styles.sidebarBlock,
-                opacity: readOnly ? 0.5 : 1,
-                pointerEvents: readOnly ? "none" : "auto",
+                ...styles.sidebarSection,
+                ...(readOnly || !editable.finish_color
+                  ? styles.sidebarSectionDisabled
+                  : {}),
               }}
             >
               <div style={styles.sectionRow}>
-                <label style={styles.label}>Paint & Finish</label>
-                {selectedGroup.length > 0 && (
-                  <span style={styles.miniPill}>Applies to selection</span>
-                )}
+                <label style={styles.label}>Finish & Paint</label>
+                {selectedGroup.length > 0 ? (
+                  <span style={styles.pill}>Applies to selection</span>
+                ) : null}
               </div>
 
-              <span style={styles.dimLabel}>Standard Wood Finishes</span>
-              <select
-                onChange={(e) => handleFinishChange(e.target.value)}
-                style={styles.input}
-              >
-                <option value="">Original / Custom</option>
-                {WOOD_FINISHES?.map((finish) => (
-                  <option key={finish.id} value={finish.id}>
-                    {finish.label}
-                  </option>
-                ))}
-              </select>
+              <div style={styles.inputGroup}>
+                <span style={styles.dimLabel}>Standard Wood Finish</span>
+                <select
+                  onChange={(e) => handleFinishChange(e.target.value)}
+                  style={styles.input}
+                  disabled={readOnly || !editable.finish_color}
+                >
+                  <option value="">Original / Custom</option>
+                  {WOOD_FINISHES?.map((finish) => (
+                    <option key={finish.id} value={finish.id}>
+                      {finish.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-              <span style={{ ...styles.dimLabel, marginTop: "10px" }}>
-                Custom Solid Paint (HEX Code)
-              </span>
-              <div style={{ display: "flex", gap: "8px" }}>
+              <div style={styles.colorPickerRow}>
                 <input
                   type="color"
                   value={customHex}
                   onChange={(e) => handleColorChange(e.target.value)}
                   style={styles.colorPicker}
+                  disabled={readOnly || !editable.finish_color}
                 />
+
                 <input
                   type="text"
                   value={customHex}
@@ -1574,13 +1608,15 @@ export default function Customer3DViewer({
                   }}
                   placeholder="#HexCode"
                   style={{ ...styles.input, fontFamily: "monospace" }}
+                  disabled={readOnly || !editable.finish_color}
                 />
               </div>
-            </div>
+            </section>
 
-            <div style={styles.sidebarBlock}>
+            <section style={styles.sidebarSection}>
               <div style={styles.sectionRow}>
-                <label style={styles.label}>Person Scale</label>
+                <label style={styles.label}>Human Scale Reference</label>
+
                 <label style={styles.inlineCheck}>
                   <input
                     type="checkbox"
@@ -1592,7 +1628,7 @@ export default function Customer3DViewer({
               </div>
 
               {showPerson ? (
-                <div>
+                <div style={styles.inputGroup}>
                   <span style={styles.dimLabel}>Height ({unit})</span>
                   <input
                     type="number"
@@ -1605,16 +1641,17 @@ export default function Customer3DViewer({
                   />
                 </div>
               ) : null}
-            </div>
+            </section>
           </div>
 
           {!readOnly ? (
             <div style={styles.sidebarFooter}>
-              <div style={styles.footerTopRow}>
+              <div style={styles.footerHeader}>
                 <div>
                   <div style={styles.footerTitle}>Finalize</div>
-                  <div style={styles.footerSubtext}>
-                    Quantity, note, then add to cart.
+                  <div style={styles.footerNote}>
+                    Set quantity, upload references, add a message, then add to
+                    cart.
                   </div>
                 </div>
 
@@ -1627,7 +1664,9 @@ export default function Customer3DViewer({
                   >
                     −
                   </button>
+
                   <strong style={styles.qtyValue}>{quantity}</strong>
+
                   <button
                     type="button"
                     disabled={!editable.quantity}
@@ -1640,9 +1679,62 @@ export default function Customer3DViewer({
               </div>
 
               <div style={styles.footerField}>
+                <div style={styles.uploadHeader}>
+                  <label style={styles.footerLabel}>Reference Photos</label>
+                  <span style={styles.uploadHint}>
+                    Up to 4 images • JPG / PNG / WEBP
+                  </span>
+                </div>
+
+                <label style={styles.uploadButton}>
+                  Upload Photo
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    multiple
+                    hidden
+                    onChange={onPickReferencePhotos}
+                  />
+                </label>
+
+                {uploadError ? (
+                  <div style={styles.uploadError}>{uploadError}</div>
+                ) : null}
+
+                {referencePhotos?.length ? (
+                  <div style={styles.photoGrid}>
+                    {referencePhotos.map((photo) => (
+                      <div key={photo.id} style={styles.photoCard}>
+                        <div style={styles.photoThumb}>
+                          <img
+                            src={photo.data_url}
+                            alt={photo.name}
+                            style={styles.photoThumbImg}
+                          />
+                        </div>
+
+                        <div style={styles.photoMeta}>
+                          <div style={styles.photoName}>{photo.name}</div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => onRemoveReferencePhoto?.(photo.id)}
+                          style={styles.photoRemove}
+                          aria-label={`Remove ${photo.name}`}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <div style={styles.footerField}>
                 <label style={styles.footerLabel}>{commentsLabel}</label>
                 <textarea
-                  rows={3}
+                  rows={4}
                   maxLength={500}
                   value={comments}
                   disabled={!editable.comments}
@@ -1668,290 +1760,590 @@ export default function Customer3DViewer({
 }
 
 const styles = {
-  root: { display: "grid", gap: 10, minHeight: 0 },
+  root: {
+    display: "grid",
+    gap: 8,
+    minHeight: 0,
+    fontFamily: "Montserrat, sans-serif",
+  },
+
   topBar: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
     flexWrap: "wrap",
     padding: "10px 12px",
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    borderRadius: 14,
-    background: "#f8fafc",
+    border: "1px solid #d9dee4",
+    background: "#ffffff",
   },
-  topBarTitle: { fontSize: 14, fontWeight: 800, color: "#0f172a" },
-  topBarDims: { fontSize: 12, color: "#64748b", marginTop: 4, fontWeight: 600 },
+
+  topBarMeta: {
+    display: "grid",
+    gap: 2,
+  },
+
+  topBarEyebrow: {
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "#6b7280",
+  },
+
+  topBarTitle: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: "#111111",
+  },
+
   topBarActions: {
     display: "flex",
     alignItems: "center",
     gap: 8,
     flexWrap: "wrap",
   },
-  undoRedoGroup: { display: "flex", gap: "4px" },
+
+  compactGroup: {
+    display: "flex",
+    gap: 6,
+  },
+
   toolBtn: {
-    height: 30,
+    height: 32,
     padding: "0 12px",
-    borderRadius: 8,
-    border: "1px solid #cbd5e1",
+    borderRadius: 0,
+    border: "1px solid #111111",
     background: "#ffffff",
-    color: "#334155",
-    fontWeight: 800,
+    color: "#111111",
+    fontWeight: 700,
     fontSize: 12,
     cursor: "pointer",
   },
-  toolBtnDisabled: { opacity: 0.5, cursor: "not-allowed" },
+
+  toolBtnDisabled: {
+    opacity: 0.45,
+    cursor: "not-allowed",
+  },
+
   unitToggleGroup: {
     display: "flex",
-    borderRadius: 8,
-    overflow: "hidden",
-    border: "1px solid #cbd5e1",
+    border: "1px solid #111111",
+    background: "#ffffff",
   },
+
   unitBtn: {
-    padding: "4px 8px",
-    fontSize: 12,
-    fontWeight: "bold",
+    minWidth: 40,
+    height: 32,
+    padding: "0 10px",
     border: "none",
+    background: "#ffffff",
+    color: "#111111",
+    fontSize: 11,
+    fontWeight: 700,
     cursor: "pointer",
-    borderRight: "1px solid #cbd5e1",
   },
-  modeBadge: {
-    fontSize: 12,
-    fontWeight: 800,
-    padding: "8px 12px",
-    borderRadius: 999,
-    whiteSpace: "nowrap",
+
+  unitBtnDivider: {
+    borderRight: "1px solid #d9d9d9",
   },
+
+  unitBtnActive: {
+    background: "#111111",
+    color: "#ffffff",
+  },
+
   viewerShell: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) 340px",
-    height: "clamp(520px, 68vh, 620px)",
-    minHeight: 520,
-    borderRadius: 18,
-    overflow: "hidden",
+    height: "clamp(640px, 78vh, 820px)",
+    minHeight: 640,
+    border: "1px solid #d9dee4",
     background: "#ffffff",
-    border: "1px solid rgba(15, 23, 42, 0.08)",
+    overflow: "hidden",
   },
+
   canvasWrap: {
     minWidth: 0,
     minHeight: 0,
     position: "relative",
-    background: "#f8fafc",
+    background: "#f7f7f7",
   },
+
   canvasContainer: {
     width: "100%",
     height: "100%",
-    minHeight: 520,
-    backgroundColor: "#f8fafc",
+    minHeight: 640,
+    backgroundColor: "#f7f7f7",
   },
+
   cameraToolbar: {
     position: "absolute",
     top: 12,
     left: 12,
-    display: "flex",
-    gap: "6px",
-    flexWrap: "wrap",
-    maxWidth: "200px",
     zIndex: 10,
-    background: "rgba(255,255,255,0.9)",
-    padding: "4px",
-    borderRadius: "10px",
-    boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
-    border: "1px solid #e2e8f0",
+    display: "grid",
+    gridTemplateColumns: "repeat(6, auto)",
+    gap: 0,
+    width: "max-content",
+    border: "1px solid #cfcfcf",
+    background: "#ffffff",
+    boxSizing: "border-box",
   },
+
   cameraBtn: {
-    padding: "6px 10px",
-    fontSize: "11px",
-    fontWeight: "bold",
+    minWidth: 48,
+    height: 34,
+    padding: "0 12px",
     border: "none",
-    borderRadius: "6px",
+    borderRight: "1px solid #cfcfcf",
+    background: "#ffffff",
+    color: "#111111",
+    fontSize: 11,
+    fontWeight: 700,
     cursor: "pointer",
-    transition: "all 0.2s",
+    boxSizing: "border-box",
   },
-  colorPicker: {
-    width: "40px",
-    height: "40px",
-    padding: "0",
-    border: "none",
-    borderRadius: "8px",
-    cursor: "pointer",
-    overflow: "hidden",
-    background: "none",
+
+  cameraBtnActive: {
+    background: "#111111",
+    color: "#ffffff",
   },
-  miniBtn: {
-    padding: "4px 8px",
-    fontSize: "11px",
-    background: "#e2e8f0",
-    border: "1px solid #cbd5e1",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontWeight: "bold",
-  },
+
   floatingLabel: {
     position: "absolute",
     left: 0,
     top: 0,
-    background: "rgba(255, 255, 255, 0.85)",
-    color: "#0f172a",
+    background: "#ffffff",
+    color: "#111111",
     padding: "4px 8px",
-    borderRadius: "6px",
-    fontSize: "12px",
-    fontWeight: "800",
-    border: "1px solid rgba(15, 23, 42, 0.1)",
+    borderRadius: 0,
+    fontSize: "11px",
+    fontWeight: "700",
+    border: "1px solid #111111",
     pointerEvents: "none",
     transform: "translate(-50%, -50%)",
     display: "none",
     whiteSpace: "nowrap",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
     zIndex: 10,
   },
+
   sidebar: {
     minWidth: 0,
     minHeight: 0,
-    borderLeft: "1px solid #e2e8f0",
-    backgroundColor: "#fff",
+    borderLeft: "1px solid #d9dee4",
+    backgroundColor: "#ffffff",
     display: "grid",
     gridTemplateRows: "minmax(0, 1fr) auto",
   },
+
   sidebarScroll: {
     minHeight: 0,
     overflowY: "auto",
-    padding: 16,
+    padding: 12,
     display: "flex",
     flexDirection: "column",
-    gap: 12,
+    gap: 10,
   },
-  sidebarBlock: {
+
+  sidebarSection: {
     display: "grid",
     gap: 8,
-    padding: 12,
-    border: "1px solid #e2e8f0",
-    borderRadius: 14,
+    padding: 10,
+    border: "1px solid #d9dee4",
     background: "#ffffff",
-    transition: "all 0.2s",
   },
-  sidebarTitle: { margin: 0, fontSize: 18, fontWeight: 800, color: "#0f172a" },
-  helpText: { margin: 0, fontSize: 13, color: "#64748b", lineHeight: 1.5 },
-  helperText: {
+
+  sidebarSectionActive: {
+    borderColor: "#111111",
+  },
+
+  sidebarSectionDisabled: {
+    opacity: 0.55,
+    pointerEvents: "none",
+  },
+
+  sidebarSectionHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+
+  sidebarSectionTitle: {
     fontSize: 12,
-    color: "#1d4ed8",
-    lineHeight: 1.4,
-    background: "#fff",
-    padding: "8px",
-    borderRadius: "8px",
-    border: "1px dashed #93c5fd",
+    fontWeight: 800,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "#111111",
   },
+
+  sidebarSectionNote: {
+    margin: 0,
+    fontSize: 12,
+    lineHeight: 1.55,
+    color: "#525252",
+  },
+
+  metricsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 8,
+  },
+
+  metricCard: {
+    padding: "8px 8px 10px",
+    border: "1px solid #e5e7eb",
+    background: "#fafafa",
+    display: "grid",
+    gap: 4,
+  },
+
+  metricLabel: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "#6b7280",
+  },
+
+  metricValue: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#111111",
+  },
+
   sectionRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
   },
-  label: { fontSize: 14, fontWeight: 800, color: "#334155" },
+
+  label: {
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "#111111",
+  },
+
   inlineCheck: {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    fontSize: 13,
-    color: "#475569",
+    fontSize: 12,
+    color: "#444444",
     cursor: "pointer",
   },
-  miniPill: {
-    fontSize: 11,
-    fontWeight: 800,
-    color: "#475569",
-    background: "#f1f5f9",
-    borderRadius: 999,
-    padding: "6px 10px",
-    whiteSpace: "nowrap",
-  },
-  dimGrid: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 },
-  dimLabel: {
-    fontSize: 11,
-    color: "#64748b",
-    display: "block",
-    marginBottom: 4,
+
+  inlineCheckActive: {
+    color: "#111111",
     fontWeight: 700,
   },
-  input: {
-    width: "100%",
+
+  helperText: {
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "#111111",
+    border: "1px dashed #cbd5e1",
+    background: "#fafafa",
     padding: "8px 10px",
-    borderRadius: 10,
-    border: "1px solid #cbd5e1",
-    fontSize: 14,
-    outline: "none",
-    boxSizing: "border-box",
-    background: "#fff",
   },
-  colorRow: { display: "flex", gap: 8, flexWrap: "wrap" },
-  colorSwatch: {
-    width: 30,
-    height: 30,
-    borderRadius: "50%",
-    border: "2px solid #cbd5e1",
+
+  helperTextMuted: {
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "#6b7280",
+    background: "#fafafa",
+    border: "1px solid #ececec",
+    padding: "8px 10px",
+  },
+
+  chipRow: {
+    display: "flex",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+
+  miniBtn: {
+    padding: "6px 8px",
+    fontSize: 11,
+    background: "#ffffff",
+    color: "#111111",
+    border: "1px solid #d9d9d9",
+    borderRadius: 0,
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+
+  miniBtnActive: {
+    background: "#111111",
+    color: "#ffffff",
+    borderColor: "#111111",
+  },
+
+  clearBtn: {
+    height: 28,
+    padding: "0 10px",
+    border: "1px solid #111111",
+    borderRadius: 0,
+    background: "#ffffff",
+    color: "#111111",
+    fontSize: 11,
+    fontWeight: 700,
     cursor: "pointer",
   },
-  sidebarFooter: {
-    borderTop: "1px solid #e2e8f0",
-    background: "#ffffff",
-    padding: 14,
-    display: "grid",
-    gap: 12,
-    boxShadow: "0 -8px 24px rgba(15, 23, 42, 0.05)",
+
+  pill: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+    color: "#111111",
+    background: "#f3f4f6",
+    padding: "5px 8px",
+    whiteSpace: "nowrap",
   },
-  footerTopRow: {
+
+  dimensionGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 1fr",
+    gap: 8,
+  },
+
+  inputGroup: {
+    display: "grid",
+    gap: 4,
+  },
+
+  dimLabel: {
+    fontSize: 10,
+    color: "#6b7280",
+    display: "block",
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+  },
+
+  input: {
+    width: "100%",
+    height: 38,
+    padding: "0 10px",
+    borderRadius: 0,
+    border: "1px solid #111111",
+    fontSize: 13,
+    outline: "none",
+    boxSizing: "border-box",
+    background: "#ffffff",
+    color: "#111111",
+  },
+
+  colorPickerRow: {
+    display: "grid",
+    gridTemplateColumns: "44px minmax(0, 1fr)",
+    gap: 8,
+    alignItems: "center",
+  },
+
+  colorPicker: {
+    width: 44,
+    height: 38,
+    padding: 0,
+    border: "1px solid #111111",
+    borderRadius: 0,
+    cursor: "pointer",
+    overflow: "hidden",
+    background: "none",
+  },
+
+  sidebarFooter: {
+    borderTop: "1px solid #d9dee4",
+    background: "#ffffff",
+    padding: 12,
+    display: "grid",
+    gap: 10,
+  },
+
+  footerHeader: {
     display: "flex",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: 12,
+    gap: 10,
   },
-  footerTitle: { fontSize: 15, fontWeight: 800, color: "#0f172a" },
-  footerSubtext: { fontSize: 12, color: "#64748b", marginTop: 3 },
+
+  footerTitle: {
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase",
+    color: "#111111",
+  },
+
+  footerNote: {
+    fontSize: 11,
+    lineHeight: 1.45,
+    color: "#6b7280",
+    marginTop: 4,
+  },
+
   qtyBox: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    padding: 6,
-    borderRadius: 12,
-    background: "#f8fafc",
-    border: "1px solid #e2e8f0",
+    gap: 0,
+    border: "1px solid #111111",
+    background: "#ffffff",
+    height: 36,
   },
+
   qtyBtn: {
     width: 34,
     height: 34,
-    borderRadius: 10,
-    border: "1px solid #cbd5e1",
-    background: "#fff",
+    border: "none",
+    background: "#ffffff",
+    color: "#111111",
     cursor: "pointer",
     fontSize: 18,
     lineHeight: 1,
+    borderRight: "1px solid #d9d9d9",
   },
+
   qtyValue: {
-    minWidth: 24,
+    minWidth: 34,
     textAlign: "center",
-    fontSize: 15,
-    color: "#0f172a",
+    fontSize: 14,
+    color: "#111111",
+    fontWeight: 700,
   },
-  footerField: { display: "grid", gap: 6 },
-  footerLabel: { fontSize: 13, fontWeight: 800, color: "#334155" },
+
+  footerField: {
+    display: "grid",
+    gap: 6,
+  },
+
+  footerLabel: {
+    fontSize: 11,
+    fontWeight: 800,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "#111111",
+  },
+
+  uploadHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+
+  uploadHint: {
+    fontSize: 10,
+    color: "#6b7280",
+    fontWeight: 600,
+  },
+
+  uploadButton: {
+    minHeight: 38,
+    padding: "0 12px",
+    border: "1px solid #111111",
+    borderRadius: 0,
+    background: "#ffffff",
+    color: "#111111",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    fontSize: 12,
+    fontWeight: 700,
+  },
+
+  uploadError: {
+    fontSize: 11,
+    color: "#b91c1c",
+    border: "1px solid #fecaca",
+    background: "#fef2f2",
+    padding: "8px 10px",
+  },
+
+  photoGrid: {
+    display: "grid",
+    gap: 8,
+  },
+
+  photoCard: {
+    display: "grid",
+    gridTemplateColumns: "48px minmax(0, 1fr) 28px",
+    alignItems: "center",
+    gap: 8,
+    border: "1px solid #e5e7eb",
+    background: "#fafafa",
+    padding: 6,
+  },
+
+  photoThumb: {
+    width: 48,
+    height: 48,
+    overflow: "hidden",
+    background: "#ffffff",
+    border: "1px solid #d9d9d9",
+  },
+
+  photoThumbImg: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
+
+  photoMeta: {
+    minWidth: 0,
+  },
+
+  photoName: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#111111",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+
+  photoRemove: {
+    width: 28,
+    height: 28,
+    border: "1px solid #111111",
+    borderRadius: 0,
+    background: "#ffffff",
+    color: "#111111",
+    cursor: "pointer",
+    fontSize: 16,
+    lineHeight: 1,
+  },
+
   textarea: {
     width: "100%",
+    minHeight: 86,
     resize: "none",
-    borderRadius: 12,
-    border: "1px solid #cbd5e1",
-    padding: 12,
+    borderRadius: 0,
+    border: "1px solid #111111",
+    padding: 10,
     font: "inherit",
+    fontSize: 13,
     boxSizing: "border-box",
-    background: "#fff",
+    background: "#ffffff",
+    color: "#111111",
   },
+
   applyBtn: {
     height: 46,
-    borderRadius: 12,
-    border: "none",
-    background: "linear-gradient(90deg, #166534 0%, #10b981 100%)",
-    color: "#fff",
+    borderRadius: 0,
+    border: "1px solid #111111",
+    background: "#111111",
+    color: "#ffffff",
     fontWeight: 800,
     fontSize: 14,
     cursor: "pointer",
+    letterSpacing: "0.02em",
   },
 };

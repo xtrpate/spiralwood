@@ -4,72 +4,73 @@ import toast from "react-hot-toast";
 import api, { buildAssetUrl } from "../../services/api";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
 import "./customizepage.css";
+import "./customrequestdetailpage.css";
 
 const STATUS_META = {
   contract_released: {
-    label: "Contract Released",
-    color: "#7c3aed",
-    bg: "#f5f3ff",
+    label: "Contract released",
+    color: "#111111",
+    bg: "#f3f4f6",
   },
   pending: {
-    label: "Pending Review",
-    color: "#9a3412",
-    bg: "#fff7ed",
+    label: "Pending review",
+    color: "#111111",
+    bg: "#f8f8f8",
   },
   confirmed: {
     label: "Confirmed",
-    color: "#1d4ed8",
-    bg: "#eff6ff",
+    color: "#111111",
+    bg: "#f3f4f6",
   },
   production: {
-    label: "In Production",
-    color: "#7c3aed",
-    bg: "#f5f3ff",
+    label: "In production",
+    color: "#111111",
+    bg: "#f3f4f6",
   },
   shipping: {
     label: "Shipping",
-    color: "#0f766e",
-    bg: "#ecfeff",
+    color: "#111111",
+    bg: "#f3f4f6",
   },
   delivered: {
     label: "Delivered",
-    color: "#166534",
-    bg: "#f0fdf4",
+    color: "#111111",
+    bg: "#f3f4f6",
   },
   completed: {
     label: "Completed",
-    color: "#166534",
-    bg: "#dcfce7",
+    color: "#111111",
+    bg: "#f3f4f6",
   },
   cancelled: {
     label: "Cancelled",
-    color: "#b91c1c",
-    bg: "#fef2f2",
+    color: "#111111",
+    bg: "#f3f4f6",
   },
 };
 
 const ESTIMATION_STATUS_META = {
-  draft: { label: "Draft", color: "#475569", bg: "#f8fafc" },
-  sent: { label: "Quotation Ready", color: "#1d4ed8", bg: "#eff6ff" },
-  approved: { label: "Quotation Approved", color: "#166534", bg: "#f0fdf4" },
-  rejected: { label: "Revision Needed", color: "#b45309", bg: "#fff7ed" },
+  draft: { label: "Draft", color: "#111111", bg: "#f8f8f8" },
+  sent: { label: "Quotation ready", color: "#111111", bg: "#f3f4f6" },
+  approved: { label: "Quotation approved", color: "#111111", bg: "#f3f4f6" },
+  rejected: { label: "Revision needed", color: "#111111", bg: "#f3f4f6" },
 };
 
 const PAY_STATUS_META = {
-  unpaid: { label: "Unpaid", color: "#b91c1c", bg: "#fef2f2" },
+  unpaid: { label: "Unpaid", color: "#111111", bg: "#f8f8f8" },
   partial: {
-    label: "Partial / Proof Submitted",
-    color: "#c2410c",
-    bg: "#fff7ed",
+    label: "Partial / Proof submitted",
+    color: "#111111",
+    bg: "#f3f4f6",
   },
-  paid: { label: "Paid", color: "#166534", bg: "#f0fdf4" },
+  paid: { label: "Paid", color: "#111111", bg: "#f3f4f6" },
 };
 
 const PAY_METHOD_LABELS = {
-  cod: "Cash on Delivery",
-  cop: "Cash on Pick-up",
+  cod: "Cash on delivery",
+  cop: "Cash on pick-up",
   gcash: "GCash",
-  bank_transfer: "Bank Transfer",
+  bank_transfer: "Bank transfer",
   cash: "Cash",
 };
 
@@ -131,7 +132,7 @@ const formatMoney = (value) =>
     maximumFractionDigits: 2,
   });
 
-const prettifyText = (value, fallback = "Custom Furniture") => {
+const prettifyText = (value, fallback = "Custom furniture") => {
   const raw = String(value || "").trim();
   if (!raw) return fallback;
 
@@ -150,16 +151,16 @@ const formatTemplateLabel = (item = {}) => {
   }
 
   if (item?.template_category) {
-    return prettifyText(item.template_category, "Admin Blueprint Design");
+    return prettifyText(item.template_category, "Admin blueprint design");
   }
 
-  return "Admin Blueprint Design";
+  return "Admin blueprint design";
 };
 
 const getDisplayTitle = (item = {}) => {
   return prettifyText(
     item.base_blueprint_title || item.product_name,
-    "Custom Furniture",
+    "Custom furniture",
   );
 };
 
@@ -270,10 +271,7 @@ const isImageAttachment = (attachment = {}) => {
   const mime = String(attachment?.mime_type || "").toLowerCase();
   const url = String(attachment?.file_url || "").toLowerCase();
 
-  return (
-    mime.startsWith("image/") ||
-    /\.(jpg|jpeg|png|webp)$/i.test(url)
-  );
+  return mime.startsWith("image/") || /\.(jpg|jpeg|png|webp)$/i.test(url);
 };
 
 const getSenderMeta = (entry = {}) => {
@@ -282,35 +280,27 @@ const getSenderMeta = (entry = {}) => {
   if (role === "admin") {
     return {
       label: entry?.sender_name || "Admin",
-      color: "#7c3aed",
-      bg: "#f5f3ff",
-      border: "#ddd6fe",
+      roleClass: "is-admin",
     };
   }
 
   if (role === "staff") {
     return {
       label: entry?.sender_name || "Staff",
-      color: "#0f766e",
-      bg: "#ecfeff",
-      border: "#a5f3fc",
+      roleClass: "is-staff",
     };
   }
 
   if (role === "system") {
     return {
       label: "System",
-      color: "#475569",
-      bg: "#f8fafc",
-      border: "#e2e8f0",
+      roleClass: "is-system",
     };
   }
 
   return {
     label: entry?.sender_name || "You",
-    color: "#166534",
-    bg: "#f0fdf4",
-    border: "#bbf7d0",
+    roleClass: "is-you",
   };
 };
 
@@ -350,7 +340,7 @@ export default function CustomRequestDetailPage() {
         setError(
           err.response?.data?.message ||
             err.response?.data?.error ||
-            "Failed to load custom request detail.",
+            "Failed to load request details.",
         );
       } finally {
         if (showLoader) setLoading(false);
@@ -367,8 +357,8 @@ export default function CustomRequestDetailPage() {
     () =>
       STATUS_META[requestData?.status] || {
         label: prettifyText(requestData?.status, "Unknown"),
-        color: "#334155",
-        bg: "#f8fafc",
+        color: "#111111",
+        bg: "#f3f4f6",
       },
     [requestData],
   );
@@ -377,8 +367,8 @@ export default function CustomRequestDetailPage() {
     () =>
       PAY_STATUS_META[requestData?.payment_status] || {
         label: prettifyText(requestData?.payment_status, "Unknown"),
-        color: "#334155",
-        bg: "#f8fafc",
+        color: "#111111",
+        bg: "#f3f4f6",
       },
     [requestData],
   );
@@ -392,9 +382,9 @@ export default function CustomRequestDetailPage() {
 
     return (
       ESTIMATION_STATUS_META[statusKey] || {
-        label: prettifyText(statusKey, "No Quotation Yet"),
-        color: "#334155",
-        bg: "#f8fafc",
+        label: prettifyText(statusKey, "No quotation yet"),
+        color: "#111111",
+        bg: "#f3f4f6",
       }
     );
   }, [latestEstimation]);
@@ -453,11 +443,7 @@ export default function CustomRequestDetailPage() {
     }
 
     if (action === "request-revision") {
-      const note = window.prompt(
-        "Enter your revision note for the admin:",
-        "",
-      );
-
+      const note = window.prompt("Enter your revision note:", "");
       if (note === null) return;
 
       endpoint = `/customer/custom-orders/${requestData.id}/estimate/request-revision`;
@@ -466,11 +452,7 @@ export default function CustomRequestDetailPage() {
     }
 
     if (action === "reject") {
-      const reason = window.prompt(
-        "Enter your reason for rejecting this quotation:",
-        "",
-      );
-
+      const reason = window.prompt("Enter your reason for rejection:", "");
       if (reason === null) return;
 
       endpoint = `/customer/custom-orders/${requestData.id}/estimate/reject`;
@@ -529,7 +511,7 @@ export default function CustomRequestDetailPage() {
       toast.error(
         err.response?.data?.message ||
           err.response?.data?.error ||
-          "Failed to submit 30% down payment.",
+          "Failed to submit down payment.",
       );
     } finally {
       setDownPaymentSubmitting(false);
@@ -578,12 +560,12 @@ export default function CustomRequestDetailPage() {
       setDiscussionMessage("");
       setDiscussionFiles([]);
       await loadRequestDetail(false);
-      toast.success("Discussion message sent successfully.");
+      toast.success("Message sent successfully.");
     } catch (err) {
       toast.error(
         err.response?.data?.message ||
           err.response?.data?.error ||
-          "Failed to send discussion message.",
+          "Failed to send message.",
       );
     } finally {
       setDiscussionSubmitting(false);
@@ -591,32 +573,23 @@ export default function CustomRequestDetailPage() {
   };
 
   return (
-    <div>
-      <div
-        className="page-hero"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 16,
-          flexWrap: "wrap",
-        }}
-      >
+    <div className="crd-page">
+      <div className="page-hero">
         <div>
-          <h1>Custom Request Detail</h1>
-          <p>Review your submitted custom request and current status.</p>
+          <h1>Request details</h1>
+          <p>Review your submitted request and current status.</p>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div className="crd-top-actions">
           <button
             className="btn btn-secondary"
             onClick={() => navigate("/orders")}
           >
-            ← Back to Orders
+            Back to orders
           </button>
 
           <Link to="/customize" className="btn btn-primary">
-            Customize More
+            New request
           </Link>
         </div>
       </div>
@@ -624,7 +597,7 @@ export default function CustomRequestDetailPage() {
       {loading ? (
         <div className="checkout-section">
           <div className="checkout-section-body">
-            <p>Loading custom request detail…</p>
+            <p>Loading request details…</p>
           </div>
         </div>
       ) : error ? (
@@ -636,46 +609,36 @@ export default function CustomRequestDetailPage() {
       ) : !requestData ? (
         <div className="checkout-section">
           <div className="checkout-section-body">
-            <p>Custom request not found.</p>
+            <p>Request not found.</p>
           </div>
         </div>
       ) : (
         <>
-          <div className="checkout-layout">
+          <div className="checkout-layout crd-layout">
             <div className="checkout-form-panel">
               <div className="checkout-section">
                 <div className="checkout-section-header">
-                  <div className="checkout-section-num">#</div>
-                  <h3>Request Overview</h3>
+                  <div className="checkout-section-num">01</div>
+                  <h3>Request overview</h3>
                 </div>
 
                 <div className="checkout-section-body">
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "repeat(auto-fit, minmax(220px, 1fr))",
-                      gap: 12,
-                    }}
-                  >
-                    <DetailValue label="Request Number">
+                  <div className="crd-overview-grid">
+                    <DetailValue label="Request number">
                       {requestData.order_number || "—"}
                     </DetailValue>
 
-                    <DetailValue label="Submitted On">
+                    <DetailValue label="Submitted on">
                       {formatDate(requestData.created_at)}
                     </DetailValue>
 
                     <div className="summary-row">
                       <span>Status</span>
                       <span
+                        className="crd-status-pill"
                         style={{
-                          display: "inline-flex",
-                          padding: "6px 10px",
-                          borderRadius: 999,
                           background: statusMeta.bg,
                           color: statusMeta.color,
-                          fontWeight: 700,
                         }}
                       >
                         {statusMeta.label}
@@ -683,28 +646,25 @@ export default function CustomRequestDetailPage() {
                     </div>
 
                     <div className="summary-row">
-                      <span>Payment Status</span>
+                      <span>Payment status</span>
                       <span
+                        className="crd-status-pill"
                         style={{
-                          display: "inline-flex",
-                          padding: "6px 10px",
-                          borderRadius: 999,
                           background: payMeta.bg,
                           color: payMeta.color,
-                          fontWeight: 700,
                         }}
                       >
                         {payMeta.label}
                       </span>
                     </div>
 
-                    <DetailValue label="Preferred Payment">
+                    <DetailValue label="Payment method">
                       {PAY_METHOD_LABELS[requestData.payment_method] ||
                         requestData.payment_method ||
                         "—"}
                     </DetailValue>
 
-                    <DetailValue label="Quoted Total">
+                    <DetailValue label="Quoted total">
                       {quotedTotal > 0
                         ? formatMoney(quotedTotal)
                         : "To be quoted by admin"}
@@ -716,27 +676,15 @@ export default function CustomRequestDetailPage() {
               {latestEstimation ? (
                 <div className="checkout-section">
                   <div className="checkout-section-header">
-                    <div
-                      className="checkout-section-num"
-                      style={{
-                        background: "linear-gradient(135deg,#1d4ed8,#60a5fa)",
-                        fontSize: 13,
-                      }}
-                    >
-                      ₱
-                    </div>
-                    <h3>Quotation Breakdown</h3>
+                    <div className="checkout-section-num">02</div>
+                    <h3>Quotation breakdown</h3>
 
                     <span
+                      className="crd-status-pill"
                       style={{
                         marginLeft: "auto",
-                        display: "inline-flex",
-                        padding: "6px 10px",
-                        borderRadius: 999,
                         background: estimationMeta.bg,
                         color: estimationMeta.color,
-                        fontWeight: 700,
-                        fontSize: 12,
                       }}
                     >
                       {estimationMeta.label}
@@ -744,28 +692,8 @@ export default function CustomRequestDetailPage() {
                   </div>
 
                   <div className="checkout-section-body">
-                    <div
-                      style={{
-                        border: "1px solid #e2e8f0",
-                        borderRadius: 14,
-                        overflow: "hidden",
-                        marginBottom: 16,
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns:
-                            "minmax(0,1fr) 90px 120px 120px",
-                          gap: 12,
-                          padding: "12px 14px",
-                          background: "#f8fafc",
-                          borderBottom: "1px solid #e2e8f0",
-                          fontWeight: 700,
-                          fontSize: 12,
-                          color: "#475569",
-                        }}
-                      >
+                    <div className="crd-table">
+                      <div className="crd-table-head">
                         <div>Description</div>
                         <div>Qty</div>
                         <div>Rate</div>
@@ -774,153 +702,80 @@ export default function CustomRequestDetailPage() {
 
                       {(latestEstimation.items || []).length ? (
                         latestEstimation.items.map((item) => (
-                          <div
-                            key={item.id}
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns:
-                                "minmax(0,1fr) 90px 120px 120px",
-                              gap: 12,
-                              padding: "12px 14px",
-                              borderBottom: "1px solid #f1f5f9",
-                              alignItems: "center",
-                            }}
-                          >
-                            <div
-                              style={{ color: "#0f172a", fontWeight: 600 }}
-                            >
-                              {item.description || "Material Item"}
+                          <div key={item.id} className="crd-table-row">
+                            <div className="crd-table-desc">
+                              {item.description || "Material item"}
                             </div>
-                            <div style={{ color: "#475569" }}>
-                              {item.quantity || 0}
-                            </div>
-                            <div style={{ color: "#475569" }}>
-                              {formatMoney(item.unit_cost || 0)}
-                            </div>
-                            <div
-                              style={{
-                                color: "#D2691E",
-                                fontWeight: 700,
-                              }}
-                            >
+                            <div>{item.quantity || 0}</div>
+                            <div>{formatMoney(item.unit_cost || 0)}</div>
+                            <div className="crd-table-amount">
                               {formatMoney(item.subtotal || 0)}
                             </div>
                           </div>
                         ))
                       ) : (
-                        <div style={{ padding: 16, color: "#64748b" }}>
+                        <div className="crd-table-empty">
                           No quotation line items available yet.
                         </div>
                       )}
                     </div>
 
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1.2fr .8fr",
-                        gap: 16,
-                      }}
-                    >
-                      <div
-                        style={{
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 14,
-                          padding: 16,
-                          background: "#fff",
-                        }}
-                      >
-                        <h4 style={{ margin: "0 0 10px", color: "#0f172a" }}>
-                          Admin Notes
-                        </h4>
+                    <div className="crd-grid-split">
+                      <div className="crd-panel">
+                        <h4>Admin notes</h4>
 
                         {String(latestEstimation.notes || "").trim() ? (
-                          <div
-                            style={{
-                              color: "#334155",
-                              lineHeight: 1.6,
-                              whiteSpace: "pre-wrap",
-                            }}
-                          >
+                          <div className="crd-panel-copy">
                             {latestEstimation.notes}
                           </div>
                         ) : (
-                          <div style={{ color: "#64748b" }}>
+                          <div className="crd-panel-copy muted">
                             No admin notes were attached to this quotation.
                           </div>
                         )}
 
                         {canDecideOnQuote ? (
-                          <div
-                            style={{
-                              marginTop: 16,
-                              display: "flex",
-                              gap: 10,
-                              flexWrap: "wrap",
-                            }}
-                          >
+                          <div className="crd-action-row">
                             <button
                               type="button"
                               className="btn btn-primary"
                               disabled={decisionLoading === "accept"}
-                              onClick={() =>
-                                handleEstimationDecision("accept")
-                              }
+                              onClick={() => handleEstimationDecision("accept")}
                             >
                               {decisionLoading === "accept"
                                 ? "Approving..."
-                                : "Accept Quotation"}
+                                : "Approve quotation"}
                             </button>
 
                             <button
                               type="button"
                               className="btn btn-secondary"
-                              disabled={
-                                decisionLoading === "request-revision"
-                              }
+                              disabled={decisionLoading === "request-revision"}
                               onClick={() =>
                                 handleEstimationDecision("request-revision")
                               }
                             >
                               {decisionLoading === "request-revision"
                                 ? "Sending..."
-                                : "Request Revision"}
+                                : "Request revision"}
                             </button>
 
                             <button
                               type="button"
+                              className="crd-danger-btn"
                               disabled={decisionLoading === "reject"}
-                              onClick={() =>
-                                handleEstimationDecision("reject")
-                              }
-                              style={{
-                                border: "none",
-                                borderRadius: 12,
-                                padding: "12px 18px",
-                                background: "#fee2e2",
-                                color: "#b91c1c",
-                                fontWeight: 700,
-                                cursor: "pointer",
-                              }}
+                              onClick={() => handleEstimationDecision("reject")}
                             >
                               {decisionLoading === "reject"
                                 ? "Rejecting..."
-                                : "Reject Quotation"}
+                                : "Reject quotation"}
                             </button>
                           </div>
                         ) : null}
                       </div>
 
-                      <div
-                        style={{
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 14,
-                          padding: 16,
-                          background: "#fffaf5",
-                        }}
-                      >
-                        <h4 style={{ margin: "0 0 10px", color: "#0f172a" }}>
-                          Quotation Summary
-                        </h4>
+                      <div className="crd-panel crd-panel-soft">
+                        <h4>Quotation summary</h4>
 
                         <DetailValue label="Materials">
                           {formatMoney(latestEstimation.material_cost || 0)}
@@ -946,18 +801,9 @@ export default function CustomRequestDetailPage() {
                           {formatMoney(latestEstimation.subtotal || 0)}
                         </DetailValue>
 
-                        <div
-                          className="summary-row"
-                          style={{
-                            marginTop: 10,
-                            paddingTop: 12,
-                            borderTop: "1px solid #e2e8f0",
-                          }}
-                        >
-                          <span style={{ fontWeight: 700 }}>Grand Total</span>
-                          <strong
-                            style={{ color: "#D2691E", fontSize: 18 }}
-                          >
+                        <div className="summary-row crd-grand-total">
+                          <span>Grand total</span>
+                          <strong>
                             {formatMoney(latestEstimation.grand_total || 0)}
                           </strong>
                         </div>
@@ -971,170 +817,75 @@ export default function CustomRequestDetailPage() {
               "approved" ? (
                 <div className="checkout-section">
                   <div className="checkout-section-header">
-                    <div
-                      className="checkout-section-num"
-                      style={{
-                        background: "linear-gradient(135deg,#d97706,#f59e0b)",
-                        fontSize: 12,
-                        fontWeight: 800,
-                      }}
-                    >
-                      30%
-                    </div>
-                    <h3>Required Down Payment</h3>
+                    <div className="checkout-section-num">03</div>
+                    <h3>Required down payment</h3>
                   </div>
 
                   <div className="checkout-section-body">
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: 16,
-                      }}
-                    >
-                      <div
-                        style={{
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 14,
-                          padding: 16,
-                          background: "#fffaf5",
-                        }}
-                      >
-                        <h4 style={{ margin: "0 0 12px", color: "#0f172a" }}>
-                          Payment Requirement
-                        </h4>
+                    <div className="crd-grid-split">
+                      <div className="crd-panel crd-panel-soft">
+                        <h4>Payment requirement</h4>
 
-                        <DetailValue label="Quoted Total">
+                        <DetailValue label="Quoted total">
                           {formatMoney(quotedTotal || 0)}
                         </DetailValue>
 
-                        <DetailValue label="Required 30% Down Payment">
+                        <DetailValue label="Required 30% down payment">
                           {formatMoney(downPaymentDue || 0)}
                         </DetailValue>
 
-                        <DetailValue label="Remaining Balance">
+                        <DetailValue label="Remaining balance">
                           {formatMoney(
                             paymentSummary?.balance_due ||
                               Math.max(quotedTotal - downPaymentDue, 0),
                           )}
                         </DetailValue>
 
-                        <p
-                          style={{
-                            marginTop: 14,
-                            color: "#64748b",
-                            lineHeight: 1.6,
-                          }}
-                        >
-                          Your custom order will not move forward to contract
-                          release or production until the 30% down payment is
-                          submitted and verified by the admin.
+                        <p className="crd-panel-copy muted">
+                          Your request will not move forward to contract release
+                          or production until the required down payment is
+                          submitted and verified.
                         </p>
 
                         {latestPayment ? (
-                          <div
-                            style={{
-                              marginTop: 14,
-                              padding: 12,
-                              borderRadius: 12,
-                              background: "#f8fafc",
-                              border: "1px solid #e2e8f0",
-                              color: "#334155",
-                            }}
-                          >
-                            <div
-                              style={{
-                                fontWeight: 700,
-                                marginBottom: 6,
-                              }}
-                            >
-                              Latest Payment Submission
+                          <div className="crd-info-box">
+                            <div className="crd-info-title">
+                              Latest payment submission
                             </div>
+                            <div>Status: {prettifyText(latestPayment.status)}</div>
                             <div>
-                              Status:{" "}
-                              <strong>
-                                {prettifyText(
-                                  latestPayment.status,
-                                  "Pending",
-                                )}
-                              </strong>
-                            </div>
-                            <div>
-                              Amount:{" "}
-                              <strong>
-                                {formatMoney(latestPayment.amount || 0)}
-                              </strong>
+                              Amount: {formatMoney(latestPayment.amount || 0)}
                             </div>
                             <div>
                               Method:{" "}
-                              <strong>
-                                {prettifyText(
-                                  latestPayment.payment_method,
-                                  "Payment Method",
-                                )}
-                              </strong>
+                              {prettifyText(
+                                latestPayment.payment_method,
+                                "Payment method",
+                              )}
                             </div>
                             <div>
-                              Submitted:{" "}
-                              <strong>
-                                {formatDate(latestPayment.created_at)}
-                              </strong>
+                              Submitted: {formatDate(latestPayment.created_at)}
                             </div>
                           </div>
                         ) : null}
                       </div>
 
-                      <div
-                        style={{
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 14,
-                          padding: 16,
-                          background: "#fff",
-                        }}
-                      >
-                        <h4 style={{ margin: "0 0 12px", color: "#0f172a" }}>
-                          Submit 30% Down Payment Proof
-                        </h4>
+                      <div className="crd-panel">
+                        <h4>Submit payment proof</h4>
 
                         {hasVerifiedDownPayment ? (
-                          <div
-                            style={{
-                              padding: 14,
-                              borderRadius: 12,
-                              background: "#f0fdf4",
-                              border: "1px solid #bbf7d0",
-                              color: "#166534",
-                              fontWeight: 600,
-                            }}
-                          >
-                            Your 30% down payment is already verified.
+                          <div className="crd-info-box success">
+                            Your down payment is already verified.
                           </div>
                         ) : hasPendingDownPayment ? (
-                          <div
-                            style={{
-                              padding: 14,
-                              borderRadius: 12,
-                              background: "#fff7ed",
-                              border: "1px solid #fed7aa",
-                              color: "#b45309",
-                              fontWeight: 600,
-                            }}
-                          >
-                            Your payment proof is already submitted and waiting
-                            for admin verification.
+                          <div className="crd-info-box pending">
+                            Your payment proof has already been submitted and is
+                            waiting for verification.
                           </div>
                         ) : canSubmitDownPayment ? (
-                          <form onSubmit={handleSubmitDownPayment}>
-                            <label
-                              style={{
-                                display: "block",
-                                fontSize: 12,
-                                fontWeight: 700,
-                                color: "#475569",
-                                marginBottom: 6,
-                              }}
-                            >
-                              Payment Method
+                          <form onSubmit={handleSubmitDownPayment} className="crd-form-grid">
+                            <label className="crd-field-label">
+                              Payment method
                             </label>
 
                             <select
@@ -1142,46 +893,24 @@ export default function CustomRequestDetailPage() {
                               onChange={(e) =>
                                 setDownPaymentMethod(e.target.value)
                               }
-                              style={{
-                                width: "100%",
-                                minHeight: 46,
-                                borderRadius: 12,
-                                border: "1px solid #cbd5e1",
-                                padding: "10px 12px",
-                                marginBottom: 14,
-                              }}
+                              className="crd-control"
                             >
                               <option value="gcash">GCash</option>
-                              <option value="bank_transfer">
-                                Bank Transfer
-                              </option>
+                              <option value="bank_transfer">Bank transfer</option>
                               <option value="cash">Cash</option>
                             </select>
 
-                            <label
-                              style={{
-                                display: "block",
-                                fontSize: 12,
-                                fontWeight: 700,
-                                color: "#475569",
-                                marginBottom: 6,
-                              }}
-                            >
-                              Upload Payment Proof
+                            <label className="crd-field-label">
+                              Upload payment proof
                             </label>
 
                             <input
                               type="file"
                               accept=".jpg,.jpeg,.png,.pdf"
                               onChange={(e) =>
-                                setDownPaymentFile(
-                                  e.target.files?.[0] || null,
-                                )
+                                setDownPaymentFile(e.target.files?.[0] || null)
                               }
-                              style={{
-                                width: "100%",
-                                marginBottom: 14,
-                              }}
+                              className="crd-file-input"
                             />
 
                             <button
@@ -1193,21 +922,13 @@ export default function CustomRequestDetailPage() {
                                 ? "Submitting..."
                                 : `Submit ${formatMoney(
                                     downPaymentDue || 0,
-                                  )} Down Payment`}
+                                  )} payment`}
                             </button>
                           </form>
                         ) : (
-                          <div
-                            style={{
-                              padding: 14,
-                              borderRadius: 12,
-                              background: "#f8fafc",
-                              border: "1px solid #e2e8f0",
-                              color: "#64748b",
-                            }}
-                          >
+                          <div className="crd-info-box muted">
                             Approve the quotation first before submitting the
-                            30% down payment.
+                            required down payment.
                           </div>
                         )}
                       </div>
@@ -1218,23 +939,10 @@ export default function CustomRequestDetailPage() {
 
               <div className="checkout-section">
                 <div className="checkout-section-header">
-                  <div
-                    className="checkout-section-num"
-                    style={{
-                      background: "linear-gradient(135deg,#2d6a4f,#52b788)",
-                      fontSize: 13,
-                    }}
-                  >
-                    ✂️
-                  </div>
-                  <h3>Requested Custom Items</h3>
-                  <span
-                    style={{
-                      marginLeft: "auto",
-                      fontSize: 12,
-                      color: "#aaa",
-                    }}
-                  >
+                  <div className="checkout-section-num">04</div>
+                  <h3>Submitted items</h3>
+
+                  <span className="crd-mini-meta">
                     {requestData.total_items || 0} design
                     {(requestData.total_items || 0) !== 1 ? "s" : ""} •{" "}
                     {requestData.total_units || 0} unit
@@ -1256,12 +964,7 @@ export default function CustomRequestDetailPage() {
                                 item.image_url || item.preview_image_url,
                               )}
                               alt={getDisplayTitle(item)}
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                                borderRadius: 8,
-                              }}
+                              className="crd-thumb-img"
                               onError={(e) => {
                                 e.target.style.display = "none";
                                 if (e.target.nextSibling) {
@@ -1272,80 +975,50 @@ export default function CustomRequestDetailPage() {
                           ) : null}
 
                           <div
+                            className="crd-thumb-fallback"
                             style={{
                               display:
                                 item.image_url || item.preview_image_url
                                   ? "none"
                                   : "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              height: "100%",
-                              fontSize: 20,
                             }}
                           >
-                            🪵
+                            Item
                           </div>
                         </div>
 
                         <div className="checkout-item-details">
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              gap: 12,
-                              alignItems: "flex-start",
-                              flexWrap: "wrap",
-                            }}
-                          >
+                          <div className="crd-item-head">
                             <div>
                               <div className="checkout-item-name">
                                 {getDisplayTitle(item)}
                               </div>
 
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  color: "#64748b",
-                                  marginTop: 4,
-                                  fontWeight: 500,
-                                }}
-                              >
-                                {formatTemplateLabel(item)} • Submitted custom
-                                draft
+                              <div className="crd-item-subtitle">
+                                {formatTemplateLabel(item)} • Submitted draft
                               </div>
                             </div>
 
                             {canPreview ? (
                               <button
                                 type="button"
-                                className="btn btn-secondary"
+                                className="btn btn-secondary crd-small-btn"
                                 onClick={() => setPreviewItem(item)}
-                                style={{
-                                  padding: "8px 12px",
-                                  minHeight: "unset",
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                }}
                               >
-                                View Submitted Design
+                                View design
                               </button>
                             ) : null}
                           </div>
 
-                          <div
-                            className="custom-cart-specs"
-                            style={{ marginTop: 8 }}
-                          >
+                          <div className="custom-cart-specs crd-tag-wrap">
                             {item.wood_type && (
                               <span className="custom-spec-tag">
-                                🪵{" "}
                                 {prettifyText(item.wood_type, item.wood_type)}
                               </span>
                             )}
 
                             {(item.finish_color || item.color) && (
                               <span className="custom-spec-tag">
-                                🎨{" "}
                                 {prettifyText(
                                   item.finish_color || item.color,
                                   item.finish_color || item.color,
@@ -1355,83 +1028,47 @@ export default function CustomRequestDetailPage() {
 
                             {item.door_style && (
                               <span className="custom-spec-tag">
-                                🚪{" "}
-                                {prettifyText(
-                                  item.door_style,
-                                  item.door_style,
-                                )}
+                                {prettifyText(item.door_style, item.door_style)}
                               </span>
                             )}
 
                             {item.hardware && (
                               <span className="custom-spec-tag">
-                                🔩 {prettifyText(item.hardware, item.hardware)}
+                                {prettifyText(item.hardware, item.hardware)}
                               </span>
                             )}
 
                             {(dims.width || dims.height || dims.depth) && (
                               <span className="custom-spec-tag">
-                                📐 W{formatMm(dims.width)} • H
-                                {formatMm(dims.height)} • D
-                                {formatMm(dims.depth)}
+                                W {formatMm(dims.width)} • H {formatMm(dims.height)} •
+                                D {formatMm(dims.depth)}
                               </span>
                             )}
                           </div>
 
                           {item.comments ? (
-                            <div
-                              className="checkout-item-sub"
-                              style={{ marginTop: 6 }}
-                            >
-                              💬 {item.comments}
+                            <div className="checkout-item-sub" style={{ marginTop: 6 }}>
+                              {item.comments}
                             </div>
                           ) : null}
 
                           {Array.isArray(item.reference_photos) &&
                           item.reference_photos.length ? (
-                            <div style={{ marginTop: 10 }}>
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  color: "#475569",
-                                  marginBottom: 8,
-                                }}
-                              >
-                                Reference Photos
-                              </div>
+                            <div className="crd-ref-wrap">
+                              <div className="crd-field-label">Reference photos</div>
 
-                              <div
-                                style={{
-                                  display: "flex",
-                                  gap: 8,
-                                  flexWrap: "wrap",
-                                }}
-                              >
+                              <div className="crd-ref-grid">
                                 {item.reference_photos.map((photo) => (
                                   <a
                                     key={photo.id}
                                     href={resolveAttachmentUrl(photo.file_url)}
                                     target="_blank"
                                     rel="noreferrer"
-                                    style={{
-                                      display: "block",
-                                      width: 72,
-                                      height: 72,
-                                      borderRadius: 10,
-                                      overflow: "hidden",
-                                      border: "1px solid #e2e8f0",
-                                      background: "#f8fafc",
-                                    }}
+                                    className="crd-ref-photo"
                                   >
                                     <img
                                       src={resolveAttachmentUrl(photo.file_url)}
                                       alt={photo.file_name || "Reference photo"}
-                                      style={{
-                                        width: "100%",
-                                        height: "100%",
-                                        objectFit: "cover",
-                                      }}
                                     />
                                   </a>
                                 ))}
@@ -1440,15 +1077,10 @@ export default function CustomRequestDetailPage() {
                           ) : null}
                         </div>
 
-                        <div className="checkout-item-qty">
-                          ×{item.quantity || 1}
-                        </div>
+                        <div className="checkout-item-qty">×{item.quantity || 1}</div>
 
-                        <div
-                          className="checkout-item-price"
-                          style={{ fontSize: 12, color: "#aaa" }}
-                        >
-                          Quote Needed
+                        <div className="checkout-item-price crd-quote-note">
+                          Quote needed
                         </div>
                       </div>
                     );
@@ -1458,83 +1090,29 @@ export default function CustomRequestDetailPage() {
 
               <div className="checkout-section">
                 <div className="checkout-section-header">
-                  <div className="checkout-section-num">i</div>
-                  <h3>Project / Delivery Information</h3>
+                  <div className="checkout-section-num">05</div>
+                  <h3>Project details</h3>
                 </div>
 
                 <div className="checkout-section-body">
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 14,
-                    }}
-                  >
+                  <div className="crd-form-grid">
                     <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: "#475569",
-                          marginBottom: 6,
-                        }}
-                      >
-                        Delivery Address
-                      </label>
-                      <div
-                        style={{
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 12,
-                          padding: "12px 14px",
-                          background: "#f8fafc",
-                          color: "#0f172a",
-                          minHeight: 48,
-                          display: "flex",
-                          alignItems: "center",
-                        }}
-                      >
+                      <label className="crd-field-label">Delivery address</label>
+                      <div className="crd-read-box">
                         {requestData.delivery_address ||
                           "No delivery address provided."}
                       </div>
                     </div>
 
                     <div>
-                      <label
-                        style={{
-                          display: "block",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: "#475569",
-                          marginBottom: 6,
-                        }}
-                      >
-                        Customer Notes
-                      </label>
+                      <label className="crd-field-label">Customer notes</label>
 
                       {String(requestData.notes || "").trim() ? (
-                        <div
-                          style={{
-                            border: "1px solid #e2e8f0",
-                            borderRadius: 12,
-                            padding: "14px",
-                            background: "#f8fafc",
-                            color: "#0f172a",
-                            whiteSpace: "pre-wrap",
-                            lineHeight: 1.55,
-                          }}
-                        >
+                        <div className="crd-read-box crd-read-box-copy">
                           {requestData.notes}
                         </div>
                       ) : (
-                        <div
-                          style={{
-                            border: "1px dashed #cbd5e1",
-                            borderRadius: 12,
-                            padding: "14px",
-                            background: "#f8fafc",
-                            color: "#64748b",
-                          }}
-                        >
+                        <div className="crd-read-box muted">
                           No additional notes were submitted for this request.
                         </div>
                       )}
@@ -1545,66 +1123,19 @@ export default function CustomRequestDetailPage() {
 
               <div className="checkout-section">
                 <div className="checkout-section-header">
-                  <div
-                    className="checkout-section-num"
-                    style={{
-                      background: "linear-gradient(135deg,#0f766e,#14b8a6)",
-                      fontSize: 13,
-                    }}
-                  >
-                    💬
-                  </div>
-                  <h3>Discussion / Chat</h3>
+                  <div className="checkout-section-num">06</div>
+                  <h3>Chat</h3>
                 </div>
 
                 <div className="checkout-section-body">
-                  <div
-                    style={{
-                      display: "grid",
-                      gap: 14,
-                    }}
-                  >
-                    <div
-                      style={{
-                        border: "1px solid #e2e8f0",
-                        borderRadius: 16,
-                        background: "#fff",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          padding: "14px 16px",
-                          borderBottom: "1px solid #e2e8f0",
-                          background: "#f8fafc",
-                          fontWeight: 700,
-                          color: "#0f172a",
-                        }}
-                      >
-                        Request Conversation
-                      </div>
+                  <div className="crd-chat-wrap">
+                    <div className="crd-chat-card">
+                      <div className="crd-chat-card-head">Chat history</div>
 
-                      <div
-                        style={{
-                          display: "grid",
-                          gap: 12,
-                          padding: 16,
-                          maxHeight: 420,
-                          overflowY: "auto",
-                        }}
-                      >
+                      <div className="crd-chat-thread">
                         {!discussionThread.length ? (
-                          <div
-                            style={{
-                              padding: 16,
-                              borderRadius: 12,
-                              background: "#f8fafc",
-                              color: "#64748b",
-                              border: "1px dashed #cbd5e1",
-                            }}
-                          >
-                            No discussion messages yet. You may send a message
-                            to the admin below.
+                          <div className="crd-chat-empty">
+                            No messages yet. You can send a message below.
                           </div>
                         ) : (
                           discussionThread.map((entry) => {
@@ -1613,64 +1144,27 @@ export default function CustomRequestDetailPage() {
                             return (
                               <div
                                 key={entry.id}
-                                style={{
-                                  border: `1px solid ${sender.border}`,
-                                  background: sender.bg,
-                                  borderRadius: 14,
-                                  padding: 14,
-                                }}
+                                className={`crd-chat-entry ${sender.roleClass}`}
                               >
-                                <div
-                                  style={{
-                                    display: "flex",
-                                    justifyContent: "space-between",
-                                    gap: 12,
-                                    alignItems: "flex-start",
-                                    flexWrap: "wrap",
-                                    marginBottom: 8,
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      fontWeight: 800,
-                                      color: sender.color,
-                                    }}
-                                  >
+                                <div className="crd-chat-entry-top">
+                                  <div className="crd-chat-sender">
                                     {sender.label}
                                   </div>
 
-                                  <div
-                                    style={{
-                                      fontSize: 12,
-                                      color: "#64748b",
-                                    }}
-                                  >
+                                  <div className="crd-chat-date">
                                     {formatDate(entry.created_at)}
                                   </div>
                                 </div>
 
                                 {entry.message ? (
-                                  <div
-                                    style={{
-                                      color: "#0f172a",
-                                      lineHeight: 1.6,
-                                      whiteSpace: "pre-wrap",
-                                    }}
-                                  >
+                                  <div className="crd-chat-message">
                                     {entry.message}
                                   </div>
                                 ) : null}
 
                                 {Array.isArray(entry.attachments) &&
                                 entry.attachments.length ? (
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      gap: 10,
-                                      flexWrap: "wrap",
-                                      marginTop: 12,
-                                    }}
-                                  >
+                                  <div className="crd-chat-attachments">
                                     {entry.attachments.map((attachment) => {
                                       const href = resolveAttachmentUrl(
                                         attachment.file_url,
@@ -1682,15 +1176,7 @@ export default function CustomRequestDetailPage() {
                                           href={href}
                                           target="_blank"
                                           rel="noreferrer"
-                                          style={{
-                                            display: "block",
-                                            width: 90,
-                                            height: 90,
-                                            borderRadius: 12,
-                                            overflow: "hidden",
-                                            border: "1px solid #dbeafe",
-                                            background: "#fff",
-                                          }}
+                                          className="crd-attachment-thumb"
                                         >
                                           <img
                                             src={href}
@@ -1698,11 +1184,6 @@ export default function CustomRequestDetailPage() {
                                               attachment.file_name ||
                                               "Attachment"
                                             }
-                                            style={{
-                                              width: "100%",
-                                              height: "100%",
-                                              objectFit: "cover",
-                                            }}
                                           />
                                         </a>
                                       ) : (
@@ -1711,32 +1192,13 @@ export default function CustomRequestDetailPage() {
                                           href={href}
                                           target="_blank"
                                           rel="noreferrer"
-                                          style={{
-                                            minWidth: 180,
-                                            maxWidth: 260,
-                                            padding: "10px 12px",
-                                            borderRadius: 12,
-                                            border: "1px solid #e2e8f0",
-                                            background: "#fff",
-                                            textDecoration: "none",
-                                            color: "#0f172a",
-                                          }}
+                                          className="crd-attachment-file"
                                         >
-                                          <div
-                                            style={{
-                                              fontWeight: 700,
-                                              marginBottom: 4,
-                                            }}
-                                          >
+                                          <div className="crd-attachment-name">
                                             {attachment.file_name || "Attachment"}
                                           </div>
-                                          <div
-                                            style={{
-                                              fontSize: 12,
-                                              color: "#64748b",
-                                            }}
-                                          >
-                                            Open file
+                                          <div className="crd-attachment-open">
+                                            Open attachment
                                           </div>
                                         </a>
                                       );
@@ -1750,136 +1212,51 @@ export default function CustomRequestDetailPage() {
                       </div>
                     </div>
 
-                    <form
-                      onSubmit={handleSendDiscussionMessage}
-                      style={{
-                        border: "1px solid #e2e8f0",
-                        borderRadius: 16,
-                        background: "#fff",
-                        padding: 16,
-                        display: "grid",
-                        gap: 12,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontWeight: 700,
-                          color: "#0f172a",
-                        }}
-                      >
-                        Send Message to Admin
-                      </div>
+                    <form onSubmit={handleSendDiscussionMessage} className="crd-chat-form">
+                      <div className="crd-chat-form-title">Send message</div>
 
                       <textarea
                         rows={4}
                         value={discussionMessage}
-                        onChange={(e) =>
-                          setDiscussionMessage(e.target.value)
-                        }
-                        placeholder="Write your clarification, preferred style, sizing concern, or request update here..."
-                        style={{
-                          width: "100%",
-                          borderRadius: 12,
-                          border: "1px solid #cbd5e1",
-                          padding: 12,
-                          font: "inherit",
-                          resize: "vertical",
-                          boxSizing: "border-box",
-                        }}
+                        onChange={(e) => setDiscussionMessage(e.target.value)}
+                        placeholder="Write your clarification, concern, or request update here."
+                        className="crd-control crd-textarea"
                       />
 
                       <div>
-                        <label
-                          style={{
-                            display: "block",
-                            fontSize: 12,
-                            fontWeight: 700,
-                            color: "#475569",
-                            marginBottom: 6,
-                          }}
-                        >
-                          Attach Images or PDF
-                        </label>
+                        <label className="crd-field-label">Attachments</label>
 
                         <input
                           type="file"
                           multiple
                           accept=".jpg,.jpeg,.png,.webp,.pdf"
                           onChange={handleDiscussionFilesChange}
+                          className="crd-file-input"
                         />
 
-                        <div
-                          style={{
-                            marginTop: 8,
-                            fontSize: 12,
-                            color: "#64748b",
-                          }}
-                        >
+                        <div className="crd-help-text">
                           You may upload up to 5 attachments per message.
                         </div>
                       </div>
 
                       {discussionFiles.length ? (
-                        <div
-                          style={{
-                            display: "grid",
-                            gap: 8,
-                          }}
-                        >
+                        <div className="crd-file-list">
                           {discussionFiles.map((file, index) => (
                             <div
                               key={`${file.name}_${index}`}
-                              style={{
-                                display: "flex",
-                                justifyContent: "space-between",
-                                alignItems: "center",
-                                gap: 10,
-                                padding: "10px 12px",
-                                borderRadius: 12,
-                                background: "#f8fafc",
-                                border: "1px solid #e2e8f0",
-                              }}
+                              className="crd-file-row"
                             >
-                              <div
-                                style={{
-                                  minWidth: 0,
-                                }}
-                              >
-                                <div
-                                  style={{
-                                    fontWeight: 700,
-                                    color: "#0f172a",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  {file.name}
-                                </div>
-                                <div
-                                  style={{
-                                    fontSize: 12,
-                                    color: "#64748b",
-                                  }}
-                                >
+                              <div className="crd-file-meta">
+                                <div className="crd-file-name">{file.name}</div>
+                                <div className="crd-file-size">
                                   {Math.round((file.size || 0) / 1024)} KB
                                 </div>
                               </div>
 
                               <button
                                 type="button"
-                                onClick={() =>
-                                  handleRemoveDiscussionFile(index)
-                                }
-                                style={{
-                                  border: "1px solid #fecaca",
-                                  background: "#fff1f2",
-                                  color: "#be123c",
-                                  borderRadius: 10,
-                                  padding: "8px 10px",
-                                  fontWeight: 700,
-                                  cursor: "pointer",
-                                }}
+                                onClick={() => handleRemoveDiscussionFile(index)}
+                                className="crd-remove-btn"
                               >
                                 Remove
                               </button>
@@ -1888,20 +1265,13 @@ export default function CustomRequestDetailPage() {
                         </div>
                       ) : null}
 
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "flex-end",
-                        }}
-                      >
+                      <div className="crd-chat-form-actions">
                         <button
                           type="submit"
                           className="btn btn-primary"
                           disabled={discussionSubmitting}
                         >
-                          {discussionSubmitting
-                            ? "Sending..."
-                            : "Send Discussion Message"}
+                          {discussionSubmitting ? "Sending..." : "Send message"}
                         </button>
                       </div>
                     </form>
@@ -1912,12 +1282,12 @@ export default function CustomRequestDetailPage() {
 
             <div className="checkout-summary">
               <div className="checkout-summary-header">
-                <h3>Request Status</h3>
+                <h3>Request status</h3>
               </div>
 
               <div className="checkout-summary-totals">
                 <div className="summary-row">
-                  <span>Current Status</span>
+                  <span>Current status</span>
                   <span style={{ color: statusMeta.color, fontWeight: 700 }}>
                     {statusMeta.label}
                   </span>
@@ -1931,7 +1301,7 @@ export default function CustomRequestDetailPage() {
                 </div>
 
                 <div className="summary-row">
-                  <span>Preferred Method</span>
+                  <span>Payment method</span>
                   <span>
                     {PAY_METHOD_LABELS[requestData.payment_method] ||
                       requestData.payment_method ||
@@ -1941,7 +1311,7 @@ export default function CustomRequestDetailPage() {
 
                 <div className="summary-row">
                   <span>Total</span>
-                  <span style={{ color: "#D2691E", fontWeight: 700 }}>
+                  <span className="crd-summary-total">
                     {quotedTotal > 0
                       ? formatMoney(quotedTotal)
                       : "To be quoted by admin"}
@@ -1949,86 +1319,37 @@ export default function CustomRequestDetailPage() {
                 </div>
 
                 <p className="summary-note" style={{ marginTop: 12 }}>
-                  Your request has been saved successfully. Admin will review
-                  your submitted design, dimensions, finish, and notes before
-                  providing the quotation.
+                  Your request has been received. The admin will review your
+                  submitted design, dimensions, finish, and notes before sending
+                  the quotation.
                 </p>
               </div>
             </div>
           </div>
 
           {previewItem && previewBlueprint ? (
-            <div
-              style={{
-                position: "fixed",
-                inset: 0,
-                background: "rgba(15, 23, 42, 0.55)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: "24px",
-                zIndex: 9999,
-              }}
-              onClick={() => setPreviewItem(null)}
-            >
+            <div className="crd-preview-backdrop" onClick={() => setPreviewItem(null)}>
               <div
-                style={{
-                  width: "min(1280px, 96vw)",
-                  maxHeight: "92vh",
-                  overflow: "auto",
-                  background: "#fff",
-                  borderRadius: "20px",
-                  boxShadow: "0 24px 60px rgba(0,0,0,.28)",
-                }}
+                className="crd-preview-modal"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: "12px",
-                    padding: "18px 20px",
-                    borderBottom: "1px solid #e5e7eb",
-                  }}
-                >
+                <div className="crd-preview-head">
                   <div>
-                    <h2 style={{ margin: 0 }}>
-                      {getDisplayTitle(previewItem)}
-                    </h2>
-                    <p
-                      style={{
-                        margin: "6px 0 0",
-                        color: "#64748b",
-                      }}
-                    >
-                      Read-only preview of the exact submitted customer draft
-                    </p>
+                    <h2>{getDisplayTitle(previewItem)}</h2>
+                    <p>Read-only preview of the submitted design.</p>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => setPreviewItem(null)}
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 12,
-                      border: "1px solid #cbd5e1",
-                      background: "#fff",
-                      cursor: "pointer",
-                      fontSize: 20,
-                      lineHeight: 1,
-                    }}
+                    className="crd-preview-close"
                   >
                     ×
                   </button>
                 </div>
 
-                <div style={{ padding: 16 }}>
-                  <CustomerTemplateWorkbench
-                    blueprint={previewBlueprint}
-                    readOnly
-                  />
+                <div className="crd-preview-body">
+                  <CustomerTemplateWorkbench blueprint={previewBlueprint} readOnly />
                 </div>
               </div>
             </div>
