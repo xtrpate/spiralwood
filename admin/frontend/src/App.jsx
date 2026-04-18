@@ -70,6 +70,8 @@ import POSSalesReports from "./pages/staff/SalesReports";
 import POSBlueprintView from "./pages/staff/BlueprintView";
 import POSInventoryLookup from "./pages/staff/InventoryLookup";
 import POSOrderHistory from "./pages/staff/OrderHistory";
+import RiderDashboard from "./pages/staff/RiderDashboard";
+import RiderHistory from "./pages/staff/RiderHistory";
 
 window.addEventListener("error", (e) => {
   if (
@@ -488,6 +490,23 @@ export default function App() {
                   }
                 />
               </Route>
+
+              <Route
+                path="rider-dashboard"
+                element={
+                  <RequireStaffType allowedTypes={["delivery_rider"]}>
+                    <RiderDashboard />
+                  </RequireStaffType>
+                }
+              />
+              <Route
+                path="rider-history"
+                element={
+                  <RequireStaffType allowedTypes={["delivery_rider"]}>
+                    <RiderHistory />
+                  </RequireStaffType>
+                }
+              />
 
               {/* Catch-all */}
               <Route path="*" element={<Navigate to="/catalog" replace />} />

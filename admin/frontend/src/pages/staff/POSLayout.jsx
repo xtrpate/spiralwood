@@ -69,7 +69,15 @@ export default function POSLayout() {
     }
 
     if (isDeliveryRider) {
-      return [{ to: "/staff/deliveries", icon: Truck, label: "My Deliveries" }];
+      return [
+        {
+          to: "/staff/rider-dashboard",
+          icon: LayoutDashboard,
+          label: "Dashboard",
+        },
+        { to: "/staff/deliveries", icon: Truck, label: "Active Deliveries" },
+        { to: "/staff/rider-history", icon: ClipboardList, label: "History" },
+      ];
     }
 
     return [];
