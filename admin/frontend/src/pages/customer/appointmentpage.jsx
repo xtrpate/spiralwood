@@ -24,6 +24,17 @@ const PURPOSE_OPTIONS = [
   { value: "site_measurement", label: "Site Measurement" },
 ];
 
+const PURPOSE_META = {
+  consultation: {
+    title: "Consultation",
+    desc: "Discuss your furniture requirements, ideas, and project scope.",
+  },
+  site_measurement: {
+    title: "Site Measurement",
+    desc: "Request an on-site visit so staff can inspect and measure the area.",
+  },
+};
+
 const getPurposeLabel = (value) => {
   const match = PURPOSE_OPTIONS.find((item) => item.value === value);
   if (match) return match.label;
@@ -51,17 +62,6 @@ const StatusBadge = ({ status }) => {
 
   return <span className={`appt-status-badge ${cls}`}>{label}</span>;
 };
-
-const TIME_SLOTS = [
-  "08:00",
-  "09:00",
-  "10:00",
-  "11:00",
-  "13:00",
-  "14:00",
-  "15:00",
-  "16:00",
-];
 
 const formatTime = (t) => {
   if (!t) return "—";
@@ -236,10 +236,11 @@ export default function AppointmentPage() {
     <div className="appt-page">
       <div className="appt-hero">
         <div className="appt-hero-text">
-          <h1>Request Appointment</h1>
+          <span className="appt-eyebrow">Customer Service</span>
+          <h1>Request an Appointment</h1>
           <p>
-            Submit a consultation or site measurement request and our staff will
-            review and confirm the schedule.
+            Book a consultation or site measurement. Our team will review your
+            request and confirm the final schedule.
           </p>
         </div>
       </div>
@@ -250,13 +251,19 @@ export default function AppointmentPage() {
             {submitted ? (
               <div className="appt-success">
                 <div className="appt-success-icon">
-                  <CheckCircle size={52} strokeWidth={1.5} />
+                  <CheckCircle size={42} strokeWidth={1.5} />
                 </div>
-                <h2>Appointment Request Submitted!</h2>
-                <p>
-                  Your request has been sent to our staff. We will review it,
-                  assign a staff member, and confirm the schedule.
-                </p>
+
+                <div className="appt-success-copy">
+                  <span className="appt-success-eyebrow">
+                    Request Submitted
+                  </span>
+                  <h2>Appointment request sent successfully</h2>
+                  <p>
+                    Our staff will review your request, assign the appropriate
+                    team member, and confirm the schedule with you.
+                  </p>
+                </div>
 
                 <div className="appt-success-details">
                   <div className="appt-success-row">
@@ -277,155 +284,204 @@ export default function AppointmentPage() {
                   </div>
                 </div>
 
-                <button className="appt-btn-primary" onClick={resetForm}>
+                <button
+                  type="button"
+                  className="appt-btn-secondary"
+                  onClick={resetForm}
+                >
                   Submit Another Request
                 </button>
               </div>
             ) : (
               <>
                 <div className="appt-card-header">
+                  <span className="appt-section-kicker">Appointment Form</span>
                   <h2>Appointment Request Details</h2>
                   <p>
-                    Online requests are for Consultation and Site Measurement
-                    only. Installation schedules are arranged by staff after
+                    Consultation and site measurement requests can be submitted
+                    online. Installation scheduling is arranged by staff after
                     order confirmation.
                   </p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="appt-form">
-                  <div className="appt-field">
-                    <label className="appt-label">
-                      <UserCheck size={14} /> Appointment Type{" "}
-                      <span className="appt-required">*</span>
-                    </label>
-                    <select
-                      className="appt-input"
-                      value={purpose}
-                      onChange={(e) => setPurpose(e.target.value)}
-                    >
-                      {PURPOSE_OPTIONS.map((item) => (
-                        <option key={item.value} value={item.value}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="appt-field">
-                    <label className="appt-label">
-                      <FileText size={14} /> Project Description{" "}
-                      <span className="appt-required">*</span>
-                    </label>
-                    <textarea
-                      className="appt-textarea"
-                      placeholder="e.g. 3-door wardrobe with mirror, kitchen cabinet set, floating shelves..."
-                      value={project_description}
-                      onChange={(e) => setProjectDescription(e.target.value)}
-                      rows={3}
-                      maxLength={500}
-                    />
-                    <div className="appt-char-count">
-                      {project_description.length}/500
-                    </div>
-                  </div>
-
-                  <div className="appt-row">
-                    <div className="appt-field">
-                      <label className="appt-label">
-                        <Calendar size={14} /> Preferred Date{" "}
-                        <span className="appt-required">*</span>
-                      </label>
-                      <input
-                        type="date"
-                        className="appt-input"
-                        min={getMinDate()}
-                        value={preferred_date}
-                        onChange={(e) => setPreferredDate(e.target.value)}
-                      />
+                  <section className="appt-form-section">
+                    <div className="appt-section-head">
+                      <h3>Appointment Type</h3>
+                      <p>Select one option.</p>
                     </div>
 
-                    <div className="appt-field">
-                      <label className="appt-label">
-                        <Clock size={14} /> Preferred Time{" "}
-                        <span className="appt-required">*</span>
-                      </label>
-                      <div className="appt-time-grid">
-                        {TIME_SLOTS.map((t) => (
+                    <div className="appt-purpose-grid">
+                      {PURPOSE_OPTIONS.map((item) => {
+                        const isActive = purpose === item.value;
+                        const meta = PURPOSE_META[item.value];
+
+                        return (
                           <button
-                            key={t}
+                            key={item.value}
                             type="button"
-                            className={`appt-time-slot ${preferred_time === t ? "active" : ""}`}
-                            onClick={() => setPreferredTime(t)}
+                            className={`appt-purpose-option ${isActive ? "active" : ""}`}
+                            onClick={() => setPurpose(item.value)}
                           >
-                            {formatTime(t)}
+                            <span className="appt-purpose-title">
+                              {meta?.title || item.label}
+                            </span>
+                            <span className="appt-purpose-desc">
+                              {meta?.desc || ""}
+                            </span>
                           </button>
-                        ))}
-                      </div>
+                        );
+                      })}
                     </div>
-                  </div>
+                  </section>
 
-                  <div className="appt-field">
-                    <label className="appt-label">
-                      <Phone size={14} /> Contact Number{" "}
-                      <span className="appt-required">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      className="appt-input"
-                      placeholder="e.g. 09171234567"
-                      value={contact_number}
-                      onChange={(e) => setContactNumber(e.target.value)}
-                      maxLength={20}
-                    />
-                  </div>
+                  <section className="appt-form-section">
+                    <div className="appt-section-head">
+                      <h3>Project Details</h3>
+                      <p>
+                        Describe the furniture or service you need so our staff
+                        can review it properly.
+                      </p>
+                    </div>
 
-                  {purpose === "site_measurement" && (
                     <div className="appt-field">
                       <label className="appt-label">
-                        <MapPin size={14} /> Site Address{" "}
+                        <FileText size={14} /> Project Description{" "}
                         <span className="appt-required">*</span>
                       </label>
                       <textarea
+                        className="appt-textarea appt-textarea-lg"
+                        placeholder="e.g. 3-door wardrobe with mirror, kitchen cabinet set, floating shelves..."
+                        value={project_description}
+                        onChange={(e) => setProjectDescription(e.target.value)}
+                        rows={4}
+                        maxLength={500}
+                      />
+                      <div className="appt-char-count">
+                        {project_description.length}/500
+                      </div>
+                    </div>
+
+                    <div className="appt-field">
+                      <label className="appt-label">
+                        Additional Notes{" "}
+                        <span className="appt-optional">(optional)</span>
+                      </label>
+                      <textarea
                         className="appt-textarea"
-                        placeholder="Enter the full address where the measurement will take place."
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
-                        rows={2}
+                        placeholder="Any extra details, style preferences, dimensions, or questions..."
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        rows={3}
                         maxLength={300}
                       />
                     </div>
-                  )}
+                  </section>
 
-                  <div className="appt-field">
-                    <label className="appt-label">
-                      Additional Notes{" "}
-                      <span className="appt-optional">(optional)</span>
-                    </label>
-                    <textarea
-                      className="appt-textarea"
-                      placeholder="Any extra details, style preferences, dimensions, or questions..."
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      rows={2}
-                      maxLength={300}
-                    />
-                  </div>
+                  <section className="appt-form-section">
+                    <div className="appt-section-head">
+                      <h3>Preferred Schedule</h3>
+                      <p>
+                        Choose your preferred schedule. Staff may confirm the
+                        closest available slot.
+                      </p>
+                    </div>
+
+                    <div className="appt-row">
+                      <div className="appt-field">
+                        <label className="appt-label">
+                          <Calendar size={14} /> Preferred Date{" "}
+                          <span className="appt-required">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          className="appt-input"
+                          min={getMinDate()}
+                          value={preferred_date}
+                          onChange={(e) => setPreferredDate(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="appt-field">
+                        <label className="appt-label">
+                          <Clock size={14} /> Preferred Time{" "}
+                          <span className="appt-required">*</span>
+                        </label>
+                        <input
+                          type="time"
+                          className="appt-input appt-time-input"
+                          value={preferred_time}
+                          onChange={(e) => setPreferredTime(e.target.value)}
+                          step="60"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="appt-field-help">
+                      Enter your preferred time. Staff will confirm the final
+                      available schedule.
+                    </div>
+                  </section>
+
+                  <section className="appt-form-section">
+                    <div className="appt-section-head">
+                      <h3>Contact Information</h3>
+                      <p>
+                        We will use this information to confirm the appointment
+                        or suggest an adjustment if needed.
+                      </p>
+                    </div>
+
+                    <div className="appt-field">
+                      <label className="appt-label">
+                        <Phone size={14} /> Contact Number{" "}
+                        <span className="appt-required">*</span>
+                      </label>
+                      <input
+                        type="tel"
+                        className="appt-input"
+                        placeholder="e.g. 09171234567"
+                        value={contact_number}
+                        onChange={(e) => setContactNumber(e.target.value)}
+                        maxLength={20}
+                      />
+                    </div>
+
+                    {purpose === "site_measurement" && (
+                      <div className="appt-field">
+                        <label className="appt-label">
+                          <MapPin size={14} /> Site Address{" "}
+                          <span className="appt-required">*</span>
+                        </label>
+                        <textarea
+                          className="appt-textarea"
+                          placeholder="Enter the full address where the measurement will take place."
+                          value={address}
+                          onChange={(e) => setAddress(e.target.value)}
+                          rows={3}
+                          maxLength={300}
+                        />
+                      </div>
+                    )}
+                  </section>
 
                   {error && <div className="appt-error">{error}</div>}
 
-                  <button
-                    type="submit"
-                    className="appt-btn-primary"
-                    disabled={submitting}
-                  >
-                    {submitting ? (
-                      <>
-                        <span className="appt-spinner" /> Submitting…
-                      </>
-                    ) : (
-                      "Submit Request"
-                    )}
-                  </button>
+                  <div className="appt-form-actions">
+                    <button
+                      type="submit"
+                      className="appt-btn-primary"
+                      disabled={submitting}
+                    >
+                      {submitting ? (
+                        <>
+                          <span className="appt-spinner" /> Submitting…
+                        </>
+                      ) : (
+                        "Submit Request"
+                      )}
+                    </button>
+                  </div>
                 </form>
               </>
             )}
@@ -434,7 +490,10 @@ export default function AppointmentPage() {
 
         <div className="appt-info-col">
           <div className="appt-card appt-info-card">
-            <h3>What to Expect</h3>
+            <div className="appt-side-header">
+              <span className="appt-section-kicker">Process</span>
+              <h3>What to Expect</h3>
+            </div>
 
             <div className="appt-steps">
               <div className="appt-step">
@@ -442,8 +501,8 @@ export default function AppointmentPage() {
                 <div>
                   <strong>Submit Request</strong>
                   <p>
-                    Choose Consultation or Site Measurement, then enter your
-                    project details and preferred schedule.
+                    Choose the appointment type, add your project details, and
+                    send your preferred schedule.
                   </p>
                 </div>
               </div>
@@ -453,8 +512,8 @@ export default function AppointmentPage() {
                 <div>
                   <strong>Staff Review</strong>
                   <p>
-                    Our team checks your request, assigns a staff member, and
-                    reviews the preferred schedule.
+                    Our team reviews your request and checks availability before
+                    assigning the appropriate staff member.
                   </p>
                 </div>
               </div>
@@ -464,15 +523,21 @@ export default function AppointmentPage() {
                 <div>
                   <strong>Confirmation</strong>
                   <p>
-                    Once confirmed, the assigned staff member will handle your
-                    appointment.
+                    Once confirmed, you will receive the final appointment
+                    schedule from our staff.
                   </p>
                 </div>
               </div>
             </div>
 
+            <div className="appt-note-box">
+              Consultation and site measurement requests are reviewed manually.
+              Installation scheduling is handled by staff after order
+              confirmation.
+            </div>
+
             <div className="appt-hours">
-              <div className="appt-hours-title">📅 Available Hours</div>
+              <div className="appt-hours-title">Available Hours</div>
               <div className="appt-hours-row">
                 <span>Monday – Friday</span>
                 <span>8:00 AM – 5:00 PM</span>
@@ -489,7 +554,10 @@ export default function AppointmentPage() {
           </div>
 
           <div className="appt-card">
-            <h3 className="appt-my-title">My Appointments</h3>
+            <div className="appt-side-header">
+              <span className="appt-section-kicker">History</span>
+              <h3 className="appt-my-title">My Appointments</h3>
+            </div>
 
             {loadingAppts ? (
               <div className="appt-loading">
@@ -497,7 +565,7 @@ export default function AppointmentPage() {
               </div>
             ) : appointments.length === 0 ? (
               <div className="appt-empty">
-                <Calendar size={32} strokeWidth={1} />
+                <Calendar size={30} strokeWidth={1} />
                 <p>No appointments yet</p>
               </div>
             ) : (
@@ -522,27 +590,24 @@ export default function AppointmentPage() {
                       </div>
 
                       {details.projectDescription && (
-                        <div
-                          style={{ fontSize: 13, color: "#555", marginTop: 6 }}
-                        >
+                        <div className="appt-item-body">
                           {details.projectDescription}
                         </div>
                       )}
 
                       {a.assigned_to_name && (
-                        <div
-                          style={{ fontSize: 12, color: "#666", marginTop: 6 }}
-                        >
+                        <div className="appt-item-assigned">
                           Assigned Staff: {a.assigned_to_name}
                         </div>
                       )}
 
                       {a.status === "pending" && (
                         <button
+                          type="button"
                           className="appt-btn-cancel"
                           onClick={() => handleCancel(a.id)}
                         >
-                          <X size={12} /> Cancel
+                          <X size={12} /> Cancel Request
                         </button>
                       )}
                     </div>

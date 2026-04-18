@@ -411,8 +411,8 @@
   min-height: 54px;
   padding: 0 18px;
   border: 1px solid #111111;
-  background: #111111;
-  color: #ffffff;
+  background: #ffffff;
+  color: #111111;
   font-size: 0.98rem;
   font-weight: 800;
   display: inline-flex;
@@ -420,6 +420,7 @@
   justify-content: center;
   gap: 8px;
   cursor: pointer;
+  border-radius: 0;
   transition:
     background 0.18s ease,
     color 0.18s ease,
@@ -427,15 +428,22 @@
 }
 
 .fm-cart-checkout-btn:hover {
-  background: #000000;
-  color: #ffffff;
+  background: #f7f7f7;
+  color: #111111;
   transform: translateY(-1px);
+}
+
+.fm-cart-checkout-btn svg {
+  color: #111111;
 }
 
 .fm-cart-checkout-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+  background: #ffffff;
+  color: #111111;
+  border: 1px solid #111111;
 }
 
 .fm-cart-checkout-btn.guest {
