@@ -5,6 +5,7 @@
  */
 import { createContext, useContext, useMemo } from "react";
 import { useCart } from "./cartcontext";
+import useAuthStore from "../../store/authStore";
 
 const CustomCartContext = createContext(null);
 
@@ -65,13 +66,13 @@ export function CustomCartProvider({ children }) {
       const resolvedCustom =
         typeof nextValue === "function" ? nextValue(currentCustom) : nextValue;
 
-      const safeCustom = (Array.isArray(resolvedCustom) ? resolvedCustom : []).map(
-        (item) => ({
-          ...item,
-          cart_type: "blueprint",
-          item_type: "blueprint",
-        }),
-      );
+      const safeCustom = (
+        Array.isArray(resolvedCustom) ? resolvedCustom : []
+      ).map((item) => ({
+        ...item,
+        cart_type: "blueprint",
+        item_type: "blueprint",
+      }));
 
       return [...currentStandard, ...safeCustom];
     });

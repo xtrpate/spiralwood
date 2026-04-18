@@ -105,7 +105,6 @@ const parseStoredArray = (raw) => {
 };
 
 export function CartProvider({ children }) {
-  // 👉 THE FIX: Added the missing state variables back!
   const [cart, setCart] = useState(() =>
     parseStoredArray(localStorage.getItem(STORAGE_KEY)),
   );
@@ -114,7 +113,6 @@ export function CartProvider({ children }) {
   const { user } = useAuthStore();
   const isInitialMount = useRef(true);
 
-  // 👉 INDUSTRY STANDARD: The "Handshake" (Merge Local + Cloud on Login)
   useEffect(() => {
     if (user && user.role === "customer") {
       api
@@ -144,7 +142,6 @@ export function CartProvider({ children }) {
     }
   }, [user]);
 
-  // 👉 INDUSTRY STANDARD: Background Syncing
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
     const customOnly = cart.filter((item) => item.cart_type === "blueprint");
