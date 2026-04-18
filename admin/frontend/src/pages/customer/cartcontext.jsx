@@ -150,11 +150,22 @@ const getInitialCart = () => {
 };
 
 export function CartProvider({ children }) {
+<<<<<<< HEAD
   const user = useAuthStore((state) => state.user);
 
   const [cart, setCart] = useState(getInitialCart);
   const [miniCartOpen, setMiniCartOpen] = useState(false);
   const isInitialMount = useRef(true);
+=======
+  const { user } = useAuthStore();
+  const isInitialMount = useRef(true);
+
+  // 👉 NEW: A flag to tell the background sync to ignore the next update
+  const skipNextSync = useRef(false);
+
+  const [cart, setCart] = useState(getInitialCart);
+  const [miniCartOpen, setMiniCartOpen] = useState(false);
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
 
   useEffect(() => {
     if (!(user && user.role === "customer")) return;
@@ -179,6 +190,7 @@ export function CartProvider({ children }) {
     };
   }, [user?.id, user?.role]);
 
+  // BACKGROUND SYNC EFFECT
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -191,9 +203,20 @@ export function CartProvider({ children }) {
     );
 
     if (user && user.role === "customer" && !isInitialMount.current) {
+<<<<<<< HEAD
       api.post("/customer/cart/sync", { cart }).catch((err) => {
         console.error("Cloud cart sync failed", err);
       });
+=======
+      // 👉 NEW: If skipNextSync is true, ignore this save and reset the flag
+      if (skipNextSync.current) {
+        skipNextSync.current = false;
+      } else {
+        api.post("/customer/cart/sync", { cart }).catch((err) => {
+          console.error("Cloud sync failed", err);
+        });
+      }
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
     }
 
     isInitialMount.current = false;
@@ -227,8 +250,7 @@ export function CartProvider({ children }) {
         .map((item) => {
           if (item.key !== cleanKey) return item;
 
-          const nextQty =
-            toPositiveInt(item.quantity, 1) + Number(delta || 0);
+          const nextQty = toPositiveInt(item.quantity, 1) + Number(delta || 0);
 
           if (nextQty <= 0) return null;
 
@@ -266,11 +288,26 @@ export function CartProvider({ children }) {
     setCart((prev) => prev.filter((item) => !keySet.has(item.key)));
   };
 
-  const clearCart = () => {
+  const clearCart = (syncToCloud = true) => {
     setMiniCartOpen(false);
+
+    // 👉 NEW: If we are not syncing to the cloud (logout), tell the background effect to ignore the upcoming empty cart!
+    if (!syncToCloud) {
+      skipNextSync.current = true;
+    }
+
     setCart([]);
 
+<<<<<<< HEAD
     if (user && user.role === "customer") {
+=======
+    localStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(LEGACY_CUSTOM_STORAGE_KEY);
+    sessionStorage.removeItem("cust_selected_keys");
+    sessionStorage.removeItem("cust_selected_custom_checkout");
+
+    if (syncToCloud && user && user.role === "customer") {
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
       api.post("/customer/cart/sync", { cart: [] }).catch((err) => {
         console.error("Cloud clear cart sync failed", err);
       });
@@ -314,31 +351,52 @@ export function CartProvider({ children }) {
   const value = useMemo(
     () => ({
       cart,
+<<<<<<< HEAD
       setCart,
+=======
+      miniCartOpen,
+      setCartState: setCart,
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
       standardCart,
       customCart,
       cartCount,
       customCartCount,
       cartTotal,
+<<<<<<< HEAD
       miniCartOpen,
       setMiniCartOpen,
       openMiniCart,
       closeMiniCart,
       toggleMiniCart,
+=======
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
       addToCart,
       updateQty,
       removeItem,
       removeMany,
       clearCart,
+<<<<<<< HEAD
     }),
     [
       cart,
+=======
+      openMiniCart,
+      closeMiniCart,
+      toggleMiniCart,
+    }),
+    [
+      cart,
+      miniCartOpen,
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
       standardCart,
       customCart,
       cartCount,
       customCartCount,
       cartTotal,
+<<<<<<< HEAD
       miniCartOpen,
+=======
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
     ],
   );
 

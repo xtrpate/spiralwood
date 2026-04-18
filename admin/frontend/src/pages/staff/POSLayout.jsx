@@ -17,10 +17,12 @@ import {
 import { useMemo, useState } from "react";
 import "./POSLayout.css";
 import useAuthStore from "../../store/authStore";
+import { useCart } from "../../pages/customer/cartcontext";
 
 export default function POSLayout() {
   const { user, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { clearCart } = useCart();
 
   const isAdmin = user?.role === "admin";
   const isCashier = user?.role === "staff" && user?.staff_type === "cashier";
@@ -67,7 +69,15 @@ export default function POSLayout() {
     }
 
     if (isDeliveryRider) {
-      return [{ to: "/staff/deliveries", icon: Truck, label: "My Deliveries" }];
+      return [
+        {
+          to: "/staff/rider-dashboard",
+          icon: LayoutDashboard,
+          label: "Dashboard",
+        },
+        { to: "/staff/deliveries", icon: Truck, label: "Active Deliveries" },
+        { to: "/staff/rider-history", icon: ClipboardList, label: "History" },
+      ];
     }
 
     return [];
@@ -85,6 +95,7 @@ export default function POSLayout() {
 
   const handleLogout = () => {
     logout();
+    clearCart(false);
     window.location.href = "/login";
   };
 
