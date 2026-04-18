@@ -121,7 +121,7 @@ function getDefaultRouteForUser(user) {
   if (!user) return "/login";
   if (user.role === "admin") return "/admin/dashboard";
   if (user.role === "staff") {
-    if (user.staff_type === "delivery_rider") return "/staff/deliveries";
+    if (user.staff_type === "delivery_rider") return "/staff/rider-dashboard";
     if (user.staff_type === "cashier") return "/staff/order";
     return "/staff/dashboard";
   }
