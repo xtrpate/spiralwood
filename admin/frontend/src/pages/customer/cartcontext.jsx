@@ -152,6 +152,10 @@ const getInitialCart = () => {
 export function CartProvider({ children }) {
   const { user } = useAuthStore();
   const isInitialMount = useRef(true);
+
+  // 👉 NEW: A flag to tell the background sync to ignore the next update
+  const skipNextSync = useRef(false);
+
   const [cart, setCart] = useState(getInitialCart);
   const [miniCartOpen, setMiniCartOpen] = useState(false);
 
@@ -178,6 +182,7 @@ export function CartProvider({ children }) {
     };
   }, [user?.id, user?.role]);
 
+  // BACKGROUND SYNC EFFECT
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -190,9 +195,14 @@ export function CartProvider({ children }) {
     );
 
     if (user && user.role === "customer" && !isInitialMount.current) {
-      api.post("/customer/cart/sync", { cart }).catch((err) => {
-        console.error("Cloud sync failed", err);
-      });
+      // 👉 NEW: If skipNextSync is true, ignore this save and reset the flag
+      if (skipNextSync.current) {
+        skipNextSync.current = false;
+      } else {
+        api.post("/customer/cart/sync", { cart }).catch((err) => {
+          console.error("Cloud sync failed", err);
+        });
+      }
     }
 
     isInitialMount.current = false;
@@ -264,9 +274,14 @@ export function CartProvider({ children }) {
     setCart((prev) => prev.filter((item) => !keySet.has(item.key)));
   };
 
-  // 👉 THE FIX: We added a switch here so it only deletes the database if syncToCloud is true!
   const clearCart = (syncToCloud = true) => {
     setMiniCartOpen(false);
+
+    // 👉 NEW: If we are not syncing to the cloud (logout), tell the background effect to ignore the upcoming empty cart!
+    if (!syncToCloud) {
+      skipNextSync.current = true;
+    }
+
     setCart([]);
 
     localStorage.removeItem(STORAGE_KEY);
