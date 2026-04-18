@@ -71,11 +71,8 @@ export default function CustomerLayout() {
     miniCartOpen,
     openMiniCart,
     closeMiniCart,
-<<<<<<< HEAD
     setCart,
-=======
     clearCart,
->>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
   } = useCart();
 
   const visibleNavItems = navItems.filter((item) => {
@@ -186,13 +183,10 @@ export default function CustomerLayout() {
   };
 
   const handleLogout = () => {
-<<<<<<< HEAD
     setAccountOpen(false);
     closeMiniCart();
     setCart([]);
-=======
     clearCart();
->>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
     logout();
     navigate("/login");
   };
@@ -384,7 +378,9 @@ export default function CustomerLayout() {
               }}
               aria-label="Open cart"
             >
-              <span className="cust-cart-summary-total">{formatPeso(cartTotal)}</span>
+              <span className="cust-cart-summary-total">
+                {formatPeso(cartTotal)}
+              </span>
 
               <span className="cust-cart-summary-icon-wrap">
                 <ShoppingCart size={21} />
@@ -586,7 +582,6 @@ export default function CustomerLayout() {
             </NavLink>
           ))}
         </nav>
-        
       </aside>
 
       <aside
