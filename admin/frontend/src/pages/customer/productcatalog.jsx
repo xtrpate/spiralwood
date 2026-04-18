@@ -21,7 +21,9 @@ const formatPeso = (value) =>
   })}`;
 
 const formatTypeLabel = (type) => {
-  const raw = String(type || "standard").replace(/_/g, " ").trim();
+  const raw = String(type || "standard")
+    .replace(/_/g, " ")
+    .trim();
   if (!raw) return "Standard";
   return raw.replace(/\b\w/g, (char) => char.toUpperCase());
 };
@@ -107,6 +109,7 @@ export default function ProductCatalog() {
   const [selVariation, setSelVariation] = useState(null);
   const [qty, setQty] = useState(1);
   const [cartMsg, setCartMsg] = useState("");
+  const [urlMapped, setUrlMapped] = useState(false);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -183,6 +186,7 @@ export default function ProductCatalog() {
     return () => clearTimeout(timer);
   }, [fetchProducts]);
 
+  // 👉 REPLACEMENT BLOCK: 1. Listen for URL changes (from the Top Navbar)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const q = params.get("q") || "";
@@ -192,20 +196,33 @@ export default function ProductCatalog() {
 
     if (!categoryName) {
       setCatFilter("all");
-      return;
     }
 
-    if (categories.length === 0) return;
+    // Reset the safety switch so we know to check the category again
+    setUrlMapped(false);
+  }, [location.search]);
 
-    const match = categories.find(
-      (cat) =>
-        String(cat.name || "").toLowerCase() === categoryName.toLowerCase(),
-    );
+  // 👉 REPLACEMENT BLOCK: 2. Map Category Name to ID once data loads
+  useEffect(() => {
+    // If we already mapped the URL, or categories aren't loaded yet, do nothing! (Prevents the reset loop)
+    if (urlMapped || categories.length === 0) return;
 
-    if (match) {
-      setCatFilter(String(match.id));
+    const params = new URLSearchParams(location.search);
+    const categoryName = params.get("category");
+
+    if (categoryName) {
+      const match = categories.find(
+        (cat) =>
+          String(cat.name || "").toLowerCase() === categoryName.toLowerCase(),
+      );
+      if (match) {
+        setCatFilter(String(match.id));
+      }
     }
-  }, [location.search, categories]);
+
+    // Lock the switch so it doesn't reset when you click sidebar filters!
+    setUrlMapped(true);
+  }, [categories, location.search, urlMapped]);
 
   const needsOptionSelection = (product) =>
     (product?.variations?.length || 0) > 0;
@@ -229,18 +246,18 @@ export default function ProductCatalog() {
     if (stock <= 0) return;
 
     addToCart({
-    key: `${product.id}`,
-    product_id: product.id,
-    variation_id: null,
-    product_name: product.name,
-    unit_price: parseFloat(product.online_price),
-    production_cost: product.production_cost ?? 0,
-    quantity: 1,
-    max_stock: stock,
-    image_url: product.image_url || null,
-  });
+      key: `${product.id}`,
+      product_id: product.id,
+      variation_id: null,
+      product_name: product.name,
+      unit_price: parseFloat(product.online_price),
+      production_cost: product.production_cost ?? 0,
+      quantity: 1,
+      max_stock: stock,
+      image_url: product.image_url || null,
+    });
 
-  toast.success(`Added "${product.name}" to cart.`);
+    toast.success(`Added "${product.name}" to cart.`);
   };
 
   const handleCardAddToCart = (product) => {
@@ -414,7 +431,8 @@ export default function ProductCatalog() {
         <div className="catalog-page-meta">
           {!loading && (
             <div className="catalog-results-info">
-              Showing {products.length} product{products.length !== 1 ? "s" : ""}
+              Showing {products.length} product
+              {products.length !== 1 ? "s" : ""}
             </div>
           )}
 
@@ -488,7 +506,9 @@ export default function ProductCatalog() {
           </div>
 
           <div className="filter-section">
-            <div className="sidebar-title sidebar-subtitle">Filter by Price</div>
+            <div className="sidebar-title sidebar-subtitle">
+              Filter by Price
+            </div>
 
             <div className="price-slider-shell">
               <div className="price-slider-label">
@@ -582,7 +602,11 @@ export default function ProductCatalog() {
           </div>
 
           {hasActiveFilters && (
-            <button type="button" className="clear-filters" onClick={clearFilters}>
+            <button
+              type="button"
+              className="clear-filters"
+              onClick={clearFilters}
+            >
               Clear All Filters
             </button>
           )}
@@ -667,9 +691,12 @@ export default function ProductCatalog() {
 
                     <div className="product-card-price">
                       ₱
-                      {parseFloat(product.online_price).toLocaleString("en-PH", {
-                        minimumFractionDigits: 2,
-                      })}
+                      {parseFloat(product.online_price).toLocaleString(
+                        "en-PH",
+                        {
+                          minimumFractionDigits: 2,
+                        },
+                      )}
                     </div>
 
                     <div className="product-card-stock-wrap">
@@ -715,8 +742,6 @@ export default function ProductCatalog() {
         >
           <div className="detail-modal">
             <div className="detail-modal-left">
-              
-
               <div className="detail-main-image">
                 <ProductImage
                   src={selected.image_url}
@@ -842,7 +867,8 @@ export default function ProductCatalog() {
                       className="qty-btn"
                       onClick={() => {
                         const maxStock =
-                          Number(selVariation?.stock ?? selected.stock ?? 1) || 1;
+                          Number(selVariation?.stock ?? selected.stock ?? 1) ||
+                          1;
                         setQty((value) => Math.min(value + 1, maxStock));
                       }}
                     >
