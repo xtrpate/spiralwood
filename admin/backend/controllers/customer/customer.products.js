@@ -19,7 +19,7 @@ const buildWhereClause = ({
   price_max,
   includePrice = true,
 }) => {
-  let where = "WHERE 1=1";
+  let where = "WHERE p.is_published = 1";
   const params = [];
 
   if (q) {
@@ -232,10 +232,10 @@ exports.getProductById = async (req, res) => {
       `
       SELECT
         p.*,
-        c.name AS category
+        c.name AS categoryvv
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
-      WHERE p.id = ?
+      WHERE p.id = ? AND p.is_published = 1
       `,
       [req.params.id],
     );

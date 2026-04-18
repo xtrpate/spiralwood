@@ -15,7 +15,6 @@ export default function ProductsPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // 👉 NEW: State to track selected products for bulk publishing
   const [selectedIds, setSelectedIds] = useState([]);
 
   const [filters, setFilters] = useState({
@@ -53,22 +52,27 @@ export default function ProductsPage() {
     } catch {}
   };
 
-  // 👉 NEW: Bulk Publish Function
   const handleBulkPublish = async (is_published) => {
     if (selectedIds.length === 0) {
       return toast.error("Please select at least one product first.");
     }
 
     try {
-      // We will create this backend route next!
       await api.patch("/products/bulk-publish", {
         ids: selectedIds,
         is_published,
       });
-      toast.success(`Product Published successfully!`);
+
+      // 👉 THE FIX: Dynamic success messages!
+      toast.success(
+        is_published
+          ? "Product published successfully."
+          : "Product unpublished successfully.",
+      );
+
       load();
     } catch (err) {
-      toast.error("Failed to publish product.");
+      toast.error("Failed to update product status.");
     }
   };
 
@@ -81,7 +85,6 @@ export default function ProductsPage() {
     } catch {}
   };
 
-  // Handle Select All Checkbox
   const handleSelectAll = (e) => {
     if (e.target.checked) {
       setSelectedIds(products.map((p) => p.id));
@@ -90,7 +93,6 @@ export default function ProductsPage() {
     }
   };
 
-  // Handle Individual Checkbox
   const handleSelectOne = (id, checked) => {
     if (checked) {
       setSelectedIds((prev) => [...prev, id]);
@@ -131,7 +133,7 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* 👉 NEW: Filters & Bulk Actions Row */}
+      {/* Filters & Bulk Actions Row */}
       <div
         style={{
           display: "flex",
@@ -230,7 +232,7 @@ export default function ProductsPage() {
                 "Image",
                 "Barcode",
                 "Name",
-                "Category", // 👉 NEW Column
+                "Category",
                 "Type",
                 "Online Price",
                 "Walk-in",
@@ -250,7 +252,7 @@ export default function ProductsPage() {
             {loading ? (
               <tr>
                 <td
-                  colSpan={13} // Increased for checkboxes & category
+                  colSpan={13}
                   style={{ textAlign: "center", padding: 40, color: "#64748b" }}
                 >
                   Loading...
@@ -322,7 +324,6 @@ export default function ProductsPage() {
                       {p.name}
                     </td>
 
-                    {/* 👉 NEW: Category Cell */}
                     <td style={td}>
                       {p.category_name || p.category_id || "—"}
                     </td>
@@ -363,7 +364,7 @@ export default function ProductsPage() {
                       </span>
                     </td>
 
-                    {/* Published Status Badge */}
+                    {/* 👉 THE FIX: Published/Unpublished Badges */}
                     <td style={td}>
                       <span
                         style={{
@@ -375,7 +376,7 @@ export default function ProductsPage() {
                           fontWeight: 600,
                         }}
                       >
-                        {p.is_published ? "Live" : "Draft"}
+                        {p.is_published ? "Published" : "Unpublished"}
                       </span>
                     </td>
 
