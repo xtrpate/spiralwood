@@ -153,6 +153,7 @@ export default function CustomerLayout() {
   };
 
   const handleLogout = () => {
+    clearCart();
     logout();
     navigate("/login");
   };

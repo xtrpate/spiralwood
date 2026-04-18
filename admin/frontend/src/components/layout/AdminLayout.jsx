@@ -32,7 +32,7 @@ const NAV_ITEMS = [
     icon: "🚚",
     roles: ["admin"],
   },
-  
+
   {
     label: "Products",
     path: "/admin/products", // 👉 Added /admin
@@ -145,6 +145,7 @@ export default function AdminLayout() {
   }, [user, navigate]);
 
   const handleLogout = () => {
+    clearCart();
     logout();
     toast.success("Logged out.");
     navigate("/login");
