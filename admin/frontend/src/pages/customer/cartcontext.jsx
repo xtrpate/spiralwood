@@ -159,8 +159,13 @@ export function CartProvider({ children }) {
   const [cart, setCart] = useState(getInitialCart);
   const [miniCartOpen, setMiniCartOpen] = useState(false);
 
+  const [cloudLoaded, setCloudLoaded] = useState(false);
+
   useEffect(() => {
-    if (!(user && user.role === "customer")) return;
+    if (!(user && user.role === "customer")) {
+      setCloudLoaded(false);
+      return;
+    }
 
     let cancelled = false;
 
@@ -174,6 +179,9 @@ export function CartProvider({ children }) {
         setCart((currentLocalCart) =>
           mergeCartCollections(cloudCart, currentLocalCart),
         );
+
+        // 👉 2. UNLOCK IT ONCE THE SAVED DATA ARRIVES SAFELY
+        setCloudLoaded(true);
       })
       .catch((err) => console.error("Failed to fetch cloud cart", err));
 
@@ -194,8 +202,7 @@ export function CartProvider({ children }) {
       JSON.stringify(customOnly),
     );
 
-    if (user && user.role === "customer" && !isInitialMount.current) {
-      // 👉 NEW: If skipNextSync is true, ignore this save and reset the flag
+    if (user && user.role === "customer" && cloudLoaded) {
       if (skipNextSync.current) {
         skipNextSync.current = false;
       } else {
@@ -206,8 +213,7 @@ export function CartProvider({ children }) {
     }
 
     isInitialMount.current = false;
-  }, [cart, user?.id, user?.role, user]);
-
+  }, [cart, user?.id, user?.role, user, cloudLoaded]);
   const addToCart = (item) => {
     const normalized = normalizeCartItem(item);
     if (!normalized) return;
