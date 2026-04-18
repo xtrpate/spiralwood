@@ -277,9 +277,19 @@ exports.remove = async (req, res) => {
     await pool.query("DELETE FROM products WHERE id = ?", [
       parseInt(req.params.id),
     ]);
+
     req.auditRecord = { id: req.params.id, old: p };
     res.json({ message: "Product deleted." });
   } catch (err) {
+    // 👉 THE FIX: Catch the specific Foreign Key Constraint error!
+    if (err.code === "ER_ROW_IS_REFERENCED_2") {
+      return res.status(400).json({
+        message:
+          "Cannot delete this product because it is part of existing customer orders. Please unpublish it instead to hide it from the store.",
+      });
+    }
+
+    // Fallback for any other database errors
     res.status(500).json({ message: err.message });
   }
 };
