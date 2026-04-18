@@ -342,7 +342,9 @@ export default function CartPage() {
                       </div>
 
                       <div className="fm-cart-product-copy">
-                        <h3>{item.base_blueprint_title || item.product_name}</h3>
+                        <h3>
+                          {item.base_blueprint_title || item.product_name}
+                        </h3>
 
                         <div className="fm-cart-meta-line status">
                           {blueprint ? (
@@ -368,7 +370,9 @@ export default function CartPage() {
                   </div>
 
                   <div className="fm-cart-price-cell" data-label="Price">
-                    {blueprint ? "Price to be quoted" : formatPeso(item.unit_price)}
+                    {blueprint
+                      ? "Price to be quoted"
+                      : formatPeso(item.unit_price)}
                   </div>
 
                   <div className="fm-cart-qty-cell" data-label="Quantity">
@@ -381,7 +385,32 @@ export default function CartPage() {
                         <Minus size={14} />
                       </button>
 
-                      <span className="fm-cart-qty-value">{item.quantity}</span>
+                      <input
+                        type="number"
+                        className="fm-cart-qty-value"
+                        value={item.quantity || 1}
+                        min="1"
+                        onChange={(e) => {
+                          const newQty = parseInt(e.target.value, 10);
+
+                          // Only update if it's a valid number greater than 0
+                          if (!isNaN(newQty) && newQty > 0) {
+                            // Calculate the difference because updateQty adds/subtracts
+                            const delta = newQty - item.quantity;
+                            updateQty(item.key, delta);
+                          }
+                        }}
+                        style={{
+                          width: "46px",
+                          textAlign: "center",
+                          border: "none",
+                          outline: "none",
+                          background: "transparent",
+                          fontSize: "inherit",
+                          fontWeight: "inherit",
+                          color: "inherit",
+                        }}
+                      />
 
                       <button
                         type="button"
@@ -455,19 +484,21 @@ export default function CartPage() {
             {(isMixedSelection || checkoutError) && (
               <div className="fm-cart-alert">
                 <AlertCircle size={16} />
-                <span>{isMixedSelection ? mixedSelectionMessage : checkoutError}</span>
+                <span>
+                  {isMixedSelection ? mixedSelectionMessage : checkoutError}
+                </span>
               </div>
             )}
 
             <button
               type="button"
-              className={`fm-cart-checkout-btn ${
-                !customerUser ? "guest" : ""
-              }`}
+              className={`fm-cart-checkout-btn ${!customerUser ? "guest" : ""}`}
               onClick={handleCheckout}
               disabled={checkoutButtonDisabled}
               title={
-                isMixedSelection ? "Select only one order type to continue." : ""
+                isMixedSelection
+                  ? "Select only one order type to continue."
+                  : ""
               }
             >
               <span>{checkoutButtonLabel}</span>

@@ -110,6 +110,7 @@ export default function ProductCatalog() {
   const [qty, setQty] = useState(1);
   const [cartMsg, setCartMsg] = useState("");
   const [urlMapped, setUrlMapped] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -616,14 +617,158 @@ export default function ProductCatalog() {
 
         <div className="catalog-main">
           <div className="catalog-toolbar">
-            <div className="catalog-search">
-              <Search size={16} />
-              <input
-                type="text"
-                placeholder="Search products..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+            {/* 👉 UPGRADED SEARCH WITH DROPDOWN */}
+            <div style={{ position: "relative", flex: 1, maxWidth: "500px" }}>
+              <div className="catalog-search">
+                <Search size={16} />
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onFocus={() => setSearchFocused(true)}
+                  // The 200ms timeout prevents the dropdown from closing before a click registers!
+                  onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
+                />
+              </div>
+
+              {/* 👉 THE DROPDOWN MENU */}
+              {searchFocused && search.trim().length > 0 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 8px)",
+                    left: 0,
+                    right: 0,
+                    background: "#ffffff",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)",
+                    maxHeight: "350px",
+                    overflowY: "auto",
+                    zIndex: 100,
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  {loading ? (
+                    <div
+                      style={{
+                        padding: "16px",
+                        color: "#64748b",
+                        fontSize: "13px",
+                        textAlign: "center",
+                      }}
+                    >
+                      Searching...
+                    </div>
+                  ) : products.length === 0 ? (
+                    <div
+                      style={{
+                        padding: "16px",
+                        color: "#64748b",
+                        fontSize: "13px",
+                        textAlign: "center",
+                      }}
+                    >
+                      No results found for "{search}"
+                    </div>
+                  ) : (
+                    products.slice(0, 6).map((product) => (
+                      <div
+                        key={product.id}
+                        onClick={() => {
+                          openProduct(product); // Opens the modal instantly!
+                          setSearchFocused(false); // Closes the dropdown
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          padding: "12px 16px",
+                          cursor: "pointer",
+                          borderBottom: "1px solid #f1f5f9",
+                          transition: "background 0.2s",
+                        }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.background = "#f8fafc")
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.background = "#ffffff")
+                        }
+                      >
+                        <div
+                          style={{
+                            width: "40px",
+                            height: "40px",
+                            borderRadius: "6px",
+                            background: "#f8fafc",
+                            overflow: "hidden",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <img
+                            src={buildAssetUrl(product.image_url)}
+                            alt={product.name}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                            }}
+                            onError={(e) =>
+                              (e.currentTarget.style.display = "none")
+                            }
+                          />
+                        </div>
+                        <div style={{ flex: 1, overflow: "hidden" }}>
+                          <div
+                            style={{
+                              fontSize: "13px",
+                              fontWeight: "600",
+                              color: "#0f172a",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {product.name}
+                          </div>
+                          <div style={{ fontSize: "12px", color: "#64748b" }}>
+                            {product.category || "Uncategorized"}
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: "700",
+                            color: "#0f172a",
+                          }}
+                        >
+                          ₱
+                          {parseFloat(product.online_price).toLocaleString(
+                            "en-PH",
+                            { minimumFractionDigits: 2 },
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  {products.length > 6 && (
+                    <div
+                      style={{
+                        padding: "10px",
+                        textAlign: "center",
+                        fontSize: "12px",
+                        color: "#3b82f6",
+                        fontWeight: "600",
+                        background: "#f8fafc",
+                      }}
+                    >
+                      View all {products.length} results in the catalog...
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {hasActiveFilters && (
@@ -862,7 +1007,38 @@ export default function ProductCatalog() {
                       -
                     </button>
 
-                    <span className="qty-val">{qty}</span>
+                    <input
+                      type="number"
+                      className="qty-val"
+                      min="1"
+                      max={
+                        Number(selVariation?.stock ?? selected.stock ?? 1) || 1
+                      }
+                      value={qty}
+                      onChange={(e) => {
+                        const newQty = parseInt(e.target.value, 10);
+                        const maxStock =
+                          Number(selVariation?.stock ?? selected.stock ?? 1) ||
+                          1;
+                        if (!isNaN(newQty) && newQty > 0) {
+                          setQty(Math.min(newQty, maxStock));
+                        } else if (e.target.value === "") {
+                          setQty(""); // Allows the user to clear the box while typing
+                        }
+                      }}
+                      onBlur={() => {
+                        if (!qty || qty < 1) setQty(1); // Reset to 1 if they leave it empty
+                      }}
+                      style={{
+                        width: "50px",
+                        textAlign: "center",
+                        border: "none",
+                        background: "transparent",
+                        outline: "none",
+                        fontSize: "inherit",
+                        fontWeight: "inherit",
+                      }}
+                    />
 
                     <button
                       type="button"
