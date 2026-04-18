@@ -600,17 +600,7 @@ export default function CustomerLayout() {
 
                       <div className="cust-dropdown-divider" />
 
-                      <button
-                        type="button"
-                        className="cust-dropdown-item"
-                        onClick={() => {
-                          setAccountOpen(false);
-                          navigate("/orders");
-                        }}
-                      >
-                        <Package size={16} />
-                        <span>My Orders</span>
-                      </button>
+                      
 
                       <button
                         type="button"
