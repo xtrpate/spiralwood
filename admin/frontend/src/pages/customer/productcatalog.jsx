@@ -326,6 +326,8 @@ export default function ProductCatalog() {
       setTempPriceMin("");
       setTempPriceMax("");
     }
+
+    navigate(location.pathname, { replace: true });
   };
 
   const applyPriceFilter = () => {
