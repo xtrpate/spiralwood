@@ -92,7 +92,7 @@ export default function ProductCatalog() {
   const [selected, setSelected] = useState(null);
   const [total, setTotal] = useState(0);
 
-  const { addToCart, openMiniCart } = useCart();
+  const { addToCart } = useCart();
 
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
@@ -229,19 +229,18 @@ export default function ProductCatalog() {
     if (stock <= 0) return;
 
     addToCart({
-      key: `${product.id}`,
-      product_id: product.id,
-      variation_id: null,
-      product_name: product.name,
-      unit_price: parseFloat(product.online_price),
-      production_cost: product.production_cost ?? 0,
-      quantity: 1,
-      max_stock: stock,
-      image_url: product.image_url || null,
-    });
+    key: `${product.id}`,
+    product_id: product.id,
+    variation_id: null,
+    product_name: product.name,
+    unit_price: parseFloat(product.online_price),
+    production_cost: product.production_cost ?? 0,
+    quantity: 1,
+    max_stock: stock,
+    image_url: product.image_url || null,
+  });
 
-    openMiniCart();
-    toast.success(`Added "${product.name}" to cart.`);
+  toast.success(`Added "${product.name}" to cart.`);
   };
 
   const handleCardAddToCart = (product) => {
@@ -293,7 +292,6 @@ export default function ProductCatalog() {
 
     toast.success(`Added ${qty} × "${name}" to cart.`);
     setSelected(null);
-    openMiniCart();
   };
 
   const clearFilters = () => {

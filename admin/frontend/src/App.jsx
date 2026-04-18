@@ -125,7 +125,12 @@ function getDefaultRouteForUser(user) {
     if (user.staff_type === "cashier") return "/staff/order";
     return "/staff/dashboard";
   }
+<<<<<<< HEAD
+
+  return "/";
+=======
   return "/catalog";
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
 }
 
 function RedirectIfAuthenticated({ children }) {

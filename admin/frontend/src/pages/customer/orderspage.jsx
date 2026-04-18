@@ -4,18 +4,53 @@ import api, { buildAssetUrl } from "../../services/api";
 import "./orders.css";
 
 const STATUS_META = {
-  pending: { label: "Pending" },
-  confirmed: { label: "Confirmed" },
-  production: { label: "Production" },
-  shipping: { label: "Shipping" },
-  delivered: { label: "Delivered" },
-  completed: { label: "Completed" },
-  cancelled: { label: "Cancelled" },
+  pending: {
+    badge: "Pending",
+    title: "Order received",
+    short: "Waiting for confirmation",
+    desc: "We received your order and it is waiting for confirmation.",
+  },
+  confirmed: {
+    badge: "Confirmed",
+    title: "Confirmed",
+    short: "Preparing your order",
+    desc: "Your order has been confirmed and is now being prepared.",
+  },
+  production: {
+    badge: "Production",
+    title: "In production",
+    short: "Furniture is being prepared",
+    desc: "Your furniture is currently being built or prepared.",
+  },
+  shipping: {
+    badge: "Shipping",
+    title: "Out for delivery",
+    short: "On the way to your address",
+    desc: "Your order is already on the way to your address.",
+  },
+  delivered: {
+    badge: "Delivered",
+    title: "Delivered",
+    short: "Delivered to your address",
+    desc: "Your order was marked as delivered.",
+  },
+  completed: {
+    badge: "Completed",
+    title: "Completed",
+    short: "Order finished successfully",
+    desc: "This order has been completed successfully.",
+  },
+  cancelled: {
+    badge: "Cancelled",
+    title: "Cancelled",
+    short: "Order was cancelled",
+    desc: "This order was cancelled and will no longer continue.",
+  },
 };
 
 const PAY_STATUS_META = {
   unpaid: { label: "Unpaid" },
-  partial: { label: "Proof submitted" },
+  partial: { label: "Payment review" },
   paid: { label: "Paid" },
 };
 
@@ -31,8 +66,8 @@ const PAY_METHOD_LABELS = {
 const TRACKING_STEPS = [
   {
     key: "pending",
-    label: "Order placed",
-    desc: "Your order has been received and is awaiting confirmation.",
+    label: "Order received",
+    desc: "We received your order and are waiting to confirm it.",
   },
   {
     key: "confirmed",
@@ -47,7 +82,7 @@ const TRACKING_STEPS = [
   {
     key: "shipping",
     label: "Out for delivery",
-    desc: "Your order is on the way.",
+    desc: "Your order is on the way to your address.",
   },
   {
     key: "delivered",
@@ -57,7 +92,7 @@ const TRACKING_STEPS = [
   {
     key: "completed",
     label: "Completed",
-    desc: "The order has been completed successfully.",
+    desc: "Your order has been completed successfully.",
   },
 ];
 
@@ -77,7 +112,10 @@ function getStepIndex(status) {
 function fmt(n) {
   return (
     "₱" +
-    parseFloat(n || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })
+    parseFloat(n || 0).toLocaleString("en-PH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
   );
 }
 
@@ -93,7 +131,7 @@ function fmtDate(d) {
 }
 
 function fmtDateShort(d) {
-  if (!d) return "";
+  if (!d) return "—";
   return new Date(d).toLocaleDateString("en-PH", {
     month: "short",
     day: "numeric",
@@ -101,31 +139,33 @@ function fmtDateShort(d) {
   });
 }
 
-function TrackingTimeline({ order }) {
-  const isCancelled = order.status === "cancelled";
-  const currentIdx = getStepIndex(order.status);
+function getItemSubtotal(item) {
+  if (item?.subtotal != null) return Number(item.subtotal || 0);
+  return Number(item?.quantity || 0) * Number(item?.unit_price || 0);
+}
 
-  if (isCancelled) {
+function TrackingList({ order }) {
+  if (order.status === "cancelled") {
     return (
-      <div className="tl-cancelled">
-        <div className="tl-cancelled-mark">Cancelled</div>
-        <div className="tl-cancelled-title">This order was cancelled</div>
+      <div className="tl-cancel-card">
+        <div className="tl-cancel-badge">Cancelled</div>
+        <div className="tl-cancel-title">This order was cancelled</div>
 
         {order.cancellation_reason && (
-          <div className="tl-cancelled-reason">
+          <div className="tl-cancel-copy">
             Reason: {order.cancellation_reason}
           </div>
         )}
 
         {order.cancelled_at && (
-          <div className="tl-cancelled-date">
+          <div className="tl-cancel-copy">
             Cancelled on {fmtDate(order.cancelled_at)}
           </div>
         )}
 
         {order.refund_status && order.refund_status !== "none" && (
-          <div className="tl-refund-note">
-            Refund:{" "}
+          <div className="tl-cancel-copy">
+            Refund status:{" "}
             {order.refund_status === "pending" ? "Pending" : "Processed"}
           </div>
         )}
@@ -133,8 +173,10 @@ function TrackingTimeline({ order }) {
     );
   }
 
+  const currentIdx = getStepIndex(order.status);
+
   return (
-    <div className="tl-wrap">
+    <div className="tl-clean">
       {TRACKING_STEPS.map((step, i) => {
         const isDone = i < currentIdx;
         const isActive = i === currentIdx;
@@ -143,26 +185,25 @@ function TrackingTimeline({ order }) {
         return (
           <div
             key={step.key}
-            className={`tl-step ${isDone ? "done" : ""} ${isActive ? "active" : ""} ${isFuture ? "future" : ""}`}
+            className={`tl-clean-item ${isDone ? "done" : ""} ${isActive ? "active" : ""} ${isFuture ? "future" : ""}`}
           >
-            {i < TRACKING_STEPS.length - 1 && (
-              <div className={`tl-line ${isDone || isActive ? "filled" : ""}`} />
-            )}
-
-            <div className="tl-circle">
-              {isDone ? (
-                <span className="tl-check">✓</span>
-              ) : isActive ? (
-                <span className="tl-active-dot" />
-              ) : (
-                <span className="tl-num">{i + 1}</span>
+            <div className="tl-clean-marker">
+              <div className="tl-clean-dot">
+                {isDone ? "✓" : isActive ? <span className="tl-clean-live" /> : ""}
+              </div>
+              {i < TRACKING_STEPS.length - 1 && (
+                <div className={`tl-clean-line ${isDone ? "done" : ""}`} />
               )}
             </div>
 
-            <div className="tl-content">
-              <div className="tl-step-label">{step.label}</div>
-              {isActive && <div className="tl-step-desc">{step.desc}</div>}
-              {isDone && <div className="tl-step-done-label">Completed</div>}
+            <div className="tl-clean-content">
+              <div className="tl-clean-topline">
+                <div className="tl-clean-title">{step.label}</div>
+                <div className="tl-clean-state">
+                  {isDone ? "Done" : isActive ? "Current" : "Next"}
+                </div>
+              </div>
+              <div className="tl-clean-desc">{step.desc}</div>
             </div>
           </div>
         );
@@ -171,14 +212,15 @@ function TrackingTimeline({ order }) {
   );
 }
 
-function OrderModal({ orderId, onClose }) {
+function OrderModal({
+  orderId,
+  onClose,
+  onConfirmOrder,
+  onCancelOrder,
+  onReviewOrder,
+}) {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("tracking");
-
-  const canCustomerConfirm =
-    order?.status === "delivered" &&
-    String(order?.payment_status || "").toLowerCase() === "paid";
 
   useEffect(() => {
     api
@@ -194,6 +236,21 @@ function OrderModal({ orderId, onClose }) {
       .finally(() => setLoading(false));
   }, [orderId]);
 
+  const canCustomerConfirm =
+    order?.status === "delivered" &&
+    String(order?.payment_status || "").toLowerCase() === "paid";
+
+  const sm = STATUS_META[order?.status] || {
+    badge: order?.status || "Order",
+    title: order?.status || "Order",
+    short: "",
+    desc: "",
+  };
+
+  const pm = PAY_STATUS_META[order?.payment_status] || {
+    label: order?.payment_status || "—",
+  };
+
   return (
     <div className="om-backdrop" onClick={onClose}>
       <div className="om-panel" onClick={(e) => e.stopPropagation()}>
@@ -204,95 +261,53 @@ function OrderModal({ orderId, onClose }) {
         {loading ? (
           <div className="om-loading">
             <div className="om-spinner" />
-            <p>Loading…</p>
+            <p>Loading order details…</p>
           </div>
         ) : !order ? (
           <div className="om-loading">
-            <p>Could not load order.</p>
+            <p>Could not load this order.</p>
           </div>
         ) : (
           <>
             <div className="om-header">
-              <div>
+              <div className="om-header-left">
                 <div className="om-order-num">{order.order_number}</div>
                 <div className="om-order-date">
-                  Placed {fmtDateShort(order.created_at)}
+                  Placed on {fmtDateShort(order.created_at)}
                 </div>
               </div>
 
               <div className="om-badges">
-                <span className="om-badge om-badge-dark">
-                  {STATUS_META[order.status]?.label || order.status}
-                </span>
-                <span className="om-badge om-badge-light">
-                  {PAY_STATUS_META[order.payment_status]?.label ||
-                    order.payment_status}
-                </span>
+                <span className="om-badge om-badge-dark">{sm.badge}</span>
+                <span className="om-badge om-badge-light">{pm.label}</span>
               </div>
             </div>
 
-            <div className="om-tabs">
-              <button
-                className={`om-tab ${tab === "tracking" ? "active" : ""}`}
-                onClick={() => setTab("tracking")}
-              >
-                Tracking
-              </button>
-              <button
-                className={`om-tab ${tab === "details" ? "active" : ""}`}
-                onClick={() => setTab("details")}
-              >
-                Details
-              </button>
+            <div className="om-status-card">
+              <div className="om-section-kicker">Current status</div>
+              <div className="om-status-title">{sm.title}</div>
+              <div className="om-status-desc">{sm.desc}</div>
+
+              {order.status === "delivered" && canCustomerConfirm && (
+                <div className="om-inline-note om-inline-note-strong">
+                  Your order has been delivered. You may now confirm receipt.
+                </div>
+              )}
+
+              {order.status === "delivered" && !canCustomerConfirm && (
+                <div className="om-inline-note">
+                  Payment must be fully settled before this order can be marked as completed.
+                </div>
+              )}
             </div>
 
-            {tab === "tracking" && (
-              <div className="om-tab-body">
-                <TrackingTimeline order={order} />
+            <div className="om-grid">
+              <div className="om-main">
+                <div className="om-section">
+                  <div className="om-section-title">Order timeline</div>
+                  <TrackingList order={order} />
+                </div>
 
-                {!["completed", "cancelled", "delivered"].includes(
-                  order.status,
-                ) && (
-                  <div className="om-note-box">
-                    <div className="om-note-title">Order updates</div>
-                    <div className="om-note-desc">
-                      You will receive updates as your order progresses.
-                    </div>
-                  </div>
-                )}
-
-                {order.status === "delivered" && canCustomerConfirm && (
-                  <div className="om-note-box om-note-box-strong">
-                    <div className="om-note-title">Order delivered</div>
-                    <div className="om-note-desc">
-                      You may now confirm receipt of this order.
-                    </div>
-                  </div>
-                )}
-
-                {order.status === "delivered" && !canCustomerConfirm && (
-                  <div className="om-note-box">
-                    <div className="om-note-title">Payment required</div>
-                    <div className="om-note-desc">
-                      This order cannot be completed yet because payment is not
-                      fully settled.
-                    </div>
-                  </div>
-                )}
-
-                {order.status === "completed" && (
-                  <div className="om-note-box om-note-box-strong">
-                    <div className="om-note-title">Order completed</div>
-                    <div className="om-note-desc">
-                      Thank you for your purchase.
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {tab === "details" && (
-              <div className="om-tab-body">
                 <div className="om-section">
                   <div className="om-section-title">Items</div>
                   <div className="om-items">
@@ -310,85 +325,79 @@ function OrderModal({ orderId, onClose }) {
                         </div>
 
                         <div className="om-item-info">
-                          <div className="om-item-name">
-                            {item.product_name}
-                          </div>
+                          <div className="om-item-name">{item.product_name}</div>
+                          <div className="om-item-qty">Quantity: {item.quantity}</div>
                           {item.variation_id && (
                             <div className="om-item-var">
                               Variation #{item.variation_id}
                             </div>
                           )}
-                          <div className="om-item-qty">
-                            Qty: {item.quantity}
-                          </div>
                         </div>
 
                         <div className="om-item-price">
-                          <div className="om-item-unit">
-                            {fmt(item.unit_price)} each
-                          </div>
+                          <div className="om-item-unit">{fmt(item.unit_price)} each</div>
                           <div className="om-item-subtotal">
-                            {fmt(item.subtotal)}
+                            {fmt(getItemSubtotal(item))}
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
                 </div>
+              </div>
 
-                <div className="om-section om-totals">
+              <aside className="om-side">
+                <div className="om-side-card">
+                  <div className="om-section-title">Order summary</div>
+
                   <div className="om-total-row">
                     <span>Subtotal</span>
                     <span>{fmt(order.subtotal)}</span>
                   </div>
+
                   <div className="om-total-row om-total-final">
                     <span>Total</span>
                     <span>{fmt(order.total)}</span>
                   </div>
                 </div>
 
-                <div className="om-section om-meta-grid">
-                  <div className="om-meta-block">
-                    <div className="om-meta-label">Delivery address</div>
-                    <div className="om-meta-value">
-                      {order.delivery_address || "—"}
-                    </div>
-                  </div>
+                <div className="om-side-card">
+                  <div className="om-section-title">Order details</div>
 
-                  <div className="om-meta-block">
-                    <div className="om-meta-label">Payment method</div>
-                    <div className="om-meta-value">
-                      {PAY_METHOD_LABELS[order.payment_method] ||
-                        order.payment_method}
+                  <div className="om-detail-list">
+                    <div className="om-detail-row">
+                      <span>Delivery address</span>
+                      <strong>{order.delivery_address || "—"}</strong>
                     </div>
-                  </div>
 
-                  <div className="om-meta-block">
-                    <div className="om-meta-label">Order date</div>
-                    <div className="om-meta-value">
-                      {fmtDate(order.created_at)}
+                    <div className="om-detail-row">
+                      <span>Payment method</span>
+                      <strong>
+                        {PAY_METHOD_LABELS[order.payment_method] ||
+                          order.payment_method ||
+                          "—"}
+                      </strong>
                     </div>
-                  </div>
 
-                  <div className="om-meta-block">
-                    <div className="om-meta-label">Payment status</div>
-                    <div className="om-meta-value">
-                      {PAY_STATUS_META[order.payment_status]?.label ||
-                        order.payment_status}
+                    <div className="om-detail-row">
+                      <span>Payment status</span>
+                      <strong>{pm.label}</strong>
+                    </div>
+
+                    <div className="om-detail-row">
+                      <span>Order date</span>
+                      <strong>{fmtDate(order.created_at)}</strong>
                     </div>
                   </div>
 
                   {order.notes && (
-                    <div className="om-meta-block om-meta-full">
-                      <div className="om-meta-label">Notes</div>
-                      <div className="om-meta-value">{order.notes}</div>
+                    <div className="om-note-block">
+                      <div className="om-note-label">Notes</div>
+                      <div className="om-note-value">{order.notes}</div>
                     </div>
                   )}
-                </div>
 
-                {order.payment_proof && (
-                  <div className="om-section">
-                    <div className="om-meta-label">Proof of payment</div>
+                  {order.payment_proof && (
                     <a
                       href={buildAssetUrl(order.payment_proof)}
                       target="_blank"
@@ -397,10 +406,44 @@ function OrderModal({ orderId, onClose }) {
                     >
                       View payment proof
                     </a>
+                  )}
+                </div>
+
+                {(order.status === "pending" || canCustomerConfirm) && (
+                  <div className="om-side-card">
+                    <div className="om-section-title">Available actions</div>
+
+                    <div className="om-action-stack">
+                      {order.status === "pending" && (
+                        <button
+                          className="order-inline-btn order-inline-btn-outline om-action-btn"
+                          onClick={() => onCancelOrder(order.id)}
+                        >
+                          Cancel order
+                        </button>
+                      )}
+
+                      {canCustomerConfirm && (
+                        <>
+                          <button
+                            className="order-inline-btn order-inline-btn-outline om-action-btn"
+                            onClick={() => onReviewOrder(order.id)}
+                          >
+                            Review
+                          </button>
+                          <button
+                            className="order-inline-btn order-inline-btn-primary om-action-btn"
+                            onClick={() => onConfirmOrder(order.id)}
+                          >
+                            Confirm receipt
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 )}
-              </div>
-            )}
+              </aside>
+            </div>
           </>
         )}
       </div>
@@ -481,39 +524,36 @@ export default function OrdersPage() {
     }
   }, []);
 
-  const handleConfirmOrder = async (e, orderId) => {
-    e.stopPropagation();
-    if (
-      window.confirm(
-        "Are you sure you want to confirm that you have received this order?",
-      )
-    ) {
-      try {
-        await api.put(`/customer/orders/${orderId}/confirm`);
-        fetchOrders();
-      } catch {
-        alert("Failed to confirm the order. Please try again.");
-      }
+  const confirmOrderById = async (orderId) => {
+    const ok = window.confirm(
+      "Are you sure you want to confirm that you have received this order?",
+    );
+    if (!ok) return;
+
+    try {
+      await api.put(`/customer/orders/${orderId}/confirm`);
+      setSelectedId(null);
+      fetchOrders();
+    } catch {
+      alert("Failed to confirm the order. Please try again.");
     }
   };
 
-  const handleReviewOrder = (e) => {
-    e.stopPropagation();
+  const reviewOrderById = () => {
     alert("Review feature coming soon!");
   };
 
-  const handleCancelOrder = async (e, orderId) => {
-    e.stopPropagation();
+  const cancelOrderById = async (orderId) => {
     const reason = window.prompt("Please provide a reason for cancellation:");
+    if (reason === null) return;
 
-    if (reason !== null) {
-      try {
-        await api.put(`/customer/orders/${orderId}/cancel`, { reason });
-        fetchOrders();
-        alert("Order has been cancelled.");
-      } catch {
-        alert("Failed to cancel the order. Please try again.");
-      }
+    try {
+      await api.put(`/customer/orders/${orderId}/cancel`, { reason });
+      setSelectedId(null);
+      fetchOrders();
+      alert("Order has been cancelled.");
+    } catch {
+      alert("Failed to cancel the order. Please try again.");
     }
   };
 
@@ -540,24 +580,12 @@ export default function OrdersPage() {
     { key: "cancelled", label: "Cancelled" },
   ];
 
-  const CUSTOM_SORT_ORDER = {
-    delivered: 1,
-    shipping: 2,
-    production: 3,
-    confirmed: 4,
-    pending: 5,
-    completed: 6,
-    cancelled: 7,
-  };
-
   const filtered = (
     filter === "all" ? [...orders] : orders.filter((o) => o.status === filter)
   ).sort((a, b) => {
-    const rankA = CUSTOM_SORT_ORDER[a.status] || 99;
-    const rankB = CUSTOM_SORT_ORDER[b.status] || 99;
-
-    if (rankA !== rankB) return rankA - rankB;
-    return new Date(b.created_at) - new Date(a.created_at);
+    const dateDiff = new Date(b.created_at) - new Date(a.created_at);
+    if (dateDiff !== 0) return dateDiff;
+    return Number(b.id || 0) - Number(a.id || 0);
   });
 
   return (
@@ -565,7 +593,7 @@ export default function OrdersPage() {
       <div className="orders-hero">
         <div>
           <h1>My orders</h1>
-          <p>Track your orders from placement to delivery.</p>
+          <p>Review your order history and check the latest status of each order.</p>
         </div>
 
         <button className="orders-shop-btn" onClick={() => navigate("/catalog")}>
@@ -620,22 +648,22 @@ export default function OrdersPage() {
         <div className="orders-list">
           {filtered.map((order) => {
             const sm = STATUS_META[order.status] || {
-              label: order.status,
+              badge: order.status,
+              title: order.status,
+              short: "",
+              desc: "",
             };
 
             const pm = PAY_STATUS_META[order.payment_status] || {
               label: order.payment_status,
             };
 
-            const stepIdx = getStepIndex(order.status);
-            const progressPct =
-              order.status === "cancelled"
-                ? 0
-                : Math.round(((stepIdx + 1) / STEP_ORDER.length) * 100);
-
             const canCustomerConfirm =
               order.status === "delivered" &&
               String(order.payment_status || "").toLowerCase() === "paid";
+
+            const isCustomRequest =
+              !!customRequestMap[String(order?.order_number || "").trim()];
 
             return (
               <div
@@ -644,11 +672,16 @@ export default function OrdersPage() {
                 onClick={() => handleOpenOrder(order)}
               >
                 <div className="order-card-top">
-                  <div className="order-card-num">{order.order_number}</div>
+                  <div>
+                    <div className="order-card-num">{order.order_number}</div>
+                    <div className="order-card-date">
+                      Placed on {fmtDateShort(order.created_at)}
+                    </div>
+                  </div>
 
                   <div className="order-card-badges">
                     <span className="order-badge order-badge-dark">
-                      {sm.label}
+                      {sm.badge}
                     </span>
                     <span className="order-badge order-badge-light">
                       {pm.label}
@@ -656,85 +689,85 @@ export default function OrdersPage() {
                   </div>
                 </div>
 
-                {order.status !== "cancelled" && (
-                  <div className="order-progress-wrap">
-                    <div className="order-progress-bar">
-                      <div
-                        className="order-progress-fill"
-                        style={{ width: `${progressPct}%` }}
-                      />
+                <div className="order-card-main">
+                  <div className="order-card-status-panel">
+                    <div className="order-card-status-label">Current status</div>
+                    <div className="order-card-status-title">{sm.title}</div>
+                    <div className="order-card-status-desc">{sm.desc}</div>
+                  </div>
+
+                  <div className="order-card-facts">
+                    <div className="order-fact-card">
+                      <div className="order-fact-label">Items</div>
+                      <div className="order-fact-value">
+                        {order.total_qty || 0} item
+                        {(order.total_qty || 0) !== 1 ? "s" : ""}
+                      </div>
                     </div>
 
-                    <div className="order-progress-steps">
-                      {TRACKING_STEPS.map((step, i) => (
-                        <div
-                          key={step.key}
-                          className={`order-progress-dot ${i <= stepIdx ? "done" : ""} ${i === stepIdx ? "active" : ""}`}
-                          title={step.label}
-                        />
-                      ))}
+                    <div className="order-fact-card">
+                      <div className="order-fact-label">Payment method</div>
+                      <div className="order-fact-value">
+                        {PAY_METHOD_LABELS[order.payment_method] ||
+                          order.payment_method ||
+                          "—"}
+                      </div>
                     </div>
 
-                    <div className="order-progress-labels">
-                      <span>Order placed</span>
-                      <span>Completed</span>
+                    <div className="order-fact-card">
+                      <div className="order-fact-label">Payment status</div>
+                      <div className="order-fact-value">{pm.label}</div>
+                    </div>
+
+                    <div className="order-fact-card">
+                      <div className="order-fact-label">Delivery address</div>
+                      <div className="order-fact-value order-fact-value-address">
+                        {order.delivery_address || "No delivery address yet"}
+                      </div>
                     </div>
                   </div>
-                )}
 
-                <div className="order-card-meta">
-                  <span>{fmtDateShort(order.created_at)}</span>
-                  <span>
-                    {order.total_qty || 0} item
-                    {(order.total_qty || 0) !== 1 ? "s" : ""}
-                  </span>
-                  <span>
-                    {PAY_METHOD_LABELS[order.payment_method] ||
-                      order.payment_method}
-                  </span>
-                </div>
+                  <div className="order-card-side">
+                    <div className="order-total-box">
+                      <div className="order-card-total-label">Total</div>
+                      <div className="order-card-total">{fmt(order.total)}</div>
+                    </div>
 
-                {order.delivery_address && (
-                  <div className="order-card-address">
-                    {order.delivery_address}
-                  </div>
-                )}
-
-                <div className="order-card-footer">
-                  <span className="order-card-total">{fmt(order.total)}</span>
-
-                  <div className="order-card-actions">
-                    {order.status === "pending" && (
-                      <button
-                        className="order-inline-btn order-inline-btn-danger"
-                        onClick={(e) => handleCancelOrder(e, order.id)}
-                      >
-                        Cancel order
-                      </button>
-                    )}
-
-                    {canCustomerConfirm ? (
-                      <>
+                    <div className="order-card-actions">
+                      {order.status === "pending" && (
                         <button
                           className="order-inline-btn order-inline-btn-outline"
-                          onClick={(e) => handleReviewOrder(e, order.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            cancelOrderById(order.id);
+                          }}
                         >
-                          Review
+                          Cancel order
                         </button>
+                      )}
+
+                      {canCustomerConfirm && (
                         <button
                           className="order-inline-btn order-inline-btn-primary"
-                          onClick={(e) => handleConfirmOrder(e, order.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            confirmOrderById(order.id);
+                          }}
                         >
                           Confirm receipt
                         </button>
-                      </>
-                    ) : (
-                      <span className="order-card-view">
-                        {customRequestMap[String(order?.order_number || "").trim()]
-                          ? "View request"
-                          : "View order"}
-                      </span>
-                    )}
+                      )}
+
+                      <button
+                        className="order-inline-btn order-inline-btn-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenOrder(order);
+                        }}
+                      >
+                        {isCustomRequest ? "View request" : "View order"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -744,7 +777,13 @@ export default function OrdersPage() {
       )}
 
       {selectedId && (
-        <OrderModal orderId={selectedId} onClose={() => setSelectedId(null)} />
+        <OrderModal
+          orderId={selectedId}
+          onClose={() => setSelectedId(null)}
+          onConfirmOrder={confirmOrderById}
+          onCancelOrder={cancelOrderById}
+          onReviewOrder={reviewOrderById}
+        />
       )}
     </div>
   );

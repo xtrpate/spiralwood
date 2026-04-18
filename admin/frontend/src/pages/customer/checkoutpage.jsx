@@ -268,7 +268,7 @@ export default function CheckoutPage() {
 
   if (!selectionReady) {
     return (
-      <div>
+      <div className="checkout-page">
         <div className="page-hero">
           <h1>Checkout</h1>
           <p>Loading selected ready-made items…</p>
@@ -278,7 +278,7 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div>
+    <div className="checkout-page">
       <div
         className="page-hero"
         style={{
@@ -305,7 +305,7 @@ export default function CheckoutPage() {
             <div className="checkout-section-header">
               <div className="checkout-section-num">🛒</div>
               <h3>Your Ready-Made Items</h3>
-              <span style={{ marginLeft: "auto", fontSize: 12, color: "#aaa" }}>
+              <span style={{ marginLeft: "auto", fontSize: 12, color: "#111111" }}>
                 {checkoutItems.length} item{checkoutItems.length !== 1 ? "s" : ""} •{" "}
                 {totalUnits} unit{totalUnits !== 1 ? "s" : ""}
               </span>
@@ -358,7 +358,7 @@ export default function CheckoutPage() {
                     <div
                       style={{
                         fontSize: 12,
-                        color: "#64748b",
+                        color: "#111111",
                         marginTop: 4,
                         fontWeight: 500,
                       }}
@@ -452,7 +452,11 @@ export default function CheckoutPage() {
                       <span className="payment-method-desc">{method.desc}</span>
                     </div>
 
-                    <div className="payment-method-check" />
+                    <div
+                      className={`payment-method-check ${
+                        form.payment_method === method.value ? "selected" : ""
+                      }`}
+                    />
                   </div>
                 ))}
               </div>
@@ -570,14 +574,14 @@ export default function CheckoutPage() {
 
             <div className="summary-row">
               <span>Shipping</span>
-              <span style={{ color: "#2e7d32", fontWeight: 700 }}>
+              <span style={{ color: "#111111", fontWeight: 700 }}>
                 Calculated by store
               </span>
             </div>
 
             <div className="summary-row">
               <span>Total</span>
-              <span style={{ color: "#D2691E", fontWeight: 700 }}>
+              <span style={{ color: "#111111", fontWeight: 800 }}>
                 {formatPeso(total)}
               </span>
             </div>

@@ -150,6 +150,13 @@ const getInitialCart = () => {
 };
 
 export function CartProvider({ children }) {
+<<<<<<< HEAD
+  const user = useAuthStore((state) => state.user);
+
+  const [cart, setCart] = useState(getInitialCart);
+  const [miniCartOpen, setMiniCartOpen] = useState(false);
+  const isInitialMount = useRef(true);
+=======
   const { user } = useAuthStore();
   const isInitialMount = useRef(true);
 
@@ -158,6 +165,7 @@ export function CartProvider({ children }) {
 
   const [cart, setCart] = useState(getInitialCart);
   const [miniCartOpen, setMiniCartOpen] = useState(false);
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
 
   useEffect(() => {
     if (!(user && user.role === "customer")) return;
@@ -195,6 +203,11 @@ export function CartProvider({ children }) {
     );
 
     if (user && user.role === "customer" && !isInitialMount.current) {
+<<<<<<< HEAD
+      api.post("/customer/cart/sync", { cart }).catch((err) => {
+        console.error("Cloud cart sync failed", err);
+      });
+=======
       // 👉 NEW: If skipNextSync is true, ignore this save and reset the flag
       if (skipNextSync.current) {
         skipNextSync.current = false;
@@ -203,10 +216,11 @@ export function CartProvider({ children }) {
           console.error("Cloud sync failed", err);
         });
       }
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
     }
 
     isInitialMount.current = false;
-  }, [cart, user?.id, user?.role]);
+  }, [cart, user?.id, user?.role, user]);
 
   const addToCart = (item) => {
     const normalized = normalizeCartItem(item);
@@ -284,12 +298,16 @@ export function CartProvider({ children }) {
 
     setCart([]);
 
+<<<<<<< HEAD
+    if (user && user.role === "customer") {
+=======
     localStorage.removeItem(STORAGE_KEY);
     sessionStorage.removeItem(LEGACY_CUSTOM_STORAGE_KEY);
     sessionStorage.removeItem("cust_selected_keys");
     sessionStorage.removeItem("cust_selected_custom_checkout");
 
     if (syncToCloud && user && user.role === "customer") {
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
       api.post("/customer/cart/sync", { cart: [] }).catch((err) => {
         console.error("Cloud clear cart sync failed", err);
       });
@@ -333,18 +351,35 @@ export function CartProvider({ children }) {
   const value = useMemo(
     () => ({
       cart,
+<<<<<<< HEAD
+      setCart,
+=======
       miniCartOpen,
       setCartState: setCart,
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
       standardCart,
       customCart,
       cartCount,
       customCartCount,
       cartTotal,
+<<<<<<< HEAD
+      miniCartOpen,
+      setMiniCartOpen,
+      openMiniCart,
+      closeMiniCart,
+      toggleMiniCart,
+=======
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
       addToCart,
       updateQty,
       removeItem,
       removeMany,
       clearCart,
+<<<<<<< HEAD
+    }),
+    [
+      cart,
+=======
       openMiniCart,
       closeMiniCart,
       toggleMiniCart,
@@ -352,11 +387,16 @@ export function CartProvider({ children }) {
     [
       cart,
       miniCartOpen,
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
       standardCart,
       customCart,
       cartCount,
       customCartCount,
       cartTotal,
+<<<<<<< HEAD
+      miniCartOpen,
+=======
+>>>>>>> 80ce0195cbccf072b96001e8a57c6e41c2eac776
     ],
   );
 

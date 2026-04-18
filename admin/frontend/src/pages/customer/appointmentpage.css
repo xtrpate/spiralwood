@@ -490,17 +490,6 @@
   align-items: start;
 }
 
-.appt-step-num {
-  width: 26px;
-  height: 26px;
-  border: 1px solid #111111;
-  background: #111111;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 800;
-  display: grid;
-  place-items: center;
-}
 
 .appt-step strong {
   display: block;
@@ -757,3 +746,284 @@
     align-items: flex-start;
   }
 }
+
+/* =========================
+   APPOINTMENT READABILITY BOOST
+   Idikit sa pinakailalim ng appointmentpage.css
+   ========================= */
+
+.appt-page {
+  color: #111111;
+}
+
+/* HERO */
+.appt-hero-text h1 {
+  font-size: 2.15rem;
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+
+.appt-hero-text p {
+  font-size: 1.04rem;
+  line-height: 1.75;
+  color: rgba(255, 255, 255, 0.92);
+  max-width: 760px;
+}
+
+.appt-eyebrow,
+.appt-section-kicker,
+.appt-hours-title,
+.appt-success-eyebrow {
+  font-size: 0.76rem;
+  letter-spacing: 0.14em;
+  color: #4b5563;
+}
+
+/* MAIN SECTION TITLES */
+.appt-card-header h2,
+.appt-info-card h3,
+.appt-my-title {
+  font-size: 1.55rem;
+  font-weight: 800;
+  line-height: 1.18;
+  color: #111111;
+}
+
+.appt-card-header p,
+.appt-side-header p,
+.appt-section-head p {
+  font-size: 0.96rem;
+  line-height: 1.75;
+  color: #3f3f46;
+}
+
+/* SUBSECTION HEADS */
+.appt-section-head h3 {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #111111;
+  margin-bottom: 5px;
+}
+
+/* FORM LABELS */
+.appt-label {
+  font-size: 0.94rem;
+  font-weight: 800;
+  color: #111111;
+}
+
+.appt-required {
+  color: #111111;
+}
+
+.appt-optional {
+  color: #4b5563;
+  font-weight: 600;
+}
+
+/* INPUTS / TEXTAREAS */
+.appt-input,
+.appt-textarea {
+  font-size: 1rem;
+  color: #111111;
+  border-width: 1.5px;
+}
+
+.appt-input {
+  min-height: 46px;
+  padding: 0 14px;
+}
+
+.appt-textarea {
+  min-height: 92px;
+  padding: 12px 14px;
+  line-height: 1.7;
+}
+
+.appt-textarea-lg {
+  min-height: 118px;
+}
+
+.appt-input::placeholder,
+.appt-textarea::placeholder {
+  color: #666666;
+  opacity: 1;
+}
+
+.appt-char-count,
+.appt-field-help {
+  font-size: 0.84rem;
+  line-height: 1.6;
+  color: #444444;
+}
+
+/* PURPOSE CARDS */
+.appt-purpose-option {
+  min-height: 84px;
+  padding: 14px 16px;
+}
+
+.appt-purpose-title {
+  font-size: 0.98rem;
+  font-weight: 800;
+  color: #111111;
+}
+
+.appt-purpose-desc {
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: #444444;
+}
+
+.appt-purpose-option.active .appt-purpose-title,
+.appt-purpose-option.active .appt-purpose-desc {
+  color: #ffffff;
+}
+
+/* PRIMARY / SECONDARY BUTTONS */
+.appt-btn-primary,
+.appt-btn-secondary {
+  min-height: 46px;
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+
+.appt-btn-cancel {
+  min-height: 36px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+/* ERROR */
+.appt-error {
+  font-size: 0.94rem;
+  line-height: 1.65;
+  color: #111111;
+}
+
+/* SUCCESS */
+.appt-success h2 {
+  font-size: 1.65rem;
+  font-weight: 800;
+}
+
+.appt-success p,
+.appt-success-row {
+  font-size: 0.98rem;
+  line-height: 1.75;
+}
+
+.appt-success p {
+  color: #303030;
+}
+
+.appt-success-details {
+  max-width: 520px;
+  padding: 16px;
+}
+
+/* SIDE INFO / PROCESS */
+.appt-step {
+  display: block;
+}
+
+.appt-step strong {
+  font-size: 0.98rem;
+  font-weight: 800;
+  margin-bottom: 5px;
+}
+
+.appt-step p,
+.appt-note-box {
+  font-size: 0.94rem;
+  line-height: 1.75;
+  color: #303030;
+}
+
+.appt-note-box {
+  padding: 14px;
+}
+
+.appt-hours-row {
+  font-size: 0.95rem;
+  line-height: 1.65;
+  color: #111111;
+}
+
+/* HISTORY / MY APPOINTMENTS */
+.appt-loading,
+.appt-empty p {
+  font-size: 0.94rem;
+  line-height: 1.65;
+}
+
+.appt-empty {
+  color: #555555;
+}
+
+.appt-item-purpose {
+  font-size: 0.98rem;
+  font-weight: 800;
+}
+
+.appt-item-meta {
+  font-size: 0.84rem;
+  color: #444444;
+}
+
+.appt-item-body,
+.appt-item-assigned {
+  font-size: 0.94rem;
+  line-height: 1.75;
+  color: #303030;
+}
+
+.appt-status-badge {
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+/* BETTER SPACING */
+.appt-form {
+  gap: 18px;
+}
+
+.appt-form-section {
+  gap: 14px;
+}
+
+.appt-field {
+  gap: 8px;
+}
+
+.appt-card {
+  padding: 18px;
+}
+
+/* RESPONSIVE */
+@media (max-width: 820px) {
+  .appt-hero-text h1 {
+    font-size: 1.75rem;
+  }
+
+  .appt-hero-text p,
+  .appt-card-header p,
+  .appt-side-header p,
+  .appt-section-head p,
+  .appt-step p,
+  .appt-note-box,
+  .appt-item-body {
+    font-size: 0.95rem;
+  }
+
+  .appt-card-header h2,
+  .appt-info-card h3,
+  .appt-my-title {
+    font-size: 1.35rem;
+  }
+}
+
+

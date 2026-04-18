@@ -87,23 +87,21 @@ export default function LandingPage() {
     fetchProducts();
   }, []);
 
-  if (user) {
-    if (user.role === "admin") {
-      return <Navigate to="/admin/dashboard" replace />;
-    }
-    if (user.role === "staff") {
-      return (
-        <Navigate
-          to={
-            user.staff_type === "delivery_rider"
-              ? "/staff/deliveries"
-              : "/staff/dashboard"
-          }
-          replace
-        />
-      );
-    }
-    return <Navigate to="/catalog" replace />;
+  if (user?.role === "admin") {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+
+  if (user?.role === "staff") {
+    return (
+      <Navigate
+        to={
+          user.staff_type === "delivery_rider"
+            ? "/staff/deliveries"
+            : "/staff/dashboard"
+        }
+        replace
+      />
+    );
   }
 
   const topCategoryCards = [

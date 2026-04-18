@@ -146,7 +146,6 @@ export default function AppointmentPage() {
   const [loadingAppts, setLoadingAppts] = useState(true);
 
   useEffect(() => {
-    setContactNumber(user?.phone || "");
     setAddress(user?.address || "");
   }, [user]);
 
@@ -225,7 +224,7 @@ export default function AppointmentPage() {
     setProjectDescription("");
     setPreferredDate("");
     setPreferredTime("");
-    setContactNumber(user?.phone || "");
+    setContactNumber("");
     setAddress(user?.address || "");
     setNotes("");
     setSubmitted(false);
@@ -440,7 +439,6 @@ export default function AppointmentPage() {
                       <input
                         type="tel"
                         className="appt-input"
-                        placeholder="e.g. 09171234567"
                         value={contact_number}
                         onChange={(e) => setContactNumber(e.target.value)}
                         maxLength={20}
@@ -497,9 +495,8 @@ export default function AppointmentPage() {
 
             <div className="appt-steps">
               <div className="appt-step">
-                <div className="appt-step-num">1</div>
                 <div>
-                  <strong>Submit Request</strong>
+                  <strong>1. Submit Request</strong>
                   <p>
                     Choose the appointment type, add your project details, and
                     send your preferred schedule.
@@ -508,9 +505,8 @@ export default function AppointmentPage() {
               </div>
 
               <div className="appt-step">
-                <div className="appt-step-num">2</div>
                 <div>
-                  <strong>Staff Review</strong>
+                  <strong>2. Staff Review</strong>
                   <p>
                     Our team reviews your request and checks availability before
                     assigning the appropriate staff member.
@@ -519,9 +515,8 @@ export default function AppointmentPage() {
               </div>
 
               <div className="appt-step">
-                <div className="appt-step-num">3</div>
                 <div>
-                  <strong>Confirmation</strong>
+                  <strong>3. Confirmation</strong>
                   <p>
                     Once confirmed, you will receive the final appointment
                     schedule from our staff.
