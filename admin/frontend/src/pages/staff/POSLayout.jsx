@@ -17,10 +17,12 @@ import {
 import { useMemo, useState } from "react";
 import "./POSLayout.css";
 import useAuthStore from "../../store/authStore";
+import { useCart } from "../../pages/customer/cartcontext";
 
 export default function POSLayout() {
   const { user, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { clearCart } = useCart();
 
   const isAdmin = user?.role === "admin";
   const isCashier = user?.role === "staff" && user?.staff_type === "cashier";

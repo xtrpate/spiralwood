@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import useAuthStore from "../../store/authStore";
 import toast from "react-hot-toast";
+import { useCart } from "../../pages/customer/cartcontext";
 
 const NAV_ITEMS = [
   { section: "Dashboard" },
@@ -136,6 +137,7 @@ export default function AdminLayout() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [open, setOpen] = useState(true);
+  const { clearCart } = useCart();
 
   useEffect(() => {
     if (user && user.role === "customer") {
