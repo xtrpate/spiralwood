@@ -385,6 +385,33 @@ export default function App() {
                 }
               >
                 <Route
+                  path="rider-dashboard"
+                  element={
+                    <RequireStaffType allowedTypes={["delivery_rider"]}>
+                      <RiderDashboard />
+                    </RequireStaffType>
+                  }
+                />
+                <Route
+                  path="rider-history"
+                  element={
+                    <RequireStaffType allowedTypes={["delivery_rider"]}>
+                      <RiderHistory />
+                    </RequireStaffType>
+                  }
+                />
+                {/* ---------------------------------- */}
+
+                <Route
+                  path="dashboard"
+                  element={
+                    <RequireStaffType allowedTypes={["indoor"]}>
+                      <POSDashboard />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
                   index
                   element={
                     <Navigate
@@ -490,23 +517,6 @@ export default function App() {
                   }
                 />
               </Route>
-
-              <Route
-                path="rider-dashboard"
-                element={
-                  <RequireStaffType allowedTypes={["delivery_rider"]}>
-                    <RiderDashboard />
-                  </RequireStaffType>
-                }
-              />
-              <Route
-                path="rider-history"
-                element={
-                  <RequireStaffType allowedTypes={["delivery_rider"]}>
-                    <RiderHistory />
-                  </RequireStaffType>
-                }
-              />
 
               {/* Catch-all */}
               <Route path="*" element={<Navigate to="/catalog" replace />} />
