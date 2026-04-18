@@ -71,4 +71,7 @@ router.put(
   orderController.cancelOrder,
 );
 
+router.get("/cart", requireAuth, cartController.getCart);
+router.post("/cart/sync", requireAuth, cartController.syncCart);
+
 module.exports = router;
