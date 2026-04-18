@@ -68,6 +68,7 @@ export default function CustomerLayout() {
     miniCartOpen,
     openMiniCart,
     closeMiniCart,
+    clearCart,
   } = useCart();
 
   const visibleNavItems = navItems.filter((item) => {
