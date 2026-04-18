@@ -7,6 +7,7 @@ import {
   useRef,
 } from "react";
 import api from "../../services/api";
+import useAuthStore from "../../store/authStore";
 
 const CartContext = createContext(null);
 
