@@ -60,6 +60,9 @@ export default function CustomerLayout() {
   const [activeOrdersCount, setActiveOrdersCount] = useState(0);
 
   const accountRef = useRef(null);
+
+  const miniCartRef = useRef(null);
+  const cartButtonRef = useRef(null);
   const {
     cart,
     cartCount,
@@ -68,13 +71,13 @@ export default function CustomerLayout() {
     miniCartOpen,
     openMiniCart,
     closeMiniCart,
+    setCart,
   } = useCart();
 
   const visibleNavItems = navItems.filter((item) => {
     if (!customerUser) {
       return ["Home", "Products", "Customize", "Cart"].includes(item.label);
     }
-    if (item.label === "Home") return false;
     return true;
   });
 
@@ -94,7 +97,11 @@ export default function CustomerLayout() {
 
     const params = new URLSearchParams(location.search);
     setHeaderSearch(params.get("q") || "");
-  }, [location.pathname, location.search]);
+
+    if (location.pathname === "/" && !isAuthOverlayPage) {
+      scrollToLandingTop();
+    }
+  }, [location.pathname, location.search, isAuthOverlayPage]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -106,6 +113,28 @@ export default function CustomerLayout() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  useEffect(() => {
+    if (!miniCartOpen) return;
+
+    requestAnimationFrame(() => {
+      miniCartRef.current?.focus();
+    });
+
+    const handleMiniCartKeydown = (e) => {
+      if (e.key === "Escape") {
+        closeMiniCart();
+        requestAnimationFrame(() => {
+          cartButtonRef.current?.focus();
+        });
+      }
+    };
+
+    document.addEventListener("keydown", handleMiniCartKeydown);
+    return () => {
+      document.removeEventListener("keydown", handleMiniCartKeydown);
+    };
+  }, [miniCartOpen, closeMiniCart]);
 
   useEffect(() => {
     let active = true;
@@ -153,6 +182,9 @@ export default function CustomerLayout() {
   };
 
   const handleLogout = () => {
+    setAccountOpen(false);
+    closeMiniCart();
+    setCart([]);
     logout();
     navigate("/login");
   };
@@ -168,6 +200,25 @@ export default function CustomerLayout() {
     }
 
     setMenuOpen(false);
+  };
+
+  const scrollToLandingTop = () => {
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    });
+  };
+
+  const handleGoHome = () => {
+    setMenuOpen(false);
+    setAccountOpen(false);
+    closeMiniCart();
+
+    if (location.pathname === "/" && !location.search) {
+      scrollToLandingTop();
+      return;
+    }
+
+    navigate("/");
   };
 
   const renderCountBadge = (count) => {
@@ -308,7 +359,7 @@ export default function CustomerLayout() {
           <button
             type="button"
             className="cust-brand"
-            onClick={() => navigate("/")}
+            onClick={handleGoHome}
             aria-label="Go to home"
           >
             <BrandBlock />
@@ -316,16 +367,21 @@ export default function CustomerLayout() {
 
           <div className="cust-header-right">
             <button
+              ref={cartButtonRef}
               type="button"
-              className="cust-icon-btn"
+              className="cust-cart-summary-btn"
               onClick={() => {
                 setMenuOpen(false);
                 openMiniCart();
               }}
               aria-label="Open cart"
             >
-              <ShoppingCart size={21} />
-              {renderCountBadge(cartCount)}
+              <span className="cust-cart-summary-total">{formatPeso(cartTotal)}</span>
+
+              <span className="cust-cart-summary-icon-wrap">
+                <ShoppingCart size={21} />
+                {renderCountBadge(cartCount)}
+              </span>
             </button>
 
             <div className="cust-account-wrap" ref={accountRef}>
@@ -461,9 +517,14 @@ export default function CustomerLayout() {
 
       <aside className={`cust-side-drawer ${menuOpen ? "open" : ""}`}>
         <div className="cust-side-head">
-          <div className="cust-side-brand">
+          <button
+            type="button"
+            className="cust-side-brand cust-side-brand-home"
+            onClick={handleGoHome}
+            aria-label="Go to home"
+          >
             <BrandBlock compact />
-          </div>
+          </button>
 
           <button
             type="button"
@@ -517,36 +578,20 @@ export default function CustomerLayout() {
             </NavLink>
           ))}
         </nav>
-        {customerUser ? (
-          <div className="cust-side-footer">
-            <button
-              type="button"
-              className="cust-side-secondary"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate("/profilesettings");
-              }}
-            >
-              <Settings size={16} />
-              Settings
-            </button>
-
-            <button
-              type="button"
-              className="cust-side-primary"
-              onClick={handleLogout}
-            >
-              <LogOut size={16} />
-              Sign Out
-            </button>
-          </div>
-        ) : null}
+        
       </aside>
 
-      <aside className={`cust-mini-cart-drawer ${miniCartOpen ? "open" : ""}`}>
+      <aside
+        ref={miniCartRef}
+        className={`cust-mini-cart-drawer ${miniCartOpen ? "open" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mini-cart-title"
+        tabIndex={-1}
+      >
         <div className="cust-mini-cart-head">
           <div className="cust-mini-cart-title">
-            <span>Cart</span>
+            <span id="mini-cart-title">Cart</span>
             <small>
               {cartCount} item{cartCount !== 1 ? "s" : ""}
             </small>

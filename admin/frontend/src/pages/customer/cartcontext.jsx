@@ -150,6 +150,11 @@ const getInitialCart = () => {
 };
 
 export function CartProvider({ children }) {
+  const user = useAuthStore((state) => state.user);
+
+  const [cart, setCart] = useState(getInitialCart);
+  const [miniCartOpen, setMiniCartOpen] = useState(false);
+  const isInitialMount = useRef(true);
 
   useEffect(() => {
     if (!(user && user.role === "customer")) return;
@@ -177,7 +182,6 @@ export function CartProvider({ children }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cart));
 
     const customOnly = cart.filter((item) => item.cart_type === "blueprint");
@@ -187,11 +191,13 @@ export function CartProvider({ children }) {
     );
 
     if (user && user.role === "customer" && !isInitialMount.current) {
-
+      api.post("/customer/cart/sync", { cart }).catch((err) => {
+        console.error("Cloud cart sync failed", err);
+      });
     }
 
     isInitialMount.current = false;
-  }, [cart, user?.id, user?.role]);
+  }, [cart, user?.id, user?.role, user]);
 
   const addToCart = (item) => {
     const normalized = normalizeCartItem(item);
@@ -264,7 +270,6 @@ export function CartProvider({ children }) {
     setMiniCartOpen(false);
     setCart([]);
 
-
     if (user && user.role === "customer") {
       api.post("/customer/cart/sync", { cart: [] }).catch((err) => {
         console.error("Cloud clear cart sync failed", err);
@@ -306,7 +311,36 @@ export function CartProvider({ children }) {
     [cart],
   );
 
-
+  const value = useMemo(
+    () => ({
+      cart,
+      setCart,
+      standardCart,
+      customCart,
+      cartCount,
+      customCartCount,
+      cartTotal,
+      miniCartOpen,
+      setMiniCartOpen,
+      openMiniCart,
+      closeMiniCart,
+      toggleMiniCart,
+      addToCart,
+      updateQty,
+      removeItem,
+      removeMany,
+      clearCart,
+    }),
+    [
+      cart,
+      standardCart,
+      customCart,
+      cartCount,
+      customCartCount,
+      cartTotal,
+      miniCartOpen,
+    ],
+  );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

@@ -165,7 +165,7 @@ function getDefaultRouteForUser(user) {
     return "/staff/dashboard";
   }
 
-  return "/catalog";
+  return "/";
 }
 
 function RedirectIfAuthenticated({ children }) {
