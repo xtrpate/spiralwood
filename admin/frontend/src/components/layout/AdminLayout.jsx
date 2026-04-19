@@ -237,6 +237,7 @@ export default function AdminLayout() {
               <NavLink
                 key={item.path}
                 to={item.path}
+                end
                 style={({ isActive }) => ({
                   display: "flex",
                   alignItems: "center",
@@ -254,7 +255,6 @@ export default function AdminLayout() {
                   transition: "all .15s",
                 })}
               >
-                {/* 👉 THE FIX: Removed the broken isActive opacity check here */}
                 <span style={{ fontSize: 16 }}>{item.icon}</span>
                 {open && item.label}
               </NavLink>
