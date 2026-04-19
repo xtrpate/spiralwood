@@ -698,7 +698,7 @@ export default function DashboardPage() {
               <div className="section-kicker">Sales & Orders</div>
               <h3
                 className="card-title clickable-title"
-                onClick={() => navigate("/admin/reports")}
+                onClick={() => navigate("/admin/sales")}
               >
                 Sales Trend <span className="link-arrow">→</span>
               </h3>
