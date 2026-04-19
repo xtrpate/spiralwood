@@ -520,6 +520,8 @@ export default function BlueprintDesign() {
     createEmptyTraceObjectsByView(),
   );
 
+  const [traceTool, setTraceTool] = useState("select");
+  const [selectedTraceId, setSelectedTraceId] = useState(null);
   const designTotal = useMemo(() => {
     return components.reduce(
       (sum, c) => sum + Number(c.qty || 1) * Number(c.unitPrice || 0),
@@ -528,7 +530,6 @@ export default function BlueprintDesign() {
   }, [components]);
 
   const [traceTool, setTraceTool] = useState("select");
-  const [selectedTraceId, setSelectedTraceId] = useState(null);
   const [newTraceType, setNewTraceType] = useState("door");
   // Call this before any destructive setComponents to record the current state
   const pushHistory = useCallback((snapshot) => {
