@@ -526,8 +526,14 @@ exports.getAllBlueprints = async (req, res) => {
   const { q, wood_type, sort = "newest", page = 1, limit = 24 } = req.query;
 
   try {
-    let where =
-      "WHERE b.is_deleted = 0 AND b.is_template = 1 AND b.is_gallery = 1";
+    let where = `WHERE b.is_deleted = 0 
+       AND b.is_template = 1 
+       AND b.is_gallery = 1
+       AND EXISTS (
+         SELECT 1 FROM products p 
+         WHERE p.blueprint_id = b.id 
+         AND p.is_published = 1
+       )`;
     const params = [];
 
     if (q) {
@@ -670,6 +676,11 @@ exports.getBlueprintById = async (req, res) => {
        WHERE b.id = ?
          AND b.is_deleted = 0
          AND (b.is_gallery = 1 OR b.is_template = 1)
+         AND EXISTS (
+           SELECT 1 FROM products p 
+           WHERE p.blueprint_id = b.id 
+           AND p.is_published = 1
+         )
        LIMIT 1`,
       [parseInt(req.params.id)],
     );
