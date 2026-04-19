@@ -460,7 +460,6 @@ export default function OrderDetailPage() {
     const blueprintTasks = Array.isArray(order?.blueprint_tasks)
       ? order.blueprint_tasks
       : [];
-
     const hasBlueprintTasks = blueprintTasks.length > 0;
 
     if (
@@ -475,7 +474,6 @@ export default function OrderDetailPage() {
         );
         return;
       }
-
       if (!allBlueprintTasksCompleted) {
         toast.error(
           `Complete all required production tasks first: ${incompleteRequiredBlueprintTaskRoles
@@ -485,17 +483,30 @@ export default function OrderDetailPage() {
         return;
       }
     }
+
+    // 👉 NEW: Strict Payment Verification Check
     if (
-      !isWalkInOrder &&
-      !isBlueprintOrder &&
+      nextStatus === "shipping" &&
       normalizedPaymentMethod !== "cod" &&
-      ["shipping", "delivered"].includes(nextStatus) &&
       paymentBalance > 0
     ) {
-      toast.error(
-        "Standard non-COD product orders must be fully paid before moving to shipping or delivered.",
-      );
+      toast.error("The payment need to be verified first.");
       return;
+    }
+
+    // 👉 NEW: Strict Delivery Rider Checks
+    if (
+      hasDeliveryRequirement &&
+      ["delivered", "completed"].includes(nextStatus)
+    ) {
+      if (!order?.delivery) {
+        toast.error("You need to assign a delivery rider first.");
+        return;
+      }
+      if (!hasSignedDeliveryReceipt) {
+        toast.error("It must be delivered and finished by the rider first.");
+        return;
+      }
     }
 
     if (
@@ -520,7 +531,6 @@ export default function OrderDetailPage() {
       );
     }
   };
-
   const handleAccept = async () => {
     try {
       await api.post(`/orders/${id}/accept`);
@@ -2418,39 +2428,46 @@ export default function OrderDetailPage() {
               </div>
             )}
 
-            {requiresDeliveryReceiptForCompletion && !order?.delivery && (
-              <div style={alertWarning}>
-                Completed is locked until a delivery record is created.
-              </div>
-            )}
-
-            {requiresDeliveryReceiptForCompletion &&
-              order?.delivery &&
-              !order?.delivery?.signed_receipt && (
+            {/* 👉 NEW: Warnings for Rider Assignments */}
+            {hasDeliveryRequirement &&
+              !order?.delivery &&
+              ["delivered", "completed"].includes(newStatus) && (
                 <div style={alertWarning}>
-                  Completed is locked until a signed delivery receipt is
-                  uploaded.
+                  You need to assign a delivery rider first.
                 </div>
               )}
 
-            {paymentBalance > 0 && (
+            {hasDeliveryRequirement &&
+              order?.delivery &&
+              !hasSignedDeliveryReceipt &&
+              ["delivered", "completed"].includes(newStatus) && (
+                <div style={alertWarning}>
+                  It must be delivered and finished by the rider first.
+                </div>
+              )}
+
+            {/* 👉 NEW: Warning for Payment Verification */}
+            {newStatus === "shipping" &&
+              normalizedPaymentMethod !== "cod" &&
+              paymentBalance > 0 && (
+                <div style={alertWarning}>
+                  The payment need to be verified first.
+                </div>
+              )}
+
+            {paymentBalance > 0 && newStatus === "completed" && (
               <div style={alertWarning}>
                 Completed is locked until the remaining balance is fully paid.
               </div>
             )}
-            {standardNeedsFullPaymentBeforeFulfillment && (
-              <div style={alertWarning}>
-                Shipping and delivered are locked for standard delivery orders
-                until full payment is completed.
-              </div>
-            )}
 
-            {blueprintNeedsDownPaymentBeforeProduction && (
-              <div style={alertWarning}>
-                Production is locked for blueprint orders until at least 30%
-                verified down payment is completed.
-              </div>
-            )}
+            {blueprintNeedsDownPaymentBeforeProduction &&
+              newStatus === "production" && (
+                <div style={alertWarning}>
+                  Production is locked for blueprint orders until at least 30%
+                  verified down payment is completed.
+                </div>
+              )}
 
             <label style={labelSm}>New Status</label>
             <select
@@ -2463,57 +2480,68 @@ export default function OrderDetailPage() {
               )}
 
               {allowedNextStatuses.map((status) => {
+                const normalizedStatus = normalize(status);
+
                 const blockedByIncompleteTasks =
                   isBlueprintOrder &&
                   ["shipping", "delivered", "completed"].includes(
-                    normalize(status),
+                    normalizedStatus,
                   ) &&
                   (!hasRequiredBlueprintTaskPacket ||
                     !allBlueprintTasksCompleted);
 
-                const blockedByMissingReceipt =
-                  requiresDeliveryReceiptForCompletion &&
-                  normalize(status) === "completed" &&
-                  (!order?.delivery || !hasSignedDeliveryReceipt);
+                // 👉 NEW: Disable logic for the dropdown options
+                const blockedByUnverifiedPayment =
+                  normalizedStatus === "shipping" &&
+                  normalizedPaymentMethod !== "cod" &&
+                  paymentBalance > 0;
+
+                const blockedByNoRiderAssigned =
+                  hasDeliveryRequirement &&
+                  ["delivered", "completed"].includes(normalizedStatus) &&
+                  !order?.delivery;
+
+                const blockedByRiderNotFinished =
+                  hasDeliveryRequirement &&
+                  ["delivered", "completed"].includes(normalizedStatus) &&
+                  order?.delivery &&
+                  !hasSignedDeliveryReceipt;
 
                 const blockedByUnsettledPayment =
-                  normalize(status) === "completed" && paymentBalance > 0;
-                const blockedByStandardFullPayment =
-                  !isWalkInOrder &&
-                  !isBlueprintOrder &&
-                  ["shipping", "delivered"].includes(normalize(status)) &&
-                  paymentBalance > 0;
+                  normalizedStatus === "completed" && paymentBalance > 0;
 
                 const blockedByBlueprintDownPayment =
                   isBlueprintOrder &&
-                  normalize(status) === "production" &&
+                  normalizedStatus === "production" &&
                   !hasRequiredBlueprintDownPayment;
+
                 return (
                   <option
                     key={status}
                     value={status}
                     disabled={
                       blockedByIncompleteTasks ||
-                      blockedByMissingReceipt ||
+                      blockedByUnverifiedPayment ||
+                      blockedByNoRiderAssigned ||
+                      blockedByRiderNotFinished ||
                       blockedByUnsettledPayment ||
-                      blockedByStandardFullPayment ||
                       blockedByBlueprintDownPayment
                     }
                   >
                     {getStatusLabel(status)}
                     {blockedByIncompleteTasks
                       ? " — complete blueprint tasks first"
-                      : blockedByMissingReceipt
-                        ? !order?.delivery
-                          ? " — create delivery record first"
-                          : " — upload signed receipt first"
-                        : blockedByStandardFullPayment
-                          ? " — standard orders must be fully paid first"
-                          : blockedByBlueprintDownPayment
-                            ? " — 30% verified down payment required first"
-                            : blockedByUnsettledPayment
-                              ? " — full payment required first"
-                              : ""}
+                      : blockedByUnverifiedPayment
+                        ? " — the payment need to be verified first"
+                        : blockedByNoRiderAssigned
+                          ? " — you need to assign a delivery rider first"
+                          : blockedByRiderNotFinished
+                            ? " — rider must finish delivery first"
+                            : blockedByBlueprintDownPayment
+                              ? " — 30% verified down payment required first"
+                              : blockedByUnsettledPayment
+                                ? " — full payment required first"
+                                : ""}
                   </option>
                 );
               })}
