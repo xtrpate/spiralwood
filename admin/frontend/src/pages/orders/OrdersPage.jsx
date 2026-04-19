@@ -93,10 +93,10 @@ const PAYMENT_STYLE = {
   },
 };
 
-const normalize = (value) =>
-  String(value || "")
-    .trim()
-    .toLowerCase();
+const normalize = (value) => {
+  if (value === undefined || value === null) return "";
+  return String(value).trim().toLowerCase();
+};
 
 const formatMoney = (value) =>
   `₱ ${Number(value || 0).toLocaleString("en-PH", {

@@ -258,6 +258,18 @@ const getTimelineNote = (
   }
 };
 
+const safeParseUrls = (raw) => {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean);
+    if (typeof parsed === "string" && parsed.trim()) return [parsed];
+  } catch {
+    return [raw]; // If it's just a normal URL string, return it in an array
+  }
+  return [];
+};
+
 const getProofType = (url) => {
   const cleanUrl = String(url || "")
     .split("?")[0]
@@ -1857,15 +1869,26 @@ export default function OrderDetailPage() {
                           </td>
                           <td style={td}>
                             {payment.proof_url ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openProofPreview(payment.proof_url)
-                                }
-                                style={previewLinkButton}
+                              <div
+                                style={{
+                                  display: "flex",
+                                  gap: 8,
+                                  flexWrap: "wrap",
+                                }}
                               >
-                                View Proof
-                              </button>
+                                {safeParseUrls(payment.proof_url).map(
+                                  (url, idx, arr) => (
+                                    <button
+                                      key={idx}
+                                      type="button"
+                                      onClick={() => openProofPreview(url)}
+                                      style={previewLinkButton}
+                                    >
+                                      View Proof {arr.length > 1 ? idx + 1 : ""}
+                                    </button>
+                                  ),
+                                )}
+                              </div>
                             ) : (
                               "—"
                             )}
@@ -1993,17 +2016,22 @@ export default function OrderDetailPage() {
                     label="Signed Receipt"
                     value={
                       order.delivery.signed_receipt ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openDeliveryReceiptPreview(
-                              order.delivery.signed_receipt,
-                            )
-                          }
-                          style={previewLinkButton}
+                        <div
+                          style={{ display: "flex", gap: 8, flexWrap: "wrap" }}
                         >
-                          View Receipt
-                        </button>
+                          {safeParseUrls(order.delivery.signed_receipt).map(
+                            (url, idx, arr) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => openDeliveryReceiptPreview(url)}
+                                style={previewLinkButton}
+                              >
+                                View Receipt {arr.length > 1 ? idx + 1 : ""}
+                              </button>
+                            ),
+                          )}
+                        </div>
                       ) : (
                         "Awaiting rider upload"
                       )

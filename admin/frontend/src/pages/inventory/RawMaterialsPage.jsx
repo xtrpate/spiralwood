@@ -220,7 +220,23 @@ export default function RawMaterialsPage() {
                   <input
                     type={type || "text"}
                     required={req}
-                    step={type === "number" ? "0.01" : undefined}
+                    // 👉 Assign step="0.01" for cost, but step="1" for integers
+                    step={
+                      type === "number"
+                        ? key === "unit_cost"
+                          ? "0.01"
+                          : "1"
+                        : undefined
+                    }
+                    // 👉 Prevent typing "." or "e" for strictly integer fields
+                    onKeyDown={(e) => {
+                      if (
+                        (key === "quantity" || key === "reorder_point") &&
+                        (e.key === "." || e.key === "e")
+                      ) {
+                        e.preventDefault();
+                      }
+                    }}
                     value={modal.data[key] || ""}
                     onChange={(e) => setField(key, e.target.value)}
                     style={inputFull}
