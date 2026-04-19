@@ -527,8 +527,7 @@ exports.getAllBlueprints = async (req, res) => {
 
   try {
     let where = `WHERE b.is_deleted = 0 
-       AND b.is_template = 1 
-       AND b.is_gallery = 1
+       AND (b.is_template = 1 OR b.is_gallery = 1)
        AND EXISTS (
          SELECT 1 FROM products p 
          WHERE p.blueprint_id = b.id 
