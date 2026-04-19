@@ -652,6 +652,20 @@ exports.getOne = async (req, res) => {
       [orderId],
     );
 
+    if (order.payment_proof) {
+      payments.push({
+        id: `initial_${order.id}`,
+        order_id: order.id,
+        amount: order.total_amount,
+        payment_method: order.payment_method,
+        proof_url: order.payment_proof,
+        status: order.payment_status === "paid" ? "verified" : "pending",
+        notes: "Initial order placement proof.",
+        created_at: order.created_at,
+        verified_by: null,
+      });
+    }
+
     const [[delivery]] = await pool.query(
       `SELECT * FROM deliveries WHERE order_id = ? LIMIT 1`,
       [orderId],
