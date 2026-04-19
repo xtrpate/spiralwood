@@ -25,6 +25,7 @@ ChartJS.register(
   Tooltip,
   Legend,
 );
+import { useNavigate } from "react-router-dom";
 
 const PRESETS = [
   { key: "today", label: "Today" },
@@ -196,6 +197,7 @@ function TypeBadge({ type }) {
 }
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -330,7 +332,8 @@ export default function DashboardPage() {
   const totalChannelOrders = onlineOrders + walkinOrders;
 
   const lowStockTotal =
-    Number(inventory.low_stock_count || 0) + Number(inventory.raw_low_stock || 0);
+    Number(inventory.low_stock_count || 0) +
+    Number(inventory.raw_low_stock || 0);
 
   const outOfStockTotal =
     Number(inventory.out_of_stock_count || 0) +
@@ -693,7 +696,12 @@ export default function DashboardPage() {
           <div className="card-header">
             <div>
               <div className="section-kicker">Sales & Orders</div>
-              <h3 className="card-title">Sales Trend</h3>
+              <h3
+                className="card-title clickable-title"
+                onClick={() => navigate("/admin/reports")}
+              >
+                Sales Trend <span className="link-arrow">→</span>
+              </h3>
               <p className="card-description">
                 Revenue movement and order volume in the selected date range.
               </p>
@@ -741,7 +749,12 @@ export default function DashboardPage() {
           <div className="card-header">
             <div>
               <div className="section-kicker">Operations</div>
-              <h3 className="card-title">Fulfillment Pipeline</h3>
+              <h3
+                className="card-title clickable-title"
+                onClick={() => navigate("/admin/orders")}
+              >
+                Fulfillment Pipeline <span className="link-arrow">→</span>
+              </h3>
               <p className="card-description">
                 Current order flow and stages that need admin attention.
               </p>
@@ -834,7 +847,12 @@ export default function DashboardPage() {
           <div className="card-header">
             <div>
               <div className="section-kicker">Inventory Control</div>
-              <h3 className="card-title">Stock Overview</h3>
+              <h3
+                className="card-title clickable-title"
+                onClick={() => navigate("/admin/products")}
+              >
+                Stock Overview <span className="link-arrow">→</span>
+              </h3>
               <p className="card-description">
                 Current stock alerts and selected-range stock movement.
               </p>
@@ -892,7 +910,12 @@ export default function DashboardPage() {
           <div className="card-header">
             <div>
               <div className="section-kicker">Blueprint / Custom</div>
-              <h3 className="card-title">Custom Pipeline</h3>
+              <h3
+                className="card-title clickable-title"
+                onClick={() => navigate("/admin/orders")}
+              >
+                Custom Pipeline <span className="link-arrow">→</span>
+              </h3>
               <p className="card-description">
                 Current flow of blueprint and customization requests.
               </p>
@@ -902,7 +925,9 @@ export default function DashboardPage() {
           <div className="fulfillment-summary">
             <div className="fulfillment-summary__main">
               <span>Total Blueprint Orders</span>
-              <strong>{num.format(Number(blueprint.total_blueprint_orders || 0))}</strong>
+              <strong>
+                {num.format(Number(blueprint.total_blueprint_orders || 0))}
+              </strong>
             </div>
             <div className="fulfillment-summary__side">
               <span>Active Jobs</span>
@@ -1403,6 +1428,31 @@ const dashboardCss = `
     font-weight: 800;
     color: #0f172a;
     letter-spacing: -0.01em;
+  }
+
+  .clickable-title {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: color 0.2s ease;
+  }
+
+  .clickable-title:hover {
+    color: #2563eb; /* Changes to blue on hover */
+  }
+
+  .link-arrow {
+    font-size: 16px;
+    opacity: 0;
+    transform: translateX(-4px);
+    transition: all 0.2s ease;
+    color: #2563eb;
+  }
+
+  .clickable-title:hover .link-arrow {
+    opacity: 1;
+    transform: translateX(0);
   }
 
   .card-description {
