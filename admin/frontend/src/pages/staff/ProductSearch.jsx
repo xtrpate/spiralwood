@@ -571,45 +571,74 @@ export default function ProductSearch() {
                       {/* 👉 RULE 7: The "Rich Specs" View for Cashier */}
                       <div
                         style={{
-                          fontSize: "12px",
-                          color: "#64748b",
+                          fontSize: "11px",
+                          color: "#71717a",
                           margin: "10px 0",
-                          padding: "8px",
-                          background: "#f8fafc",
-                          borderRadius: "6px",
+                          padding: "10px",
+                          background: "#fafafa",
+                          borderRadius: "8px",
+                          border: "1px solid #f4f4f5",
                           display: "flex",
                           flexDirection: "column",
-                          gap: "6px",
+                          gap: "8px",
                         }}
                       >
                         {product.dimensions && (
-                          <div style={{ display: "flex" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                            }}
+                          >
                             <span
                               style={{
-                                fontWeight: "700",
-                                color: "#334155",
-                                width: "45px",
+                                fontWeight: "800",
+                                color: "#18181b",
+                                width: "40px",
+                                textTransform: "uppercase",
+                                letterSpacing: "1px",
                               }}
                             >
                               Size:
                             </span>
-                            <span style={{ flex: 1 }}>
+                            <span
+                              style={{
+                                flex: 1,
+                                fontWeight: 500,
+                                color: "#52525b",
+                              }}
+                            >
                               {product.dimensions}
                             </span>
                           </div>
                         )}
                         {product.material && (
-                          <div style={{ display: "flex" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "flex-start",
+                            }}
+                          >
                             <span
                               style={{
-                                fontWeight: "700",
-                                color: "#334155",
-                                width: "45px",
+                                fontWeight: "800",
+                                color: "#18181b",
+                                width: "40px",
+                                textTransform: "uppercase",
+                                letterSpacing: "1px",
                               }}
                             >
                               Mat:
                             </span>
-                            <span style={{ flex: 1 }}>{product.material}</span>
+                            <span
+                              style={{
+                                flex: 1,
+                                fontWeight: 500,
+                                color: "#52525b",
+                              }}
+                            >
+                              {product.material}
+                            </span>
                           </div>
                         )}
                         {product.description && (
@@ -621,11 +650,19 @@ export default function ProductSearch() {
                               overflow: "hidden",
                               textOverflow: "ellipsis",
                               marginTop: "2px",
+                              lineHeight: 1.5,
+                              fontWeight: 500,
+                              color: "#52525b",
                             }}
                             title={product.description}
                           >
                             <span
-                              style={{ fontWeight: "700", color: "#334155" }}
+                              style={{
+                                fontWeight: "800",
+                                color: "#18181b",
+                                textTransform: "uppercase",
+                                letterSpacing: "1px",
+                              }}
                             >
                               Info:{" "}
                             </span>
@@ -635,7 +672,13 @@ export default function ProductSearch() {
                         {!product.dimensions &&
                           !product.material &&
                           !product.description && (
-                            <div style={{ fontStyle: "italic", opacity: 0.6 }}>
+                            <div
+                              style={{
+                                fontStyle: "italic",
+                                opacity: 0.6,
+                                fontWeight: 500,
+                              }}
+                            >
                               No extra details provided.
                             </div>
                           )}
@@ -669,10 +712,10 @@ export default function ProductSearch() {
                                 : `Add ${variation.variation_name}`
                             }
                           >
-                            <span>
+                            <span style={{ fontWeight: 600 }}>
                               {variation.variation_name} ({variation.stock})
                             </span>
-                            <span>
+                            <span style={{ fontWeight: 800 }}>
                               ₱{formatCurrency(variation.selling_price)}
                             </span>
                           </button>
@@ -697,7 +740,7 @@ export default function ProductSearch() {
 
       <div className="cart-panel">
         <div className="cart-header">
-          <ShoppingCart size={20} />
+          <ShoppingCart size={18} />
           <span>
             Cart ({cartItemCount} item{cartItemCount !== 1 ? "s" : ""})
           </span>
@@ -746,8 +789,27 @@ export default function ProductSearch() {
 
             <div className="cart-summary">
               <div className="cart-total">
-                <span>Total</span>
-                <span>₱{formatCurrency(cartTotal)}</span>
+                <span
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 800,
+                    color: "#71717a",
+                    textTransform: "uppercase",
+                    letterSpacing: "1px",
+                  }}
+                >
+                  Total
+                </span>
+                <span
+                  style={{
+                    fontSize: 24,
+                    fontWeight: 800,
+                    color: "#0a0a0a",
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  ₱{formatCurrency(cartTotal)}
+                </span>
               </div>
 
               <button

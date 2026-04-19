@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { Search, Package } from 'lucide-react';
+import { useState, useEffect } from "react";
+import axios from "axios";
+import { Search, Package } from "lucide-react";
 
 export default function InventoryLookup() {
   const [products, setProducts] = useState([]);
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get('/api/pos/products/all')
+    axios
+      .get("/api/pos/products/all")
       .then((r) => {
         setProducts(Array.isArray(r.data) ? r.data : []);
         setLoading(false);
@@ -21,17 +22,30 @@ export default function InventoryLookup() {
     const stock = Number(p.stock || 0);
     const reorderPoint = Number(p.reorder_point || 0);
 
-    if (stock <= 0) return 'out_of_stock';
-    if (stock <= reorderPoint) return 'low_stock';
-    return 'in_stock';
+    if (stock <= 0) return "out_of_stock";
+    if (stock <= reorderPoint) return "low_stock";
+    return "in_stock";
   };
 
-  const statusColor = (s) =>
-    ({
-      in_stock: 'badge-green',
-      low_stock: 'badge-yellow',
-      out_of_stock: 'badge-red',
-    }[s] || 'badge-gray');
+  const getStockStatusStyle = (s) => {
+    if (s === "in_stock")
+      return {
+        background: "#f4f4f5",
+        color: "#18181b",
+        border: "1px solid #e4e4e7",
+      };
+    if (s === "low_stock")
+      return {
+        background: "#ffffff",
+        color: "#52525b",
+        border: "1px solid #d4d4d8",
+      };
+    return {
+      background: "#fef2f2",
+      color: "#991b1b",
+      border: "1px solid #fecaca",
+    };
+  };
 
   const filtered = products.filter((p) => {
     const matchQ =
@@ -39,80 +53,158 @@ export default function InventoryLookup() {
       p.name?.toLowerCase().includes(query.toLowerCase()) ||
       (p.barcode && p.barcode.includes(query));
 
-    const matchF = filter === 'all' || getStockStatus(p) === filter;
+    const matchF = filter === "all" || getStockStatus(p) === filter;
 
     return matchQ && matchF;
   });
 
   const counts = {
-    in_stock: products.filter((p) => getStockStatus(p) === 'in_stock').length,
-    low_stock: products.filter((p) => getStockStatus(p) === 'low_stock').length,
-    out_of_stock: products.filter((p) => getStockStatus(p) === 'out_of_stock').length,
+    in_stock: products.filter((p) => getStockStatus(p) === "in_stock").length,
+    low_stock: products.filter((p) => getStockStatus(p) === "low_stock").length,
+    out_of_stock: products.filter((p) => getStockStatus(p) === "out_of_stock")
+      .length,
   };
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>Inventory Lookup</h1>
-        <p>Check real-time stock availability to assist customers (read-only)</p>
+    <div style={{ fontFamily: "'Inter', sans-serif", paddingBottom: 40 }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1
+          style={{
+            margin: 0,
+            fontSize: 24,
+            fontWeight: 800,
+            color: "#0a0a0a",
+            letterSpacing: "-0.02em",
+          }}
+        >
+          Inventory Lookup
+        </h1>
+        <p
+          style={{
+            margin: "6px 0 0",
+            fontSize: 13,
+            color: "#52525b",
+            lineHeight: 1.5,
+          }}
+        >
+          Check real-time stock availability to assist customers (read-only)
+        </p>
       </div>
 
-      <div className="stat-grid" style={{ marginBottom: 20 }}>
-        <div className="stat-card">
-          <div className="stat-icon green">
-            <Package size={22} />
-          </div>
-          <div>
-            <div className="stat-value">{counts.in_stock}</div>
-            <div className="stat-label">In Stock</div>
-          </div>
-        </div>
-
-        <div className="stat-card">
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: 16,
+          marginBottom: 24,
+        }}
+      >
+        <div style={statCardStyle}>
           <div
-            className="stat-icon"
-            style={{ background: '#fffde7', color: '#f57f17' }}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: "#f4f4f5",
+              color: "#18181b",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
           >
             <Package size={22} />
           </div>
           <div>
-            <div className="stat-value">{counts.low_stock}</div>
-            <div className="stat-label">Low Stock</div>
+            <div style={statValueStyle}>{counts.in_stock}</div>
+            <div style={statLabelStyle}>In Stock</div>
           </div>
         </div>
 
-        <div className="stat-card">
-          <div className="stat-icon red">
+        <div style={statCardStyle}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: "#ffffff",
+              border: "1px solid #e4e4e7",
+              color: "#52525b",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             <Package size={22} />
           </div>
           <div>
-            <div className="stat-value">{counts.out_of_stock}</div>
-            <div className="stat-label">Out of Stock</div>
+            <div style={statValueStyle}>{counts.low_stock}</div>
+            <div style={statLabelStyle}>Low Stock</div>
           </div>
         </div>
 
-        <div className="stat-card">
-          <div className="stat-icon brown">
+        <div style={statCardStyle}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: "#fef2f2",
+              color: "#dc2626",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             <Package size={22} />
           </div>
           <div>
-            <div className="stat-value">{products.length}</div>
-            <div className="stat-label">Total Products</div>
+            <div style={{ ...statValueStyle, color: "#dc2626" }}>
+              {counts.out_of_stock}
+            </div>
+            <div style={statLabelStyle}>Out of Stock</div>
+          </div>
+        </div>
+
+        <div style={statCardStyle}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              background: "#18181b",
+              color: "#ffffff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Package size={22} />
+          </div>
+          <div>
+            <div style={statValueStyle}>{products.length}</div>
+            <div style={statLabelStyle}>Total Products</div>
           </div>
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+      <div style={{ ...cardStyle, marginBottom: 20, padding: 16 }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 16,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <div style={{ position: "relative", flex: 1, minWidth: 260 }}>
             <Search
               size={16}
               style={{
-                position: 'absolute',
-                left: 12,
-                top: '50%',
-                transform: 'translateY(-50%)',
-                color: '#aaa',
+                position: "absolute",
+                left: 14,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "#71717a",
               }}
             />
             <input
@@ -121,103 +213,253 @@ export default function InventoryLookup() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               style={{
-                width: '100%',
-                padding: '10px 14px 10px 38px',
-                border: '1.5px solid #e0e0e0',
+                width: "100%",
+                padding: "10px 14px 10px 40px",
+                border: "1px solid #e4e4e7",
                 borderRadius: 8,
                 fontSize: 13,
-                boxSizing: 'border-box',
+                color: "#18181b",
+                boxSizing: "border-box",
+                outline: "none",
+                background: "#fff",
               }}
             />
           </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
-            {['all', 'in_stock', 'low_stock', 'out_of_stock'].map((f) => (
-              <button
-                key={f}
-                className={`btn ${filter === f ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ padding: '8px 14px', fontSize: 12 }}
-                onClick={() => setFilter(f)}
-              >
-                {f === 'all'
-                  ? 'All'
-                  : f.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-              </button>
-            ))}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {["all", "in_stock", "low_stock", "out_of_stock"].map((f) => {
+              const isActive = filter === f;
+              return (
+                <button
+                  key={f}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 8,
+                    border: isActive
+                      ? "1px solid #18181b"
+                      : "1px solid #e4e4e7",
+                    background: isActive ? "#18181b" : "#f4f4f5",
+                    color: isActive ? "#ffffff" : "#18181b",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                    textTransform: "capitalize",
+                  }}
+                  onClick={() => setFilter(f)}
+                >
+                  {f === "all" ? "All" : f.replace(/_/g, " ")}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
 
-      <div className="card">
+      <div style={cardStyle}>
         {loading ? (
-          <p style={{ textAlign: 'center', color: '#aaa', padding: 30 }}>
+          <p
+            style={{
+              textAlign: "center",
+              color: "#71717a",
+              padding: 40,
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
             Loading inventory...
           </p>
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Barcode</th>
-                <th>Product Name</th>
-                <th>Category</th>
-                <th>Type</th>
-                <th>Walk-in Price</th>
-                <th>Stock</th>
-                <th>Reorder Pt.</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', color: '#aaa', padding: 30 }}>
-                    No products found.
-                  </td>
+          <div style={{ overflowX: "auto" }}>
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                fontSize: 13,
+                textAlign: "left",
+              }}
+            >
+              <thead>
+                <tr style={{ background: "#fafafa" }}>
+                  <th style={thStyle}>Barcode</th>
+                  <th style={thStyle}>Product Name</th>
+                  <th style={thStyle}>Category</th>
+                  <th style={thStyle}>Type</th>
+                  <th style={thStyle}>Walk-in Price</th>
+                  <th style={thStyle}>Stock</th>
+                  <th style={thStyle}>Reorder Pt.</th>
+                  <th style={thStyle}>Status</th>
                 </tr>
-              ) : (
-                filtered.map((p) => {
-                  const status = getStockStatus(p);
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      style={{
+                        textAlign: "center",
+                        color: "#71717a",
+                        padding: 40,
+                        fontSize: 13,
+                        fontWeight: 600,
+                      }}
+                    >
+                      No products found.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((p) => {
+                    const status = getStockStatus(p);
+                    const statusStyle = getStockStatusStyle(status);
 
-                  return (
-                    <tr key={p.id}>
-                      <td style={{ fontSize: 11, color: '#aaa', fontFamily: 'monospace' }}>
-                        {p.barcode || '—'}
-                      </td>
-                      <td style={{ fontWeight: 600 }}>{p.name}</td>
-                      <td>{p.category || '—'}</td>
-                      <td style={{ textTransform: 'capitalize' }}>{p.type || '—'}</td>
-                      <td>
-                        ₱{parseFloat(p.walkin_price || 0).toLocaleString('en-PH', {
-                          minimumFractionDigits: 2,
-                        })}
-                      </td>
-                      <td
-                        style={{
-                          fontWeight: 700,
-                          color:
-                            Number(p.stock) <= 0
-                              ? '#c62828'
-                              : Number(p.stock) <= Number(p.reorder_point || 0)
-                              ? '#f57f17'
-                              : '#2e7d32',
-                        }}
+                    return (
+                      <tr
+                        key={p.id}
+                        style={{ borderBottom: "1px solid #f4f4f5" }}
                       >
-                        {p.stock}
-                      </td>
-                      <td style={{ color: '#888' }}>{p.reorder_point ?? 0}</td>
-                      <td>
-                        <span className={`badge ${statusColor(status)}`}>
-                          {status.replace('_', ' ')}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                        <td
+                          style={{
+                            ...tdStyle,
+                            fontSize: 12,
+                            color: "#71717a",
+                            fontFamily: "monospace",
+                            letterSpacing: "0.5px",
+                          }}
+                        >
+                          {p.barcode || "—"}
+                        </td>
+                        <td
+                          style={{
+                            ...tdStyle,
+                            fontWeight: 700,
+                            color: "#0a0a0a",
+                          }}
+                        >
+                          {p.name}
+                        </td>
+                        <td style={{ ...tdStyle, color: "#52525b" }}>
+                          {p.category || "—"}
+                        </td>
+                        <td
+                          style={{
+                            ...tdStyle,
+                            textTransform: "capitalize",
+                            color: "#52525b",
+                          }}
+                        >
+                          {p.type || "—"}
+                        </td>
+                        <td
+                          style={{
+                            ...tdStyle,
+                            fontWeight: 600,
+                            color: "#18181b",
+                          }}
+                        >
+                          ₱
+                          {parseFloat(p.walkin_price || 0).toLocaleString(
+                            "en-PH",
+                            {
+                              minimumFractionDigits: 2,
+                            },
+                          )}
+                        </td>
+                        <td
+                          style={{
+                            ...tdStyle,
+                            fontWeight: 800,
+                            color:
+                              Number(p.stock) <= 0
+                                ? "#dc2626"
+                                : Number(p.stock) <=
+                                    Number(p.reorder_point || 0)
+                                  ? "#52525b"
+                                  : "#0a0a0a",
+                          }}
+                        >
+                          {p.stock}
+                        </td>
+                        <td style={{ ...tdStyle, color: "#a1a1aa" }}>
+                          {p.reorder_point ?? 0}
+                        </td>
+                        <td style={tdStyle}>
+                          <span
+                            style={{
+                              ...statusStyle,
+                              padding: "4px 10px",
+                              borderRadius: 999,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              textTransform: "capitalize",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {status.replace(/_/g, " ")}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
   );
 }
+
+// ── Reusable Styles ──────────────────────────────────────────
+
+const statCardStyle = {
+  background: "#fff",
+  border: "1px solid #e4e4e7",
+  borderRadius: 16,
+  padding: "20px 24px",
+  display: "flex",
+  alignItems: "center",
+  gap: 16,
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+};
+
+const statValueStyle = {
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#0a0a0a",
+  letterSpacing: "-0.02em",
+  lineHeight: 1,
+};
+
+const statLabelStyle = {
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
+  textTransform: "uppercase",
+  letterSpacing: "1px",
+  marginTop: 6,
+};
+
+const cardStyle = {
+  background: "#ffffff",
+  border: "1px solid #e4e4e7",
+  borderRadius: 16,
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+  overflow: "hidden",
+};
+
+const thStyle = {
+  padding: "14px 16px",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
+  textTransform: "uppercase",
+  letterSpacing: "1px",
+  borderBottom: "1px solid #e4e4e7",
+};
+
+const tdStyle = {
+  padding: "16px",
+  color: "#18181b",
+  verticalAlign: "middle",
+};

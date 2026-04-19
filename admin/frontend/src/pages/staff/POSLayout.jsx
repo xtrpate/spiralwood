@@ -45,7 +45,6 @@ export default function POSLayout() {
       return [
         { to: "/staff/products", icon: Search, label: "Product Search" },
         { to: "/staff/order", icon: ShoppingCart, label: "Process Order" },
-        // 👉 NEW: Transaction History Link
         {
           to: "/staff/history",
           icon: ClipboardList,

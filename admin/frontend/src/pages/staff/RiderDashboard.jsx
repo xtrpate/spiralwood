@@ -37,17 +37,31 @@ export default function RiderDashboard() {
   }, []);
 
   if (loading)
-    return <div style={{ padding: "24px" }}>Loading dashboard...</div>;
+    return (
+      <div
+        style={{
+          padding: "40px",
+          textAlign: "center",
+          color: "#71717a",
+          fontWeight: 600,
+          fontSize: 13,
+          fontFamily: "'Inter', sans-serif",
+        }}
+      >
+        Loading dashboard...
+      </div>
+    );
 
   return (
     <div
       style={{
-        padding: "24px",
+        padding: "32px 40px",
         maxWidth: "1400px",
         margin: "0 auto",
         display: "flex",
         flexDirection: "column",
         gap: "24px",
+        fontFamily: "'Inter', sans-serif",
       }}
     >
       {/* ── Header ── */}
@@ -55,14 +69,22 @@ export default function RiderDashboard() {
         <h2
           style={{
             margin: 0,
-            fontSize: "26px",
-            color: "#0f172a",
+            fontSize: "24px",
+            color: "#0a0a0a",
             fontWeight: 800,
+            letterSpacing: "-0.02em",
           }}
         >
           Rider Dashboard
         </h2>
-        <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: "14px" }}>
+        <p
+          style={{
+            margin: "6px 0 0",
+            color: "#52525b",
+            fontSize: "13px",
+            lineHeight: 1.5,
+          }}
+        >
           Today's overview — {todayDateString}
         </p>
       </div>
@@ -71,14 +93,14 @@ export default function RiderDashboard() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-          gap: "20px",
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          gap: "16px",
         }}
       >
         {/* Card 1: Total Assigned */}
         <div style={statCard}>
           <div
-            style={{ ...iconWrapper, background: "#fef3c7", color: "#d97706" }}
+            style={{ ...iconWrapper, background: "#f4f4f5", color: "#18181b" }}
           >
             <Package size={24} strokeWidth={2.5} />
           </div>
@@ -91,7 +113,7 @@ export default function RiderDashboard() {
         {/* Card 2: In Transit / Pending */}
         <div style={statCard}>
           <div
-            style={{ ...iconWrapper, background: "#eff6ff", color: "#2563eb" }}
+            style={{ ...iconWrapper, background: "#18181b", color: "#ffffff" }}
           >
             <Truck size={24} strokeWidth={2.5} />
           </div>
@@ -104,7 +126,7 @@ export default function RiderDashboard() {
         {/* Card 3: Completed */}
         <div style={statCard}>
           <div
-            style={{ ...iconWrapper, background: "#ecfdf5", color: "#16a34a" }}
+            style={{ ...iconWrapper, background: "#f4f4f5", color: "#18181b" }}
           >
             <CheckCircle size={24} strokeWidth={2.5} />
           </div>
@@ -119,9 +141,11 @@ export default function RiderDashboard() {
       <div
         style={{
           background: "#ffffff",
-          borderRadius: "12px",
-          border: "1px solid #e5e7eb",
-          padding: "20px",
+          borderRadius: "16px",
+          border: "1px solid #e4e4e7",
+          padding: "0",
+          boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+          overflow: "hidden",
         }}
       >
         <div
@@ -129,16 +153,18 @@ export default function RiderDashboard() {
             display: "flex",
             alignItems: "center",
             gap: "10px",
-            marginBottom: "20px",
+            padding: "20px 24px",
+            borderBottom: "1px solid #f4f4f5",
+            background: "#fafafa",
           }}
         >
-          <MapPin size={20} color="#0f172a" />
+          <MapPin size={20} color="#0a0a0a" />
           <h3
             style={{
               margin: 0,
-              fontSize: "18px",
-              color: "#0f172a",
-              fontWeight: 700,
+              fontSize: "16px",
+              color: "#0a0a0a",
+              fontWeight: 800,
             }}
           >
             Active Deliveries Today
@@ -146,7 +172,15 @@ export default function RiderDashboard() {
         </div>
 
         {activeDeliveries.length === 0 ? (
-          <div style={{ color: "#64748b", padding: "10px 0" }}>
+          <div
+            style={{
+              color: "#71717a",
+              padding: "40px",
+              textAlign: "center",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
             No pending deliveries right now. You're all caught up!
           </div>
         ) : (
@@ -156,10 +190,11 @@ export default function RiderDashboard() {
                 width: "100%",
                 borderCollapse: "collapse",
                 whiteSpace: "nowrap",
+                textAlign: "left",
               }}
             >
-              <thead style={{ borderBottom: "1px solid #e5e7eb" }}>
-                <tr>
+              <thead>
+                <tr style={{ background: "#ffffff" }}>
                   <th style={thStyle}>Order #</th>
                   <th style={thStyle}>Customer</th>
                   <th style={thStyle}>Destination</th>
@@ -170,42 +205,49 @@ export default function RiderDashboard() {
                 {activeDeliveries.map((delivery) => (
                   <tr
                     key={delivery.id}
-                    style={{ borderBottom: "1px solid #f1f5f9" }}
+                    style={{ borderBottom: "1px solid #f4f4f5" }}
                   >
                     <td
-                      style={{ ...tdStyle, fontWeight: 700, color: "#0f172a" }}
+                      style={{ ...tdStyle, fontWeight: 800, color: "#0a0a0a" }}
                     >
                       {delivery.order_number}
                     </td>
-                    <td style={tdStyle}>{delivery.customer_name}</td>
+                    <td style={{ ...tdStyle, fontWeight: 600 }}>
+                      {delivery.customer_name}
+                    </td>
                     <td
                       style={{
                         ...tdStyle,
-                        color: "#64748b",
+                        color: "#52525b",
                         maxWidth: "300px",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                       }}
+                      title={delivery.address}
                     >
                       {delivery.address}
                     </td>
                     <td style={tdStyle}>
                       <span
                         style={{
-                          padding: "6px 12px",
-                          borderRadius: "20px",
-                          fontSize: "11px",
-                          fontWeight: "700",
+                          padding: "4px 10px",
+                          borderRadius: "999px",
+                          fontSize: "10px",
+                          fontWeight: "800",
                           textTransform: "uppercase",
-                          letterSpacing: "0.05em",
+                          letterSpacing: "1px",
                           background:
                             delivery.status === "in_transit"
-                              ? "#fffbeb"
-                              : "#eff6ff",
+                              ? "#18181b"
+                              : "#f4f4f5",
                           color:
                             delivery.status === "in_transit"
-                              ? "#b45309"
-                              : "#1d4ed8",
+                              ? "#ffffff"
+                              : "#18181b",
+                          border:
+                            delivery.status === "in_transit"
+                              ? "1px solid #18181b"
+                              : "1px solid #e4e4e7",
                         }}
                       >
                         {delivery.status.replace("_", " ")}
@@ -226,49 +268,53 @@ export default function RiderDashboard() {
 const statCard = {
   background: "#ffffff",
   borderRadius: "16px",
-  border: "1px solid #e5e7eb",
-  padding: "24px",
+  border: "1px solid #e4e4e7",
+  padding: "20px 24px",
   display: "flex",
   alignItems: "center",
-  gap: "20px",
-  boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
+  gap: "16px",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const iconWrapper = {
-  width: "56px",
-  height: "56px",
-  borderRadius: "14px",
+  width: "44px",
+  height: "44px",
+  borderRadius: "12px",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
 };
 
 const statNumber = {
-  fontSize: "28px",
+  fontSize: "24px",
   fontWeight: 800,
-  color: "#0f172a",
-  lineHeight: 1.2,
+  color: "#0a0a0a",
+  lineHeight: 1,
+  letterSpacing: "-0.02em",
 };
 
 const statLabel = {
-  fontSize: "14px",
-  color: "#64748b",
-  fontWeight: 500,
-  marginTop: "2px",
+  fontSize: "10px",
+  color: "#71717a",
+  fontWeight: 800,
+  marginTop: "6px",
+  textTransform: "uppercase",
+  letterSpacing: "1px",
 };
 
 const thStyle = {
-  padding: "16px 12px",
+  padding: "14px 24px",
   textAlign: "left",
-  fontSize: "11px",
-  fontWeight: "700",
-  color: "#64748b",
+  fontSize: "10px",
+  fontWeight: "800",
+  color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "0.05em",
+  letterSpacing: "1px",
+  borderBottom: "1px solid #e4e4e7",
 };
 
 const tdStyle = {
-  padding: "16px 12px",
-  fontSize: "14px",
-  color: "#334155",
+  padding: "16px 24px",
+  fontSize: "13px",
+  color: "#18181b",
 };

@@ -76,27 +76,56 @@ export default function ReceiptPage() {
   const receiptDate = receipt.created_at || receipt.printed_at;
 
   return (
-    <div>
+    <div style={{ fontFamily: "'Inter', sans-serif" }}>
       <div
         className="page-header"
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
+          alignItems: "flex-end",
+          flexWrap: "wrap",
+          gap: "16px",
+          marginBottom: 32,
         }}
       >
         <div>
-          <h1>Official Receipt</h1>
-          <p>Receipt #{receipt.receipt_number}</p>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 24,
+              fontWeight: 800,
+              color: "#0a0a0a",
+              letterSpacing: "-0.02em",
+            }}
+          >
+            Official Receipt
+          </h1>
+          <p
+            style={{
+              margin: "6px 0 0",
+              fontSize: 13,
+              color: "#52525b",
+              lineHeight: 1.5,
+            }}
+          >
+            Receipt #{receipt.receipt_number}
+          </p>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
-            className="btn btn-secondary"
+            style={btnGhost}
             onClick={() => navigate("/staff/products")}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#e4e4e7")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "#f4f4f5")}
           >
             <ArrowLeft size={16} /> Back
           </button>
-          <button className="btn btn-primary" onClick={() => window.print()}>
+          <button
+            style={btnPrimary}
+            onClick={() => window.print()}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#3f3f46")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "#18181b")}
+          >
             <Printer size={16} /> Print Receipt
           </button>
         </div>
@@ -182,19 +211,27 @@ export default function ReceiptPage() {
                   <td>
                     {item.product_name}
                     {item.wood_type && (
-                      <div style={{ fontSize: "10px", color: "#666" }}>
+                      <div
+                        style={{
+                          fontSize: "10px",
+                          color: "#52525b",
+                          marginTop: 2,
+                        }}
+                      >
                         {item.wood_type}
                       </div>
                     )}
                   </td>
-                  <td style={{ textAlign: "center" }}>{item.quantity}</td>
+                  <td style={{ textAlign: "center", fontWeight: 600 }}>
+                    {item.quantity}
+                  </td>
                   <td style={{ textAlign: "right" }}>
                     ₱
                     {parseFloat(item.unit_price).toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
                     })}
                   </td>
-                  <td style={{ textAlign: "right" }}>
+                  <td style={{ textAlign: "right", fontWeight: 600 }}>
                     ₱
                     {(
                       parseFloat(item.unit_price || 0) *
@@ -219,7 +256,7 @@ export default function ReceiptPage() {
             </div>
 
             {discount > 0 && (
-              <div className="total-row" style={{ color: "#2e7d32" }}>
+              <div className="total-row" style={{ color: "#18181b" }}>
                 <span>Discount</span>
                 <span>
                   -₱
@@ -261,7 +298,7 @@ export default function ReceiptPage() {
 
             {receipt.payment_method === "gcash" &&
               receipt.business?.gcash_number && (
-                <div className="meta-row" style={{ marginTop: 10 }}>
+                <div className="meta-row" style={{ marginTop: 12 }}>
                   <span>GCash #:</span>
                   <span>{receipt.business.gcash_number}</span>
                 </div>
@@ -282,8 +319,17 @@ export default function ReceiptPage() {
                 <div className="signature-label">Authorized Signature</div>
               </div>
             )}
-            <p>Thank you for your purchase!</p>
-            <p style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>
+            <p style={{ fontWeight: 800, color: "#18181b" }}>
+              Thank you for your purchase!
+            </p>
+            <p
+              style={{
+                fontSize: 10,
+                color: "#71717a",
+                marginTop: 6,
+                lineHeight: 1.4,
+              }}
+            >
               This is your official receipt. Items sold are non-refundable
               unless covered by warranty.
             </p>
@@ -293,3 +339,33 @@ export default function ReceiptPage() {
     </div>
   );
 }
+
+const btnPrimary = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "10px 20px",
+  background: "#18181b",
+  color: "#fff",
+  border: "1px solid #18181b",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 700,
+  transition: "background 0.2s",
+};
+
+const btnGhost = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "10px 16px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 700,
+  transition: "background 0.2s",
+};

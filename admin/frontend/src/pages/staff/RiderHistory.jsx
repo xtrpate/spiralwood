@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import api from "../../services/api";
-import { Calendar } from "lucide-react"; // Import a nice calendar icon
+import { Calendar } from "lucide-react";
 
 export default function RiderHistory() {
   const [history, setHistory] = useState([]);
@@ -40,10 +40,31 @@ export default function RiderHistory() {
     });
   }, [history, startDate, endDate]);
 
-  if (loading) return <div style={{ padding: "24px" }}>Loading history...</div>;
+  if (loading)
+    return (
+      <div
+        style={{
+          padding: "40px",
+          textAlign: "center",
+          color: "#71717a",
+          fontWeight: 600,
+          fontSize: 13,
+          fontFamily: "'Inter', sans-serif",
+        }}
+      >
+        Loading history...
+      </div>
+    );
 
   return (
-    <div style={{ padding: "24px", maxWidth: "1200px", margin: "0 auto" }}>
+    <div
+      style={{
+        padding: "32px 40px",
+        maxWidth: "1200px",
+        margin: "0 auto",
+        fontFamily: "'Inter', sans-serif",
+      }}
+    >
       {/* ── Header & Date Filter ── */}
       <div
         style={{
@@ -57,11 +78,24 @@ export default function RiderHistory() {
       >
         <div>
           <h2
-            style={{ margin: "0 0 4px 0", fontSize: "24px", color: "#0f172a" }}
+            style={{
+              margin: "0 0 4px 0",
+              fontSize: "24px",
+              color: "#0a0a0a",
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
+            }}
           >
             Delivery History
           </h2>
-          <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
+          <p
+            style={{
+              margin: 0,
+              color: "#52525b",
+              fontSize: "13px",
+              lineHeight: 1.5,
+            }}
+          >
             Review past deliveries and customer details.
           </p>
         </div>
@@ -73,34 +107,43 @@ export default function RiderHistory() {
             alignItems: "center",
             gap: "12px",
             background: "#ffffff",
-            padding: "8px 16px",
-            borderRadius: "8px",
-            border: "1px solid #e5e7eb",
-            boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+            padding: "8px 14px",
+            borderRadius: "12px",
+            border: "1px solid #e4e4e7",
+            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+            flexWrap: "wrap",
           }}
         >
-          <Calendar size={16} color="#64748b" />
+          <Calendar size={16} color="#71717a" />
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             style={{
-              border: "none",
+              border: "1px solid #e4e4e7",
+              borderRadius: "8px",
+              padding: "6px 10px",
               outline: "none",
-              color: "#334155",
-              fontSize: "14px",
+              color: "#18181b",
+              fontSize: "13px",
+              background: "#fff",
             }}
           />
-          <span style={{ color: "#94a3b8", fontSize: "14px" }}>to</span>
+          <span style={{ color: "#71717a", fontSize: "13px", fontWeight: 600 }}>
+            to
+          </span>
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             style={{
-              border: "none",
+              border: "1px solid #e4e4e7",
+              borderRadius: "8px",
+              padding: "6px 10px",
               outline: "none",
-              color: "#334155",
-              fontSize: "14px",
+              color: "#18181b",
+              fontSize: "13px",
+              background: "#fff",
             }}
           />
         </div>
@@ -110,12 +153,15 @@ export default function RiderHistory() {
       {filteredHistory.length === 0 ? (
         <div
           style={{
-            padding: "24px",
+            padding: "40px",
             background: "#fff",
-            borderRadius: "12px",
-            border: "1px solid #e5e7eb",
-            color: "#64748b",
+            borderRadius: "16px",
+            border: "1px solid #e4e4e7",
+            color: "#71717a",
             textAlign: "center",
+            fontSize: "13px",
+            fontWeight: 600,
+            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
           }}
         >
           No completed or failed deliveries found for this date range.
@@ -124,9 +170,10 @@ export default function RiderHistory() {
         <div
           style={{
             background: "#fff",
-            borderRadius: "12px",
-            border: "1px solid #e5e7eb",
+            borderRadius: "16px",
+            border: "1px solid #e4e4e7",
             overflowX: "auto",
+            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
           }}
         >
           <table
@@ -134,12 +181,13 @@ export default function RiderHistory() {
               width: "100%",
               borderCollapse: "collapse",
               whiteSpace: "nowrap",
+              textAlign: "left",
             }}
           >
             <thead
               style={{
-                background: "#f8fafc",
-                borderBottom: "1px solid #e5e7eb",
+                background: "#fafafa",
+                borderBottom: "1px solid #e4e4e7",
               }}
             >
               <tr>
@@ -155,19 +203,22 @@ export default function RiderHistory() {
               {filteredHistory.map((h) => (
                 <tr
                   key={h.delivery_id}
-                  style={{ borderBottom: "1px solid #f1f5f9" }}
+                  style={{ borderBottom: "1px solid #f4f4f5" }}
                 >
                   <td style={tdStyle}>
-                    {new Date(h.updated_at).toLocaleDateString("en-PH", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
+                    <div style={{ color: "#52525b", fontWeight: 500 }}>
+                      {new Date(h.updated_at).toLocaleDateString("en-PH", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </div>
                     <div
                       style={{
-                        color: "#64748b",
+                        color: "#71717a",
                         fontSize: "12px",
                         marginTop: "2px",
+                        fontWeight: 500,
                       }}
                     >
                       {new Date(h.updated_at).toLocaleTimeString("en-PH", {
@@ -178,22 +229,23 @@ export default function RiderHistory() {
                   </td>
 
                   <td
-                    style={{ ...tdStyle, fontWeight: "700", color: "#0f172a" }}
+                    style={{ ...tdStyle, fontWeight: "800", color: "#0a0a0a" }}
                   >
                     {h.order_number}
                   </td>
 
                   <td style={tdStyle}>
-                    <div style={{ fontWeight: "600", color: "#334155" }}>
+                    <div style={{ fontWeight: "700", color: "#18181b" }}>
                       {h.customer_name}
                     </div>
                     <div
                       style={{
                         fontSize: "12px",
-                        color: "#64748b",
+                        color: "#71717a",
                         maxWidth: "200px",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
+                        marginTop: "2px",
                       }}
                     >
                       {h.address || "No address provided"}
@@ -201,7 +253,7 @@ export default function RiderHistory() {
                   </td>
 
                   <td
-                    style={{ ...tdStyle, fontWeight: "700", color: "#b45309" }}
+                    style={{ ...tdStyle, fontWeight: "800", color: "#0a0a0a" }}
                   >
                     ₱
                     {Number(h.total || 0).toLocaleString("en-PH", {
@@ -211,7 +263,11 @@ export default function RiderHistory() {
 
                   <td style={tdStyle}>
                     <span
-                      style={{ color: "#475569", textTransform: "capitalize" }}
+                      style={{
+                        color: "#52525b",
+                        textTransform: "capitalize",
+                        fontWeight: 600,
+                      }}
                     >
                       {h.payment_status || "Pending"}
                     </span>
@@ -220,16 +276,16 @@ export default function RiderHistory() {
                   <td style={tdStyle}>
                     <span
                       style={{
-                        padding: "6px 12px",
-                        borderRadius: "20px",
-                        fontSize: "11px",
-                        fontWeight: "700",
+                        padding: "4px 10px",
+                        borderRadius: "999px",
+                        fontSize: "10px",
+                        fontWeight: "800",
                         textTransform: "uppercase",
-                        letterSpacing: "0.05em",
+                        letterSpacing: "1px",
                         background:
-                          h.status === "delivered" ? "#ecfdf5" : "#fef2f2",
-                        color: h.status === "delivered" ? "#15803d" : "#dc2626",
-                        border: `1px solid ${h.status === "delivered" ? "#bbf7d0" : "#fecaca"}`,
+                          h.status === "delivered" ? "#0a0a0a" : "#fef2f2",
+                        color: h.status === "delivered" ? "#ffffff" : "#991b1b",
+                        border: `1px solid ${h.status === "delivered" ? "#0a0a0a" : "#fecaca"}`,
                       }}
                     >
                       {h.status}
@@ -247,18 +303,18 @@ export default function RiderHistory() {
 
 // Reusable styles to keep the JSX clean
 const thStyle = {
-  padding: "16px",
+  padding: "14px 20px",
   textAlign: "left",
-  fontSize: "11px",
-  fontWeight: "700",
-  color: "#64748b",
+  fontSize: "10px",
+  fontWeight: "800",
+  color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "0.05em",
+  letterSpacing: "1px",
 };
 
 const tdStyle = {
-  padding: "16px",
-  fontSize: "14px",
-  color: "#334155",
+  padding: "16px 20px",
+  fontSize: "13px",
+  color: "#18181b",
   verticalAlign: "middle",
 };

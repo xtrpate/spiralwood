@@ -158,42 +158,44 @@ export default function ProcessOrder() {
           alignItems: "center",
           justifyContent: "center",
           minHeight: "60vh",
+          fontFamily: "'Inter', sans-serif"
         }}
       >
         <div
-          className="card"
           style={{
+            ...cardStyle,
             maxWidth: 520,
             width: "100%",
             textAlign: "center",
             padding: 40,
           }}
         >
-          <CheckCircle size={56} color="#2e7d32" style={{ marginBottom: 16 }} />
-          <h2 style={{ color: "#1a1a2e", marginBottom: 8 }}>
+          <CheckCircle size={56} color="#059669" style={{ marginBottom: 16 }} />
+          <h2 style={{ color: "#0a0a0a", marginBottom: 8, fontSize: 24, fontWeight: 800, letterSpacing: "-0.01em" }}>
             Order Successful!
           </h2>
 
-          <p style={{ color: "#666", marginBottom: 6 }}>
-            Order #: <strong>{success.order_number}</strong>
+          <p style={{ color: "#52525b", marginBottom: 6, fontSize: 14 }}>
+            Order #: <strong style={{ color: "#18181b" }}>{success.order_number}</strong>
           </p>
-          <p style={{ color: "#666", marginBottom: 6 }}>
-            Receipt #: <strong>{success.receipt_number}</strong>
+          <p style={{ color: "#52525b", marginBottom: 6, fontSize: 14 }}>
+            Receipt #: <strong style={{ color: "#18181b" }}>{success.receipt_number}</strong>
           </p>
 
           {success.delivery && (
-            <p style={{ color: "#666", marginBottom: 6 }}>
+            <p style={{ color: "#52525b", marginBottom: 6, fontSize: 14 }}>
               Delivery Request Saved
             </p>
           )}
 
-          <div style={{ marginBottom: 24 }}>
+          <div style={{ margin: "24px 0", padding: "20px", background: "#fafafa", borderRadius: 12, border: "1px solid #e4e4e7" }}>
             <p
               style={{
-                fontSize: 22,
+                fontSize: 28,
                 fontWeight: 800,
-                color: "#8B4513",
-                marginBottom: 8,
+                color: "#0a0a0a",
+                margin: "0 0 12px",
+                letterSpacing: "-0.02em"
               }}
             >
               ₱
@@ -205,9 +207,9 @@ export default function ProcessOrder() {
             {success.cash_received !== null &&
               success.cash_received !== undefined && (
                 <>
-                  <p style={{ color: "#666", marginBottom: 4 }}>
+                  <p style={{ color: "#52525b", marginBottom: 6, fontSize: 14 }}>
                     Cash Received:{" "}
-                    <strong>
+                    <strong style={{ color: "#18181b" }}>
                       ₱
                       {parseFloat(success.cash_received || 0).toLocaleString(
                         "en-PH",
@@ -217,10 +219,10 @@ export default function ProcessOrder() {
                   </p>
                   <p
                     style={{
-                      color: "#2e7d32",
-                      marginBottom: 0,
-                      fontWeight: "bold",
-                      fontSize: "1.1rem",
+                      color: "#059669",
+                      margin: 0,
+                      fontWeight: 800,
+                      fontSize: 16,
                     }}
                   >
                     Change (Sukli): ₱
@@ -241,13 +243,13 @@ export default function ProcessOrder() {
             }}
           >
             <button
-              className="btn btn-primary"
+              style={btnPrimary}
               onClick={() => navigate(`/staff/receipt/${success.receipt_id}`)}
             >
               <Receipt size={16} /> View Receipt
             </button>
             <button
-              className="btn btn-secondary"
+              style={btnSecondary}
               onClick={() => {
                 setSuccess(null);
                 setCart([]);
@@ -278,43 +280,43 @@ export default function ProcessOrder() {
 
   if (cart.length === 0) {
     return (
-      <div>
-        <div className="page-header">
-          <h1>Process Order & Payment</h1>
+      <div style={{ fontFamily: "'Inter', sans-serif" }}>
+        <div style={pageHeader}>
+          <h1 style={pageTitle}>Process Order & Payment</h1>
         </div>
-        <div className="card" style={{ textAlign: "center", padding: 40 }}>
-          <p style={{ color: "#aaa" }}>
-            No items in cart.{" "}
-            <button
-              className="btn btn-secondary"
-              onClick={() => navigate("/staff/products")}
-            >
-              Go to Product Search
-            </button>
+        <div style={{ ...cardStyle, textAlign: "center", padding: 60 }}>
+          <p style={{ color: "#71717a", fontSize: 14, fontWeight: 600, marginBottom: 20 }}>
+            No items in cart.
           </p>
+          <button
+            style={btnSecondary}
+            onClick={() => navigate("/staff/products")}
+          >
+            Go to Product Search
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="page-header">
-        <h1>Process Order & Payment</h1>
-        <p>Review cart and complete payment for walk-in customer</p>
+    <div style={{ fontFamily: "'Inter', sans-serif", paddingBottom: 40 }}>
+      <div style={pageHeader}>
+        <h1 style={pageTitle}>Process Order & Payment</h1>
+        <p style={pageSubtitle}>Review cart and complete payment for walk-in customer</p>
       </div>
 
       <div
-        style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20 }}
+        style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 24, alignItems: "start" }}
       >
-        <div className="card">
-          <h3 style={{ marginBottom: 20, fontWeight: 700 }}>
+        <div style={{ ...cardStyle, padding: 32 }}>
+          <h3 style={{ margin: "0 0 24px", fontWeight: 800, fontSize: 18, color: "#0a0a0a", letterSpacing: "-0.01em" }}>
             Customer, Payment & Delivery
           </h3>
 
           <form onSubmit={handleSubmit}>
-            <div className="form-field">
-              <label>Customer Name *</label>
+            <div style={formField}>
+              <label style={labelStyle}>Customer Name *</label>
               <input
                 type="text"
                 placeholder="Walk-in Customer"
@@ -323,11 +325,12 @@ export default function ProcessOrder() {
                   setForm({ ...form, customer_name: e.target.value })
                 }
                 required
+                style={inputStyle}
               />
             </div>
 
-            <div className="form-field">
-              <label>Phone Number{phoneIsRequired ? " *" : ""}</label>
+            <div style={formField}>
+              <label style={labelStyle}>Phone Number{phoneIsRequired ? " *" : ""}</label>
               <input
                 type="tel"
                 placeholder="09XXXXXXXXX"
@@ -341,16 +344,17 @@ export default function ProcessOrder() {
                       .slice(0, 11),
                   })
                 }
+                style={{ ...inputStyle, borderColor: (form.customer_phone && !phoneIsValid) ? "#dc2626" : "#e4e4e7" }}
               />
               {form.customer_phone && !phoneIsValid && (
-                <div style={{ color: "#c62828", fontSize: 12, marginTop: 6 }}>
+                <div style={{ color: "#dc2626", fontSize: 12, marginTop: 6, fontWeight: 600 }}>
                   Enter a valid 11-digit PH mobile number starting with 09.
                 </div>
               )}
             </div>
 
-            <div className="form-field">
-              <label>Payment Method *</label>
+            <div style={formField}>
+              <label style={labelStyle}>Payment Method *</label>
               <select
                 value={form.payment_method}
                 onChange={(e) =>
@@ -362,6 +366,7 @@ export default function ProcessOrder() {
                   })
                 }
                 required
+                style={inputStyle}
               >
                 <option value="cash">Cash</option>
                 <option value="gcash">GCash</option>
@@ -371,8 +376,8 @@ export default function ProcessOrder() {
               </select>
             </div>
 
-            <div className="form-field">
-              <label>Discount</label>
+            <div style={formField}>
+              <label style={labelStyle}>Discount</label>
               <div style={{ display: "flex", gap: "8px" }}>
                 <select
                   value={form.discount_type}
@@ -385,9 +390,13 @@ export default function ProcessOrder() {
                   }
                   style={{
                     width: "80px",
-                    padding: "12px 14px",
-                    border: "1.5px solid #e0e0e0",
+                    padding: "10px 14px",
+                    border: "1px solid #e4e4e7",
                     borderRadius: 8,
+                    outline: "none",
+                    background: "#fff",
+                    color: "#18181b",
+                    fontSize: 13
                   }}
                 >
                   <option value="amount">₱</option>
@@ -406,20 +415,14 @@ export default function ProcessOrder() {
                   onChange={(e) =>
                     setForm({ ...form, discount: e.target.value })
                   }
-                  style={{
-                    flex: 1,
-                    padding: "12px 14px",
-                    border: "1.5px solid #e0e0e0",
-                    borderRadius: 8,
-                    boxSizing: "border-box",
-                  }}
+                  style={{ ...inputStyle, flex: 1 }}
                 />
               </div>
             </div>
 
             {form.payment_method === "cash" && (
-              <div className="form-field">
-                <label>Cash Received (₱) *</label>
+              <div style={formField}>
+                <label style={labelStyle}>Cash Received (₱) *</label>
                 <input
                   type="number"
                   min="0"
@@ -430,41 +433,65 @@ export default function ProcessOrder() {
                     setForm({ ...form, cash_received: e.target.value })
                   }
                   required
+                  style={inputStyle}
                 />
               </div>
             )}
 
             <div
-              className="card"
               style={{
-                marginTop: 20,
-                marginBottom: 20,
-                background: "#faf7f4",
-                border: "1px solid #e2e8f0",
+                marginTop: 24,
+                marginBottom: 24,
+                background: "#fafafa",
+                border: "1px solid #e4e4e7",
+                borderRadius: 12,
+                padding: 24
               }}
             >
-              <h4 style={{ marginBottom: 14, fontWeight: 700 }}>
+              <h4 style={{ margin: "0 0 16px", fontWeight: 800, fontSize: 15, color: "#0a0a0a" }}>
                 Fulfillment Options
               </h4>
               <div
-                style={{ display: "flex", flexDirection: "column", gap: 12 }}
+                style={{ display: "flex", flexDirection: "column", gap: 16 }}
               >
                 <label
                   style={{
                     display: "flex",
                     alignItems: "center",
                     gap: 10,
-                    fontSize: 14,
-                    fontWeight: 600,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: "#18181b",
+                    cursor: "pointer"
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={form.need_delivery}
-                    onChange={(e) =>
-                      setForm({ ...form, need_delivery: e.target.checked })
-                    }
-                  />
+                  <div
+                    onClick={() => setForm({ ...form, need_delivery: !form.need_delivery })}
+                    style={{
+                      width: 44,
+                      height: 24,
+                      borderRadius: 12,
+                      cursor: "pointer",
+                      background: form.need_delivery ? "#18181b" : "#d4d4d8",
+                      position: "relative",
+                      transition: "background .2s",
+                      flexShrink: 0
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: "50%",
+                        background: "#fff",
+                        position: "absolute",
+                        top: 3,
+                        left: form.need_delivery ? 23 : 3,
+                        transition: "left .2s",
+                        boxShadow: "0 1px 3px rgba(0,0,0,.2)",
+                      }}
+                    />
+                  </div>
                   Need Delivery
                 </label>
 
@@ -473,29 +500,21 @@ export default function ProcessOrder() {
                     style={{
                       display: "grid",
                       gridTemplateColumns: "1fr 1fr",
-                      gap: 14,
+                      gap: 16,
+                      marginTop: 8
                     }}
                   >
-                    {/* 👉 THE FIX: Delivery Address and Delivery Fee side-by-side! */}
+                    {/* 👉 Delivery Address and Delivery Fee side-by-side */}
                     <div
                       style={{
                         gridColumn: "1 / -1",
                         display: "flex",
-                        gap: "10px",
+                        gap: "12px",
                         flexWrap: "wrap",
                       }}
                     >
                       <div style={{ flex: 2, minWidth: "200px" }}>
-                        <label
-                          style={{
-                            display: "block",
-                            marginBottom: 6,
-                            fontSize: 13,
-                            fontWeight: 600,
-                          }}
-                        >
-                          Delivery Address *
-                        </label>
+                        <label style={labelStyle}>Delivery Address *</label>
                         <input
                           type="text"
                           placeholder="Full delivery address"
@@ -507,26 +526,11 @@ export default function ProcessOrder() {
                             })
                           }
                           required={form.need_delivery}
-                          style={{
-                            width: "100%",
-                            padding: "12px 14px",
-                            border: "1.5px solid #e0e0e0",
-                            borderRadius: 8,
-                            boxSizing: "border-box",
-                          }}
+                          style={inputStyle}
                         />
                       </div>
                       <div style={{ flex: 1, minWidth: "120px" }}>
-                        <label
-                          style={{
-                            display: "block",
-                            marginBottom: 6,
-                            fontSize: 13,
-                            fontWeight: 600,
-                          }}
-                        >
-                          Delivery Fee (₱)
-                        </label>
+                        <label style={labelStyle}>Delivery Fee (₱)</label>
                         <input
                           type="number"
                           min="0"
@@ -536,27 +540,13 @@ export default function ProcessOrder() {
                           onChange={(e) =>
                             setForm({ ...form, delivery_fee: e.target.value })
                           }
-                          style={{
-                            width: "100%",
-                            padding: "12px 14px",
-                            border: "1.5px solid #e0e0e0",
-                            borderRadius: 8,
-                            boxSizing: "border-box",
-                          }}
+                          style={inputStyle}
                         />
                       </div>
                     </div>
-                    <div>
-                      <label
-                        style={{
-                          display: "block",
-                          marginBottom: 6,
-                          fontSize: 13,
-                          fontWeight: 600,
-                        }}
-                      >
-                        Preferred Date & Time *
-                      </label>
+                    
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label style={labelStyle}>Preferred Date & Time *</label>
                       <input
                         type="datetime-local"
                         value={form.delivery_requested_date}
@@ -567,26 +557,12 @@ export default function ProcessOrder() {
                           })
                         }
                         required={form.need_delivery}
-                        style={{
-                          width: "100%",
-                          padding: "12px 14px",
-                          border: "1.5px solid #e0e0e0",
-                          borderRadius: 8,
-                          boxSizing: "border-box",
-                        }}
+                        style={inputStyle}
                       />
                     </div>
-                    <div>
-                      <label
-                        style={{
-                          display: "block",
-                          marginBottom: 6,
-                          fontSize: 13,
-                          fontWeight: 600,
-                        }}
-                      >
-                        Delivery Notes
-                      </label>
+                    
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label style={labelStyle}>Delivery Notes</label>
                       <input
                         type="text"
                         placeholder="Optional delivery notes"
@@ -594,13 +570,7 @@ export default function ProcessOrder() {
                         onChange={(e) =>
                           setForm({ ...form, delivery_notes: e.target.value })
                         }
-                        style={{
-                          width: "100%",
-                          padding: "12px 14px",
-                          border: "1.5px solid #e0e0e0",
-                          borderRadius: 8,
-                          boxSizing: "border-box",
-                        }}
+                        style={inputStyle}
                       />
                     </div>
                   </div>
@@ -608,45 +578,45 @@ export default function ProcessOrder() {
               </div>
             </div>
 
-            <div
-              className="form-field full"
-              style={{ borderTop: "1px solid #e2e8f0", paddingTop: "20px" }}
-            >
-              <label>Additional Notes / Special Instructions</label>
+            <div style={formField}>
+              <label style={labelStyle}>Additional Notes / Special Instructions</label>
               <textarea
                 rows={3}
                 placeholder="Add any final instructions for the admin or build team here..."
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
               />
             </div>
 
             {error && (
               <div
                 style={{
-                  background: "#fce4ec",
-                  color: "#c62828",
-                  padding: "10px 14px",
+                  background: "#fef2f2",
+                  color: "#991b1b",
+                  padding: "12px 16px",
                   borderRadius: 8,
                   fontSize: 13,
-                  marginTop: 16,
+                  fontWeight: 600,
+                  marginTop: 20,
+                  border: "1px solid #fecaca"
                 }}
               >
                 {error}
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
+            <div style={{ display: "flex", gap: 12, marginTop: 32, justifyContent: "space-between", flexWrap: "wrap" }}>
               <button
                 type="button"
-                className="btn btn-secondary"
+                style={btnSecondary}
                 onClick={() => navigate("/staff/products")}
               >
                 ← Back to Catalog
               </button>
               <button
                 type="submit"
-                className="btn btn-primary"
+                style={canSubmit ? btnPrimary : { ...btnPrimary, opacity: 0.5, cursor: "not-allowed" }}
                 disabled={!canSubmit}
               >
                 {loading
@@ -657,33 +627,37 @@ export default function ProcessOrder() {
           </form>
         </div>
 
-        <div className="card" style={{ height: "fit-content" }}>
-          <h3 style={{ marginBottom: 16, fontWeight: 700 }}>Order Summary</h3>
-          <div style={{ maxHeight: 280, overflowY: "auto" }}>
+        {/* Right Sidebar - Summary */}
+        <div style={{ ...cardStyle, padding: 0, height: "fit-content" }}>
+          <div style={{ padding: "20px 24px", borderBottom: "1px solid #f4f4f5", background: "#fafafa" }}>
+            <h3 style={{ margin: 0, fontWeight: 800, fontSize: 16, color: "#0a0a0a", letterSpacing: "1px", textTransform: "uppercase" }}>Order Summary</h3>
+          </div>
+          
+          <div style={{ maxHeight: 320, overflowY: "auto", padding: "0 24px" }}>
             {cart.map((item) => (
               <div
                 key={item.key}
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
-                  padding: "8px 0",
-                  borderBottom: "1px solid #f0f0f0",
+                  padding: "16px 0",
+                  borderBottom: "1px solid #f4f4f5",
                   fontSize: 13,
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 600 }}>{item.product_name}</div>
+                  <div style={{ fontWeight: 700, color: "#0a0a0a", marginBottom: 2 }}>{item.product_name}</div>
                   {(item.wood_type || item.dimensions) && (
-                    <div style={{ fontSize: 11, color: "#64748b" }}>
+                    <div style={{ fontSize: 11, color: "#71717a", fontWeight: 500 }}>
                       {item.wood_type}{" "}
                       {item.dimensions ? `(${item.dimensions})` : ""}
                     </div>
                   )}
-                  <div style={{ color: "#888", marginTop: 2 }}>
+                  <div style={{ color: "#71717a", marginTop: 4, fontWeight: 600 }}>
                     x{item.quantity} @ ₱{item.unit_price.toLocaleString()}
                   </div>
                 </div>
-                <div style={{ fontWeight: 700 }}>
+                <div style={{ fontWeight: 800, color: "#0a0a0a" }}>
                   ₱
                   {(item.unit_price * item.quantity).toLocaleString("en-PH", {
                     minimumFractionDigits: 2,
@@ -693,68 +667,35 @@ export default function ProcessOrder() {
             ))}
           </div>
 
-          <div
-            style={{
-              marginTop: 16,
-              borderTop: "2px solid #f0f0f0",
-              paddingTop: 12,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 13,
-                marginBottom: 6,
-              }}
-            >
+          <div style={{ padding: 24, background: "#fafafa", borderTop: "1px solid #e4e4e7" }}>
+            <div style={summaryRowStyle}>
               <span>Subtotal</span>
-              <span>
-                ₱
-                {subtotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+              <span style={{ fontWeight: 600, color: "#18181b" }}>
+                ₱{subtotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
               </span>
             </div>
 
             {discountAmount > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontSize: 13,
-                  marginBottom: 6,
-                  color: "#2e7d32",
-                }}
-              >
+              <div style={{ ...summaryRowStyle, color: "#dc2626" }}>
                 <span>
                   Discount{" "}
                   {form.discount_type === "percent"
                     ? `(${discountInput}%)`
                     : `(Flat)`}
                 </span>
-                <span>
-                  -₱
-                  {discountAmount.toLocaleString("en-PH", {
+                <span style={{ fontWeight: 600 }}>
+                  -₱{discountAmount.toLocaleString("en-PH", {
                     minimumFractionDigits: 2,
                   })}
                 </span>
               </div>
             )}
 
-            {/* 👉 Show Delivery Fee in Summary */}
             {form.need_delivery && deliveryFeeAmt > 0 && (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontSize: 13,
-                  marginBottom: 6,
-                  color: "#475569",
-                }}
-              >
+              <div style={summaryRowStyle}>
                 <span>Delivery Fee</span>
-                <span>
-                  +₱
-                  {deliveryFeeAmt.toLocaleString("en-PH", {
+                <span style={{ fontWeight: 600, color: "#18181b" }}>
+                  +₱{deliveryFeeAmt.toLocaleString("en-PH", {
                     minimumFractionDigits: 2,
                   })}
                 </span>
@@ -765,10 +706,13 @@ export default function ProcessOrder() {
               style={{
                 display: "flex",
                 justifyContent: "space-between",
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: 800,
-                color: "#8B4513",
-                marginTop: 8,
+                color: "#0a0a0a",
+                marginTop: 16,
+                paddingTop: 16,
+                borderTop: "1px solid #e4e4e7",
+                letterSpacing: "-0.01em"
               }}
             >
               <span>TOTAL</span>
@@ -779,18 +723,10 @@ export default function ProcessOrder() {
 
             {form.payment_method === "cash" && (
               <>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: 13,
-                    marginTop: 10,
-                  }}
-                >
+                <div style={{ ...summaryRowStyle, marginTop: 16, color: "#52525b" }}>
                   <span>Cash Received</span>
-                  <span>
-                    ₱
-                    {cashReceived.toLocaleString("en-PH", {
+                  <span style={{ fontWeight: 700, color: "#18181b" }}>
+                    ₱{cashReceived.toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
                     })}
                   </span>
@@ -800,9 +736,9 @@ export default function ProcessOrder() {
                     display: "flex",
                     justifyContent: "space-between",
                     fontSize: 13,
-                    marginTop: 6,
-                    color: cashReceived >= total ? "#2e7d32" : "#c62828",
-                    fontWeight: "bold",
+                    marginTop: 8,
+                    color: cashReceived >= total ? "#059669" : "#dc2626",
+                    fontWeight: 700,
                   }}
                 >
                   <span>
@@ -811,8 +747,7 @@ export default function ProcessOrder() {
                       : "Insufficient Cash"}
                   </span>
                   <span>
-                    ₱
-                    {Math.abs(cashReceived - total).toLocaleString("en-PH", {
+                    ₱{Math.abs(cashReceived - total).toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
                     })}
                   </span>
@@ -825,3 +760,98 @@ export default function ProcessOrder() {
     </div>
   );
 }
+
+// ── Reusable Styles ──────────────────────────────────────────
+
+const pageHeader = {
+  marginBottom: 24,
+};
+
+const pageTitle = {
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#0a0a0a",
+  margin: 0,
+  letterSpacing: "-0.02em"
+};
+
+const pageSubtitle = {
+  fontSize: 13,
+  color: "#52525b",
+  marginTop: 6,
+  lineHeight: 1.5,
+};
+
+const cardStyle = {
+  background: "#ffffff",
+  border: "1px solid #e4e4e7",
+  borderRadius: 16,
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+};
+
+const formField = {
+  marginBottom: 20,
+};
+
+const labelStyle = {
+  display: "block",
+  marginBottom: 8,
+  fontSize: 11,
+  fontWeight: 800,
+  color: "#71717a",
+  textTransform: "uppercase",
+  letterSpacing: "1px"
+};
+
+const inputStyle = {
+  width: "100%",
+  padding: "12px 14px",
+  borderRadius: 8,
+  border: "1px solid #e4e4e7",
+  fontSize: 13,
+  color: "#18181b",
+  outline: "none",
+  boxSizing: "border-box",
+  background: "#ffffff",
+  transition: "border-color 0.2s"
+};
+
+const summaryRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  fontSize: 13,
+  marginBottom: 10,
+  color: "#52525b",
+};
+
+const btnPrimary = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  padding: "12px 24px",
+  background: "#18181b",
+  color: "#fff",
+  border: "1px solid #18181b",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 700,
+  transition: "background 0.2s"
+};
+
+const btnSecondary = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  padding: "12px 20px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 700,
+  transition: "background 0.2s"
+};

@@ -3,6 +3,22 @@ import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
 import { Search, Calendar, FileText, Printer } from "lucide-react";
 
+const getStatusStyle = (status) => {
+  const s = String(status || "").toLowerCase();
+  if (s === "completed" || s === "confirmed") {
+    return {
+      background: "#0a0a0a",
+      color: "#ffffff",
+      border: "1px solid #0a0a0a",
+    };
+  }
+  return {
+    background: "#f4f4f5",
+    color: "#52525b",
+    border: "1px solid #e4e4e7",
+  };
+};
+
 export default function OrderHistory() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
@@ -38,72 +54,86 @@ export default function OrderHistory() {
   }, [fetchHistory]);
 
   return (
-    <div>
+    <div style={{ fontFamily: "'Inter', sans-serif", paddingBottom: 40 }}>
       <div
-        className="page-header"
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
+          alignItems: "flex-end",
           flexWrap: "wrap",
           gap: "16px",
+          marginBottom: 24,
         }}
       >
         <div>
-          <h1>Transaction History</h1>
-          <p>Review past walk-in orders and reprint receipts.</p>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 24,
+              fontWeight: 800,
+              color: "#0a0a0a",
+              letterSpacing: "-0.02em",
+            }}
+          >
+            Transaction History
+          </h1>
+          <p
+            style={{
+              margin: "6px 0 0",
+              fontSize: 13,
+              color: "#52525b",
+              lineHeight: 1.5,
+            }}
+          >
+            Review past walk-in orders and reprint receipts.
+          </p>
         </div>
 
         {/* 👉 Date Range Filter */}
         <div
           style={{
             display: "flex",
-            gap: "10px",
+            gap: "12px",
             alignItems: "center",
-            background: "#fff",
-            padding: "10px 16px",
-            borderRadius: "10px",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+            background: "#ffffff",
+            padding: "8px 14px",
+            borderRadius: "12px",
+            border: "1px solid #e4e4e7",
+            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+            flexWrap: "wrap",
           }}
         >
-          <Calendar size={18} color="#64748b" />
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            style={{
-              border: "1px solid #e2e8f0",
-              padding: "6px 10px",
-              borderRadius: "6px",
-              outline: "none",
-            }}
-          />
-          <span style={{ color: "#64748b" }}>to</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            style={{
-              border: "1px solid #e2e8f0",
-              padding: "6px 10px",
-              borderRadius: "6px",
-              outline: "none",
-            }}
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Calendar size={16} color="#71717a" />
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              style={dateInputStyle}
+            />
+            <span style={{ color: "#71717a", fontSize: 13, fontWeight: 600 }}>
+              to
+            </span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              style={dateInputStyle}
+            />
+          </div>
           {(dateFrom || dateTo) && (
             <button
               onClick={() => {
                 setDateFrom("");
                 setDateTo("");
               }}
-              style={{
-                background: "none",
-                border: "none",
-                color: "#c62828",
-                cursor: "pointer",
-                fontSize: "12px",
-                fontWeight: "bold",
-              }}
+              style={btnClear}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "#fee2e2")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "#fef2f2")
+              }
             >
               Clear
             </button>
@@ -111,52 +141,84 @@ export default function OrderHistory() {
         </div>
       </div>
 
-      <div className="card" style={{ padding: "0", overflow: "hidden" }}>
+      <div style={cardStyle}>
         {loading ? (
           <div
-            style={{ padding: "40px", textAlign: "center", color: "#64748b" }}
+            style={{
+              padding: "60px 40px",
+              textAlign: "center",
+              color: "#71717a",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
           >
             Loading transactions...
           </div>
         ) : error ? (
           <div
-            style={{ padding: "40px", textAlign: "center", color: "#c62828" }}
+            style={{
+              padding: "60px 40px",
+              textAlign: "center",
+              color: "#dc2626",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
           >
             {error}
           </div>
         ) : orders.length === 0 ? (
           <div
-            style={{ padding: "60px 40px", textAlign: "center", color: "#888" }}
+            style={{
+              padding: "80px 40px",
+              textAlign: "center",
+              color: "#71717a",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
           >
             <FileText
               size={48}
-              color="#e2e8f0"
+              color="#d4d4d8"
               style={{ marginBottom: "16px" }}
             />
-            <p>No transactions found for the selected dates.</p>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 14,
+                fontWeight: 600,
+                color: "#52525b",
+              }}
+            >
+              No transactions found for the selected dates.
+            </p>
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
-            <table className="data-table" style={{ width: "100%" }}>
+            <table style={tableStyle}>
               <thead>
-                <tr>
-                  <th>Date & Time</th>
-                  <th>Order #</th>
-                  <th>Customer</th>
-                  <th>Payment</th>
-                  <th>Total</th>
-                  <th>Status</th>
-                  <th style={{ textAlign: "right" }}>Actions</th>
+                <tr style={thRowStyle}>
+                  <th style={thStyle}>Date & Time</th>
+                  <th style={thStyle}>Order #</th>
+                  <th style={thStyle}>Customer</th>
+                  <th style={thStyle}>Payment</th>
+                  <th style={thStyle}>Total</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {orders.map((order) => {
-                  const isPaid =
-                    order.status === "completed" ||
-                    order.status === "confirmed";
+                  const statusStyle = getStatusStyle(order.status);
                   return (
-                    <tr key={order.id}>
-                      <td style={{ whiteSpace: "nowrap" }}>
+                    <tr key={order.id} style={trStyle}>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          color: "#52525b",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {new Date(order.created_at).toLocaleString("en-PH", {
                           month: "short",
                           day: "numeric",
@@ -165,48 +227,94 @@ export default function OrderHistory() {
                           minute: "2-digit",
                         })}
                       </td>
-                      <td style={{ fontWeight: "600", color: "#1a1a2e" }}>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          fontWeight: 800,
+                          color: "#0a0a0a",
+                        }}
+                      >
                         {order.order_number}
                       </td>
-                      <td>
-                        <div style={{ fontWeight: "600" }}>
-                          {order.walkin_customer_name}
+                      <td style={tdStyle}>
+                        <div style={{ fontWeight: 700, color: "#18181b" }}>
+                          {order.walkin_customer_name || "Walk-in Customer"}
                         </div>
                         {order.walkin_customer_phone && (
-                          <div style={{ fontSize: "11px", color: "#64748b" }}>
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: "#71717a",
+                              marginTop: 2,
+                              fontWeight: 500,
+                            }}
+                          >
                             {order.walkin_customer_phone}
                           </div>
                         )}
                       </td>
-                      <td style={{ textTransform: "capitalize" }}>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textTransform: "capitalize",
+                          color: "#52525b",
+                          fontWeight: 500,
+                        }}
+                      >
                         {String(order.payment_method).replace("_", " ")}
                       </td>
-                      <td style={{ fontWeight: "700", color: "#8B4513" }}>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          fontWeight: 800,
+                          color: "#0a0a0a",
+                        }}
+                      >
                         ₱
                         {Number(order.total).toLocaleString("en-PH", {
                           minimumFractionDigits: 2,
                         })}
                       </td>
-                      <td>
+                      <td style={tdStyle}>
                         <span
-                          className={`badge ${isPaid ? "badge-green" : "badge-yellow"}`}
+                          style={{
+                            ...statusStyle,
+                            padding: "4px 10px",
+                            borderRadius: 999,
+                            fontSize: 10,
+                            fontWeight: 800,
+                            textTransform: "uppercase",
+                            letterSpacing: "1px",
+                            display: "inline-block",
+                          }}
                         >
-                          {String(order.status).replace("_", " ").toUpperCase()}
+                          {String(order.status).replace("_", " ")}
                         </span>
                       </td>
-                      <td style={{ textAlign: "right" }}>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
                         {order.receipt_number ? (
                           <button
-                            className="btn btn-secondary"
-                            style={{ padding: "6px 12px", fontSize: "12px" }}
+                            style={btnReceipt}
                             onClick={() =>
                               navigate(`/staff/receipt/${order.id}`)
+                            }
+                            onMouseEnter={(e) =>
+                              (e.currentTarget.style.background = "#e4e4e7")
+                            }
+                            onMouseLeave={(e) =>
+                              (e.currentTarget.style.background = "#f4f4f5")
                             }
                           >
                             <Printer size={14} /> Receipt
                           </button>
                         ) : (
-                          <span style={{ fontSize: "11px", color: "#aaa" }}>
+                          <span
+                            style={{
+                              fontSize: "12px",
+                              color: "#a1a1aa",
+                              fontWeight: 600,
+                            }}
+                          >
                             No Receipt
                           </span>
                         )}
@@ -222,3 +330,84 @@ export default function OrderHistory() {
     </div>
   );
 }
+
+// ── Reusable Styles ──────────────────────────────────────────
+
+const cardStyle = {
+  background: "#ffffff",
+  border: "1px solid #e4e4e7",
+  borderRadius: 16,
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+  overflow: "hidden",
+};
+
+const dateInputStyle = {
+  border: "1px solid #e4e4e7",
+  padding: "8px 12px",
+  borderRadius: "8px",
+  outline: "none",
+  fontSize: "13px",
+  color: "#18181b",
+  background: "#fff",
+};
+
+const btnClear = {
+  background: "#fef2f2",
+  border: "1px solid #fecaca",
+  color: "#991b1b",
+  padding: "8px 14px",
+  borderRadius: "8px",
+  fontSize: "12px",
+  fontWeight: 700,
+  cursor: "pointer",
+  transition: "background 0.2s",
+};
+
+const btnReceipt = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  background: "#f4f4f5",
+  border: "1px solid #e4e4e7",
+  color: "#18181b",
+  padding: "8px 14px",
+  borderRadius: "8px",
+  fontSize: "12px",
+  fontWeight: 700,
+  cursor: "pointer",
+  transition: "background 0.2s",
+};
+
+const tableStyle = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: 13,
+  minWidth: 800,
+  textAlign: "left",
+};
+
+const thRowStyle = {
+  background: "#fafafa",
+  borderBottom: "1px solid #e4e4e7",
+};
+
+const thStyle = {
+  padding: "14px 20px",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
+  textTransform: "uppercase",
+  letterSpacing: "1px",
+};
+
+const trStyle = {
+  borderBottom: "1px solid #f4f4f5",
+  background: "#ffffff",
+  transition: "background 0.2s",
+};
+
+const tdStyle = {
+  padding: "16px 20px",
+  color: "#18181b",
+  verticalAlign: "middle",
+};

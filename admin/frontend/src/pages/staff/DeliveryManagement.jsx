@@ -25,38 +25,21 @@ const formatStatus = (value) => {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
-const getStatusMeta = (status) =>
-  ({
-    scheduled: {
-      bg: "#eff6ff",
-      border: "#bfdbfe",
-      text: "#1d4ed8",
-      badge: "badge-blue",
-    },
-    in_transit: {
-      bg: "#fffbeb",
-      border: "#fde68a",
-      text: "#b45309",
-      badge: "badge-yellow",
-    },
-    delivered: {
-      bg: "#ecfdf5",
-      border: "#bbf7d0",
-      text: "#15803d",
-      badge: "badge-green",
-    },
-    failed: {
-      bg: "#fef2f2",
-      border: "#fecaca",
-      text: "#dc2626",
-      badge: "badge-red",
-    },
-  })[normalize(status)] || {
-    bg: "#f8fafc",
-    border: "#e5e7eb",
-    text: "#475569",
-    badge: "badge-gray",
-  };
+const getStatusMeta = (status) => {
+  const normalized = normalize(status);
+  switch (normalized) {
+    case "scheduled":
+      return { bg: "#ffffff", border: "#d4d4d8", text: "#52525b" };
+    case "in_transit":
+      return { bg: "#f4f4f5", border: "#e4e4e7", text: "#18181b" };
+    case "delivered":
+      return { bg: "#0a0a0a", border: "#0a0a0a", text: "#ffffff" };
+    case "failed":
+      return { bg: "#fef2f2", border: "#fecaca", text: "#991b1b" };
+    default:
+      return { bg: "#fafafa", border: "#e4e4e7", text: "#71717a" };
+  }
+};
 
 export default function DeliveryManagement() {
   const { user } = useAuthStore();
@@ -70,7 +53,7 @@ export default function DeliveryManagement() {
   const [savingId, setSavingId] = useState(null);
   const [receiptFiles, setReceiptFiles] = useState({});
   const [collectionForms, setCollectionForms] = useState({});
-  
+
   const [search, setSearch] = useState("");
 
   const loadDeliveries = useCallback(async () => {
@@ -297,8 +280,6 @@ export default function DeliveryManagement() {
     }
   };
 
- 
-
   const filteredDeliveries = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     if (!keyword) return deliveries;
@@ -362,13 +343,16 @@ export default function DeliveryManagement() {
             const collectionForm = getCollectionForm(delivery);
 
             const hasOutstandingBalance = paymentBalance > 0.009;
-            const rawCollectedAmount = String(collectionForm.amount ?? "").trim();
+            const rawCollectedAmount = String(
+              collectionForm.amount ?? "",
+            ).trim();
             const parsedCollectedAmount = Number(rawCollectedAmount || 0);
 
             const hasCollectedAmountValue = rawCollectedAmount !== "";
             const collectedAmountInvalid =
               hasCollectedAmountValue &&
-              (!Number.isFinite(parsedCollectedAmount) || parsedCollectedAmount <= 0);
+              (!Number.isFinite(parsedCollectedAmount) ||
+                parsedCollectedAmount <= 0);
 
             const collectedAmountExceedsBalance =
               hasCollectedAmountValue &&
@@ -387,8 +371,8 @@ export default function DeliveryManagement() {
               !hasOutstandingBalance ||
               (hasCollectedAmountValue &&
                 !collectedAmountInvalid &&
-                !collectedAmountExceedsBalance);      
-                        return (
+                !collectedAmountExceedsBalance);
+            return (
               <div
                 key={delivery.id}
                 style={{
@@ -408,9 +392,17 @@ export default function DeliveryManagement() {
                   </div>
 
                   <span
-                    className={`badge ${statusMeta.badge}`}
                     style={{
+                      background: statusMeta.bg,
+                      color: statusMeta.text,
+                      border: `1px solid ${statusMeta.border}`,
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 11,
+                      fontWeight: 700,
                       alignSelf: "flex-start",
+                      textTransform: "uppercase",
+                      letterSpacing: "1px",
                     }}
                   >
                     {formatStatus(delivery.status)}
@@ -418,10 +410,7 @@ export default function DeliveryManagement() {
                 </div>
 
                 <div style={detailsGrid}>
-                  <InfoCard
-                    label="Address"
-                    value={delivery.address || "—"}
-                  />
+                  <InfoCard label="Address" value={delivery.address || "—"} />
                   <InfoCard
                     label="Scheduled"
                     value={formatDateTime(delivery.scheduled_date)}
@@ -433,14 +422,14 @@ export default function DeliveryManagement() {
                   <InfoCard
                     label="Proof Status"
                     value={hasReceipt ? "Uploaded" : "Awaiting upload"}
-                    tone={hasReceipt ? "#15803d" : "#b45309"}
+                    tone={hasReceipt ? "#18181b" : "#71717a"}
                   />
                   <InfoCard
                     label="Remaining Balance"
                     value={`₱ ${paymentBalance.toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
                     })}`}
-                    tone={paymentBalance > 0 ? "#b45309" : "#15803d"}
+                    tone={paymentBalance > 0 ? "#dc2626" : "#18181b"}
                   />
                 </div>
 
@@ -450,7 +439,7 @@ export default function DeliveryManagement() {
                     <div style={notesText}>{delivery.notes}</div>
                   </div>
                 ) : null}
-                
+
                 {canStartTransit && (
                   <div style={actionSection}>
                     <div style={sectionTitle}>Next Action</div>
@@ -472,28 +461,33 @@ export default function DeliveryManagement() {
                         disabled={savingId === delivery.id}
                         style={btnPrimary}
                       >
-                        {savingId === delivery.id ? "Saving..." : "Start Transit"}
+                        {savingId === delivery.id
+                          ? "Saving..."
+                          : "Start Transit"}
                       </button>
                     </div>
                   </div>
                 )}
-                
 
                 {canCompleteDelivery && (
                   <div style={actionSection}>
                     {hasOutstandingBalance && (
                       <div style={{ marginBottom: "16px" }}>
-                        <div style={sectionTitle}>Remaining Balance Collection</div>
+                        <div style={sectionTitle}>
+                          Remaining Balance Collection
+                        </div>
                         <div style={helperText}>
-                          Record the amount collected from the customer during delivery. Admin will
-                          verify this payment before the order can be completed.
+                          Record the amount collected from the customer during
+                          delivery. Admin will verify this payment before the
+                          order can be completed.
                         </div>
 
                         <div
                           style={{
                             marginTop: "12px",
                             display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                            gridTemplateColumns:
+                              "repeat(auto-fit, minmax(180px, 1fr))",
                             gap: "12px",
                           }}
                         >
@@ -506,7 +500,11 @@ export default function DeliveryManagement() {
                               step="0.01"
                               value={collectionForm.amount}
                               onChange={(e) =>
-                                updateCollectionForm(delivery.id, "amount", e.target.value)
+                                updateCollectionForm(
+                                  delivery.id,
+                                  "amount",
+                                  e.target.value,
+                                )
                               }
                               style={searchInput}
                               placeholder={`Max ${paymentBalance.toFixed(2)}`}
@@ -539,13 +537,19 @@ export default function DeliveryManagement() {
                             <select
                               value={collectionForm.payment_method}
                               onChange={(e) =>
-                                updateCollectionForm(delivery.id, "payment_method", e.target.value)
+                                updateCollectionForm(
+                                  delivery.id,
+                                  "payment_method",
+                                  e.target.value,
+                                )
                               }
                               style={searchInput}
                             >
                               <option value="cash">Cash</option>
                               <option value="gcash">GCash</option>
-                              <option value="bank_transfer">Bank Transfer</option>
+                              <option value="bank_transfer">
+                                Bank Transfer
+                              </option>
                             </select>
                           </div>
 
@@ -565,6 +569,7 @@ export default function DeliveryManagement() {
                                 ...searchInput,
                                 minHeight: 88,
                                 resize: "vertical",
+                                fontFamily: "inherit",
                               }}
                               placeholder="Example: Full remaining balance collected during turnover."
                             />
@@ -582,7 +587,9 @@ export default function DeliveryManagement() {
                     <div style={proofPanel}>
                       <div style={proofStatusRow}>
                         <span style={proofStatusLabel}>
-                          {hasReceipt ? "Proof already uploaded" : "No proof uploaded yet"}
+                          {hasReceipt
+                            ? "Proof already uploaded"
+                            : "No proof uploaded yet"}
                         </span>
 
                         {hasReceipt && delivery.signed_receipt ? (
@@ -609,7 +616,10 @@ export default function DeliveryManagement() {
                         }
                         style={{
                           ...fileInput,
-                          opacity: savingId === delivery.id || !canUploadProof ? 0.6 : 1,
+                          opacity:
+                            savingId === delivery.id || !canUploadProof
+                              ? 0.6
+                              : 1,
                           cursor:
                             savingId === delivery.id || !canUploadProof
                               ? "not-allowed"
@@ -626,7 +636,8 @@ export default function DeliveryManagement() {
                             fontWeight: 600,
                           }}
                         >
-                          Enter a valid collected amount first before uploading proof of delivery.
+                          Enter a valid collected amount first before uploading
+                          proof of delivery.
                         </div>
                       )}
 
@@ -648,14 +659,22 @@ export default function DeliveryManagement() {
                               "Proof of delivery uploaded successfully.",
                           })
                         }
-                        disabled={savingId === delivery.id || !selectedFile || !canUploadProof}
+                        disabled={
+                          savingId === delivery.id ||
+                          !selectedFile ||
+                          !canUploadProof
+                        }
                         style={
-                          savingId === delivery.id || !selectedFile || !canUploadProof
+                          savingId === delivery.id ||
+                          !selectedFile ||
+                          !canUploadProof
                             ? btnDisabled
                             : btnSecondary
                         }
                       >
-                        {savingId === delivery.id ? "Saving..." : "Upload Proof"}
+                        {savingId === delivery.id
+                          ? "Saving..."
+                          : "Upload Proof"}
                       </button>
 
                       <button
@@ -669,7 +688,9 @@ export default function DeliveryManagement() {
                           })
                         }
                         disabled={completeDeliveryDisabled}
-                        style={completeDeliveryDisabled ? btnDisabled : btnPrimary}
+                        style={
+                          completeDeliveryDisabled ? btnDisabled : btnPrimary
+                        }
                       >
                         {savingId === delivery.id
                           ? "Saving..."
@@ -743,7 +764,7 @@ function InfoCard({ label, value, tone }) {
   return (
     <div style={infoCard}>
       <div style={infoLabel}>{label}</div>
-      <div style={{ ...infoValue, color: tone || "#0f172a" }}>{value}</div>
+      <div style={{ ...infoValue, color: tone || "#18181b" }}>{value}</div>
     </div>
   );
 }
@@ -753,43 +774,49 @@ const pageShell = {
   display: "flex",
   flexDirection: "column",
   gap: "16px",
+  fontFamily: "'Inter', sans-serif",
 };
 
 const heroCard = {
   background: "#ffffff",
-  border: "1px solid #e5e7eb",
+  border: "1px solid #e4e4e7",
   borderRadius: "16px",
   padding: "18px 20px",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const pageTitle = {
   margin: 0,
-  fontSize: "20px",
-  fontWeight: 700,
-  color: "#0f172a",
+  fontSize: "24px",
+  fontWeight: 800,
+  color: "#0a0a0a",
+  letterSpacing: "-0.02em",
 };
 
 const pageSubtitle = {
   margin: "8px 0 0",
-  color: "#64748b",
+  color: "#52525b",
   fontSize: "13px",
   lineHeight: 1.6,
 };
 
 const searchCard = {
   background: "#ffffff",
-  border: "1px solid #e5e7eb",
+  border: "1px solid #e4e4e7",
   borderRadius: "14px",
   padding: "14px",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const searchInput = {
   width: "100%",
   padding: "12px 14px",
-  borderRadius: "10px",
-  border: "1px solid #d1d5db",
+  borderRadius: "8px",
+  border: "1px solid #e4e4e7",
   outline: "none",
-  fontSize: "14px",
+  fontSize: "13px",
+  color: "#18181b",
+  boxSizing: "border-box",
 };
 
 const alertError = {
@@ -797,29 +824,30 @@ const alertError = {
   borderRadius: "12px",
   background: "#fef2f2",
   border: "1px solid #fecaca",
-  color: "#b91c1c",
-  fontSize: "14px",
+  color: "#991b1b",
+  fontSize: "13px",
   fontWeight: 600,
 };
 
 const alertSuccess = {
   padding: "12px 14px",
   borderRadius: "12px",
-  background: "#ecfdf5",
-  border: "1px solid #bbf7d0",
-  color: "#166534",
-  fontSize: "14px",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
+  color: "#18181b",
+  fontSize: "13px",
   fontWeight: 600,
 };
 
 const emptyCard = {
   background: "#ffffff",
-  border: "1px solid #e5e7eb",
+  border: "1px solid #e4e4e7",
   borderRadius: "16px",
-  padding: "24px",
-  color: "#64748b",
-  fontSize: "14px",
+  padding: "40px",
+  color: "#71717a",
+  fontSize: "13px",
   fontWeight: 600,
+  textAlign: "center",
 };
 
 const cardList = {
@@ -829,10 +857,10 @@ const cardList = {
 
 const deliveryCard = {
   background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: "18px",
-  padding: "18px",
-  boxShadow: "0 2px 10px rgba(15, 23, 42, 0.04)",
+  border: "1px solid #e4e4e7",
+  borderRadius: "16px",
+  padding: "24px",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const deliveryHeader = {
@@ -840,20 +868,21 @@ const deliveryHeader = {
   justifyContent: "space-between",
   alignItems: "flex-start",
   gap: "12px",
-  marginBottom: "14px",
+  marginBottom: "16px",
   flexWrap: "wrap",
 };
 
 const deliveryOrderNo = {
-  fontSize: "16px",
+  fontSize: "18px",
   fontWeight: 800,
-  color: "#0f172a",
+  color: "#0a0a0a",
   marginBottom: "4px",
+  letterSpacing: "-0.01em",
 };
 
 const deliveryCustomer = {
   fontSize: "14px",
-  color: "#475569",
+  color: "#52525b",
   fontWeight: 600,
 };
 
@@ -864,77 +893,78 @@ const detailsGrid = {
 };
 
 const infoCard = {
-  border: "1px solid #e5e7eb",
+  border: "1px solid #e4e4e7",
   borderRadius: "12px",
-  padding: "12px",
-  background: "#f8fafc",
+  padding: "14px",
+  background: "#fafafa",
 };
 
 const infoLabel = {
-  fontSize: "11px",
-  fontWeight: 700,
-  color: "#94a3b8",
+  fontSize: "10px",
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "0.08em",
+  letterSpacing: "1px",
   marginBottom: "6px",
 };
 
 const infoValue = {
   fontSize: "14px",
   fontWeight: 700,
-  color: "#0f172a",
+  color: "#18181b",
   lineHeight: 1.5,
   wordBreak: "break-word",
 };
 
 const notesBox = {
-  marginTop: "14px",
-  padding: "12px",
-  border: "1px solid #e2e8f0",
+  marginTop: "16px",
+  padding: "16px",
+  border: "1px solid #e4e4e7",
   borderRadius: "12px",
-  background: "#f8fafc",
+  background: "#fafafa",
 };
 
 const notesLabel = {
-  fontSize: "11px",
-  fontWeight: 700,
-  color: "#94a3b8",
+  fontSize: "10px",
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  marginBottom: "6px",
+  letterSpacing: "1px",
+  marginBottom: "8px",
 };
 
 const notesText = {
   fontSize: "13px",
-  color: "#334155",
+  color: "#18181b",
   lineHeight: 1.6,
 };
 
 const actionSection = {
-  marginTop: "16px",
-  paddingTop: "16px",
-  borderTop: "1px solid #e5e7eb",
+  marginTop: "20px",
+  paddingTop: "20px",
+  borderTop: "1px solid #e4e4e7",
 };
 
 const sectionTitle = {
-  fontSize: "14px",
+  fontSize: "15px",
   fontWeight: 800,
-  color: "#0f172a",
+  color: "#0a0a0a",
   marginBottom: "6px",
+  letterSpacing: "-0.01em",
 };
 
 const helperText = {
   fontSize: "13px",
-  color: "#64748b",
+  color: "#52525b",
   lineHeight: 1.6,
 };
 
 const proofPanel = {
-  marginTop: "12px",
-  padding: "14px",
-  border: "1px dashed #cbd5e1",
+  marginTop: "16px",
+  padding: "16px",
+  border: "1px dashed #d4d4d8",
   borderRadius: "12px",
-  background: "#f8fafc",
+  background: "#fafafa",
 };
 
 const proofStatusRow = {
@@ -943,23 +973,24 @@ const proofStatusRow = {
   alignItems: "center",
   gap: "12px",
   flexWrap: "wrap",
-  marginBottom: "10px",
+  marginBottom: "12px",
 };
 
 const proofStatusLabel = {
   fontSize: "13px",
   fontWeight: 700,
-  color: "#334155",
+  color: "#18181b",
 };
 
 const fileInput = {
   fontSize: "13px",
   marginBottom: "8px",
+  color: "#52525b",
 };
 
 const selectedFileText = {
   fontSize: "12px",
-  color: "#64748b",
+  color: "#71717a",
   fontWeight: 600,
 };
 
@@ -967,37 +998,39 @@ const buttonRow = {
   display: "flex",
   gap: "10px",
   flexWrap: "wrap",
-  marginTop: "14px",
+  marginTop: "16px",
 };
 
 const btnPrimary = {
-  padding: "10px 16px",
-  borderRadius: "10px",
-  border: "none",
-  background: "#111827",
+  padding: "10px 20px",
+  borderRadius: "8px",
+  border: "1px solid #18181b",
+  background: "#18181b",
   color: "#ffffff",
   cursor: "pointer",
   fontSize: "13px",
   fontWeight: 700,
+  transition: "background 0.2s",
 };
 
 const btnSecondary = {
-  padding: "10px 16px",
-  borderRadius: "10px",
-  border: "1px solid #d1d5db",
-  background: "#ffffff",
-  color: "#111827",
+  padding: "10px 20px",
+  borderRadius: "8px",
+  border: "1px solid #e4e4e7",
+  background: "#f4f4f5",
+  color: "#18181b",
   cursor: "pointer",
   fontSize: "13px",
   fontWeight: 700,
+  transition: "background 0.2s",
 };
 
 const btnDisabled = {
-  padding: "10px 16px",
-  borderRadius: "10px",
+  padding: "10px 20px",
+  borderRadius: "8px",
   border: "none",
-  background: "#9ca3af",
-  color: "#ffffff",
+  background: "#e4e4e7",
+  color: "#a1a1aa",
   cursor: "not-allowed",
   fontSize: "13px",
   fontWeight: 700,
@@ -1007,23 +1040,23 @@ const summaryRow = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
   gap: "12px",
-  marginTop: "12px",
+  marginTop: "16px",
 };
 
 const summaryItem = {
-  border: "1px solid #e5e7eb",
+  border: "1px solid #e4e4e7",
   borderRadius: "12px",
-  padding: "12px",
-  background: "#f8fafc",
+  padding: "16px",
+  background: "#fafafa",
 };
 
 const summaryLabel = {
   display: "block",
-  fontSize: "11px",
-  fontWeight: 700,
-  color: "#94a3b8",
+  fontSize: "10px",
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "0.08em",
+  letterSpacing: "1px",
   marginBottom: "6px",
 };
 
@@ -1031,17 +1064,19 @@ const summaryValue = {
   display: "block",
   fontSize: "14px",
   fontWeight: 700,
-  color: "#0f172a",
+  color: "#18181b",
 };
 
 const viewLink = {
   display: "inline-flex",
   alignItems: "center",
-  padding: "8px 12px",
-  borderRadius: "10px",
-  background: "#eff6ff",
-  color: "#1d4ed8",
+  padding: "8px 14px",
+  borderRadius: "8px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
   textDecoration: "none",
   fontSize: "12px",
   fontWeight: 700,
+  transition: "background 0.2s",
 };

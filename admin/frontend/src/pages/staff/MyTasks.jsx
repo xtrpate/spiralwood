@@ -12,17 +12,57 @@ const REQUIRED_STEPS = [
 ];
 
 const STEP_STATUS_META = {
-  pending: { bg: "#f8fafc", color: "#475569", label: "Not Started" },
-  in_progress: { bg: "#fff7ed", color: "#c2410c", label: "In Progress" },
-  completed: { bg: "#ecfdf5", color: "#047857", label: "Done" },
-  blocked: { bg: "#fef2f2", color: "#b91c1c", label: "Blocked" },
+  pending: {
+    bg: "#ffffff",
+    color: "#52525b",
+    border: "#d4d4d8",
+    label: "Not Started",
+  },
+  in_progress: {
+    bg: "#f4f4f5",
+    color: "#18181b",
+    border: "#e4e4e7",
+    label: "In Progress",
+  },
+  completed: {
+    bg: "#0a0a0a",
+    color: "#ffffff",
+    border: "#0a0a0a",
+    label: "Done",
+  },
+  blocked: {
+    bg: "#fef2f2",
+    color: "#991b1b",
+    border: "#fecaca",
+    label: "Blocked",
+  },
 };
 
 const ORDER_STATUS_META = {
-  assigned: { bg: "#eff6ff", color: "#1d4ed8", label: "Assigned" },
-  in_progress: { bg: "#fff7ed", color: "#c2410c", label: "In Production" },
-  blocked: { bg: "#fef2f2", color: "#b91c1c", label: "Blocked" },
-  ready: { bg: "#ecfdf5", color: "#047857", label: "Ready for Shipping" },
+  assigned: {
+    bg: "#ffffff",
+    color: "#52525b",
+    border: "#d4d4d8",
+    label: "Assigned",
+  },
+  in_progress: {
+    bg: "#f4f4f5",
+    color: "#18181b",
+    border: "#e4e4e7",
+    label: "In Production",
+  },
+  blocked: {
+    bg: "#fef2f2",
+    color: "#991b1b",
+    border: "#fecaca",
+    label: "Blocked",
+  },
+  ready: {
+    bg: "#0a0a0a",
+    color: "#ffffff",
+    border: "#0a0a0a",
+    label: "Ready for Shipping",
+  },
 };
 
 const normalize = (value) =>
@@ -181,7 +221,8 @@ export default function MyTasks() {
         .length,
       inProgress: groupedOrders.filter((o) => o.overallStatus === "in_progress")
         .length,
-      blocked: groupedOrders.filter((o) => o.overallStatus === "blocked").length,
+      blocked: groupedOrders.filter((o) => o.overallStatus === "blocked")
+        .length,
       ready: groupedOrders.filter((o) => o.readyForShipping).length,
     };
   }, [groupedOrders]);
@@ -189,7 +230,7 @@ export default function MyTasks() {
   return (
     <div style={pageShell}>
       <div style={heroCard}>
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 24 }}>
           <h1 style={pageTitle}>Production Work Queue</h1>
           <p style={pageSubtitle}>
             Manage your assigned production orders, complete each manufacturing
@@ -201,27 +242,27 @@ export default function MyTasks() {
           <SummaryCard
             label="Assigned Orders"
             value={summary.orders}
-            color="#2563eb"
+            color="#0a0a0a"
           />
           <SummaryCard
             label="New Assignments"
             value={summary.assigned}
-            color="#64748b"
+            color="#52525b"
           />
           <SummaryCard
             label="In Production"
             value={summary.inProgress}
-            color="#c2410c"
+            color="#18181b"
           />
           <SummaryCard
             label="Blocked"
             value={summary.blocked}
-            color="#b91c1c"
+            color="#dc2626"
           />
           <SummaryCard
             label="Ready for Shipping"
             value={summary.ready}
-            color="#047857"
+            color="#0a0a0a"
           />
         </div>
       </div>
@@ -246,7 +287,8 @@ export default function MyTasks() {
                     <div style={{ flex: 1, minWidth: 260 }}>
                       <div style={orderHeaderRow}>
                         <span style={orderRefBadge}>
-                          {order.orderNumber || `Order #${order.orderId || "—"}`}
+                          {order.orderNumber ||
+                            `Order #${order.orderId || "—"}`}
                         </span>
 
                         <span
@@ -254,6 +296,7 @@ export default function MyTasks() {
                             ...statusBadge,
                             background: orderMeta.bg,
                             color: orderMeta.color,
+                            border: `1px solid ${orderMeta.border}`,
                           }}
                         >
                           {orderMeta.label}
@@ -304,7 +347,8 @@ export default function MyTasks() {
                   <div style={noteBox}>
                     <div style={noteTitle}>Admin Production Note</div>
                     <div style={noteText}>
-                      {order.adminNote || "No additional production note provided."}
+                      {order.adminNote ||
+                        "No additional production note provided."}
                     </div>
                   </div>
 
@@ -342,6 +386,7 @@ export default function MyTasks() {
                                   ...statusBadge,
                                   background: stepMeta.bg,
                                   color: stepMeta.color,
+                                  border: `1px solid ${stepMeta.border}`,
                                 }}
                               >
                                 {stepMeta.label}
@@ -349,25 +394,37 @@ export default function MyTasks() {
 
                               {step.task ? (
                                 <div style={stepActions}>
-                                  {step.status === "pending" && canStartThisStep && (
-                                    <button
-                                      onClick={() =>
-                                        updateTaskStatus(
-                                          step.task.id,
-                                          "in_progress",
-                                        )
-                                      }
-                                      disabled={busyId === step.task.id}
-                                      style={ghostBtn}
-                                    >
-                                      Start
-                                    </button>
-                                  )}
+                                  {step.status === "pending" &&
+                                    canStartThisStep && (
+                                      <button
+                                        onClick={() =>
+                                          updateTaskStatus(
+                                            step.task.id,
+                                            "in_progress",
+                                          )
+                                        }
+                                        disabled={busyId === step.task.id}
+                                        style={ghostBtn}
+                                        onMouseEnter={(e) =>
+                                          !busyId &&
+                                          (e.currentTarget.style.background =
+                                            "#e4e4e7")
+                                        }
+                                        onMouseLeave={(e) =>
+                                          !busyId &&
+                                          (e.currentTarget.style.background =
+                                            "#f4f4f5")
+                                        }
+                                      >
+                                        Start
+                                      </button>
+                                    )}
 
                                   {step.status === "pending" &&
                                     !canStartThisStep && (
                                       <span style={sequenceHint}>
-                                        Complete {previousRequiredStepLabel} first
+                                        Complete {previousRequiredStepLabel}{" "}
+                                        first
                                       </span>
                                     )}
 
@@ -382,6 +439,16 @@ export default function MyTasks() {
                                         }
                                         disabled={busyId === step.task.id}
                                         style={successBtn}
+                                        onMouseEnter={(e) =>
+                                          !busyId &&
+                                          (e.currentTarget.style.background =
+                                            "#3f3f46")
+                                        }
+                                        onMouseLeave={(e) =>
+                                          !busyId &&
+                                          (e.currentTarget.style.background =
+                                            "#18181b")
+                                        }
                                       >
                                         Mark Done
                                       </button>
@@ -394,6 +461,16 @@ export default function MyTasks() {
                                         }
                                         disabled={busyId === step.task.id}
                                         style={dangerBtn}
+                                        onMouseEnter={(e) =>
+                                          !busyId &&
+                                          (e.currentTarget.style.background =
+                                            "#fee2e2")
+                                        }
+                                        onMouseLeave={(e) =>
+                                          !busyId &&
+                                          (e.currentTarget.style.background =
+                                            "#fef2f2")
+                                        }
                                       >
                                         Report Blocker
                                       </button>
@@ -410,6 +487,16 @@ export default function MyTasks() {
                                       }
                                       disabled={busyId === step.task.id}
                                       style={ghostBtn}
+                                      onMouseEnter={(e) =>
+                                        !busyId &&
+                                        (e.currentTarget.style.background =
+                                          "#e4e4e7")
+                                      }
+                                      onMouseLeave={(e) =>
+                                        !busyId &&
+                                        (e.currentTarget.style.background =
+                                          "#f4f4f5")
+                                      }
                                     >
                                       Resume
                                     </button>
@@ -442,8 +529,27 @@ export default function MyTasks() {
 function SummaryCard({ label, value, color }) {
   return (
     <div style={summaryCard}>
-      <div style={{ fontSize: 28, fontWeight: 800, color }}>{value}</div>
-      <div style={{ fontSize: 13, color: "#64748b", marginTop: 4 }}>
+      <div
+        style={{
+          fontSize: 26,
+          fontWeight: 800,
+          color,
+          letterSpacing: "-0.02em",
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </div>
+      <div
+        style={{
+          fontSize: 10,
+          color: "#71717a",
+          marginTop: 8,
+          fontWeight: 800,
+          textTransform: "uppercase",
+          letterSpacing: "1px",
+        }}
+      >
         {label}
       </div>
     </div>
@@ -464,225 +570,248 @@ const pageShell = {
   display: "flex",
   flexDirection: "column",
   gap: 16,
+  fontFamily: "'Inter', sans-serif",
 };
 
 const heroCard = {
   background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 18,
-  padding: 18,
-  boxShadow: "0 8px 24px rgba(15, 23, 42, 0.05)",
+  border: "1px solid #e4e4e7",
+  borderRadius: 16,
+  padding: "20px 24px",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const pageTitle = {
   margin: 0,
-  fontSize: 30,
+  fontSize: 24,
   fontWeight: 800,
-  color: "#0f172a",
+  color: "#0a0a0a",
+  letterSpacing: "-0.02em",
 };
 
 const pageSubtitle = {
-  margin: "8px 0 0",
-  color: "#64748b",
-  fontSize: 14,
-  lineHeight: 1.6,
+  margin: "6px 0 0",
+  color: "#52525b",
+  fontSize: 13,
+  lineHeight: 1.5,
+  maxWidth: 720,
 };
 
 const summaryGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(5, minmax(120px, 1fr))",
-  gap: 12,
+  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+  gap: 16,
 };
 
 const summaryCard = {
   background: "#fff",
-  borderRadius: 14,
-  border: "1px solid #e5e7eb",
-  padding: 16,
+  borderRadius: 12,
+  border: "1px solid #e4e4e7",
+  padding: "16px 20px",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const boardCard = {
   background: "#fff",
   borderRadius: 16,
-  border: "1px solid #e5e7eb",
+  border: "1px solid #e4e4e7",
   overflow: "hidden",
-  boxShadow: "0 10px 30px rgba(2, 6, 23, 0.05)",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const boardHeader = {
-  padding: "16px 20px",
-  borderBottom: "1px solid #f1f5f9",
-  fontWeight: 700,
-  fontSize: 18,
-  color: "#0f172a",
+  padding: "20px 24px",
+  borderBottom: "1px solid #e4e4e7",
+  fontWeight: 800,
+  fontSize: 16,
+  color: "#0a0a0a",
+  background: "#fafafa",
 };
 
 const emptyState = {
-  padding: 24,
-  color: "#64748b",
+  padding: 40,
+  color: "#71717a",
+  textAlign: "center",
+  fontSize: 13,
+  fontWeight: 600,
 };
 
 const orderList = {
   display: "grid",
   gap: 16,
-  padding: 18,
+  padding: 20,
 };
 
 const orderCard = {
-  border: "1px solid #e2e8f0",
-  borderRadius: 16,
-  padding: 18,
+  border: "1px solid #e4e4e7",
+  borderRadius: 12,
+  padding: 20,
   background: "#ffffff",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const orderTop = {
   display: "flex",
   justifyContent: "space-between",
-  gap: 18,
+  gap: 20,
   alignItems: "flex-start",
   flexWrap: "wrap",
 };
 
 const orderHeaderRow = {
   display: "flex",
-  gap: 8,
+  gap: 10,
   flexWrap: "wrap",
   alignItems: "center",
 };
 
 const orderRefBadge = {
-  background: "#eff6ff",
-  color: "#1d4ed8",
-  padding: "5px 10px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  padding: "4px 10px",
   borderRadius: 999,
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 700,
+  border: "1px solid #e4e4e7",
 };
 
 const statusBadge = {
-  padding: "5px 10px",
+  padding: "4px 10px",
   borderRadius: 999,
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "1px",
 };
 
 const orderTitle = {
   margin: "12px 0 6px",
-  fontSize: 24,
+  fontSize: 20,
   fontWeight: 800,
-  color: "#111827",
+  color: "#0a0a0a",
+  letterSpacing: "-0.01em",
 };
 
 const orderSubtitle = {
   margin: 0,
-  color: "#475569",
-  fontSize: 14,
-  lineHeight: 1.6,
+  color: "#52525b",
+  fontSize: 13,
+  lineHeight: 1.5,
 };
 
 const progressPanel = {
   minWidth: 240,
   maxWidth: 320,
   width: "100%",
+  background: "#fafafa",
+  padding: "14px",
+  borderRadius: 12,
+  border: "1px solid #e4e4e7",
 };
 
 const progressLabel = {
-  fontSize: 13,
-  fontWeight: 700,
-  color: "#334155",
+  fontSize: 11,
+  fontWeight: 800,
+  color: "#18181b",
   marginBottom: 8,
+  textTransform: "uppercase",
+  letterSpacing: "1px",
 };
 
 const progressBarTrack = {
-  height: 10,
-  background: "#e2e8f0",
+  height: 8,
+  background: "#e4e4e7",
   borderRadius: 999,
   overflow: "hidden",
 };
 
 const progressBarFill = {
   height: "100%",
-  background: "linear-gradient(90deg, #2563eb, #0ea5e9)",
+  background: "#18181b",
   borderRadius: 999,
 };
 
 const progressValue = {
   marginTop: 8,
   fontSize: 12,
-  fontWeight: 700,
-  color: "#0f172a",
+  fontWeight: 800,
+  color: "#18181b",
+  textAlign: "right",
 };
 
 const metaGrid = {
-  marginTop: 16,
+  marginTop: 20,
   display: "grid",
-  gridTemplateColumns: "repeat(4, minmax(160px, 1fr))",
-  gap: 12,
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 16,
 };
 
 const infoLabel = {
-  fontSize: 12,
-  color: "#64748b",
+  fontSize: 10,
+  color: "#71717a",
+  fontWeight: 800,
   textTransform: "uppercase",
-  letterSpacing: 0.5,
+  letterSpacing: "1px",
   marginBottom: 4,
 };
 
 const infoValue = {
-  fontSize: 14,
+  fontSize: 13,
   fontWeight: 600,
-  color: "#1f2937",
+  color: "#18181b",
   wordBreak: "break-word",
 };
 
 const noteBox = {
-  marginTop: 16,
-  background: "#f8fafc",
-  border: "1px solid #e2e8f0",
-  borderRadius: 12,
+  marginTop: 20,
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
+  borderRadius: 10,
   padding: 14,
 };
 
 const noteTitle = {
-  fontSize: 12,
-  fontWeight: 700,
-  color: "#334155",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#18181b",
   textTransform: "uppercase",
-  letterSpacing: 0.6,
+  letterSpacing: "1px",
   marginBottom: 6,
 };
 
 const noteText = {
-  fontSize: 14,
-  color: "#475569",
-  lineHeight: 1.6,
+  fontSize: 13,
+  color: "#52525b",
+  lineHeight: 1.5,
   whiteSpace: "pre-wrap",
 };
 
 const checklistWrap = {
-  marginTop: 18,
+  marginTop: 24,
 };
 
 const checklistTitle = {
   fontSize: 15,
   fontWeight: 800,
-  color: "#0f172a",
-  marginBottom: 12,
+  color: "#0a0a0a",
+  marginBottom: 14,
+  letterSpacing: "-0.01em",
 };
 
 const stepList = {
   display: "grid",
-  gap: 10,
+  gap: 12,
 };
 
 const stepRow = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 12,
-  padding: 14,
+  border: "1px solid #e4e4e7",
+  background: "#ffffff",
+  borderRadius: 10,
+  padding: "16px",
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  gap: 12,
+  gap: 16,
   flexWrap: "wrap",
 };
 
@@ -692,22 +821,23 @@ const stepLeft = {
 };
 
 const stepName = {
-  fontSize: 15,
-  fontWeight: 700,
-  color: "#111827",
+  fontSize: 14,
+  fontWeight: 800,
+  color: "#0a0a0a",
   marginBottom: 4,
 };
 
 const stepSubtext = {
-  fontSize: 13,
-  color: "#64748b",
+  fontSize: 12,
+  color: "#71717a",
   lineHeight: 1.5,
+  fontWeight: 500,
 };
 
 const stepRight = {
   display: "flex",
   alignItems: "center",
-  gap: 10,
+  gap: 12,
   flexWrap: "wrap",
 };
 
@@ -718,52 +848,58 @@ const stepActions = {
 };
 
 const readyBox = {
-  marginTop: 16,
-  background: "#ecfdf5",
-  color: "#047857",
-  border: "1px solid #a7f3d0",
-  borderRadius: 12,
-  padding: "12px 14px",
-  fontSize: 13,
+  marginTop: 20,
+  background: "#fafafa",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 10,
+  padding: "12px 16px",
+  fontSize: 12,
   fontWeight: 700,
 };
 
 const ghostBtn = {
-  background: "#fff",
-  color: "#334155",
-  border: "1px solid #cbd5e1",
-  borderRadius: 10,
-  padding: "10px 14px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
+  padding: "8px 14px",
   fontWeight: 700,
   cursor: "pointer",
+  fontSize: 12,
+  transition: "background 0.2s",
 };
 
 const successBtn = {
-  background: "#ecfdf5",
-  color: "#047857",
-  border: "1px solid #a7f3d0",
-  borderRadius: 10,
-  padding: "10px 14px",
+  background: "#18181b",
+  color: "#ffffff",
+  border: "1px solid #18181b",
+  borderRadius: 8,
+  padding: "8px 14px",
   fontWeight: 700,
   cursor: "pointer",
+  fontSize: 12,
+  transition: "background 0.2s",
 };
 
 const dangerBtn = {
   background: "#fef2f2",
-  color: "#b91c1c",
+  color: "#991b1b",
   border: "1px solid #fecaca",
-  borderRadius: 10,
-  padding: "10px 14px",
+  borderRadius: 8,
+  padding: "8px 14px",
   fontWeight: 700,
   cursor: "pointer",
+  fontSize: 12,
+  transition: "background 0.2s",
 };
 
 const sequenceHint = {
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 700,
-  color: "#92400e",
-  background: "#fffbeb",
-  border: "1px solid #fde68a",
+  color: "#71717a",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
   borderRadius: 999,
-  padding: "6px 10px",
+  padding: "6px 12px",
 };
