@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
@@ -986,7 +986,7 @@ export default function ContractsPage() {
       >
         <div>
           <h1 style={pageTitle}>Contracts</h1>
-          <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>
+          <p style={{ fontSize: 13, color: "#52525b", margin: "4px 0 0" }}>
             Generate and manage sales contracts for custom blueprint orders.
           </p>
         </div>
@@ -1007,13 +1007,13 @@ export default function ContractsPage() {
         <SummaryCard
           label="Total Contracts"
           value={contracts.length}
-          color="#3b82f6"
+          color="#18181b"
           icon="📝"
         />
         <SummaryCard
           label="This Month"
           value={contractsThisMonth}
-          color="#10b981"
+          color="#18181b"
           icon="📅"
         />
       </div>
@@ -1036,8 +1036,8 @@ export default function ContractsPage() {
           <thead>
             <tr
               style={{
-                background: "#f8fafc",
-                borderBottom: "1px solid #e2e8f0",
+                background: "#fafafa",
+                borderBottom: "1px solid #e4e4e7",
               }}
             >
               {[
@@ -1072,14 +1072,14 @@ export default function ContractsPage() {
               </tr>
             ) : (
               contracts.map((c) => (
-                <tr key={c.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                  <td style={{ ...td, fontWeight: 700, color: "#1e40af" }}>
+                <tr key={c.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
+                  <td style={{ ...td, fontWeight: 800, color: "#0a0a0a" }}>
                     CNT-{String(c.id).padStart(5, "0")}
                   </td>
 
                   <td style={td}>
                     <button
-                      onClick={() => navigate(`/orders/${c.order_id}`)}
+                      onClick={() => navigate(`/admin/orders/${c.order_id}`)}
                       style={linkBtn}
                     >
                       #{String(c.order_id).padStart(5, "0")}
@@ -1087,15 +1087,17 @@ export default function ContractsPage() {
                   </td>
 
                   <td style={td}>
-                    <div style={{ fontWeight: 500 }}>
+                    <div style={{ fontWeight: 600, color: "#18181b" }}>
                       {formatPersonName(c.customer_name) || "—"}
                     </div>
-                    <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                    <div
+                      style={{ fontSize: 11, color: "#71717a", marginTop: 2 }}
+                    >
                       {c.customer_email || ""}
                     </div>
                   </td>
 
-                  <td style={{ ...td, fontWeight: 600 }}>
+                  <td style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}>
                     {c.total_amount ? formatCurrencyUI(c.total_amount) : "—"}
                   </td>
 
@@ -1103,20 +1105,27 @@ export default function ContractsPage() {
                     {c.blueprint_id ? (
                       <button
                         onClick={() =>
-                          navigate(`/blueprints/${c.blueprint_id}/design`)
+                          navigate(`/admin/blueprints/${c.blueprint_id}/design`)
                         }
                         style={linkBtn}
                       >
                         BP-{String(c.blueprint_id).padStart(5, "0")}
                       </button>
                     ) : (
-                      <span style={{ color: "#94a3b8" }}>—</span>
+                      <span style={{ color: "#a1a1aa" }}>—</span>
                     )}
                   </td>
 
                   <td style={td}>{c.issued_by_name || "Admin"}</td>
 
-                  <td style={{ ...td, fontSize: 12, color: "#64748b" }}>
+                  <td
+                    style={{
+                      ...td,
+                      fontSize: 12,
+                      color: "#71717a",
+                      fontWeight: 500,
+                    }}
+                  >
                     {formatDate(c.created_at)}
                   </td>
 
@@ -1126,7 +1135,7 @@ export default function ContractsPage() {
                         Print
                       </button>
                       <button
-                        onClick={() => navigate(`/orders/${c.order_id}`)}
+                        onClick={() => navigate(`/admin/orders/${c.order_id}`)}
                         style={btnView}
                       >
                         View Order
@@ -1143,17 +1152,25 @@ export default function ContractsPage() {
       {modal && (
         <div style={overlay}>
           <div style={{ ...modalBox, width: 700 }}>
-            <h3 style={{ margin: "0 0 6px", color: "#111827" }}>
+            <h3
+              style={{
+                margin: "0 0 6px",
+                color: "#0a0a0a",
+                fontSize: 20,
+                fontWeight: 800,
+                letterSpacing: "-0.01em",
+              }}
+            >
               Generate Sales Contract
             </h3>
-            <p style={{ fontSize: 12, color: "#64748b", margin: "0 0 20px" }}>
+            <p style={{ fontSize: 13, color: "#71717a", margin: "0 0 24px" }}>
               Select a confirmed blueprint order, verify the linked blueprint
               reference and approved estimation, then customize the contract
               terms before generating.
             </p>
 
             <form onSubmit={handleGenerate}>
-              <div style={{ marginBottom: 14 }}>
+              <div style={{ marginBottom: 16 }}>
                 <label style={labelSm}>Order * (Confirmed orders only)</label>
                 <select
                   required
@@ -1172,7 +1189,14 @@ export default function ContractsPage() {
                 </select>
 
                 {availableOrders.length === 0 && (
-                  <p style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>
+                  <p
+                    style={{
+                      fontSize: 11,
+                      color: "#dc2626",
+                      marginTop: 6,
+                      fontWeight: 600,
+                    }}
+                  >
                     No selectable confirmed orders available. Orders with
                     existing contracts are excluded, and final contract
                     eligibility is still checked against blueprint reference,
@@ -1181,7 +1205,7 @@ export default function ContractsPage() {
                 )}
               </div>
 
-              <div style={{ marginBottom: 14 }}>
+              <div style={{ marginBottom: 20 }}>
                 <label style={labelSm}>Blueprint ID</label>
                 <input
                   type="number"
@@ -1190,7 +1214,14 @@ export default function ContractsPage() {
                   style={inputFull}
                   placeholder="Leave blank only if the selected order already has a linked blueprint"
                 />
-                <p style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>
+                <p
+                  style={{
+                    fontSize: 11,
+                    color: "#71717a",
+                    marginTop: 6,
+                    fontWeight: 500,
+                  }}
+                >
                   Manual override only. If the selected order already has a
                   blueprint attached, it will be used automatically.
                 </p>
@@ -1292,13 +1323,13 @@ export default function ContractsPage() {
                       </div>
 
                       {hasExistingContract && (
-                        <div style={{ ...errorBox, marginTop: 12 }}>
+                        <div style={{ ...errorBox, marginTop: 16 }}>
                           A contract is already linked to this order.
                         </div>
                       )}
 
                       {blockedOrderStatus && (
-                        <div style={{ ...errorBox, marginTop: 12 }}>
+                        <div style={{ ...errorBox, marginTop: 16 }}>
                           This order is no longer eligible because it is already{" "}
                           {titleCase(currentOrderStatus)}.
                         </div>
@@ -1308,7 +1339,7 @@ export default function ContractsPage() {
                 </div>
               )}
 
-              <div style={{ marginBottom: 14 }}>
+              <div style={{ marginBottom: 16 }}>
                 <label style={labelSm}>Contract Terms & Conditions</label>
                 <textarea
                   value={form.terms}
@@ -1317,14 +1348,15 @@ export default function ContractsPage() {
                   style={{
                     ...inputFull,
                     resize: "vertical",
-                    fontSize: 12,
+                    fontSize: 13,
                     lineHeight: 1.6,
                     minHeight: 180,
+                    fontFamily: "inherit",
                   }}
                 />
               </div>
 
-              <div style={{ marginBottom: 20 }}>
+              <div style={{ marginBottom: 24 }}>
                 <label style={labelSm}>Warranty Terms</label>
                 <textarea
                   value={form.warranty_terms}
@@ -1333,9 +1365,10 @@ export default function ContractsPage() {
                   style={{
                     ...inputFull,
                     resize: "vertical",
-                    fontSize: 12,
+                    fontSize: 13,
                     lineHeight: 1.6,
                     minHeight: 120,
+                    fontFamily: "inherit",
                   }}
                 />
               </div>
@@ -1373,6 +1406,7 @@ export default function ContractsPage() {
                   gap: 10,
                   justifyContent: "flex-end",
                   flexWrap: "wrap",
+                  marginTop: 28,
                 }}
               >
                 <button
@@ -1411,11 +1445,13 @@ function SummaryCard({ label, value, color, icon }) {
     <div
       style={{
         background: "#fff",
-        borderRadius: 10,
-        padding: "14px 20px",
+        borderRadius: 16,
+        padding: "16px 20px",
+        border: "1px solid #e4e4e7",
         borderLeft: `4px solid ${color}`,
-        boxShadow: "0 1px 6px rgba(0,0,0,.08)",
-        minWidth: 150,
+        boxShadow: "0 1px 2px rgba(0,0,0,.02)",
+        minWidth: 160,
+        flex: 1,
       }}
     >
       <div
@@ -1428,26 +1464,29 @@ function SummaryCard({ label, value, color, icon }) {
         <div>
           <p
             style={{
-              fontSize: 11,
-              color: "#64748b",
+              fontSize: 10,
+              color: "#71717a",
               margin: 0,
               textTransform: "uppercase",
+              letterSpacing: "1px",
+              fontWeight: 800,
             }}
           >
             {label}
           </p>
           <p
             style={{
-              fontSize: 24,
-              fontWeight: 700,
-              color: "#1e2a38",
-              margin: "4px 0 0",
+              fontSize: 26,
+              fontWeight: 800,
+              color: "#0a0a0a",
+              margin: "6px 0 0",
+              letterSpacing: "-0.02em",
             }}
           >
             {value}
           </p>
         </div>
-        <span style={{ fontSize: 22 }}>{icon}</span>
+        <span style={{ fontSize: 24 }}>{icon}</span>
       </div>
     </div>
   );
@@ -1470,61 +1509,68 @@ function EligibilityItem({ label, value, ok }) {
 }
 
 const pageTitle = {
-  fontSize: 22,
-  fontWeight: 700,
-  color: "#1e2a38",
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#0a0a0a",
   margin: 0,
+  letterSpacing: "-0.02em",
 };
 
 const card = {
   background: "#fff",
-  borderRadius: 12,
-  boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+  borderRadius: 16,
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
   overflow: "hidden",
 };
 
 const th = {
   textAlign: "left",
-  padding: "11px 14px",
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#64748b",
+  padding: "14px 16px",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
+  letterSpacing: "1px",
 };
 
 const td = {
-  padding: "11px 14px",
-  color: "#374151",
+  padding: "14px 16px",
+  color: "#18181b",
   verticalAlign: "middle",
 };
 
 const centerCell = {
   textAlign: "center",
   padding: 40,
-  color: "#94a3b8",
+  color: "#71717a",
+  fontWeight: 600,
+  fontSize: 13,
 };
 
 const labelSm = {
   fontSize: 12,
-  fontWeight: 600,
-  color: "#374151",
+  fontWeight: 800,
+  color: "#18181b",
   display: "block",
-  marginBottom: 6,
+  marginBottom: 8,
 };
 
 const inputFull = {
   width: "100%",
-  padding: "9px 12px",
-  border: "1px solid #d1d5db",
-  borderRadius: 6,
+  padding: "10px 14px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
+  color: "#18181b",
   boxSizing: "border-box",
+  outline: "none",
 };
 
 const overlay = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,.5)",
+  background: "rgba(0,0,0,.6)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -1534,171 +1580,184 @@ const overlay = {
 
 const modalBox = {
   background: "#fff",
-  borderRadius: 14,
-  padding: 28,
+  borderRadius: 16,
+  padding: 32,
   maxHeight: "90vh",
   overflowY: "auto",
-  boxShadow: "0 20px 60px rgba(0,0,0,.3)",
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 25px 60px rgba(0, 0, 0, 0.15)",
 };
 
 const btnPrimary = {
-  padding: "9px 20px",
-  background: "#1e40af",
+  padding: "10px 20px",
+  background: "#18181b",
   color: "#fff",
   border: "none",
-  borderRadius: 6,
+  borderRadius: 8,
+  cursor: "pointer",
   fontSize: 13,
-  fontWeight: 600,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 
 const btnGhost = {
-  padding: "9px 16px",
-  background: "#f1f5f9",
-  color: "#374151",
-  border: "none",
-  borderRadius: 6,
+  padding: "10px 16px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 13,
+  fontWeight: 700,
+  transition: "all 0.2s",
 };
 
 const btnPrint = {
-  padding: "4px 12px",
-  background: "#f3e8ff",
-  color: "#6b21a8",
-  border: "none",
-  borderRadius: 6,
+  padding: "6px 14px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 
 const btnView = {
-  padding: "4px 12px",
-  background: "#e0f2fe",
-  color: "#0369a1",
-  border: "none",
-  borderRadius: 6,
+  padding: "6px 14px",
+  background: "#18181b",
+  color: "#ffffff",
+  border: "1px solid #18181b",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 12,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 
 const linkBtn = {
   background: "none",
   border: "none",
-  color: "#1e40af",
-  fontWeight: 600,
+  color: "#0a0a0a",
+  fontWeight: 800,
   cursor: "pointer",
   fontSize: 13,
+  textDecoration: "underline",
 };
 
 const warningBanner = {
-  marginBottom: 16,
-  padding: "12px 14px",
-  borderRadius: 10,
-  background: "#fffbeb",
-  border: "1px solid #fde68a",
-  color: "#92400e",
-  fontSize: 12,
+  marginBottom: 20,
+  padding: "14px 16px",
+  borderRadius: 12,
+  background: "#fefce8",
+  border: "1px solid #fde047",
+  color: "#a16207",
+  fontSize: 13,
   lineHeight: 1.6,
+  fontWeight: 500,
 };
 
 const eligibilityCard = {
-  marginBottom: 16,
-  padding: 14,
-  borderRadius: 10,
-  background: "#f8fafc",
-  border: "1px solid #e2e8f0",
+  marginBottom: 24,
+  padding: 16,
+  borderRadius: 12,
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
 };
 
 const eligibilityTitle = {
   fontSize: 12,
-  fontWeight: 700,
-  color: "#0f172a",
-  marginBottom: 12,
+  fontWeight: 800,
+  color: "#0a0a0a",
+  marginBottom: 16,
   textTransform: "uppercase",
-  letterSpacing: "0.04em",
+  letterSpacing: "1px",
 };
 
 const eligibilityGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 10,
+  gap: 12,
 };
 
 const eligibilityItem = {
   background: "#ffffff",
-  border: "1px solid #e2e8f0",
+  border: "1px solid #e4e4e7",
   borderRadius: 8,
-  padding: "10px 12px",
+  padding: "12px 14px",
 };
 
 const eligibilityItemLabel = {
-  fontSize: 11,
-  fontWeight: 700,
-  color: "#64748b",
-  marginBottom: 4,
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
+  marginBottom: 6,
   textTransform: "uppercase",
+  letterSpacing: "1px",
 };
 
 const eligibilityItemValue = {
-  fontSize: 12,
-  fontWeight: 600,
+  fontSize: 13,
+  fontWeight: 700,
   lineHeight: 1.5,
   wordBreak: "break-word",
 };
 
 const infoText = {
-  fontSize: 12,
-  color: "#475569",
+  fontSize: 13,
+  color: "#52525b",
+  fontWeight: 500,
 };
 
 const errorText = {
-  fontSize: 12,
-  color: "#991b1b",
+  fontSize: 13,
+  color: "#dc2626",
   lineHeight: 1.5,
+  fontWeight: 600,
 };
 
 const errorBox = {
-  padding: "10px 12px",
+  padding: "12px 14px",
   borderRadius: 8,
   background: "#fef2f2",
   border: "1px solid #fecaca",
   color: "#991b1b",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 700,
 };
 
 const validationSummaryBox = {
-  marginBottom: 18,
-  padding: 14,
-  borderRadius: 10,
-  background: "#ffffff",
-  border: "1px solid #e2e8f0",
+  marginBottom: 24,
+  padding: 18,
+  borderRadius: 12,
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
 };
 
 const validationSummaryTitle = {
-  fontSize: 12,
-  fontWeight: 700,
-  color: "#0f172a",
-  marginBottom: 12,
+  fontSize: 11,
+  fontWeight: 800,
+  color: "#0a0a0a",
+  marginBottom: 16,
   textTransform: "uppercase",
-  letterSpacing: "0.04em",
+  letterSpacing: "1px",
 };
 
 const validationList = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 10,
+  gap: 12,
 };
 
 const validationRow = {
   display: "flex",
   alignItems: "flex-start",
-  gap: 10,
-  background: "#f8fafc",
-  border: "1px solid #e2e8f0",
+  gap: 12,
+  background: "#ffffff",
+  border: "1px solid #e4e4e7",
   borderRadius: 8,
-  padding: "10px 12px",
+  padding: "12px 14px",
 };
 
 const validationDot = {
@@ -1710,16 +1769,17 @@ const validationDot = {
 };
 
 const validationLabel = {
-  fontSize: 11,
-  fontWeight: 700,
-  color: "#64748b",
-  marginBottom: 3,
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
+  marginBottom: 4,
   textTransform: "uppercase",
+  letterSpacing: "1px",
 };
 
 const validationValue = {
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 700,
   lineHeight: 1.5,
   wordBreak: "break-word",
 };

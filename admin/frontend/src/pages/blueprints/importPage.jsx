@@ -91,7 +91,9 @@ export default function ImportPage() {
     e.target.value = null;
   };
 
-  const handleRemove = (viewKey) => {
+  const handleRemove = (viewKey, e) => {
+    if (e) e.stopPropagation();
+
     setFiles((prev) => ({
       ...prev,
       [viewKey]: null,
@@ -205,37 +207,46 @@ export default function ImportPage() {
     <div
       style={{
         minHeight: "calc(100vh - 64px)",
-        background: "#0f172a",
-        color: "#e2e8f0",
+        background: "#f4f4f5",
+        color: "#18181b",
         display: "flex",
-        alignItems: "center",
+        alignItems: "flex-start",
         justifyContent: "center",
-        padding: 20,
+        padding: "40px 20px",
+        fontFamily: "'Inter', sans-serif",
       }}
     >
       <div
         style={{
-          background: "#1e293b",
-          border: "1px solid #334155",
-          borderRadius: 12,
+          background: "#ffffff",
+          border: "1px solid #e4e4e7",
+          borderRadius: 16,
           width: "100%",
           maxWidth: 1100,
-          padding: 30,
-          boxShadow: "0 20px 40px rgba(0,0,0,0.4)",
+          padding: 32,
+          boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
         }}
       >
         <h2
           style={{
-            margin: "0 0 5px",
+            margin: "0 0 8px",
             fontSize: 24,
-            fontWeight: 700,
-            color: "#f8fafc",
+            fontWeight: 800,
+            color: "#0a0a0a",
+            letterSpacing: "-0.02em",
           }}
         >
           Import Reference Views
         </h2>
 
-        <p style={{ margin: "0 0 20px", fontSize: 13, color: "#94a3b8" }}>
+        <p
+          style={{
+            margin: "0 0 24px",
+            fontSize: 13,
+            color: "#52525b",
+            lineHeight: 1.5,
+          }}
+        >
           You may upload a single reference image, a partial set, or a full
           5-view set. Front / side / top combinations are supported, but full
           5-view import is still recommended for better tracing.
@@ -245,8 +256,8 @@ export default function ImportPage() {
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-            gap: 14,
-            marginBottom: 24,
+            gap: 16,
+            marginBottom: 28,
           }}
         >
           {REFERENCE_VIEWS.map((item) => {
@@ -270,18 +281,18 @@ export default function ImportPage() {
                   onClick={() => openPicker(item.key)}
                   style={{
                     border: hasFile
-                      ? "2px solid #0ea5e9"
-                      : "2px dashed #475569",
-                    borderRadius: 10,
+                      ? "2px solid #18181b"
+                      : "2px dashed #d4d4d8",
+                    borderRadius: 12,
                     minHeight: 220,
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "center",
                     justifyContent: "center",
                     cursor: "pointer",
-                    background: hasFile ? "#0f172a" : "transparent",
+                    background: hasFile ? "#fafafa" : "#ffffff",
                     transition: "all 0.2s",
-                    padding: 14,
+                    padding: 16,
                     position: "relative",
                     overflow: "hidden",
                   }}
@@ -292,19 +303,22 @@ export default function ImportPage() {
                       alt={`${item.label} preview`}
                       style={{
                         width: "100%",
-                        maxHeight: 180,
+                        maxHeight: 160,
                         objectFit: "contain",
-                        opacity: 0.92,
+                        opacity: 1,
+                        borderRadius: 8,
+                        marginBottom: 16,
                       }}
                     />
                   ) : hasFile ? (
                     <div
                       style={{
-                        color: "#38bdf8",
-                        fontWeight: 600,
+                        color: "#18181b",
+                        fontWeight: 700,
                         fontSize: 13,
                         textAlign: "center",
                         wordBreak: "break-word",
+                        marginBottom: 16,
                       }}
                     >
                       📄 {file.name}
@@ -312,7 +326,7 @@ export default function ImportPage() {
                         style={{
                           marginTop: 8,
                           fontSize: 11,
-                          color: "#94a3b8",
+                          color: "#71717a",
                         }}
                       >
                         PDF selected
@@ -320,12 +334,20 @@ export default function ImportPage() {
                     </div>
                   ) : (
                     <>
-                      <div style={{ fontSize: 24, marginBottom: 8 }}>📥</div>
+                      <div
+                        style={{
+                          fontSize: 24,
+                          marginBottom: 8,
+                          color: "#18181b",
+                        }}
+                      >
+                        📥
+                      </div>
                       <div
                         style={{
                           fontSize: 13,
-                          color: "#cbd5e1",
-                          fontWeight: 700,
+                          color: "#18181b",
+                          fontWeight: 800,
                           textAlign: "center",
                         }}
                       >
@@ -334,7 +356,7 @@ export default function ImportPage() {
                       <div
                         style={{
                           fontSize: 11,
-                          color: "#94a3b8",
+                          color: "#71717a",
                           marginTop: 6,
                         }}
                       >
@@ -349,52 +371,73 @@ export default function ImportPage() {
                       bottom: 0,
                       left: 0,
                       right: 0,
-                      background: "rgba(15, 23, 42, 0.9)",
-                      padding: "6px 0",
+                      background: hasFile ? "#18181b" : "#f4f4f5",
+                      borderTop: hasFile ? "none" : "1px solid #e4e4e7",
+                      padding: "8px 0",
                       textAlign: "center",
-                      fontSize: 11,
-                      fontWeight: 700,
+                      fontSize: 10,
+                      fontWeight: 800,
                       textTransform: "uppercase",
-                      color: hasFile ? "#38bdf8" : "#cbd5e1",
+                      letterSpacing: "1px",
+                      color: hasFile ? "#ffffff" : "#71717a",
                     }}
                   >
                     {item.key} {hasFile && "✓"}
                   </div>
                 </div>
 
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                   <button
                     type="button"
-                    onClick={() => openPicker(item.key)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openPicker(item.key);
+                    }}
                     style={{
                       flex: 1,
                       padding: "8px 10px",
-                      borderRadius: 6,
-                      border: "1px solid #334155",
-                      background: "#0f172a",
-                      color: "#cbd5e1",
+                      borderRadius: 8,
+                      border: "1px solid #e4e4e7",
+                      background: "#f4f4f5",
+                      color: "#18181b",
                       cursor: "pointer",
-                      fontWeight: 600,
+                      fontWeight: 700,
+                      fontSize: 12,
+                      transition: "background 0.2s",
                     }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background = "#e4e4e7")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "#f4f4f5")
+                    }
                   >
                     {hasFile ? "Replace" : "Upload"}
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => handleRemove(item.key)}
+                    onClick={(e) => handleRemove(item.key, e)}
                     disabled={!hasFile}
                     style={{
                       flex: 1,
                       padding: "8px 10px",
-                      borderRadius: 6,
-                      border: "1px solid #7f1d1d",
-                      background: "rgba(127, 29, 29, 0.15)",
-                      color: "#fca5a5",
+                      borderRadius: 8,
+                      border: "1px solid #fecaca",
+                      background: "#fef2f2",
+                      color: "#991b1b",
                       cursor: hasFile ? "pointer" : "not-allowed",
-                      fontWeight: 600,
+                      fontWeight: 700,
+                      fontSize: 12,
                       opacity: hasFile ? 1 : 0.45,
+                      transition: "background 0.2s",
                     }}
+                    onMouseEnter={(e) =>
+                      hasFile && (e.currentTarget.style.background = "#fee2e2")
+                    }
+                    onMouseLeave={(e) =>
+                      hasFile && (e.currentTarget.style.background = "#fef2f2")
+                    }
                   >
                     Remove
                   </button>
@@ -404,14 +447,16 @@ export default function ImportPage() {
           })}
         </div>
 
-        <div style={{ marginBottom: 30 }}>
+        <div style={{ marginBottom: 32 }}>
           <label
             style={{
               display: "block",
-              fontSize: 13,
-              fontWeight: 600,
+              fontSize: 12,
+              fontWeight: 800,
               marginBottom: 8,
-              color: "#cbd5e1",
+              color: "#18181b",
+              textTransform: "uppercase",
+              letterSpacing: "1px",
             }}
           >
             Blueprint Details & Dimensions
@@ -421,17 +466,19 @@ export default function ImportPage() {
             value={comments}
             onChange={(e) => setComments(e.target.value)}
             placeholder="Type any specific dimensions, materials, or instructions here..."
-            rows={3}
+            rows={4}
             style={{
               width: "100%",
-              padding: "10px 14px",
-              borderRadius: 6,
-              background: "#0f172a",
-              border: "1px solid #334155",
-              color: "#f8fafc",
-              fontSize: 14,
+              padding: "12px 14px",
+              borderRadius: 8,
+              background: "#ffffff",
+              border: "1px solid #e4e4e7",
+              color: "#18181b",
+              fontSize: 13,
               resize: "vertical",
               boxSizing: "border-box",
+              outline: "none",
+              fontFamily: "inherit",
             }}
           />
         </div>
@@ -442,14 +489,15 @@ export default function ImportPage() {
             gap: 12,
             justifyContent: "flex-end",
             alignItems: "center",
+            flexWrap: "wrap",
           }}
         >
           <div
             style={{
               flex: 1,
-              fontSize: 12,
-              color: hasAnyFile ? "#10b981" : "#f43f5e",
-              fontWeight: 600,
+              fontSize: 13,
+              color: hasAnyFile ? "#059669" : "#dc2626",
+              fontWeight: 700,
             }}
           >
             {hasAnyFile
@@ -463,13 +511,17 @@ export default function ImportPage() {
             onClick={() => navigate(`/admin/blueprints/${id}/design`)}
             style={{
               padding: "10px 18px",
-              borderRadius: 6,
-              border: "none",
-              background: "transparent",
-              color: "#94a3b8",
+              borderRadius: 8,
+              border: "1px solid #e4e4e7",
+              background: "#f4f4f5",
+              color: "#18181b",
               cursor: "pointer",
-              fontWeight: 600,
+              fontWeight: 700,
+              fontSize: 13,
+              transition: "background 0.2s",
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#e4e4e7")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "#f4f4f5")}
           >
             Cancel
           </button>
@@ -479,14 +531,26 @@ export default function ImportPage() {
             disabled={!hasAnyFile || isSaving}
             style={{
               padding: "10px 24px",
-              borderRadius: 6,
-              border: "none",
-              background: "#0ea5e9",
+              borderRadius: 8,
+              border: "1px solid #18181b",
+              background: "#18181b",
               color: "#fff",
               cursor: hasAnyFile && !isSaving ? "pointer" : "not-allowed",
-              fontWeight: 600,
-              opacity: hasAnyFile && !isSaving ? 1 : 0.5,
+              fontWeight: 700,
+              fontSize: 13,
+              opacity: hasAnyFile && !isSaving ? 1 : 0.6,
+              transition: "background 0.2s",
             }}
+            onMouseEnter={(e) =>
+              hasAnyFile &&
+              !isSaving &&
+              (e.currentTarget.style.background = "#3f3f46")
+            }
+            onMouseLeave={(e) =>
+              hasAnyFile &&
+              !isSaving &&
+              (e.currentTarget.style.background = "#18181b")
+            }
           >
             {isSaving
               ? "Importing..."
