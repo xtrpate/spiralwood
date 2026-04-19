@@ -476,6 +476,7 @@ export default function BlueprintDesign() {
   const [edit3DId, setEdit3DId] = useState(null);
   const [showGrid, setShowGrid] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [estimatedPrice, setEstimatedPrice] = useState(null);
   const [view, setView] = useState("front");
   const [lockedFields, setLockedFields] = useState([]);
   const [transformMode, setTransformMode] = useState("translate");
@@ -667,6 +668,11 @@ export default function BlueprintDesign() {
       setSelectedTraceId(null);
       return;
     }
+
+    api
+      .get(`/blueprints/${id}/estimation`)
+      .then((res) => setEstimatedPrice(res.data?.grand_total || null))
+      .catch(() => setEstimatedPrice(null));
 
     api
       .get(`/blueprints/${id}`)
@@ -7499,11 +7505,12 @@ export default function BlueprintDesign() {
 
           <button
             onClick={() => {
-              // 👉 AUTO-FILL PRICE BASED ON DESIGN TOTAL
+              // 👉 AUTO-FILL PRICE: Use Estimate Grand Total first, fallback to raw Design Total
               setPublishForm((prev) => ({
                 ...prev,
                 name: blueprint?.title || "",
-                online_price: designTotal || 0,
+                online_price:
+                  estimatedPrice !== null ? estimatedPrice : designTotal || 0,
               }));
               setPublishModal(true);
             }}
