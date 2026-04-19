@@ -6796,6 +6796,7 @@ export default function BlueprintDesign() {
         is_featured: 0,
         is_published: 1,
         blueprint_id: Number(id),
+        variations: "[]",
         bill_of_materials: "[]",
         design_data: JSON.stringify({ components }),
       };
@@ -6840,7 +6841,10 @@ export default function BlueprintDesign() {
       toast.success("Blueprint product unpublished successfully.");
     } catch (err) {
       console.error("Unpublish Error:", err);
-      toast.error(err?.response?.data?.message || "Failed to unpublish.");
+      toast.error(
+        err?.response?.data?.message ||
+          "Failed to unpublish. Ensure you have published it first.",
+      );
     }
   };
 
