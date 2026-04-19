@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
+import toast from "react-hot-toast";
 
 import useAuthStore from "../../store/authStore";
 import api, { buildAssetUrl } from "../../services/api";
+import { useCart } from "./cartcontext";
 
 // 🏠 Relative path to your cabinet image
 import cabinetImg from "../assets/cabinet.png";
@@ -11,6 +13,7 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [products, setProducts] = useState([]);
+  const { addToCart } = useCart();
 
   const latestProducts = [...products]
     .sort((a, b) => {
@@ -49,22 +52,48 @@ export default function LandingPage() {
     );
   };
 
-  const getAvailabilityText = (product) => {
-    const isOut =
-      String(product?.stock_status || "").toLowerCase() === "out_of_stock" ||
-      Number(product?.stock || 0) <= 0;
+  const isOutOfStock = (product) =>
+    String(product?.stock_status || "").toLowerCase() === "out_of_stock" ||
+    Number(product?.stock || 0) <= 0;
 
-    return isOut
-      ? "Out of stock"
-      : "Available (Estimated 1-5 working days)";
+  const needsOptionSelection = (product) =>
+    (product?.variations?.length || 0) > 0;
+
+  const getAvailabilityText = (product) =>
+    isOutOfStock(product) ? "Out of Stock" : "In Stock";
+
+  const handleLatestView = (e, product) => {
+    e.stopPropagation();
+    navigate(`/catalog?q=${encodeURIComponent(product?.name || "")}`);
   };
 
-  const getAvailabilityColor = (product) => {
-    const isOut =
-      String(product?.stock_status || "").toLowerCase() === "out_of_stock" ||
-      Number(product?.stock || 0) <= 0;
+  const handleLatestAddToCart = (e, product) => {
+    e.stopPropagation();
 
-    return isOut ? "#d32f2f" : "#17b7d6";
+    if (!product || isOutOfStock(product)) return;
+
+    if (needsOptionSelection(product)) {
+      navigate(`/catalog?q=${encodeURIComponent(product?.name || "")}`);
+      toast("Please select product options first.");
+      return;
+    }
+
+    const stock = Number(product?.stock || 0);
+    if (stock <= 0) return;
+
+    addToCart({
+      key: `${product.id}`,
+      product_id: product.id,
+      variation_id: null,
+      product_name: product.name,
+      unit_price: parseFloat(getProductPrice(product)),
+      production_cost: product.production_cost ?? 0,
+      quantity: 1,
+      max_stock: stock,
+      image_url: product.image_url || null,
+    });
+
+    toast.success(`Added "${product.name}" to cart.`);
   };
 
   useEffect(() => {
@@ -362,125 +391,147 @@ export default function LandingPage() {
                 alignItems: "start",
               }}
             >
-              {latestProducts.map((product) => (
-                <div
-                  key={product.id}
-                  onClick={() => navigate("/catalog")}
-                  style={{
-                    cursor: "pointer",
-                    background: "transparent",
-                    transition: "transform 0.18s ease",
-                  }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.transform = "translateY(-2px)")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.transform = "translateY(0)")
-                  }
-                >
+              {latestProducts.map((product) => {
+                const isOut = isOutOfStock(product);
+
+                return (
                   <div
+                    key={product.id}
+                    onClick={() =>
+                      navigate(`/catalog?q=${encodeURIComponent(product?.name || "")}`)
+                    }
                     style={{
-                      position: "relative",
-                      background: "#f3f3f3",
-                      overflow: "hidden",
+                      cursor: "pointer",
+                      background: "#ffffff",
+                      border: "1px solid #e7e7e7",
+                      transition: "transform 0.18s ease",
+                      display: "flex",
+                      flexDirection: "column",
+                      height: "100%",
                     }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.transform = "translateY(-2px)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.transform = "translateY(0)")
+                    }
                   >
-                    <img
-                      src={getProductImage(product)}
-                      alt={product?.name || "Product"}
+                    <div
                       style={{
-                        width: "100%",
-                        height: "340px",
-                        objectFit: "cover",
-                        display: "block",
-                        backgroundColor: "#efefef",
+                        position: "relative",
+                        background: "#f3f3f3",
+                        overflow: "hidden",
+                        borderBottom: "1px solid #e7e7e7",
                       }}
-                    />
+                    >
+                      <img
+                        src={getProductImage(product)}
+                        alt={product?.name || "Product"}
+                        style={{
+                          width: "100%",
+                          height: "340px",
+                          objectFit: "cover",
+                          display: "block",
+                          backgroundColor: "#efefef",
+                        }}
+                      />
+
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "14px",
+                          left: "14px",
+                          width: "58px",
+                          height: "58px",
+                          borderRadius: "50%",
+                          background: "#111111",
+                          color: "#ffffff",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "0.95rem",
+                          fontWeight: 500,
+                        }}
+                      >
+                        New
+                      </div>
+                    </div>
 
                     <div
                       style={{
-                        position: "absolute",
-                        top: "14px",
-                        left: "14px",
-                        width: "58px",
-                        height: "58px",
-                        borderRadius: "50%",
-                        background: "#111111",
-                        color: "#ffffff",
+                        padding: "16px 18px 18px",
+                        textAlign: "center",
                         display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "0.95rem",
-                        fontWeight: 500,
+                        flexDirection: "column",
+                        flex: 1,
                       }}
                     >
-                      New
+                      <div
+                        style={{
+                          fontFamily: "'Montserrat', sans-serif",
+                          fontWeight: 500,
+                          fontSize: "1rem",
+                          color: "#111111",
+                          lineHeight: "1.35",
+                          minHeight: "54px",
+                          marginBottom: "10px",
+                        }}
+                      >
+                        {product?.name || "Untitled Product"}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: "1rem",
+                          fontWeight: 700,
+                          color: "#111111",
+                          marginBottom: "8px",
+                        }}
+                      >
+                        {formatPrice(getProductPrice(product))}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: "0.95rem",
+                          color: "#111111",
+                          marginBottom: "14px",
+                          lineHeight: "1.3",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {getAvailabilityText(product)}
+                      </div>
+
+                      <div
+                        style={{
+                          width: "100%",
+                          maxWidth: "220px",
+                          margin: "0 auto",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => handleLatestView(e, product)}
+                          style={{
+                            width: "100%",
+                            background: "#111111",
+                            color: "#ffffff",
+                            border: "1px solid #111111",
+                            padding: "12px 18px",
+                            fontSize: "0.95rem",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            fontFamily: "'Montserrat', sans-serif",
+                          }}
+                        >
+                          View
+                        </button>
+                      </div>
                     </div>
                   </div>
-
-                  <div
-                    style={{
-                      padding: "16px 8px 0",
-                      textAlign: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontFamily: "'Montserrat', sans-serif",
-                        fontWeight: 500,
-                        fontSize: "1rem",
-                        color: "#111111",
-                        lineHeight: "1.35",
-                        minHeight: "54px",
-                        marginBottom: "10px",
-                      }}
-                    >
-                      {product?.name || "Untitled Product"}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: "1rem",
-                        fontWeight: 700,
-                        color: "#111111",
-                        marginBottom: "8px",
-                      }}
-                    >
-                      {formatPrice(getProductPrice(product))}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: "0.95rem",
-                        color: getAvailabilityColor(product),
-                        marginBottom: "16px",
-                        lineHeight: "1.3",
-                      }}
-                    >
-                      {getAvailabilityText(product)}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate("/catalog");
-                      }}
-                      style={{
-                        background: "#111111",
-                        color: "#ffffff",
-                        border: "none",
-                        padding: "12px 28px",
-                        fontSize: "0.98rem",
-                        fontWeight: 500,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Select options
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div

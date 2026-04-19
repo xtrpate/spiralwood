@@ -71,17 +71,17 @@ const SkeletonCard = () => (
 
 const StockBadge = ({ status }) => {
   const map = {
-    in_stock: { cls: "badge-green", label: "In Stock" },
-    low_stock: { cls: "badge-yellow", label: "Low Stock" },
-    out_of_stock: { cls: "badge-red", label: "Out of Stock" },
+    in_stock: { cls: "stock-pill stock-available", label: "In Stock" },
+    low_stock: { cls: "stock-pill stock-limited", label: "Low Stock" },
+    out_of_stock: { cls: "stock-pill stock-unavailable", label: "Out of Stock" },
   };
 
   const { cls, label } = map[status] || {
-    cls: "badge-gray",
+    cls: "stock-pill stock-available",
     label: status || "Available",
   };
 
-  return <span className={`badge ${cls} product-card-stock`}>{label}</span>;
+  return <span className={cls}>{label}</span>;
 };
 
 export default function ProductCatalog() {
@@ -187,7 +187,6 @@ export default function ProductCatalog() {
     return () => clearTimeout(timer);
   }, [fetchProducts]);
 
-  // 👉 REPLACEMENT BLOCK: 1. Listen for URL changes (from the Top Navbar)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const q = params.get("q") || "";
@@ -199,13 +198,10 @@ export default function ProductCatalog() {
       setCatFilter("all");
     }
 
-    // Reset the safety switch so we know to check the category again
     setUrlMapped(false);
   }, [location.search]);
 
-  // 👉 REPLACEMENT BLOCK: 2. Map Category Name to ID once data loads
   useEffect(() => {
-    // If we already mapped the URL, or categories aren't loaded yet, do nothing! (Prevents the reset loop)
     if (urlMapped || categories.length === 0) return;
 
     const params = new URLSearchParams(location.search);
@@ -221,7 +217,6 @@ export default function ProductCatalog() {
       }
     }
 
-    // Lock the switch so it doesn't reset when you click sidebar filters!
     setUrlMapped(true);
   }, [categories, location.search, urlMapped]);
 
@@ -303,12 +298,12 @@ export default function ProductCatalog() {
       product_name: name,
       unit_price: parseFloat(price),
       production_cost: selVariation?.unit_cost ?? selected.production_cost ?? 0,
-      quantity: qty,
+      quantity: Number(qty || 1),
       max_stock: stock,
       image_url: selected.image_url || null,
     });
 
-    toast.success(`Added ${qty} × "${name}" to cart.`);
+    toast.success(`Added ${Number(qty || 1)} × "${name}" to cart.`);
     setSelected(null);
   };
 
@@ -434,7 +429,8 @@ export default function ProductCatalog() {
         <div className="catalog-page-meta">
           {!loading && (
             <div className="catalog-results-info">
-              Showing {products.length} product
+              Showing {products.length}
+              {total && total !== products.length ? ` of ${total}` : ""} product
               {products.length !== 1 ? "s" : ""}
             </div>
           )}
@@ -617,8 +613,7 @@ export default function ProductCatalog() {
 
         <div className="catalog-main">
           <div className="catalog-toolbar">
-            {/* 👉 UPGRADED SEARCH WITH DROPDOWN */}
-            <div style={{ position: "relative", flex: 1, maxWidth: "500px" }}>
+            <div className="catalog-search-shell">
               <div className="catalog-search">
                 <Search size={16} />
                 <input
@@ -627,145 +622,67 @@ export default function ProductCatalog() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   onFocus={() => setSearchFocused(true)}
-                  // The 200ms timeout prevents the dropdown from closing before a click registers!
                   onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
                 />
               </div>
 
-              {/* 👉 THE DROPDOWN MENU */}
               {searchFocused && search.trim().length > 0 && (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "calc(100% + 8px)",
-                    left: 0,
-                    right: 0,
-                    background: "#ffffff",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "8px",
-                    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)",
-                    maxHeight: "350px",
-                    overflowY: "auto",
-                    zIndex: 100,
-                    display: "flex",
-                    flexDirection: "column",
-                  }}
-                >
+                <div className="catalog-search-dropdown">
                   {loading ? (
-                    <div
-                      style={{
-                        padding: "16px",
-                        color: "#64748b",
-                        fontSize: "13px",
-                        textAlign: "center",
-                      }}
-                    >
-                      Searching...
-                    </div>
+                    <div className="catalog-search-item-empty">Searching...</div>
                   ) : products.length === 0 ? (
-                    <div
-                      style={{
-                        padding: "16px",
-                        color: "#64748b",
-                        fontSize: "13px",
-                        textAlign: "center",
-                      }}
-                    >
+                    <div className="catalog-search-item-empty">
                       No results found for "{search}"
                     </div>
                   ) : (
-                    products.slice(0, 6).map((product) => (
-                      <div
-                        key={product.id}
-                        onClick={() => {
-                          openProduct(product); // Opens the modal instantly!
-                          setSearchFocused(false); // Closes the dropdown
-                        }}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "12px",
-                          padding: "12px 16px",
-                          cursor: "pointer",
-                          borderBottom: "1px solid #f1f5f9",
-                          transition: "background 0.2s",
-                        }}
-                        onMouseEnter={(e) =>
-                          (e.currentTarget.style.background = "#f8fafc")
-                        }
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.background = "#ffffff")
-                        }
-                      >
-                        <div
-                          style={{
-                            width: "40px",
-                            height: "40px",
-                            borderRadius: "6px",
-                            background: "#f8fafc",
-                            overflow: "hidden",
-                            flexShrink: 0,
+                    <>
+                      {products.slice(0, 6).map((product) => (
+                        <button
+                          key={product.id}
+                          type="button"
+                          className="catalog-search-item"
+                          onClick={() => {
+                            openProduct(product);
+                            setSearchFocused(false);
                           }}
                         >
-                          <img
-                            src={buildAssetUrl(product.image_url)}
-                            alt={product.name}
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "cover",
-                            }}
-                            onError={(e) =>
-                              (e.currentTarget.style.display = "none")
-                            }
-                          />
-                        </div>
-                        <div style={{ flex: 1, overflow: "hidden" }}>
-                          <div
-                            style={{
-                              fontSize: "13px",
-                              fontWeight: "600",
-                              color: "#0f172a",
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                            }}
-                          >
-                            {product.name}
+                          <div className="catalog-search-item-thumb">
+                            <img
+                              src={buildAssetUrl(product.image_url)}
+                              alt={product.name}
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                              }}
+                            />
                           </div>
-                          <div style={{ fontSize: "12px", color: "#64748b" }}>
-                            {product.category || "Uncategorized"}
+
+                          <div className="catalog-search-item-copy">
+                            <div className="catalog-search-item-name">
+                              {product.name}
+                            </div>
+                            <div className="catalog-search-item-cat">
+                              {product.category || "Uncategorized"}
+                            </div>
                           </div>
+
+                          <div className="catalog-search-item-price">
+                            ₱
+                            {parseFloat(product.online_price).toLocaleString(
+                              "en-PH",
+                              {
+                                minimumFractionDigits: 2,
+                              },
+                            )}
+                          </div>
+                        </button>
+                      ))}
+
+                      {products.length > 6 && (
+                        <div className="catalog-search-item-more">
+                          View all {products.length} results in the catalog
                         </div>
-                        <div
-                          style={{
-                            fontSize: "13px",
-                            fontWeight: "700",
-                            color: "#0f172a",
-                          }}
-                        >
-                          ₱
-                          {parseFloat(product.online_price).toLocaleString(
-                            "en-PH",
-                            { minimumFractionDigits: 2 },
-                          )}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                  {products.length > 6 && (
-                    <div
-                      style={{
-                        padding: "10px",
-                        textAlign: "center",
-                        fontSize: "12px",
-                        color: "#3b82f6",
-                        fontWeight: "600",
-                        background: "#f8fafc",
-                      }}
-                    >
-                      View all {products.length} results in the catalog...
-                    </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -822,13 +739,13 @@ export default function ProductCatalog() {
                           inset: 0,
                           width: "100%",
                           height: "100%",
-                          objectFit: "contain",
-                          padding: "22px",
+                          objectFit: "cover",
+                          objectPosition: "center",
+                          padding: 0,
                         }}
                       />
                     </div>
                   </button>
-
                   <div className="product-card-body">
                     <div className="product-card-category">
                       {product.category || "Uncategorized"}
@@ -838,20 +755,13 @@ export default function ProductCatalog() {
 
                     <div className="product-card-price">
                       ₱
-                      {parseFloat(product.online_price).toLocaleString(
-                        "en-PH",
-                        {
-                          minimumFractionDigits: 2,
-                        },
-                      )}
+                      {parseFloat(product.online_price).toLocaleString("en-PH", {
+                        minimumFractionDigits: 2,
+                      })}
                     </div>
 
                     <div className="product-card-stock-wrap">
                       <StockBadge status={product.stock_status} />
-                    </div>
-
-                    <div className="product-card-desc">
-                      {product.description || "Premium quality wood product."}
                     </div>
 
                     <div className="product-card-actions">
@@ -870,11 +780,13 @@ export default function ProductCatalog() {
                         onClick={() => handleCardAddToCart(product)}
                       >
                         {product.stock_status === "out_of_stock"
-                          ? "Out of Stock"
+                          ? "Unavailable"
                           : "Add to Cart"}
                       </button>
                     </div>
                   </div>
+                  
+                  
                 </div>
               ))
             )}
@@ -1002,7 +914,9 @@ export default function ProductCatalog() {
                     <button
                       type="button"
                       className="qty-btn"
-                      onClick={() => setQty((value) => Math.max(1, value - 1))}
+                      onClick={() =>
+                        setQty((value) => Math.max(1, Number(value || 1) - 1))
+                      }
                     >
                       -
                     </button>
@@ -1023,20 +937,11 @@ export default function ProductCatalog() {
                         if (!isNaN(newQty) && newQty > 0) {
                           setQty(Math.min(newQty, maxStock));
                         } else if (e.target.value === "") {
-                          setQty(""); // Allows the user to clear the box while typing
+                          setQty("");
                         }
                       }}
                       onBlur={() => {
-                        if (!qty || qty < 1) setQty(1); // Reset to 1 if they leave it empty
-                      }}
-                      style={{
-                        width: "50px",
-                        textAlign: "center",
-                        border: "none",
-                        background: "transparent",
-                        outline: "none",
-                        fontSize: "inherit",
-                        fontWeight: "inherit",
+                        if (!qty || Number(qty) < 1) setQty(1);
                       }}
                     />
 
@@ -1047,7 +952,9 @@ export default function ProductCatalog() {
                         const maxStock =
                           Number(selVariation?.stock ?? selected.stock ?? 1) ||
                           1;
-                        setQty((value) => Math.min(value + 1, maxStock));
+                        setQty((value) =>
+                          Math.min(Number(value || 1) + 1, maxStock),
+                        );
                       }}
                     >
                       +
@@ -1063,7 +970,7 @@ export default function ProductCatalog() {
                     onClick={handleModalAddToCart}
                   >
                     {selected.stock_status === "out_of_stock"
-                      ? "Out of Stock"
+                      ? "Unavailable"
                       : "Add to Cart"}
                   </button>
 
