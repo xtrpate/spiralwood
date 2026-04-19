@@ -9,7 +9,6 @@ import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import "./customizepage.css";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
 
-
 const FALLBACK_WOOD_TYPES = [
   "Oak",
   "Pine",
@@ -257,8 +256,9 @@ const formatMm = (value) => {
   return n > 0 ? `${Math.round(n)} mm` : "—";
 };
 
-const uniqueStrings = (items = []) =>
-  [...new Set(items.map((item) => String(item || "").trim()).filter(Boolean))];
+const uniqueStrings = (items = []) => [
+  ...new Set(items.map((item) => String(item || "").trim()).filter(Boolean)),
+];
 
 const clamp = (value, min, max) => {
   if (!Number.isFinite(value)) return min;
@@ -275,8 +275,10 @@ const resolveBaseDimensionValue = (...candidates) => {
   return 0;
 };
 
-const extractSceneItems = (source = {}) => {
+const extractSceneItems = (source) => {
   if (!source || typeof source !== "object") return [];
+  const safeScene = source.scene || {};
+  const safeSceneData = source.sceneData || {};
 
   const candidates = [
     source.components,
@@ -284,10 +286,10 @@ const extractSceneItems = (source = {}) => {
     source.items,
     source.parts,
     source.meshes,
-    source.scene?.components,
-    source.scene?.objects,
-    source.sceneData?.components,
-    source.sceneData?.objects,
+    safeScene.components,
+    safeScene.objects,
+    safeSceneData.components,
+    safeSceneData.objects,
   ];
 
   const found = candidates.find(Array.isArray);
@@ -308,9 +310,18 @@ const computeSceneBounds = (blueprint = {}) => {
       x: Number(item?.x ?? item?.position_x ?? 0) || 0,
       y: Number(item?.y ?? item?.position_y ?? 0) || 0,
       z: Number(item?.z ?? item?.position_z ?? 0) || 0,
-      width: Math.max(1, Number(item?.width ?? item?.w ?? item?.width_mm ?? 0) || 0),
-      height: Math.max(1, Number(item?.height ?? item?.h ?? item?.height_mm ?? 0) || 0),
-      depth: Math.max(1, Number(item?.depth ?? item?.d ?? item?.depth_mm ?? 0) || 0),
+      width: Math.max(
+        1,
+        Number(item?.width ?? item?.w ?? item?.width_mm ?? 0) || 0,
+      ),
+      height: Math.max(
+        1,
+        Number(item?.height ?? item?.h ?? item?.height_mm ?? 0) || 0,
+      ),
+      depth: Math.max(
+        1,
+        Number(item?.depth ?? item?.d ?? item?.depth_mm ?? 0) || 0,
+      ),
     }))
     .filter((item) => item.width > 0 && item.height > 0 && item.depth > 0);
 
@@ -348,7 +359,11 @@ const detectProfileFromSceneItems = (blueprint = {}) => {
       item?.templateType,
       item?.partCode,
     ])
-    .map((value) => String(value || "").trim().toLowerCase())
+    .map((value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase(),
+    )
     .join(" ");
 
   if (!haystack) return null;
@@ -363,10 +378,7 @@ const detectProfileFromSceneItems = (blueprint = {}) => {
     return TEMPLATE_PROFILES.chair;
   }
 
-  if (
-    haystack.includes("coffee table") ||
-    haystack.includes("coffee_table")
-  ) {
+  if (haystack.includes("coffee table") || haystack.includes("coffee_table")) {
     return TEMPLATE_PROFILES.table;
   }
 
@@ -401,7 +413,9 @@ const detectProfileFromSceneItems = (blueprint = {}) => {
 };
 
 const mapTemplateTypeToProfile = (value = "") => {
-  const raw = String(value || "").trim().toLowerCase();
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
 
   if (!raw) return null;
 
@@ -423,7 +437,11 @@ const mapTemplateTypeToProfile = (value = "") => {
     return TEMPLATE_PROFILES.cabinet;
   }
 
-  if (raw.includes("shelf") || raw.includes("rack") || raw.includes("bookcase")) {
+  if (
+    raw.includes("shelf") ||
+    raw.includes("rack") ||
+    raw.includes("bookcase")
+  ) {
     return TEMPLATE_PROFILES.shelf;
   }
 
@@ -455,8 +473,6 @@ const buildTemplateHaystack = (blueprint = {}) =>
     .map((item) => String(item || "").toLowerCase())
     .join(" ");
 
-
-    
 const detectTemplateProfile = (blueprint = {}) => {
   const sceneProfile = detectProfileFromSceneItems(blueprint);
   if (sceneProfile) return sceneProfile;
@@ -494,7 +510,6 @@ const detectTemplateProfile = (blueprint = {}) => {
 
   return TEMPLATE_PROFILES.generic;
 };
-
 
 const resolveSavedTemplateProfile = (blueprint = {}) => {
   const explicit =
@@ -541,9 +556,7 @@ const normalizeDimensionRule = (sourceRule, fallbackRule) => {
 
 const resolveDimensionConfig = (blueprint = {}, dimRules = {}, profile) => {
   const sceneBounds =
-    blueprint?.scene_bounds ||
-    computeSceneBounds(blueprint) ||
-    null;
+    blueprint?.scene_bounds || computeSceneBounds(blueprint) || null;
 
   const bounds =
     blueprint?.bounds ||
@@ -611,7 +624,11 @@ const resolveDimensionConfig = (blueprint = {}, dimRules = {}, profile) => {
     rules: {
       width: {
         ...widthRule,
-        default: clamp(baseWidth || widthRule.default, widthRule.min, widthRule.max),
+        default: clamp(
+          baseWidth || widthRule.default,
+          widthRule.min,
+          widthRule.max,
+        ),
       },
       height: {
         ...heightRule,
@@ -623,7 +640,11 @@ const resolveDimensionConfig = (blueprint = {}, dimRules = {}, profile) => {
       },
       depth: {
         ...depthRule,
-        default: clamp(baseDepth || depthRule.default, depthRule.min, depthRule.max),
+        default: clamp(
+          baseDepth || depthRule.default,
+          depthRule.min,
+          depthRule.max,
+        ),
       },
     },
     defaultDimensions: {
@@ -639,7 +660,10 @@ const resolveOptionSet = (allowed, fallback) => {
   return cleanAllowed.length ? cleanAllowed : fallback;
 };
 
-const stableText = (value) => String(value ?? "").trim().toLowerCase();
+const stableText = (value) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
 
 const slimComponentForKey = (component = {}) => ({
   id: stableText(component?.id),
@@ -868,10 +892,7 @@ function ViewModal({ product, onClose, onCustomize }) {
         <div className="cust-modal-error">{error}</div>
       ) : (
         <div style={{ display: "grid", gap: 14 }}>
-          <CustomerTemplateWorkbench
-            blueprint={blueprint}
-            readOnly
-          />
+          <CustomerTemplateWorkbench blueprint={blueprint} readOnly />
 
           <div
             style={{
@@ -880,11 +901,7 @@ function ViewModal({ product, onClose, onCustomize }) {
               gap: 10,
             }}
           >
-            <button
-              type="button"
-              className="cust-view-btn"
-              onClick={onClose}
-            >
+            <button type="button" className="cust-view-btn" onClick={onClose}>
               Close
             </button>
 
@@ -1064,7 +1081,7 @@ export default function CustomizePage() {
 
       return false;
     },
-    [user, navigate, location.pathname, location.search]
+    [user, navigate, location.pathname, location.search],
   );
 
   const closeCustomizeModal = useCallback(() => {
@@ -1074,14 +1091,11 @@ export default function CustomizePage() {
     if (params.has("template")) {
       params.delete("template");
       const nextSearch = params.toString();
-      navigate(
-        `${location.pathname}${nextSearch ? `?${nextSearch}` : ""}`,
-        { replace: true }
-      );
+      navigate(`${location.pathname}${nextSearch ? `?${nextSearch}` : ""}`, {
+        replace: true,
+      });
     }
   }, [location.pathname, location.search, navigate]);
-
-
 
   const fetchProducts = useCallback(
     async (query = search) => {
@@ -1129,7 +1143,7 @@ export default function CustomizePage() {
     const matched = products.find((item) => Number(item.id) === templateId);
     if (matched) {
       setCustomizingProduct((prev) =>
-        Number(prev?.id) === templateId ? prev : matched
+        Number(prev?.id) === templateId ? prev : matched,
       );
     }
   }, [user, products, location.search]);
@@ -1139,7 +1153,6 @@ export default function CustomizePage() {
     fetchProducts(search);
   };
 
-
   const handleAdd = (product, draft = {}) => {
     if (!requireCustomerLogin(product)) return;
     const profile = resolveSavedTemplateProfile(product || {});
@@ -1148,13 +1161,19 @@ export default function CustomizePage() {
     const metadata = draft?.metadata || {};
 
     const width =
-      Math.round(Number(bounds?.width) || Number(defaultDimensions?.width_mm) || 0) || 0;
+      Math.round(
+        Number(bounds?.width) || Number(defaultDimensions?.width_mm) || 0,
+      ) || 0;
 
     const height =
-      Math.round(Number(bounds?.height) || Number(defaultDimensions?.height_mm) || 0) || 0;
+      Math.round(
+        Number(bounds?.height) || Number(defaultDimensions?.height_mm) || 0,
+      ) || 0;
 
     const depth =
-      Math.round(Number(bounds?.depth) || Number(defaultDimensions?.depth_mm) || 0) || 0;
+      Math.round(
+        Number(bounds?.depth) || Number(defaultDimensions?.depth_mm) || 0,
+      ) || 0;
 
     const woodType =
       metadata?.wood_type ||
@@ -1162,20 +1181,11 @@ export default function CustomizePage() {
       product?.wood_type ||
       "";
 
-    const finishColor =
-      metadata?.finish_color ||
-      product?.finish_color ||
-      "";
+    const finishColor = metadata?.finish_color || product?.finish_color || "";
 
-    const doorStyle =
-      metadata?.door_style ||
-      product?.door_style ||
-      "";
+    const doorStyle = metadata?.door_style || product?.door_style || "";
 
-    const hardware =
-      metadata?.hardware ||
-      product?.hardware ||
-      "";
+    const hardware = metadata?.hardware || product?.hardware || "";
 
     const initialMessage = String(
       draft?.initial_message || draft?.comments || "",
@@ -1211,7 +1221,8 @@ export default function CustomizePage() {
       product_id: product.id,
       product_name: product.title,
       image_url: product.preview_image_url || product.thumbnail_url || "",
-      preview_image_url: product.preview_image_url || product.thumbnail_url || "",
+      preview_image_url:
+        product.preview_image_url || product.thumbnail_url || "",
       item_type: "custom",
       quantity: Math.max(1, Number(draft?.quantity || 1)),
       unit_price: 0,
@@ -1289,17 +1300,15 @@ export default function CustomizePage() {
   return (
     <div className="cust-page">
       {toastMessage ? (
-        <div className="cust-floating-toast">
-          {toastMessage}
-        </div>
+        <div className="cust-floating-toast">{toastMessage}</div>
       ) : null}
 
       <div className="page-hero">
         <div>
           <h1>Customize Your Order</h1>
           <p>
-            Choose an admin-approved furniture template, preview it, then customize
-            only the values allowed by the admin blueprint rules.
+            Choose an admin-approved furniture template, preview it, then
+            customize only the values allowed by the admin blueprint rules.
           </p>
         </div>
 
