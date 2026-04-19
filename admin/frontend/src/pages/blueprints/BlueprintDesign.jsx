@@ -528,8 +528,6 @@ export default function BlueprintDesign() {
       0,
     );
   }, [components]);
-
-  const [traceTool, setTraceTool] = useState("select");
   const [newTraceType, setNewTraceType] = useState("door");
   // Call this before any destructive setComponents to record the current state
   const pushHistory = useCallback((snapshot) => {
@@ -6913,13 +6911,6 @@ export default function BlueprintDesign() {
       unit,
     ],
   );
-
-  const designTotal = useMemo(() => {
-    return components.reduce(
-      (sum, c) => sum + Number(c.qty || 1) * Number(c.unitPrice || 0),
-      0,
-    );
-  }, [components]);
 
   const uniqueMaterials = useMemo(() => {
     return [...new Set(components.map((c) => c.material).filter(Boolean))];
