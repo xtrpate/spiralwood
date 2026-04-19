@@ -242,25 +242,20 @@ export default function AdminLayout() {
                   alignItems: "center",
                   gap: 10,
                   padding: "9px 16px",
-                  color: isActive
-                    ? "#ffffff"
-                    : "#a1a1aa" /* 👉 White active, light gray inactive */,
-                  background: isActive
-                    ? "#27272a"
-                    : "transparent" /* 👉 Dark gray background when active */,
+                  color: isActive ? "#ffffff" : "#a1a1aa",
+                  background: isActive ? "#27272a" : "transparent",
                   textDecoration: "none",
                   fontSize: 13,
                   fontWeight: isActive ? 600 : 500,
                   whiteSpace: "nowrap",
                   borderLeft: isActive
-                    ? "3px solid #ffffff" /* 👉 Crisp white active indicator line */
+                    ? "3px solid #ffffff"
                     : "3px solid transparent",
                   transition: "all .15s",
                 })}
               >
-                <span style={{ fontSize: 16, opacity: isActive ? 1 : 0.7 }}>
-                  {item.icon}
-                </span>
+                {/* 👉 THE FIX: Removed the broken isActive opacity check here */}
+                <span style={{ fontSize: 16 }}>{item.icon}</span>
                 {open && item.label}
               </NavLink>
             );
