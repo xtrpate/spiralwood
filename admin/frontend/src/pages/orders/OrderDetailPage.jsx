@@ -3360,6 +3360,18 @@ const btnBack = {
   transition: "all 0.2s",
 };
 
+const btnGhost = {
+  padding: "9px 16px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 700,
+  transition: "all 0.2s",
+};
+
 const btnPrimary = {
   padding: "9px 16px",
   background: "#18181b",
