@@ -652,7 +652,7 @@ exports.getOne = async (req, res) => {
       [orderId],
     );
 
-    if (order.payment_proof) {
+    if (order.payment_proof && payments.length === 0) {
       payments.push({
         id: `initial_${order.id}`,
         order_id: order.id,
@@ -1148,38 +1148,70 @@ exports.verifyPayment = async (req, res) => {
 
     await conn.beginTransaction();
 
-    const [[payment]] = await conn.query(
-      `SELECT id, status, amount
-       FROM payment_transactions
-       WHERE id = ? AND order_id = ?
-       LIMIT 1`,
-      [parseInt(payment_id), parseInt(req.params.id)],
-    );
+    // 👉 THE FIX: Intercept the dummy "initial_" payment ID
+    if (String(payment_id).startsWith("initial_")) {
+      const orderId = parseInt(req.params.id);
+      const [[order]] = await conn.query(
+        `SELECT total, payment_method, payment_proof FROM orders WHERE id = ? LIMIT 1`,
+        [orderId],
+      );
 
-    if (!payment) {
-      await conn.rollback();
-      return res.status(404).json({ message: "Payment record not found." });
+      if (!order) {
+        await conn.rollback();
+        return res.status(404).json({ message: "Order not found." });
+      }
+
+      // Convert the initial order proof into a REAL payment transaction record
+      await conn.query(
+        `INSERT INTO payment_transactions
+          (order_id, amount, payment_method, proof_url, verified_by, verified_at, status, notes)
+         VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)`,
+        [
+          orderId,
+          order.total,
+          order.payment_method,
+          order.payment_proof,
+          req.user.id,
+          normalizedAction,
+          `Initial order payment ${normalizedAction}.`,
+        ],
+      );
+    } else {
+      // Normal payment transaction flow for later payments
+      const [[payment]] = await conn.query(
+        `SELECT id, status, amount
+         FROM payment_transactions
+         WHERE id = ? AND order_id = ?
+         LIMIT 1`,
+        [parseInt(payment_id), parseInt(req.params.id)],
+      );
+
+      if (!payment) {
+        await conn.rollback();
+        return res.status(404).json({ message: "Payment record not found." });
+      }
+
+      if (normalize(payment.status) !== "pending") {
+        await conn.rollback();
+        return res
+          .status(400)
+          .json({ message: "Only pending payments can be reviewed." });
+      }
+
+      await conn.query(
+        `UPDATE payment_transactions
+         SET status = ?, verified_by = ?, verified_at = NOW()
+         WHERE id = ? AND order_id = ?`,
+        [
+          normalizedAction,
+          req.user.id,
+          parseInt(payment_id),
+          parseInt(req.params.id),
+        ],
+      );
     }
 
-    if (normalize(payment.status) !== "pending") {
-      await conn.rollback();
-      return res
-        .status(400)
-        .json({ message: "Only pending payments can be reviewed." });
-    }
-
-    await conn.query(
-      `UPDATE payment_transactions
-       SET status = ?, verified_by = ?, verified_at = NOW()
-       WHERE id = ? AND order_id = ?`,
-      [
-        normalizedAction,
-        req.user.id,
-        parseInt(payment_id),
-        parseInt(req.params.id),
-      ],
-    );
-
+    // Recalculate order payment status based on all transactions
     const [[order]] = await conn.query(
       `SELECT total, payment_method
        FROM orders
