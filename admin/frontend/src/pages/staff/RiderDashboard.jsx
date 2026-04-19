@@ -75,7 +75,7 @@ export default function RiderDashboard() {
             letterSpacing: "-0.02em",
           }}
         >
-          Rider Dashboard
+          Driver Dashboard
         </h2>
         <p
           style={{
