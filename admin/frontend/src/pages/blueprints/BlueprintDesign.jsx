@@ -6793,10 +6793,11 @@ export default function BlueprintDesign() {
         stock: 999,
         stock_status: "in_stock",
         reorder_point: 0,
-        is_featured: 1,
-        variations: "[]", // Must be a stringified empty array to prevent backend crashes
-        bill_of_materials: "[]", // Must be a stringified empty array
-        design_data: JSON.stringify({ components }), // The magic 3D data!
+        is_featured: 0,
+        is_published: 1,
+        blueprint_id: Number(id),
+        bill_of_materials: "[]",
+        design_data: JSON.stringify({ components }),
       };
 
       console.log("🚀 Sending Payload to Server:", payload);
@@ -6828,14 +6829,18 @@ export default function BlueprintDesign() {
   };
 
   const handleUnpublishProduct = async () => {
-    if (!window.confirm("Are you sure you want to unpublish this product?"))
+    if (
+      !window.confirm(
+        "Are you sure you want to unpublish the product linked to this blueprint?",
+      )
+    )
       return;
     try {
-      await api.delete(`/products/blueprint/${id}`);
-      toast.success("Product unpublished successfully.");
+      await api.patch(`/products/blueprint/${id}/unpublish`);
+      toast.success("Blueprint product unpublished successfully.");
     } catch (err) {
       console.error("Unpublish Error:", err);
-      toast.success("Unpublish request processed.");
+      toast.error(err?.response?.data?.message || "Failed to unpublish.");
     }
   };
 

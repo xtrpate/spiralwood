@@ -81,7 +81,9 @@ export default function ProductsPage() {
       await api.delete(`/products/${id}`);
       toast.success("Product deleted.");
       load();
-    } catch {}
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to delete product.");
+    }
   };
 
   const handleSelectAll = (e) => {

@@ -127,6 +127,11 @@ router.put(
 router.delete("/products/:id", adminOnly, products.remove);
 router.patch("/products/:id/publish", adminOnly, products.togglePublish);
 router.patch("/products/:id/featured", adminOnly, products.toggleFeatured);
+router.patch(
+  "/products/blueprint/:blueprint_id/unpublish",
+  adminOnly,
+  products.unpublishByBlueprint,
+);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // INVENTORY – RAW MATERIALS

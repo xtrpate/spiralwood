@@ -106,6 +106,8 @@ exports.create = async (req, res) => {
       stock,
       reorder_point,
       is_featured = false,
+      is_published = 1,
+      blueprint_id,
       variations = "[]",
       bill_of_materials = "[]",
     } = req.body;
@@ -114,7 +116,6 @@ exports.create = async (req, res) => {
       ? `/uploads/products/${req.file.filename}`
       : null;
 
-    // 👉 THE FIX: Safely parse missing or undefined data into proper 0s or nulls for MySQL
     const numOnlinePrice = online_price ? parseFloat(online_price) : 0;
     const numWalkinPrice = walkin_price ? parseFloat(walkin_price) : 0;
     const numProdCost = production_cost ? parseFloat(production_cost) : 0;
@@ -128,12 +129,16 @@ exports.create = async (req, res) => {
       category_id && !isNaN(parseInt(category_id))
         ? parseInt(category_id)
         : null;
+    const bpId =
+      blueprint_id && !isNaN(parseInt(blueprint_id))
+        ? parseInt(blueprint_id)
+        : null;
 
     const [result] = await conn.query(
       `INSERT INTO products
-         (barcode, name, description, category_id, type, image_url, is_featured,
+         (barcode, name, description, category_id, type, image_url, is_featured, is_published, blueprint_id,
           online_price, walkin_price, production_cost, stock, reorder_point)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         barcode || null,
         name,
@@ -142,6 +147,8 @@ exports.create = async (req, res) => {
         type,
         image_url,
         boolFeatured,
+        is_published,
+        bpId,
         numOnlinePrice,
         numWalkinPrice,
         numProdCost,
@@ -450,6 +457,29 @@ exports.togglePublish = async (req, res) => {
     res.json({ is_published: !!publishValue });
   } catch (err) {
     console.error("[togglePublish Error]:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── PATCH /api/products/blueprint/:blueprint_id/unpublish ─────────────────
+exports.unpublishByBlueprint = async (req, res) => {
+  try {
+    const blueprintId = parseInt(req.params.blueprint_id);
+
+    const [result] = await pool.query(
+      "UPDATE products SET is_published = 0 WHERE blueprint_id = ?",
+      [blueprintId],
+    );
+
+    if (result.affectedRows === 0) {
+      return res
+        .status(404)
+        .json({ message: "No live products found for this blueprint." });
+    }
+
+    res.json({ message: "Blueprint product unpublished successfully." });
+  } catch (err) {
+    console.error("[unpublishByBlueprint Error]:", err);
     res.status(500).json({ message: err.message });
   }
 };
