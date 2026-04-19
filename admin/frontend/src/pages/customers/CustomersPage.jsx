@@ -4,8 +4,18 @@ import api from "../../services/api";
 import toast from "react-hot-toast";
 
 const EMAIL_VERIFY_STYLE = {
-  verified: { bg: "#d1fae5", color: "#065f46", label: "Verified" },
-  pending: { bg: "#fee2e2", color: "#991b1b", label: "Not Verified" },
+  verified: {
+    bg: "#f4f4f5",
+    color: "#18181b",
+    border: "#e4e4e7",
+    label: "Verified",
+  },
+  pending: {
+    bg: "#fef2f2",
+    color: "#991b1b",
+    border: "#fecaca",
+    label: "Not Verified",
+  },
 };
 
 export default function CustomersPage() {
@@ -74,23 +84,23 @@ export default function CustomersPage() {
       >
         <div>
           <h1 style={pageTitle}>Customer Account Management</h1>
-          <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>
+          <p style={{ fontSize: 13, color: "#52525b", margin: "4px 0 0" }}>
             Review customer accounts and manage customer access.
           </p>
         </div>
       </div>
 
       <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
-        <SummaryChip label="Total Customers" value={total} color="#3b82f6" />
+        <SummaryChip label="Total Customers" value={total} color="#18181b" />
         <SummaryChip
           label="Email Verified"
           value={verifiedCount}
-          color="#10b981"
+          color="#18181b"
         />
         <SummaryChip
           label="Not Verified"
           value={notVerifiedCount}
-          color="#ef4444"
+          color="#dc2626"
           alert={notVerifiedCount > 0}
         />
       </div>
@@ -130,8 +140,8 @@ export default function CustomersPage() {
           <thead>
             <tr
               style={{
-                background: "#f8fafc",
-                borderBottom: "1px solid #e2e8f0",
+                background: "#ffffff",
+                borderBottom: "1px solid #e4e4e7",
               }}
             >
               {[
@@ -171,7 +181,7 @@ export default function CustomersPage() {
                     : EMAIL_VERIFY_STYLE.pending;
 
                 return (
-                  <tr key={r.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <tr key={r.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
                     <td style={td}>
                       <div
                         style={{
@@ -184,7 +194,9 @@ export default function CustomersPage() {
                           {r.name?.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <div style={{ fontWeight: 500 }}>{r.name}</div>
+                          <div style={{ fontWeight: 600, color: "#0a0a0a" }}>
+                            {r.name}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -192,15 +204,15 @@ export default function CustomersPage() {
                     <td style={{ ...td, fontSize: 12 }}>{r.email}</td>
                     <td style={{ ...td, fontSize: 12 }}>{r.phone || "—"}</td>
 
-                    <td style={{ ...td, fontSize: 12, color: "#64748b" }}>
+                    <td style={{ ...td, fontSize: 12, color: "#71717a" }}>
                       {new Date(r.created_at).toLocaleDateString("en-PH")}
                     </td>
 
-                    <td style={{ ...td, fontSize: 12, color: "#64748b" }}>
+                    <td style={{ ...td, fontSize: 12, color: "#71717a" }}>
                       {r.last_login ? (
                         new Date(r.last_login).toLocaleDateString("en-PH")
                       ) : (
-                        <span style={{ color: "#94a3b8" }}>Never</span>
+                        <span style={{ color: "#a1a1aa" }}>Never</span>
                       )}
                     </td>
 
@@ -209,6 +221,7 @@ export default function CustomersPage() {
                         style={{
                           background: emailStatus.bg,
                           color: emailStatus.color,
+                          border: `1px solid ${emailStatus.border}`,
                           padding: "2px 10px",
                           borderRadius: 12,
                           fontSize: 11,
@@ -222,8 +235,9 @@ export default function CustomersPage() {
                     <td style={td}>
                       <span
                         style={{
-                          background: r.is_active ? "#d1fae5" : "#fee2e2",
-                          color: r.is_active ? "#065f46" : "#991b1b",
+                          background: r.is_active ? "#f4f4f5" : "#fef2f2",
+                          color: r.is_active ? "#18181b" : "#991b1b",
+                          border: `1px solid ${r.is_active ? "#e4e4e7" : "#fecaca"}`,
                           padding: "2px 10px",
                           borderRadius: 12,
                           fontSize: 11,
@@ -236,7 +250,7 @@ export default function CustomersPage() {
 
                     <td style={td}>
                       <div
-                        style={{ display: "flex", gap: 4, flexWrap: "wrap" }}
+                        style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
                       >
                         <button
                           onClick={() => setDetail({ row: r })}
@@ -276,6 +290,7 @@ export default function CustomersPage() {
               alignItems: "center",
               gap: 10,
               padding: 16,
+              background: "#fafafa",
             }}
           >
             <button
@@ -286,7 +301,7 @@ export default function CustomersPage() {
               ← Prev
             </button>
 
-            <span style={{ fontSize: 13, color: "#64748b" }}>
+            <span style={{ fontSize: 13, color: "#71717a", fontWeight: 600 }}>
               Page {filters.page} of {Math.ceil(total / 20)}
             </span>
 
@@ -333,17 +348,27 @@ function CustomerDetailModal({ row, onClose, onAction }) {
             {row.name?.charAt(0).toUpperCase()}
           </div>
           <div>
-            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700 }}>
+            <h3
+              style={{
+                margin: 0,
+                fontSize: 18,
+                fontWeight: 800,
+                color: "#0a0a0a",
+              }}
+            >
               {row.name}
             </h3>
             <span
               style={{
                 background: emailStatus.bg,
                 color: emailStatus.color,
+                border: `1px solid ${emailStatus.border}`,
                 padding: "2px 10px",
                 borderRadius: 12,
                 fontSize: 11,
                 fontWeight: 600,
+                display: "inline-block",
+                marginTop: 6,
               }}
             >
               {emailStatus.label}
@@ -353,7 +378,8 @@ function CustomerDetailModal({ row, onClose, onAction }) {
 
         <div
           style={{
-            background: "#f8fafc",
+            background: "#f4f4f5",
+            border: "1px solid #e4e4e7",
             borderRadius: 10,
             padding: "14px 16px",
             marginBottom: 20,
@@ -383,15 +409,16 @@ function CustomerDetailModal({ row, onClose, onAction }) {
               style={{
                 display: "flex",
                 justifyContent: "space-between",
-                padding: "6px 0",
-                borderBottom: "1px solid #f1f5f9",
+                padding: "8px 0",
+                borderBottom: "1px solid #e4e4e7",
                 fontSize: 13,
               }}
             >
-              <span style={{ color: "#64748b", fontWeight: 500 }}>{label}</span>
+              <span style={{ color: "#71717a", fontWeight: 600 }}>{label}</span>
               <span
                 style={{
-                  color: "#374151",
+                  color: "#18181b",
+                  fontWeight: 500,
                   textAlign: "right",
                   maxWidth: "60%",
                 }}
@@ -448,10 +475,11 @@ function SummaryChip({ label, value, color, alert }) {
     <div
       style={{
         background: "#fff",
-        borderRadius: 10,
-        padding: "14px 20px",
+        borderRadius: 12,
+        padding: "18px 20px",
+        border: "1px solid #e4e4e7",
         borderLeft: `4px solid ${alert ? "#ef4444" : color}`,
-        boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+        boxShadow: "0 1px 2px rgba(0,0,0,.02)",
         display: "flex",
         alignItems: "center",
         gap: 12,
@@ -461,11 +489,12 @@ function SummaryChip({ label, value, color, alert }) {
       <div>
         <p
           style={{
-            fontSize: 11,
-            color: "#64748b",
+            fontSize: 10,
+            color: "#71717a",
             margin: 0,
             textTransform: "uppercase",
-            letterSpacing: 0.5,
+            letterSpacing: 1.2,
+            fontWeight: 800,
           }}
         >
           {label}
@@ -473,9 +502,10 @@ function SummaryChip({ label, value, color, alert }) {
         <p
           style={{
             fontSize: 24,
-            fontWeight: 700,
-            color: alert ? "#ef4444" : "#1e2a38",
-            margin: "4px 0 0",
+            fontWeight: 800,
+            color: alert ? "#ef4444" : "#0a0a0a",
+            margin: "6px 0 0",
+            letterSpacing: "-0.02em",
           }}
         >
           {value}
@@ -486,41 +516,48 @@ function SummaryChip({ label, value, color, alert }) {
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
 const pageTitle = {
-  fontSize: 22,
-  fontWeight: 700,
-  color: "#1e2a38",
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#0a0a0a",
   margin: 0,
+  letterSpacing: "-0.02em",
 };
 const card = {
   background: "#fff",
   borderRadius: 12,
-  boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
   overflow: "hidden",
 };
 const th = {
   textAlign: "left",
-  padding: "11px 14px",
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#64748b",
+  padding: "13px 16px",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
+  letterSpacing: 1,
 };
-const td = { padding: "11px 14px", color: "#374151", verticalAlign: "middle" };
-const centerCell = { textAlign: "center", padding: 40, color: "#94a3b8" };
+const td = { padding: "13px 16px", color: "#18181b", verticalAlign: "middle" };
+const centerCell = { textAlign: "center", padding: 40, color: "#a1a1aa" };
 const inputSm = {
-  padding: "7px 12px",
-  border: "1px solid #d1d5db",
+  padding: "8px 12px",
+  border: "1px solid #e4e4e7",
   borderRadius: 6,
   fontSize: 13,
   minWidth: 180,
+  outline: "none",
+  color: "#18181b",
 };
 const avatar = {
   width: 36,
   height: 36,
   borderRadius: "50%",
-  background: "#dbeafe",
-  color: "#1e40af",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -531,7 +568,7 @@ const avatar = {
 const overlay = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,.5)",
+  background: "rgba(0,0,0,.6)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -544,51 +581,54 @@ const modalBox = {
   width: 480,
   maxHeight: "85vh",
   overflowY: "auto",
-  boxShadow: "0 20px 60px rgba(0,0,0,.3)",
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 20px 60px rgba(0,0,0,.15)",
 };
 const btnGhost = {
-  padding: "7px 16px",
-  background: "#f1f5f9",
-  color: "#374151",
-  border: "none",
+  padding: "8px 16px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 13,
+  fontWeight: 600,
 };
 const btnView = {
-  padding: "4px 12px",
-  background: "#e0f2fe",
-  color: "#0369a1",
-  border: "none",
+  padding: "5px 14px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,
+  fontWeight: 600,
 };
 const btnApprove = {
-  padding: "5px 12px",
-  background: "#d1fae5",
-  color: "#065f46",
-  border: "none",
+  padding: "5px 14px",
+  background: "#18181b",
+  color: "#ffffff",
+  border: "1px solid #18181b",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,
   fontWeight: 600,
 };
 const btnWarn = {
-  padding: "5px 12px",
-  background: "#fef9c3",
-  color: "#854d0e",
-  border: "none",
+  padding: "5px 14px",
+  background: "#ffffff",
+  color: "#18181b",
+  border: "1px solid #d4d4d8",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,
   fontWeight: 600,
 };
 const btnDelete = {
-  padding: "5px 12px",
-  background: "#fee2e2",
+  padding: "5px 14px",
+  background: "#fef2f2",
   color: "#991b1b",
-  border: "none",
+  border: "1px solid #fecaca",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,

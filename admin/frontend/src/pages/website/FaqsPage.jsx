@@ -94,53 +94,67 @@ export default function FaqsPage() {
           justifyContent: "space-between",
           alignItems: "flex-start",
           marginBottom: 20,
+          flexWrap: "wrap",
+          gap: 16,
         }}
       >
         <div>
           <h1 style={pageTitle}>FAQ Management</h1>
-          <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>
+          <p style={{ fontSize: 13, color: "#52525b", margin: "4px 0 0" }}>
             Manage frequently asked questions displayed on the customer website.
           </p>
         </div>
-        <button onClick={openAdd} style={btnPrimary}>
+        <button
+          onClick={openAdd}
+          style={btnPrimary}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "#3f3f46")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "#18181b")}
+        >
           + Add FAQ
         </button>
       </div>
 
       {/* ── Summary ─────────────────────────────────────────────── */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+      <div
+        style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}
+      >
         {[
-          { label: "Total FAQs", value: faqs.length, color: "#3b82f6" },
-          { label: "Visible", value: visible, color: "#10b981" },
-          { label: "Hidden", value: hidden, color: "#94a3b8" },
+          { label: "Total FAQs", value: faqs.length, color: "#18181b" },
+          { label: "Visible", value: visible, color: "#18181b" },
+          { label: "Hidden", value: hidden, color: "#52525b" },
         ].map((chip) => (
           <div
             key={chip.label}
             style={{
               background: "#fff",
-              borderRadius: 10,
-              padding: "12px 18px",
+              borderRadius: 12,
+              padding: "16px 20px",
+              border: "1px solid #e4e4e7",
               borderLeft: `4px solid ${chip.color}`,
-              boxShadow: "0 1px 6px rgba(0,0,0,.08)",
-              minWidth: 120,
+              boxShadow: "0 1px 2px rgba(0,0,0,.02)",
+              minWidth: 140,
+              flex: 1,
             }}
           >
             <p
               style={{
-                fontSize: 11,
-                color: "#64748b",
+                fontSize: 10,
+                color: "#71717a",
                 margin: 0,
                 textTransform: "uppercase",
+                letterSpacing: "1px",
+                fontWeight: 800,
               }}
             >
               {chip.label}
             </p>
             <p
               style={{
-                fontSize: 22,
-                fontWeight: 700,
-                color: "#1e2a38",
-                margin: "4px 0 0",
+                fontSize: 24,
+                fontWeight: 800,
+                color: "#0a0a0a",
+                margin: "6px 0 0",
+                letterSpacing: "-0.02em",
               }}
             >
               {chip.value}
@@ -156,25 +170,29 @@ export default function FaqsPage() {
         <div
           style={{
             ...card,
-            padding: 48,
+            padding: 60,
             textAlign: "center",
-            color: "#94a3b8",
+            color: "#71717a",
+            fontSize: 14,
+            fontWeight: 600,
           }}
         >
           No FAQs yet. Click <strong>+ Add FAQ</strong> to create one.
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {faqs.map((faq, i) => (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {faqs.map((faq) => (
             <div
               key={faq.id}
               style={{
                 ...card,
-                padding: "18px 20px",
+                padding: "20px 24px",
                 border: faq.is_visible
-                  ? "1px solid #e2e8f0"
-                  : "1px dashed #d1d5db",
-                opacity: faq.is_visible ? 1 : 0.6,
+                  ? "1px solid #e4e4e7"
+                  : "1px dashed #d4d4d8",
+                background: faq.is_visible ? "#ffffff" : "#fafafa",
+                opacity: faq.is_visible ? 1 : 0.65,
+                transition: "all 0.2s ease",
               }}
             >
               <div
@@ -191,15 +209,15 @@ export default function FaqsPage() {
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 8,
-                      marginBottom: 6,
+                      gap: 10,
+                      marginBottom: 8,
                     }}
                   >
                     <span
                       style={{
                         fontSize: 12,
-                        fontWeight: 700,
-                        color: "#94a3b8",
+                        fontWeight: 800,
+                        color: "#71717a",
                         width: 24,
                       }}
                     >
@@ -207,9 +225,9 @@ export default function FaqsPage() {
                     </span>
                     <span
                       style={{
-                        fontSize: 14,
-                        fontWeight: 700,
-                        color: "#1e2a38",
+                        fontSize: 15,
+                        fontWeight: 800,
+                        color: "#0a0a0a",
                       }}
                     >
                       {faq.question}
@@ -218,11 +236,12 @@ export default function FaqsPage() {
                       <span
                         style={{
                           fontSize: 10,
-                          background: "#f1f5f9",
-                          color: "#64748b",
+                          background: "#f4f4f5",
+                          border: "1px solid #e4e4e7",
+                          color: "#52525b",
                           padding: "2px 8px",
-                          borderRadius: 8,
-                          fontWeight: 600,
+                          borderRadius: 12,
+                          fontWeight: 700,
                         }}
                       >
                         Hidden
@@ -232,10 +251,10 @@ export default function FaqsPage() {
                   <p
                     style={{
                       fontSize: 13,
-                      color: "#64748b",
+                      color: "#52525b",
                       margin: 0,
                       lineHeight: 1.6,
-                      paddingLeft: 32,
+                      paddingLeft: 34,
                     }}
                   >
                     {faq.answer}
@@ -243,7 +262,7 @@ export default function FaqsPage() {
                 </div>
 
                 {/* Actions */}
-                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                   <button
                     onClick={() => toggleVisibility(faq)}
                     title={
@@ -251,8 +270,11 @@ export default function FaqsPage() {
                     }
                     style={{
                       ...btnIcon,
-                      background: faq.is_visible ? "#d1fae5" : "#f1f5f9",
-                      color: faq.is_visible ? "#065f46" : "#94a3b8",
+                      background: faq.is_visible ? "#f4f4f5" : "#18181b",
+                      color: faq.is_visible ? "#18181b" : "#ffffff",
+                      border: faq.is_visible
+                        ? "1px solid #e4e4e7"
+                        : "1px solid #18181b",
                     }}
                   >
                     {faq.is_visible ? "👁 Visible" : "🙈 Hidden"}
@@ -261,21 +283,23 @@ export default function FaqsPage() {
                     onClick={() => openEdit(faq)}
                     style={{
                       ...btnIcon,
-                      background: "#e0f2fe",
-                      color: "#0369a1",
+                      background: "#f4f4f5",
+                      color: "#18181b",
+                      border: "1px solid #e4e4e7",
                     }}
                   >
-                    ✏️ Edit
+                    Edit
                   </button>
                   <button
                     onClick={() => handleDelete(faq.id, faq.question)}
                     style={{
                       ...btnIcon,
-                      background: "#fee2e2",
-                      color: "#dc2626",
+                      background: "#fef2f2",
+                      color: "#991b1b",
+                      border: "1px solid #fecaca",
                     }}
                   >
-                    🗑
+                    Del
                   </button>
                 </div>
               </div>
@@ -288,12 +312,20 @@ export default function FaqsPage() {
       {modal && (
         <div style={overlay}>
           <div style={modalBox}>
-            <h3 style={{ margin: "0 0 20px" }}>
-              {modal === "add" ? "➕ Add New FAQ" : "✏️ Edit FAQ"}
+            <h3
+              style={{
+                margin: "0 0 24px",
+                fontSize: 20,
+                fontWeight: 800,
+                color: "#0a0a0a",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {modal === "add" ? "Add New FAQ" : "Edit FAQ"}
             </h3>
             <form onSubmit={handleSave}>
               {/* Question */}
-              <div style={{ marginBottom: 14 }}>
+              <div style={{ marginBottom: 16 }}>
                 <label style={labelSm}>Question *</label>
                 <input
                   required
@@ -305,14 +337,18 @@ export default function FaqsPage() {
               </div>
 
               {/* Answer */}
-              <div style={{ marginBottom: 14 }}>
+              <div style={{ marginBottom: 16 }}>
                 <label style={labelSm}>Answer *</label>
                 <textarea
                   required
                   value={form.answer}
                   onChange={(e) => setF("answer", e.target.value)}
                   rows={5}
-                  style={{ ...inputFull, resize: "vertical" }}
+                  style={{
+                    ...inputFull,
+                    resize: "vertical",
+                    fontFamily: "inherit",
+                  }}
                   placeholder="Provide a clear and helpful answer..."
                 />
               </div>
@@ -322,8 +358,8 @@ export default function FaqsPage() {
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                  marginBottom: 14,
+                  gap: 16,
+                  marginBottom: 16,
                 }}
               >
                 <div>
@@ -340,8 +376,9 @@ export default function FaqsPage() {
                   <p
                     style={{
                       fontSize: 11,
-                      color: "#94a3b8",
-                      margin: "4px 0 0",
+                      color: "#71717a",
+                      margin: "6px 0 0",
+                      fontWeight: 500,
                     }}
                   >
                     Lower number = shown first
@@ -353,9 +390,9 @@ export default function FaqsPage() {
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 8,
+                      gap: 10,
                       cursor: "pointer",
-                      marginTop: 8,
+                      marginTop: 10,
                     }}
                   >
                     <div
@@ -365,7 +402,7 @@ export default function FaqsPage() {
                         height: 24,
                         borderRadius: 12,
                         cursor: "pointer",
-                        background: form.is_visible ? "#1e40af" : "#d1d5db",
+                        background: form.is_visible ? "#18181b" : "#d4d4d8",
                         position: "relative",
                         transition: "background .2s",
                         flexShrink: 0,
@@ -388,8 +425,8 @@ export default function FaqsPage() {
                     <span
                       style={{
                         fontSize: 13,
-                        color: form.is_visible ? "#065f46" : "#64748b",
-                        fontWeight: 500,
+                        color: form.is_visible ? "#18181b" : "#71717a",
+                        fontWeight: 600,
                       }}
                     >
                       {form.is_visible ? "Visible on website" : "Hidden"}
@@ -403,7 +440,7 @@ export default function FaqsPage() {
                   display: "flex",
                   gap: 10,
                   justifyContent: "flex-end",
-                  marginTop: 20,
+                  marginTop: 28,
                 }}
               >
                 <button
@@ -431,80 +468,92 @@ export default function FaqsPage() {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const pageTitle = {
-  fontSize: 22,
-  fontWeight: 700,
-  color: "#1e2a38",
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#0a0a0a",
   margin: 0,
+  letterSpacing: "-0.02em",
 };
 const card = {
   background: "#fff",
-  borderRadius: 12,
-  boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+  borderRadius: 16,
+  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
 };
 const center = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   height: 200,
-  color: "#64748b",
+  color: "#71717a",
+  fontWeight: 600,
+  fontSize: 14,
 };
 const labelSm = {
   fontSize: 12,
-  fontWeight: 600,
-  color: "#374151",
+  fontWeight: 800,
+  color: "#18181b",
   display: "block",
-  marginBottom: 6,
+  marginBottom: 8,
 };
 const inputFull = {
   width: "100%",
-  padding: "8px 12px",
-  border: "1px solid #d1d5db",
-  borderRadius: 6,
+  padding: "10px 14px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
+  color: "#18181b",
   boxSizing: "border-box",
+  outline: "none",
 };
 const overlay = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,.5)",
+  background: "rgba(0,0,0,.6)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   zIndex: 1000,
+  padding: 20,
 };
 const modalBox = {
   background: "#fff",
-  borderRadius: 12,
-  padding: 28,
+  borderRadius: 16,
+  padding: 32,
   width: 560,
-  maxHeight: "88vh",
+  maxWidth: "100%",
+  maxHeight: "90vh",
   overflowY: "auto",
-  boxShadow: "0 20px 60px rgba(0,0,0,.3)",
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 25px 60px rgba(0,0,0,.15)",
 };
 const btnPrimary = {
-  padding: "8px 20px",
-  background: "#1e40af",
+  padding: "10px 20px",
+  background: "#18181b",
   color: "#fff",
   border: "none",
-  borderRadius: 6,
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 13,
-  fontWeight: 600,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 const btnGhost = {
-  padding: "8px 16px",
-  background: "#f1f5f9",
-  color: "#374151",
-  border: "none",
-  borderRadius: 6,
+  padding: "10px 16px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 13,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 const btnIcon = {
-  padding: "5px 12px",
+  padding: "6px 14px",
   border: "none",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };

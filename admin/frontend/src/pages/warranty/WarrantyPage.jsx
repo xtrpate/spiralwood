@@ -6,27 +6,27 @@ import toast from "react-hot-toast";
 const STATUS_META = {
   pending: {
     label: "Pending",
-    tone: "#a16207",
-    bg: "#fef3c7",
-    border: "#fde68a",
+    tone: "#52525b",
+    bg: "#ffffff",
+    border: "#d4d4d8",
   },
   approved: {
     label: "Approved",
-    tone: "#166534",
-    bg: "#dcfce7",
-    border: "#86efac",
+    tone: "#18181b",
+    bg: "#f4f4f5",
+    border: "#e4e4e7",
   },
   fulfilled: {
     label: "Fulfilled",
-    tone: "#1d4ed8",
-    bg: "#dbeafe",
-    border: "#93c5fd",
+    tone: "#ffffff",
+    bg: "#0a0a0a",
+    border: "#0a0a0a",
   },
   rejected: {
     label: "Rejected",
     tone: "#dc2626",
-    bg: "#fee2e2",
-    border: "#fca5a5",
+    bg: "#fef2f2",
+    border: "#fecaca",
   },
 };
 
@@ -66,7 +66,8 @@ const getStatusMeta = (status) =>
   STATUS_META[String(status || "").toLowerCase()] || STATUS_META.pending;
 
 const getStatusCount = (rows, status) =>
-  rows.filter((row) => String(row.status || "").toLowerCase() === status).length;
+  rows.filter((row) => String(row.status || "").toLowerCase() === status)
+    .length;
 
 export default function WarrantyPage() {
   const navigate = useNavigate();
@@ -172,8 +173,7 @@ export default function WarrantyPage() {
       loadClaims();
     } catch (err) {
       toast.error(
-        err?.response?.data?.message ||
-          "Failed to mark claim as fulfilled.",
+        err?.response?.data?.message || "Failed to mark claim as fulfilled.",
       );
     }
   };
@@ -315,7 +315,9 @@ export default function WarrantyPage() {
                           {row.product_name || "Unnamed Product"}
                         </div>
                         <button
-                          onClick={() => navigate(`/admin/orders/${row.order_id}`)}
+                          onClick={() =>
+                            navigate(`/admin/orders/${row.order_id}`)
+                          }
                           style={orderLink}
                         >
                           {row.order_number || `Order #${row.order_id}`}
@@ -326,7 +328,7 @@ export default function WarrantyPage() {
                             Rejection reason: {row.admin_note}
                           </div>
                         ) : row.admin_note ? (
-                          <div style={notePreviewStyle}>
+                          <div style={notePreviewStyleAdmin}>
                             Admin note: {row.admin_note}
                           </div>
                         ) : null}
@@ -377,7 +379,9 @@ export default function WarrantyPage() {
                           </button>
 
                           <button
-                            onClick={() => navigate(`/admin/orders/${row.order_id}`)}
+                            onClick={() =>
+                              navigate(`/admin/orders/${row.order_id}`)
+                            }
                             style={plainActionBtn}
                           >
                             View Order
@@ -436,15 +440,25 @@ function StatusFilterChip({ active, label, onClick, meta }) {
         ...filterChip,
         background: active
           ? meta
-            ? meta.tone
-            : "#0f172a"
+            ? meta.bg === "#ffffff"
+              ? "#18181b"
+              : meta.bg
+            : "#18181b"
           : meta
-            ? meta.bg
-            : "#f8fafc",
-        color: active ? "#fff" : meta ? meta.tone : "#475569",
+            ? meta.bg === "#ffffff"
+              ? "#f4f4f5"
+              : meta.bg
+            : "#f4f4f5",
+        color: active
+          ? meta && meta.bg !== "#ffffff"
+            ? meta.tone
+            : "#ffffff"
+          : meta
+            ? meta.tone
+            : "#52525b",
         border: active
-          ? `1px solid ${meta ? meta.tone : "#0f172a"}`
-          : `1px solid ${meta ? meta.border : "#e2e8f0"}`,
+          ? `1px solid ${meta ? (meta.border === "#d4d4d8" ? "#18181b" : meta.border) : "#18181b"}`
+          : `1px solid ${meta ? meta.border : "#e4e4e7"}`,
       }}
     >
       {label}
@@ -521,9 +535,7 @@ function ReviewModal({
             {row.admin_note && (
               <div style={panel}>
                 <div style={panelTitle}>
-                  {statusKey === "rejected"
-                    ? "Rejection Reason"
-                    : "Admin Note"}
+                  {statusKey === "rejected" ? "Rejection Reason" : "Admin Note"}
                 </div>
                 <div style={issueBody}>{row.admin_note}</div>
               </div>
@@ -543,12 +555,16 @@ function ReviewModal({
 
               <div style={summaryItem}>
                 <span style={summaryLabel}>Submitted</span>
-                <span style={summaryValue}>{formatDateTime(row.created_at)}</span>
+                <span style={summaryValue}>
+                  {formatDateTime(row.created_at)}
+                </span>
               </div>
 
               <div style={summaryItem}>
                 <span style={summaryLabel}>Warranty Expiry</span>
-                <span style={summaryValue}>{formatDate(row.warranty_expiry)}</span>
+                <span style={summaryValue}>
+                  {formatDate(row.warranty_expiry)}
+                </span>
               </div>
 
               <div style={summaryItem}>
@@ -576,7 +592,9 @@ function ReviewModal({
               {row.fulfilled_at && (
                 <div style={summaryItem}>
                   <span style={summaryLabel}>Fulfilled At</span>
-                  <span style={summaryValue}>{formatDateTime(row.fulfilled_at)}</span>
+                  <span style={summaryValue}>
+                    {formatDateTime(row.fulfilled_at)}
+                  </span>
                 </div>
               )}
 
@@ -639,7 +657,8 @@ function DecisionModal({ row, decision, onClose, onSubmit }) {
               {isReject ? "Reject Warranty Claim" : "Approve Warranty Claim"}
             </h3>
             <div style={modalSubline}>
-              {row.order_number || `Order #${row.order_id}`} · {row.product_name}
+              {row.order_number || `Order #${row.order_id}`} ·{" "}
+              {row.product_name}
             </div>
           </div>
 
@@ -708,7 +727,8 @@ function FulfillModal({ row, onClose, onSubmit }) {
             <div style={modalEyebrow}>Fulfillment</div>
             <h3 style={modalTitle}>Upload Replacement Receipt</h3>
             <div style={modalSubline}>
-              {row.order_number || `Order #${row.order_id}`} · {row.product_name}
+              {row.order_number || `Order #${row.order_id}`} ·{" "}
+              {row.product_name}
             </div>
           </div>
 
@@ -752,12 +772,14 @@ function FulfillModal({ row, onClose, onSubmit }) {
   );
 }
 
+// ─── Styles ─────────────────────────────────────────────────────────────────
+
 const pageShell = {
   maxWidth: 1180,
   margin: "0 auto",
   display: "flex",
   flexDirection: "column",
-  gap: 14,
+  gap: 16,
 };
 
 const headerRow = {
@@ -769,128 +791,133 @@ const headerRow = {
 };
 
 const eyebrow = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.14em",
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: "1px",
   textTransform: "uppercase",
-  color: "#64748b",
+  color: "#71717a",
   marginBottom: 8,
 };
 
 const pageTitle = {
   margin: 0,
-  fontSize: 22,
+  fontSize: 24,
   lineHeight: 1.1,
   fontWeight: 800,
-  color: "#0f172a",
+  color: "#0a0a0a",
+  letterSpacing: "-0.02em",
 };
 
 const pageSubtitle = {
   margin: "8px 0 0",
-  color: "#64748b",
+  color: "#52525b",
   fontSize: 13,
   lineHeight: 1.6,
   maxWidth: 720,
 };
 
 const headerBadge = {
-  background: "#fff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 999,
+  background: "#ffffff",
+  border: "1px solid #e4e4e7",
+  borderRadius: 12,
   padding: "10px 14px",
   fontSize: 12,
   fontWeight: 700,
-  color: "#0f172a",
-  boxShadow: "0 8px 20px rgba(15, 23, 42, 0.04)",
+  color: "#18181b",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const statsGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-  gap: 10,
+  gap: 12,
 };
 
 const statCard = {
   background: "#fff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 16,
-  padding: "14px 16px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 12,
+  padding: "16px 18px",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const statLabel = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: "1px",
   textTransform: "uppercase",
-  color: "#94a3b8",
+  color: "#71717a",
   marginBottom: 8,
 };
 
 const statValue = {
-  fontSize: 28,
+  fontSize: 24,
   fontWeight: 800,
-  color: "#0f172a",
+  color: "#0a0a0a",
   lineHeight: 1,
+  letterSpacing: "-0.02em",
 };
 
 const infoBanner = {
-  background: "#f8fbff",
-  border: "1px solid #cfe0ff",
-  borderRadius: 16,
-  padding: "14px 16px",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
+  borderRadius: 12,
+  padding: "16px",
   fontSize: 13,
-  color: "#315ea8",
+  color: "#18181b",
   lineHeight: 1.6,
 };
 
 const toolbarCard = {
   background: "#fff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 18,
-  padding: 14,
+  border: "1px solid #e4e4e7",
+  borderRadius: 16,
+  padding: 16,
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const toolbarTop = {
   display: "flex",
   gap: 10,
   flexWrap: "wrap",
-  marginBottom: 12,
+  marginBottom: 16,
 };
 
 const searchInput = {
   flex: "1 1 360px",
   minWidth: 260,
-  height: 42,
+  height: 40,
   padding: "0 14px",
-  border: "1px solid #dbe2ea",
-  borderRadius: 12,
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
-  color: "#0f172a",
+  color: "#18181b",
   outline: "none",
 };
 
 const selectInput = {
-  height: 42,
+  height: 40,
   minWidth: 160,
   padding: "0 12px",
-  border: "1px solid #dbe2ea",
-  borderRadius: 12,
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
-  color: "#0f172a",
+  color: "#18181b",
   background: "#fff",
   outline: "none",
 };
 
 const ghostButton = {
-  height: 42,
-  padding: "0 14px",
-  border: "1px solid #dbe2ea",
-  borderRadius: 12,
-  background: "#f8fafc",
-  color: "#334155",
+  height: 40,
+  padding: "0 16px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
+  background: "#f4f4f5",
+  color: "#18181b",
   fontSize: 13,
   fontWeight: 700,
   cursor: "pointer",
+  transition: "background 0.2s",
 };
 
 const statusRow = {
@@ -901,44 +928,47 @@ const statusRow = {
 };
 
 const filterChip = {
-  padding: "7px 12px",
+  padding: "7px 14px",
   borderRadius: 999,
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 700,
   cursor: "pointer",
   whiteSpace: "nowrap",
+  transition: "all 0.15s ease",
 };
 
 const filterMeta = {
   marginLeft: "auto",
   fontSize: 12,
   fontWeight: 600,
-  color: "#64748b",
+  color: "#71717a",
 };
 
 const tableCard = {
   background: "#fff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 18,
+  border: "1px solid #e4e4e7",
+  borderRadius: 16,
   overflow: "hidden",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const sectionHead = {
-  padding: "16px 18px 10px",
-  borderBottom: "1px solid #f1f5f9",
+  padding: "20px 20px 14px",
+  borderBottom: "1px solid #e4e4e7",
 };
 
 const sectionTitle = {
   margin: 0,
   fontSize: 18,
   fontWeight: 800,
-  color: "#0f172a",
+  color: "#0a0a0a",
+  letterSpacing: "-0.01em",
 };
 
 const sectionSubtitle = {
   margin: "4px 0 0",
-  fontSize: 12,
-  color: "#64748b",
+  fontSize: 13,
+  color: "#52525b",
 };
 
 const tableWrap = {
@@ -954,26 +984,26 @@ const table = {
 };
 
 const theadRow = {
-  background: "#f8fafc",
+  background: "#fafafa",
 };
 
 const th = {
   textAlign: "left",
-  padding: "12px 14px",
-  fontSize: 11,
+  padding: "14px 16px",
+  fontSize: 10,
   fontWeight: 800,
   textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  color: "#64748b",
-  borderBottom: "1px solid #edf2f7",
+  letterSpacing: "1px",
+  color: "#71717a",
+  borderBottom: "1px solid #e4e4e7",
 };
 
 const td = {
-  padding: "14px",
-  borderBottom: "1px solid #f1f5f9",
+  padding: "16px",
+  borderBottom: "1px solid #f4f4f5",
   verticalAlign: "top",
   fontSize: 13,
-  color: "#334155",
+  color: "#18181b",
 };
 
 const bodyRow = {
@@ -983,15 +1013,16 @@ const bodyRow = {
 const emptyCell = {
   textAlign: "center",
   padding: "44px 20px",
-  color: "#94a3b8",
+  color: "#71717a",
   fontSize: 13,
+  fontWeight: 600,
 };
 
 const claimTitle = {
   fontSize: 15,
   fontWeight: 800,
-  color: "#0f172a",
-  marginBottom: 4,
+  color: "#0a0a0a",
+  marginBottom: 6,
 };
 
 const orderLink = {
@@ -999,15 +1030,16 @@ const orderLink = {
   border: "none",
   padding: 0,
   margin: 0,
-  color: "#2563eb",
-  fontSize: 12,
+  color: "#18181b",
+  fontSize: 13,
   fontWeight: 700,
   cursor: "pointer",
+  textDecoration: "underline",
 };
 
 const issuePreviewStyle = {
   marginTop: 8,
-  color: "#475569",
+  color: "#52525b",
   lineHeight: 1.55,
   fontSize: 12,
   display: "-webkit-box",
@@ -1017,43 +1049,56 @@ const issuePreviewStyle = {
 };
 
 const notePreviewStyle = {
-  marginTop: 8,
+  marginTop: 10,
   fontSize: 12,
   lineHeight: 1.55,
-  color: "#7c2d12",
-  background: "#fff7ed",
-  border: "1px solid #fed7aa",
-  borderRadius: 10,
-  padding: "8px 10px",
+  color: "#991b1b",
+  background: "#fef2f2",
+  border: "1px solid #fecaca",
+  borderRadius: 8,
+  padding: "8px 12px",
+  fontWeight: 500,
+};
+
+const notePreviewStyleAdmin = {
+  marginTop: 10,
+  fontSize: 12,
+  lineHeight: 1.55,
+  color: "#18181b",
+  background: "#f4f4f5",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
+  padding: "8px 12px",
+  fontWeight: 500,
 };
 
 const customerName = {
   fontSize: 14,
   fontWeight: 700,
-  color: "#0f172a",
+  color: "#0a0a0a",
   marginBottom: 6,
 };
 
 const miniStrong = {
   fontSize: 13,
   fontWeight: 700,
-  color: "#0f172a",
+  color: "#0a0a0a",
   marginBottom: 6,
 };
 
 const miniMeta = {
   fontSize: 12,
-  color: "#64748b",
+  color: "#71717a",
   lineHeight: 1.5,
 };
 
 const statusPill = {
   display: "inline-flex",
   alignItems: "center",
-  padding: "6px 10px",
+  padding: "6px 12px",
   borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 800,
+  fontSize: 11,
+  fontWeight: 700,
   border: "1px solid transparent",
 };
 
@@ -1064,31 +1109,33 @@ const rowActions = {
 };
 
 const primaryOutlineBtn = {
-  padding: "8px 12px",
-  borderRadius: 10,
-  border: "1px solid #bfdbfe",
-  background: "#eff6ff",
-  color: "#1d4ed8",
-  fontSize: 12,
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const plainActionBtn = {
-  padding: "8px 12px",
-  borderRadius: 10,
-  border: "1px solid #e2e8f0",
-  background: "#fff",
-  color: "#334155",
+  padding: "8px 14px",
+  borderRadius: 8,
+  border: "1px solid #18181b",
+  background: "#18181b",
+  color: "#ffffff",
   fontSize: 12,
   fontWeight: 700,
   cursor: "pointer",
+  transition: "background 0.2s",
+};
+
+const plainActionBtn = {
+  padding: "8px 14px",
+  borderRadius: 8,
+  border: "1px solid #e4e4e7",
+  background: "#f4f4f5",
+  color: "#18181b",
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: "pointer",
+  transition: "background 0.2s",
 };
 
 const overlay = {
   position: "fixed",
   inset: 0,
-  background: "rgba(15, 23, 42, 0.45)",
+  background: "rgba(0, 0, 0, 0.6)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -1100,9 +1147,9 @@ const reviewModal = {
   width: "100%",
   maxWidth: 1040,
   background: "#fff",
-  borderRadius: 22,
+  borderRadius: 20,
   overflow: "hidden",
-  boxShadow: "0 28px 80px rgba(15, 23, 42, 0.28)",
+  boxShadow: "0 25px 60px rgba(0, 0, 0, 0.15)",
 };
 
 const smallModal = {
@@ -1111,24 +1158,24 @@ const smallModal = {
   background: "#fff",
   borderRadius: 20,
   overflow: "hidden",
-  boxShadow: "0 28px 80px rgba(15, 23, 42, 0.28)",
+  boxShadow: "0 25px 60px rgba(0, 0, 0, 0.15)",
 };
 
 const modalHeader = {
-  padding: "20px 22px 16px",
+  padding: "24px 24px 16px",
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
   gap: 16,
-  borderBottom: "1px solid #eef2f7",
+  borderBottom: "1px solid #e4e4e7",
 };
 
 const modalEyebrow = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.12em",
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: "1px",
   textTransform: "uppercase",
-  color: "#64748b",
+  color: "#71717a",
   marginBottom: 8,
 };
 
@@ -1136,26 +1183,31 @@ const modalTitle = {
   margin: 0,
   fontSize: 22,
   fontWeight: 800,
-  color: "#0f172a",
+  color: "#0a0a0a",
   lineHeight: 1.15,
+  letterSpacing: "-0.01em",
 };
 
 const modalSubline = {
   marginTop: 8,
   fontSize: 13,
-  color: "#64748b",
+  color: "#52525b",
 };
 
 const closeBtn = {
-  width: 38,
-  height: 38,
+  width: 36,
+  height: 36,
   borderRadius: 999,
-  border: "1px solid #e2e8f0",
-  background: "#fff",
-  color: "#475569",
-  fontSize: 15,
+  border: "1px solid #e4e4e7",
+  background: "#fafafa",
+  color: "#52525b",
+  fontSize: 16,
   fontWeight: 700,
   cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  transition: "all 0.2s",
 };
 
 const reviewGrid = {
@@ -1165,38 +1217,38 @@ const reviewGrid = {
 };
 
 const mainColumn = {
-  padding: 22,
+  padding: 24,
   display: "flex",
   flexDirection: "column",
-  gap: 14,
-  borderRight: "1px solid #eef2f7",
+  gap: 16,
+  borderRight: "1px solid #e4e4e7",
 };
 
 const sideColumn = {
-  padding: 22,
-  background: "#fbfdff",
+  padding: 24,
+  background: "#fafafa",
 };
 
 const panel = {
   background: "#fff",
-  border: "1px solid #e8edf5",
-  borderRadius: 16,
-  padding: 16,
+  border: "1px solid #e4e4e7",
+  borderRadius: 12,
+  padding: 20,
 };
 
 const panelTitle = {
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 800,
-  color: "#64748b",
+  color: "#0a0a0a",
   textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  marginBottom: 12,
+  letterSpacing: "1px",
+  marginBottom: 14,
 };
 
 const issueBody = {
   fontSize: 14,
-  lineHeight: 1.75,
-  color: "#334155",
+  lineHeight: 1.6,
+  color: "#18181b",
   whiteSpace: "pre-wrap",
 };
 
@@ -1207,156 +1259,164 @@ const evidenceRow = {
 };
 
 const evidenceBtn = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid #bfdbfe",
-  background: "#eff6ff",
-  color: "#1d4ed8",
+  padding: "10px 16px",
+  borderRadius: 8,
+  border: "1px solid #18181b",
+  background: "#18181b",
+  color: "#ffffff",
   fontSize: 13,
-  fontWeight: 800,
+  fontWeight: 700,
   cursor: "pointer",
+  transition: "background 0.2s",
 };
 
 const secondaryEvidenceBtn = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid #dbe2ea",
-  background: "#f8fafc",
-  color: "#334155",
+  padding: "10px 16px",
+  borderRadius: 8,
+  border: "1px solid #e4e4e7",
+  background: "#f4f4f5",
+  color: "#18181b",
   fontSize: 13,
-  fontWeight: 800,
+  fontWeight: 700,
   cursor: "pointer",
+  transition: "background 0.2s",
 };
 
 const summaryCard = {
   background: "#fff",
-  border: "1px solid #e8edf5",
-  borderRadius: 18,
-  padding: 18,
+  border: "1px solid #e4e4e7",
+  borderRadius: 16,
+  padding: 20,
 };
 
 const summaryTitle = {
   fontSize: 16,
   fontWeight: 800,
-  color: "#0f172a",
-  marginBottom: 16,
+  color: "#0a0a0a",
+  marginBottom: 20,
 };
 
 const summaryItem = {
   display: "flex",
   flexDirection: "column",
   gap: 6,
-  marginBottom: 14,
+  marginBottom: 16,
 };
 
 const summaryLabel = {
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 800,
   textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  color: "#94a3b8",
+  letterSpacing: "1px",
+  color: "#71717a",
 };
 
 const summaryValue = {
   fontSize: 14,
   fontWeight: 700,
-  color: "#0f172a",
+  color: "#18181b",
   lineHeight: 1.5,
 };
 
 const summaryDivider = {
   height: 1,
-  background: "#eef2f7",
-  margin: "16px 0",
+  background: "#e4e4e7",
+  margin: "20px 0",
 };
 
 const fullWidthGhost = {
   width: "100%",
-  padding: "11px 14px",
-  borderRadius: 12,
-  border: "1px solid #dbe2ea",
-  background: "#fff",
-  color: "#334155",
+  padding: "12px 16px",
+  borderRadius: 8,
+  border: "1px solid #e4e4e7",
+  background: "#f4f4f5",
+  color: "#18181b",
   fontSize: 13,
-  fontWeight: 800,
+  fontWeight: 700,
   cursor: "pointer",
+  transition: "background 0.2s",
 };
 
 const decisionStack = {
   display: "grid",
-  gap: 10,
-  marginTop: 12,
+  gap: 12,
+  marginTop: 16,
 };
 
 const approveBtn = {
   width: "100%",
-  padding: "11px 14px",
-  borderRadius: 12,
-  border: "1px solid #86efac",
-  background: "#dcfce7",
-  color: "#166534",
+  padding: "12px 16px",
+  borderRadius: 8,
+  border: "1px solid #18181b",
+  background: "#18181b",
+  color: "#ffffff",
   fontSize: 13,
-  fontWeight: 800,
+  fontWeight: 700,
   cursor: "pointer",
+  transition: "background 0.2s",
 };
 
 const rejectBtn = {
   width: "100%",
-  padding: "11px 14px",
-  borderRadius: 12,
-  border: "1px solid #fca5a5",
-  background: "#fee2e2",
+  padding: "12px 16px",
+  borderRadius: 8,
+  border: "1px solid #fecaca",
+  background: "#fef2f2",
   color: "#dc2626",
   fontSize: 13,
-  fontWeight: 800,
+  fontWeight: 700,
   cursor: "pointer",
+  transition: "background 0.2s",
 };
 
 const fulfillBtn = {
   width: "100%",
-  padding: "11px 14px",
-  borderRadius: 12,
-  border: "1px solid #93c5fd",
-  background: "#dbeafe",
-  color: "#1d4ed8",
+  padding: "12px 16px",
+  borderRadius: 8,
+  border: "1px solid #18181b",
+  background: "#18181b",
+  color: "#ffffff",
   fontSize: 13,
-  fontWeight: 800,
+  fontWeight: 700,
   cursor: "pointer",
-  marginTop: 12,
+  marginTop: 16,
+  transition: "background 0.2s",
 };
 
 const fileInput = {
   width: "100%",
-  padding: "10px 12px",
-  border: "1px solid #d1d5db",
-  borderRadius: 12,
+  padding: "10px 14px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
   boxSizing: "border-box",
+  background: "#fafafa",
 };
 
 const textareaInput = {
   width: "100%",
   minHeight: 120,
-  padding: "12px 14px",
-  border: "1px solid #d1d5db",
-  borderRadius: 12,
+  padding: "14px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
   boxSizing: "border-box",
   resize: "vertical",
   outline: "none",
-  color: "#0f172a",
+  color: "#18181b",
+  fontFamily: "inherit",
 };
 
 const helperText = {
-  marginTop: 8,
+  marginTop: 10,
   fontSize: 12,
-  color: "#64748b",
+  color: "#71717a",
   lineHeight: 1.5,
 };
 
 const modalFooter = {
   display: "flex",
   justifyContent: "flex-end",
-  gap: 10,
-  padding: "0 22px 22px",
+  gap: 12,
+  padding: "0 24px 24px",
 };

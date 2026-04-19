@@ -190,11 +190,13 @@ export default function WebsiteSettingsPage() {
           justifyContent: "space-between",
           alignItems: "flex-start",
           marginBottom: 20,
+          flexWrap: "wrap",
+          gap: 16,
         }}
       >
         <div>
           <h1 style={pageTitle}>Website Maintenance</h1>
-          <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>
+          <p style={{ fontSize: 13, color: "#52525b", margin: "4px 0 0" }}>
             Configure the customer-facing website settings, payment options, and
             business policies.
           </p>
@@ -202,7 +204,11 @@ export default function WebsiteSettingsPage() {
         <button
           onClick={handleSave}
           disabled={saving || !hasDirty}
-          style={{ ...btnPrimary, opacity: !hasDirty && !saving ? 0.5 : 1 }}
+          style={{
+            ...btnPrimary,
+            opacity: !hasDirty && !saving ? 0.5 : 1,
+            cursor: !hasDirty && !saving ? "not-allowed" : "pointer",
+          }}
         >
           {saving ? "Saving..." : hasDirty ? "💾 Save Changes" : "✓ Saved"}
         </button>
@@ -211,13 +217,14 @@ export default function WebsiteSettingsPage() {
       {hasDirty && (
         <div
           style={{
-            background: "#fef9c3",
-            border: "1px solid #fde68a",
-            borderRadius: 8,
-            padding: "10px 16px",
-            marginBottom: 16,
+            background: "#fefce8",
+            border: "1px solid #fde047",
+            borderRadius: 12,
+            padding: "12px 16px",
+            marginBottom: 20,
             fontSize: 13,
-            color: "#92400e",
+            fontWeight: 600,
+            color: "#a16207",
           }}
         >
           ⚠️ You have unsaved changes. Click <strong>Save Changes</strong> to
@@ -230,8 +237,9 @@ export default function WebsiteSettingsPage() {
         style={{
           display: "flex",
           gap: 4,
-          borderBottom: "2px solid #e2e8f0",
+          borderBottom: "2px solid #e4e4e7",
           marginBottom: 24,
+          overflowX: "auto",
         }}
       >
         {Object.entries(SECTION_META).map(([key, meta]) => (
@@ -239,18 +247,21 @@ export default function WebsiteSettingsPage() {
             key={key}
             onClick={() => setActiveTab(key)}
             style={{
-              padding: "9px 20px",
+              padding: "10px 20px",
               border: "none",
               background: "none",
               cursor: "pointer",
-              fontWeight: 600,
+              fontWeight: 800,
               fontSize: 13,
-              color: activeTab === key ? "#1e40af" : "#64748b",
+              letterSpacing: "0.02em",
+              color: activeTab === key ? "#18181b" : "#71717a",
               borderBottom:
                 activeTab === key
-                  ? "2px solid #1e40af"
+                  ? "2px solid #18181b"
                   : "2px solid transparent",
               marginBottom: -2,
+              whiteSpace: "nowrap",
+              transition: "all 0.2s ease",
             }}
           >
             {meta.label}
@@ -297,11 +308,11 @@ function SettingRow({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "280px 1fr",
+        gridTemplateColumns: "minmax(240px, 300px) 1fr",
         gap: 20,
-        padding: "18px 24px",
-        borderBottom: "1px solid #f1f5f9",
-        background: isDirty ? "#fffbeb" : "transparent",
+        padding: "20px 24px",
+        borderBottom: "1px solid #f4f4f5",
+        background: isDirty ? "#fefce8" : "transparent",
         alignItems: "start",
       }}
     >
@@ -309,12 +320,12 @@ function SettingRow({
       <div>
         <div
           style={{
-            fontWeight: 600,
+            fontWeight: 800,
             fontSize: 13,
-            color: "#1e2a38",
+            color: "#0a0a0a",
             display: "flex",
             alignItems: "center",
-            gap: 6,
+            gap: 8,
           }}
         >
           {meta.label}
@@ -322,10 +333,10 @@ function SettingRow({
             <span
               style={{
                 fontSize: 10,
-                background: "#fde68a",
-                color: "#92400e",
-                padding: "1px 6px",
-                borderRadius: 8,
+                background: "#fde047",
+                color: "#854d0e",
+                padding: "2px 8px",
+                borderRadius: 12,
               }}
             >
               Modified
@@ -335,9 +346,10 @@ function SettingRow({
         <div
           style={{
             fontSize: 12,
-            color: "#94a3b8",
-            marginTop: 3,
-            lineHeight: 1.4,
+            color: "#71717a",
+            marginTop: 6,
+            lineHeight: 1.5,
+            fontWeight: 500,
           }}
         >
           {meta.hint}
@@ -351,8 +363,9 @@ function SettingRow({
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 10,
+              gap: 12,
               cursor: "pointer",
+              marginTop: 4,
             }}
           >
             <div
@@ -362,7 +375,7 @@ function SettingRow({
                 height: 24,
                 borderRadius: 12,
                 cursor: "pointer",
-                background: isTrue(value) ? "#1e40af" : "#d1d5db",
+                background: isTrue(value) ? "#18181b" : "#d4d4d8",
                 position: "relative",
                 transition: "background .2s",
                 flexShrink: 0,
@@ -385,8 +398,8 @@ function SettingRow({
             <span
               style={{
                 fontSize: 13,
-                color: isTrue(value) ? "#065f46" : "#64748b",
-                fontWeight: 500,
+                color: isTrue(value) ? "#18181b" : "#71717a",
+                fontWeight: 700,
               }}
             >
               {isTrue(value) ? "Enabled" : "Disabled"}
@@ -410,9 +423,9 @@ function SettingRow({
               type="number"
               value={value || ""}
               onChange={(e) => onChange(e.target.value)}
-              style={{ ...inputFull, width: 120 }}
+              style={{ ...inputFull, width: 140 }}
             />
-            <span style={{ fontSize: 12, color: "#64748b" }}>
+            <span style={{ fontSize: 12, color: "#71717a", fontWeight: 600 }}>
               {keyName === "warranty_period_days" ? "days" : "%"}
             </span>
           </div>
@@ -422,8 +435,8 @@ function SettingRow({
           <textarea
             value={value || ""}
             onChange={(e) => onChange(e.target.value)}
-            rows={3}
-            style={{ ...inputFull, resize: "vertical" }}
+            rows={4}
+            style={{ ...inputFull, resize: "vertical", fontFamily: "inherit" }}
             placeholder={`Enter ${meta.label.toLowerCase()}...`}
           />
         )}
@@ -435,26 +448,27 @@ function SettingRow({
                 src={preview}
                 alt="logo"
                 style={{
-                  height: 56,
-                  maxWidth: 160,
+                  height: 64,
+                  maxWidth: 180,
                   objectFit: "contain",
                   borderRadius: 8,
-                  border: "1px solid #e2e8f0",
-                  padding: 4,
-                  background: "#f8fafc",
+                  border: "1px solid #e4e4e7",
+                  padding: 8,
+                  background: "#fafafa",
                 }}
               />
             ) : (
               <div
                 style={{
                   width: 80,
-                  height: 56,
-                  background: "#f1f5f9",
+                  height: 64,
+                  background: "#f4f4f5",
+                  border: "1px solid #e4e4e7",
                   borderRadius: 8,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: 22,
+                  fontSize: 24,
                 }}
               >
                 🪵
@@ -467,9 +481,16 @@ function SettingRow({
                 onChange={(e) => {
                   if (e.target.files[0]) onLogoChange(e.target.files[0]);
                 }}
-                style={{ fontSize: 12 }}
+                style={{ fontSize: 13, color: "#52525b" }}
               />
-              <p style={{ fontSize: 11, color: "#94a3b8", margin: "4px 0 0" }}>
+              <p
+                style={{
+                  fontSize: 11,
+                  color: "#71717a",
+                  margin: "6px 0 0",
+                  fontWeight: 500,
+                }}
+              >
                 PNG or JPG, max 2MB
               </p>
             </div>
@@ -482,15 +503,17 @@ function SettingRow({
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const pageTitle = {
-  fontSize: 22,
-  fontWeight: 700,
-  color: "#1e2a38",
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#0a0a0a",
   margin: 0,
+  letterSpacing: "-0.02em",
 };
 const card = {
   background: "#fff",
-  borderRadius: 12,
-  boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+  borderRadius: 16,
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
   overflow: "hidden",
 };
 const center = {
@@ -498,23 +521,28 @@ const center = {
   alignItems: "center",
   justifyContent: "center",
   height: 300,
-  color: "#64748b",
+  color: "#71717a",
+  fontSize: 14,
+  fontWeight: 600,
 };
 const inputFull = {
   width: "100%",
-  padding: "8px 12px",
-  border: "1px solid #d1d5db",
-  borderRadius: 6,
+  padding: "10px 14px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
+  color: "#18181b",
   boxSizing: "border-box",
+  outline: "none",
 };
 const btnPrimary = {
-  padding: "9px 22px",
-  background: "#1e40af",
+  padding: "10px 20px",
+  background: "#18181b",
   color: "#fff",
   border: "none",
-  borderRadius: 6,
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 13,
-  fontWeight: 600,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };

@@ -13,6 +13,7 @@ import {
   Legend,
 } from "chart.js";
 import api from "../../services/api";
+import { useNavigate } from "react-router-dom";
 
 ChartJS.register(
   CategoryScale,
@@ -25,7 +26,6 @@ ChartJS.register(
   Tooltip,
   Legend,
 );
-import { useNavigate } from "react-router-dom";
 
 const PRESETS = [
   { key: "today", label: "Today" },
@@ -92,27 +92,35 @@ function getPercent(value, total) {
   return Math.min(100, Math.max(0, (Number(value || 0) / Number(total)) * 100));
 }
 
-function MetricCard({ tone, eyebrow, title, value, meta }) {
+function MetricCard({ eyebrow, title, value, meta, alert }) {
   return (
-    <div className={`metric-card metric-card--${tone}`}>
+    <div
+      className="metric-card"
+      style={{ borderLeftColor: alert ? "#ef4444" : "#18181b" }}
+    >
       <div className="metric-card__eyebrow">{eyebrow}</div>
-      <div className="metric-card__value">{value}</div>
+      <div
+        className="metric-card__value"
+        style={{ color: alert ? "#ef4444" : "#0a0a0a" }}
+      >
+        {value}
+      </div>
       <div className="metric-card__title">{title}</div>
       <div className="metric-card__meta">{meta}</div>
     </div>
   );
 }
 
-function MiniStat({ label, value, tone = "slate" }) {
+function MiniStat({ label, value }) {
   return (
-    <div className={`mini-stat mini-stat--${tone}`}>
+    <div className="mini-stat">
       <div className="mini-stat__label">{label}</div>
       <div className="mini-stat__value">{value}</div>
     </div>
   );
 }
 
-function ProgressRow({ label, value, total, tone }) {
+function ProgressRow({ label, value, total, alert }) {
   const percent = getPercent(value, total);
 
   return (
@@ -123,8 +131,11 @@ function ProgressRow({ label, value, total, tone }) {
       </div>
       <div className="progress-row__track">
         <div
-          className={`progress-row__fill progress-row__fill--${tone}`}
-          style={{ width: `${percent}%` }}
+          className="progress-row__fill"
+          style={{
+            width: `${percent}%`,
+            background: alert ? "#ef4444" : "#18181b",
+          }}
         />
       </div>
     </div>
@@ -132,29 +143,16 @@ function ProgressRow({ label, value, total, tone }) {
 }
 
 function StatusBadge({ status }) {
-  const map = {
-    pending: ["#fff7ed", "#c2410c", "#fdba74"],
-    confirmed: ["#eff6ff", "#1d4ed8", "#93c5fd"],
-    contract_released: ["#f5f3ff", "#7c3aed", "#c4b5fd"],
-    production: ["#faf5ff", "#7e22ce", "#d8b4fe"],
-    shipping: ["#ecfeff", "#0f766e", "#99f6e4"],
-    delivered: ["#f0fdf4", "#15803d", "#86efac"],
-    completed: ["#ecfdf5", "#047857", "#6ee7b7"],
-    cancelled: ["#fef2f2", "#b91c1c", "#fca5a5"],
-    paid: ["#ecfdf5", "#047857", "#6ee7b7"],
-    partial: ["#fff7ed", "#c2410c", "#fdba74"],
-    unpaid: ["#f8fafc", "#475569", "#cbd5e1"],
-  };
-
-  const [bg, color, border] = map[status] || ["#f8fafc", "#475569", "#cbd5e1"];
+  const isCompleted = ["delivered", "completed", "paid"].includes(status);
+  const isFailed = ["cancelled"].includes(status);
 
   return (
     <span
       className="dash-badge"
       style={{
-        background: bg,
-        color,
-        borderColor: border,
+        background: isFailed ? "#fef2f2" : isCompleted ? "#0a0a0a" : "#f4f4f5",
+        color: isFailed ? "#991b1b" : isCompleted ? "#ffffff" : "#18181b",
+        borderColor: isFailed ? "#fecaca" : isCompleted ? "#0a0a0a" : "#e4e4e7",
       }}
     >
       {String(status || "unknown").replace(/_/g, " ")}
@@ -163,15 +161,13 @@ function StatusBadge({ status }) {
 }
 
 function ChannelBadge({ channel }) {
-  const isOnline = channel === "online";
-
   return (
     <span
       className="dash-badge"
       style={{
-        background: isOnline ? "#eff6ff" : "#f0fdf4",
-        color: isOnline ? "#1d4ed8" : "#15803d",
-        borderColor: isOnline ? "#93c5fd" : "#86efac",
+        background: "#f4f4f5",
+        color: "#18181b",
+        borderColor: "#e4e4e7",
       }}
     >
       {channel || "—"}
@@ -180,15 +176,13 @@ function ChannelBadge({ channel }) {
 }
 
 function TypeBadge({ type }) {
-  const isBlueprint = type === "blueprint";
-
   return (
     <span
       className="dash-badge"
       style={{
-        background: isBlueprint ? "#f5f3ff" : "#f8fafc",
-        color: isBlueprint ? "#7c3aed" : "#475569",
-        borderColor: isBlueprint ? "#c4b5fd" : "#cbd5e1",
+        background: type === "blueprint" ? "#18181b" : "#f4f4f5",
+        color: type === "blueprint" ? "#ffffff" : "#18181b",
+        borderColor: type === "blueprint" ? "#18181b" : "#e4e4e7",
       }}
     >
       {type || "standard"}
@@ -359,26 +353,27 @@ export default function DashboardPage() {
         {
           label: "Online Sales",
           data: salesChart.map((row) => Number(row.online_sales || 0)),
-          borderColor: "#2563eb",
-          backgroundColor: "rgba(37,99,235,0.08)",
+          borderColor: "#0a0a0a",
+          backgroundColor: "rgba(10, 10, 10, 0.05)",
           fill: true,
           tension: 0.36,
           borderWidth: 2,
           pointRadius: chartMode === "monthly" ? 2.5 : 1.8,
           pointHoverRadius: 4,
-          pointBackgroundColor: "#2563eb",
+          pointBackgroundColor: "#0a0a0a",
         },
         {
           label: "Walk-in Sales",
           data: salesChart.map((row) => Number(row.walkin_sales || 0)),
-          borderColor: "#10b981",
-          backgroundColor: "rgba(16,185,129,0.08)",
-          fill: true,
+          borderColor: "#71717a",
+          backgroundColor: "transparent",
+          borderDash: [5, 5],
+          fill: false,
           tension: 0.36,
           borderWidth: 2,
           pointRadius: chartMode === "monthly" ? 2.5 : 1.8,
           pointHoverRadius: 4,
-          pointBackgroundColor: "#10b981",
+          pointBackgroundColor: "#71717a",
         },
       ],
     }),
@@ -396,7 +391,7 @@ export default function DashboardPage() {
           data: topProducts
             .slice(0, 8)
             .map((item) => Number(item.units_sold || 0)),
-          backgroundColor: "#4f46e5",
+          backgroundColor: "#18181b",
           borderRadius: 10,
           borderSkipped: false,
           barThickness: 14,
@@ -418,16 +413,16 @@ export default function DashboardPage() {
           labels: {
             usePointStyle: true,
             boxWidth: 8,
-            color: "#334155",
-            font: { size: 11, weight: 600 },
+            color: "#18181b",
+            font: { size: 11, weight: 600, family: "Inter" },
             padding: 16,
           },
         },
         tooltip: {
-          backgroundColor: "#0f172a",
+          backgroundColor: "#18181b",
           padding: 10,
-          titleFont: { size: 11, weight: 700 },
-          bodyFont: { size: 11 },
+          titleFont: { size: 11, weight: 700, family: "Inter" },
+          bodyFont: { size: 11, family: "Inter" },
           callbacks: {
             label: (ctx) =>
               `${ctx.dataset.label}: ${peso.format(ctx.parsed.y || 0)}`,
@@ -437,11 +432,11 @@ export default function DashboardPage() {
       scales: {
         x: {
           ticks: {
-            color: "#64748b",
+            color: "#71717a",
             maxRotation: 0,
             autoSkip: true,
             maxTicksLimit: chartMode === "monthly" ? 12 : 8,
-            font: { size: 11 },
+            font: { size: 11, family: "Inter" },
           },
           grid: { display: false },
           border: { display: false },
@@ -449,12 +444,12 @@ export default function DashboardPage() {
         y: {
           beginAtZero: true,
           ticks: {
-            color: "#64748b",
+            color: "#71717a",
             callback: (value) => peso.format(value),
-            font: { size: 11 },
+            font: { size: 11, family: "Inter" },
           },
           grid: {
-            color: "rgba(148,163,184,0.12)",
+            color: "#f4f4f5",
           },
           border: { display: false },
         },
@@ -471,10 +466,10 @@ export default function DashboardPage() {
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: "#0f172a",
+          backgroundColor: "#18181b",
           padding: 10,
-          titleFont: { size: 11, weight: 700 },
-          bodyFont: { size: 11 },
+          titleFont: { size: 11, weight: 700, family: "Inter" },
+          bodyFont: { size: 11, family: "Inter" },
           callbacks: {
             label: (ctx) => ` ${num.format(ctx.parsed.x || 0)} units`,
           },
@@ -484,19 +479,19 @@ export default function DashboardPage() {
         x: {
           beginAtZero: true,
           ticks: {
-            color: "#64748b",
+            color: "#71717a",
             precision: 0,
-            font: { size: 11 },
+            font: { size: 11, family: "Inter" },
           },
           grid: {
-            color: "rgba(148,163,184,0.12)",
+            color: "#f4f4f5",
           },
           border: { display: false },
         },
         y: {
           ticks: {
-            color: "#334155",
-            font: { size: 11, weight: 600 },
+            color: "#18181b",
+            font: { size: 11, weight: 600, family: "Inter" },
           },
           grid: { display: false },
           border: { display: false },
@@ -633,7 +628,6 @@ export default function DashboardPage() {
 
       <section className="metric-grid metric-grid--six">
         <MetricCard
-          tone="blue"
           eyebrow="Selected Range"
           value={peso.format(Number(sales.total_revenue || 0))}
           title="Net Sales"
@@ -643,7 +637,6 @@ export default function DashboardPage() {
         />
 
         <MetricCard
-          tone="violet"
           eyebrow="Current Queue"
           value={num.format(currentOpenOrders)}
           title="Open Orders"
@@ -653,7 +646,6 @@ export default function DashboardPage() {
         />
 
         <MetricCard
-          tone="amber"
           eyebrow="Current Queue"
           value={num.format(pendingReviews)}
           title="Pending Payment Review"
@@ -661,7 +653,7 @@ export default function DashboardPage() {
         />
 
         <MetricCard
-          tone="red"
+          alert={stockAlerts > 0}
           eyebrow="Inventory Alerts"
           value={num.format(stockAlerts)}
           title="Low / Out of Stock"
@@ -671,7 +663,6 @@ export default function DashboardPage() {
         />
 
         <MetricCard
-          tone="cyan"
           eyebrow="Custom Operations"
           value={num.format(activeBlueprintJobs)}
           title="Active Blueprint Jobs"
@@ -683,7 +674,6 @@ export default function DashboardPage() {
         />
 
         <MetricCard
-          tone="slate"
           eyebrow="Channel Mix"
           value={`${num.format(onlineOrders)} / ${num.format(walkinOrders)}`}
           title="Online vs Walk-in"
@@ -712,23 +702,16 @@ export default function DashboardPage() {
             <MiniStat
               label="Revenue"
               value={peso.format(Number(sales.total_revenue || 0))}
-              tone="blue"
             />
             <MiniStat
               label="Profit"
               value={peso.format(Number(sales.total_profit || 0))}
-              tone="green"
             />
             <MiniStat
               label="Avg Order"
               value={peso.format(Number(sales.avg_order_value || 0))}
-              tone="violet"
             />
-            <MiniStat
-              label="Orders"
-              value={num.format(totalOrders)}
-              tone="amber"
-            />
+            <MiniStat label="Orders" value={num.format(totalOrders)} />
           </div>
 
           <div className="dash-chart-area dash-chart-area--large">
@@ -781,43 +764,37 @@ export default function DashboardPage() {
               label="Pending"
               value={currentPending}
               total={currentTotalOrders}
-              tone="amber"
             />
             <ProgressRow
               label="Confirmed"
               value={currentConfirmed}
               total={currentTotalOrders}
-              tone="blue"
             />
             <ProgressRow
               label="In Production"
               value={currentProduction}
               total={currentTotalOrders}
-              tone="violet"
             />
             <ProgressRow
               label="Shipping"
               value={currentShipping}
               total={currentTotalOrders}
-              tone="cyan"
             />
             <ProgressRow
               label="Delivered"
               value={currentDelivered}
               total={currentTotalOrders}
-              tone="green"
             />
             <ProgressRow
               label="Completed"
               value={currentCompleted}
               total={currentTotalOrders}
-              tone="green-strong"
             />
             <ProgressRow
               label="Cancelled"
               value={currentCancelled}
               total={currentTotalOrders}
-              tone="red"
+              alert={true}
             />
           </div>
 
@@ -864,32 +841,23 @@ export default function DashboardPage() {
               <MiniStat
                 label="Products"
                 value={num.format(Number(inventory.total_products || 0))}
-                tone="blue"
               />
               <MiniStat
                 label="Raw Materials"
                 value={num.format(Number(inventory.total_raw_materials || 0))}
-                tone="slate"
               />
               <MiniStat
                 label="Stock In"
                 value={num.format(Number(inventory.stock_in_total || 0))}
-                tone="green"
               />
               <MiniStat
                 label="Stock Out"
                 value={num.format(Number(inventory.stock_out_total || 0))}
-                tone="cyan"
               />
-              <MiniStat
-                label="Low Stock"
-                value={num.format(lowStockTotal)}
-                tone="amber"
-              />
+              <MiniStat label="Low Stock" value={num.format(lowStockTotal)} />
               <MiniStat
                 label="Critical Level"
                 value={num.format(outOfStockTotal)}
-                tone="red"
               />
             </div>
 
@@ -940,49 +908,41 @@ export default function DashboardPage() {
               label="Pending Review"
               value={Number(blueprint.pending_custom_review || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
-              tone="amber"
             />
             <ProgressRow
               label="Estimate Drafting"
               value={Number(blueprint.estimate_drafting || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
-              tone="slate"
             />
             <ProgressRow
               label="Quotation Waiting"
               value={Number(blueprint.quotation_waiting || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
-              tone="blue"
             />
             <ProgressRow
               label="Quotation Approved"
               value={Number(blueprint.quotation_approved || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
-              tone="green"
             />
             <ProgressRow
               label="Contract Released"
               value={Number(blueprint.contract_released || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
-              tone="violet"
             />
             <ProgressRow
               label="In Production"
               value={Number(blueprint.in_production || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
-              tone="violet-strong"
             />
             <ProgressRow
               label="Ready for Dispatch"
               value={Number(blueprint.ready_for_dispatch || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
-              tone="cyan"
             />
             <ProgressRow
               label="Completed"
               value={Number(blueprint.completed_blueprint_orders || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
-              tone="green-strong"
             />
           </div>
         </div>
@@ -1086,23 +1046,23 @@ const dashboardCss = `
   .dash-shell {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    color: #0f172a;
+    gap: 20px;
+    color: #0a0a0a;
+    font-family: 'Inter', sans-serif;
   }
 
   .hero-panel,
   .dash-filter-card,
   .dash-card,
   .metric-card {
-    background:
-      linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(251,253,255,0.98) 100%);
-    border: 1px solid #e7edf5;
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+    background: #ffffff;
+    border: 1px solid #e4e4e7;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
   }
 
   .hero-panel {
-    border-radius: 20px;
-    padding: 18px 20px;
+    border-radius: 16px;
+    padding: 24px;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -1110,17 +1070,6 @@ const dashboardCss = `
     flex-wrap: wrap;
     position: relative;
     overflow: hidden;
-  }
-
-  .hero-panel--compact::after {
-    content: '';
-    position: absolute;
-    top: -54px;
-    right: -54px;
-    width: 150px;
-    height: 150px;
-    background: radial-gradient(circle, rgba(37, 99, 235, 0.12) 0%, rgba(37, 99, 235, 0) 70%);
-    pointer-events: none;
   }
 
   .hero-panel__left,
@@ -1133,24 +1082,24 @@ const dashboardCss = `
   .section-kicker {
     font-size: 10px;
     font-weight: 800;
-    letter-spacing: 0.14em;
+    letter-spacing: 1.2px;
     text-transform: uppercase;
-    color: #64748b;
+    color: #71717a;
     margin-bottom: 8px;
   }
 
   .dash-title {
     margin: 0;
-    font-size: 24px;
+    font-size: 26px;
     line-height: 1.12;
     font-weight: 800;
-    color: #0f172a;
+    color: #0a0a0a;
     letter-spacing: -0.02em;
   }
 
   .dash-subtitle {
     margin: 8px 0 0;
-    color: #64748b;
+    color: #52525b;
     font-size: 13px;
     max-width: 720px;
   }
@@ -1160,35 +1109,35 @@ const dashboardCss = `
     align-items: center;
     gap: 10px;
     flex-wrap: wrap;
-    margin-top: 12px;
+    margin-top: 16px;
   }
 
   .hero-period-chip {
     display: inline-flex;
     align-items: center;
     min-height: 30px;
-    padding: 0 12px;
+    padding: 0 14px;
     border-radius: 999px;
-    background: #eff6ff;
-    color: #1d4ed8;
+    background: #0a0a0a;
+    color: #ffffff;
     font-size: 11px;
-    font-weight: 800;
-    border: 1px solid #bfdbfe;
+    font-weight: 700;
+    letter-spacing: 0.5px;
   }
 
   .hero-period-text {
     font-size: 12px;
-    color: #64748b;
+    color: #52525b;
     font-weight: 600;
   }
 
   .dash-filter-card,
   .dash-card {
-    border-radius: 20px;
+    border-radius: 16px;
   }
 
   .dash-filter-card {
-    padding: 16px 18px;
+    padding: 20px;
   }
 
   .dash-pill-row {
@@ -1198,28 +1147,25 @@ const dashboardCss = `
   }
 
   .dash-pill {
-    border: 1px solid #dbe4ee;
+    border: 1px solid #e4e4e7;
     background: #ffffff;
-    color: #334155;
+    color: #18181b;
     border-radius: 999px;
-    padding: 8px 13px;
-    font-size: 11px;
-    font-weight: 700;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.18s ease;
+    transition: all 0.15s ease;
   }
 
   .dash-pill:hover {
-    border-color: #93c5fd;
-    color: #1d4ed8;
-    transform: translateY(-1px);
+    border-color: #18181b;
   }
 
   .dash-pill.active {
-    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
-    border-color: #2563eb;
+    background: #18181b;
+    border-color: #18181b;
     color: #ffffff;
-    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.2);
   }
 
   .dash-custom-row {
@@ -1227,7 +1173,7 @@ const dashboardCss = `
     flex-wrap: wrap;
     align-items: end;
     gap: 12px;
-    margin-top: 14px;
+    margin-top: 16px;
   }
 
   .dash-field {
@@ -1240,23 +1186,22 @@ const dashboardCss = `
   .dash-field label {
     font-size: 11px;
     font-weight: 700;
-    color: #475569;
+    color: #52525b;
   }
 
   .dash-field input {
     height: 38px;
-    border: 1px solid #dbe4ee;
-    border-radius: 11px;
+    border: 1px solid #e4e4e7;
+    border-radius: 8px;
     padding: 0 12px;
-    font-size: 12px;
-    color: #0f172a;
+    font-size: 13px;
+    color: #18181b;
     outline: none;
     background: #ffffff;
   }
 
   .dash-field input:focus {
-    border-color: #60a5fa;
-    box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.14);
+    border-color: #18181b;
   }
 
   .dash-custom-actions {
@@ -1267,12 +1212,12 @@ const dashboardCss = `
   .dash-btn {
     height: 38px;
     border: 1px solid transparent;
-    border-radius: 12px;
-    padding: 0 15px;
+    border-radius: 8px;
+    padding: 0 18px;
     font-size: 12px;
     font-weight: 700;
     cursor: pointer;
-    transition: all 0.18s ease;
+    transition: all 0.15s ease;
   }
 
   .dash-btn:disabled {
@@ -1281,45 +1226,43 @@ const dashboardCss = `
   }
 
   .dash-btn-primary {
-    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+    background: #18181b;
     color: #ffffff;
-    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
   }
 
   .dash-btn-primary:hover:not(:disabled) {
-    transform: translateY(-1px);
+    background: #3f3f46;
   }
 
   .dash-btn-ghost {
-    background: #ffffff;
-    border-color: #dbe4ee;
-    color: #334155;
+    background: #f4f4f5;
+    border-color: #e4e4e7;
+    color: #18181b;
   }
 
   .dash-btn-ghost:hover:not(:disabled) {
-    border-color: #93c5fd;
-    color: #1d4ed8;
+    background: #e4e4e7;
   }
 
   .dash-inline-error {
     margin-top: 12px;
-    color: #b91c1c;
+    color: #dc2626;
     font-size: 12px;
     font-weight: 600;
   }
 
   .dash-inline-alert {
     border: 1px solid #fecaca;
-    background: #fff1f2;
-    color: #9f1239;
-    border-radius: 16px;
-    padding: 12px 14px;
+    background: #fef2f2;
+    color: #991b1b;
+    border-radius: 12px;
+    padding: 12px 16px;
     font-size: 12px;
   }
 
   .metric-grid {
     display: grid;
-    gap: 14px;
+    gap: 16px;
   }
 
   .metric-grid--six {
@@ -1327,77 +1270,45 @@ const dashboardCss = `
   }
 
   .metric-card {
-    border-radius: 18px;
-    padding: 16px;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .metric-card::before {
-    content: '';
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 4px;
-  }
-
-  .metric-card--blue::before {
-    background: #2563eb;
-  }
-
-  .metric-card--violet::before {
-    background: #7c3aed;
-  }
-
-  .metric-card--amber::before {
-    background: #d97706;
-  }
-
-  .metric-card--red::before {
-    background: #dc2626;
-  }
-
-  .metric-card--cyan::before {
-    background: #0891b2;
-  }
-
-  .metric-card--slate::before {
-    background: #475569;
+    border-radius: 16px;
+    padding: 18px;
+    border-left: 4px solid #18181b;
   }
 
   .metric-card__eyebrow {
     font-size: 10px;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: #64748b;
+    letter-spacing: 1.2px;
+    color: #71717a;
     margin-bottom: 10px;
   }
 
   .metric-card__value {
-    font-size: 22px;
-    line-height: 1.08;
+    font-size: 26px;
+    line-height: 1;
     font-weight: 800;
     letter-spacing: -0.02em;
-    color: #0f172a;
+    color: #0a0a0a;
     margin-bottom: 8px;
   }
 
   .metric-card__title {
     font-size: 13px;
     font-weight: 700;
-    color: #334155;
+    color: #18181b;
     margin-bottom: 6px;
   }
 
   .metric-card__meta {
     font-size: 11px;
     line-height: 1.45;
-    color: #64748b;
+    color: #52525b;
   }
 
   .dashboard-grid {
     display: grid;
-    gap: 16px;
+    gap: 20px;
   }
 
   .dashboard-grid--main {
@@ -1413,20 +1324,20 @@ const dashboardCss = `
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
-    padding: 18px 18px 0;
+    padding: 20px 20px 0;
   }
 
   .card-header--table {
     align-items: center;
-    padding-bottom: 14px;
-    border-bottom: 1px solid #eef2f7;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e4e4e7;
   }
 
   .card-title {
     margin: 0;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 800;
-    color: #0f172a;
+    color: #0a0a0a;
     letter-spacing: -0.01em;
   }
 
@@ -1435,11 +1346,11 @@ const dashboardCss = `
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    transition: color 0.2s ease;
+    transition: color 0.15s ease;
   }
 
   .clickable-title:hover {
-    color: #2563eb; /* Changes to blue on hover */
+    color: #52525b; 
   }
 
   .link-arrow {
@@ -1447,7 +1358,7 @@ const dashboardCss = `
     opacity: 0;
     transform: translateX(-4px);
     transition: all 0.2s ease;
-    color: #2563eb;
+    color: #52525b;
   }
 
   .clickable-title:hover .link-arrow {
@@ -1456,15 +1367,15 @@ const dashboardCss = `
   }
 
   .card-description {
-    margin: 4px 0 0;
-    font-size: 12px;
-    color: #64748b;
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: #52525b;
   }
 
   .mini-stat-grid {
     display: grid;
-    gap: 10px;
-    padding: 14px 18px 0;
+    gap: 12px;
+    padding: 20px 20px 0;
   }
 
   .mini-stat-grid--four {
@@ -1472,103 +1383,75 @@ const dashboardCss = `
   }
 
   .mini-stat {
-    border-radius: 14px;
-    padding: 12px 13px;
-    border: 1px solid #e8eef5;
-    background: #fbfdff;
-  }
-
-  .mini-stat--blue {
-    background: #f8fbff;
-  }
-
-  .mini-stat--green {
-    background: #f7fdf9;
-  }
-
-  .mini-stat--violet {
-    background: #fbf9ff;
-  }
-
-  .mini-stat--amber {
-    background: #fffaf5;
-  }
-
-  .mini-stat--red {
-    background: #fff8f8;
-  }
-
-  .mini-stat--cyan {
-    background: #f4fbfd;
-  }
-
-  .mini-stat--slate {
-    background: #f8fafc;
+    border-radius: 12px;
+    padding: 14px;
+    border: 1px solid #e4e4e7;
+    background: #fafafa;
   }
 
   .mini-stat__label {
     font-size: 10px;
     font-weight: 800;
-    letter-spacing: 0.08em;
+    letter-spacing: 1px;
     text-transform: uppercase;
-    color: #64748b;
-    margin-bottom: 7px;
+    color: #71717a;
+    margin-bottom: 8px;
   }
 
   .mini-stat__value {
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 800;
-    color: #0f172a;
+    color: #0a0a0a;
     letter-spacing: -0.01em;
   }
 
   .dash-chart-area {
-    height: 300px;
-    padding: 10px 18px 18px;
+    height: 320px;
+    padding: 16px 20px 20px;
   }
 
   .dash-chart-area--large {
-    height: 340px;
+    height: 360px;
   }
 
   .fulfillment-summary {
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 12px;
-    margin: 14px 18px 0;
-    padding: 14px;
-    border: 1px solid #e8eef5;
-    border-radius: 16px;
-    background: linear-gradient(180deg, #fbfdff 0%, #f8fbff 100%);
+    margin: 20px 20px 0;
+    padding: 16px;
+    border: 1px solid #e4e4e7;
+    border-radius: 12px;
+    background: #fafafa;
   }
 
   .fulfillment-summary__main,
   .fulfillment-summary__side {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
   }
 
   .fulfillment-summary__main span,
   .fulfillment-summary__side span {
     font-size: 11px;
-    color: #64748b;
+    color: #52525b;
     font-weight: 700;
   }
 
   .fulfillment-summary__main strong,
   .fulfillment-summary__side strong {
-    font-size: 20px;
+    font-size: 22px;
     line-height: 1.1;
-    color: #0f172a;
+    color: #0a0a0a;
     font-weight: 800;
   }
 
   .progress-list {
-    padding: 16px 18px 18px;
+    padding: 20px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
   }
 
   .progress-row__top {
@@ -1576,20 +1459,20 @@ const dashboardCss = `
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    font-size: 12px;
-    color: #475569;
-    margin-bottom: 7px;
+    font-size: 13px;
+    color: #52525b;
+    margin-bottom: 8px;
   }
 
   .progress-row__top strong {
-    color: #0f172a;
-    font-size: 12px;
+    color: #0a0a0a;
+    font-size: 13px;
   }
 
   .progress-row__track {
-    height: 9px;
+    height: 8px;
     border-radius: 999px;
-    background: #edf2f7;
+    background: #f4f4f5;
     overflow: hidden;
   }
 
@@ -1598,94 +1481,53 @@ const dashboardCss = `
     border-radius: 999px;
   }
 
-  .progress-row__fill--green {
-    background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
-  }
-
-  .progress-row__fill--green-strong {
-    background: linear-gradient(90deg, #059669 0%, #10b981 100%);
-  }
-
-  .progress-row__fill--amber {
-    background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
-  }
-
-  .progress-row__fill--violet {
-    background: linear-gradient(90deg, #8b5cf6 0%, #a78bfa 100%);
-  }
-
-  .progress-row__fill--violet-strong {
-    background: linear-gradient(90deg, #7c3aed 0%, #8b5cf6 100%);
-  }
-
-  .progress-row__fill--blue {
-    background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%);
-  }
-
-  .progress-row__fill--cyan {
-    background: linear-gradient(90deg, #0891b2 0%, #22d3ee 100%);
-  }
-
-  .progress-row__fill--red {
-    background: linear-gradient(90deg, #ef4444 0%, #f87171 100%);
-  }
-
-  .progress-row__fill--slate {
-    background: linear-gradient(90deg, #64748b 0%, #94a3b8 100%);
-  }
-
   .ops-footnote-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    padding: 0 18px 18px;
+    gap: 12px;
+    padding: 0 20px 20px;
   }
 
   .ops-footnote {
-    border-radius: 14px;
-    padding: 12px 13px;
-    border: 1px solid #e8eef5;
+    border-radius: 12px;
+    padding: 14px;
+    border: 1px solid #e4e4e7;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 10px;
+    background: #fafafa;
   }
 
   .ops-footnote span {
     font-size: 11px;
     font-weight: 700;
-    color: #64748b;
+    color: #52525b;
   }
 
   .ops-footnote strong {
     font-size: 16px;
     font-weight: 800;
-    color: #0f172a;
+    color: #0a0a0a;
   }
 
   .ops-footnote--warning {
-    background: #fffaf5;
+    border-color: #fde047;
+    background: #fefce8;
   }
 
   .ops-footnote--danger {
-    background: #fff8f8;
-  }
-
-  .ops-footnote--info {
-    background: #f8fbff;
-  }
-
-  .ops-footnote--success {
-    background: #f7fdf9;
+    border-color: #fecaca;
+    background: #fef2f2;
   }
 
   .inventory-panel {
-    padding: 14px 18px 18px;
+    padding: 20px;
   }
 
   .inventory-panel__grid {
     display: grid;
-    gap: 10px;
+    gap: 12px;
   }
 
   .inventory-panel__grid--triple {
@@ -1693,24 +1535,24 @@ const dashboardCss = `
   }
 
   .inventory-note {
-    margin-top: 12px;
-    border-radius: 16px;
-    padding: 14px;
-    border: 1px solid #ede7d7;
-    background: linear-gradient(180deg, #fffdfa 0%, #fff9ef 100%);
+    margin-top: 16px;
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid #e4e4e7;
+    background: #fafafa;
   }
 
   .inventory-note__title {
     font-size: 12px;
     font-weight: 800;
-    color: #8a5a12;
+    color: #18181b;
     margin-bottom: 6px;
   }
 
   .inventory-note__text {
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1.55;
-    color: #6b7280;
+    color: #52525b;
   }
 
   .dash-empty-state {
@@ -1720,7 +1562,7 @@ const dashboardCss = `
     justify-content: center;
     flex-direction: column;
     text-align: center;
-    color: #64748b;
+    color: #52525b;
     padding: 20px;
   }
 
@@ -1729,24 +1571,24 @@ const dashboardCss = `
   }
 
   .dash-empty-title {
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 800;
-    color: #334155;
+    color: #18181b;
     margin-bottom: 6px;
   }
 
   .dash-empty-text {
-    font-size: 12px;
+    font-size: 13px;
     max-width: 420px;
   }
 
   .dash-table-count {
     font-size: 11px;
     font-weight: 800;
-    color: #64748b;
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    padding: 7px 10px;
+    color: #52525b;
+    background: #f4f4f5;
+    border: 1px solid #e4e4e7;
+    padding: 8px 12px;
     border-radius: 999px;
     white-space: nowrap;
   }
@@ -1765,42 +1607,42 @@ const dashboardCss = `
     font-size: 10px;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: #64748b;
-    background: #f8fafc;
-    padding: 13px 16px;
-    border-bottom: 1px solid #eef2f7;
+    letter-spacing: 1px;
+    color: #71717a;
+    background: #fafafa;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e4e4e7;
     white-space: nowrap;
   }
 
   .dash-table tbody td {
-    padding: 14px 16px;
-    font-size: 12px;
-    color: #334155;
-    border-bottom: 1px solid #f1f5f9;
+    padding: 16px 20px;
+    font-size: 13px;
+    color: #18181b;
+    border-bottom: 1px solid #f4f4f5;
     vertical-align: middle;
     white-space: nowrap;
   }
 
   .dash-table tbody tr:hover {
-    background: #fafcff;
+    background: #fafafa;
   }
 
   .dash-strong {
     font-weight: 800;
-    color: #0f172a;
+    color: #0a0a0a;
   }
 
   .dash-badge {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 26px;
-    padding: 0 10px;
+    min-height: 28px;
+    padding: 0 12px;
     border-radius: 999px;
     border: 1px solid;
-    font-size: 10px;
-    font-weight: 800;
+    font-size: 11px;
+    font-weight: 700;
     text-transform: capitalize;
     white-space: nowrap;
   }
@@ -1817,15 +1659,15 @@ const dashboardCss = `
   .dash-loading-wrap {
     flex-direction: column;
     gap: 12px;
-    color: #64748b;
+    color: #52525b;
     font-size: 13px;
   }
 
   .dash-spinner {
     width: 24px;
     height: 24px;
-    border: 3px solid #dbe4ee;
-    border-top-color: #2563eb;
+    border: 3px solid #e4e4e7;
+    border-top-color: #18181b;
     border-radius: 50%;
     animation: dash-spin 0.9s linear infinite;
   }
@@ -1835,13 +1677,13 @@ const dashboardCss = `
     width: 100%;
     background: #ffffff;
     border: 1px solid #fecaca;
-    border-radius: 18px;
+    border-radius: 16px;
     padding: 24px;
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
   }
 
   .dash-error-title {
-    font-size: 17px;
+    font-size: 18px;
     font-weight: 800;
     color: #991b1b;
     margin-bottom: 10px;

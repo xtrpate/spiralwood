@@ -110,21 +110,24 @@ export default function StaticPagesPage() {
           justifyContent: "space-between",
           alignItems: "flex-start",
           marginBottom: 20,
+          flexWrap: "wrap",
+          gap: 16,
         }}
       >
         <div>
           <h1 style={pageTitle}>Page Content</h1>
-          <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>
+          <p style={{ fontSize: 13, color: "#52525b", margin: "4px 0 0" }}>
             Edit the content of static pages shown on the customer website.
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
             onClick={() => setShowPrev((p) => !p)}
             style={{
               ...btnGhost,
-              background: showPrev ? "#dbeafe" : "#f1f5f9",
-              color: showPrev ? "#1e40af" : "#374151",
+              background: showPrev ? "#18181b" : "#f4f4f5",
+              color: showPrev ? "#ffffff" : "#18181b",
+              border: `1px solid ${showPrev ? "#18181b" : "#e4e4e7"}`,
             }}
           >
             {showPrev ? "📝 Edit Mode" : "👁 Preview"}
@@ -132,7 +135,11 @@ export default function StaticPagesPage() {
           <button
             onClick={handleSave}
             disabled={saving || !dirty}
-            style={{ ...btnPrimary, opacity: !dirty ? 0.5 : 1 }}
+            style={{
+              ...btnPrimary,
+              opacity: !dirty ? 0.5 : 1,
+              cursor: !dirty ? "not-allowed" : "pointer",
+            }}
           >
             {saving ? "Saving..." : dirty ? "💾 Save Page" : "✓ Saved"}
           </button>
@@ -142,13 +149,14 @@ export default function StaticPagesPage() {
       {dirty && (
         <div
           style={{
-            background: "#fef9c3",
-            border: "1px solid #fde68a",
-            borderRadius: 8,
-            padding: "10px 16px",
-            marginBottom: 16,
+            background: "#fefce8",
+            border: "1px solid #fde047",
+            borderRadius: 12,
+            padding: "12px 16px",
+            marginBottom: 20,
             fontSize: 13,
-            color: "#92400e",
+            fontWeight: 600,
+            color: "#a16207",
           }}
         >
           ⚠️ You have unsaved changes on the <strong>{meta?.label}</strong>{" "}
@@ -157,10 +165,14 @@ export default function StaticPagesPage() {
       )}
 
       <div
-        style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 20 }}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(220px, 1fr) 3.5fr",
+          gap: 20,
+        }}
       >
         {/* ── Page Selector ──────────────────────────────────────── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {Object.entries(PAGE_META).map(([slug, m]) => {
             const page = pages[slug];
             const isActive = slug === active;
@@ -169,22 +181,39 @@ export default function StaticPagesPage() {
                 key={slug}
                 onClick={() => switchTab(slug)}
                 style={{
-                  padding: "14px 16px",
-                  border: "none",
-                  borderRadius: 10,
+                  padding: "16px",
+                  border: "1px solid",
+                  borderColor: isActive ? "#18181b" : "#e4e4e7",
+                  borderRadius: 12,
                   cursor: "pointer",
                   textAlign: "left",
-                  background: isActive ? "#1e40af" : "#fff",
-                  color: isActive ? "#fff" : "#374151",
-                  boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+                  background: isActive ? "#fafafa" : "#ffffff",
+                  color: isActive ? "#0a0a0a" : "#52525b",
+                  boxShadow: isActive ? "none" : "0 1px 2px rgba(0,0,0,.02)",
                   borderLeft: isActive
-                    ? "4px solid #60a5fa"
+                    ? "4px solid #18181b"
                     : "4px solid transparent",
+                  transition: "all 0.2s",
                 }}
               >
-                <div style={{ fontSize: 20, marginBottom: 4 }}>{m.icon}</div>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{m.label}</div>
-                <div style={{ fontSize: 11, marginTop: 2, opacity: 0.75 }}>
+                <div style={{ fontSize: 24, marginBottom: 6 }}>{m.icon}</div>
+                <div
+                  style={{
+                    fontWeight: 800,
+                    fontSize: 13,
+                    letterSpacing: "0.01em",
+                  }}
+                >
+                  {m.label}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    marginTop: 4,
+                    fontWeight: 600,
+                    color: "#71717a",
+                  }}
+                >
                   {page?.is_visible ? "👁 Visible" : "🙈 Hidden"}
                 </div>
               </button>
@@ -197,25 +226,36 @@ export default function StaticPagesPage() {
           {/* Card header */}
           <div
             style={{
-              padding: "16px 24px",
-              borderBottom: "1px solid #f1f5f9",
+              padding: "20px 24px",
+              borderBottom: "1px solid #e4e4e7",
+              background: "#fafafa",
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
+              flexWrap: "wrap",
+              gap: 16,
             }}
           >
             <div>
               <h3
                 style={{
                   margin: 0,
-                  fontSize: 15,
-                  fontWeight: 700,
-                  color: "#1e2a38",
+                  fontSize: 16,
+                  fontWeight: 800,
+                  color: "#0a0a0a",
+                  letterSpacing: "-0.01em",
                 }}
               >
                 {meta?.icon} {meta?.label}
               </h3>
-              <p style={{ margin: "4px 0 0", fontSize: 12, color: "#94a3b8" }}>
+              <p
+                style={{
+                  margin: "4px 0 0",
+                  fontSize: 12,
+                  color: "#71717a",
+                  fontWeight: 500,
+                }}
+              >
                 {meta?.preview}
               </p>
             </div>
@@ -224,32 +264,35 @@ export default function StaticPagesPage() {
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 8,
+                gap: 10,
                 cursor: "pointer",
               }}
             >
-              <span style={{ fontSize: 12, color: "#64748b" }}>Visible</span>
+              <span style={{ fontSize: 12, color: "#52525b", fontWeight: 700 }}>
+                Visible on site
+              </span>
               <div
                 onClick={() => setF("is_visible", !form.is_visible)}
                 style={{
-                  width: 40,
-                  height: 22,
-                  borderRadius: 11,
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
                   cursor: "pointer",
-                  background: form.is_visible ? "#1e40af" : "#d1d5db",
+                  background: form.is_visible ? "#18181b" : "#d4d4d8",
                   position: "relative",
                   transition: "background .2s",
+                  flexShrink: 0,
                 }}
               >
                 <div
                   style={{
-                    width: 16,
-                    height: 16,
+                    width: 18,
+                    height: 18,
                     borderRadius: "50%",
                     background: "#fff",
                     position: "absolute",
                     top: 3,
-                    left: form.is_visible ? 21 : 3,
+                    left: form.is_visible ? 23 : 3,
                     transition: "left .2s",
                     boxShadow: "0 1px 3px rgba(0,0,0,.2)",
                   }}
@@ -262,7 +305,7 @@ export default function StaticPagesPage() {
             {!showPrev ? (
               /* ── Edit mode ────────────────────────────────────── */
               <>
-                <div style={{ marginBottom: 16 }}>
+                <div style={{ marginBottom: 20 }}>
                   <label style={labelSm}>Page Title</label>
                   <input
                     value={form.title || ""}
@@ -276,9 +319,9 @@ export default function StaticPagesPage() {
                     Page Content
                     <span
                       style={{
-                        fontWeight: 400,
-                        color: "#94a3b8",
-                        marginLeft: 6,
+                        fontWeight: 500,
+                        color: "#71717a",
+                        marginLeft: 8,
                         fontSize: 11,
                       }}
                     >
@@ -289,16 +332,23 @@ export default function StaticPagesPage() {
                   <textarea
                     value={form.content || ""}
                     onChange={(e) => setF("content", e.target.value)}
-                    rows={18}
+                    rows={20}
                     style={{
                       ...inputFull,
                       resize: "vertical",
-                      lineHeight: 1.7,
+                      lineHeight: 1.6,
                       fontFamily: "inherit",
                     }}
                     placeholder={`Write the content for the ${meta?.label} page here...`}
                   />
-                  <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>
+                  <p
+                    style={{
+                      fontSize: 11,
+                      color: "#a1a1aa",
+                      marginTop: 8,
+                      fontWeight: 600,
+                    }}
+                  >
                     {(form.content || "").length} characters &nbsp;·&nbsp;{" "}
                     {(form.content || "").split("\n").filter(Boolean).length}{" "}
                     lines
@@ -309,29 +359,32 @@ export default function StaticPagesPage() {
               /* ── Preview mode ─────────────────────────────────── */
               <div
                 style={{
-                  background: "#f8fafc",
-                  borderRadius: 10,
-                  padding: 24,
+                  background: "#fafafa",
+                  borderRadius: 12,
+                  border: "1px solid #e4e4e7",
+                  padding: 32,
                   minHeight: 400,
                 }}
               >
                 <div
                   style={{
-                    marginBottom: 6,
-                    fontSize: 11,
-                    color: "#94a3b8",
+                    marginBottom: 12,
+                    fontSize: 10,
+                    color: "#71717a",
                     textTransform: "uppercase",
-                    letterSpacing: 1,
+                    letterSpacing: "1px",
+                    fontWeight: 800,
                   }}
                 >
                   Preview — {meta?.label} Page
                 </div>
                 <h2
                   style={{
-                    fontSize: 22,
-                    fontWeight: 700,
-                    color: "#1e2a38",
-                    margin: "0 0 16px",
+                    fontSize: 24,
+                    fontWeight: 800,
+                    color: "#0a0a0a",
+                    margin: "0 0 20px",
+                    letterSpacing: "-0.02em",
                   }}
                 >
                   {form.title || meta?.label}
@@ -339,13 +392,19 @@ export default function StaticPagesPage() {
                 <div
                   style={{
                     fontSize: 14,
-                    color: "#374151",
-                    lineHeight: 1.8,
+                    color: "#18181b",
+                    lineHeight: 1.7,
                     whiteSpace: "pre-wrap",
                   }}
                 >
                   {form.content || (
-                    <span style={{ color: "#94a3b8", fontStyle: "italic" }}>
+                    <span
+                      style={{
+                        color: "#a1a1aa",
+                        fontStyle: "italic",
+                        fontWeight: 500,
+                      }}
+                    >
                       No content yet.
                     </span>
                   )}
@@ -353,11 +412,13 @@ export default function StaticPagesPage() {
                 {!form.is_visible && (
                   <div
                     style={{
-                      marginTop: 20,
-                      padding: "10px 14px",
-                      background: "#fee2e2",
-                      borderRadius: 8,
-                      fontSize: 12,
+                      marginTop: 32,
+                      padding: "12px 16px",
+                      background: "#fef2f2",
+                      border: "1px solid #fecaca",
+                      borderRadius: 10,
+                      fontSize: 13,
+                      fontWeight: 600,
                       color: "#991b1b",
                     }}
                   >
@@ -376,15 +437,17 @@ export default function StaticPagesPage() {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const pageTitle = {
-  fontSize: 22,
-  fontWeight: 700,
-  color: "#1e2a38",
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#0a0a0a",
   margin: 0,
+  letterSpacing: "-0.02em",
 };
 const card = {
   background: "#fff",
-  borderRadius: 12,
-  boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+  borderRadius: 16,
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
   overflow: "hidden",
 };
 const center = {
@@ -392,39 +455,46 @@ const center = {
   alignItems: "center",
   justifyContent: "center",
   height: 300,
-  color: "#64748b",
+  color: "#71717a",
+  fontWeight: 600,
+  fontSize: 14,
 };
 const labelSm = {
   fontSize: 12,
-  fontWeight: 600,
-  color: "#374151",
+  fontWeight: 800,
+  color: "#18181b",
   display: "block",
-  marginBottom: 6,
+  marginBottom: 8,
 };
 const inputFull = {
   width: "100%",
-  padding: "8px 12px",
-  border: "1px solid #d1d5db",
-  borderRadius: 6,
+  padding: "12px 14px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
+  color: "#18181b",
   boxSizing: "border-box",
+  outline: "none",
 };
 const btnPrimary = {
-  padding: "8px 20px",
-  background: "#1e40af",
+  padding: "10px 20px",
+  background: "#18181b",
   color: "#fff",
-  border: "none",
-  borderRadius: 6,
+  border: "1px solid #18181b",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 13,
-  fontWeight: 600,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 const btnGhost = {
-  padding: "8px 16px",
-  background: "#f1f5f9",
-  color: "#374151",
-  border: "none",
-  borderRadius: 6,
+  padding: "10px 20px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 13,
+  fontWeight: 700,
+  transition: "all 0.2s",
 };

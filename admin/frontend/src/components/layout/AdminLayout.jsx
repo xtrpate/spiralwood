@@ -36,39 +36,39 @@ const NAV_ITEMS = [
 
   {
     label: "Products",
-    path: "/admin/products", // 👉 Added /admin
+    path: "/admin/products",
     icon: "📦",
     roles: ["admin", "staff"],
   },
   { section: "Inventory" },
   {
     label: "Raw Materials",
-    path: "/admin/inventory/raw", // 👉 Added /admin
+    path: "/admin/inventory/raw",
     icon: "🪵",
     roles: ["admin", "staff"],
   },
   {
     label: "Build Materials",
-    path: "/admin/inventory/build", // 👉 Added /admin
+    path: "/admin/inventory/build",
     icon: "🔧",
     roles: ["admin", "staff"],
   },
   {
     label: "Stock Movement",
-    path: "/admin/inventory/movements", // 👉 Added /admin
+    path: "/admin/inventory/movements",
     icon: "🔄",
     roles: ["admin", "staff"],
   },
   {
     label: "Suppliers",
-    path: "/admin/inventory/suppliers", // 👉 Added /admin
+    path: "/admin/inventory/suppliers",
     icon: "🏭",
     roles: ["admin", "staff"],
   },
   { section: "Blueprints" },
   {
     label: "Blueprint Mgmt",
-    path: "/admin/blueprints", // 👉 Added /admin
+    path: "/admin/blueprints",
     icon: "🗺️",
     roles: ["admin", "staff"],
   },
@@ -87,19 +87,19 @@ const NAV_ITEMS = [
   },
   {
     label: "Cancellations",
-    path: "/admin/orders/cancellations", // 👉 Added /admin
+    path: "/admin/orders/cancellations",
     icon: "❌",
     roles: ["admin"],
   },
   {
     label: "Sales Reports",
-    path: "/admin/sales", // 👉 Added /admin
+    path: "/admin/sales",
     icon: "📈",
     roles: ["admin", "staff"],
   },
   {
     label: "Warranty",
-    path: "/admin/warranty", // 👉 Added /admin
+    path: "/admin/warranty",
     icon: "🛡️",
     roles: ["admin", "staff"],
   },
@@ -119,14 +119,14 @@ const NAV_ITEMS = [
   { section: "Website" },
   {
     label: "Site Settings",
-    path: "/admin/website/settings", // 👉 Added /admin
+    path: "/admin/website/settings",
     icon: "⚙️",
     roles: ["admin"],
   },
   { label: "FAQs", path: "/admin/website/faqs", icon: "❓", roles: ["admin"] },
   {
     label: "Page Content",
-    path: "/admin/website/pages", // 👉 Added /admin
+    path: "/admin/website/pages",
     icon: "📄",
     roles: ["admin"],
   },
@@ -169,8 +169,8 @@ export default function AdminLayout() {
       <aside
         style={{
           width: open ? 240 : 64,
-          background: "#1e2a38",
-          color: "#cdd6e0",
+          background: "#0a0a0a" /* 👉 Pitch black background */,
+          color: "#e5e7eb",
           transition: "width .2s",
           overflow: "hidden",
           flexShrink: 0,
@@ -182,7 +182,7 @@ export default function AdminLayout() {
         <div
           style={{
             padding: "20px 16px",
-            borderBottom: "1px solid #2d3d50",
+            borderBottom: "1px solid #27272a" /* 👉 Dark gray border */,
             display: "flex",
             alignItems: "center",
             gap: 10,
@@ -192,10 +192,11 @@ export default function AdminLayout() {
           {open && (
             <span
               style={{
-                fontWeight: 700,
+                fontWeight: 800,
                 fontSize: 16,
-                color: "#fff",
+                color: "#ffffff" /* 👉 Pure white text */,
                 whiteSpace: "nowrap",
+                letterSpacing: "0.02em",
               }}
             >
               WISDOM Admin
@@ -214,8 +215,10 @@ export default function AdminLayout() {
                     padding: "12px 16px 4px",
                     fontSize: 10,
                     textTransform: "uppercase",
-                    letterSpacing: 1,
-                    color: "#6b7d93",
+                    letterSpacing: 1.2,
+                    color:
+                      "#71717a" /* 👉 Neutral mid-gray for section headers */,
+                    fontWeight: 700,
                   }}
                 >
                   {item.section}
@@ -223,7 +226,10 @@ export default function AdminLayout() {
               ) : (
                 <div
                   key={i}
-                  style={{ borderTop: "1px solid #2d3d50", margin: "8px 0" }}
+                  style={{
+                    borderTop: "1px solid #27272a",
+                    margin: "8px 0",
+                  }} /* 👉 Dark gray border */
                 />
               );
             }
@@ -236,18 +242,25 @@ export default function AdminLayout() {
                   alignItems: "center",
                   gap: 10,
                   padding: "9px 16px",
-                  color: isActive ? "#fff" : "#9db3c8",
-                  background: isActive ? "#2d4a6e" : "transparent",
+                  color: isActive
+                    ? "#ffffff"
+                    : "#a1a1aa" /* 👉 White active, light gray inactive */,
+                  background: isActive
+                    ? "#27272a"
+                    : "transparent" /* 👉 Dark gray background when active */,
                   textDecoration: "none",
                   fontSize: 13,
+                  fontWeight: isActive ? 600 : 500,
                   whiteSpace: "nowrap",
                   borderLeft: isActive
-                    ? "3px solid #4a9eff"
+                    ? "3px solid #ffffff" /* 👉 Crisp white active indicator line */
                     : "3px solid transparent",
                   transition: "all .15s",
                 })}
               >
-                <span style={{ fontSize: 16 }}>{item.icon}</span>
+                <span style={{ fontSize: 16, opacity: isActive ? 1 : 0.7 }}>
+                  {item.icon}
+                </span>
                 {open && item.label}
               </NavLink>
             );
@@ -258,13 +271,18 @@ export default function AdminLayout() {
         <button
           onClick={() => setOpen((o) => !o)}
           style={{
-            background: "#2d3d50",
+            background:
+              "#18181b" /* 👉 Slightly lighter black for the button */,
             border: "none",
-            color: "#9db3c8",
-            padding: 12,
+            borderTop: "1px solid #27272a",
+            color: "#a1a1aa",
+            padding: "14px 12px",
             cursor: "pointer",
             textAlign: "center",
+            transition: "color 0.2s",
           }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#ffffff")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "#a1a1aa")}
         >
           {open ? "◀" : "▶"}
         </button>
@@ -276,15 +294,16 @@ export default function AdminLayout() {
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          background: "#f0f4f8",
+          background:
+            "#f4f4f5" /* 👉 Clean, neutral light gray background instead of baby blue */,
           minWidth: 0,
         }}
       >
         {/* Topbar */}
         <header
           style={{
-            background: "#fff",
-            borderBottom: "1px solid #e2e8f0",
+            background: "#ffffff",
+            borderBottom: "1px solid #e4e4e7" /* 👉 Neutral border */,
             padding: "12px 24px",
             display: "flex",
             alignItems: "center",
@@ -292,15 +311,18 @@ export default function AdminLayout() {
             gap: 16,
           }}
         >
-          <span style={{ fontSize: 13, color: "#64748b" }}>
+          <span style={{ fontSize: 13, color: "#52525b", fontWeight: 500 }}>
             👤 {user?.name}{" "}
             <span
               style={{
                 fontSize: 11,
-                background: "#e0f2fe",
-                color: "#0369a1",
-                padding: "2px 8px",
+                background: "#f4f4f5" /* 👉 Clean gray badge */,
+                color: "#18181b" /* 👉 Almost black text */,
+                padding: "3px 10px",
                 borderRadius: 20,
+                fontWeight: 600,
+                letterSpacing: "0.02em",
+                marginLeft: "4px",
               }}
             >
               {user?.role}
@@ -309,14 +331,19 @@ export default function AdminLayout() {
           <button
             onClick={handleLogout}
             style={{
-              background: "#ef4444",
-              color: "#fff",
+              background:
+                "#18181b" /* 👉 Sleek black logout button instead of bright red */,
+              color: "#ffffff",
               border: "none",
-              padding: "6px 16px",
+              padding: "7px 18px",
               borderRadius: 6,
               cursor: "pointer",
               fontSize: 12,
+              fontWeight: 600,
+              transition: "background 0.2s",
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#3f3f46")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "#18181b")}
           >
             Logout
           </button>

@@ -5,27 +5,39 @@ import toast from "react-hot-toast";
 import useAuthStore from "../../store/authStore";
 
 const ROLE_STYLE = {
-  admin: { bg: "#e9d5ff", color: "#6b21a8", label: "Administrator" },
-  staff: { bg: "#dbeafe", color: "#1e40af", label: "Staff / POS" },
+  admin: {
+    bg: "#18181b",
+    color: "#ffffff",
+    border: "#18181b",
+    label: "Administrator",
+  },
+  staff: {
+    bg: "#f4f4f5",
+    color: "#18181b",
+    border: "#e4e4e7",
+    label: "Staff / POS",
+  },
 };
 
-// 👉 FIX: Added Cashier and descriptions to the style object
 const STAFF_TYPE_STYLE = {
   cashier: {
-    bg: "#dcfce7",
-    color: "#065f46",
+    bg: "#ffffff",
+    color: "#18181b",
+    border: "#e4e4e7",
     label: "Cashier",
     desc: "Handles POS and Walk-in orders",
   },
   indoor: {
-    bg: "#ecfeff",
-    color: "#155e75",
+    bg: "#ffffff",
+    color: "#18181b",
+    border: "#e4e4e7",
     label: "Indoor Staff",
     desc: "Project tasks / appointments",
   },
   delivery_rider: {
-    bg: "#fff7ed",
-    color: "#c2410c",
+    bg: "#ffffff",
+    color: "#18181b",
+    border: "#e4e4e7",
     label: "Delivery Rider",
     desc: "Delivery assignment only",
   },
@@ -181,40 +193,47 @@ export default function UsersPage() {
       >
         <div>
           <h1 style={pageTitle}>User & Role Management</h1>
-          <p style={{ fontSize: 13, color: "#64748b", margin: "4px 0 0" }}>
+          <p style={{ fontSize: 13, color: "#52525b", margin: "4px 0 0" }}>
             Manage administrator and staff accounts. Only admins can access this
             panel.
           </p>
         </div>
 
-        <button onClick={openAdd} style={btnPrimary}>
+        <button
+          onClick={openAdd}
+          style={btnPrimary}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "#3f3f46")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "#18181b")}
+        >
           + Add User
         </button>
       </div>
 
-      <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
+      <div
+        style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}
+      >
         <SummaryCard
           label="Total Users"
           value={users.length}
-          color="#3b82f6"
+          color="#18181b"
           icon="👥"
         />
         <SummaryCard
           label="Administrators"
           value={admins.length}
-          color="#8b5cf6"
+          color="#18181b"
           icon="🔑"
         />
         <SummaryCard
           label="Staff / POS"
           value={staff.length}
-          color="#06b6d4"
+          color="#18181b"
           icon="🏪"
         />
         <SummaryCard
           label="Active"
           value={users.filter((u) => u.is_active).length}
-          color="#10b981"
+          color="#18181b"
           icon="✅"
         />
       </div>
@@ -229,7 +248,7 @@ export default function UsersPage() {
         onDelete={handleDelete}
       />
 
-      <div style={{ marginTop: 20 }} />
+      <div style={{ marginTop: 24 }} />
 
       <UserTable
         title="Staff / POS Operators"
@@ -244,10 +263,16 @@ export default function UsersPage() {
       {(modal === "add" || modal === "edit") && (
         <div style={overlay}>
           <div style={modalBox}>
-            <h3 style={{ margin: "0 0 20px" }}>
-              {modal === "add"
-                ? "➕ Add New User"
-                : `✏️ Edit User — ${target?.name}`}
+            <h3
+              style={{
+                margin: "0 0 24px",
+                fontSize: 20,
+                fontWeight: 800,
+                color: "#0a0a0a",
+                letterSpacing: "-0.01em",
+              }}
+            >
+              {modal === "add" ? "Add New User" : `Edit User — ${target?.name}`}
             </h3>
 
             <form onSubmit={handleSave}>
@@ -297,62 +322,9 @@ export default function UsersPage() {
 
               <Field label="Role *">
                 <div style={{ display: "flex", gap: 12 }}>
-                  {Object.entries(ROLE_STYLE).map(([key, rs]) => (
-                    <label
-                      key={key}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        cursor: "pointer",
-                        padding: "10px 16px",
-                        border: `2px solid ${form.role === key ? rs.color : "#e2e8f0"}`,
-                        borderRadius: 8,
-                        flex: 1,
-                        fontSize: 13,
-                        background: form.role === key ? rs.bg : "#fff",
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        value={key}
-                        checked={form.role === key}
-                        onChange={() => {
-                          setF("role", key);
-                          if (key !== "staff") {
-                            setF("staff_type", "");
-                          } else if (!form.staff_type) {
-                            setF("staff_type", "cashier");
-                          }
-                        }}
-                        style={{ accentColor: rs.color }}
-                      />
-                      <div>
-                        <div style={{ fontWeight: 600, color: rs.color }}>
-                          {rs.label}
-                        </div>
-                        <div style={{ fontSize: 11, color: "#64748b" }}>
-                          {key === "admin"
-                            ? "Full system access"
-                            : "Assigned internal operations only"}
-                        </div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </Field>
-
-              {form.role === "staff" && (
-                <Field label="Staff Type *">
-                  {/* 👉 FIX: Changed to Grid layout so 3 buttons fit perfectly */}
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 12,
-                    }}
-                  >
-                    {Object.entries(STAFF_TYPE_STYLE).map(([key, rs]) => (
+                  {Object.entries(ROLE_STYLE).map(([key, rs]) => {
+                    const isSelected = form.role === key;
+                    return (
                       <label
                         key={key}
                         style={{
@@ -360,31 +332,110 @@ export default function UsersPage() {
                           alignItems: "center",
                           gap: 8,
                           cursor: "pointer",
-                          padding: "10px 16px",
-                          border: `2px solid ${form.staff_type === key ? rs.color : "#e2e8f0"}`,
-                          borderRadius: 8,
+                          padding: "12px 16px",
+                          border: `2px solid ${isSelected ? "#18181b" : "#e4e4e7"}`,
+                          borderRadius: 10,
+                          flex: 1,
                           fontSize: 13,
-                          background: form.staff_type === key ? rs.bg : "#fff",
+                          background: isSelected ? "#fafafa" : "#fff",
+                          transition: "all 0.2s",
                         }}
                       >
                         <input
                           type="radio"
                           value={key}
-                          checked={form.staff_type === key}
-                          onChange={() => setF("staff_type", key)}
-                          style={{ accentColor: rs.color }}
+                          checked={isSelected}
+                          onChange={() => {
+                            setF("role", key);
+                            if (key !== "staff") {
+                              setF("staff_type", "");
+                            } else if (!form.staff_type) {
+                              setF("staff_type", "cashier");
+                            }
+                          }}
+                          style={{
+                            accentColor: "#18181b",
+                            width: 16,
+                            height: 16,
+                          }}
                         />
                         <div>
-                          <div style={{ fontWeight: 600, color: rs.color }}>
+                          <div style={{ fontWeight: 800, color: "#18181b" }}>
                             {rs.label}
                           </div>
-                          {/* 👉 FIX: Pulls the description dynamically */}
-                          <div style={{ fontSize: 11, color: "#64748b" }}>
-                            {rs.desc}
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: "#71717a",
+                              marginTop: 2,
+                            }}
+                          >
+                            {key === "admin"
+                              ? "Full system access"
+                              : "Assigned internal operations only"}
                           </div>
                         </div>
                       </label>
-                    ))}
+                    );
+                  })}
+                </div>
+              </Field>
+
+              {form.role === "staff" && (
+                <Field label="Staff Type *">
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 12,
+                    }}
+                  >
+                    {Object.entries(STAFF_TYPE_STYLE).map(([key, rs]) => {
+                      const isSelected = form.staff_type === key;
+                      return (
+                        <label
+                          key={key}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            cursor: "pointer",
+                            padding: "10px 14px",
+                            border: `2px solid ${isSelected ? "#18181b" : "#e4e4e7"}`,
+                            borderRadius: 10,
+                            fontSize: 13,
+                            background: isSelected ? "#fafafa" : "#fff",
+                            transition: "all 0.2s",
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            value={key}
+                            checked={isSelected}
+                            onChange={() => setF("staff_type", key)}
+                            style={{
+                              accentColor: "#18181b",
+                              width: 14,
+                              height: 14,
+                            }}
+                          />
+                          <div>
+                            <div style={{ fontWeight: 800, color: "#18181b" }}>
+                              {rs.label}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: "#71717a",
+                                marginTop: 2,
+                              }}
+                            >
+                              {rs.desc}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
                   </div>
                 </Field>
               )}
@@ -393,17 +444,24 @@ export default function UsersPage() {
                 <Field label="Account Status">
                   <label
                     style={{
-                      display: "flex",
+                      display: "inline-flex",
                       alignItems: "center",
                       gap: 8,
                       fontSize: 13,
+                      fontWeight: 600,
+                      color: "#18181b",
                       cursor: "pointer",
+                      padding: "8px 12px",
+                      background: "#fafafa",
+                      border: "1px solid #e4e4e7",
+                      borderRadius: 8,
                     }}
                   >
                     <input
                       type="checkbox"
                       checked={form.is_active}
                       onChange={(e) => setF("is_active", e.target.checked)}
+                      style={{ accentColor: "#18181b", width: 16, height: 16 }}
                     />
                     Account is active
                   </label>
@@ -415,7 +473,7 @@ export default function UsersPage() {
                   display: "flex",
                   gap: 10,
                   justifyContent: "flex-end",
-                  marginTop: 24,
+                  marginTop: 28,
                 }}
               >
                 <button
@@ -441,9 +499,18 @@ export default function UsersPage() {
 
       {modal === "password" && (
         <div style={overlay}>
-          <div style={{ ...modalBox, width: 400 }}>
-            <h3 style={{ margin: "0 0 6px" }}>🔒 Reset Password</h3>
-            <p style={{ fontSize: 13, color: "#64748b", margin: "0 0 20px" }}>
+          <div style={{ ...modalBox, width: 440 }}>
+            <h3
+              style={{
+                margin: "0 0 6px",
+                fontSize: 20,
+                fontWeight: 800,
+                color: "#0a0a0a",
+              }}
+            >
+              🔒 Reset Password
+            </h3>
+            <p style={{ fontSize: 13, color: "#52525b", margin: "0 0 24px" }}>
               Resetting password for <strong>{target?.name}</strong>
             </p>
 
@@ -475,12 +542,20 @@ export default function UsersPage() {
                     borderColor:
                       pwForm.confirm && pwForm.confirm !== pwForm.new_password
                         ? "#dc2626"
-                        : "#d1d5db",
+                        : "#e4e4e7",
                   }}
                   placeholder="Re-enter new password"
                 />
                 {pwForm.confirm && pwForm.confirm !== pwForm.new_password && (
-                  <p style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>
+                  <p
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "#dc2626",
+                      marginTop: 6,
+                      marginBottom: 0,
+                    }}
+                  >
                     Passwords do not match.
                   </p>
                 )}
@@ -491,7 +566,7 @@ export default function UsersPage() {
                   display: "flex",
                   gap: 10,
                   justifyContent: "flex-end",
-                  marginTop: 24,
+                  marginTop: 28,
                 }}
               >
                 <button
@@ -527,181 +602,205 @@ function UserTable({
     <div style={card}>
       <div
         style={{
-          padding: "14px 20px",
-          borderBottom: "1px solid #f1f5f9",
-          background: "#f8fafc",
+          padding: "16px 20px 14px",
+          borderBottom: "1px solid #e4e4e7",
+          background: "#fafafa",
         }}
       >
         <h3
-          style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1e2a38" }}
+          style={{
+            margin: 0,
+            fontSize: 15,
+            fontWeight: 800,
+            color: "#0a0a0a",
+            textTransform: "uppercase",
+            letterSpacing: "1px",
+          }}
         >
           {title}
         </h3>
       </div>
 
-      <table
-        style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
-      >
-        <thead>
-          <tr style={{ background: "#fafafa" }}>
-            {[
-              "User",
-              "Email",
-              "Phone",
-              "Role",
-              "Status",
-              "Last Login",
-              "Actions",
-            ].map((h) => (
-              <th key={h} style={th}>
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-
-        <tbody>
-          {loading ? (
-            <tr>
-              <td colSpan={7} style={centerCell}>
-                Loading...
-              </td>
+      <div style={{ overflowX: "auto" }}>
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            fontSize: 13,
+            minWidth: 800,
+          }}
+        >
+          <thead>
+            <tr style={{ background: "#ffffff" }}>
+              {[
+                "User",
+                "Email",
+                "Phone",
+                "Role",
+                "Status",
+                "Last Login",
+                "Actions",
+              ].map((h) => (
+                <th key={h} style={th}>
+                  {h}
+                </th>
+              ))}
             </tr>
-          ) : users.length === 0 ? (
-            <tr>
-              <td colSpan={7} style={centerCell}>
-                No users in this role.
-              </td>
-            </tr>
-          ) : (
-            users.map((u) => {
-              const rs = ROLE_STYLE[u.role] || {
-                bg: "#f1f5f9",
-                color: "#475569",
-                label: u.role,
-              };
-              const isMe = u.id === me?.id;
+          </thead>
 
-              return (
-                <tr
-                  key={u.id}
-                  style={{
-                    borderBottom: "1px solid #f1f5f9",
-                    background: isMe ? "#fefce8" : "transparent",
-                  }}
-                >
-                  <td style={td}>
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 10 }}
-                    >
-                      <div style={avatarStyle(u.role)}>
-                        {u.name?.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{ fontWeight: 500 }}>
-                          {u.name}
-                          {isMe && (
-                            <span
-                              style={{
-                                marginLeft: 6,
-                                fontSize: 11,
-                                color: "#854d0e",
-                                background: "#fef9c3",
-                                padding: "1px 6px",
-                                borderRadius: 8,
-                              }}
-                            >
-                              You
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={7} style={centerCell}>
+                  Loading...
+                </td>
+              </tr>
+            ) : users.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={centerCell}>
+                  No users in this role.
+                </td>
+              </tr>
+            ) : (
+              users.map((u) => {
+                const rs = ROLE_STYLE[u.role] || {
+                  bg: "#f4f4f5",
+                  color: "#18181b",
+                  border: "#e4e4e7",
+                  label: u.role,
+                };
+                const isMe = u.id === me?.id;
 
-                  <td style={{ ...td, fontSize: 12 }}>{u.email}</td>
-                  <td style={{ ...td, fontSize: 12 }}>{u.phone || "—"}</td>
-
-                  <td style={td}>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      <span
+                return (
+                  <tr
+                    key={u.id}
+                    style={{
+                      borderBottom: "1px solid #f4f4f5",
+                      background: isMe ? "#fafafa" : "transparent",
+                    }}
+                  >
+                    <td style={td}>
+                      <div
                         style={{
-                          background: rs.bg,
-                          color: rs.color,
-                          padding: "2px 10px",
-                          borderRadius: 12,
-                          fontSize: 11,
-                          fontWeight: 600,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
                         }}
                       >
-                        {rs.label}
-                      </span>
+                        <div style={avatarStyle(u.role)}>
+                          {u.name?.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 700, color: "#0a0a0a" }}>
+                            {u.name}
+                            {isMe && (
+                              <span
+                                style={{
+                                  marginLeft: 8,
+                                  fontSize: 10,
+                                  color: "#ffffff",
+                                  background: "#18181b",
+                                  padding: "2px 8px",
+                                  borderRadius: 12,
+                                  fontWeight: 800,
+                                }}
+                              >
+                                You
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
 
-                      {u.role === "staff" && u.staff_type && (
+                    <td style={{ ...td, color: "#52525b" }}>{u.email}</td>
+                    <td style={{ ...td, color: "#52525b" }}>
+                      {u.phone || "—"}
+                    </td>
+
+                    <td style={td}>
+                      <div
+                        style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
+                      >
                         <span
                           style={{
-                            background:
-                              STAFF_TYPE_STYLE[u.staff_type]?.bg || "#f1f5f9",
-                            color:
-                              STAFF_TYPE_STYLE[u.staff_type]?.color ||
-                              "#475569",
+                            background: rs.bg,
+                            color: rs.color,
+                            border: `1px solid ${rs.border}`,
                             padding: "2px 10px",
                             borderRadius: 12,
                             fontSize: 11,
-                            fontWeight: 600,
+                            fontWeight: 700,
                           }}
                         >
-                          {STAFF_TYPE_STYLE[u.staff_type]?.label ||
-                            u.staff_type}
+                          {rs.label}
                         </span>
+
+                        {u.role === "staff" && u.staff_type && (
+                          <span
+                            style={{
+                              background: "#ffffff",
+                              color: "#52525b",
+                              border: "1px solid #d4d4d8",
+                              padding: "2px 10px",
+                              borderRadius: 12,
+                              fontSize: 11,
+                              fontWeight: 700,
+                            }}
+                          >
+                            {STAFF_TYPE_STYLE[u.staff_type]?.label ||
+                              u.staff_type}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    <td style={td}>
+                      <span
+                        style={{
+                          background: u.is_active ? "#f4f4f5" : "#fef2f2",
+                          color: u.is_active ? "#18181b" : "#991b1b",
+                          border: `1px solid ${u.is_active ? "#e4e4e7" : "#fecaca"}`,
+                          padding: "2px 10px",
+                          borderRadius: 12,
+                          fontSize: 11,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {u.is_active ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+
+                    <td style={{ ...td, color: "#71717a" }}>
+                      {u.last_login ? (
+                        new Date(u.last_login).toLocaleDateString("en-PH")
+                      ) : (
+                        <span style={{ color: "#a1a1aa" }}>Never</span>
                       )}
-                    </div>
-                  </td>
+                    </td>
 
-                  <td style={td}>
-                    <span
-                      style={{
-                        background: u.is_active ? "#d1fae5" : "#fee2e2",
-                        color: u.is_active ? "#065f46" : "#991b1b",
-                        padding: "2px 10px",
-                        borderRadius: 12,
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {u.is_active ? "Active" : "Inactive"}
-                    </span>
-                  </td>
-
-                  <td style={{ ...td, fontSize: 12, color: "#64748b" }}>
-                    {u.last_login ? (
-                      new Date(u.last_login).toLocaleDateString("en-PH")
-                    ) : (
-                      <span style={{ color: "#94a3b8" }}>Never</span>
-                    )}
-                  </td>
-
-                  <td style={td}>
-                    <div style={{ display: "flex", gap: 4 }}>
-                      <button onClick={() => onEdit(u)} style={btnEdit}>
-                        Edit
-                      </button>
-                      <button onClick={() => onPassword(u)} style={btnPw}>
-                        🔒 Password
-                      </button>
-                      {!isMe && (
-                        <button onClick={() => onDelete(u)} style={btnDel}>
-                          🗑
+                    <td style={td}>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button onClick={() => onEdit(u)} style={btnEdit}>
+                          Edit
                         </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
+                        <button onClick={() => onPassword(u)} style={btnPw}>
+                          🔒 Password
+                        </button>
+                        {!isMe && (
+                          <button onClick={() => onDelete(u)} style={btnDel}>
+                            🗑
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -711,44 +810,48 @@ function SummaryCard({ label, value, color, icon }) {
     <div
       style={{
         background: "#fff",
-        borderRadius: 10,
-        padding: "14px 18px",
-        borderLeft: `4px solid ${color}`,
-        boxShadow: "0 1px 6px rgba(0,0,0,.08)",
-        minWidth: 130,
+        borderRadius: 12,
+        padding: "16px 20px",
+        border: "1px solid #e4e4e7",
+        borderLeft: `4px solid #18181b`,
+        boxShadow: "0 1px 2px rgba(0,0,0,.02)",
+        flex: 1,
+        minWidth: 160,
       }}
     >
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
+          alignItems: "flex-start",
         }}
       >
         <div>
           <p
             style={{
-              fontSize: 11,
-              color: "#64748b",
+              fontSize: 10,
+              color: "#71717a",
               margin: 0,
               textTransform: "uppercase",
-              letterSpacing: 0.5,
+              letterSpacing: "1px",
+              fontWeight: 800,
             }}
           >
             {label}
           </p>
           <p
             style={{
-              fontSize: 24,
-              fontWeight: 700,
-              color: "#1e2a38",
-              margin: "4px 0 0",
+              fontSize: 26,
+              fontWeight: 800,
+              color: "#0a0a0a",
+              margin: "6px 0 0",
+              letterSpacing: "-0.02em",
             }}
           >
             {value}
           </p>
         </div>
-        <span style={{ fontSize: 22 }}>{icon}</span>
+        <span style={{ fontSize: 24 }}>{icon}</span>
       </div>
     </div>
   );
@@ -756,14 +859,14 @@ function SummaryCard({ label, value, color, icon }) {
 
 function Field({ label, children }) {
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 18 }}>
       <label
         style={{
           fontSize: 12,
-          fontWeight: 600,
-          color: "#374151",
+          fontWeight: 800,
+          color: "#18181b",
           display: "block",
-          marginBottom: 6,
+          marginBottom: 8,
         }}
       >
         {label}
@@ -774,130 +877,150 @@ function Field({ label, children }) {
 }
 
 const avatarStyle = (role) => ({
-  width: 34,
-  height: 34,
+  width: 38,
+  height: 38,
   borderRadius: "50%",
-  background: role === "admin" ? "#e9d5ff" : "#dbeafe",
-  color: role === "admin" ? "#6b21a8" : "#1e40af",
+  background: role === "admin" ? "#18181b" : "#f4f4f5",
+  color: role === "admin" ? "#ffffff" : "#18181b",
+  border: `1px solid ${role === "admin" ? "#18181b" : "#e4e4e7"}`,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontWeight: 700,
-  fontSize: 13,
+  fontWeight: 800,
+  fontSize: 14,
   flexShrink: 0,
 });
 
 const pageTitle = {
-  fontSize: 22,
-  fontWeight: 700,
-  color: "#1e2a38",
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#0a0a0a",
   margin: 0,
+  letterSpacing: "-0.02em",
 };
 
 const card = {
   background: "#fff",
-  borderRadius: 12,
-  boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+  borderRadius: 16,
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
   overflow: "hidden",
 };
 
 const th = {
   textAlign: "left",
-  padding: "10px 14px",
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#64748b",
+  padding: "14px 16px",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
+  letterSpacing: "1px",
 };
 
 const td = {
-  padding: "10px 14px",
-  color: "#374151",
+  padding: "14px 16px",
+  color: "#18181b",
   verticalAlign: "middle",
 };
 
 const centerCell = {
   textAlign: "center",
-  padding: 32,
-  color: "#94a3b8",
+  padding: 40,
+  color: "#71717a",
+  fontSize: 13,
+  fontWeight: 600,
 };
 
 const inputFull = {
   width: "100%",
-  padding: "8px 12px",
-  border: "1px solid #d1d5db",
-  borderRadius: 6,
+  padding: "10px 14px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
+  color: "#18181b",
   boxSizing: "border-box",
+  outline: "none",
 };
 
 const overlay = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,.5)",
+  background: "rgba(0,0,0,.6)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   zIndex: 1000,
+  padding: 20,
 };
 
 const modalBox = {
   background: "#fff",
-  borderRadius: 12,
-  padding: 28,
-  width: 520,
-  maxHeight: "88vh",
+  borderRadius: 16,
+  padding: 32,
+  width: 560,
+  maxWidth: "100%",
+  maxHeight: "90vh",
   overflowY: "auto",
-  boxShadow: "0 20px 60px rgba(0,0,0,.3)",
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 25px 60px rgba(0,0,0,.15)",
 };
 
 const btnPrimary = {
-  padding: "8px 20px",
-  background: "#1e40af",
+  padding: "10px 20px",
+  background: "#18181b",
   color: "#fff",
   border: "none",
-  borderRadius: 6,
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 13,
-  fontWeight: 600,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 
 const btnGhost = {
-  padding: "8px 16px",
-  background: "#f1f5f9",
-  color: "#374151",
-  border: "none",
-  borderRadius: 6,
+  padding: "10px 20px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 13,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 
 const btnEdit = {
-  padding: "4px 10px",
-  background: "#e0f2fe",
-  color: "#0369a1",
-  border: "none",
+  padding: "6px 14px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 
 const btnPw = {
-  padding: "4px 10px",
-  background: "#f3e8ff",
-  color: "#6b21a8",
-  border: "none",
+  padding: "6px 14px",
+  background: "#ffffff",
+  color: "#18181b",
+  border: "1px solid #d4d4d8",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 
 const btnDel = {
-  padding: "4px 10px",
-  background: "#fee2e2",
-  color: "#dc2626",
-  border: "none",
+  padding: "6px 14px",
+  background: "#fef2f2",
+  color: "#991b1b",
+  border: "1px solid #fecaca",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };

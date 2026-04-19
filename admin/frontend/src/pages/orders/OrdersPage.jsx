@@ -4,18 +4,54 @@ import api from "../../services/api";
 import toast from "react-hot-toast";
 
 const STATUS_STYLE = {
-  pending: { bg: "#fef3c7", color: "#a16207", label: "Pending" },
-  confirmed: { bg: "#dbeafe", color: "#1d4ed8", label: "Confirmed" },
+  pending: {
+    bg: "#ffffff",
+    color: "#52525b",
+    border: "#d4d4d8",
+    label: "Pending",
+  },
+  confirmed: {
+    bg: "#f4f4f5",
+    color: "#18181b",
+    border: "#e4e4e7",
+    label: "Confirmed",
+  },
   contract_released: {
-    bg: "#ede9fe",
-    color: "#6d28d9",
+    bg: "#f4f4f5",
+    color: "#18181b",
+    border: "#e4e4e7",
     label: "Contract released",
   },
-  production: { bg: "#f3e8ff", color: "#7e22ce", label: "Production" },
-  shipping: { bg: "#e0f2fe", color: "#0369a1", label: "Shipping" },
-  delivered: { bg: "#dcfce7", color: "#15803d", label: "Delivered" },
-  completed: { bg: "#dcfce7", color: "#166534", label: "Completed" },
-  cancelled: { bg: "#fee2e2", color: "#dc2626", label: "Cancelled" },
+  production: {
+    bg: "#f4f4f5",
+    color: "#18181b",
+    border: "#e4e4e7",
+    label: "Production",
+  },
+  shipping: {
+    bg: "#f4f4f5",
+    color: "#18181b",
+    border: "#e4e4e7",
+    label: "Shipping",
+  },
+  delivered: {
+    bg: "#18181b",
+    color: "#ffffff",
+    border: "#18181b",
+    label: "Delivered",
+  },
+  completed: {
+    bg: "#0a0a0a",
+    color: "#ffffff",
+    border: "#0a0a0a",
+    label: "Completed",
+  },
+  cancelled: {
+    bg: "#fef2f2",
+    color: "#991b1b",
+    border: "#fecaca",
+    label: "Cancelled",
+  },
 };
 
 const STATUS_ORDER = [
@@ -30,11 +66,31 @@ const STATUS_ORDER = [
 ];
 
 const PAYMENT_STYLE = {
-  unpaid: { bg: "#fef2f2", color: "#dc2626", label: "Unpaid" },
-  paid: { bg: "#ecfdf5", color: "#15803d", label: "Paid" },
-  partial: { bg: "#fef3c7", color: "#b45309", label: "Partial" },
-  pending: { bg: "#fef3c7", color: "#a16207", label: "Pending" },
-  rejected: { bg: "#fee2e2", color: "#dc2626", label: "Rejected" },
+  unpaid: {
+    bg: "#fef2f2",
+    color: "#991b1b",
+    border: "#fecaca",
+    label: "Unpaid",
+  },
+  paid: { bg: "#18181b", color: "#ffffff", border: "#18181b", label: "Paid" },
+  partial: {
+    bg: "#ffffff",
+    color: "#52525b",
+    border: "#d4d4d8",
+    label: "Partial",
+  },
+  pending: {
+    bg: "#ffffff",
+    color: "#52525b",
+    border: "#d4d4d8",
+    label: "Pending",
+  },
+  rejected: {
+    bg: "#fef2f2",
+    color: "#dc2626",
+    border: "#fecaca",
+    label: "Rejected",
+  },
 };
 
 const normalize = (value) =>
@@ -62,11 +118,12 @@ const formatDate = (value) => {
 const getChannelMeta = (value) => {
   const key = normalize(value);
   return key === "online"
-    ? { label: "Online", bg: "#eff6ff", color: "#2563eb" }
-    : { label: "Walk-in", bg: "#ecfdf5", color: "#15803d" };
+    ? { label: "Online", bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" }
+    : { label: "Walk-in", bg: "#ffffff", color: "#52525b", border: "#d4d4d8" };
 };
 
-const isBlueprintOrder = (order) => normalize(order?.order_type) === "blueprint";
+const isBlueprintOrder = (order) =>
+  normalize(order?.order_type) === "blueprint";
 
 const needsCustomRequestReview = (order) =>
   isBlueprintOrder(order) && normalize(order?.status) === "pending";
@@ -151,7 +208,9 @@ export default function OrdersPage() {
 
     const customRequests = orders.filter((row) => isBlueprintOrder(row)).length;
 
-    const quoteNeeded = orders.filter((row) => needsCustomRequestReview(row)).length;
+    const quoteNeeded = orders.filter((row) =>
+      needsCustomRequestReview(row),
+    ).length;
 
     return [
       { label: "Total orders", value: total },
@@ -234,9 +293,9 @@ export default function OrdersPage() {
             onClick={() => setF("status", "")}
             style={{
               ...statusChip,
-              background: filters.status ? "#f8fafc" : "#0f172a",
-              color: filters.status ? "#475569" : "#ffffff",
-              borderColor: filters.status ? "#e2e8f0" : "#0f172a",
+              background: filters.status ? "#f4f4f5" : "#18181b",
+              color: filters.status ? "#52525b" : "#ffffff",
+              borderColor: filters.status ? "#e4e4e7" : "#18181b",
             }}
           >
             All
@@ -255,9 +314,9 @@ export default function OrdersPage() {
                 onClick={() => setF("status", statusKey)}
                 style={{
                   ...statusChip,
-                  background: isActive ? tone.color : tone.bg,
+                  background: isActive ? "#18181b" : tone.bg,
                   color: isActive ? "#ffffff" : tone.color,
-                  borderColor: isActive ? tone.color : "transparent",
+                  borderColor: isActive ? "#18181b" : tone.border,
                 }}
               >
                 {tone.label}
@@ -335,7 +394,12 @@ export default function OrdersPage() {
                     normalize(
                       order.payment_status_display || order.payment_status,
                     )
-                  ] || { bg: "#f8fafc", color: "#475569", label: "Unknown" };
+                  ] || {
+                    bg: "#f4f4f5",
+                    color: "#52525b",
+                    border: "#e4e4e7",
+                    label: "Unknown",
+                  };
 
                   const channelMeta = getChannelMeta(
                     order.channel || order.type,
@@ -379,7 +443,9 @@ export default function OrdersPage() {
                       </td>
 
                       <td style={td}>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <div
+                          style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
+                        >
                           <span style={softBadge}>
                             {customRequest ? "Blueprint" : "Standard"}
                           </span>
@@ -388,8 +454,9 @@ export default function OrdersPage() {
                             <span
                               style={{
                                 ...softBadge,
-                                background: "#fff7ed",
-                                color: "#c2410c",
+                                background: "#fffbeb",
+                                color: "#b45309",
+                                border: "1px solid #fde68a",
                               }}
                             >
                               Quote Needed
@@ -404,13 +471,14 @@ export default function OrdersPage() {
                             ...softBadge,
                             background: channelMeta.bg,
                             color: channelMeta.color,
+                            border: `1px solid ${channelMeta.border}`,
                           }}
                         >
                           {channelMeta.label}
                         </span>
                       </td>
 
-                      <td style={{ ...td, fontWeight: 700, color: "#0f172a" }}>
+                      <td style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}>
                         {formatMoney(order.total_amount)}
                       </td>
 
@@ -420,6 +488,7 @@ export default function OrdersPage() {
                             ...softBadge,
                             background: paymentTone.bg,
                             color: paymentTone.color,
+                            border: `1px solid ${paymentTone.border}`,
                           }}
                         >
                           {paymentTone.label || "Unknown"}
@@ -427,12 +496,15 @@ export default function OrdersPage() {
                       </td>
 
                       <td style={td}>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <div
+                          style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
+                        >
                           <span
                             style={{
                               ...softBadge,
                               background: statusTone.bg,
                               color: statusTone.color,
+                              border: `1px solid ${statusTone.border}`,
                             }}
                           >
                             {quoteNeeded ? "Pending Review" : statusTone.label}
@@ -443,7 +515,7 @@ export default function OrdersPage() {
                       <td
                         style={{
                           ...td,
-                          color: "#64748b",
+                          color: "#71717a",
                           whiteSpace: "nowrap",
                         }}
                       >
@@ -453,7 +525,11 @@ export default function OrdersPage() {
                       <td style={td}>
                         <button
                           onClick={() => navigate(`/admin/orders/${order.id}`)}
-                          style={quoteNeeded || normalizedStatus === "pending" ? btnPrimary : btnView}
+                          style={
+                            quoteNeeded || normalizedStatus === "pending"
+                              ? btnPrimary
+                              : btnView
+                          }
                         >
                           {actionLabel}
                         </button>
@@ -506,12 +582,14 @@ export default function OrdersPage() {
   );
 }
 
+// ─── Styles ─────────────────────────────────────────────────────────────────
+
 const pageShell = {
   maxWidth: 1180,
   margin: "0 auto",
   display: "flex",
   flexDirection: "column",
-  gap: 12,
+  gap: 16,
 };
 
 const headerBlock = {
@@ -524,24 +602,25 @@ const headerBlock = {
 
 const eyebrow = {
   fontSize: 10,
-  fontWeight: 700,
-  letterSpacing: "0.14em",
+  fontWeight: 800,
+  letterSpacing: "1px",
   textTransform: "uppercase",
-  color: "#64748b",
-  marginBottom: 6,
+  color: "#71717a",
+  marginBottom: 8,
 };
 
 const pageTitle = {
   margin: 0,
-  fontSize: 22,
+  fontSize: 24,
   lineHeight: 1.1,
-  fontWeight: 700,
-  color: "#0f172a",
+  fontWeight: 800,
+  color: "#0a0a0a",
+  letterSpacing: "-0.02em",
 };
 
 const pageSubtitle = {
   margin: "8px 0 0",
-  color: "#64748b",
+  color: "#52525b",
   fontSize: 13,
   lineHeight: 1.55,
   maxWidth: 620,
@@ -549,13 +628,13 @@ const pageSubtitle = {
 
 const summaryPill = {
   background: "#ffffff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 14,
+  border: "1px solid #e4e4e7",
+  borderRadius: 12,
   padding: "10px 14px",
   fontSize: 12,
-  fontWeight: 600,
-  color: "#0f172a",
-  boxShadow: "0 8px 20px rgba(15, 23, 42, 0.04)",
+  fontWeight: 700,
+  color: "#18181b",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const statsGrid = {
@@ -566,50 +645,51 @@ const statsGrid = {
 
 const statCard = {
   background: "#ffffff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 16,
-  padding: "12px 14px",
-  boxShadow: "0 4px 12px rgba(15, 23, 42, 0.028)",
+  border: "1px solid #e4e4e7",
+  borderRadius: 12,
+  padding: "16px 18px",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const statLabel = {
   fontSize: 10,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
+  fontWeight: 800,
+  letterSpacing: "1px",
   textTransform: "uppercase",
-  color: "#94a3b8",
+  color: "#71717a",
   marginBottom: 8,
 };
 
 const statValue = {
-  fontSize: 20,
-  fontWeight: 700,
-  color: "#0f172a",
+  fontSize: 22,
+  fontWeight: 800,
+  color: "#0a0a0a",
   lineHeight: 1,
+  letterSpacing: "-0.02em",
 };
 
 const filterCard = {
   background: "#ffffff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 18,
-  padding: 12,
-  boxShadow: "0 6px 18px rgba(15, 23, 42, 0.028)",
+  border: "1px solid #e4e4e7",
+  borderRadius: 16,
+  padding: 16,
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const filterTopRow = {
   display: "flex",
   gap: 10,
   flexWrap: "wrap",
-  marginBottom: 12,
+  marginBottom: 16,
 };
 
 const inputBase = {
   height: 38,
   padding: "0 14px",
-  border: "1px solid #cfd9e5",
-  borderRadius: 14,
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   background: "#ffffff",
-  color: "#0f172a",
+  color: "#18181b",
   fontSize: 13,
   fontWeight: 500,
   outline: "none",
@@ -632,40 +712,43 @@ const statusChip = {
   borderRadius: 999,
   border: "1px solid transparent",
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 600,
+  fontSize: 11,
+  fontWeight: 700,
+  transition: "all 0.15s ease",
 };
 
 const filtersMeta = {
   marginLeft: "auto",
   fontSize: 12,
-  color: "#94a3b8",
+  color: "#71717a",
+  fontWeight: 500,
 };
 
 const tableCard = {
   background: "#ffffff",
-  border: "1px solid #e2e8f0",
-  borderRadius: 18,
+  border: "1px solid #e4e4e7",
+  borderRadius: 16,
   overflow: "hidden",
-  boxShadow: "0 8px 22px rgba(15, 23, 42, 0.03)",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const tableHeader = {
-  padding: "14px 16px 10px",
-  borderBottom: "1px solid #eef2f7",
+  padding: "20px 20px 14px",
+  borderBottom: "1px solid #e4e4e7",
 };
 
 const tableTitle = {
   margin: 0,
-  fontSize: 15,
-  fontWeight: 700,
-  color: "#0f172a",
+  fontSize: 18,
+  fontWeight: 800,
+  color: "#0a0a0a",
+  letterSpacing: "-0.01em",
 };
 
 const tableSubtitle = {
   margin: "4px 0 0",
-  fontSize: 12,
-  color: "#64748b",
+  fontSize: 13,
+  color: "#52525b",
   lineHeight: 1.5,
 };
 
@@ -682,18 +765,18 @@ const table = {
 };
 
 const theadRow = {
-  background: "#f8fafc",
+  background: "#fafafa",
 };
 
 const th = {
   textAlign: "left",
-  padding: "10px 14px",
+  padding: "14px 16px",
   fontSize: 10,
-  fontWeight: 700,
-  color: "#64748b",
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  borderBottom: "1px solid #edf2f7",
+  letterSpacing: "1px",
+  borderBottom: "1px solid #e4e4e7",
 };
 
 const tbodyRow = {
@@ -701,10 +784,10 @@ const tbodyRow = {
 };
 
 const td = {
-  padding: "12px 14px",
-  color: "#334155",
+  padding: "16px 16px",
+  color: "#18181b",
   fontSize: 13,
-  borderBottom: "1px solid #f1f5f9",
+  borderBottom: "1px solid #f4f4f5",
   verticalAlign: "middle",
 };
 
@@ -712,23 +795,24 @@ const orderLink = {
   background: "none",
   border: "none",
   padding: 0,
-  color: "#1d4ed8",
+  color: "#18181b",
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 800,
   cursor: "pointer",
+  textDecoration: "underline",
 };
 
 const primaryText = {
   fontSize: 13,
-  fontWeight: 600,
-  color: "#0f172a",
+  fontWeight: 700,
+  color: "#0a0a0a",
   lineHeight: 1.4,
 };
 
 const secondaryText = {
   marginTop: 4,
-  fontSize: 12,
-  color: "#94a3b8",
+  fontSize: 11,
+  color: "#71717a",
   lineHeight: 1.45,
 };
 
@@ -738,53 +822,57 @@ const softBadge = {
   justifyContent: "center",
   padding: "4px 10px",
   borderRadius: 999,
-  background: "#f8fafc",
-  color: "#475569",
+  background: "#f4f4f5",
+  color: "#52525b",
+  border: "1px solid #e4e4e7",
   fontSize: 11,
   fontWeight: 600,
   whiteSpace: "nowrap",
 };
 
 const btnPrimary = {
-  height: 34,
-  padding: "0 14px",
-  borderRadius: 10,
-  border: "1px solid #1d4ed8",
-  background: "#1d4ed8",
+  height: 36,
+  padding: "0 16px",
+  borderRadius: 8,
+  border: "1px solid #18181b",
+  background: "#18181b",
   color: "#ffffff",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 700,
   cursor: "pointer",
+  transition: "background 0.2s",
 };
 
 const btnView = {
-  height: 34,
-  padding: "0 14px",
-  borderRadius: 10,
-  border: "1px solid #d6e2ee",
-  background: "#ffffff",
-  color: "#334155",
+  height: 36,
+  padding: "0 16px",
+  borderRadius: 8,
+  border: "1px solid #e4e4e7",
+  background: "#f4f4f5",
+  color: "#18181b",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 700,
   cursor: "pointer",
+  transition: "background 0.2s",
 };
 
 const btnGhost = {
   height: 38,
-  padding: "0 14px",
-  borderRadius: 14,
-  border: "1px solid #d6e2ee",
-  background: "#ffffff",
-  color: "#334155",
+  padding: "0 16px",
+  borderRadius: 8,
+  border: "1px solid #e4e4e7",
+  background: "#f4f4f5",
+  color: "#18181b",
   fontSize: 13,
   fontWeight: 600,
   cursor: "pointer",
+  transition: "background 0.2s",
 };
 
 const emptyCell = {
-  padding: 28,
+  padding: 32,
   textAlign: "center",
-  color: "#64748b",
+  color: "#71717a",
   fontSize: 13,
 };
 
@@ -797,25 +885,27 @@ const emptyState = {
 
 const emptyStateTitle = {
   fontSize: 15,
-  fontWeight: 700,
-  color: "#0f172a",
+  fontWeight: 800,
+  color: "#0a0a0a",
 };
 
 const emptyStateText = {
   fontSize: 13,
   lineHeight: 1.55,
-  color: "#64748b",
+  color: "#52525b",
 };
 
 const paginationBar = {
   display: "flex",
   alignItems: "center",
   justifyContent: "flex-end",
-  gap: 10,
-  padding: 16,
+  gap: 12,
+  padding: "16px 20px",
+  background: "#fafafa",
 };
 
 const paginationText = {
-  fontSize: 12,
-  color: "#64748b",
+  fontSize: 13,
+  fontWeight: 600,
+  color: "#71717a",
 };

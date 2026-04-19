@@ -5,15 +5,16 @@ import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 import CustomerTemplateWorkbench from "../customer/CustomerTemplateWorkbench";
 import OrderDiscussionPanel from "./OrderDiscussionPanel";
+
 const STATUS_STYLE = {
-  pending: { bg: "#fef3c7", color: "#a16207" },
-  confirmed: { bg: "#dbeafe", color: "#1d4ed8" },
-  contract_released: { bg: "#ede9fe", color: "#6d28d9" },
-  production: { bg: "#f3e8ff", color: "#7e22ce" },
-  shipping: { bg: "#e0f2fe", color: "#0369a1" },
-  delivered: { bg: "#dcfce7", color: "#15803d" },
-  completed: { bg: "#dcfce7", color: "#166534" },
-  cancelled: { bg: "#fee2e2", color: "#dc2626" },
+  pending: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
+  confirmed: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
+  contract_released: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
+  production: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
+  shipping: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
+  delivered: { bg: "#18181b", color: "#ffffff", border: "#18181b" },
+  completed: { bg: "#0a0a0a", color: "#ffffff", border: "#0a0a0a" },
+  cancelled: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
 };
 
 const STATUS_LABELS = {
@@ -35,11 +36,7 @@ const ONLINE_STANDARD_DELIVERY_TIMELINE = [
   "completed",
 ];
 
-const ONLINE_STANDARD_PICKUP_TIMELINE = [
-  "pending",
-  "confirmed",
-  "completed",
-];
+const ONLINE_STANDARD_PICKUP_TIMELINE = ["pending", "confirmed", "completed"];
 
 const BLUEPRINT_TIMELINE = [
   "pending",
@@ -89,21 +86,19 @@ const STATUS_TRANSITIONS = {
 };
 
 const PAYMENT_STYLE = {
-  unpaid: { bg: "#fef2f2", color: "#dc2626" },
-  paid: { bg: "#ecfdf5", color: "#15803d" },
-  partial: { bg: "#fef3c7", color: "#b45309" },
-  pending: { bg: "#fef3c7", color: "#a16207" },
-  verified: { bg: "#ecfdf5", color: "#15803d" },
-  rejected: { bg: "#fee2e2", color: "#dc2626" },
+  unpaid: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
+  paid: { bg: "#18181b", color: "#ffffff", border: "#18181b" },
+  partial: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
+  pending: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
+  verified: { bg: "#0a0a0a", color: "#ffffff", border: "#0a0a0a" },
+  rejected: { bg: "#fef2f2", color: "#dc2626", border: "#fecaca" },
 };
 
 const TASK_STYLE = {
-  pending: { bg: "#fef3c7", color: "#a16207" },
-  in_progress: { bg: "#dbeafe", color: "#1d4ed8" },
-  completed: { bg: "#dcfce7", color: "#166534" },
+  pending: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
+  in_progress: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
+  completed: { bg: "#0a0a0a", color: "#ffffff", border: "#0a0a0a" },
 };
-
-
 
 const normalize = (value) => String(value || "").toLowerCase();
 
@@ -135,14 +130,11 @@ const titleCase = (value) => {
   return str ? str.charAt(0).toUpperCase() + str.slice(1) : "—";
 };
 
-
-
 const prettify = (value) =>
   String(value ?? "")
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
-    
 const formatMoney = (value) =>
   `₱ ${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
@@ -172,14 +164,14 @@ const getStatusLabel = (status) =>
 const getChannelMeta = (channel) => {
   const key = normalize(channel);
   return key === "online"
-    ? { label: "Online", bg: "#eff6ff", color: "#2563eb" }
-    : { label: "Walk-in", bg: "#ecfdf5", color: "#15803d" };
+    ? { label: "Online", bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" }
+    : { label: "Walk-in", bg: "#ffffff", color: "#52525b", border: "#d4d4d8" };
 };
 
 const getTone = (
   styleMap,
   key,
-  fallback = { bg: "#f8fafc", color: "#475569" },
+  fallback = { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
 ) => styleMap[normalize(key)] || fallback;
 
 const getTimelineStepState = (steps, currentStatus, stepKey) => {
@@ -241,19 +233,19 @@ const getTimelineNote = (
         : "Awaiting delivery schedule";
 
     case "delivered":
-    if (isWalkInOrder) {
-      return order?.delivery?.delivered_date
-        ? `Delivered ${formatDate(order.delivery.delivered_date)}`
-        : order?.delivery
-          ? "Delivery completed"
-          : "Not yet delivered";
-    }
+      if (isWalkInOrder) {
+        return order?.delivery?.delivered_date
+          ? `Delivered ${formatDate(order.delivery.delivered_date)}`
+          : order?.delivery
+            ? "Delivery completed"
+            : "Not yet delivered";
+      }
 
-    return hasSignedDeliveryReceipt
-      ? "Signed receipt uploaded"
-      : order?.delivery
-        ? "Awaiting signed receipt"
-        : "Not yet delivered";
+      return hasSignedDeliveryReceipt
+        ? "Signed receipt uploaded"
+        : order?.delivery
+          ? "Awaiting signed receipt"
+          : "Not yet delivered";
 
     case "completed":
       return normalize(
@@ -275,7 +267,6 @@ const getProofType = (url) => {
   if (/\.pdf$/.test(cleanUrl)) return "pdf";
   return "other";
 };
-
 
 const hasCustomEditorSnapshot = (item) =>
   Array.isArray(item?.editor_snapshot?.components) &&
@@ -380,8 +371,6 @@ const buildCustomRequestPreviewBlueprint = (item) => {
   };
 };
 
-
-
 export default function OrderDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -391,7 +380,6 @@ export default function OrderDetailPage() {
 
   const [statusModal, setStatusModal] = useState(false);
   const [newStatus, setNewStatus] = useState("");
-  
 
   const [proofPreview, setProofPreview] = useState({
     open: false,
@@ -405,8 +393,10 @@ export default function OrderDetailPage() {
     type: "other",
   });
 
-  const [customRequestPreviewItem, setCustomRequestPreviewItem] = useState(null);
-  const [customRequestActionLoading, setCustomRequestActionLoading] = useState("");
+  const [customRequestPreviewItem, setCustomRequestPreviewItem] =
+    useState(null);
+  const [customRequestActionLoading, setCustomRequestActionLoading] =
+    useState("");
   const [activeTab, setActiveTab] = useState("overview");
   const canUseDiscussion = normalize(order?.order_type) === "blueprint";
 
@@ -422,7 +412,6 @@ export default function OrderDetailPage() {
     note: "",
   });
 
- 
   const load = async () => {
     setLoading(true);
     try {
@@ -461,8 +450,6 @@ export default function OrderDetailPage() {
       : [];
 
     const hasBlueprintTasks = blueprintTasks.length > 0;
-
-    
 
     if (
       isBlueprintOrder &&
@@ -559,7 +546,7 @@ export default function OrderDetailPage() {
       );
     }
   };
-  
+
   const openProofPreview = (url) => {
     const resolvedUrl = buildAssetUrl(url);
     setProofPreview({
@@ -638,8 +625,6 @@ export default function OrderDetailPage() {
     }
   };
 
-  
-
   const openAssignModal = async () => {
     if (!blueprintId) {
       toast.error("This order is not linked to a blueprint.");
@@ -680,7 +665,6 @@ export default function OrderDetailPage() {
     }
   };
 
-
   const handleAssignStaff = async () => {
     if (hasBlueprintTasks) {
       toast.error(
@@ -693,8 +677,6 @@ export default function OrderDetailPage() {
       toast.error("Please select a staff member.");
       return;
     }
-
-  
 
     if (!assignForm.due_date) {
       toast.error("Due date is required.");
@@ -793,9 +775,10 @@ export default function OrderDetailPage() {
       .filter(Boolean),
   );
 
-  const missingRequiredBlueprintTaskRoles = REQUIRED_BLUEPRINT_TASK_ROLES.filter(
-    (role) => !existingBlueprintTaskRoles.has(role),
-  );
+  const missingRequiredBlueprintTaskRoles =
+    REQUIRED_BLUEPRINT_TASK_ROLES.filter(
+      (role) => !existingBlueprintTaskRoles.has(role),
+    );
 
   const incompleteRequiredBlueprintTaskRoles =
     REQUIRED_BLUEPRINT_TASK_ROLES.filter(
@@ -838,7 +821,7 @@ export default function OrderDetailPage() {
     order?.contract?.blueprint_id || order?.blueprint_id || null;
   const canAssignBlueprintStaff =
     Boolean(blueprintId) &&
-    ["contract_released", "production"].includes(normalize(order?.status));  
+    ["contract_released", "production"].includes(normalize(order?.status));
 
   const hasBlueprintFlow = Boolean(
     blueprintId || order?.contract || hasBlueprintTasks,
@@ -849,8 +832,8 @@ export default function OrderDetailPage() {
     Boolean(blueprintId || order?.contract);
   const hasDeliveryRequirement = Boolean(
     order?.delivery ||
-      String(order?.delivery_address || "").trim() ||
-      String(order?.requested_delivery_date || "").trim(),
+    String(order?.delivery_address || "").trim() ||
+    String(order?.requested_delivery_date || "").trim(),
   );
 
   const latestEstimation = order?.latest_estimation || null;
@@ -860,7 +843,6 @@ export default function OrderDetailPage() {
   const estimationSentToCustomer = estimationStatus === "sent";
   const estimationRejectedByCustomer = estimationStatus === "rejected";
 
-  
   const isStandardOrder = !isBlueprintOrder;
 
   const isWalkInStandardOrder = isWalkInOrder && isStandardOrder;
@@ -998,13 +980,10 @@ export default function OrderDetailPage() {
     );
   });
 
-
-
   const shouldShowMissingDeliverySection =
     requiresDeliveryReceiptForCompletion &&
     !order?.delivery &&
     ["shipping", "delivered", "completed"].includes(normalizedOrderStatus);
-
 
   const shouldShowStatusButton =
     currentOrderStatus !== "pending" &&
@@ -1059,7 +1038,8 @@ export default function OrderDetailPage() {
             : normalizedOrderStatus === "shipping"
               ? "Mark delivered after handoff"
               : normalizedOrderStatus === "delivered"
-                ? requiresDeliveryReceiptForCompletion && !hasSignedDeliveryReceipt
+                ? requiresDeliveryReceiptForCompletion &&
+                  !hasSignedDeliveryReceipt
                   ? "Upload signed receipt and complete"
                   : "Complete order"
                 : normalizedOrderStatus === "completed"
@@ -1114,8 +1094,6 @@ export default function OrderDetailPage() {
                       .join(", ")}`
                 : "Waiting for contract release / production stage";
 
-                    
-
   const customRequestItems = Array.isArray(order?.custom_request_items)
     ? order.custom_request_items
     : [];
@@ -1144,7 +1122,7 @@ export default function OrderDetailPage() {
     {
       label: "Total Amount",
       value: formatMoney(totalAmount),
-      tone: { bg: "#eff6ff", color: "#1d4ed8" },
+      tone: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
     },
     hasBlueprintFlow
       ? {
@@ -1152,12 +1130,12 @@ export default function OrderDetailPage() {
           value: hasBlueprintTasks
             ? `${completedBlueprintTasks.length}/${blueprintTasks.length}`
             : "Ready",
-          tone: { bg: "#f8fafc", color: "#475569" },
+          tone: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
         }
       : {
           label: "Next Step",
           value: nextStepLabel,
-          tone: { bg: "#f8fafc", color: "#475569" },
+          tone: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
         },
   ];
 
@@ -1165,8 +1143,7 @@ export default function OrderDetailPage() {
     if (tab.key === "blueprint")
       return Boolean(blueprintId || order.contract || hasBlueprintTasks);
 
-    if (tab.key === "discussion")
-      return canUseDiscussion;
+    if (tab.key === "discussion") return canUseDiscussion;
 
     if (tab.key === "fulfillment") return shouldShowFulfillmentTab;
 
@@ -1199,6 +1176,7 @@ export default function OrderDetailPage() {
                   ...pill,
                   background: statusTone.bg,
                   color: statusTone.color,
+                  border: `1px solid ${statusTone.border}`,
                 }}
               >
                 {getStatusLabel(order.status)}
@@ -1209,6 +1187,7 @@ export default function OrderDetailPage() {
                   ...pill,
                   background: channelMeta.bg,
                   color: channelMeta.color,
+                  border: `1px solid ${channelMeta.border}`,
                 }}
               >
                 {channelMeta.label}
@@ -1239,12 +1218,10 @@ export default function OrderDetailPage() {
                 estimationRejectedByCustomer ||
                 estimationStatus === "draft") && (
                 <button
-                  onClick={() => navigate(`/admin/blueprints/${blueprintId}/estimation`)}
-                  style={{
-                    ...btnPrimary,
-                    background: "#d97706",
-                    borderColor: "#d97706",
-                  }}
+                  onClick={() =>
+                    navigate(`/admin/blueprints/${blueprintId}/estimation`)
+                  }
+                  style={btnPrimary}
                 >
                   {hasEstimation ? "Revise Estimate" : "Create Estimate"}
                 </button>
@@ -1271,11 +1248,7 @@ export default function OrderDetailPage() {
                     },
                   })
                 }
-                style={{
-                  ...btnPrimary,
-                  background: "#7c3aed",
-                  borderColor: "#7c3aed",
-                }}
+                style={btnPrimary}
               >
                 Generate Contract
               </button>
@@ -1304,7 +1277,7 @@ export default function OrderDetailPage() {
                   style={{
                     ...toneDot,
                     background: card.tone.color,
-                    boxShadow: `0 0 0 4px ${card.tone.bg}`,
+                    boxShadow: `0 0 0 3px ${card.tone.border}`,
                   }}
                 />
               </div>
@@ -1337,9 +1310,9 @@ export default function OrderDetailPage() {
                 onClick={() => setActiveTab(tab.key)}
                 style={{
                   ...detailTabButton,
-                  background: isActive ? "#0f172a" : "#ffffff",
-                  color: isActive ? "#ffffff" : "#475569",
-                  borderColor: isActive ? "#0f172a" : "#e2e8f0",
+                  background: isActive ? "#18181b" : "#ffffff",
+                  color: isActive ? "#ffffff" : "#52525b",
+                  borderColor: isActive ? "#18181b" : "#e4e4e7",
                 }}
               >
                 {tab.label}
@@ -1408,8 +1381,8 @@ export default function OrderDetailPage() {
                               index === 0
                                 ? "transparent"
                                 : leftLineActive
-                                  ? "#1d4ed8"
-                                  : "#e2e8f0",
+                                  ? "#18181b"
+                                  : "#e4e4e7",
                           }}
                         />
 
@@ -1429,13 +1402,13 @@ export default function OrderDetailPage() {
                                       background: stepTone.color,
                                       borderColor: stepTone.color,
                                       color: "#ffffff",
-                                      boxShadow: `0 0 0 4px ${stepTone.bg}`,
+                                      boxShadow: `0 0 0 3px ${stepTone.bg}`,
                                     }
                                   : {
                                       background: stepTone.bg,
-                                      borderColor: stepTone.color,
+                                      borderColor: stepTone.border,
                                       color: stepTone.color,
-                                      boxShadow: `0 0 0 4px ${stepTone.bg}`,
+                                      boxShadow: `0 0 0 3px #ffffff`,
                                     }
                                 : {}),
                           }}
@@ -1455,8 +1428,8 @@ export default function OrderDetailPage() {
                               index === timelineSteps.length - 1
                                 ? "transparent"
                                 : rightLineActive
-                                  ? "#1d4ed8"
-                                  : "#e2e8f0",
+                                  ? "#18181b"
+                                  : "#e4e4e7",
                           }}
                         />
                       </div>
@@ -1465,7 +1438,7 @@ export default function OrderDetailPage() {
                         style={{
                           ...timelineStepTitle,
                           color:
-                            stepState === "upcoming" ? "#94a3b8" : "#0f172a",
+                            stepState === "upcoming" ? "#a1a1aa" : "#0a0a0a",
                         }}
                       >
                         {getStatusLabel(step)}
@@ -1527,8 +1500,8 @@ export default function OrderDetailPage() {
                   <div
                     style={{
                       fontSize: 13,
-                      fontWeight: 700,
-                      color: "#0f172a",
+                      fontWeight: 800,
+                      color: "#0a0a0a",
                       marginBottom: 6,
                     }}
                   >
@@ -1537,12 +1510,13 @@ export default function OrderDetailPage() {
                   <div
                     style={{
                       fontSize: 12,
-                      color: "#64748b",
+                      color: "#52525b",
                       lineHeight: 1.6,
                     }}
                   >
-                    Review the submitted dimensions, finish, hardware, and the exact
-                    edited draft before approving the request for estimation.
+                    Review the submitted dimensions, finish, hardware, and the
+                    exact edited draft before approving the request for
+                    estimation.
                   </div>
                 </div>
 
@@ -1551,11 +1525,7 @@ export default function OrderDetailPage() {
                     <button
                       onClick={() => handleCustomRequestAction("approve")}
                       disabled={customRequestActionLoading === "approve"}
-                      style={{
-                        ...btnPrimary,
-                        background: "#15803d",
-                        borderColor: "#15803d",
-                      }}
+                      style={btnAccept}
                     >
                       {customRequestActionLoading === "approve"
                         ? "Approving..."
@@ -1563,13 +1533,13 @@ export default function OrderDetailPage() {
                     </button>
 
                     <button
-                      onClick={() => handleCustomRequestAction("request-revision")}
-                      disabled={customRequestActionLoading === "request-revision"}
-                      style={{
-                        ...btnSecondary,
-                        borderColor: "#d97706",
-                        color: "#d97706",
-                      }}
+                      onClick={() =>
+                        handleCustomRequestAction("request-revision")
+                      }
+                      disabled={
+                        customRequestActionLoading === "request-revision"
+                      }
+                      style={btnSecondary}
                     >
                       {customRequestActionLoading === "request-revision"
                         ? "Sending..."
@@ -1602,7 +1572,7 @@ export default function OrderDetailPage() {
                     <div
                       key={item.id}
                       style={{
-                        border: "1px solid #e5e7eb",
+                        border: "1px solid #e4e4e7",
                         borderRadius: 14,
                         padding: 14,
                         background: "#fff",
@@ -1622,15 +1592,17 @@ export default function OrderDetailPage() {
                           <div
                             style={{
                               fontSize: 15,
-                              fontWeight: 700,
-                              color: "#0f172a",
+                              fontWeight: 800,
+                              color: "#0a0a0a",
                               marginBottom: 4,
                             }}
                           >
-                            {item.display_name || item.product_name || "Custom Furniture"}
+                            {item.display_name ||
+                              item.product_name ||
+                              "Custom Furniture"}
                           </div>
 
-                          <div style={{ fontSize: 12, color: "#64748b" }}>
+                          <div style={{ fontSize: 12, color: "#71717a" }}>
                             Customer-submitted custom draft
                           </div>
                         </div>
@@ -1648,7 +1620,8 @@ export default function OrderDetailPage() {
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                          gridTemplateColumns:
+                            "repeat(auto-fit, minmax(180px, 1fr))",
                           gap: 10,
                         }}
                       >
@@ -1689,7 +1662,7 @@ export default function OrderDetailPage() {
                 })}
               </div>
             </Section>
-          )}        
+          )}
           {isBlueprintOrder && (
             <Section title="Estimate / Quotation">
               <InfoRow
@@ -1706,15 +1679,25 @@ export default function OrderDetailPage() {
               />
               <InfoRow
                 label="Version"
-                value={hasEstimation ? `v${latestEstimation.version || 1}` : "—"}
+                value={
+                  hasEstimation ? `v${latestEstimation.version || 1}` : "—"
+                }
               />
               <InfoRow
                 label="Last Updated"
-                value={hasEstimation ? formatDateTime(latestEstimation.updated_at) : "—"}
+                value={
+                  hasEstimation
+                    ? formatDateTime(latestEstimation.updated_at)
+                    : "—"
+                }
               />
               <InfoRow
                 label="Quoted Total"
-                value={hasEstimation ? formatMoney(latestEstimation.grand_total) : "—"}
+                value={
+                  hasEstimation
+                    ? formatMoney(latestEstimation.grand_total)
+                    : "—"
+                }
                 bold
               />
 
@@ -1725,12 +1708,10 @@ export default function OrderDetailPage() {
                   estimationStatus === "draft") && (
                   <div style={{ marginTop: 12 }}>
                     <button
-                      onClick={() => navigate(`/admin/blueprints/${blueprintId}/estimation`)}
-                      style={{
-                        ...btnPrimary,
-                        background: "#d97706",
-                        borderColor: "#d97706",
-                      }}
+                      onClick={() =>
+                        navigate(`/admin/blueprints/${blueprintId}/estimation`)
+                      }
+                      style={btnPrimary}
                     >
                       {hasEstimation ? "Revise Estimate" : "Create Estimate"}
                     </button>
@@ -1742,7 +1723,8 @@ export default function OrderDetailPage() {
                 estimationSentToCustomer && (
                   <div style={{ marginTop: 12 }}>
                     <span style={mutedBadge}>
-                      Quotation already sent. Waiting for customer approval, revision request, or rejection.
+                      Quotation already sent. Waiting for customer approval,
+                      revision request, or rejection.
                     </span>
                   </div>
                 )}
@@ -1772,8 +1754,10 @@ export default function OrderDetailPage() {
                       <td style={td}>{item.product_name}</td>
                       <td style={td}>{item.quantity}</td>
                       <td style={td}>{formatMoney(item.unit_price)}</td>
-                      <td style={td}>{formatMoney(item.production_cost)}</td>
-                      <td style={{ ...td, fontWeight: 700 }}>
+                      <td style={{ ...td, color: "#71717a" }}>
+                        {formatMoney(item.production_cost)}
+                      </td>
+                      <td style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}>
                         {formatMoney(item.subtotal)}
                       </td>
                     </tr>
@@ -1783,11 +1767,16 @@ export default function OrderDetailPage() {
                   <tr style={tfootRow}>
                     <td
                       colSpan={4}
-                      style={{ ...td, textAlign: "right", fontWeight: 700 }}
+                      style={{
+                        ...td,
+                        textAlign: "right",
+                        fontWeight: 800,
+                        color: "#0a0a0a",
+                      }}
                     >
                       Total
                     </td>
-                    <td style={{ ...td, fontWeight: 800, color: "#1d4ed8" }}>
+                    <td style={{ ...td, fontWeight: 800, color: "#0a0a0a" }}>
                       {formatMoney(totalAmount)}
                     </td>
                   </tr>
@@ -1846,7 +1835,9 @@ export default function OrderDetailPage() {
 
                       return (
                         <tr key={payment.id} style={tbodyRow}>
-                          <td style={{ ...td, fontWeight: 600 }}>
+                          <td
+                            style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}
+                          >
                             {formatMoney(payment.amount)}
                           </td>
                           <td style={td}>
@@ -1858,6 +1849,7 @@ export default function OrderDetailPage() {
                                 ...pill,
                                 background: paymentTone.bg,
                                 color: paymentTone.color,
+                                border: `1px solid ${paymentTone.border}`,
                               }}
                             >
                               {titleCase(payment.status)}
@@ -1878,8 +1870,10 @@ export default function OrderDetailPage() {
                               "—"
                             )}
                           </td>
-                          <td style={td}>{payment.verified_by || "—"}</td>
-                          <td style={{ ...td, color: "#64748b" }}>
+                          <td style={{ ...td, color: "#71717a" }}>
+                            {payment.verified_by || "—"}
+                          </td>
+                          <td style={{ ...td, color: "#71717a" }}>
                             {formatDate(payment.created_at)}
                           </td>
                           {hasPendingPaymentActions ? (
@@ -1929,21 +1923,24 @@ export default function OrderDetailPage() {
               bold
             />
 
-            {normalizedOrderStatus === "delivered" && paymentBalance > 0 && !hasPendingPaymentActions && (
-              <div style={{ marginTop: 14 }}>
-                <div style={{ ...alertWarning, marginBottom: 12 }}>
-                  This order still has an unpaid remaining balance. The assigned rider should
-                  record the on-site collection from the delivery page first, then admin can
-                  verify the pending payment here before marking the order as completed.
+            {normalizedOrderStatus === "delivered" &&
+              paymentBalance > 0 &&
+              !hasPendingPaymentActions && (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ ...alertWarning, marginBottom: 12 }}>
+                    This order still has an unpaid remaining balance. The
+                    assigned rider should record the on-site collection from the
+                    delivery page first, then admin can verify the pending
+                    payment here before marking the order as completed.
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             {hasPendingPaymentActions && (
               <div style={{ marginTop: 14 }}>
                 <div style={infoNotice}>
-                  A rider-submitted delivery payment is waiting for admin verification in the
-                  payment transactions table above.
+                  A rider-submitted delivery payment is waiting for admin
+                  verification in the payment transactions table above.
                 </div>
               </div>
             )}
@@ -2014,19 +2011,24 @@ export default function OrderDetailPage() {
                   />
 
                   {!order.delivery.signed_receipt &&
-                    ["shipping", "delivered"].includes(normalizedOrderStatus) && (
+                    ["shipping", "delivered"].includes(
+                      normalizedOrderStatus,
+                    ) && (
                       <div style={noticeBox}>
-                        <div style={noticeTitle}>Awaiting Rider Proof of Delivery</div>
+                        <div style={noticeTitle}>
+                          Awaiting Rider Proof of Delivery
+                        </div>
                         <div
                           style={{
                             fontSize: 12,
-                            color: "#64748b",
+                            color: "#52525b",
                             lineHeight: 1.6,
                           }}
                         >
-                          The assigned delivery rider should upload the signed receipt / proof of
-                          delivery from the rider delivery page. This admin order view is
-                          summary-only by default.
+                          The assigned delivery rider should upload the signed
+                          receipt / proof of delivery from the rider delivery
+                          page. This admin order view is summary-only by
+                          default.
                         </div>
                       </div>
                     )}
@@ -2035,13 +2037,13 @@ export default function OrderDetailPage() {
                 <Section title="Delivery Information">
                   <div
                     style={{
-                      background: "#fffbeb",
-                      border: "1px solid #fde68a",
-                      color: "#92400e",
+                      background: "#fafafa",
+                      border: "1px solid #e4e4e7",
+                      color: "#18181b",
                       borderRadius: 12,
-                      padding: "9px 11px",
+                      padding: "10px 14px",
                       fontSize: 12,
-                      fontWeight: 700,
+                      fontWeight: 800,
                       marginBottom: 8,
                     }}
                   >
@@ -2052,7 +2054,7 @@ export default function OrderDetailPage() {
                   <div
                     style={{
                       fontSize: 12,
-                      color: "#64748b",
+                      color: "#52525b",
                       lineHeight: 1.5,
                     }}
                   >
@@ -2154,6 +2156,7 @@ export default function OrderDetailPage() {
                               ...pill,
                               background: taskTone.bg,
                               color: taskTone.color,
+                              border: `1px solid ${taskTone.border}`,
                             }}
                           >
                             {titleCase(task.status)}
@@ -2178,11 +2181,13 @@ export default function OrderDetailPage() {
                         <div style={taskActions}>
                           {isDeliveryPhaseOrDone ? (
                             <span style={mutedBadge}>
-                              Production packet locked during delivery/completion
+                              Production packet locked during
+                              delivery/completion
                             </span>
                           ) : (
                             <span style={mutedBadge}>
-                              Staff updates this step from the Production Work Queue
+                              Staff updates this step from the Production Work
+                              Queue
                             </span>
                           )}
                         </div>
@@ -2201,15 +2206,17 @@ export default function OrderDetailPage() {
                     disabled={!blueprintId || loadingAssignable}
                     style={{
                       ...btnPrimary,
-                      background: "#7c3aed",
-                      borderColor: "#7c3aed",
                       opacity: !blueprintId || loadingAssignable ? 0.75 : 1,
                       cursor:
-                        !blueprintId || loadingAssignable ? "not-allowed" : "pointer",
+                        !blueprintId || loadingAssignable
+                          ? "not-allowed"
+                          : "pointer",
                     }}
                     title="Assign primary indoor staff"
                   >
-                    {loadingAssignable ? "Loading Staff..." : "Assign Indoor Staff"}
+                    {loadingAssignable
+                      ? "Loading Staff..."
+                      : "Assign Indoor Staff"}
                   </button>
                 </div>
               )}
@@ -2217,7 +2224,8 @@ export default function OrderDetailPage() {
               {canAssignBlueprintStaff && hasBlueprintTasks && (
                 <div style={{ marginTop: 12 }}>
                   <span style={mutedBadge}>
-                    Primary indoor staff already assigned for this production order.
+                    Primary indoor staff already assigned for this production
+                    order.
                   </span>
                 </div>
               )}
@@ -2265,7 +2273,7 @@ export default function OrderDetailPage() {
           </div>
         </div>
       )}
-      
+
       {proofPreview.open && (
         <div style={overlay}>
           <div style={{ ...modalBox, width: 820, maxWidth: "96vw" }}>
@@ -2420,7 +2428,7 @@ export default function OrderDetailPage() {
             <select
               value={newStatus}
               onChange={(e) => setNewStatus(e.target.value)}
-              style={{ ...inputFull, marginBottom: 18 }}
+              style={{ ...inputFull, marginBottom: 20 }}
             >
               {!allowedNextStatuses.length && (
                 <option value="">No further status available</option>
@@ -2429,8 +2437,11 @@ export default function OrderDetailPage() {
               {allowedNextStatuses.map((status) => {
                 const blockedByIncompleteTasks =
                   isBlueprintOrder &&
-                  ["shipping", "delivered", "completed"].includes(normalize(status)) &&
-                  (!hasRequiredBlueprintTaskPacket || !allBlueprintTasksCompleted);
+                  ["shipping", "delivered", "completed"].includes(
+                    normalize(status),
+                  ) &&
+                  (!hasRequiredBlueprintTaskPacket ||
+                    !allBlueprintTasksCompleted);
 
                 const blockedByMissingReceipt =
                   requiresDeliveryReceiptForCompletion &&
@@ -2481,10 +2492,7 @@ export default function OrderDetailPage() {
             </select>
 
             <div style={modalActions}>
-              <button
-                onClick={() => setStatusModal(false)}
-                style={btnSecondary}
-              >
+              <button onClick={() => setStatusModal(false)} style={btnGhost}>
                 Cancel
               </button>
               <button
@@ -2504,7 +2512,9 @@ export default function OrderDetailPage() {
           <div style={{ ...modalBox, width: 540 }}>
             <div style={modalHeader}>
               <div>
-                <h3 style={modalTitle}>Assign Indoor Staff to Production Order</h3>
+                <h3 style={modalTitle}>
+                  Assign Indoor Staff to Production Order
+                </h3>
                 <p style={modalSubtitle}>
                   Order #{String(order.id).padStart(5, "0")}
                   {assignmentBlueprintId
@@ -2530,7 +2540,8 @@ export default function OrderDetailPage() {
                   <option value="">— Select Staff —</option>
                   {assignableStaff.map((staff) => (
                     <option key={staff.id} value={staff.id}>
-                      {staff.name} — {staff.active_task_count} active production order
+                      {staff.name} — {staff.active_task_count} active production
+                      order
                       {Number(staff.active_task_count) === 1 ? "" : "s"}
                     </option>
                   ))}
@@ -2542,8 +2553,8 @@ export default function OrderDetailPage() {
                 <div
                   style={{
                     ...inputFull,
-                    background: "#f8fafc",
-                    color: "#334155",
+                    background: "#fafafa",
+                    color: "#52525b",
                     lineHeight: 1.6,
                     minHeight: "auto",
                   }}
@@ -2557,13 +2568,12 @@ export default function OrderDetailPage() {
                   • Horizontal Drilling
                   <br />
                   • Retouching
-                  <br />
-                  • Packing
+                  <br />• Packing
                 </div>
               </div>
             </div>
 
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 16 }}>
               <label style={labelSm}>Due Date</label>
               <input
                 type="datetime-local"
@@ -2578,7 +2588,7 @@ export default function OrderDetailPage() {
               />
             </div>
 
-            <div style={{ marginTop: 12 }}>
+            <div style={{ marginTop: 16 }}>
               <label style={labelSm}>Assignment Note (optional)</label>
               <textarea
                 rows={4}
@@ -2592,16 +2602,13 @@ export default function OrderDetailPage() {
             </div>
 
             {assignableStaff.length === 0 && (
-              <div style={{ ...alertWarning, marginTop: 14 }}>
+              <div style={{ ...alertWarning, marginTop: 16 }}>
                 No active staff available for assignment.
               </div>
             )}
 
             <div style={modalActions}>
-              <button
-                onClick={() => setAssignModal(false)}
-                style={btnSecondary}
-              >
+              <button onClick={() => setAssignModal(false)} style={btnGhost}>
                 Cancel
               </button>
               <button
@@ -2634,7 +2641,7 @@ function InfoRow({ label, value, bold }) {
   return (
     <div style={infoRow}>
       <span style={infoLabel}>{label}</span>
-      <span style={{ ...infoValue, fontWeight: bold ? 700 : 500 }}>
+      <span style={{ ...infoValue, fontWeight: bold ? 800 : 600 }}>
         {value}
       </span>
     </div>
@@ -2658,20 +2665,22 @@ function TableShell({ children }) {
   return <div style={tableShell}>{children}</div>;
 }
 
+// ─── Styles ─────────────────────────────────────────────────────────────────
+
 const pageShell = {
   maxWidth: 1120,
   margin: "0 auto",
   display: "flex",
   flexDirection: "column",
-  gap: 12,
+  gap: 16,
 };
 
 const heroCard = {
   background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 18,
-  padding: 14,
-  boxShadow: "0 4px 12px rgba(15, 23, 42, 0.035)",
+  border: "1px solid #e4e4e7",
+  borderRadius: 16,
+  padding: "16px 20px",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const heroTop = {
@@ -2680,38 +2689,39 @@ const heroTop = {
   alignItems: "flex-start",
   gap: 12,
   flexWrap: "wrap",
-  marginBottom: 10,
+  marginBottom: 12,
 };
 
 const eyebrow = {
   fontSize: 10,
-  fontWeight: 700,
-  letterSpacing: "0.12em",
+  fontWeight: 800,
+  letterSpacing: "1.2px",
   textTransform: "uppercase",
-  color: "#64748b",
-  marginBottom: 6,
+  color: "#71717a",
+  marginBottom: 8,
 };
 
 const heroTitleRow = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
+  gap: 10,
   flexWrap: "wrap",
 };
 
 const pageTitle = {
   margin: 0,
-  fontSize: 20,
+  fontSize: 24,
   lineHeight: 1.12,
-  fontWeight: 700,
-  color: "#0f172a",
+  fontWeight: 800,
+  color: "#0a0a0a",
+  letterSpacing: "-0.02em",
 };
 
 const pageSubtitle = {
-  margin: "6px 0 0",
-  fontSize: 12,
-  color: "#64748b",
-  lineHeight: 1.5,
+  margin: "8px 0 0",
+  fontSize: 13,
+  color: "#52525b",
+  lineHeight: 1.55,
   maxWidth: 620,
 };
 
@@ -2726,33 +2736,34 @@ const detailTabRow = {
   display: "flex",
   gap: 8,
   flexWrap: "wrap",
-  marginTop: 10,
-  paddingTop: 10,
-  borderTop: "1px solid #eef2f7",
+  marginTop: 16,
+  paddingTop: 16,
+  borderTop: "1px solid #e4e4e7",
 };
 
 const detailTabButton = {
-  padding: "8px 14px",
-  borderRadius: 999,
-  border: "1px solid #e2e8f0",
+  padding: "8px 16px",
+  borderRadius: 8,
+  border: "1px solid #e4e4e7",
   background: "#ffffff",
-  color: "#475569",
+  color: "#52525b",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 700,
   cursor: "pointer",
+  transition: "all 0.2s ease",
 };
 
 const statsGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-  gap: 10,
+  gap: 12,
 };
 
 const statCard = {
-  background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  borderRadius: 14,
-  padding: "9px 11px",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
+  borderRadius: 12,
+  padding: "12px 14px",
 };
 
 const statTop = {
@@ -2760,7 +2771,7 @@ const statTop = {
   justifyContent: "space-between",
   alignItems: "center",
   gap: 8,
-  marginBottom: 6,
+  marginBottom: 8,
 };
 
 const toneDot = {
@@ -2773,50 +2784,51 @@ const toneDot = {
 
 const statLabel = {
   fontSize: 10,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
+  fontWeight: 800,
+  letterSpacing: "1px",
   textTransform: "uppercase",
-  color: "#94a3b8",
+  color: "#71717a",
 };
 
 const statValue = {
-  fontSize: 16,
-  fontWeight: 700,
-  color: "#0f172a",
+  fontSize: 20,
+  fontWeight: 800,
+  color: "#0a0a0a",
+  letterSpacing: "-0.01em",
 };
 
 const sectionGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-  gap: 12,
+  gap: 16,
 };
 
 const detailPairGrid = {
   display: "grid",
   gridTemplateColumns: "1.1fr 0.9fr",
-  gap: 12,
+  gap: 16,
   alignItems: "start",
 };
 
 const sectionCard = {
   background: "#ffffff",
-  border: "1px solid #e5e7eb",
+  border: "1px solid #e4e4e7",
   borderRadius: 16,
-  padding: 14,
-  boxShadow: "0 2px 6px rgba(15, 23, 42, 0.028)",
+  padding: "16px 20px",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const sectionHeader = {
-  marginBottom: 10,
-  paddingBottom: 8,
-  borderBottom: "1px solid #f1f5f9",
+  marginBottom: 14,
+  paddingBottom: 10,
+  borderBottom: "1px solid #f4f4f5",
 };
 
 const sectionTitle = {
   margin: 0,
-  fontSize: 15,
-  fontWeight: 700,
-  color: "#0f172a",
+  fontSize: 16,
+  fontWeight: 800,
+  color: "#0a0a0a",
 };
 
 const infoRow = {
@@ -2824,20 +2836,20 @@ const infoRow = {
   justifyContent: "space-between",
   alignItems: "flex-start",
   gap: 14,
-  padding: "7px 0",
-  borderBottom: "1px solid #f8fafc",
+  padding: "8px 0",
+  borderBottom: "1px solid #fafafa",
 };
 
 const infoLabel = {
-  fontSize: 11,
-  color: "#64748b",
-  fontWeight: 600,
+  fontSize: 12,
+  color: "#71717a",
+  fontWeight: 700,
   minWidth: 120,
 };
 
 const infoValue = {
   fontSize: 13,
-  color: "#0f172a",
+  color: "#18181b",
   textAlign: "right",
   maxWidth: "72%",
   wordBreak: "break-word",
@@ -2847,8 +2859,8 @@ const infoValue = {
 const tableShell = {
   width: "100%",
   overflowX: "auto",
-  border: "1px solid #e5e7eb",
-  borderRadius: 14,
+  border: "1px solid #e4e4e7",
+  borderRadius: 12,
 };
 
 const table = {
@@ -2859,7 +2871,7 @@ const table = {
 };
 
 const theadRow = {
-  background: "#f8fafc",
+  background: "#fafafa",
 };
 
 const tbodyRow = {
@@ -2867,113 +2879,106 @@ const tbodyRow = {
 };
 
 const tfootRow = {
-  background: "#f8fafc",
+  background: "#fafafa",
 };
 
 const th = {
   textAlign: "left",
-  padding: "9px 11px",
+  padding: "12px 14px",
   fontSize: 10,
-  fontWeight: 700,
-  color: "#64748b",
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  borderBottom: "1px solid #edf2f7",
+  letterSpacing: "1px",
+  borderBottom: "1px solid #e4e4e7",
 };
 
 const td = {
-  padding: "9px 11px",
-  color: "#334155",
-  fontSize: 12,
-  borderBottom: "1px solid #f1f5f9",
+  padding: "12px 14px",
+  color: "#18181b",
+  fontSize: 13,
+  borderBottom: "1px solid #f4f4f5",
   verticalAlign: "middle",
 };
 
 const emptyText = {
   margin: 0,
-  fontSize: 12,
-  color: "#94a3b8",
+  fontSize: 13,
+  color: "#71717a",
   lineHeight: 1.5,
 };
 
 const infoNotice = {
-  background: "#eff6ff",
-  border: "1px solid #bfdbfe",
-  color: "#1d4ed8",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
+  color: "#18181b",
   borderRadius: 12,
-  padding: "9px 11px",
+  padding: "10px 14px",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 700,
 };
 
 const noticeBox = {
-  marginTop: 12,
-  padding: 12,
-  background: "#f8fafc",
+  marginTop: 16,
+  padding: 14,
+  background: "#fafafa",
   borderRadius: 12,
-  border: "1px dashed #cbd5e1",
+  border: "1px dashed #d4d4d8",
 };
 
 const noticeTitle = {
   fontSize: 12,
-  fontWeight: 600,
-  color: "#334155",
+  fontWeight: 800,
+  color: "#18181b",
   marginBottom: 10,
 };
 
-const uploadRow = {
-  display: "flex",
-  gap: 8,
-  alignItems: "center",
-  flexWrap: "wrap",
-};
-
 const textBlock = {
-  marginTop: 12,
-  padding: 12,
+  marginTop: 16,
+  padding: 14,
   borderRadius: 12,
-  background: "#f8fafc",
-  border: "1px solid #e2e8f0",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
 };
 
 const textBlockTitle = {
-  fontSize: 11,
-  fontWeight: 700,
-  color: "#334155",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#18181b",
   marginBottom: 8,
   textTransform: "uppercase",
-  letterSpacing: "0.06em",
+  letterSpacing: "1px",
 };
 
 const multilineText = {
   margin: 0,
-  fontSize: 12,
-  color: "#334155",
+  fontSize: 13,
+  color: "#52525b",
   lineHeight: 1.6,
   whiteSpace: "pre-wrap",
 };
 
 const taskList = {
-  marginTop: 12,
-  border: "1px solid #e5e7eb",
-  borderRadius: 14,
+  marginTop: 16,
+  border: "1px solid #e4e4e7",
+  borderRadius: 12,
   overflow: "hidden",
 };
 
 const taskListHeader = {
-  padding: "9px 11px",
-  background: "#f8fafc",
-  borderBottom: "1px solid #e2e8f0",
-  fontSize: 11,
-  fontWeight: 700,
-  color: "#334155",
+  padding: "10px 14px",
+  background: "#fafafa",
+  borderBottom: "1px solid #e4e4e7",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "0.06em",
+  letterSpacing: "1px",
 };
 
 const taskCard = {
-  padding: 12,
-  borderBottom: "1px solid #f1f5f9",
+  padding: 14,
+  borderBottom: "1px solid #f4f4f5",
   background: "#ffffff",
 };
 
@@ -2982,75 +2987,75 @@ const taskTop = {
   justifyContent: "space-between",
   alignItems: "flex-start",
   gap: 10,
-  marginBottom: 10,
+  marginBottom: 12,
 };
 
 const taskTitle = {
-  fontSize: 13,
-  fontWeight: 700,
-  color: "#0f172a",
+  fontSize: 14,
+  fontWeight: 800,
+  color: "#0a0a0a",
   marginBottom: 4,
 };
 
 const taskMeta = {
-  fontSize: 11,
-  color: "#64748b",
+  fontSize: 12,
+  color: "#71717a",
   lineHeight: 1.5,
 };
 
 const taskDetailsGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-  gap: 8,
-  marginBottom: 10,
+  gap: 10,
+  marginBottom: 12,
 };
 
 const miniInfoCard = {
-  background: "#f8fafc",
-  border: "1px solid #e5e7eb",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
   borderRadius: 10,
   padding: 10,
 };
 
 const miniInfoLabel = {
   fontSize: 10,
-  fontWeight: 700,
-  color: "#94a3b8",
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  marginBottom: 4,
+  letterSpacing: "1px",
+  marginBottom: 6,
 };
 
 const miniInfoValue = {
-  fontSize: 12,
+  fontSize: 13,
   fontWeight: 600,
-  color: "#0f172a",
+  color: "#0a0a0a",
   lineHeight: 1.5,
   wordBreak: "break-word",
 };
 
 const taskActions = {
   display: "flex",
-  gap: 6,
+  gap: 8,
   flexWrap: "wrap",
   alignItems: "center",
 };
 
 const timelineCancelNotice = {
-  marginBottom: 10,
-  padding: "9px 11px",
+  marginBottom: 16,
+  padding: "10px 14px",
   background: "#fef2f2",
   border: "1px solid #fecaca",
   borderRadius: 12,
-  fontSize: 12,
-  fontWeight: 600,
-  color: "#dc2626",
+  fontSize: 13,
+  fontWeight: 700,
+  color: "#991b1b",
 };
 
 const timelineScroller = {
   width: "100%",
   overflowX: "auto",
-  paddingBottom: 2,
+  paddingBottom: 4,
 };
 
 const timelineRail = {
@@ -3072,35 +3077,35 @@ const timelineStep = {
 const timelineTopLine = {
   display: "flex",
   alignItems: "center",
-  marginBottom: 10,
+  marginBottom: 12,
 };
 const timelineLine = {
   flex: 1,
-  height: 3,
+  height: 4,
   borderRadius: 999,
-  background: "#e2e8f0",
+  background: "#e4e4e7",
 };
 
 const timelineDot = {
-  width: 26,
-  height: 26,
+  width: 28,
+  height: 28,
   borderRadius: 999,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   fontSize: 12,
-  fontWeight: 700,
-  border: "1px solid #cbd5e1",
+  fontWeight: 800,
+  border: "1px solid #d4d4d8",
   background: "#ffffff",
-  color: "#94a3b8",
+  color: "#71717a",
   flexShrink: 0,
 };
 
 const timelineStepTitle = {
   fontSize: 12,
-  fontWeight: 700,
-  color: "#0f172a",
-  marginBottom: 4,
+  fontWeight: 800,
+  color: "#0a0a0a",
+  marginBottom: 6,
   lineHeight: 1.35,
   textAlign: "center",
   padding: "0 8px",
@@ -3108,28 +3113,28 @@ const timelineStepTitle = {
 
 const timelineStepNote = {
   fontSize: 11,
-  color: "#64748b",
+  color: "#71717a",
   lineHeight: 1.45,
   textAlign: "center",
   padding: "0 8px",
 };
 
 const mutedBadge = {
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#64748b",
-  background: "#f8fafc",
-  border: "1px solid #e2e8f0",
+  fontSize: 12,
+  fontWeight: 700,
+  color: "#71717a",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
   borderRadius: 999,
-  padding: "6px 10px",
+  padding: "6px 12px",
 };
 
 const pill = {
   display: "inline-flex",
   alignItems: "center",
-  padding: "4px 9px",
+  padding: "4px 10px",
   borderRadius: 999,
-  fontSize: 10,
+  fontSize: 11,
   fontWeight: 700,
   whiteSpace: "nowrap",
 };
@@ -3142,25 +3147,25 @@ const inlineActions = {
 
 const mutedInline = {
   fontSize: 12,
-  color: "#94a3b8",
+  color: "#71717a",
 };
 
 const previewLinkButton = {
   background: "none",
   border: "none",
   padding: 0,
-  color: "#1d4ed8",
-  fontWeight: 700,
+  color: "#18181b",
+  fontWeight: 800,
   fontSize: 12,
   cursor: "pointer",
   textDecoration: "underline",
 };
 
 const proofPreviewBox = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 14,
-  background: "#f8fafc",
-  padding: 12,
+  border: "1px solid #e4e4e7",
+  borderRadius: 12,
+  background: "#fafafa",
+  padding: 14,
   minHeight: 320,
   maxHeight: "70vh",
   overflow: "auto",
@@ -3171,14 +3176,14 @@ const proofPreviewImage = {
   maxWidth: "100%",
   width: "100%",
   height: "auto",
-  borderRadius: 10,
+  borderRadius: 8,
 };
 
 const proofPreviewFrame = {
   width: "100%",
   height: "65vh",
   border: "none",
-  borderRadius: 10,
+  borderRadius: 8,
   background: "#ffffff",
 };
 
@@ -3188,7 +3193,7 @@ const proofPreviewFallback = {
   alignItems: "center",
   justifyContent: "center",
   textAlign: "center",
-  color: "#64748b",
+  color: "#71717a",
   fontSize: 13,
   fontWeight: 600,
   padding: 20,
@@ -3198,30 +3203,32 @@ const btnSecondaryLink = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: "8px 12px",
-  background: "#ffffff",
-  color: "#334155",
-  border: "1px solid #d1d5db",
-  borderRadius: 10,
-  fontSize: 12,
+  padding: "9px 16px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
+  fontSize: 13,
   fontWeight: 700,
   textDecoration: "none",
+  transition: "background 0.2s",
 };
 
 const linkButton = {
   background: "none",
   border: "none",
-  color: "#1d4ed8",
-  fontWeight: 700,
+  color: "#18181b",
+  fontWeight: 800,
   cursor: "pointer",
   padding: 0,
   fontSize: 13,
+  textDecoration: "underline",
 };
 
 const overlay = {
   position: "fixed",
   inset: 0,
-  background: "rgba(15, 23, 42, 0.45)",
+  background: "rgba(0, 0, 0, 0.6)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -3231,73 +3238,76 @@ const overlay = {
 
 const modalBox = {
   background: "#fff",
-  borderRadius: 18,
-  padding: 20,
-  width: 460,
+  borderRadius: 16,
+  padding: 28,
+  width: 480,
   maxWidth: "100%",
-  boxShadow: "0 25px 60px rgba(15, 23, 42, 0.28)",
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 25px 60px rgba(0, 0, 0, 0.15)",
 };
 
 const modalHeader = {
-  marginBottom: 14,
+  marginBottom: 16,
 };
 
 const modalTitle = {
   margin: 0,
-  fontSize: 18,
-  fontWeight: 700,
-  color: "#0f172a",
+  fontSize: 20,
+  fontWeight: 800,
+  color: "#0a0a0a",
+  letterSpacing: "-0.01em",
 };
 
 const modalSubtitle = {
   margin: "6px 0 0",
-  fontSize: 12,
-  color: "#64748b",
+  fontSize: 13,
+  color: "#52525b",
   lineHeight: 1.5,
 };
 
 const alertWarning = {
-  background: "#fffbeb",
-  border: "1px solid #fde68a",
-  color: "#92400e",
+  background: "#fefce8",
+  border: "1px solid #fde047",
+  color: "#a16207",
   borderRadius: 12,
-  padding: "9px 11px",
+  padding: "10px 14px",
   fontSize: 12,
-  fontWeight: 600,
-  marginBottom: 10,
+  fontWeight: 700,
+  marginBottom: 12,
 };
 
 const formGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12,
+  gap: 14,
 };
 
 const modalActions = {
   display: "flex",
-  gap: 10,
+  gap: 12,
   justifyContent: "flex-end",
-  marginTop: 18,
+  marginTop: 24,
   flexWrap: "wrap",
 };
 
 const labelSm = {
   fontSize: 12,
-  fontWeight: 600,
-  color: "#334155",
+  fontWeight: 800,
+  color: "#18181b",
   display: "block",
-  marginBottom: 6,
+  marginBottom: 8,
 };
 
 const inputFull = {
   width: "100%",
-  padding: "9px 11px",
-  border: "1px solid #d1d5db",
-  borderRadius: 10,
+  padding: "10px 12px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
   boxSizing: "border-box",
   background: "#fff",
-  color: "#0f172a",
+  color: "#0a0a0a",
+  outline: "none",
 };
 
 const center = {
@@ -3305,84 +3315,79 @@ const center = {
   alignItems: "center",
   justifyContent: "center",
   height: 320,
-  color: "#64748b",
+  color: "#71717a",
   fontSize: 14,
   fontWeight: 600,
 };
 
 const btnBack = {
-  padding: "8px 10px",
+  padding: "6px 10px",
   background: "#ffffff",
-  color: "#334155",
-  border: "1px solid #d1d5db",
-  borderRadius: 10,
+  color: "#52525b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 700,
+  transition: "all 0.2s",
 };
 
 const btnPrimary = {
-  padding: "8px 12px",
-  background: "#1d4ed8",
-  color: "#fff",
-  border: "1px solid #1d4ed8",
-  borderRadius: 10,
+  padding: "9px 16px",
+  background: "#18181b",
+  color: "#ffffff",
+  border: "1px solid #18181b",
+  borderRadius: 8,
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 600,
-};
-
-const btnPrimarySm = {
-  padding: "7px 10px",
-  background: "#1d4ed8",
-  color: "#fff",
-  border: "1px solid #1d4ed8",
-  borderRadius: 10,
-  cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 600,
+  fontSize: 13,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 
 const btnView = {
-  padding: "8px 12px",
-  background: "#ffffff",
-  color: "#334155",
-  border: "1px solid #d1d5db",
-  borderRadius: 10,
+  padding: "9px 14px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 
 const btnSecondary = {
-  padding: "8px 12px",
+  padding: "9px 14px",
   background: "#ffffff",
-  color: "#334155",
-  border: "1px solid #d1d5db",
-  borderRadius: 10,
+  color: "#18181b",
+  border: "1px solid #d4d4d8",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 
 const btnAccept = {
-  padding: "7px 10px",
-  background: "#ecfdf5",
-  color: "#047857",
-  border: "1px solid #a7f3d0",
-  borderRadius: 10,
+  padding: "9px 14px",
+  background: "#18181b",
+  color: "#ffffff",
+  border: "1px solid #18181b",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 
 const btnDecline = {
-  padding: "7px 10px",
+  padding: "9px 14px",
   background: "#fef2f2",
-  color: "#dc2626",
+  color: "#991b1b",
   border: "1px solid #fecaca",
-  borderRadius: 10,
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };

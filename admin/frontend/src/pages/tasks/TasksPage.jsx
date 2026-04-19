@@ -14,35 +14,35 @@ const PRIORITY_ROLES = [
 const STATUS_META = {
   pending: {
     label: "Pending",
-    bg: "#f1f5f9",
-    color: "#475569",
-    border: "#e2e8f0",
+    bg: "#ffffff",
+    color: "#52525b",
+    border: "#d4d4d8",
   },
   in_progress: {
     label: "In Progress",
-    bg: "#eff6ff",
-    color: "#1d4ed8",
-    border: "#bfdbfe",
+    bg: "#f4f4f5",
+    color: "#18181b",
+    border: "#e4e4e7",
   },
   completed: {
     label: "Completed",
-    bg: "#f0fdf4",
-    color: "#15803d",
-    border: "#bbf7d0",
+    bg: "#0a0a0a",
+    color: "#ffffff",
+    border: "#0a0a0a",
   },
   blocked: {
     label: "Blocked",
     bg: "#fef2f2",
-    color: "#b91c1c",
+    color: "#991b1b",
     border: "#fecaca",
   },
 };
 
 const ROLE_COLOR = {
-  "Cabinet Maker": { bg: "#fdf4ff", color: "#7e22ce" },
-  Installer: { bg: "#fff7ed", color: "#c2410c" },
-  "Quality Inspector": { bg: "#eff6ff", color: "#1d4ed8" },
-  Other: { bg: "#f8fafc", color: "#475569" },
+  "Cabinet Maker": { bg: "#18181b", color: "#ffffff", border: "#18181b" },
+  Installer: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
+  "Quality Inspector": { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
+  Other: { bg: "#fafafa", color: "#71717a", border: "#e4e4e7" },
 };
 
 const BLANK = {
@@ -225,29 +225,55 @@ export default function TasksPage() {
 
   // ── Styles ──────────────────────────────────────────────────────────────────
   const S = {
-    page: { padding: "28px 32px", background: "#f8fafc", minHeight: "100vh" },
+    page: {
+      padding: "28px 32px",
+      background: "#f4f4f5",
+      minHeight: "100vh",
+      fontFamily: "'Inter', sans-serif",
+    },
     header: {
       display: "flex",
       alignItems: "flex-start",
       justifyContent: "space-between",
       marginBottom: 24,
+      flexWrap: "wrap",
+      gap: 16,
     },
-    title: { fontSize: 22, fontWeight: 700, color: "#0f172a", margin: 0 },
-    sub: { fontSize: 13, color: "#64748b", marginTop: 3 },
+    title: {
+      fontSize: 24,
+      fontWeight: 800,
+      color: "#0a0a0a",
+      margin: 0,
+      letterSpacing: "-0.02em",
+    },
+    sub: { fontSize: 13, color: "#52525b", marginTop: 4 },
     statRow: {
       display: "grid",
-      gridTemplateColumns: "repeat(5,1fr)",
+      gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
       gap: 14,
       marginBottom: 24,
     },
     stat: {
       background: "#fff",
-      border: "1px solid #e2e8f0",
+      border: "1px solid #e4e4e7",
       borderRadius: 12,
       padding: "16px 20px",
+      boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
     },
-    statNum: { fontSize: 28, fontWeight: 800, color: "#0f172a" },
-    statLbl: { fontSize: 12, color: "#64748b", marginTop: 2 },
+    statNum: {
+      fontSize: 26,
+      fontWeight: 800,
+      color: "#0a0a0a",
+      letterSpacing: "-0.02em",
+    },
+    statLbl: {
+      fontSize: 10,
+      color: "#71717a",
+      marginTop: 4,
+      textTransform: "uppercase",
+      letterSpacing: "1px",
+      fontWeight: 800,
+    },
     toolbar: {
       display: "flex",
       gap: 10,
@@ -256,46 +282,55 @@ export default function TasksPage() {
       flexWrap: "wrap",
     },
     input: {
-      padding: "8px 12px",
-      border: "1px solid #e2e8f0",
+      padding: "9px 14px",
+      border: "1px solid #e4e4e7",
       borderRadius: 8,
       fontSize: 13,
       background: "#fff",
       outline: "none",
+      color: "#18181b",
     },
     select: {
-      padding: "8px 12px",
-      border: "1px solid #e2e8f0",
+      padding: "9px 14px",
+      border: "1px solid #e4e4e7",
       borderRadius: 8,
       fontSize: 13,
       background: "#fff",
       cursor: "pointer",
+      color: "#18181b",
+      outline: "none",
     },
     btn: {
-      padding: "8px 18px",
+      padding: "9px 18px",
       borderRadius: 8,
       border: "none",
       cursor: "pointer",
       fontSize: 13,
-      fontWeight: 600,
+      fontWeight: 700,
+      transition: "background 0.2s",
     },
-    btnPrim: { background: "#2563eb", color: "#fff" },
+    btnPrim: {
+      background: "#18181b",
+      color: "#fff",
+      border: "1px solid #18181b",
+    },
     btnGray: {
-      background: "#f1f5f9",
-      color: "#475569",
-      border: "1px solid #e2e8f0",
+      background: "#f4f4f5",
+      color: "#18181b",
+      border: "1px solid #e4e4e7",
     },
     btnRed: {
       background: "#fef2f2",
-      color: "#b91c1c",
+      color: "#991b1b",
       border: "1px solid #fecaca",
     },
     card: {
       background: "#fff",
-      border: "1px solid #e2e8f0",
+      border: "1px solid #e4e4e7",
       borderRadius: 12,
       padding: "18px 20px",
-      marginBottom: 10,
+      marginBottom: 12,
+      boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
     },
     tag: (bg, color, border) => ({
       display: "inline-block",
@@ -310,52 +345,58 @@ export default function TasksPage() {
     overlay: {
       position: "fixed",
       inset: 0,
-      background: "rgba(0,0,0,.45)",
+      background: "rgba(0,0,0,.6)",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       zIndex: 1000,
+      padding: 20,
     },
     modal: {
       background: "#fff",
-      borderRadius: 14,
+      borderRadius: 16,
       width: 560,
+      maxWidth: "100%",
       maxHeight: "90vh",
       overflowY: "auto",
-      padding: 28,
-      boxShadow: "0 20px 60px rgba(0,0,0,.25)",
+      padding: 32,
+      boxShadow: "0 25px 60px rgba(0,0,0,.15)",
+      border: "1px solid #e4e4e7",
     },
     mTitle: {
-      fontSize: 18,
-      fontWeight: 700,
-      color: "#0f172a",
-      marginBottom: 20,
+      fontSize: 20,
+      fontWeight: 800,
+      color: "#0a0a0a",
+      marginBottom: 24,
+      letterSpacing: "-0.01em",
     },
     label: {
       fontSize: 12,
-      fontWeight: 600,
-      color: "#475569",
+      fontWeight: 800,
+      color: "#18181b",
       display: "block",
-      marginBottom: 5,
+      marginBottom: 8,
     },
     mInput: {
       width: "100%",
-      padding: "9px 12px",
-      border: "1px solid #e2e8f0",
+      padding: "10px 14px",
+      border: "1px solid #e4e4e7",
       borderRadius: 8,
       fontSize: 13,
       boxSizing: "border-box",
       outline: "none",
+      color: "#0a0a0a",
     },
-    mRow: { marginBottom: 16 },
-    half: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 },
+    mRow: { marginBottom: 18 },
+    half: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 },
     notifItem: (isRead) => ({
-      padding: "12px 14px",
-      borderRadius: 8,
-      marginBottom: 8,
+      padding: "14px 16px",
+      borderRadius: 10,
+      marginBottom: 10,
       cursor: "pointer",
-      background: isRead ? "#f8fafc" : "#eff6ff",
-      border: `1px solid ${isRead ? "#e2e8f0" : "#bfdbfe"}`,
+      background: isRead ? "#ffffff" : "#fafafa",
+      border: `1px solid ${isRead ? "#e4e4e7" : "#d4d4d8"}`,
+      transition: "background 0.2s",
     }),
   };
 
@@ -364,7 +405,7 @@ export default function TasksPage() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div style={S.header}>
         <div>
-          <h1 style={S.title}>📋 Task Assignments</h1>
+          <h1 style={S.title}>Task Assignments</h1>
           <p style={S.sub}>
             {isAdmin
               ? "Assign project tasks to staff and track progress."
@@ -381,18 +422,19 @@ export default function TasksPage() {
               <span
                 style={{
                   position: "absolute",
-                  top: -7,
-                  right: -7,
-                  background: "#ef4444",
+                  top: -6,
+                  right: -6,
+                  background: "#dc2626",
                   color: "#fff",
                   borderRadius: "50%",
-                  width: 18,
-                  height: 18,
+                  width: 20,
+                  height: 20,
                   fontSize: 10,
-                  fontWeight: 700,
+                  fontWeight: 800,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  border: "2px solid #f4f4f5",
                 }}
               >
                 {unreadCount > 9 ? "9+" : unreadCount}
@@ -410,11 +452,11 @@ export default function TasksPage() {
       {/* ── Stats ──────────────────────────────────────────────────────────── */}
       <div style={S.statRow}>
         {[
-          { label: "Total", value: stats.total, color: "#6366f1" },
-          { label: "Pending", value: stats.pending, color: "#f59e0b" },
-          { label: "In Progress", value: stats.in_progress, color: "#3b82f6" },
-          { label: "Completed", value: stats.completed, color: "#10b981" },
-          { label: "Blocked", value: stats.blocked, color: "#ef4444" },
+          { label: "Total", value: stats.total, color: "#0a0a0a" },
+          { label: "Pending", value: stats.pending, color: "#52525b" },
+          { label: "In Progress", value: stats.in_progress, color: "#18181b" },
+          { label: "Completed", value: stats.completed, color: "#0a0a0a" },
+          { label: "Blocked", value: stats.blocked, color: "#dc2626" },
         ].map((s) => (
           <div key={s.label} style={S.stat}>
             <div style={{ ...S.statNum, color: s.color }}>{s.value}</div>
@@ -426,7 +468,7 @@ export default function TasksPage() {
       {/* ── Toolbar ────────────────────────────────────────────────────────── */}
       <div style={S.toolbar}>
         <input
-          style={{ ...S.input, width: 230 }}
+          style={{ ...S.input, flex: "1 1 230px", minWidth: 200 }}
           placeholder="Search title, staff, order…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -454,18 +496,41 @@ export default function TasksPage() {
             </option>
           ))}
         </select>
-        <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: "auto" }}>
+        <span
+          style={{
+            fontSize: 12,
+            color: "#71717a",
+            marginLeft: "auto",
+            fontWeight: 600,
+          }}
+        >
           {filtered.length} task{filtered.length !== 1 ? "s" : ""}
         </span>
       </div>
 
       {/* ── Task List ──────────────────────────────────────────────────────── */}
       {loading ? (
-        <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>
+        <div
+          style={{
+            textAlign: "center",
+            padding: 60,
+            color: "#71717a",
+            fontWeight: 600,
+            fontSize: 13,
+          }}
+        >
           Loading tasks…
         </div>
       ) : filtered.length === 0 ? (
-        <div style={{ textAlign: "center", padding: 60, color: "#94a3b8" }}>
+        <div
+          style={{
+            textAlign: "center",
+            padding: 60,
+            color: "#71717a",
+            fontWeight: 600,
+            fontSize: 13,
+          }}
+        >
           {isAdmin
             ? 'No tasks yet. Click "+ Assign Task" to get started.'
             : "No tasks assigned to you."}
@@ -480,8 +545,8 @@ export default function TasksPage() {
               key={t.id}
               style={{
                 ...S.card,
-                borderColor: overdue ? "#fca5a5" : "#e2e8f0",
-                borderLeft: `4px solid ${sm.color}`,
+                borderColor: overdue ? "#fecaca" : "#e4e4e7",
+                borderLeft: `4px solid ${overdue ? "#dc2626" : sm.color}`,
               }}
             >
               <div
@@ -496,35 +561,35 @@ export default function TasksPage() {
                   <div
                     style={{
                       display: "flex",
-                      gap: 7,
+                      gap: 8,
                       alignItems: "center",
-                      marginBottom: 7,
+                      marginBottom: 8,
                       flexWrap: "wrap",
                     }}
                   >
                     <span style={S.tag(sm.bg, sm.color, sm.border)}>
                       {sm.label}
                     </span>
-                    <span style={S.tag(rc.bg, rc.color, rc.bg)}>
+                    <span style={S.tag(rc.bg, rc.color, rc.border)}>
                       {t.task_role}
                     </span>
                     {overdue && (
-                      <span style={S.tag("#fef2f2", "#b91c1c", "#fecaca")}>
+                      <span style={S.tag("#fef2f2", "#991b1b", "#fecaca")}>
                         ⚠ Overdue
                       </span>
                     )}
                     {!t.is_read && (
-                      <span style={S.tag("#eff6ff", "#1d4ed8", "#bfdbfe")}>
+                      <span style={S.tag("#18181b", "#ffffff", "#18181b")}>
                         ● New
                       </span>
                     )}
                   </div>
                   <div
                     style={{
-                      fontSize: 15,
-                      fontWeight: 700,
-                      color: "#0f172a",
-                      marginBottom: 4,
+                      fontSize: 16,
+                      fontWeight: 800,
+                      color: "#0a0a0a",
+                      marginBottom: 6,
                     }}
                   >
                     {t.title}
@@ -533,8 +598,8 @@ export default function TasksPage() {
                     <div
                       style={{
                         fontSize: 13,
-                        color: "#475569",
-                        marginBottom: 7,
+                        color: "#52525b",
+                        marginBottom: 10,
                         lineHeight: 1.5,
                       }}
                     >
@@ -544,29 +609,29 @@ export default function TasksPage() {
                   <div
                     style={{
                       fontSize: 12,
-                      color: "#94a3b8",
+                      color: "#71717a",
                       display: "flex",
                       gap: 16,
                       flexWrap: "wrap",
+                      fontWeight: 500,
                     }}
                   >
                     <span>
                       👤{" "}
-                      <b style={{ color: "#475569" }}>{t.assigned_to_name}</b>
+                      <b style={{ color: "#18181b" }}>{t.assigned_to_name}</b>
                     </span>
                     <span>📌 By {t.assigned_by_name}</span>
                     {t.order_number && <span>🛒 Order #{t.order_number}</span>}
                     {t.blueprint_title && <span>🗺 {t.blueprint_title}</span>}
                     {t.due_date && (
-                      <span style={{ color: overdue ? "#ef4444" : "#94a3b8" }}>
+                      <span style={{ color: overdue ? "#dc2626" : "#71717a" }}>
                         📅 Due{" "}
                         {new Date(t.due_date).toLocaleDateString("en-PH")}
                       </span>
                     )}
                     {t.completed_at && (
-                      <span style={{ color: "#10b981" }}>
-                        ✅{" "}
-                        {new Date(t.completed_at).toLocaleDateString("en-PH")}
+                      <span style={{ color: "#0a0a0a", fontWeight: 700 }}>
+                        ✓ {new Date(t.completed_at).toLocaleDateString("en-PH")}
                       </span>
                     )}
                   </div>
@@ -576,7 +641,7 @@ export default function TasksPage() {
                 <div
                   style={{
                     display: "flex",
-                    gap: 6,
+                    gap: 8,
                     marginLeft: 16,
                     flexShrink: 0,
                     flexWrap: "wrap",
@@ -584,7 +649,7 @@ export default function TasksPage() {
                   }}
                 >
                   <button
-                    style={{ ...S.btn, ...S.btnGray, padding: "6px 12px" }}
+                    style={{ ...S.btn, ...S.btnGray, padding: "7px 14px" }}
                     onClick={() => openView(t)}
                   >
                     View
@@ -592,13 +657,13 @@ export default function TasksPage() {
                   {isAdmin && (
                     <>
                       <button
-                        style={{ ...S.btn, ...S.btnGray, padding: "6px 12px" }}
+                        style={{ ...S.btn, ...S.btnGray, padding: "7px 14px" }}
                         onClick={() => openEdit(t)}
                       >
                         Edit
                       </button>
                       <button
-                        style={{ ...S.btn, ...S.btnRed, padding: "6px 12px" }}
+                        style={{ ...S.btn, ...S.btnRed, padding: "7px 14px" }}
                         onClick={() => handleDelete(t.id)}
                       >
                         Delete
@@ -607,7 +672,12 @@ export default function TasksPage() {
                   )}
                   {!isAdmin && t.status !== "completed" && (
                     <select
-                      style={{ ...S.select, fontSize: 12 }}
+                      style={{
+                        ...S.select,
+                        fontSize: 12,
+                        padding: "6px 12px",
+                        height: 33,
+                      }}
                       value={t.status}
                       onChange={(e) => handleStatusUpdate(t.id, e.target.value)}
                     >
@@ -629,7 +699,7 @@ export default function TasksPage() {
         <div style={S.overlay} onClick={() => setModal(null)}>
           <div style={S.modal} onClick={(e) => e.stopPropagation()}>
             <div style={S.mTitle}>
-              {modal === "create" ? "+ Assign New Task" : "✏️ Edit Task"}
+              {modal === "create" ? "Assign New Task" : "Edit Task"}
             </div>
             <form onSubmit={handleSave}>
               <div style={S.mRow}>
@@ -647,7 +717,7 @@ export default function TasksPage() {
               <div style={S.mRow}>
                 <label style={S.label}>Description</label>
                 <textarea
-                  style={{ ...S.mInput, height: 80, resize: "vertical" }}
+                  style={{ ...S.mInput, height: 90, resize: "vertical" }}
                   value={form.description}
                   placeholder="Additional instructions or notes…"
                   onChange={(e) =>
@@ -669,7 +739,11 @@ export default function TasksPage() {
                     <option value="">Select staff…</option>
                     {staff.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.name} ({s.staff_type === "indoor" ? "Indoor Staff" : s.staff_type})
+                        {s.name} (
+                        {s.staff_type === "indoor"
+                          ? "Indoor Staff"
+                          : s.staff_type}
+                        )
                       </option>
                     ))}
                   </select>
@@ -741,9 +815,9 @@ export default function TasksPage() {
               <div
                 style={{
                   display: "flex",
-                  gap: 10,
+                  gap: 12,
                   justifyContent: "flex-end",
-                  marginTop: 8,
+                  marginTop: 12,
                 }}
               >
                 <button
@@ -761,8 +835,8 @@ export default function TasksPage() {
                   {saving
                     ? "Saving…"
                     : modal === "create"
-                      ? "📋 Assign Task"
-                      : "💾 Save Changes"}
+                      ? "Assign Task"
+                      : "Save Changes"}
                 </button>
               </div>
             </form>
@@ -780,21 +854,18 @@ export default function TasksPage() {
             <div style={S.overlay} onClick={() => setModal(null)}>
               <div style={S.modal} onClick={(e) => e.stopPropagation()}>
                 <div style={S.mTitle}>Task Details</div>
-                <div style={{ display: "flex", gap: 7, marginBottom: 16 }}>
+                <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
                   <span style={S.tag(sm.bg, sm.color, sm.border)}>
                     {sm.label}
                   </span>
-                  <span style={S.tag(rc.bg, rc.color, rc.bg)}>
+                  <span style={S.tag(rc.bg, rc.color, rc.border)}>
                     {target.task_role}
                   </span>
                 </div>
                 {[
                   ["Title", target.title],
                   ["Description", target.description || "—"],
-                  [
-                    "Assigned To",
-                    target.assigned_to_name || "—",
-                  ],
+                  ["Assigned To", target.assigned_to_name || "—"],
                   ["Assigned By", target.assigned_by_name],
                   [
                     "Linked Order",
@@ -828,28 +899,32 @@ export default function TasksPage() {
                     key={k}
                     style={{
                       display: "flex",
-                      gap: 12,
-                      marginBottom: 10,
+                      gap: 16,
+                      marginBottom: 12,
                       fontSize: 13,
+                      borderBottom: "1px solid #f4f4f5",
+                      paddingBottom: 8,
                     }}
                   >
                     <span
                       style={{
-                        fontWeight: 600,
-                        color: "#475569",
-                        minWidth: 120,
+                        fontWeight: 700,
+                        color: "#71717a",
+                        minWidth: 130,
                       }}
                     >
-                      {k}:
+                      {k}
                     </span>
-                    <span style={{ color: "#0f172a" }}>{v}</span>
+                    <span style={{ color: "#18181b", fontWeight: 500 }}>
+                      {v}
+                    </span>
                   </div>
                 ))}
                 <div
                   style={{
                     display: "flex",
                     justifyContent: "flex-end",
-                    marginTop: 16,
+                    marginTop: 24,
                   }}
                 >
                   <button
@@ -876,13 +951,20 @@ export default function TasksPage() {
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                marginBottom: 16,
+                marginBottom: 20,
               }}
             >
-              <div style={S.mTitle}>🔔 Notifications</div>
+              <div style={S.mTitle} className="no-margin">
+                🔔 Notifications
+              </div>
               {unreadCount > 0 && (
                 <button
-                  style={{ ...S.btn, ...S.btnGray, fontSize: 12 }}
+                  style={{
+                    ...S.btn,
+                    ...S.btnGray,
+                    fontSize: 12,
+                    padding: "6px 12px",
+                  }}
                   onClick={markAllRead}
                 >
                   Mark all read
@@ -891,7 +973,13 @@ export default function TasksPage() {
             </div>
             {notifications.length === 0 ? (
               <div
-                style={{ textAlign: "center", color: "#94a3b8", padding: 30 }}
+                style={{
+                  textAlign: "center",
+                  color: "#71717a",
+                  padding: 30,
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
               >
                 No notifications yet.
               </div>
@@ -906,32 +994,38 @@ export default function TasksPage() {
                 >
                   <div
                     style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      color: "#475569",
-                      marginBottom: 2,
+                      fontSize: 13,
+                      fontWeight: 800,
+                      color: "#18181b",
+                      marginBottom: 4,
                     }}
                   >
                     {n.title}
                   </div>
                   <div
-                    style={{ fontSize: 13, color: "#0f172a", marginBottom: 4 }}
+                    style={{
+                      fontSize: 13,
+                      color: "#52525b",
+                      marginBottom: 8,
+                      lineHeight: 1.5,
+                    }}
                   >
                     {n.message}
                   </div>
                   <div
                     style={{
                       fontSize: 11,
-                      color: "#94a3b8",
+                      color: "#71717a",
                       display: "flex",
                       justifyContent: "space-between",
+                      fontWeight: 600,
                     }}
                   >
                     <span>
                       {new Date(n.created_at).toLocaleString("en-PH")}
                     </span>
                     {!n.is_read && (
-                      <span style={{ color: "#3b82f6", fontWeight: 700 }}>
+                      <span style={{ color: "#0a0a0a", fontWeight: 800 }}>
                         ● Unread
                       </span>
                     )}
@@ -943,7 +1037,7 @@ export default function TasksPage() {
               style={{
                 display: "flex",
                 justifyContent: "flex-end",
-                marginTop: 12,
+                marginTop: 16,
               }}
             >
               <button

@@ -19,14 +19,14 @@ const PERIODS = [
 ];
 
 const STATUS_STYLE = {
-  pending: { bg: "#fef9c3", color: "#854d0e" },
-  confirmed: { bg: "#dbeafe", color: "#1e40af" },
-  contract_released: { bg: "#ede9fe", color: "#6d28d9" },
-  production: { bg: "#e9d5ff", color: "#6b21a8" },
-  shipping: { bg: "#e0f2fe", color: "#075985" },
-  delivered: { bg: "#dcfce7", color: "#15803d" },
-  completed: { bg: "#d1fae5", color: "#065f46" },
-  cancelled: { bg: "#fee2e2", color: "#991b1b" },
+  pending: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
+  confirmed: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
+  contract_released: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
+  production: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
+  shipping: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
+  delivered: { bg: "#18181b", color: "#ffffff", border: "#18181b" },
+  completed: { bg: "#0a0a0a", color: "#ffffff", border: "#0a0a0a" },
+  cancelled: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
 };
 
 const formatStatusLabel = (value) =>
@@ -119,11 +119,7 @@ export default function SalesReportPage() {
     doc.text(`Total Orders: ${s.total_orders || 0}`, 14, 44);
     doc.text(`Total Revenue: ${formatMoney(s.total_revenue)}`, 60, 44);
     doc.text(`Total Profit: ${formatMoney(s.total_profit)}`, 120, 44);
-    doc.text(
-      `Avg Order Value: ${formatMoney(s.avg_order_value)}`,
-      190,
-      44,
-    );
+    doc.text(`Avg Order Value: ${formatMoney(s.avg_order_value)}`, 190, 44);
 
     autoTable(doc, {
       startY: 50,
@@ -154,22 +150,26 @@ export default function SalesReportPage() {
         new Date(o.created_at).toLocaleDateString("en-PH"),
       ]),
       styles: { fontSize: 8 },
-      headStyles: { fillColor: [30, 64, 175] },
-      alternateRowStyles: { fillColor: [248, 250, 252] },
+      headStyles: { fillColor: [24, 24, 27] } /* 👉 Dark gray/black header */,
+      alternateRowStyles: { fillColor: [244, 244, 245] },
     });
 
     if (data.products?.length) {
       autoTable(doc, {
         startY: doc.lastAutoTable.finalY + 10,
         head: [["Product", "Units Sold", "Revenue (₱)", "Profit (₱)"]],
-        body: data.products.slice(0, 20).map((p) => [
-          p.product_name,
-          p.units_sold,
-          Number(p.revenue || 0).toFixed(2),
-          Number(p.profit || 0).toFixed(2),
-        ]),
+        body: data.products
+          .slice(0, 20)
+          .map((p) => [
+            p.product_name,
+            p.units_sold,
+            Number(p.revenue || 0).toFixed(2),
+            Number(p.profit || 0).toFixed(2),
+          ]),
         styles: { fontSize: 8 },
-        headStyles: { fillColor: [16, 185, 129] },
+        headStyles: {
+          fillColor: [39, 39, 42],
+        } /* 👉 Lighter gray/black header */,
         tableWidth: 120,
         margin: { left: 14 },
       });
@@ -221,7 +221,7 @@ export default function SalesReportPage() {
         style={{
           display: "flex",
           gap: 4,
-          borderBottom: "2px solid #e2e8f0",
+          borderBottom: "2px solid #e4e4e7",
           marginBottom: 20,
         }}
       >
@@ -230,16 +230,18 @@ export default function SalesReportPage() {
             key={t.key}
             onClick={() => setTab(t.key)}
             style={{
-              padding: "9px 20px",
+              padding: "10px 20px",
               border: "none",
               background: "none",
               cursor: "pointer",
-              fontWeight: 600,
+              fontWeight: 800,
               fontSize: 13,
-              color: tab === t.key ? "#1e40af" : "#64748b",
+              letterSpacing: "0.02em",
+              color: tab === t.key ? "#18181b" : "#71717a",
               borderBottom:
-                tab === t.key ? "2px solid #1e40af" : "2px solid transparent",
+                tab === t.key ? "2px solid #18181b" : "2px solid transparent",
               marginBottom: -2,
+              transition: "all 0.2s ease",
             }}
           >
             {t.label}
@@ -254,7 +256,7 @@ export default function SalesReportPage() {
           display: "flex",
           gap: 10,
           flexWrap: "wrap",
-          marginBottom: 20,
+          marginBottom: 24,
           alignItems: "center",
         }}
       >
@@ -263,15 +265,16 @@ export default function SalesReportPage() {
             key={p.value}
             onClick={() => setPeriod(p.value)}
             style={{
-              padding: "6px 16px",
+              padding: "8px 18px",
               border: "1px solid",
               borderRadius: 20,
               cursor: "pointer",
               fontSize: 12,
-              fontWeight: 600,
-              background: period === p.value ? "#1e40af" : "#fff",
-              color: period === p.value ? "#fff" : "#374151",
-              borderColor: period === p.value ? "#1e40af" : "#d1d5db",
+              fontWeight: 700,
+              background: period === p.value ? "#18181b" : "#ffffff",
+              color: period === p.value ? "#ffffff" : "#52525b",
+              borderColor: period === p.value ? "#18181b" : "#d4d4d8",
+              transition: "all 0.2s ease",
             }}
           >
             {p.label}
@@ -286,7 +289,9 @@ export default function SalesReportPage() {
               onChange={(e) => setFrom(e.target.value)}
               style={inputSm}
             />
-            <span style={{ color: "#64748b", fontSize: 13 }}>to</span>
+            <span style={{ color: "#71717a", fontSize: 13, fontWeight: 600 }}>
+              to
+            </span>
             <input
               type="date"
               value={to}
@@ -302,7 +307,7 @@ export default function SalesReportPage() {
             </button>
 
             {from && to && from > to && (
-              <span style={{ color: "#dc2626", fontSize: 12, fontWeight: 600 }}>
+              <span style={{ color: "#dc2626", fontSize: 12, fontWeight: 700 }}>
                 End date must be later than or equal to the start date.
               </span>
             )}
@@ -323,25 +328,25 @@ export default function SalesReportPage() {
           <KpiCard
             label="Total Orders"
             value={s.total_orders}
-            color="#3b82f6"
+            color="#18181b"
             icon="🛒"
           />
           <KpiCard
             label="Total Revenue"
             value={formatMoney(s.total_revenue)}
-            color="#10b981"
+            color="#18181b"
             icon="💰"
           />
           <KpiCard
             label="Total Profit"
             value={formatMoney(s.total_profit)}
-            color="#8b5cf6"
+            color="#059669"
             icon="📈"
           />
           <KpiCard
             label="Avg Order Value"
             value={formatMoney(s.avg_order_value)}
-            color="#f59e0b"
+            color="#18181b"
             icon="🧾"
           />
 
@@ -350,13 +355,13 @@ export default function SalesReportPage() {
               <KpiCard
                 label="Online Orders"
                 value={s.online_count}
-                color="#06b6d4"
+                color="#18181b"
                 icon="🌐"
               />
               <KpiCard
                 label="Walk-in Orders"
                 value={s.walkin_count}
-                color="#84cc16"
+                color="#18181b"
                 icon="🏪"
               />
             </>
@@ -372,8 +377,8 @@ export default function SalesReportPage() {
           <div style={{ ...card, marginBottom: 20 }}>
             <div
               style={{
-                padding: "16px 20px",
-                borderBottom: "1px solid #f1f5f9",
+                padding: "20px",
+                borderBottom: "1px solid #e4e4e7",
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
@@ -386,7 +391,7 @@ export default function SalesReportPage() {
                     ? "Online Orders"
                     : "All Transactions"}
               </h3>
-              <span style={{ fontSize: 12, color: "#94a3b8" }}>
+              <span style={{ fontSize: 12, color: "#71717a", fontWeight: 700 }}>
                 {data.orders.length} records
               </span>
             </div>
@@ -400,7 +405,7 @@ export default function SalesReportPage() {
                 }}
               >
                 <thead>
-                  <tr style={{ background: "#f8fafc" }}>
+                  <tr style={{ background: "#fafafa" }}>
                     {[
                       "Order ID",
                       "Customer",
@@ -427,8 +432,10 @@ export default function SalesReportPage() {
                         colSpan={10}
                         style={{
                           textAlign: "center",
-                          padding: 32,
-                          color: "#94a3b8",
+                          padding: 40,
+                          color: "#71717a",
+                          fontWeight: 600,
+                          fontSize: 13,
                         }}
                       >
                         No records for this period.
@@ -438,26 +445,33 @@ export default function SalesReportPage() {
                     data.orders.map((o) => {
                       const statusKey = String(o.status || "").toLowerCase();
                       const ss = STATUS_STYLE[statusKey] || {
-                        bg: "#f1f5f9",
-                        color: "#475569",
+                        bg: "#f4f4f5",
+                        color: "#52525b",
+                        border: "#d4d4d8",
                       };
 
                       return (
                         <tr
                           key={o.id}
-                          style={{ borderBottom: "1px solid #f1f5f9" }}
+                          style={{ borderBottom: "1px solid #f4f4f5" }}
                         >
                           <td style={td}>
-                            <span style={{ fontWeight: 600, color: "#1e40af" }}>
+                            <span style={{ fontWeight: 800, color: "#0a0a0a" }}>
                               #{String(o.id).padStart(5, "0")}
                             </span>
                           </td>
 
                           <td style={td}>
-                            <div style={{ fontWeight: 500 }}>
+                            <div style={{ fontWeight: 600, color: "#18181b" }}>
                               {o.customer_name}
                             </div>
-                            <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: "#71717a",
+                                marginTop: 2,
+                              }}
+                            >
                               {o.customer_phone || ""}
                             </div>
                           </td>
@@ -468,32 +482,48 @@ export default function SalesReportPage() {
                                 background:
                                   String(o.channel || "").toLowerCase() ===
                                   "online"
-                                    ? "#dbeafe"
-                                    : "#dcfce7",
+                                    ? "#f4f4f5"
+                                    : "#ffffff",
                                 color:
                                   String(o.channel || "").toLowerCase() ===
                                   "online"
-                                    ? "#1e40af"
-                                    : "#166534",
-                                padding: "2px 8px",
+                                    ? "#18181b"
+                                    : "#52525b",
+                                border:
+                                  String(o.channel || "").toLowerCase() ===
+                                  "online"
+                                    ? "1px solid #e4e4e7"
+                                    : "1px solid #d4d4d8",
+                                padding: "2px 10px",
                                 borderRadius: 12,
                                 fontSize: 11,
-                                fontWeight: 600,
+                                fontWeight: 700,
                               }}
                             >
                               {formatChannelLabel(o.channel)}
                             </span>
                           </td>
 
-                          <td style={{ ...td, fontSize: 12 }}>
+                          <td
+                            style={{
+                              ...td,
+                              fontSize: 12,
+                              color: "#52525b",
+                              fontWeight: 500,
+                            }}
+                          >
                             {o.payment_method?.replace(/_/g, " ") || "—"}
                           </td>
 
-                          <td style={{ ...td, fontWeight: 600 }}>
+                          <td
+                            style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}
+                          >
                             {formatMoney(o.total_amount)}
                           </td>
 
-                          <td style={{ ...td, color: "#065f46", fontWeight: 600 }}>
+                          <td
+                            style={{ ...td, color: "#059669", fontWeight: 700 }}
+                          >
                             {formatMoney(o.total_profit)}
                           </td>
 
@@ -502,10 +532,11 @@ export default function SalesReportPage() {
                               style={{
                                 background: ss.bg,
                                 color: ss.color,
-                                padding: "2px 8px",
+                                border: `1px solid ${ss.border}`,
+                                padding: "2px 10px",
                                 borderRadius: 12,
                                 fontSize: 11,
-                                fontWeight: 600,
+                                fontWeight: 700,
                               }}
                             >
                               {formatStatusLabel(o.status)}
@@ -514,25 +545,44 @@ export default function SalesReportPage() {
 
                           <td style={td}>
                             {o.delivery_status ? (
-                              <span style={{ fontSize: 12, color: "#64748b" }}>
+                              <span
+                                style={{
+                                  fontSize: 12,
+                                  color: "#52525b",
+                                  fontWeight: 500,
+                                }}
+                              >
                                 {o.delivery_status}
                               </span>
                             ) : (
-                              "—"
+                              <span style={{ color: "#a1a1aa" }}>—</span>
                             )}
                           </td>
 
                           <td style={td}>
                             {o.receipt_number ? (
-                              <span style={{ fontSize: 11, color: "#1e40af" }}>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  color: "#0a0a0a",
+                                  fontWeight: 700,
+                                }}
+                              >
                                 {o.receipt_number}
                               </span>
                             ) : (
-                              "—"
+                              <span style={{ color: "#a1a1aa" }}>—</span>
                             )}
                           </td>
 
-                          <td style={{ ...td, fontSize: 12, color: "#64748b" }}>
+                          <td
+                            style={{
+                              ...td,
+                              fontSize: 12,
+                              color: "#71717a",
+                              fontWeight: 500,
+                            }}
+                          >
                             {new Date(o.created_at).toLocaleDateString("en-PH")}
                           </td>
                         </tr>
@@ -545,20 +595,25 @@ export default function SalesReportPage() {
                   <tfoot>
                     <tr
                       style={{
-                        background: "#f0f4f8",
-                        borderTop: "2px solid #e2e8f0",
+                        background: "#fafafa",
+                        borderTop: "2px solid #e4e4e7",
                       }}
                     >
                       <td
                         colSpan={4}
-                        style={{ ...td, fontWeight: 700, textAlign: "right" }}
+                        style={{
+                          ...td,
+                          fontWeight: 800,
+                          textAlign: "right",
+                          color: "#0a0a0a",
+                        }}
                       >
                         TOTALS
                       </td>
-                      <td style={{ ...td, fontWeight: 700, color: "#1e40af" }}>
+                      <td style={{ ...td, fontWeight: 800, color: "#0a0a0a" }}>
                         {formatMoney(s.total_revenue)}
                       </td>
-                      <td style={{ ...td, fontWeight: 700, color: "#065f46" }}>
+                      <td style={{ ...td, fontWeight: 800, color: "#059669" }}>
                         {formatMoney(s.total_profit)}
                       </td>
                       <td colSpan={4} />
@@ -574,8 +629,8 @@ export default function SalesReportPage() {
             <div style={card}>
               <div
                 style={{
-                  padding: "16px 20px",
-                  borderBottom: "1px solid #f1f5f9",
+                  padding: "20px",
+                  borderBottom: "1px solid #e4e4e7",
                 }}
               >
                 <h3 style={sectionTitle}>Product Sales Breakdown</h3>
@@ -589,7 +644,7 @@ export default function SalesReportPage() {
                 }}
               >
                 <thead>
-                  <tr style={{ background: "#f8fafc" }}>
+                  <tr style={{ background: "#fafafa" }}>
                     {[
                       "#",
                       "Product Name",
@@ -609,33 +664,44 @@ export default function SalesReportPage() {
                   {data.products.map((p, i) => {
                     const share =
                       Number(s.total_revenue) > 0
-                        ? ((Number(p.revenue || 0) / Number(s.total_revenue)) * 100).toFixed(1)
+                        ? (
+                            (Number(p.revenue || 0) / Number(s.total_revenue)) *
+                            100
+                          ).toFixed(1)
                         : "0.0";
 
                     return (
-                      <tr key={i} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                      <tr key={i} style={{ borderBottom: "1px solid #f4f4f5" }}>
                         <td
                           style={{
                             ...td,
-                            color: "#94a3b8",
-                            fontWeight: 600,
+                            color: "#a1a1aa",
+                            fontWeight: 700,
                             width: 32,
                           }}
                         >
                           {i + 1}
                         </td>
 
-                        <td style={{ ...td, fontWeight: 500 }}>
+                        <td
+                          style={{ ...td, fontWeight: 600, color: "#18181b" }}
+                        >
                           {p.product_name}
                         </td>
 
-                        <td style={td}>{p.units_sold}</td>
-
                         <td style={{ ...td, fontWeight: 600 }}>
+                          {p.units_sold}
+                        </td>
+
+                        <td
+                          style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}
+                        >
                           {formatMoney(p.revenue)}
                         </td>
 
-                        <td style={{ ...td, color: "#065f46", fontWeight: 600 }}>
+                        <td
+                          style={{ ...td, color: "#059669", fontWeight: 700 }}
+                        >
                           {formatMoney(p.profit)}
                         </td>
 
@@ -644,13 +710,13 @@ export default function SalesReportPage() {
                             style={{
                               display: "flex",
                               alignItems: "center",
-                              gap: 8,
+                              gap: 12,
                             }}
                           >
                             <div
                               style={{
                                 flex: 1,
-                                background: "#e2e8f0",
+                                background: "#f4f4f5",
                                 borderRadius: 4,
                                 height: 8,
                                 overflow: "hidden",
@@ -659,7 +725,7 @@ export default function SalesReportPage() {
                               <div
                                 style={{
                                   width: `${share}%`,
-                                  background: "#3b82f6",
+                                  background: "#18181b",
                                   height: "100%",
                                   borderRadius: 4,
                                 }}
@@ -668,7 +734,8 @@ export default function SalesReportPage() {
                             <span
                               style={{
                                 fontSize: 12,
-                                color: "#64748b",
+                                color: "#52525b",
+                                fontWeight: 600,
                                 width: 36,
                               }}
                             >
@@ -729,9 +796,10 @@ function KpiCard({ label, value, color, icon }) {
       style={{
         background: "#fff",
         borderRadius: 12,
-        padding: "18px 20px",
+        padding: "20px",
+        border: "1px solid #e4e4e7",
         borderLeft: `4px solid ${color}`,
-        boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
       }}
     >
       <div
@@ -744,21 +812,23 @@ function KpiCard({ label, value, color, icon }) {
         <div>
           <p
             style={{
-              fontSize: 11,
-              color: "#64748b",
+              fontSize: 10,
+              color: "#71717a",
               margin: 0,
               textTransform: "uppercase",
-              letterSpacing: 0.5,
+              letterSpacing: "1px",
+              fontWeight: 800,
             }}
           >
             {label}
           </p>
           <p
             style={{
-              fontSize: 22,
-              fontWeight: 700,
-              color: "#1e2a38",
+              fontSize: 24,
+              fontWeight: 800,
+              color: "#0a0a0a",
               margin: "6px 0 0",
+              letterSpacing: "-0.02em",
             }}
           >
             {value}
@@ -771,38 +841,42 @@ function KpiCard({ label, value, color, icon }) {
 }
 
 const pageTitle = {
-  fontSize: 22,
-  fontWeight: 700,
-  color: "#1e2a38",
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#0a0a0a",
   margin: 0,
+  letterSpacing: "-0.02em",
 };
 
 const sectionTitle = {
-  fontSize: 15,
-  fontWeight: 600,
-  color: "#1e2a38",
+  fontSize: 18,
+  fontWeight: 800,
+  color: "#0a0a0a",
   margin: 0,
+  letterSpacing: "-0.01em",
 };
 
 const card = {
   background: "#fff",
-  borderRadius: 12,
-  boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+  borderRadius: 16,
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
   overflow: "hidden",
 };
 
 const th = {
   textAlign: "left",
-  padding: "10px 14px",
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#64748b",
+  padding: "14px 16px",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
+  letterSpacing: "1px",
 };
 
 const td = {
-  padding: "10px 14px",
-  color: "#374151",
+  padding: "14px 16px",
+  color: "#18181b",
   verticalAlign: "middle",
 };
 
@@ -811,33 +885,40 @@ const center = {
   alignItems: "center",
   justifyContent: "center",
   height: 200,
-  color: "#64748b",
-};
-
-const inputSm = {
-  padding: "7px 12px",
-  border: "1px solid #d1d5db",
-  borderRadius: 6,
-  fontSize: 13,
-};
-
-const btnPrimary = {
-  padding: "7px 18px",
-  background: "#1e40af",
-  color: "#fff",
-  border: "none",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 13,
+  color: "#71717a",
+  fontSize: 14,
   fontWeight: 600,
 };
 
-const btnGhost = {
-  padding: "7px 14px",
-  background: "#f1f5f9",
-  color: "#374151",
+const inputSm = {
+  padding: "8px 14px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
+  fontSize: 13,
+  color: "#18181b",
+  outline: "none",
+};
+
+const btnPrimary = {
+  padding: "9px 20px",
+  background: "#18181b",
+  color: "#fff",
   border: "none",
-  borderRadius: 6,
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 13,
+  fontWeight: 700,
+  transition: "background 0.2s",
+};
+
+const btnGhost = {
+  padding: "9px 16px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };

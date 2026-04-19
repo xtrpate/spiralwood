@@ -4,9 +4,9 @@ import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 
 const STOCK_BADGE = {
-  in_stock: { bg: "#d1fae5", color: "#065f46" },
-  low_stock: { bg: "#fef9c3", color: "#854d0e" },
-  out_of_stock: { bg: "#fee2e2", color: "#991b1b" },
+  in_stock: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
+  low_stock: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
+  out_of_stock: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
 };
 
 export default function ProductsPage() {
@@ -63,7 +63,6 @@ export default function ProductsPage() {
         is_published,
       });
 
-      // 👉 THE FIX: Dynamic success messages!
       toast.success(
         is_published
           ? "Product published successfully."
@@ -113,7 +112,7 @@ export default function ProductsPage() {
         }}
       >
         <h1 style={pageTitle}>Product Management</h1>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 10 }}>
           <button
             onClick={() =>
               api
@@ -180,7 +179,7 @@ export default function ProductsPage() {
 
         {/* The Publish Buttons */}
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span style={{ fontSize: 13, color: "#64748b", fontWeight: 600 }}>
+          <span style={{ fontSize: 13, color: "#71717a", fontWeight: 600 }}>
             {selectedIds.length} Selected
           </span>
           <button
@@ -202,8 +201,9 @@ export default function ProductsPage() {
       <div
         style={{
           background: "#fff",
-          borderRadius: 12,
-          boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+          borderRadius: 16,
+          border: "1px solid #e4e4e7",
+          boxShadow: "0 1px 2px rgba(0,0,0,.02)",
           overflow: "hidden",
         }}
       >
@@ -213,8 +213,8 @@ export default function ProductsPage() {
           <thead>
             <tr
               style={{
-                background: "#f8fafc",
-                borderBottom: "1px solid #e2e8f0",
+                background: "#fafafa",
+                borderBottom: "1px solid #e4e4e7",
               }}
             >
               <th style={{ ...th, width: 40, textAlign: "center" }}>
@@ -253,7 +253,13 @@ export default function ProductsPage() {
               <tr>
                 <td
                   colSpan={13}
-                  style={{ textAlign: "center", padding: 40, color: "#64748b" }}
+                  style={{
+                    textAlign: "center",
+                    padding: 40,
+                    color: "#71717a",
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
                 >
                   Loading...
                 </td>
@@ -262,21 +268,31 @@ export default function ProductsPage() {
               <tr>
                 <td
                   colSpan={13}
-                  style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}
+                  style={{
+                    textAlign: "center",
+                    padding: 40,
+                    color: "#71717a",
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
                 >
                   No products found.
                 </td>
               </tr>
             ) : (
               products.map((p) => {
-                const sb = STOCK_BADGE[p.stock_status] || {};
+                const sb = STOCK_BADGE[p.stock_status] || {
+                  bg: "#f4f4f5",
+                  color: "#18181b",
+                  border: "#e4e4e7",
+                };
                 return (
                   <tr
                     key={p.id}
                     style={{
-                      borderBottom: "1px solid #f1f5f9",
+                      borderBottom: "1px solid #f4f4f5",
                       background: selectedIds.includes(p.id)
-                        ? "#f8fafc"
+                        ? "#fafafa"
                         : "white",
                     }}
                   >
@@ -299,7 +315,8 @@ export default function ProductsPage() {
                             width: 40,
                             height: 40,
                             objectFit: "cover",
-                            borderRadius: 6,
+                            borderRadius: 8,
+                            border: "1px solid #e4e4e7",
                           }}
                         />
                       ) : (
@@ -307,8 +324,9 @@ export default function ProductsPage() {
                           style={{
                             width: 40,
                             height: 40,
-                            background: "#f1f5f9",
-                            borderRadius: 6,
+                            background: "#f4f4f5",
+                            borderRadius: 8,
+                            border: "1px solid #e4e4e7",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -319,12 +337,21 @@ export default function ProductsPage() {
                         </div>
                       )}
                     </td>
-                    <td style={td}>{p.barcode || "—"}</td>
-                    <td style={{ ...td, fontWeight: 500, maxWidth: 180 }}>
+                    <td style={{ ...td, color: "#71717a", fontSize: 12 }}>
+                      {p.barcode || "—"}
+                    </td>
+                    <td
+                      style={{
+                        ...td,
+                        fontWeight: 700,
+                        maxWidth: 180,
+                        color: "#0a0a0a",
+                      }}
+                    >
                       {p.name}
                     </td>
 
-                    <td style={td}>
+                    <td style={{ ...td, color: "#52525b" }}>
                       {p.category_name || p.category_id || "—"}
                     </td>
 
@@ -332,11 +359,14 @@ export default function ProductsPage() {
                       <span
                         style={{
                           background:
-                            p.type === "standard" ? "#e0f2fe" : "#f3e8ff",
-                          color: p.type === "standard" ? "#075985" : "#6b21a8",
-                          padding: "2px 8px",
+                            p.type === "blueprint" ? "#18181b" : "#f4f4f5",
+                          color: p.type === "blueprint" ? "#ffffff" : "#18181b",
+                          border: `1px solid ${p.type === "blueprint" ? "#18181b" : "#e4e4e7"}`,
+                          padding: "2px 10px",
                           borderRadius: 12,
                           fontSize: 11,
+                          fontWeight: 600,
+                          textTransform: "capitalize",
                         }}
                       >
                         {p.type}
@@ -345,15 +375,16 @@ export default function ProductsPage() {
                     <td style={td}>
                       ₱ {Number(p.online_price).toLocaleString()}
                     </td>
-                    <td style={td}>
+                    <td style={{ ...td, color: "#71717a" }}>
                       ₱ {Number(p.walkin_price).toLocaleString()}
                     </td>
-                    <td style={td}>{p.stock}</td>
+                    <td style={{ ...td, fontWeight: 600 }}>{p.stock}</td>
                     <td style={td}>
                       <span
                         style={{
                           background: sb.bg,
                           color: sb.color,
+                          border: `1px solid ${sb.border}`,
                           padding: "2px 10px",
                           borderRadius: 12,
                           fontSize: 11,
@@ -364,19 +395,19 @@ export default function ProductsPage() {
                       </span>
                     </td>
 
-                    {/* 👉 THE FIX: Published/Unpublished Badges */}
                     <td style={td}>
                       <span
                         style={{
-                          background: p.is_published ? "#d1fae5" : "#fee2e2",
-                          color: p.is_published ? "#065f46" : "#991b1b",
-                          padding: "4px 8px",
+                          background: p.is_published ? "#f4f4f5" : "#fef2f2",
+                          color: p.is_published ? "#18181b" : "#991b1b",
+                          border: `1px solid ${p.is_published ? "#e4e4e7" : "#fecaca"}`,
+                          padding: "2px 10px",
                           borderRadius: 12,
                           fontSize: 11,
                           fontWeight: 600,
                         }}
                       >
-                        {p.is_published ? "Published" : "Unpublished"}
+                        {p.is_published ? "Published" : "Draft"}
                       </span>
                     </td>
 
@@ -388,6 +419,7 @@ export default function ProductsPage() {
                           border: "none",
                           cursor: "pointer",
                           fontSize: 18,
+                          opacity: p.is_featured ? 1 : 0.4,
                         }}
                         title={
                           p.is_featured
@@ -395,7 +427,7 @@ export default function ProductsPage() {
                             : "Mark as featured"
                         }
                       >
-                        {p.is_featured ? "⭐" : "☆"}
+                        ⭐
                       </button>
                     </td>
                     <td style={td}>
@@ -429,26 +461,29 @@ export default function ProductsPage() {
             style={{
               display: "flex",
               justifyContent: "center",
-              gap: 8,
-              padding: 16,
+              alignItems: "center",
+              gap: 12,
+              padding: "16px 20px",
+              background: "#fafafa",
             }}
           >
             <button
               disabled={filters.page <= 1}
               onClick={() => setFilters((f) => ({ ...f, page: f.page - 1 }))}
-              style={btnGhost}
+              style={{ ...btnGhost, opacity: filters.page <= 1 ? 0.5 : 1 }}
             >
               ← Prev
             </button>
-            <span
-              style={{ padding: "6px 12px", fontSize: 13, color: "#64748b" }}
-            >
+            <span style={{ fontSize: 13, color: "#71717a", fontWeight: 600 }}>
               Page {filters.page} of {Math.ceil(total / 20)} ({total} total)
             </span>
             <button
               disabled={filters.page >= Math.ceil(total / 20)}
               onClick={() => setFilters((f) => ({ ...f, page: f.page + 1 }))}
-              style={btnGhost}
+              style={{
+                ...btnGhost,
+                opacity: filters.page >= Math.ceil(total / 20) ? 0.5 : 1,
+              }}
             >
               Next →
             </button>
@@ -460,81 +495,94 @@ export default function ProductsPage() {
 }
 
 const pageTitle = {
-  fontSize: 22,
-  fontWeight: 700,
-  color: "#1e2a38",
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#0a0a0a",
   margin: 0,
+  letterSpacing: "-0.02em",
 };
 const th = {
   textAlign: "left",
-  padding: "12px 14px",
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#64748b",
+  padding: "14px 16px",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
+  letterSpacing: "1px",
 };
-const td = { padding: "12px 14px", color: "#374151", verticalAlign: "middle" };
+const td = { padding: "12px 16px", color: "#18181b", verticalAlign: "middle" };
 const inputSm = {
-  padding: "7px 12px",
-  border: "1px solid #d1d5db",
-  borderRadius: 6,
+  padding: "8px 12px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
   minWidth: 160,
+  outline: "none",
+  color: "#18181b",
 };
 const btnPrimary = {
-  padding: "8px 18px",
-  background: "#1e40af",
+  padding: "9px 18px",
+  background: "#18181b",
   color: "#fff",
-  border: "none",
-  borderRadius: 6,
+  border: "1px solid #18181b",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 13,
-  fontWeight: 600,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 const btnPublishLive = {
-  padding: "7px 14px",
-  background: "#10b981",
+  padding: "9px 16px",
+  background: "#18181b",
   color: "#fff",
-  border: "none",
-  borderRadius: 6,
+  border: "1px solid #18181b",
+  borderRadius: 8,
   cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 600,
+  fontSize: 12,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 const btnPublishDraft = {
-  padding: "7px 14px",
-  background: "#ef4444",
-  color: "#fff",
-  border: "none",
-  borderRadius: 6,
+  padding: "9px 16px",
+  background: "#ffffff",
+  color: "#18181b",
+  border: "1px solid #d4d4d8",
+  borderRadius: 8,
   cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 600,
+  fontSize: 12,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 const btnGhost = {
-  padding: "7px 14px",
-  background: "#f1f5f9",
-  color: "#374151",
-  border: "none",
-  borderRadius: 6,
+  padding: "9px 16px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 12,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 const btnEdit = {
-  padding: "4px 12px",
-  background: "#e0f2fe",
-  color: "#0369a1",
-  border: "none",
+  padding: "6px 14px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
 const btnDel = {
-  padding: "4px 12px",
-  background: "#fee2e2",
-  color: "#dc2626",
-  border: "none",
+  padding: "6px 14px",
+  background: "#fef2f2",
+  color: "#991b1b",
+  border: "1px solid #fecaca",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };

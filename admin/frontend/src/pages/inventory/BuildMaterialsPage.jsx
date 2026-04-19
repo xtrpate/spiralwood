@@ -16,7 +16,7 @@ export default function BuildMaterialsPage() {
   return (
     <div>
       <h1 style={title}>Build Materials Inventory</h1>
-      <p style={{ color: "#64748b", fontSize: 13, marginBottom: 16 }}>
+      <p style={{ color: "#52525b", fontSize: 13, marginBottom: 16 }}>
         Finished goods linked to Bill of Materials. Stock auto-updates on each
         transaction.
       </p>
@@ -40,7 +40,7 @@ export default function BuildMaterialsPage() {
             style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
           >
             <thead>
-              <tr style={{ background: "#f8fafc" }}>
+              <tr style={{ background: "#fafafa" }}>
                 {[
                   "Name",
                   "Type",
@@ -66,14 +66,16 @@ export default function BuildMaterialsPage() {
                 const sc = p.stock_status;
                 const badge =
                   sc === "in_stock"
-                    ? ["#d1fae5", "#065f46"]
+                    ? ["#f4f4f5", "#18181b", "#e4e4e7"]
                     : sc === "low_stock"
-                      ? ["#fef9c3", "#854d0e"]
-                      : ["#fee2e2", "#991b1b"];
+                      ? ["#ffffff", "#52525b", "#d4d4d8"]
+                      : ["#fef2f2", "#991b1b", "#fecaca"];
                 return (
-                  <tr key={p.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <tr key={p.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
                     <td style={td}>
-                      <strong>{p.name}</strong>
+                      <strong style={{ color: "#0a0a0a", fontWeight: 700 }}>
+                        {p.name}
+                      </strong>
                     </td>
                     <td style={td}>{p.type}</td>
                     <td style={td}>
@@ -85,18 +87,20 @@ export default function BuildMaterialsPage() {
                     <td
                       style={{
                         ...td,
-                        color: p.profit_margin > 0 ? "#065f46" : "#991b1b",
+                        fontWeight: 600,
+                        color: p.profit_margin > 0 ? "#18181b" : "#dc2626",
                       }}
                     >
                       ₱ {Number(p.profit_margin).toLocaleString()} ({margin}%)
                     </td>
-                    <td style={td}>{p.stock}</td>
+                    <td style={{ ...td, fontWeight: 600 }}>{p.stock}</td>
                     <td style={td}>
                       <span
                         style={{
                           background: badge[0],
                           color: badge[1],
-                          padding: "2px 8px",
+                          border: `1px solid ${badge[2]}`,
+                          padding: "2px 10px",
                           borderRadius: 12,
                           fontSize: 11,
                           fontWeight: 600,
@@ -144,7 +148,8 @@ function BOMPanel({ product, onClose }) {
         background: "#fff",
         borderRadius: 12,
         padding: 24,
-        boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+        border: "1px solid #e4e4e7",
+        boxShadow: "0 1px 2px rgba(0,0,0,.02)",
         position: "sticky",
         top: 0,
         alignSelf: "start",
@@ -158,7 +163,9 @@ function BOMPanel({ product, onClose }) {
           marginBottom: 16,
         }}
       >
-        <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>
+        <h3
+          style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#0a0a0a" }}
+        >
           Bill of Materials: {product.name}
         </h3>
         <button
@@ -168,13 +175,14 @@ function BOMPanel({ product, onClose }) {
             border: "none",
             cursor: "pointer",
             fontSize: 18,
+            color: "#71717a",
           }}
         >
           ✕
         </button>
       </div>
       {bom.length === 0 ? (
-        <p style={{ color: "#94a3b8", fontSize: 13 }}>
+        <p style={{ color: "#71717a", fontSize: 13 }}>
           No bill of materials defined.
         </p>
       ) : (
@@ -183,17 +191,17 @@ function BOMPanel({ product, onClose }) {
         >
           <thead>
             <tr>
-              <th style={th}>Material</th>
-              <th style={th}>Unit</th>
-              <th style={th}>Quantity</th>
+              <th style={{ ...th, background: "#fafafa" }}>Material</th>
+              <th style={{ ...th, background: "#fafafa" }}>Unit</th>
+              <th style={{ ...th, background: "#fafafa" }}>Quantity</th>
             </tr>
           </thead>
           <tbody>
             {bom.map((b, i) => (
-              <tr key={i} style={{ borderBottom: "1px solid #f1f5f9" }}>
+              <tr key={i} style={{ borderBottom: "1px solid #f4f4f5" }}>
                 <td style={td}>{b.material_name}</td>
-                <td style={td}>{b.unit}</td>
-                <td style={td}>{b.quantity}</td>
+                <td style={{ ...td, color: "#71717a" }}>{b.unit}</td>
+                <td style={{ ...td, fontWeight: 600 }}>{b.quantity}</td>
               </tr>
             ))}
           </tbody>
@@ -237,6 +245,7 @@ export function StockMovementPage() {
   useEffect(() => {
     load();
   }, [filters]); // eslint-disable-line
+
   useEffect(() => {
     api.get("/inventory/raw").then((r) => setRawMats(r.data.rows || []));
     api
@@ -283,6 +292,7 @@ export function StockMovementPage() {
           : isMaterialTarget && form.type === "out"
             ? "Raw material stock-out ito. Manual bawas ng raw material stock."
             : "Pumili ng Raw Material o Product. Isa lang ang puwedeng target bawat movement.";
+
   const handleSave = async (e) => {
     e.preventDefault();
 
@@ -316,13 +326,6 @@ export function StockMovementPage() {
         err.response?.data?.message || "Failed to record stock movement.",
       );
     }
-  };
-
-  const TYPE_COLORS = {
-    in: ["#d1fae5", "#065f46"],
-    out: ["#fee2e2", "#991b1b"],
-    adjustment: ["#e0f2fe", "#075985"],
-    return: ["#f3e8ff", "#6b21a8"],
   };
 
   return (
@@ -365,7 +368,7 @@ export function StockMovementPage() {
           style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
         >
           <thead>
-            <tr style={{ background: "#f8fafc" }}>
+            <tr style={{ background: "#fafafa" }}>
               {[
                 "Date",
                 "Type",
@@ -383,43 +386,48 @@ export function StockMovementPage() {
           </thead>
           <tbody>
             {rows.map((r) => {
-              const [bg, color] = TYPE_COLORS[r.type] || ["#f1f5f9", "#475569"];
               return (
-                <tr key={r.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                  <td style={td}>
+                <tr key={r.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
+                  <td style={{ ...td, color: "#71717a" }}>
                     {new Date(r.created_at).toLocaleDateString("en-PH")}
                   </td>
                   <td style={td}>
                     <span
                       style={{
-                        background: bg,
-                        color,
-                        padding: "2px 8px",
+                        background: "#f4f4f5",
+                        color: "#18181b",
+                        border: "1px solid #e4e4e7",
+                        padding: "2px 10px",
                         borderRadius: 12,
                         fontSize: 11,
                         fontWeight: 600,
+                        textTransform: "capitalize",
                       }}
                     >
                       {r.type}
                     </span>
                   </td>
-                  <td style={td}>{r.material_name || r.product_name || "—"}</td>
+                  <td style={{ ...td, fontWeight: 600, color: "#0a0a0a" }}>
+                    {r.material_name || r.product_name || "—"}
+                  </td>
                   <td style={td}>{r.supplier_name || "—"}</td>
                   <td
                     style={{
                       ...td,
-                      fontWeight: 600,
+                      fontWeight: 700,
                       color:
                         r.type === "in" || r.type === "return"
-                          ? "#065f46"
-                          : "#991b1b",
+                          ? "#18181b"
+                          : "#52525b",
                     }}
                   >
                     {r.type === "in" || r.type === "return" ? "+" : "-"}
                     {r.quantity}
                   </td>
                   <td style={td}>{r.notes || "—"}</td>
-                  <td style={td}>{r.created_by_name}</td>
+                  <td style={{ ...td, color: "#71717a" }}>
+                    {r.created_by_name}
+                  </td>
                 </tr>
               );
             })}
@@ -430,7 +438,16 @@ export function StockMovementPage() {
       {modal && (
         <div style={overlayStyle}>
           <div style={modalBox}>
-            <h3 style={{ margin: "0 0 20px" }}>Record Stock Movement</h3>
+            <h3
+              style={{
+                margin: "0 0 20px",
+                fontSize: 18,
+                fontWeight: 800,
+                color: "#0a0a0a",
+              }}
+            >
+              Record Stock Movement
+            </h3>
             <form onSubmit={handleSave}>
               <div style={{ marginBottom: 12 }}>
                 <label style={labelSm}>Movement Type *</label>
@@ -480,12 +497,12 @@ export function StockMovementPage() {
               </div>
               <div
                 style={{
-                  marginBottom: 12,
-                  padding: "10px 12px",
+                  marginBottom: 16,
+                  padding: "12px 14px",
                   borderRadius: 8,
-                  background: "#eff6ff",
-                  border: "1px solid #bfdbfe",
-                  color: "#1d4ed8",
+                  background: "#f4f4f5",
+                  border: "1px solid #e4e4e7",
+                  color: "#52525b",
                   fontSize: 12,
                   lineHeight: 1.5,
                 }}
@@ -507,7 +524,7 @@ export function StockMovementPage() {
                   style={inputFull}
                 />
               </div>
-              <div style={{ marginBottom: 12 }}>
+              <div style={{ marginBottom: 20 }}>
                 <label style={labelSm}>Notes / Reference</label>
                 <textarea
                   value={form.notes}
@@ -588,7 +605,7 @@ export function SuppliersPage() {
           style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
         >
           <thead>
-            <tr style={{ background: "#f8fafc" }}>
+            <tr style={{ background: "#fafafa" }}>
               {["Name", "Address", "Contact", "Email", "Actions"].map((h) => (
                 <th key={h} style={th}>
                   {h}
@@ -598,13 +615,13 @@ export function SuppliersPage() {
           </thead>
           <tbody>
             {suppliers.map((s) => (
-              <tr key={s.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+              <tr key={s.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
                 <td style={td}>
-                  <strong>{s.name}</strong>
+                  <strong style={{ color: "#0a0a0a" }}>{s.name}</strong>
                 </td>
-                <td style={td}>{s.address || "—"}</td>
+                <td style={{ ...td, color: "#52525b" }}>{s.address || "—"}</td>
                 <td style={td}>{s.contact_number || "—"}</td>
-                <td style={td}>{s.email || "—"}</td>
+                <td style={{ ...td, color: "#52525b" }}>{s.email || "—"}</td>
                 <td style={td}>
                   <button onClick={() => openEdit(s)} style={btnEdit}>
                     Edit
@@ -618,9 +635,10 @@ export function SuppliersPage() {
                     }}
                     style={{
                       ...btnEdit,
-                      background: "#fee2e2",
-                      color: "#dc2626",
-                      marginLeft: 4,
+                      background: "#fef2f2",
+                      color: "#991b1b",
+                      border: "1px solid #fecaca",
+                      marginLeft: 6,
                     }}
                   >
                     Del
@@ -634,7 +652,14 @@ export function SuppliersPage() {
       {modal && (
         <div style={overlayStyle}>
           <div style={modalBox}>
-            <h3 style={{ margin: "0 0 20px" }}>
+            <h3
+              style={{
+                margin: "0 0 20px",
+                fontSize: 18,
+                fontWeight: 800,
+                color: "#0a0a0a",
+              }}
+            >
               {modal === "add" ? "Add Supplier" : "Edit Supplier"}
             </h3>
             <form onSubmit={handleSave}>
@@ -658,7 +683,12 @@ export function SuppliersPage() {
                 </div>
               ))}
               <div
-                style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  justifyContent: "flex-end",
+                  marginTop: 20,
+                }}
               >
                 <button
                   type="button"
@@ -679,82 +709,103 @@ export function SuppliersPage() {
   );
 }
 
+// ── Shared Styles ───────────────────────────────────────────────────────────
 const headerDiv = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   marginBottom: 20,
 };
-const title = { fontSize: 22, fontWeight: 700, color: "#1e2a38", margin: 0 };
+const title = {
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#0a0a0a",
+  margin: 0,
+  letterSpacing: "-0.02em",
+};
 const tableCard = {
   background: "#fff",
   borderRadius: 12,
-  boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
   overflow: "hidden",
 };
 const th = {
   textAlign: "left",
-  padding: "11px 14px",
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#64748b",
+  padding: "13px 16px",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
+  letterSpacing: 1,
 };
-const td = { padding: "11px 14px", color: "#374151", verticalAlign: "middle" };
+const td = {
+  padding: "14px 16px",
+  color: "#18181b",
+  verticalAlign: "middle",
+};
 const inputSm = {
-  padding: "7px 12px",
-  border: "1px solid #d1d5db",
+  padding: "8px 12px",
+  border: "1px solid #e4e4e7",
   borderRadius: 6,
   fontSize: 13,
   minWidth: 140,
+  outline: "none",
+  color: "#18181b",
 };
 const inputFull = {
   width: "100%",
-  padding: "8px 12px",
-  border: "1px solid #d1d5db",
-  borderRadius: 6,
+  padding: "10px 12px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
   boxSizing: "border-box",
+  outline: "none",
+  color: "#18181b",
 };
 const labelSm = {
   fontSize: 12,
-  fontWeight: 600,
-  color: "#374151",
+  fontWeight: 700,
+  color: "#52525b",
   display: "block",
-  marginBottom: 4,
+  marginBottom: 6,
 };
 const btnPrimary = {
-  padding: "8px 18px",
-  background: "#1e40af",
-  color: "#fff",
+  padding: "9px 18px",
+  background: "#18181b",
+  color: "#ffffff",
   border: "none",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 600,
+  transition: "background 0.2s",
 };
 const btnGhost = {
-  padding: "8px 18px",
-  background: "#f1f5f9",
-  color: "#374151",
-  border: "none",
+  padding: "9px 18px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 13,
+  fontWeight: 600,
+  transition: "background 0.2s",
 };
 const btnEdit = {
-  padding: "4px 12px",
-  background: "#e0f2fe",
-  color: "#0369a1",
-  border: "none",
+  padding: "5px 14px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,
+  fontWeight: 600,
 };
 const overlayStyle = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,.5)",
+  background: "rgba(0,0,0,.6)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -762,10 +813,11 @@ const overlayStyle = {
 };
 const modalBox = {
   background: "#fff",
-  borderRadius: 12,
-  padding: 28,
-  width: 460,
-  maxHeight: "80vh",
+  borderRadius: 16,
+  padding: 32,
+  width: 480,
+  maxHeight: "85vh",
   overflowY: "auto",
-  boxShadow: "0 20px 60px rgba(0,0,0,.3)",
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 20px 60px rgba(0,0,0,.15)",
 };

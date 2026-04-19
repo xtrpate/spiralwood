@@ -37,40 +37,39 @@ const isImageAttachment = (attachment = {}) => {
 };
 
 const getSenderMeta = (entry = {}) => {
-  const role = String(entry?.sender_role || "").trim().toLowerCase();
+  const role = String(entry?.sender_role || "")
+    .trim()
+    .toLowerCase();
 
-  if (role === "admin") {
+  if (role === "admin" || role === "staff") {
     return {
-      label: entry?.sender_name || "Admin",
-      color: "#7c3aed",
-      bg: "#f5f3ff",
-      border: "#ddd6fe",
-    };
-  }
-
-  if (role === "staff") {
-    return {
-      label: entry?.sender_name || "Staff",
-      color: "#0f766e",
-      bg: "#ecfeff",
-      border: "#a5f3fc",
+      label: entry?.sender_name || (role === "admin" ? "Admin" : "Staff"),
+      color: "#ffffff",
+      bg: "#18181b",
+      border: "#18181b",
+      align: "flex-start",
+      dateColor: "#a1a1aa",
     };
   }
 
   if (role === "system") {
     return {
       label: "System",
-      color: "#475569",
-      bg: "#f8fafc",
-      border: "#e2e8f0",
+      color: "#52525b",
+      bg: "#f4f4f5",
+      border: "#e4e4e7",
+      align: "center",
+      dateColor: "#71717a",
     };
   }
 
   return {
     label: entry?.sender_name || "Customer",
-    color: "#166534",
-    bg: "#f0fdf4",
-    border: "#bbf7d0",
+    color: "#0a0a0a",
+    bg: "#ffffff",
+    border: "#e4e4e7",
+    align: "flex-end",
+    dateColor: "#71717a",
   };
 };
 
@@ -87,7 +86,9 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
     setLoading(true);
     try {
       const res = await api.get(`/orders/${orderId}/discussion`);
-      setDiscussion(Array.isArray(res.data?.discussion) ? res.data.discussion : []);
+      setDiscussion(
+        Array.isArray(res.data?.discussion) ? res.data.discussion : [],
+      );
     } catch (err) {
       toast.error(
         err.response?.data?.message ||
@@ -162,63 +163,68 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
   return (
     <div
       style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: 18,
+        border: "1px solid #e4e4e7",
+        borderRadius: 16,
         background: "#fff",
         overflow: "hidden",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
       }}
     >
       <div
         style={{
-          padding: "16px 18px",
-          borderBottom: "1px solid #e5e7eb",
-          background: "#f8fafc",
+          padding: "16px 20px",
+          borderBottom: "1px solid #e4e4e7",
+          background: "#fafafa",
           fontWeight: 800,
-          color: "#0f172a",
+          color: "#0a0a0a",
+          fontSize: 16,
+          letterSpacing: "-0.01em",
         }}
       >
         Discussion / Chat
       </div>
 
-      <div style={{ padding: 16, display: "grid", gap: 16 }}>
+      <div style={{ padding: 20, display: "grid", gap: 16 }}>
         <div
           style={{
-            border: "1px solid #e2e8f0",
-            borderRadius: 16,
+            border: "1px solid #e4e4e7",
+            borderRadius: 12,
             overflow: "hidden",
             background: "#fff",
           }}
         >
           <div
             style={{
-              padding: "14px 16px",
-              borderBottom: "1px solid #e2e8f0",
-              background: "#f8fafc",
-              fontWeight: 700,
-            }}
-          >
-            Request Conversation
-          </div>
-
-          <div
-            style={{
               display: "grid",
-              gap: 12,
-              padding: 16,
-              maxHeight: 420,
+              gap: 16,
+              padding: 20,
+              maxHeight: 480,
               overflowY: "auto",
             }}
           >
             {loading ? (
-              <div style={{ color: "#64748b" }}>Loading discussion…</div>
+              <div
+                style={{
+                  color: "#71717a",
+                  textAlign: "center",
+                  padding: 20,
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                Loading discussion…
+              </div>
             ) : !thread.length ? (
               <div
                 style={{
-                  padding: 16,
+                  padding: 32,
                   borderRadius: 12,
-                  background: "#f8fafc",
-                  color: "#64748b",
-                  border: "1px dashed #cbd5e1",
+                  background: "#fafafa",
+                  color: "#71717a",
+                  border: "1px dashed #d4d4d8",
+                  textAlign: "center",
+                  fontSize: 13,
+                  fontWeight: 600,
                 }}
               >
                 No discussion messages yet.
@@ -226,134 +232,162 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
             ) : (
               thread.map((entry) => {
                 const sender = getSenderMeta(entry);
+                const isSystem = entry.sender_role === "system";
 
                 return (
                   <div
                     key={entry.id}
                     style={{
-                      border: `1px solid ${sender.border}`,
-                      background: sender.bg,
-                      borderRadius: 14,
-                      padding: 14,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: sender.align,
+                      width: "100%",
                     }}
                   >
                     <div
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        alignItems: "flex-start",
-                        flexWrap: "wrap",
-                        marginBottom: 8,
+                        border: `1px solid ${sender.border}`,
+                        background: sender.bg,
+                        borderRadius: 14,
+                        padding: "14px 16px",
+                        maxWidth: isSystem ? "100%" : "85%",
+                        boxShadow: isSystem
+                          ? "none"
+                          : "0 1px 2px rgba(0,0,0,0.02)",
                       }}
                     >
                       <div
                         style={{
-                          fontWeight: 800,
-                          color: sender.color,
-                        }}
-                      >
-                        {sender.label}
-                      </div>
-
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#64748b",
-                        }}
-                      >
-                        {formatDate(entry.created_at)}
-                      </div>
-                    </div>
-
-                    {entry.message ? (
-                      <div
-                        style={{
-                          color: "#0f172a",
-                          lineHeight: 1.6,
-                          whiteSpace: "pre-wrap",
-                        }}
-                      >
-                        {entry.message}
-                      </div>
-                    ) : null}
-
-                    {Array.isArray(entry.attachments) && entry.attachments.length ? (
-                      <div
-                        style={{
                           display: "flex",
-                          gap: 10,
-                          flexWrap: "wrap",
-                          marginTop: 12,
+                          justifyContent: "space-between",
+                          gap: 16,
+                          alignItems: "center",
+                          marginBottom: 8,
+                          borderBottom: isSystem
+                            ? "none"
+                            : `1px solid ${sender.color}20`,
+                          paddingBottom: isSystem ? 0 : 6,
                         }}
                       >
-                        {entry.attachments.map((attachment) => {
-                          const href = resolveAttachmentUrl(attachment.file_url);
+                        <div
+                          style={{
+                            fontWeight: 800,
+                            color: sender.color,
+                            fontSize: 13,
+                          }}
+                        >
+                          {sender.label}
+                        </div>
 
-                          return isImageAttachment(attachment) ? (
-                            <a
-                              key={attachment.id}
-                              href={href}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{
-                                display: "block",
-                                width: 90,
-                                height: 90,
-                                borderRadius: 12,
-                                overflow: "hidden",
-                                border: "1px solid #dbeafe",
-                                background: "#fff",
-                              }}
-                            >
-                              <img
-                                src={href}
-                                alt={attachment.file_name || "Attachment"}
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
-                                }}
-                              />
-                            </a>
-                          ) : (
-                            <a
-                              key={attachment.id}
-                              href={href}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{
-                                minWidth: 180,
-                                maxWidth: 260,
-                                padding: "10px 12px",
-                                borderRadius: 12,
-                                border: "1px solid #e2e8f0",
-                                background: "#fff",
-                                textDecoration: "none",
-                                color: "#0f172a",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontWeight: 700,
-                                  marginBottom: 4,
-                                }}
-                              >
-                                {attachment.file_name || "Attachment"}
-                              </div>
-                              <div
-                                style={{
-                                  fontSize: 12,
-                                  color: "#64748b",
-                                }}
-                              >
-                                Open file
-                              </div>
-                            </a>
-                          );
-                        })}
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: sender.dateColor,
+                            fontWeight: 500,
+                          }}
+                        >
+                          {formatDate(entry.created_at)}
+                        </div>
                       </div>
-                    ) : null}
+
+                      {entry.message ? (
+                        <div
+                          style={{
+                            color: sender.color,
+                            lineHeight: 1.6,
+                            whiteSpace: "pre-wrap",
+                            fontSize: 13,
+                            opacity: isSystem ? 0.9 : 1,
+                          }}
+                        >
+                          {entry.message}
+                        </div>
+                      ) : null}
+
+                      {Array.isArray(entry.attachments) &&
+                      entry.attachments.length ? (
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 10,
+                            flexWrap: "wrap",
+                            marginTop: 12,
+                          }}
+                        >
+                          {entry.attachments.map((attachment) => {
+                            const href = resolveAttachmentUrl(
+                              attachment.file_url,
+                            );
+
+                            return isImageAttachment(attachment) ? (
+                              <a
+                                key={attachment.id}
+                                href={href}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{
+                                  display: "block",
+                                  width: 100,
+                                  height: 100,
+                                  borderRadius: 8,
+                                  overflow: "hidden",
+                                  border: `1px solid ${sender.color}30`,
+                                  background: "#fff",
+                                }}
+                              >
+                                <img
+                                  src={href}
+                                  alt={attachment.file_name || "Attachment"}
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                  }}
+                                />
+                              </a>
+                            ) : (
+                              <a
+                                key={attachment.id}
+                                href={href}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{
+                                  minWidth: 180,
+                                  maxWidth: 260,
+                                  padding: "10px 14px",
+                                  borderRadius: 8,
+                                  border: `1px solid ${sender.color}30`,
+                                  background: "rgba(255,255,255,0.1)",
+                                  textDecoration: "none",
+                                  color: sender.color,
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    fontWeight: 700,
+                                    marginBottom: 4,
+                                    fontSize: 13,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {attachment.file_name || "Attachment"}
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    color: sender.dateColor,
+                                  }}
+                                >
+                                  {Math.round((file.size || 0) / 1024)} KB
+                                </div>
+                              </a>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 );
               })
@@ -364,18 +398,19 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
         <form
           onSubmit={handleSend}
           style={{
-            border: "1px solid #e2e8f0",
-            borderRadius: 16,
-            background: "#fff",
-            padding: 16,
+            border: "1px solid #e4e4e7",
+            borderRadius: 12,
+            background: "#fafafa",
+            padding: 20,
             display: "grid",
-            gap: 12,
+            gap: 16,
           }}
         >
           <div
             style={{
-              fontWeight: 700,
-              color: "#0f172a",
+              fontWeight: 800,
+              color: "#0a0a0a",
+              fontSize: 14,
             }}
           >
             Reply to Customer
@@ -388,12 +423,14 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
             placeholder="Write your admin reply, clarification, or request update here..."
             style={{
               width: "100%",
-              borderRadius: 12,
-              border: "1px solid #cbd5e1",
-              padding: 12,
-              font: "inherit",
+              borderRadius: 8,
+              border: "1px solid #d4d4d8",
+              padding: 14,
+              fontSize: 13,
+              color: "#18181b",
               resize: "vertical",
               boxSizing: "border-box",
+              outline: "none",
             }}
           />
 
@@ -402,9 +439,9 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
               style={{
                 display: "block",
                 fontSize: 12,
-                fontWeight: 700,
-                color: "#475569",
-                marginBottom: 6,
+                fontWeight: 800,
+                color: "#18181b",
+                marginBottom: 8,
               }}
             >
               Attach Images or PDF
@@ -415,6 +452,10 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
               multiple
               accept=".jpg,.jpeg,.png,.webp,.pdf"
               onChange={handleFilesChange}
+              style={{
+                fontSize: 13,
+                color: "#52525b",
+              }}
             />
           </div>
 
@@ -428,17 +469,18 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
                     justifyContent: "space-between",
                     alignItems: "center",
                     gap: 10,
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    background: "#f8fafc",
-                    border: "1px solid #e2e8f0",
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    background: "#ffffff",
+                    border: "1px solid #e4e4e7",
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
                     <div
                       style={{
                         fontWeight: 700,
-                        color: "#0f172a",
+                        color: "#0a0a0a",
+                        fontSize: 13,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
@@ -449,7 +491,8 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
                     <div
                       style={{
                         fontSize: 12,
-                        color: "#64748b",
+                        color: "#71717a",
+                        marginTop: 2,
                       }}
                     >
                       {Math.round((file.size || 0) / 1024)} KB
@@ -461,13 +504,21 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
                     onClick={() => handleRemoveFile(index)}
                     style={{
                       border: "1px solid #fecaca",
-                      background: "#fff1f2",
-                      color: "#be123c",
-                      borderRadius: 10,
-                      padding: "8px 10px",
+                      background: "#fef2f2",
+                      color: "#991b1b",
+                      borderRadius: 6,
+                      padding: "6px 12px",
                       fontWeight: 700,
+                      fontSize: 11,
                       cursor: "pointer",
+                      transition: "background 0.2s",
                     }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background = "#fee2e2")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "#fef2f2")
+                    }
                   >
                     Remove
                   </button>
@@ -476,20 +527,34 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
             </div>
           ) : null}
 
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "flex-end",
+              marginTop: 4,
+            }}
+          >
             <button
               type="submit"
               disabled={sending}
               style={{
-                minHeight: 44,
                 border: "none",
-                borderRadius: 12,
-                padding: "12px 18px",
-                background: "#2563eb",
-                color: "#fff",
-                fontWeight: 800,
+                borderRadius: 8,
+                padding: "10px 24px",
+                background: "#18181b",
+                color: "#ffffff",
+                fontWeight: 700,
+                fontSize: 13,
                 cursor: "pointer",
+                transition: "background 0.2s",
+                opacity: sending ? 0.7 : 1,
               }}
+              onMouseEnter={(e) =>
+                !sending && (e.currentTarget.style.background = "#3f3f46")
+              }
+              onMouseLeave={(e) =>
+                !sending && (e.currentTarget.style.background = "#18181b")
+              }
             >
               {sending ? "Sending..." : "Send Reply"}
             </button>

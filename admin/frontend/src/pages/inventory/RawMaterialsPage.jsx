@@ -4,9 +4,9 @@ import api from "../../services/api";
 import toast from "react-hot-toast";
 
 const STOCK_COLORS = {
-  in_stock: ["#d1fae5", "#065f46"],
-  low_stock: ["#fef9c3", "#854d0e"],
-  out_of_stock: ["#fee2e2", "#991b1b"],
+  in_stock: ["#f4f4f5", "#18181b", "#e4e4e7"],
+  low_stock: ["#ffffff", "#52525b", "#d4d4d8"],
+  out_of_stock: ["#fef2f2", "#991b1b", "#fecaca"],
 };
 
 export default function RawMaterialsPage() {
@@ -28,6 +28,7 @@ export default function RawMaterialsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
   useEffect(() => {
     api.get("/suppliers").then((r) => setSuppliers(r.data));
   }, []);
@@ -111,7 +112,7 @@ export default function RawMaterialsPage() {
           style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
         >
           <thead>
-            <tr style={{ background: "#f8fafc" }}>
+            <tr style={{ background: "#fafafa" }}>
               {[
                 "Name",
                 "Supplier",
@@ -131,21 +132,26 @@ export default function RawMaterialsPage() {
           </thead>
           <tbody>
             {items.map((item) => {
-              const [bg, color] = STOCK_COLORS[item.stock_status] || [
-                "#f1f5f9",
-                "#475569",
+              const [bg, color, border] = STOCK_COLORS[item.stock_status] || [
+                "#f4f4f5",
+                "#18181b",
+                "#e4e4e7",
               ];
               return (
-                <tr key={item.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                <tr key={item.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
                   <td style={td}>
-                    <strong>{item.name}</strong>
+                    <strong style={{ color: "#0a0a0a" }}>{item.name}</strong>
                   </td>
-                  <td style={td}>{item.supplier_name || "—"}</td>
-                  <td style={td}>{item.unit}</td>
-                  <td style={{ ...td, fontWeight: 600 }}>{item.quantity}</td>
-                  <td style={td}>{item.reorder_point}</td>
+                  <td style={{ ...td, color: "#52525b" }}>
+                    {item.supplier_name || "—"}
+                  </td>
+                  <td style={{ ...td, color: "#71717a" }}>{item.unit}</td>
+                  <td style={{ ...td, fontWeight: 700 }}>{item.quantity}</td>
+                  <td style={{ ...td, color: "#52525b" }}>
+                    {item.reorder_point}
+                  </td>
                   <td style={td}>₱ {Number(item.unit_cost).toFixed(2)}</td>
-                  <td style={td}>
+                  <td style={{ ...td, fontWeight: 600 }}>
                     ₱ {(item.quantity * item.unit_cost).toFixed(2)}
                   </td>
                   <td style={td}>
@@ -153,6 +159,7 @@ export default function RawMaterialsPage() {
                       style={{
                         background: bg,
                         color,
+                        border: `1px solid ${border}`,
                         padding: "2px 10px",
                         borderRadius: 12,
                         fontSize: 11,
@@ -170,9 +177,10 @@ export default function RawMaterialsPage() {
                       onClick={() => handleDelete(item.id)}
                       style={{
                         ...btnEdit,
-                        background: "#fee2e2",
-                        color: "#dc2626",
-                        marginLeft: 4,
+                        background: "#fef2f2",
+                        color: "#991b1b",
+                        border: "1px solid #fecaca",
+                        marginLeft: 6,
                       }}
                     >
                       Del
@@ -189,7 +197,14 @@ export default function RawMaterialsPage() {
       {modal && (
         <div style={overlay}>
           <div style={modalBox}>
-            <h3 style={{ margin: "0 0 20px" }}>
+            <h3
+              style={{
+                margin: "0 0 20px",
+                fontSize: 18,
+                fontWeight: 800,
+                color: "#0a0a0a",
+              }}
+            >
               {modal.mode === "add" ? "Add Raw Material" : "Edit Raw Material"}
             </h3>
             <form onSubmit={handleSave}>
@@ -205,6 +220,7 @@ export default function RawMaterialsPage() {
                   <input
                     type={type || "text"}
                     required={req}
+                    step={type === "number" ? "0.01" : undefined}
                     value={modal.data[key] || ""}
                     onChange={(e) => setField(key, e.target.value)}
                     style={inputFull}
@@ -231,7 +247,7 @@ export default function RawMaterialsPage() {
                   display: "flex",
                   gap: 10,
                   justifyContent: "flex-end",
-                  marginTop: 20,
+                  marginTop: 24,
                 }}
               >
                 <button
@@ -260,76 +276,96 @@ const header = {
   alignItems: "center",
   marginBottom: 20,
 };
-const title = { fontSize: 22, fontWeight: 700, color: "#1e2a38", margin: 0 };
+const title = {
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#0a0a0a",
+  margin: 0,
+  letterSpacing: "-0.02em",
+};
 const tableCard = {
   background: "#fff",
   borderRadius: 12,
-  boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
   overflow: "hidden",
 };
 const th = {
   textAlign: "left",
-  padding: "11px 14px",
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#64748b",
+  padding: "13px 16px",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
   textTransform: "uppercase",
+  letterSpacing: 1,
 };
-const td = { padding: "11px 14px", color: "#374151" };
+const td = {
+  padding: "14px 16px",
+  color: "#18181b",
+  verticalAlign: "middle",
+};
 const inputSm = {
-  padding: "7px 12px",
-  border: "1px solid #d1d5db",
+  padding: "8px 12px",
+  border: "1px solid #e4e4e7",
   borderRadius: 6,
   fontSize: 13,
   minWidth: 160,
+  outline: "none",
+  color: "#18181b",
 };
 const inputFull = {
   width: "100%",
-  padding: "8px 12px",
-  border: "1px solid #d1d5db",
-  borderRadius: 6,
+  padding: "10px 12px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
   boxSizing: "border-box",
+  outline: "none",
+  color: "#18181b",
 };
 const labelSm = {
   fontSize: 12,
-  fontWeight: 600,
-  color: "#374151",
+  fontWeight: 700,
+  color: "#52525b",
   display: "block",
-  marginBottom: 4,
+  marginBottom: 6,
 };
 const btnPrimary = {
-  padding: "8px 18px",
-  background: "#1e40af",
-  color: "#fff",
+  padding: "9px 18px",
+  background: "#18181b",
+  color: "#ffffff",
   border: "none",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 600,
+  transition: "background 0.2s",
 };
 const btnGhost = {
-  padding: "8px 18px",
-  background: "#f1f5f9",
-  color: "#374151",
-  border: "none",
+  padding: "9px 18px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 13,
+  fontWeight: 600,
+  transition: "background 0.2s",
 };
 const btnEdit = {
-  padding: "4px 12px",
-  background: "#e0f2fe",
-  color: "#0369a1",
-  border: "none",
+  padding: "5px 14px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 12,
+  fontWeight: 600,
 };
 const overlay = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,.5)",
+  background: "rgba(0,0,0,.6)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -337,10 +373,11 @@ const overlay = {
 };
 const modalBox = {
   background: "#fff",
-  borderRadius: 12,
-  padding: 28,
+  borderRadius: 16,
+  padding: 32,
   width: 460,
-  maxHeight: "80vh",
+  maxHeight: "85vh",
   overflowY: "auto",
-  boxShadow: "0 20px 60px rgba(0,0,0,.3)",
+  border: "1px solid #e4e4e7",
+  boxShadow: "0 20px 60px rgba(0,0,0,.15)",
 };
