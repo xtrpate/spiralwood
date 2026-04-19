@@ -1403,18 +1403,18 @@ export default function OrderDetailPage() {
                             ...timelineDot,
                             ...(stepState === "done"
                               ? {
-                                  background: stepTone.color,
-                                  borderColor: stepTone.color,
-                                  color: "#ffffff",
+                                  background: "#18181b", // Force black fill
+                                  borderColor: "#18181b",
+                                  color: "#ffffff", // Force white checkmark
                                 }
                               : stepState === "current"
                                 ? step === "completed" &&
                                   normalizedOrderStatus === "completed"
                                   ? {
-                                      background: stepTone.color,
-                                      borderColor: stepTone.color,
-                                      color: "#ffffff",
-                                      boxShadow: `0 0 0 3px ${stepTone.bg}`,
+                                      background: "#18181b", // Force black fill
+                                      borderColor: "#18181b",
+                                      color: "#ffffff", // Force white checkmark
+                                      boxShadow: `0 0 0 4px #f4f4f5`, // Clean gray outer ring
                                     }
                                   : {
                                       background: stepTone.bg,
