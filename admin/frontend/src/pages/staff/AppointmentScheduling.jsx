@@ -25,17 +25,44 @@ const STATUS_LABELS = {
   cancelled: "Cancelled",
 };
 
-const statusColor = (status) =>
-  (
-    {
-      pending: "badge-yellow",
-      assigned: "badge-yellow",
-      confirmed: "badge-blue",
-      done: "badge-green",
-      rejected: "badge-red",
-      cancelled: "badge-red",
-    }[String(status || "").toLowerCase()] || "badge-gray"
-  );
+// Replaced generic classes with inline styles for the monochrome theme
+const getStatusStyle = (status) => {
+  const s = String(status || "").toLowerCase();
+  switch (s) {
+    case "pending":
+    case "assigned":
+      return {
+        background: "#ffffff",
+        color: "#52525b",
+        border: "1px solid #d4d4d8",
+      };
+    case "confirmed":
+      return {
+        background: "#f4f4f5",
+        color: "#18181b",
+        border: "1px solid #e4e4e7",
+      };
+    case "done":
+      return {
+        background: "#0a0a0a",
+        color: "#ffffff",
+        border: "1px solid #0a0a0a",
+      };
+    case "rejected":
+    case "cancelled":
+      return {
+        background: "#fef2f2",
+        color: "#991b1b",
+        border: "1px solid #fecaca",
+      };
+    default:
+      return {
+        background: "#f4f4f5",
+        color: "#52525b",
+        border: "1px solid #e4e4e7",
+      };
+  }
+};
 
 const formatDateTime = (value) => {
   if (!value) return "—";
@@ -98,56 +125,63 @@ const parseNotes = (notes) => {
 
 const inputStyle = {
   width: "100%",
-  padding: "10px 12px",
-  borderRadius: 10,
-  border: "1px solid #d9d9d9",
-  fontSize: 14,
+  padding: "10px 14px",
+  borderRadius: 8,
+  border: "1px solid #e4e4e7",
+  fontSize: 13,
   outline: "none",
+  color: "#18181b",
+  boxSizing: "border-box",
 };
 
 const labelStyle = {
   display: "block",
-  marginBottom: 6,
-  fontSize: 13,
-  fontWeight: 600,
-  color: "#444",
+  marginBottom: 8,
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#18181b",
+  letterSpacing: "0.02em",
 };
 
 const summaryCardStyle = {
-  border: "1px solid #ececec",
+  border: "1px solid #e4e4e7",
   borderRadius: 16,
   background: "#fff",
-  padding: "16px 18px",
-  boxShadow: "0 8px 24px rgba(15, 23, 42, 0.04)",
+  padding: "16px 20px",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const subTextStyle = {
   fontSize: 12,
-  color: "#8a8f98",
+  color: "#71717a",
   marginTop: 4,
   lineHeight: 1.45,
 };
 
 const sectionTitleStyle = {
-  marginBottom: 4,
+  marginBottom: 6,
   fontWeight: 800,
   display: "flex",
   alignItems: "center",
-  gap: 8,
+  gap: 10,
+  color: "#0a0a0a",
+  fontSize: 16,
+  letterSpacing: "-0.01em",
 };
 
 const sectionHintStyle = {
-  margin: "0 0 16px",
-  color: "#667085",
+  margin: "0 0 20px",
+  color: "#52525b",
   fontSize: 13,
   lineHeight: 1.5,
 };
 
 const emptyStateStyle = {
-  color: "#98a2b3",
+  color: "#71717a",
   fontSize: 13,
   textAlign: "center",
-  padding: 22,
+  padding: 32,
+  fontWeight: 600,
 };
 
 const formatRequestNumber = (id) =>
@@ -158,9 +192,18 @@ const getStatusLabel = (status) =>
 
 function SectionCard({ title, subtitle, children }) {
   return (
-    <div className="card" style={{ marginBottom: 20 }}>
+    <div
+      style={{
+        background: "#fff",
+        borderRadius: 16,
+        border: "1px solid #e4e4e7",
+        padding: "24px",
+        marginBottom: 20,
+        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+      }}
+    >
       <h3 style={sectionTitleStyle}>
-        <CalendarClock size={18} /> {title}
+        <CalendarClock size={20} /> {title}
       </h3>
       {subtitle ? <p style={sectionHintStyle}>{subtitle}</p> : null}
       {children}
@@ -171,7 +214,15 @@ function SectionCard({ title, subtitle, children }) {
 function SummaryCard({ label, count, hint }) {
   return (
     <div style={summaryCardStyle}>
-      <div style={{ fontSize: 12, color: "#667085", fontWeight: 700 }}>
+      <div
+        style={{
+          fontSize: 10,
+          color: "#71717a",
+          fontWeight: 800,
+          textTransform: "uppercase",
+          letterSpacing: "1px",
+        }}
+      >
         {label}
       </div>
       <div
@@ -179,13 +230,23 @@ function SummaryCard({ label, count, hint }) {
           marginTop: 8,
           fontSize: 28,
           fontWeight: 800,
-          color: "#101828",
+          color: "#0a0a0a",
           lineHeight: 1,
+          letterSpacing: "-0.02em",
         }}
       >
         {count}
       </div>
-      <div style={{ marginTop: 8, fontSize: 12, color: "#98a2b3" }}>{hint}</div>
+      <div
+        style={{
+          marginTop: 8,
+          fontSize: 12,
+          color: "#a1a1aa",
+          fontWeight: 500,
+        }}
+      >
+        {hint}
+      </div>
     </div>
   );
 }
@@ -194,8 +255,7 @@ export default function AppointmentScheduling() {
   const { user } = useAuthStore();
 
   const isAdmin = user?.role === "admin";
-  const isIndoorStaff =
-    user?.role === "staff" && user?.staff_type === "indoor";
+  const isIndoorStaff = user?.role === "staff" && user?.staff_type === "indoor";
 
   const [appointments, setAppointments] = useState([]);
   const [providers, setProviders] = useState([]);
@@ -241,9 +301,7 @@ export default function AppointmentScheduling() {
 
         list.forEach((item) => {
           if (next[item.id] === undefined) {
-            next[item.id] = String(
-              item.provider_id ?? item.assigned_to ?? "",
-            );
+            next[item.id] = String(item.provider_id ?? item.assigned_to ?? "");
           }
         });
 
@@ -396,7 +454,10 @@ export default function AppointmentScheduling() {
     setSuccess("");
 
     try {
-      const res = await api.patch(`/pos/appointments/${appointmentId}`, payload);
+      const res = await api.patch(
+        `/pos/appointments/${appointmentId}`,
+        payload,
+      );
       setSuccess(okMessage || res.data?.message || "Appointment updated.");
       fetchAppointments();
     } catch (err) {
@@ -434,10 +495,14 @@ export default function AppointmentScheduling() {
     const details = getDetails(appointment);
 
     const noteAddress = String(details.address || "").trim();
-    const orderAddress = String(appointment.order_delivery_address || "").trim();
+    const orderAddress = String(
+      appointment.order_delivery_address || "",
+    ).trim();
     const customerAddress = String(appointment.customer_address || "").trim();
 
-    return noteAddress || orderAddress || customerAddress || "No address provided";
+    return (
+      noteAddress || orderAddress || customerAddress || "No address provided"
+    );
   };
 
   const getScope = (appointment) => {
@@ -469,17 +534,17 @@ export default function AppointmentScheduling() {
     appointment.provider_name || "Not assigned";
 
   const renderRequestRefCell = (appointment) => (
-    <td>
-      <div style={{ fontWeight: 700 }}>{formatRequestNumber(appointment.id)}</div>
-      <div style={subTextStyle}>
-        Order: {appointment.order_number || "—"}
+    <td style={tdStyle}>
+      <div style={{ fontWeight: 800, color: "#0a0a0a" }}>
+        {formatRequestNumber(appointment.id)}
       </div>
+      <div style={subTextStyle}>Order: {appointment.order_number || "—"}</div>
     </td>
   );
 
   const renderCustomerCell = (appointment) => (
-    <td>
-      <div style={{ fontWeight: 700 }}>
+    <td style={tdStyle}>
+      <div style={{ fontWeight: 700, color: "#18181b" }}>
         {appointment.customer_name || "Unlinked Customer"}
       </div>
       <div style={subTextStyle}>{getContact(appointment)}</div>
@@ -487,61 +552,82 @@ export default function AppointmentScheduling() {
   );
 
   const renderServiceCell = (appointment) => (
-    <td style={{ minWidth: 190 }}>
-      <div style={{ fontWeight: 700 }}>{humanizePurpose(appointment.purpose)}</div>
+    <td style={{ ...tdStyle, minWidth: 190 }}>
+      <div style={{ fontWeight: 700, color: "#18181b" }}>
+        {humanizePurpose(appointment.purpose)}
+      </div>
       <div style={subTextStyle}>{getScope(appointment)}</div>
     </td>
   );
 
   const renderPreferredScheduleCell = (appointment) => (
-    <td>
-      <div style={{ fontWeight: 600 }}>
-        {formatDateTime(appointment.preferred_date || appointment.scheduled_date)}
+    <td style={tdStyle}>
+      <div style={{ fontWeight: 600, color: "#18181b" }}>
+        {formatDateTime(
+          appointment.preferred_date || appointment.scheduled_date,
+        )}
       </div>
       <div style={subTextStyle}>Preferred schedule</div>
     </td>
   );
 
   const renderConfirmedScheduleCell = (appointment) => (
-    <td>
-      <div style={{ fontWeight: 600 }}>
-        {formatDateTime(appointment.scheduled_date || appointment.preferred_date)}
+    <td style={tdStyle}>
+      <div style={{ fontWeight: 600, color: "#18181b" }}>
+        {formatDateTime(
+          appointment.scheduled_date || appointment.preferred_date,
+        )}
       </div>
       <div style={subTextStyle}>Confirmed / working schedule</div>
     </td>
   );
 
   const renderAddressCell = (appointment) => (
-    <td style={{ minWidth: 220 }}>
-      <div style={{ fontWeight: 600 }}>{getAddress(appointment)}</div>
+    <td style={{ ...tdStyle, minWidth: 220 }}>
+      <div style={{ fontWeight: 600, color: "#18181b" }}>
+        {getAddress(appointment)}
+      </div>
       <div style={subTextStyle}>Service location</div>
     </td>
   );
 
   const renderRequestedByCell = (appointment) => (
-    <td>
-      <div style={{ fontWeight: 600 }}>{getRequestedBy(appointment)}</div>
+    <td style={tdStyle}>
+      <div style={{ fontWeight: 600, color: "#18181b" }}>
+        {getRequestedBy(appointment)}
+      </div>
       <div style={subTextStyle}>Request source / dispatcher</div>
     </td>
   );
 
   const renderAssignedStaffCell = (appointment) => (
-    <td>
-      <div style={{ fontWeight: 600 }}>{getAssignedStaff(appointment)}</div>
+    <td style={tdStyle}>
+      <div style={{ fontWeight: 600, color: "#18181b" }}>
+        {getAssignedStaff(appointment)}
+      </div>
       <div style={subTextStyle}>Assigned indoor staff</div>
     </td>
   );
 
-  const renderStatusCell = (appointment) => (
-    <td>
-      <span
-        className={`badge ${statusColor(appointment.status)}`}
-        style={{ whiteSpace: "nowrap" }}
-      >
-        {getStatusLabel(appointment.status)}
-      </span>
-    </td>
-  );
+  const renderStatusCell = (appointment) => {
+    const style = getStatusStyle(appointment.status);
+    return (
+      <td style={tdStyle}>
+        <span
+          style={{
+            ...style,
+            padding: "4px 10px",
+            borderRadius: 999,
+            fontSize: 11,
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {getStatusLabel(appointment.status)}
+        </span>
+      </td>
+    );
+  };
 
   const adminSummary = [
     {
@@ -585,22 +671,40 @@ export default function AppointmentScheduling() {
   ];
 
   return (
-    <div className="page-content">
+    <div style={{ fontFamily: "'Inter', sans-serif" }}>
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
-          gap: 12,
-          marginBottom: 20,
+          alignItems: "flex-start",
+          gap: 16,
+          marginBottom: 24,
           flexWrap: "wrap",
         }}
       >
         <div>
-          <h2 style={{ margin: 0, fontWeight: 900 }}>
-            {isAdmin ? "Appointment Dispatch & Triage" : "My Field Appointments"}
+          <h2
+            style={{
+              margin: 0,
+              fontWeight: 800,
+              fontSize: 24,
+              color: "#0a0a0a",
+              letterSpacing: "-0.02em",
+            }}
+          >
+            {isAdmin
+              ? "Appointment Dispatch & Triage"
+              : "My Field Appointments"}
           </h2>
-          <p style={{ margin: "6px 0 0", color: "#667085", fontSize: 14 }}>
+          <p
+            style={{
+              margin: "6px 0 0",
+              color: "#52525b",
+              fontSize: 13,
+              lineHeight: 1.5,
+              maxWidth: 720,
+            }}
+          >
             {isAdmin
               ? "Review incoming appointment requests, assign indoor staff, track staff acceptance, and monitor confirmed or closed appointments."
               : "Review your assigned appointments, accept new work, and update completion status for confirmed field schedules."}
@@ -609,7 +713,7 @@ export default function AppointmentScheduling() {
 
         {isAdmin && (
           <button
-            className="btn btn-primary"
+            style={showForm ? btnGhost : btnPrimary}
             onClick={() => {
               setShowForm((prev) => !prev);
               setError("");
@@ -625,11 +729,9 @@ export default function AppointmentScheduling() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: isAdmin
-            ? "repeat(auto-fit, minmax(220px, 1fr))"
-            : "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: 14,
-          marginBottom: 20,
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: 16,
+          marginBottom: 24,
         }}
       >
         {(isAdmin ? adminSummary : staffSummary).map((item) => (
@@ -645,13 +747,14 @@ export default function AppointmentScheduling() {
       {error ? (
         <div
           style={{
-            marginBottom: 16,
-            padding: "12px 14px",
+            marginBottom: 20,
+            padding: "14px 16px",
             borderRadius: 12,
-            background: "#fff1f0",
-            color: "#b42318",
-            border: "1px solid #fecdca",
-            fontSize: 14,
+            background: "#fef2f2",
+            color: "#991b1b",
+            border: "1px solid #fecaca",
+            fontSize: 13,
+            fontWeight: 600,
           }}
         >
           {error}
@@ -661,13 +764,14 @@ export default function AppointmentScheduling() {
       {success ? (
         <div
           style={{
-            marginBottom: 16,
-            padding: "12px 14px",
+            marginBottom: 20,
+            padding: "14px 16px",
             borderRadius: 12,
-            background: "#ecfdf3",
-            color: "#027a48",
-            border: "1px solid #abefc6",
-            fontSize: 14,
+            background: "#fafafa",
+            color: "#18181b",
+            border: "1px solid #e4e4e7",
+            fontSize: 13,
+            fontWeight: 600,
           }}
         >
           {success}
@@ -769,13 +873,14 @@ export default function AppointmentScheduling() {
               </div>
             </div>
 
-            <div style={{ marginTop: 16 }}>
+            <div style={{ marginTop: 20 }}>
               <label style={labelStyle}>Scope / Notes</label>
               <textarea
                 style={{
                   ...inputStyle,
-                  minHeight: 110,
+                  minHeight: 120,
                   resize: "vertical",
+                  fontFamily: "inherit",
                 }}
                 value={form.notes}
                 onChange={(e) =>
@@ -787,46 +892,43 @@ export default function AppointmentScheduling() {
 
             <div
               style={{
-                marginTop: 16,
-                padding: 12,
+                marginTop: 20,
+                padding: "14px 16px",
                 borderRadius: 12,
-                background: "#f8fafc",
-                border: "1px solid #eaecf0",
-                fontSize: 13,
-                color: "#667085",
+                background: "#fafafa",
+                border: "1px solid #e4e4e7",
+                fontSize: 12,
+                color: "#52525b",
                 lineHeight: 1.55,
               }}
             >
-              <strong>Workflow note:</strong> assigning an indoor staff here only
-              creates an <strong>Awaiting Staff Acceptance</strong> record. The
-              assigned indoor staff must still accept the appointment before it
-              becomes <strong>Confirmed</strong>.
+              <strong style={{ color: "#18181b" }}>Workflow note:</strong>{" "}
+              assigning an indoor staff here only creates an{" "}
+              <strong>Awaiting Staff Acceptance</strong> record. The assigned
+              indoor staff must still accept the appointment before it becomes{" "}
+              <strong>Confirmed</strong>.
             </div>
 
             <div
               style={{
-                marginTop: 16,
+                marginTop: 24,
                 display: "flex",
-                gap: 10,
+                gap: 12,
                 flexWrap: "wrap",
+                justifyContent: "flex-end",
               }}
             >
               <button
-                className="btn btn-primary"
-                type="submit"
-                disabled={loading}
-              >
-                <Plus size={16} />
-                {loading ? "Saving..." : "Save Manual Request"}
-              </button>
-
-              <button
-                className="btn btn-secondary"
+                style={btnGhost}
                 type="button"
                 onClick={() => setShowForm(false)}
                 disabled={loading}
               >
                 Cancel
+              </button>
+              <button style={btnPrimary} type="submit" disabled={loading}>
+                <Plus size={16} />
+                {loading ? "Saving..." : "Save Manual Request"}
               </button>
             </div>
           </form>
@@ -842,78 +944,86 @@ export default function AppointmentScheduling() {
             {adminNewRequests.length === 0 ? (
               <p style={emptyStateStyle}>No new appointment requests.</p>
             ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Request #</th>
-                    <th>Customer</th>
-                    <th>Service Type</th>
-                    <th>Preferred Schedule</th>
-                    <th>Location / Address</th>
-                    <th>Requested By</th>
-                    <th>Assign Indoor Staff</th>
-                    <th>Dispatch Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adminNewRequests.map((a) => (
-                    <tr key={a.id}>
-                      {renderRequestRefCell(a)}
-                      {renderCustomerCell(a)}
-                      {renderServiceCell(a)}
-                      {renderPreferredScheduleCell(a)}
-                      {renderAddressCell(a)}
-                      {renderRequestedByCell(a)}
+              <div style={{ overflowX: "auto" }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={thRowStyle}>
+                      <th style={thStyle}>Request #</th>
+                      <th style={thStyle}>Customer</th>
+                      <th style={thStyle}>Service Type</th>
+                      <th style={thStyle}>Preferred Schedule</th>
+                      <th style={thStyle}>Location / Address</th>
+                      <th style={thStyle}>Requested By</th>
+                      <th style={thStyle}>Assign Indoor Staff</th>
+                      <th style={thStyle}>Dispatch Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminNewRequests.map((a) => (
+                      <tr key={a.id} style={trStyle}>
+                        {renderRequestRefCell(a)}
+                        {renderCustomerCell(a)}
+                        {renderServiceCell(a)}
+                        {renderPreferredScheduleCell(a)}
+                        {renderAddressCell(a)}
+                        {renderRequestedByCell(a)}
 
-                      <td style={{ minWidth: 210 }}>
-                        <select
-                          style={inputStyle}
-                          value={assignmentDrafts[a.id] ?? ""}
-                          onChange={(e) =>
-                            setAssignmentDrafts((prev) => ({
-                              ...prev,
-                              [a.id]: e.target.value,
-                            }))
-                          }
-                        >
-                          <option value="">Select indoor staff</option>
-                          {providers.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-
-                      <td>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                          <button
-                            className="btn btn-secondary"
-                            disabled={actionLoadingId === a.id}
-                            onClick={() => handleAssignProvider(a)}
-                          >
-                            <UserCheck size={14} /> Assign
-                          </button>
-
-                          <button
-                            className="btn btn-danger"
-                            disabled={actionLoadingId === a.id}
-                            onClick={() =>
-                              handleAction(
-                                a.id,
-                                { status: "rejected" },
-                                "Appointment request rejected.",
-                              )
+                        <td style={{ ...tdStyle, minWidth: 210 }}>
+                          <select
+                            style={inputStyle}
+                            value={assignmentDrafts[a.id] ?? ""}
+                            onChange={(e) =>
+                              setAssignmentDrafts((prev) => ({
+                                ...prev,
+                                [a.id]: e.target.value,
+                              }))
                             }
                           >
-                            <Ban size={14} /> Reject
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                            <option value="">Select indoor staff</option>
+                            {providers.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+
+                        <td style={tdStyle}>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 8,
+                            }}
+                          >
+                            <button
+                              style={btnGhost}
+                              disabled={actionLoadingId === a.id}
+                              onClick={() => handleAssignProvider(a)}
+                            >
+                              <UserCheck size={14} /> Assign
+                            </button>
+
+                            <button
+                              style={btnDanger}
+                              disabled={actionLoadingId === a.id}
+                              onClick={() =>
+                                handleAction(
+                                  a.id,
+                                  { status: "rejected" },
+                                  "Appointment request rejected.",
+                                )
+                              }
+                            >
+                              <Ban size={14} /> Reject
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </SectionCard>
 
@@ -926,57 +1036,65 @@ export default function AppointmentScheduling() {
                 No appointments are waiting for staff acceptance.
               </p>
             ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Request #</th>
-                    <th>Customer</th>
-                    <th>Service Type</th>
-                    <th>Proposed Schedule</th>
-                    <th>Assigned Indoor Staff</th>
-                    <th>Status</th>
-                    <th>Dispatch Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adminAwaitingAcceptance.map((a) => (
-                    <tr key={a.id}>
-                      {renderRequestRefCell(a)}
-                      {renderCustomerCell(a)}
-                      {renderServiceCell(a)}
-                      {renderConfirmedScheduleCell(a)}
-                      {renderAssignedStaffCell(a)}
-                      {renderStatusCell(a)}
-
-                      <td>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                          <button
-                            className="btn btn-secondary"
-                            disabled={actionLoadingId === a.id}
-                            onClick={() => handleAssignProvider(a)}
-                          >
-                            <UserCheck size={14} /> Reassign
-                          </button>
-
-                          <button
-                            className="btn btn-danger"
-                            disabled={actionLoadingId === a.id}
-                            onClick={() =>
-                              handleAction(
-                                a.id,
-                                { status: "rejected" },
-                                "Appointment request rejected.",
-                              )
-                            }
-                          >
-                            <Ban size={14} /> Reject
-                          </button>
-                        </div>
-                      </td>
+              <div style={{ overflowX: "auto" }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={thRowStyle}>
+                      <th style={thStyle}>Request #</th>
+                      <th style={thStyle}>Customer</th>
+                      <th style={thStyle}>Service Type</th>
+                      <th style={thStyle}>Proposed Schedule</th>
+                      <th style={thStyle}>Assigned Indoor Staff</th>
+                      <th style={thStyle}>Status</th>
+                      <th style={thStyle}>Dispatch Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {adminAwaitingAcceptance.map((a) => (
+                      <tr key={a.id} style={trStyle}>
+                        {renderRequestRefCell(a)}
+                        {renderCustomerCell(a)}
+                        {renderServiceCell(a)}
+                        {renderConfirmedScheduleCell(a)}
+                        {renderAssignedStaffCell(a)}
+                        {renderStatusCell(a)}
+
+                        <td style={tdStyle}>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 8,
+                            }}
+                          >
+                            <button
+                              style={btnGhost}
+                              disabled={actionLoadingId === a.id}
+                              onClick={() => handleAssignProvider(a)}
+                            >
+                              <UserCheck size={14} /> Reassign
+                            </button>
+
+                            <button
+                              style={btnDanger}
+                              disabled={actionLoadingId === a.id}
+                              onClick={() =>
+                                handleAction(
+                                  a.id,
+                                  { status: "rejected" },
+                                  "Appointment request rejected.",
+                                )
+                              }
+                            >
+                              <Ban size={14} /> Reject
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </SectionCard>
 
@@ -987,51 +1105,59 @@ export default function AppointmentScheduling() {
             {adminConfirmedAppointments.length === 0 ? (
               <p style={emptyStateStyle}>No confirmed appointments yet.</p>
             ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Request #</th>
-                    <th>Customer</th>
-                    <th>Service Type</th>
-                    <th>Confirmed Schedule</th>
-                    <th>Location / Address</th>
-                    <th>Assigned Indoor Staff</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adminConfirmedAppointments.map((a) => (
-                    <tr key={a.id}>
-                      {renderRequestRefCell(a)}
-                      {renderCustomerCell(a)}
-                      {renderServiceCell(a)}
-                      {renderConfirmedScheduleCell(a)}
-                      {renderAddressCell(a)}
-                      {renderAssignedStaffCell(a)}
-                      {renderStatusCell(a)}
-
-                      <td>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                          <button
-                            className="btn btn-danger"
-                            disabled={actionLoadingId === a.id}
-                            onClick={() =>
-                              handleAction(
-                                a.id,
-                                { status: "cancelled" },
-                                "Confirmed appointment cancelled.",
-                              )
-                            }
-                          >
-                            <Ban size={14} /> Cancel
-                          </button>
-                        </div>
-                      </td>
+              <div style={{ overflowX: "auto" }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={thRowStyle}>
+                      <th style={thStyle}>Request #</th>
+                      <th style={thStyle}>Customer</th>
+                      <th style={thStyle}>Service Type</th>
+                      <th style={thStyle}>Confirmed Schedule</th>
+                      <th style={thStyle}>Location / Address</th>
+                      <th style={thStyle}>Assigned Indoor Staff</th>
+                      <th style={thStyle}>Status</th>
+                      <th style={thStyle}>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {adminConfirmedAppointments.map((a) => (
+                      <tr key={a.id} style={trStyle}>
+                        {renderRequestRefCell(a)}
+                        {renderCustomerCell(a)}
+                        {renderServiceCell(a)}
+                        {renderConfirmedScheduleCell(a)}
+                        {renderAddressCell(a)}
+                        {renderAssignedStaffCell(a)}
+                        {renderStatusCell(a)}
+
+                        <td style={tdStyle}>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 8,
+                            }}
+                          >
+                            <button
+                              style={btnDanger}
+                              disabled={actionLoadingId === a.id}
+                              onClick={() =>
+                                handleAction(
+                                  a.id,
+                                  { status: "cancelled" },
+                                  "Confirmed appointment cancelled.",
+                                )
+                              }
+                            >
+                              <Ban size={14} /> Cancel
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </SectionCard>
 
@@ -1042,32 +1168,38 @@ export default function AppointmentScheduling() {
             {adminClosedAppointments.length === 0 ? (
               <p style={emptyStateStyle}>No closed appointment history yet.</p>
             ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Request #</th>
-                    <th>Customer</th>
-                    <th>Service Type</th>
-                    <th>Final Schedule</th>
-                    <th>Assigned Indoor Staff</th>
-                    <th>Status</th>
-                    <th>Last Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adminClosedAppointments.map((a) => (
-                    <tr key={a.id}>
-                      {renderRequestRefCell(a)}
-                      {renderCustomerCell(a)}
-                      {renderServiceCell(a)}
-                      {renderConfirmedScheduleCell(a)}
-                      {renderAssignedStaffCell(a)}
-                      {renderStatusCell(a)}
-                      <td>{formatDateTime(a.updated_at)}</td>
+              <div style={{ overflowX: "auto" }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={thRowStyle}>
+                      <th style={thStyle}>Request #</th>
+                      <th style={thStyle}>Customer</th>
+                      <th style={thStyle}>Service Type</th>
+                      <th style={thStyle}>Final Schedule</th>
+                      <th style={thStyle}>Assigned Indoor Staff</th>
+                      <th style={thStyle}>Status</th>
+                      <th style={thStyle}>Last Updated</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {adminClosedAppointments.map((a) => (
+                      <tr key={a.id} style={trStyle}>
+                        {renderRequestRefCell(a)}
+                        {renderCustomerCell(a)}
+                        {renderServiceCell(a)}
+                        {renderConfirmedScheduleCell(a)}
+                        {renderAssignedStaffCell(a)}
+                        {renderStatusCell(a)}
+                        <td
+                          style={{ ...tdStyle, color: "#71717a", fontSize: 12 }}
+                        >
+                          {formatDateTime(a.updated_at)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </SectionCard>
         </>
@@ -1082,65 +1214,73 @@ export default function AppointmentScheduling() {
             {staffNewAssignments.length === 0 ? (
               <p style={emptyStateStyle}>No new assigned appointments.</p>
             ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Request #</th>
-                    <th>Customer</th>
-                    <th>Service Type</th>
-                    <th>Proposed Schedule</th>
-                    <th>Location / Address</th>
-                    <th>Assigned By</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {staffNewAssignments.map((a) => (
-                    <tr key={a.id}>
-                      {renderRequestRefCell(a)}
-                      {renderCustomerCell(a)}
-                      {renderServiceCell(a)}
-                      {renderConfirmedScheduleCell(a)}
-                      {renderAddressCell(a)}
-                      {renderRequestedByCell(a)}
-                      {renderStatusCell(a)}
-
-                      <td>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                          <button
-                            className="btn btn-primary"
-                            disabled={actionLoadingId === a.id}
-                            onClick={() =>
-                              handleAction(
-                                a.id,
-                                { status: "confirmed" },
-                                "Appointment accepted and confirmed.",
-                              )
-                            }
-                          >
-                            <CheckCircle2 size={14} /> Accept
-                          </button>
-
-                          <button
-                            className="btn btn-danger"
-                            disabled={actionLoadingId === a.id}
-                            onClick={() =>
-                              handleAction(
-                                a.id,
-                                { status: "pending", provider_id: null },
-                                "Appointment returned to admin for reassignment.",
-                              )
-                            }
-                          >
-                            <Ban size={14} /> Return to Admin
-                          </button>
-                        </div>
-                      </td>
+              <div style={{ overflowX: "auto" }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={thRowStyle}>
+                      <th style={thStyle}>Request #</th>
+                      <th style={thStyle}>Customer</th>
+                      <th style={thStyle}>Service Type</th>
+                      <th style={thStyle}>Proposed Schedule</th>
+                      <th style={thStyle}>Location / Address</th>
+                      <th style={thStyle}>Assigned By</th>
+                      <th style={thStyle}>Status</th>
+                      <th style={thStyle}>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {staffNewAssignments.map((a) => (
+                      <tr key={a.id} style={trStyle}>
+                        {renderRequestRefCell(a)}
+                        {renderCustomerCell(a)}
+                        {renderServiceCell(a)}
+                        {renderConfirmedScheduleCell(a)}
+                        {renderAddressCell(a)}
+                        {renderRequestedByCell(a)}
+                        {renderStatusCell(a)}
+
+                        <td style={tdStyle}>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 8,
+                            }}
+                          >
+                            <button
+                              style={btnPrimary}
+                              disabled={actionLoadingId === a.id}
+                              onClick={() =>
+                                handleAction(
+                                  a.id,
+                                  { status: "confirmed" },
+                                  "Appointment accepted and confirmed.",
+                                )
+                              }
+                            >
+                              <CheckCircle2 size={14} /> Accept
+                            </button>
+
+                            <button
+                              style={btnDanger}
+                              disabled={actionLoadingId === a.id}
+                              onClick={() =>
+                                handleAction(
+                                  a.id,
+                                  { status: "pending", provider_id: null },
+                                  "Appointment returned to admin for reassignment.",
+                                )
+                              }
+                            >
+                              <Ban size={14} /> Return to Admin
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </SectionCard>
 
@@ -1151,70 +1291,80 @@ export default function AppointmentScheduling() {
             {staffConfirmedAppointments.length === 0 ? (
               <p style={emptyStateStyle}>No confirmed appointments yet.</p>
             ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Request #</th>
-                    <th>Customer</th>
-                    <th>Service Type</th>
-                    <th>Confirmed Schedule</th>
-                    <th>Location / Address</th>
-                    <th>Customer Contact</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {staffConfirmedAppointments.map((a) => (
-                    <tr key={a.id}>
-                      {renderRequestRefCell(a)}
-                      {renderCustomerCell(a)}
-                      {renderServiceCell(a)}
-                      {renderConfirmedScheduleCell(a)}
-                      {renderAddressCell(a)}
-
-                      <td>
-                        <div style={{ fontWeight: 600 }}>{getContact(a)}</div>
-                        <div style={subTextStyle}>{a.customer_name || "Customer"}</div>
-                      </td>
-
-                      {renderStatusCell(a)}
-
-                      <td>
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                          <button
-                            className="btn btn-secondary"
-                            disabled={actionLoadingId === a.id}
-                            onClick={() =>
-                              handleAction(
-                                a.id,
-                                { status: "done" },
-                                "Appointment marked as completed.",
-                              )
-                            }
-                          >
-                            <Check size={14} /> Mark Done
-                          </button>
-
-                          <button
-                            className="btn btn-danger"
-                            disabled={actionLoadingId === a.id}
-                            onClick={() =>
-                              handleAction(
-                                a.id,
-                                { status: "cancelled" },
-                                "Appointment cancelled.",
-                              )
-                            }
-                          >
-                            <Ban size={14} /> Cancel
-                          </button>
-                        </div>
-                      </td>
+              <div style={{ overflowX: "auto" }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={thRowStyle}>
+                      <th style={thStyle}>Request #</th>
+                      <th style={thStyle}>Customer</th>
+                      <th style={thStyle}>Service Type</th>
+                      <th style={thStyle}>Confirmed Schedule</th>
+                      <th style={thStyle}>Location / Address</th>
+                      <th style={thStyle}>Customer Contact</th>
+                      <th style={thStyle}>Status</th>
+                      <th style={thStyle}>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {staffConfirmedAppointments.map((a) => (
+                      <tr key={a.id} style={trStyle}>
+                        {renderRequestRefCell(a)}
+                        {renderCustomerCell(a)}
+                        {renderServiceCell(a)}
+                        {renderConfirmedScheduleCell(a)}
+                        {renderAddressCell(a)}
+
+                        <td style={tdStyle}>
+                          <div style={{ fontWeight: 600 }}>{getContact(a)}</div>
+                          <div style={subTextStyle}>
+                            {a.customer_name || "Customer"}
+                          </div>
+                        </td>
+
+                        {renderStatusCell(a)}
+
+                        <td style={tdStyle}>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 8,
+                            }}
+                          >
+                            <button
+                              style={btnPrimary}
+                              disabled={actionLoadingId === a.id}
+                              onClick={() =>
+                                handleAction(
+                                  a.id,
+                                  { status: "done" },
+                                  "Appointment marked as completed.",
+                                )
+                              }
+                            >
+                              <Check size={14} /> Mark Done
+                            </button>
+
+                            <button
+                              style={btnDanger}
+                              disabled={actionLoadingId === a.id}
+                              onClick={() =>
+                                handleAction(
+                                  a.id,
+                                  { status: "cancelled" },
+                                  "Appointment cancelled.",
+                                )
+                              }
+                            >
+                              <Ban size={14} /> Cancel
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </SectionCard>
 
@@ -1225,32 +1375,38 @@ export default function AppointmentScheduling() {
             {staffClosedAppointments.length === 0 ? (
               <p style={emptyStateStyle}>No closed appointment history yet.</p>
             ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Request #</th>
-                    <th>Customer</th>
-                    <th>Service Type</th>
-                    <th>Schedule</th>
-                    <th>Location / Address</th>
-                    <th>Status</th>
-                    <th>Last Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {staffClosedAppointments.map((a) => (
-                    <tr key={a.id}>
-                      {renderRequestRefCell(a)}
-                      {renderCustomerCell(a)}
-                      {renderServiceCell(a)}
-                      {renderConfirmedScheduleCell(a)}
-                      {renderAddressCell(a)}
-                      {renderStatusCell(a)}
-                      <td>{formatDateTime(a.updated_at)}</td>
+              <div style={{ overflowX: "auto" }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr style={thRowStyle}>
+                      <th style={thStyle}>Request #</th>
+                      <th style={thStyle}>Customer</th>
+                      <th style={thStyle}>Service Type</th>
+                      <th style={thStyle}>Schedule</th>
+                      <th style={thStyle}>Location / Address</th>
+                      <th style={thStyle}>Status</th>
+                      <th style={thStyle}>Last Updated</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {staffClosedAppointments.map((a) => (
+                      <tr key={a.id} style={trStyle}>
+                        {renderRequestRefCell(a)}
+                        {renderCustomerCell(a)}
+                        {renderServiceCell(a)}
+                        {renderConfirmedScheduleCell(a)}
+                        {renderAddressCell(a)}
+                        {renderStatusCell(a)}
+                        <td
+                          style={{ ...tdStyle, color: "#71717a", fontSize: 12 }}
+                        >
+                          {formatDateTime(a.updated_at)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </SectionCard>
         </>
@@ -1258,3 +1414,83 @@ export default function AppointmentScheduling() {
     </div>
   );
 }
+
+// ── Reusable Inline Styles ───────────────────────────────────────────────
+
+const btnPrimary = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "9px 16px",
+  background: "#18181b",
+  color: "#fff",
+  border: "1px solid #18181b",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 700,
+  transition: "background 0.2s",
+};
+
+const btnGhost = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "9px 14px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 700,
+  transition: "background 0.2s",
+};
+
+const btnDanger = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "9px 14px",
+  background: "#fef2f2",
+  color: "#991b1b",
+  border: "1px solid #fecaca",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 700,
+  transition: "background 0.2s",
+};
+
+const tableStyle = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: 13,
+  minWidth: 800,
+};
+
+const thRowStyle = {
+  background: "#fafafa",
+  borderBottom: "1px solid #e4e4e7",
+};
+
+const thStyle = {
+  textAlign: "left",
+  padding: "14px 16px",
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
+  textTransform: "uppercase",
+  letterSpacing: "1px",
+};
+
+const trStyle = {
+  borderBottom: "1px solid #f4f4f5",
+  background: "#ffffff",
+};
+
+const tdStyle = {
+  padding: "16px",
+  color: "#18181b",
+  verticalAlign: "middle",
+};

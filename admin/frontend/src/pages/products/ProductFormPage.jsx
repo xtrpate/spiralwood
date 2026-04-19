@@ -18,7 +18,7 @@ const DEFAULT = {
   is_featured: false,
 };
 
-// 👉 NEW: Hardcoded categories matching your shop design perfectly
+// Hardcoded categories matching your shop design perfectly
 const SHOP_CATEGORIES = [
   { id: 1, name: "Bedroom Furniture" },
   { id: 2, name: "Kitchen Furniture" },
@@ -38,7 +38,7 @@ export default function ProductFormPage() {
   const [form, setForm] = useState(DEFAULT);
   const [image, setImage] = useState(null);
   const [preview, setPreview] = useState("");
-  const [categories, setCategories] = useState(SHOP_CATEGORIES); // Set to our new list
+  const [categories, setCategories] = useState(SHOP_CATEGORIES);
   const [rawMats, setRawMats] = useState([]);
   const [variations, setVariations] = useState([]);
   const [bom, setBom] = useState([]);
@@ -46,8 +46,6 @@ export default function ProductFormPage() {
 
   useEffect(() => {
     api.get("/inventory/raw").then((r) => setRawMats(r.data.rows || []));
-
-    // We removed the broken API fetch for categories here since we use the static list now.
 
     if (isEdit) {
       api.get(`/products/${id}`).then((r) => {
@@ -74,17 +72,21 @@ export default function ProductFormPage() {
         stock: 0,
       },
     ]);
+
   const setVar = (i, k, v) =>
     setVariations((vars) =>
       vars.map((va, idx) => (idx === i ? { ...va, [k]: v } : va)),
     );
+
   const removeVar = (i) =>
     setVariations((vars) => vars.filter((_, idx) => idx !== i));
 
   const addBom = () =>
     setBom((b) => [...b, { raw_material_id: "", quantity: "" }]);
+
   const setBomRow = (i, k, v) =>
     setBom((rows) => rows.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
+
   const removeBom = (i) => setBom((rows) => rows.filter((_, idx) => idx !== i));
 
   const handleSubmit = async (e) => {
@@ -92,7 +94,29 @@ export default function ProductFormPage() {
     setSaving(true);
     try {
       const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+
+      // 👉 THE FIX: Only append the exact fields the database expects.
+      // This prevents 'category_name' or other joined fields from crashing the backend.
+      const allowedFields = [
+        "name",
+        "barcode",
+        "description",
+        "category_id",
+        "type",
+        "online_price",
+        "walkin_price",
+        "production_cost",
+        "stock",
+        "reorder_point",
+        "is_featured",
+      ];
+
+      allowedFields.forEach((key) => {
+        if (form[key] !== undefined && form[key] !== null) {
+          fd.append(key, form[key]);
+        }
+      });
+
       fd.append("variations", JSON.stringify(variations));
       fd.append("bill_of_materials", JSON.stringify(bom));
       if (image) fd.append("image", image);
@@ -101,28 +125,35 @@ export default function ProductFormPage() {
         await api.put(`/products/${id}`, fd, {
           headers: { "Content-Type": "multipart/form-data" },
         });
-        toast.success("Product updated.");
+        toast.success("Product updated successfully.");
       } else {
         await api.post("/products", fd, {
           headers: { "Content-Type": "multipart/form-data" },
         });
-        toast.success("Product created.");
+        toast.success("Product created successfully.");
       }
       navigate("/admin/products");
     } catch (err) {
-      toast.error("Failed to save product.");
+      toast.error(err?.response?.data?.message || "Failed to save product.");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto" }}>
+    <div
+      style={{
+        maxWidth: 860,
+        margin: "0 auto",
+        paddingBottom: 40,
+        fontFamily: "'Inter', sans-serif",
+      }}
+    >
       <div
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 12,
+          gap: 16,
           marginBottom: 24,
         }}
       >
@@ -130,7 +161,13 @@ export default function ProductFormPage() {
           ← Back
         </button>
         <h1
-          style={{ fontSize: 20, fontWeight: 700, color: "#1e2a38", margin: 0 }}
+          style={{
+            fontSize: 24,
+            fontWeight: 800,
+            color: "#0a0a0a",
+            margin: 0,
+            letterSpacing: "-0.02em",
+          }}
         >
           {isEdit ? "Edit Product" : "Add New Product"}
         </h1>
@@ -145,6 +182,7 @@ export default function ProductFormPage() {
                 value={form.name}
                 onChange={(e) => set("name", e.target.value)}
                 style={input}
+                placeholder="e.g. Modern Oak Dining Table"
               />
             </Field>
             <Field label="Barcode">
@@ -152,6 +190,7 @@ export default function ProductFormPage() {
                 value={form.barcode}
                 onChange={(e) => set("barcode", e.target.value)}
                 style={input}
+                placeholder="Optional"
               />
             </Field>
           </Row>
@@ -186,16 +225,25 @@ export default function ProductFormPage() {
             <Field label="Featured">
               <label
                 style={{
-                  display: "flex",
+                  display: "inline-flex",
                   alignItems: "center",
-                  gap: 8,
+                  gap: 10,
                   marginTop: 8,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#18181b",
+                  background: "#fafafa",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #e4e4e7",
                 }}
               >
                 <input
                   type="checkbox"
                   checked={form.is_featured}
                   onChange={(e) => set("is_featured", e.target.checked)}
+                  style={{ accentColor: "#18181b", width: 16, height: 16 }}
                 />
                 Show on homepage as featured
               </label>
@@ -205,34 +253,68 @@ export default function ProductFormPage() {
             <textarea
               value={form.description}
               onChange={(e) => set("description", e.target.value)}
-              rows={3}
-              style={{ ...input, resize: "vertical" }}
+              rows={4}
+              style={{ ...input, resize: "vertical", fontFamily: "inherit" }}
+              placeholder="Describe the product details, materials, and features..."
             />
           </Field>
           <Field label="Product Image">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0] || null;
-                setImage(file);
-                setPreview(file ? URL.createObjectURL(file) : "");
-              }}
-              style={input}
-            />
-            {preview && (
-              <img
-                src={preview}
-                alt="preview"
-                style={{
-                  width: 80,
-                  height: 80,
-                  objectFit: "cover",
-                  borderRadius: 8,
-                  marginTop: 8,
-                }}
-              />
-            )}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
+              {preview ? (
+                <img
+                  src={preview}
+                  alt="preview"
+                  style={{
+                    width: 100,
+                    height: 100,
+                    objectFit: "cover",
+                    borderRadius: 12,
+                    border: "1px solid #e4e4e7",
+                    background: "#fafafa",
+                    padding: 4,
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 100,
+                    height: 100,
+                    borderRadius: 12,
+                    border: "1px dashed #d4d4d8",
+                    background: "#fafafa",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 24,
+                    color: "#a1a1aa",
+                  }}
+                >
+                  🖼️
+                </div>
+              )}
+              <div style={{ flex: 1 }}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setImage(file);
+                    setPreview(file ? URL.createObjectURL(file) : "");
+                  }}
+                  style={{ ...input, background: "#fafafa", cursor: "pointer" }}
+                />
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: "#71717a",
+                    margin: "6px 0 0",
+                    fontWeight: 500,
+                  }}
+                >
+                  Upload a high-quality image. PNG or JPG format recommended.
+                </p>
+              </div>
+            </div>
           </Field>
         </Section>
 
@@ -246,6 +328,7 @@ export default function ProductFormPage() {
                 value={form.online_price}
                 onChange={(e) => set("online_price", e.target.value)}
                 style={input}
+                placeholder="0.00"
               />
             </Field>
             <Field label="Walk-in Price (₱) *">
@@ -256,6 +339,7 @@ export default function ProductFormPage() {
                 value={form.walkin_price}
                 onChange={(e) => set("walkin_price", e.target.value)}
                 style={input}
+                placeholder="0.00"
               />
             </Field>
             <Field label="Production Cost (₱)">
@@ -265,6 +349,7 @@ export default function ProductFormPage() {
                 value={form.production_cost}
                 onChange={(e) => set("production_cost", e.target.value)}
                 style={input}
+                placeholder="0.00"
               />
             </Field>
           </Row>
@@ -275,6 +360,7 @@ export default function ProductFormPage() {
                 value={form.stock}
                 onChange={(e) => set("stock", e.target.value)}
                 style={input}
+                placeholder="0"
               />
             </Field>
             <Field label="Reorder Point">
@@ -283,21 +369,32 @@ export default function ProductFormPage() {
                 value={form.reorder_point}
                 onChange={(e) => set("reorder_point", e.target.value)}
                 style={input}
+                placeholder="0"
               />
             </Field>
           </Row>
         </Section>
 
         <Section title="Product Variations (Wood Type / Design / Finish)">
+          {variations.length === 0 ? (
+            <p style={{ fontSize: 13, color: "#71717a", marginBottom: 16 }}>
+              No variations added yet.
+            </p>
+          ) : null}
+
           {variations.map((v, i) => (
             <div
               key={i}
               style={{
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr auto",
-                gap: 8,
-                marginBottom: 8,
+                gridTemplateColumns: "1fr 1fr 1.5fr 1fr 1fr auto",
+                gap: 12,
+                marginBottom: 12,
                 alignItems: "end",
+                background: "#fafafa",
+                padding: "12px 16px",
+                borderRadius: 12,
+                border: "1px solid #e4e4e7",
               }}
             >
               <Field label="Type">
@@ -330,6 +427,7 @@ export default function ProductFormPage() {
                   value={v.unit_cost}
                   onChange={(e) => setVar(i, "unit_cost", e.target.value)}
                   style={input}
+                  placeholder="0.00"
                 />
               </Field>
               <Field label="Selling Price">
@@ -338,9 +436,15 @@ export default function ProductFormPage() {
                   value={v.selling_price}
                   onChange={(e) => setVar(i, "selling_price", e.target.value)}
                   style={input}
+                  placeholder="0.00"
                 />
               </Field>
-              <button type="button" onClick={() => removeVar(i)} style={btnDel}>
+              <button
+                type="button"
+                onClick={() => removeVar(i)}
+                style={btnDel}
+                title="Remove Variation"
+              >
                 ✕
               </button>
             </div>
@@ -351,15 +455,25 @@ export default function ProductFormPage() {
         </Section>
 
         <Section title="Bill of Materials (Linked Raw Materials)">
+          {bom.length === 0 ? (
+            <p style={{ fontSize: 13, color: "#71717a", marginBottom: 16 }}>
+              No materials linked yet.
+            </p>
+          ) : null}
+
           {bom.map((row, i) => (
             <div
               key={i}
               style={{
                 display: "grid",
                 gridTemplateColumns: "2fr 1fr auto",
-                gap: 8,
-                marginBottom: 8,
+                gap: 12,
+                marginBottom: 12,
                 alignItems: "end",
+                background: "#fafafa",
+                padding: "12px 16px",
+                borderRadius: 12,
+                border: "1px solid #e4e4e7",
               }}
             >
               <Field label="Raw Material">
@@ -378,16 +492,22 @@ export default function ProductFormPage() {
                   ))}
                 </select>
               </Field>
-              <Field label="Quantity">
+              <Field label="Quantity Required">
                 <input
                   type="number"
                   step="0.01"
                   value={row.quantity}
                   onChange={(e) => setBomRow(i, "quantity", e.target.value)}
                   style={input}
+                  placeholder="0.00"
                 />
               </Field>
-              <button type="button" onClick={() => removeBom(i)} style={btnDel}>
+              <button
+                type="button"
+                onClick={() => removeBom(i)}
+                style={btnDel}
+                title="Remove Material"
+              >
                 ✕
               </button>
             </div>
@@ -402,7 +522,9 @@ export default function ProductFormPage() {
             display: "flex",
             gap: 12,
             justifyContent: "flex-end",
-            marginTop: 24,
+            marginTop: 32,
+            paddingTop: 24,
+            borderTop: "1px solid #e4e4e7",
           }}
         >
           <button
@@ -425,21 +547,23 @@ const Section = ({ title, children }) => (
   <div
     style={{
       background: "#fff",
-      borderRadius: 12,
-      padding: 24,
-      marginBottom: 16,
-      boxShadow: "0 1px 6px rgba(0,0,0,.08)",
+      borderRadius: 16,
+      padding: 28,
+      marginBottom: 20,
+      border: "1px solid #e4e4e7",
+      boxShadow: "0 1px 2px rgba(0,0,0,.02)",
     }}
   >
     <h3
       style={{
-        fontSize: 15,
-        fontWeight: 600,
-        color: "#1e2a38",
+        fontSize: 16,
+        fontWeight: 800,
+        color: "#0a0a0a",
         marginTop: 0,
-        marginBottom: 16,
-        borderBottom: "1px solid #f1f5f9",
-        paddingBottom: 10,
+        marginBottom: 20,
+        borderBottom: "1px solid #f4f4f5",
+        paddingBottom: 14,
+        letterSpacing: "-0.01em",
       }}
     >
       {title}
@@ -447,27 +571,31 @@ const Section = ({ title, children }) => (
     {children}
   </div>
 );
+
 const Row = ({ children }) => (
   <div
     style={{
       display: "grid",
       gridTemplateColumns: `repeat(${React.Children.count(children)}, 1fr)`,
       gap: 16,
-      marginBottom: 8,
+      marginBottom: 4,
     }}
   >
     {children}
   </div>
 );
+
 const Field = ({ label, children }) => (
-  <div>
+  <div style={{ marginBottom: 12 }}>
     <label
       style={{
-        fontSize: 12,
-        fontWeight: 600,
-        color: "#374151",
+        fontSize: 11,
+        fontWeight: 800,
+        color: "#18181b",
         display: "block",
-        marginBottom: 4,
+        marginBottom: 6,
+        textTransform: "uppercase",
+        letterSpacing: "1px",
       }}
     >
       {label}
@@ -475,57 +603,75 @@ const Field = ({ label, children }) => (
     {children}
   </div>
 );
+
 const input = {
   width: "100%",
-  padding: "8px 12px",
-  border: "1px solid #d1d5db",
-  borderRadius: 6,
+  padding: "10px 14px",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   fontSize: 13,
+  color: "#18181b",
   boxSizing: "border-box",
+  outline: "none",
+  background: "#ffffff",
 };
+
 const btnPrimary = {
-  padding: "10px 24px",
-  background: "#1e40af",
+  padding: "12px 24px",
+  background: "#18181b",
   color: "#fff",
-  border: "none",
-  borderRadius: 6,
+  border: "1px solid #18181b",
+  borderRadius: 8,
   cursor: "pointer",
-  fontSize: 14,
-  fontWeight: 600,
+  fontSize: 13,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
+
 const btnGhost = {
-  padding: "10px 24px",
-  background: "#f1f5f9",
-  color: "#374151",
-  border: "none",
-  borderRadius: 6,
+  padding: "12px 20px",
+  background: "#f4f4f5",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   cursor: "pointer",
-  fontSize: 14,
+  fontSize: 13,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
+
 const btnOutline = {
-  padding: "7px 16px",
+  padding: "10px 18px",
   background: "#fff",
-  border: "1px dashed #94a3b8",
-  borderRadius: 6,
+  border: "1px dashed #d4d4d8",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 12,
-  color: "#64748b",
+  fontWeight: 700,
+  color: "#52525b",
+  transition: "all 0.2s",
 };
+
 const btnDel = {
-  padding: "8px 12px",
-  background: "#fee2e2",
-  color: "#dc2626",
-  border: "none",
-  borderRadius: 6,
+  padding: "10px 14px",
+  background: "#fef2f2",
+  color: "#991b1b",
+  border: "1px solid #fecaca",
+  borderRadius: 8,
   cursor: "pointer",
   alignSelf: "flex-end",
+  fontWeight: 800,
+  transition: "background 0.2s",
 };
+
 const btnBack = {
-  padding: "6px 14px",
-  background: "#f1f5f9",
-  color: "#374151",
-  border: "none",
-  borderRadius: 6,
+  padding: "8px 12px",
+  background: "#ffffff",
+  color: "#52525b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
   cursor: "pointer",
   fontSize: 13,
+  fontWeight: 700,
+  transition: "background 0.2s",
 };
