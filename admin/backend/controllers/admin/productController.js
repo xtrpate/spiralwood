@@ -114,24 +114,39 @@ exports.create = async (req, res) => {
       ? `/uploads/products/${req.file.filename}`
       : null;
 
+    // 👉 THE FIX: Safely parse missing or undefined data into proper 0s or nulls for MySQL
+    const numOnlinePrice = online_price ? parseFloat(online_price) : 0;
+    const numWalkinPrice = walkin_price ? parseFloat(walkin_price) : 0;
+    const numProdCost = production_cost ? parseFloat(production_cost) : 0;
+    const numStock = stock ? parseInt(stock) : 0;
+    const numReorder = reorder_point ? parseInt(reorder_point) : 0;
+    const boolFeatured =
+      is_featured === "true" || is_featured === 1 || is_featured === true
+        ? 1
+        : 0;
+    const catId =
+      category_id && !isNaN(parseInt(category_id))
+        ? parseInt(category_id)
+        : null;
+
     const [result] = await conn.query(
       `INSERT INTO products
          (barcode, name, description, category_id, type, image_url, is_featured,
           online_price, walkin_price, production_cost, stock, reorder_point)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
-        barcode,
+        barcode || null,
         name,
-        description,
-        category_id ? parseInt(category_id) : null,
+        description || null,
+        catId,
         type,
         image_url,
-        is_featured ? 1 : 0,
-        online_price,
-        walkin_price,
-        production_cost,
-        stock,
-        reorder_point,
+        boolFeatured,
+        numOnlinePrice,
+        numWalkinPrice,
+        numProdCost,
+        numStock,
+        numReorder,
       ],
     );
     const productId = result.insertId;
@@ -147,7 +162,8 @@ exports.create = async (req, res) => {
     );
 
     // Variations
-    const parsedVars = JSON.parse(variations);
+    const parsedVars =
+      typeof variations === "string" ? JSON.parse(variations) : variations;
     for (const v of parsedVars) {
       await conn.query(
         `INSERT INTO product_variations
@@ -159,19 +175,26 @@ exports.create = async (req, res) => {
           v.type,
           v.value,
           v.name,
-          v.unit_cost,
-          v.selling_price,
-          v.stock || 0,
+          v.unit_cost ? parseFloat(v.unit_cost) : 0,
+          v.selling_price ? parseFloat(v.selling_price) : 0,
+          v.stock ? parseInt(v.stock) : 0,
         ],
       );
     }
 
     // Bill of Materials
-    const parsedBOM = JSON.parse(bill_of_materials);
+    const parsedBOM =
+      typeof bill_of_materials === "string"
+        ? JSON.parse(bill_of_materials)
+        : bill_of_materials;
     for (const b of parsedBOM) {
       await conn.query(
         "INSERT INTO bill_of_materials (product_id, raw_material_id, quantity) VALUES (?,?,?)",
-        [productId, parseInt(b.raw_material_id), b.quantity],
+        [
+          productId,
+          parseInt(b.raw_material_id),
+          b.quantity ? parseFloat(b.quantity) : 0,
+        ],
       );
     }
 
@@ -180,6 +203,7 @@ exports.create = async (req, res) => {
     res.status(201).json({ message: "Product created.", id: productId });
   } catch (err) {
     await conn.rollback();
+    console.error("Create Error:", err);
     res.status(500).json({ message: err.message });
   } finally {
     conn.release();
@@ -191,21 +215,67 @@ exports.update = async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    const productId = parseInt(req.params.id);
+
     const [[old]] = await conn.query("SELECT * FROM products WHERE id = ?", [
-      parseInt(req.params.id),
+      productId,
     ]);
     if (!old) return res.status(404).json({ message: "Product not found." });
 
-    const fields = { ...req.body };
-    delete fields.variations;
-    delete fields.bill_of_materials;
-    if (req.file) fields.image_url = `/uploads/products/${req.file.filename}`;
+    // 👉 THE FIX: Explicitly allow only real database columns to prevent 'category_name' crashes
+    const allowedColumns = [
+      "barcode",
+      "name",
+      "description",
+      "category_id",
+      "type",
+      "is_featured",
+      "online_price",
+      "walkin_price",
+      "production_cost",
+      "stock",
+      "reorder_point",
+      "is_published",
+    ];
 
-    const sets = Object.keys(fields)
-      .map((k) => `${k} = ?`)
-      .join(", ");
-    const vals = [...Object.values(fields), parseInt(req.params.id)];
-    await conn.query(`UPDATE products SET ${sets} WHERE id = ?`, vals);
+    const updateData = {};
+    allowedColumns.forEach((col) => {
+      if (req.body[col] !== undefined) {
+        // Safe conversions for numbers and booleans
+        if (col === "is_featured" || col === "is_published") {
+          updateData[col] =
+            req.body[col] === "true" ||
+            req.body[col] === 1 ||
+            req.body[col] === true
+              ? 1
+              : 0;
+        } else if (
+          ["online_price", "walkin_price", "production_cost"].includes(col)
+        ) {
+          updateData[col] = req.body[col] ? parseFloat(req.body[col]) : 0;
+        } else if (["stock", "reorder_point"].includes(col)) {
+          updateData[col] = req.body[col] ? parseInt(req.body[col]) : 0;
+        } else if (col === "category_id") {
+          updateData[col] =
+            req.body[col] && !isNaN(parseInt(req.body[col]))
+              ? parseInt(req.body[col])
+              : null;
+        } else {
+          updateData[col] = req.body[col] || null;
+        }
+      }
+    });
+
+    if (req.file) {
+      updateData.image_url = `/uploads/products/${req.file.filename}`;
+    }
+
+    const keys = Object.keys(updateData);
+    if (keys.length > 0) {
+      const sets = keys.map((k) => `${k} = ?`).join(", ");
+      const vals = [...Object.values(updateData), productId];
+      await conn.query(`UPDATE products SET ${sets} WHERE id = ?`, vals);
+    }
 
     // Recalculate stock_status
     await conn.query(
@@ -214,28 +284,31 @@ exports.update = async (req, res) => {
               WHEN stock <= reorder_point THEN 'low_stock'
               ELSE 'in_stock' END
        WHERE id = ?`,
-      [parseInt(req.params.id)],
+      [productId],
     );
 
     // Replace variations if provided
     if (req.body.variations) {
       await conn.query("DELETE FROM product_variations WHERE product_id = ?", [
-        parseInt(req.params.id),
+        productId,
       ]);
-      for (const v of JSON.parse(req.body.variations)) {
+      const parsedVars =
+        typeof req.body.variations === "string"
+          ? JSON.parse(req.body.variations)
+          : req.body.variations;
+      for (const v of parsedVars) {
         await conn.query(
           `INSERT INTO product_variations
-             (product_id, variation_type, variation_value, variation_name,
-              unit_cost, selling_price, stock)
+             (product_id, variation_type, variation_value, variation_name, unit_cost, selling_price, stock)
            VALUES (?,?,?,?,?,?,?)`,
           [
-            parseInt(req.params.id),
+            productId,
             v.type,
             v.value,
             v.name,
-            v.unit_cost,
-            v.selling_price,
-            v.stock || 0,
+            v.unit_cost ? parseFloat(v.unit_cost) : 0,
+            v.selling_price ? parseFloat(v.selling_price) : 0,
+            v.stock ? parseInt(v.stock) : 0,
           ],
         );
       }
@@ -244,21 +317,30 @@ exports.update = async (req, res) => {
     // Replace BOM if provided
     if (req.body.bill_of_materials) {
       await conn.query("DELETE FROM bill_of_materials WHERE product_id = ?", [
-        parseInt(req.params.id),
+        productId,
       ]);
-      for (const b of JSON.parse(req.body.bill_of_materials)) {
+      const parsedBOM =
+        typeof req.body.bill_of_materials === "string"
+          ? JSON.parse(req.body.bill_of_materials)
+          : req.body.bill_of_materials;
+      for (const b of parsedBOM) {
         await conn.query(
           "INSERT INTO bill_of_materials (product_id, raw_material_id, quantity) VALUES (?,?,?)",
-          [parseInt(req.params.id), parseInt(b.raw_material_id), b.quantity],
+          [
+            productId,
+            parseInt(b.raw_material_id),
+            b.quantity ? parseFloat(b.quantity) : 0,
+          ],
         );
       }
     }
 
     await conn.commit();
-    req.auditRecord = { id: req.params.id, old, new: fields };
-    res.json({ message: "Product updated." });
+    req.auditRecord = { id: productId, old, new: updateData };
+    res.json({ message: "Product updated successfully." });
   } catch (err) {
     await conn.rollback();
+    console.error("Update Error:", err);
     res.status(500).json({ message: err.message });
   } finally {
     conn.release();
