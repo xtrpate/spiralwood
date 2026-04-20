@@ -29,10 +29,7 @@ const receiptStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, receiptUploadDir),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname || "").toLowerCase() || ".bin";
-    cb(
-      null,
-      `delivery-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`,
-    );
+    cb(null, `delivery-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
   },
 });
 
@@ -43,12 +40,13 @@ const receiptUpload = multer({
   },
   fileFilter: (_req, file, cb) => {
     const mime = String(file.mimetype || "").toLowerCase();
-    const allowed =
-      mime.startsWith("image/") || mime === "application/pdf";
+    const allowed = mime.startsWith("image/") || mime === "application/pdf";
 
     if (!allowed) {
       return cb(
-        new Error("Only image or PDF files are allowed for signed receipt upload."),
+        new Error(
+          "Only image or PDF files are allowed for signed receipt upload.",
+        ),
       );
     }
 
@@ -72,12 +70,27 @@ const handleReceiptUpload = (req, res, next) => {
 ══════════════════════════════════════════════════════════════ */
 
 router.get(
+  "/deliveries/dashboard",
+  deliveryAccess,
+  posFulfillmentController.getRiderDashboard,
+);
+router.get(
+  "/deliveries/history",
+  deliveryAccess,
+  posFulfillmentController.getRiderHistory,
+);
+
+router.get(
   "/deliverable-orders",
   adminOnly,
   posFulfillmentController.getDeliverableOrders,
 );
 
-router.get("/deliveries", deliveryAccess, posFulfillmentController.getDeliveries);
+router.get(
+  "/deliveries",
+  deliveryAccess,
+  posFulfillmentController.getDeliveries,
+);
 
 router.post("/deliveries", adminOnly, posFulfillmentController.createDelivery);
 
