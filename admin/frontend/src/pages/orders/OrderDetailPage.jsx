@@ -486,6 +486,7 @@ export default function OrderDetailPage() {
 
     // 👉 NEW: Strict Payment Verification Check
     if (
+      !isBlueprintOrder &&
       nextStatus === "shipping" &&
       normalizedPaymentMethod !== "cod" &&
       paymentBalance > 0
@@ -2447,7 +2448,8 @@ export default function OrderDetailPage() {
               )}
 
             {/* 👉 NEW: Warning for Payment Verification */}
-            {newStatus === "shipping" &&
+            {!isBlueprintOrder &&
+              newStatus === "shipping" &&
               normalizedPaymentMethod !== "cod" &&
               paymentBalance > 0 && (
                 <div style={alertWarning}>
@@ -2492,6 +2494,7 @@ export default function OrderDetailPage() {
 
                 // 👉 NEW: Disable logic for the dropdown options
                 const blockedByUnverifiedPayment =
+                  !isBlueprintOrder &&
                   normalizedStatus === "shipping" &&
                   normalizedPaymentMethod !== "cod" &&
                   paymentBalance > 0;
