@@ -6,10 +6,8 @@ const DELIVERY_STATUSES = ["scheduled", "in_transit", "delivered", "failed"];
 const DELIVERY_TRANSITIONS = {
   scheduled: ["scheduled", "in_transit"],
   in_transit: ["in_transit", "delivered", "failed"],
-  delivered: ["delivered"],
-  failed: ["failed"],
+  delivered: ["delivered", "in_transit"],
 };
-
 const normalizeText = (value) => String(value || "").trim();
 
 const toNullableInt = (value) => {
