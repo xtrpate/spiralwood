@@ -571,7 +571,7 @@ exports.updateDeliveryStatus = async (req, res) => {
           existing.order_id,
           collectedAmount,
           collectedPaymentMethod,
-          nextSignedReceipt || "",
+          nextSignedReceipt || null,
           paymentNotes,
         ],
       );
@@ -628,8 +628,9 @@ exports.updateDeliveryStatus = async (req, res) => {
       Number(existing.assigned_by) !== Number(req.user.id)
     ) {
       await conn.query(
-        `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
-         VALUES (?, 'delivery_update', 'Delivery Status Updated', ?, 'system', NOW())`,
+        // 👉 ADDED is_read and created_at
+        `INSERT INTO notifications (user_id, type, title, message, is_read, channel, sent_at, created_at)
+         VALUES (?, 'delivery_update', 'Delivery Status Updated', ?, 0, 'system', NOW(), NOW())`,
         [
           existing.assigned_by,
           `${req.user.name || "Assigned rider"} updated delivery #${deliveryId} to ${requestedStatus.replace(/_/g, " ")}.`,
@@ -643,14 +644,15 @@ exports.updateDeliveryStatus = async (req, res) => {
       currentBalance > 0.009
     ) {
       await conn.query(
-        `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
-         VALUES (?, 'payment_review', 'Delivery Payment Pending Review', ?, 'system', NOW())`,
+        // 👉 ADDED is_read and created_at
+        `INSERT INTO notifications (user_id, type, title, message, is_read, channel, sent_at, created_at)
+         VALUES (?, 'payment_review', 'Delivery Payment Pending Review', ?, 0, 'system', NOW(), NOW())`,
         [
           existing.assigned_by,
           `${req.user.name || "Assigned rider"} recorded ₱${collectedAmount.toLocaleString(
             "en-PH",
             { minimumFractionDigits: 2 },
-          )} collected on delivery for ${order.order_number || `Order #${existing.order_id}`}. Review the pending payment before completing the order.`,
+          )} collected on delivery for ${order.order_number || `#${existing.order_id}`}. Review the pending payment before completing the order.`,
         ],
       );
     }
