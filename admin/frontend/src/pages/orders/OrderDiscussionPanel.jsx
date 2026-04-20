@@ -380,7 +380,10 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
                                     color: sender.dateColor,
                                   }}
                                 >
-                                  {Math.round((file.size || 0) / 1024)} KB
+                                  {Math.round(
+                                    (attachment.file_size || 0) / 1024,
+                                  )}{" "}
+                                  KB
                                 </div>
                               </a>
                             );
@@ -495,7 +498,7 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
                         marginTop: 2,
                       }}
                     >
-                      {Math.round((file.size || 0) / 1024)} KB
+                      {Math.round((attachment.file_size || 0) / 1024)} KB
                     </div>
                   </div>
 
