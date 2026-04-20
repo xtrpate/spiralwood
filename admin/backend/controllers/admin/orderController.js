@@ -1148,7 +1148,7 @@ exports.verifyPayment = async (req, res) => {
 
     await conn.beginTransaction();
 
-    // 👉 THE FIX: Intercept the dummy "initial_" payment ID
+    // 👉 THE FIX: We intercept the "initial_" ID here so it doesn't run parseInt() and cause a NaN error!
     if (String(payment_id).startsWith("initial_")) {
       const orderId = parseInt(req.params.id);
       const [[order]] = await conn.query(
