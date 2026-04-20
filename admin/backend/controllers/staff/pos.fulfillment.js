@@ -761,3 +761,68 @@ exports.updateDeliveryStatus = async (req, res) => {
     if (conn) conn.release();
   }
 };
+
+/* ── RIDER DASHBOARD STATS ── */
+exports.getRiderDashboard = async (req, res) => {
+  try {
+    const riderId = req.user.id;
+
+    // Fetch all deliveries assigned to this rider regardless of date
+    const [deliveries] = await db.query(
+      `SELECT status FROM deliveries WHERE driver_id = ?`,
+      [riderId],
+    );
+
+    let pendingCount = 0;
+    let completedCount = 0;
+
+    deliveries.forEach((d) => {
+      if (d.status === "scheduled" || d.status === "in_transit") {
+        pendingCount++;
+      } else if (d.status === "delivered") {
+        completedCount++;
+      }
+    });
+
+    res.json({
+      pending_today: pendingCount,
+      completed_today: completedCount,
+      total_deliveries: deliveries.length,
+    });
+  } catch (err) {
+    console.error("[Rider Dashboard Error]", err);
+    res.status(500).json({ message: "Failed to load dashboard stats" });
+  }
+};
+
+/* ── RIDER DELIVERY HISTORY ── */
+exports.getRiderHistory = async (req, res) => {
+  try {
+    const riderId = req.user.id;
+
+    // Fetch completed/failed deliveries and safely grab online or walk-in customer names
+    const [history] = await db.query(
+      `SELECT 
+         d.id AS delivery_id, 
+         o.order_number, 
+         COALESCE(o.walkin_customer_name, u.name, 'Walk-in Customer') AS customer_name, 
+         d.address, 
+         d.status, 
+         o.payment_status, 
+         o.total, 
+         d.delivered_date, 
+         d.updated_at 
+       FROM deliveries d
+       JOIN orders o ON d.order_id = o.id
+       LEFT JOIN users u ON u.id = o.customer_id
+       WHERE d.driver_id = ? AND d.status IN ('delivered', 'failed')
+       ORDER BY d.updated_at DESC
+       LIMIT 50`,
+      [riderId],
+    );
+    res.json(history);
+  } catch (err) {
+    console.error("[Rider History Error]", err);
+    res.status(500).json({ message: "Failed to load delivery history" });
+  }
+};
