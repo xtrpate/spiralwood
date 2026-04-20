@@ -492,12 +492,10 @@ exports.createCustomOrder = async (req, res) => {
           walkin_customer_name, walkin_customer_phone,
           payment_method, payment_status,
           delivery_address, notes, subtotal, total)
-      VALUES (?, ?, ?, 'online', 'blueprint', 'pending', ?, ?, ?, 'unpaid', ?, ?, 0, 0)`,
+      VALUES (?, ?, NULL, 'online', 'blueprint', 'pending', ?, ?, ?, 'unpaid', ?, ?, 0, 0)`,
       [
         order_number,
         req.user.id,
-        primaryBlueprintId,
-        String(name).trim(),
         String(phone).trim(),
         toAllowedBlueprintPaymentMethod(payment_method) || "bank_transfer",
         delivery_address ? String(delivery_address).trim() : null,
