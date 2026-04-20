@@ -1643,11 +1643,8 @@ export default function EstimationPage() {
     <div style={{ maxWidth: 1120, margin: "0 auto", paddingBottom: 40 }}>
       <div style={pageHeader}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button
-            onClick={() => navigate(`/admin/blueprints/${id}/design`)}
-            style={btnBack}
-          >
-            ← Back to Design
+          <button onClick={() => navigate(-1)} style={btnBack}>
+            ← Back
           </button>
 
           <div>
