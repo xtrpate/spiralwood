@@ -496,6 +496,7 @@ exports.createCustomOrder = async (req, res) => {
       [
         order_number,
         req.user.id,
+        String(name).trim(),
         String(phone).trim(),
         toAllowedBlueprintPaymentMethod(payment_method) || "bank_transfer",
         delivery_address ? String(delivery_address).trim() : null,
