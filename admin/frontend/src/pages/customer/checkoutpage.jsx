@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import { useCart } from "./cartcontext";
 import useAuthStore from "../../store/authStore";
@@ -19,22 +19,10 @@ const PAYMENT_METHODS = [
     desc: "Pay when the order is picked up.",
   },
   {
-    value: "gcash",
-    icon: "📱",
-    label: "GCash",
-    desc: "Upload proof if you already sent payment.",
-  },
-  {
-    value: "bank_transfer",
-    icon: "🏦",
-    label: "Bank Transfer",
-    desc: "Upload proof if you already sent payment.",
-  },
-  {
     value: "paymongo",
     icon: "💳",
     label: "Pay Online",
-    desc: "You will be redirected to PayMongo after placing the order.",
+    desc: "Pay securely via GCash, Maya, Bank, or Card.",
   },
 ];
 
@@ -77,7 +65,6 @@ export default function CheckoutPage() {
   const [selectionReady, setSelectionReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [paymentSettings, setPaymentSettings] = useState({});
 
   const [form, setForm] = useState({
     name: user?.name || "",
@@ -85,7 +72,6 @@ export default function CheckoutPage() {
     delivery_address: user?.address || "",
     payment_method: "",
     notes: "",
-    proof: null,
   });
 
   useEffect(() => {
@@ -96,25 +82,6 @@ export default function CheckoutPage() {
       delivery_address: user?.address || prev.delivery_address || "",
     }));
   }, [user]);
-
-  useEffect(() => {
-    let active = true;
-
-    api
-      .get("/customer/orders/settings")
-      .then((res) => {
-        if (!active) return;
-        setPaymentSettings(res?.data || {});
-      })
-      .catch(() => {
-        if (!active) return;
-        setPaymentSettings({});
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   useEffect(() => {
     try {
@@ -177,16 +144,14 @@ export default function CheckoutPage() {
       checkoutItems.reduce(
         (sum, item) =>
           sum +
-          Number(item.unit_price || 0) * Math.max(1, Number(item.quantity || 1)),
+          Number(item.unit_price || 0) *
+            Math.max(1, Number(item.quantity || 1)),
         0,
       ),
     [checkoutItems],
   );
 
   const total = subtotal;
-
-  const showProofUpload =
-    form.payment_method === "gcash" || form.payment_method === "bank_transfer";
 
   const handleSubmit = async (e) => {
     if (e?.preventDefault) e.preventDefault();
@@ -234,10 +199,6 @@ export default function CheckoutPage() {
     formData.append("subtotal", String(subtotal));
     formData.append("total", String(total));
 
-    if (form.proof) {
-      formData.append("proof", form.proof);
-    }
-
     setLoading(true);
 
     try {
@@ -245,10 +206,13 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
-      const submittedKeys = payloadItems.map((item) => item.key).filter(Boolean);
+      const submittedKeys = payloadItems
+        .map((item) => item.key)
+        .filter(Boolean);
       removeMany(submittedKeys);
       sessionStorage.removeItem("cust_selected_keys");
 
+      // 👉 PayMongo URL interception
       if (res?.data?.payment_url) {
         window.location.assign(res.data.payment_url);
         return;
@@ -305,9 +269,12 @@ export default function CheckoutPage() {
             <div className="checkout-section-header">
               <div className="checkout-section-num">🛒</div>
               <h3>Your Ready-Made Items</h3>
-              <span style={{ marginLeft: "auto", fontSize: 12, color: "#111111" }}>
-                {checkoutItems.length} item{checkoutItems.length !== 1 ? "s" : ""} •{" "}
-                {totalUnits} unit{totalUnits !== 1 ? "s" : ""}
+              <span
+                style={{ marginLeft: "auto", fontSize: 12, color: "#111111" }}
+              >
+                {checkoutItems.length} item
+                {checkoutItems.length !== 1 ? "s" : ""} • {totalUnits} unit
+                {totalUnits !== 1 ? "s" : ""}
               </span>
             </div>
 
@@ -353,7 +320,9 @@ export default function CheckoutPage() {
                   </div>
 
                   <div className="checkout-item-details">
-                    <div className="checkout-item-name">{item.product_name}</div>
+                    <div className="checkout-item-name">
+                      {item.product_name}
+                    </div>
 
                     <div
                       style={{
@@ -367,7 +336,10 @@ export default function CheckoutPage() {
                     </div>
 
                     {item.stock_status ? (
-                      <div className="checkout-item-sub" style={{ marginTop: 4 }}>
+                      <div
+                        className="checkout-item-sub"
+                        style={{ marginTop: 4 }}
+                      >
                         Stock: {item.stock_status}
                       </div>
                     ) : null}
@@ -448,7 +420,9 @@ export default function CheckoutPage() {
                     <div className="payment-method-icon">{method.icon}</div>
 
                     <div className="payment-method-info">
-                      <span className="payment-method-name">{method.label}</span>
+                      <span className="payment-method-name">
+                        {method.label}
+                      </span>
                       <span className="payment-method-desc">{method.desc}</span>
                     </div>
 
@@ -460,62 +434,6 @@ export default function CheckoutPage() {
                   </div>
                 ))}
               </div>
-
-              {showProofUpload ? (
-                <div style={{ marginTop: 16 }}>
-                  <div className="form-field">
-                    <label>Proof of Payment</label>
-                    <input
-                      type="file"
-                      accept=".jpg,.jpeg,.png,.gif,.pdf"
-                      onChange={(e) =>
-                        setField("proof", e.target.files?.[0] || null)
-                      }
-                    />
-                  </div>
-
-                  {(paymentSettings.gcash_number ||
-                    paymentSettings.bank_account_name ||
-                    paymentSettings.bank_account_number) && (
-                    <div
-                      style={{
-                        marginTop: 12,
-                        padding: 12,
-                        borderRadius: 12,
-                        border: "1px solid #e5e7eb",
-                        background: "#f8fafc",
-                        fontSize: 13,
-                        color: "#334155",
-                      }}
-                    >
-                      {form.payment_method === "gcash" &&
-                        paymentSettings.gcash_number && (
-                          <div>
-                            <strong>GCash Number:</strong>{" "}
-                            {paymentSettings.gcash_number}
-                          </div>
-                        )}
-
-                      {form.payment_method === "bank_transfer" && (
-                        <>
-                          {paymentSettings.bank_account_name && (
-                            <div>
-                              <strong>Bank Account Name:</strong>{" "}
-                              {paymentSettings.bank_account_name}
-                            </div>
-                          )}
-                          {paymentSettings.bank_account_number && (
-                            <div>
-                              <strong>Bank Account Number:</strong>{" "}
-                              {paymentSettings.bank_account_number}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : null}
             </div>
           </div>
 
