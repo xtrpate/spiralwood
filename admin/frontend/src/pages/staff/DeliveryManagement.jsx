@@ -739,6 +739,46 @@ export default function DeliveryManagement() {
                         This older record has no uploaded proof yet.
                       </div>
                     )}
+                    <div
+                      style={{
+                        marginTop: "24px",
+                        paddingTop: "16px",
+                        borderTop: "1px dashed #e4e4e7",
+                      }}
+                    >
+                      <div style={sectionTitle}>Need Corrections?</div>
+                      <div style={helperText}>
+                        If you accidentally marked this as delivered, you can
+                        undo it to correct the collection amount or proof of
+                        delivery.
+                      </div>
+                      <div style={buttonRow}>
+                        <button
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                "Are you sure you want to undo this delivery? It will be moved back to 'In Transit'.",
+                              )
+                            ) {
+                              saveDeliveryUpdate({
+                                delivery,
+                                nextStatus: "in_transit",
+                                successMessage:
+                                  "Delivery reverted to In Transit successfully.",
+                              });
+                            }
+                          }}
+                          disabled={savingId === delivery.id}
+                          style={
+                            savingId === delivery.id ? btnDisabled : btnUndo
+                          }
+                        >
+                          {savingId === delivery.id
+                            ? "Undoing..."
+                            : "Undo Delivery"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -1019,6 +1059,18 @@ const btnSecondary = {
   border: "1px solid #e4e4e7",
   background: "#f4f4f5",
   color: "#18181b",
+  cursor: "pointer",
+  fontSize: "13px",
+  fontWeight: 700,
+  transition: "background 0.2s",
+};
+
+const btnUndo = {
+  padding: "10px 20px",
+  borderRadius: "8px",
+  border: "1px solid #fecaca",
+  background: "#fef2f2",
+  color: "#991b1b",
   cursor: "pointer",
   fontSize: "13px",
   fontWeight: 700,
