@@ -141,6 +141,8 @@ exports.createOrder = async (req, res) => {
 
     if (payment_method === "paymongo") {
       try {
+        const frontendUrl =
+          req.headers.origin || "https://spiralwood.onrender.com";
         const amountInCents = Math.round(parseFloat(total) * 100);
         const base64Auth = Buffer.from(
           process.env.PAYMONGO_SECRET_KEY,
@@ -166,8 +168,8 @@ exports.createOrder = async (req, res) => {
                   quantity: 1,
                 },
               ],
-              success_url: `http://localhost:3000/orders?verify_success=true&order=${order_number}`,
-              cancel_url: "http://localhost:3000/cart",
+              success_url: `${frontendUrl}/orders?verify_success=true&order=${order_number}`,
+              cancel_url: `${frontendUrl}/cart`,
             },
           },
         };
