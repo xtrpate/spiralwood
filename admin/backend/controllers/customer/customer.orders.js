@@ -338,31 +338,61 @@ exports.confirmOrder = async (req, res) => {
 
 /* ── Verify PayMongo Redirect ── */
 exports.verifyPayment = async (req, res) => {
+  const conn = await db.getConnection();
   try {
+    await conn.beginTransaction();
+
     const { order_number } = req.body;
 
     if (!order_number) {
+      await conn.rollback();
       return res.status(400).json({ message: "Order number is required." });
     }
 
-    // ── FIXED: Switched to .query ──
-    const [result] = await db.query(
-      `UPDATE orders 
-       SET payment_status = 'paid', status = 'confirmed' 
-       WHERE order_number = ? AND customer_id = ?`,
+    // 1. Find the order to get the total amount
+    const [[order]] = await conn.query(
+      `SELECT id, total, payment_status FROM orders 
+       WHERE order_number = ? AND customer_id = ? LIMIT 1`,
       [order_number, req.user.id],
     );
 
-    if (result.affectedRows === 0) {
+    if (!order) {
+      await conn.rollback();
       return res
         .status(404)
         .json({ message: "Order not found or unauthorized." });
     }
 
+    // If already verified, just return
+    if (order.payment_status === "paid") {
+      await conn.rollback();
+      return res.json({ success: true, message: "Payment already verified." });
+    }
+
+    // 2. Mark order as paid
+    await conn.query(
+      `UPDATE orders 
+       SET payment_status = 'paid', status = 'confirmed' 
+       WHERE id = ?`,
+      [order.id],
+    );
+
+    // 3. Create the official payment record so Admin can see it
+    await conn.query(
+      `INSERT INTO payment_transactions
+        (order_id, amount, payment_method, proof_url, status, verified_at, notes)
+       VALUES (?, ?, 'paymongo', '', 'verified', NOW(), 'Automatically verified via PayMongo integration.')`,
+      [order.id, order.total],
+    );
+
+    await conn.commit();
     res.json({ success: true, message: "Payment verified and order updated." });
   } catch (err) {
+    if (!conn.connection._fatalError) await conn.rollback();
     console.error("[customer.orders verifyPayment]", err);
     res.status(500).json({ message: "Server error.", error: err.message });
+  } finally {
+    conn.release();
   }
 };
 
