@@ -256,10 +256,41 @@ export default function ProfileSettings() {
 
   /* ════ PASSWORD CHANGE ════ */
   const requestPassOtp = async () => {
+    // STEP 1: Only check current password to trigger the email
     if (!passForm.current)
       return setPassMsg({
         type: "error",
-        text: "Enter your current password.",
+        text: "Enter your current password to continue.",
+      });
+
+    setPassLoading(true);
+    setPassMsg({ type: "", text: "" });
+    try {
+      await api.post("/customer/profile/request-password-change", {
+        current_password: passForm.current,
+      });
+      setPassStep(2); // Move to OTP and New Password screen
+      setPassCooldown(60);
+      setPassMsg({
+        type: "success",
+        text: `Verification OTP sent to ${user?.email}`,
+      });
+    } catch (err) {
+      setPassMsg({
+        type: "error",
+        text: err.response?.data?.message || "Failed to send OTP.",
+      });
+    } finally {
+      setPassLoading(false);
+    }
+  };
+
+  const verifyPassOtp = async () => {
+    // STEP 2: Check everything else before sending to backend
+    if (!passOtp.trim())
+      return setPassMsg({
+        type: "error",
+        text: "Enter the OTP from your email.",
       });
     if (!passForm.newPass)
       return setPassMsg({ type: "error", text: "Enter a new password." });
@@ -268,28 +299,6 @@ export default function ProfileSettings() {
     if (getStrength(passForm.newPass).score < 2)
       return setPassMsg({ type: "error", text: "Password is too weak." });
 
-    setPassLoading(true);
-    setPassMsg({ type: "", text: "" });
-    try {
-      await api.post("/customer/profile/request-password-change", {
-        current_password: passForm.current,
-      });
-      setPassStep(2);
-      setPassCooldown(60);
-      setPassMsg({ type: "success", text: `OTP sent to ${user?.email}` });
-    } catch (err) {
-      setPassMsg({
-        type: "error",
-        text: err.response?.data?.message || "Failed.",
-      });
-    } finally {
-      setPassLoading(false);
-    }
-  };
-
-  const verifyPassOtp = async () => {
-    if (!passOtp.trim())
-      return setPassMsg({ type: "error", text: "Enter the OTP." });
     setPassLoading(true);
     try {
       await api.post("/customer/profile/verify-password-change", {
@@ -304,7 +313,7 @@ export default function ProfileSettings() {
     } catch (err) {
       setPassMsg({
         type: "error",
-        text: err.response?.data?.message || "Invalid OTP.",
+        text: err.response?.data?.message || "Invalid OTP or request failed.",
       });
     } finally {
       setPassLoading(false);
@@ -697,74 +706,62 @@ export default function ProfileSettings() {
                 </div>
               ) : passStep === 1 ? (
                 <div className="profile-form">
-                  {[
-                    {
-                      key: "current",
-                      label: "Current Password",
-                      ph: "Enter current password",
-                    },
-                    {
-                      key: "newPass",
-                      label: "New Password",
-                      ph: "Enter new password",
-                    },
-                    {
-                      key: "confirm",
-                      label: "Confirm New Password",
-                      ph: "Repeat new password",
-                    },
-                  ].map((f) => (
-                    <div className="form-field" key={f.key}>
-                      <label>{f.label}</label>
-                      <div style={{ position: "relative" }}>
-                        <input
-                          type={showPass[f.key] ? "text" : "password"}
-                          placeholder={f.ph}
-                          value={passForm[f.key]}
-                          onChange={(e) =>
-                            setPassForm((p) => ({
-                              ...p,
-                              [f.key]: e.target.value,
-                            }))
-                          }
-                          style={{ width: "100%", paddingRight: 40 }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setShowPass((p) => ({ ...p, [f.key]: !p[f.key] }))
-                          }
-                          style={{
-                            position: "absolute",
-                            right: 10,
-                            top: "50%",
-                            transform: "translateY(-50%)",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            color: "#aaa",
-                          }}
-                        >
-                          {showPass[f.key] ? (
-                            <EyeOff size={16} />
-                          ) : (
-                            <Eye size={16} />
-                          )}
-                        </button>
-                      </div>
-                      {f.key === "newPass" && passForm.newPass && (
-                        <StrengthBar password={passForm.newPass} />
-                      )}
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#52525b",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    For your security, please enter your current password to
+                    receive a verification code.
+                  </p>
+                  <div className="form-field">
+                    <label>Current Password</label>
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type={showPass.current ? "text" : "password"}
+                        placeholder="Enter current password"
+                        value={passForm.current}
+                        onChange={(e) =>
+                          setPassForm((p) => ({
+                            ...p,
+                            current: e.target.value,
+                          }))
+                        }
+                        style={{ width: "100%", paddingRight: 40 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowPass((p) => ({ ...p, current: !p.current }))
+                        }
+                        style={{
+                          position: "absolute",
+                          right: 10,
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          color: "#aaa",
+                        }}
+                      >
+                        {showPass.current ? (
+                          <EyeOff size={16} />
+                        ) : (
+                          <Eye size={16} />
+                        )}
+                      </button>
                     </div>
-                  ))}
+                  </div>
                   <div className="profile-form-actions">
                     <button
                       className="btn btn-primary"
                       onClick={requestPassOtp}
                       disabled={passLoading}
                     >
-                      {/* 👉 FIX: Button label changed as requested */}
-                      {passLoading ? "Sending OTP…" : "Continue"}
+                      {passLoading ? "Sending…" : "Send Verification OTP"}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -776,11 +773,16 @@ export default function ProfileSettings() {
                 </div>
               ) : (
                 <div className="verify-step">
-                  <h4>📧 Confirm password change</h4>
+                  <h4>📧 Verify & Create New Password</h4>
                   <p>
                     We sent a 6-digit OTP to <strong>{user?.email}</strong>.
+                    Enter it below along with your new password.
                   </p>
-                  <div className="otp-input-row">
+
+                  <div
+                    className="otp-input-row"
+                    style={{ marginBottom: "20px" }}
+                  >
                     <input
                       type="text"
                       maxLength={6}
@@ -803,6 +805,65 @@ export default function ProfileSettings() {
                         : "Resend"}
                     </button>
                   </div>
+
+                  <div className="profile-form">
+                    {[
+                      {
+                        key: "newPass",
+                        label: "New Password",
+                        ph: "Enter new password",
+                      },
+                      {
+                        key: "confirm",
+                        label: "Confirm New Password",
+                        ph: "Repeat new password",
+                      },
+                    ].map((f) => (
+                      <div className="form-field" key={f.key}>
+                        <label>{f.label}</label>
+                        <div style={{ position: "relative" }}>
+                          <input
+                            type={showPass[f.key] ? "text" : "password"}
+                            placeholder={f.ph}
+                            value={passForm[f.key]}
+                            onChange={(e) =>
+                              setPassForm((p) => ({
+                                ...p,
+                                [f.key]: e.target.value,
+                              }))
+                            }
+                            style={{ width: "100%", paddingRight: 40 }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowPass((p) => ({ ...p, [f.key]: !p[f.key] }))
+                            }
+                            style={{
+                              position: "absolute",
+                              right: 10,
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              color: "#aaa",
+                            }}
+                          >
+                            {showPass[f.key] ? (
+                              <EyeOff size={16} />
+                            ) : (
+                              <Eye size={16} />
+                            )}
+                          </button>
+                        </div>
+                        {f.key === "newPass" && passForm.newPass && (
+                          <StrengthBar password={passForm.newPass} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
                   <div
                     className="profile-form-actions"
                     style={{ marginTop: 14 }}
@@ -813,10 +874,10 @@ export default function ProfileSettings() {
                       disabled={passLoading}
                     >
                       {passLoading ? (
-                        "Changing…"
+                        "Saving…"
                       ) : (
                         <>
-                          <ShieldCheck size={14} /> Confirm Change
+                          <ShieldCheck size={14} /> Save New Password
                         </>
                       )}
                     </button>
