@@ -57,8 +57,12 @@ export default function ProfileSettings() {
   const fileRef = useRef(null);
 
   /* ─ State ─ */
+  const backendUrl = "https://wisdom-ov31.onrender.com";
+
   const [avatarPreview, setAvatarPreview] = useState(
-    user?.profile_photo ? `/uploads/avatars/${user.profile_photo}` : null,
+    user?.profile_photo
+      ? `${backendUrl}/uploads/avatars/${user.profile_photo}`
+      : null,
   );
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarMsg, setAvatarMsg] = useState({ type: "", text: "" });
@@ -393,7 +397,7 @@ export default function ProfileSettings() {
                       setAvatarFile(null);
                       setAvatarPreview(
                         user?.profile_photo
-                          ? `/uploads/avatars/${user.profile_photo}`
+                          ? `${backendUrl}/uploads/avatars/${user.profile_photo}`
                           : null,
                       );
                     }}
