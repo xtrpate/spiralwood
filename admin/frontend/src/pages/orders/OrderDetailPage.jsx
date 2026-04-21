@@ -771,6 +771,14 @@ export default function OrderDetailPage() {
     normalizedPaymentMethod,
   );
   const orderPaymentTone = getTone(PAYMENT_STYLE, normalizedPaymentStatus);
+  const PAY_METHOD_LABELS = {
+    cod: "Cash on Delivery",
+    cop: "Cash on Pick-up",
+    gcash: "GCash",
+    bank_transfer: "Bank Transfer",
+    paymongo: "Online Payment",
+    cash: "Cash",
+  };
 
   const blueprintTasks = Array.isArray(order?.blueprint_tasks)
     ? order.blueprint_tasks
@@ -1490,7 +1498,11 @@ export default function OrderDetailPage() {
               />
               <InfoRow
                 label="Payment Method"
-                value={titleCase(order.payment_method)}
+                value={
+                  PAY_METHOD_LABELS[normalize(order.payment_method)] ||
+                  titleCase(order.payment_method) ||
+                  "—"
+                }
               />
               <InfoRow
                 label="Payment Status"
@@ -1816,8 +1828,10 @@ export default function OrderDetailPage() {
             {!hasPaymentRecords ? (
               normalizedPaymentStatus === "paid" && isCashLikePaymentMethod ? (
                 <div style={infoNotice}>
-                  Paid via {titleCase(order?.payment_method)} / no separate
-                  payment transaction record was recorded.
+                  Paid via{" "}
+                  {PAY_METHOD_LABELS[normalize(order?.payment_method)] ||
+                    titleCase(order?.payment_method)}{" "}
+                  / no separate payment transaction record was recorded.
                 </div>
               ) : isOnlineOrder && normalizedPaymentStatus === "paid" ? (
                 <div style={infoNotice}>
@@ -1864,7 +1878,9 @@ export default function OrderDetailPage() {
                             {formatMoney(payment.amount)}
                           </td>
                           <td style={td}>
-                            {titleCase(payment.payment_method)}
+                            {PAY_METHOD_LABELS[
+                              normalize(payment.payment_method)
+                            ] || titleCase(payment.payment_method)}
                           </td>
                           <td style={td}>
                             <span

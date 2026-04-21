@@ -824,7 +824,9 @@ const calcDownPaymentAmount = (total) => roundMoney(roundMoney(total) * 0.3);
 
 const toAllowedBlueprintPaymentMethod = (value) => {
   const key = normalize(value).replace(/\s+/g, "_");
-  return ["cash", "gcash", "bank_transfer"].includes(key) ? key : null;
+  return ["cod", "cop", "cash", "gcash", "bank_transfer"].includes(key)
+    ? key
+    : null;
 };
 
 const toPaymentTransactionMethod = (value) => {

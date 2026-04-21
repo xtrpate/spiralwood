@@ -189,7 +189,13 @@ function TrackingList({ order }) {
           >
             <div className="tl-clean-marker">
               <div className="tl-clean-dot">
-                {isDone ? "✓" : isActive ? <span className="tl-clean-live" /> : ""}
+                {isDone ? (
+                  "✓"
+                ) : isActive ? (
+                  <span className="tl-clean-live" />
+                ) : (
+                  ""
+                )}
               </div>
               {i < TRACKING_STEPS.length - 1 && (
                 <div className={`tl-clean-line ${isDone ? "done" : ""}`} />
@@ -296,7 +302,8 @@ function OrderModal({
 
               {order.status === "delivered" && !canCustomerConfirm && (
                 <div className="om-inline-note">
-                  Payment must be fully settled before this order can be marked as completed.
+                  Payment must be fully settled before this order can be marked
+                  as completed.
                 </div>
               )}
             </div>
@@ -325,8 +332,12 @@ function OrderModal({
                         </div>
 
                         <div className="om-item-info">
-                          <div className="om-item-name">{item.product_name}</div>
-                          <div className="om-item-qty">Quantity: {item.quantity}</div>
+                          <div className="om-item-name">
+                            {item.product_name}
+                          </div>
+                          <div className="om-item-qty">
+                            Quantity: {item.quantity}
+                          </div>
                           {item.variation_id && (
                             <div className="om-item-var">
                               Variation #{item.variation_id}
@@ -335,7 +346,9 @@ function OrderModal({
                         </div>
 
                         <div className="om-item-price">
-                          <div className="om-item-unit">{fmt(item.unit_price)} each</div>
+                          <div className="om-item-unit">
+                            {fmt(item.unit_price)} each
+                          </div>
                           <div className="om-item-subtotal">
                             {fmt(getItemSubtotal(item))}
                           </div>
@@ -373,7 +386,9 @@ function OrderModal({
                     <div className="om-detail-row">
                       <span>Payment method</span>
                       <strong>
-                        {PAY_METHOD_LABELS[order.payment_method] ||
+                        {PAY_METHOD_LABELS[
+                          String(order.payment_method).toLowerCase()
+                        ] ||
                           order.payment_method ||
                           "—"}
                       </strong>
@@ -593,10 +608,15 @@ export default function OrdersPage() {
       <div className="orders-hero">
         <div>
           <h1>My orders</h1>
-          <p>Review your order history and check the latest status of each order.</p>
+          <p>
+            Review your order history and check the latest status of each order.
+          </p>
         </div>
 
-        <button className="orders-shop-btn" onClick={() => navigate("/catalog")}>
+        <button
+          className="orders-shop-btn"
+          onClick={() => navigate("/catalog")}
+        >
           Continue shopping
         </button>
       </div>
@@ -691,7 +711,9 @@ export default function OrdersPage() {
 
                 <div className="order-card-main">
                   <div className="order-card-status-panel">
-                    <div className="order-card-status-label">Current status</div>
+                    <div className="order-card-status-label">
+                      Current status
+                    </div>
                     <div className="order-card-status-title">{sm.title}</div>
                     <div className="order-card-status-desc">{sm.desc}</div>
                   </div>
@@ -708,7 +730,9 @@ export default function OrdersPage() {
                     <div className="order-fact-card">
                       <div className="order-fact-label">Payment method</div>
                       <div className="order-fact-value">
-                        {PAY_METHOD_LABELS[order.payment_method] ||
+                        {PAY_METHOD_LABELS[
+                          String(order.payment_method).toLowerCase()
+                        ] ||
                           order.payment_method ||
                           "—"}
                       </div>
