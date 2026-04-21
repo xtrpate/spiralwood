@@ -130,20 +130,28 @@ export default function ProfileSettings() {
     if (!avatarFile) return;
     setAvatarLoading(true);
     setAvatarMsg({ type: "", text: "" });
+
     try {
       const fd = new FormData();
       fd.append("avatar", avatarFile);
-      // 👉 FIX: Uses your custom api instance
-      const res = await api.post("/customer/profile/avatar", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      setUser((prev) => ({ ...prev, profile_photo: res.data.profile_photo }));
+
+      // set it correctly with the required multi-part boundary!
+      const res = await api.post("/customer/profile/avatar", fd);
+
+      if (user) {
+        setUser({ ...user, profile_photo: res.data.profile_photo });
+      }
+
       setAvatarMsg({ type: "success", text: "Profile picture updated!" });
       setAvatarFile(null);
     } catch (err) {
+      console.error("FRONTEND CRASH LOG:", err);
+
       setAvatarMsg({
         type: "error",
-        text: err.response?.data?.message || "Upload failed.",
+        text:
+          err.response?.data?.message ||
+          "Upload failed. Check browser console.",
       });
     } finally {
       setAvatarLoading(false);
