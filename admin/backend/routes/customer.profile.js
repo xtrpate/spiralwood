@@ -21,10 +21,24 @@ const avatarStorage = multer.diskStorage({
 
 const uploadAvatar = multer({
   storage: avatarStorage,
-  limits: { fileSize: 2 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 👉 BUMPED TO 10MB so you never hit this issue again!
   fileFilter: (req, file, cb) =>
     cb(null, /jpeg|jpg|png|gif|webp/.test(file.mimetype)),
 });
+
+// 👉 NEW: This wrapper forces the server to tell us EXACTLY what went wrong
+const handleAvatarUpload = (req, res, next) => {
+  uploadAvatar.single("avatar")(req, res, (err) => {
+    if (err) {
+      console.error("[Multer Error]:", err.message);
+      // This sends the exact reason directly to your frontend red banner!
+      return res
+        .status(400)
+        .json({ message: err.message || "Image upload failed." });
+    }
+    next();
+  });
+};
 
 /* ══════════════════════════════════════════════════════════════
    CUSTOMER PROFILE ROUTES
@@ -34,7 +48,7 @@ router.post(
   "/avatar",
   authenticate,
   requireCustomer,
-  uploadAvatar.single("avatar"),
+  handleAvatarUpload, // 👉 Replace uploadAvatar.single("avatar") with our new wrapper!
   profileController.uploadAvatar,
 );
 router.put(
