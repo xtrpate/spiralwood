@@ -58,7 +58,6 @@ const useAuthStore = create((set, get) => ({
 
   setUser: (updater) => {
     const currentUser = get().user;
-    // Allow the functional update style: setUser((prev) => ({ ...prev, name: "New" }))
     const nextUser =
       typeof updater === "function" ? updater(currentUser) : updater;
 
@@ -66,7 +65,7 @@ const useAuthStore = create((set, get) => ({
     localStorage.setItem("wisdom_user", JSON.stringify(nextUser));
     localStorage.setItem("user", JSON.stringify(nextUser));
 
-    // Update the live state
+    // Update the live React state
     set({ user: nextUser });
   },
 
