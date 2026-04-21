@@ -202,7 +202,7 @@ export default function CustomerLayout() {
   }, [headerSearch, searchFocused]);
 
   const avatarSrc = customerUser?.profile_photo
-    ? buildAssetUrl(customerUser.profile_photo)
+    ? `https://wisdom-ov31.onrender.com/uploads/avatars/${customerUser.profile_photo}`
     : "";
 
   const footerInfo = {
@@ -599,8 +599,6 @@ export default function CustomerLayout() {
                       </div>
 
                       <div className="cust-dropdown-divider" />
-
-                      
 
                       <button
                         type="button"
