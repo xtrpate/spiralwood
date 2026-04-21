@@ -55,18 +55,14 @@ router.post(
   requireCustomer,
   profileController.verifyEmailChange,
 );
-router.post(
-  "/request-phone-change",
+
+router.put(
+  "/phone",
   authenticate,
   requireCustomer,
-  profileController.requestPhoneChange,
+  profileController.updatePhone,
 );
-router.post(
-  "/verify-phone-change",
-  authenticate,
-  requireCustomer,
-  profileController.verifyPhoneChange,
-);
+
 router.post(
   "/request-password-change",
   authenticate,

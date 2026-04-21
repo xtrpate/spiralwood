@@ -161,82 +161,24 @@ exports.verifyEmailChange = async (req, res) => {
 };
 
 /* ────────────────────────────────────────
-   POST /request-phone-change  (Twilio Verify)
+   PUT /phone  — Instant phone update
 ──────────────────────────────────────── */
-exports.requestPhoneChange = async (req, res) => {
-  const { new_phone } = req.body;
-  if (!new_phone?.trim())
+exports.updatePhone = async (req, res) => {
+  const { phone } = req.body;
+
+  if (!phone || !phone.trim()) {
     return res.status(400).json({ message: "Phone number is required." });
-
-  /* Format PH number to E.164: 09XX → +639XX */
-  let e164 = new_phone.trim();
-  if (e164.startsWith("09")) e164 = "+63" + e164.slice(1);
-  else if (!e164.startsWith("+")) e164 = "+63" + e164;
-
-  try {
-    /* Store pending phone in DB */
-    // ── FIXED: Switched to .query ──
-    await db.query(`UPDATE users SET pending_phone=? WHERE id=?`, [
-      new_phone.trim(),
-      req.user.id,
-    ]);
-
-    /* Send OTP via Twilio Verify */
-    await twilioClient.verify.v2
-      .services(process.env.TWILIO_VERIFY_SID)
-      .verifications.create({ to: e164, channel: "sms" });
-
-    res.json({ message: "SMS OTP sent." });
-  } catch (err) {
-    console.error("[profile/request-phone-change]", err);
-    res
-      .status(500)
-      .json({ message: "Failed to send SMS. " + (err.message || "") });
   }
-};
 
-/* ────────────────────────────────────────
-   POST /verify-phone-change  (Twilio Verify)
-──────────────────────────────────────── */
-exports.verifyPhoneChange = async (req, res) => {
-  const { otp } = req.body;
   try {
-    // ── FIXED: Switched to .query ──
-    const [rows] = await db.query(
-      "SELECT pending_phone FROM users WHERE id=?",
-      [req.user.id],
-    );
-    const pending_phone = rows[0]?.pending_phone;
-    if (!pending_phone)
-      return res
-        .status(400)
-        .json({ message: "No pending phone change found." });
-
-    /* Format to E.164 */
-    let e164 = pending_phone.trim();
-    if (e164.startsWith("09")) e164 = "+63" + e164.slice(1);
-    else if (!e164.startsWith("+")) e164 = "+63" + e164;
-
-    /* Check OTP via Twilio Verify */
-    const check = await twilioClient.verify.v2
-      .services(process.env.TWILIO_VERIFY_SID)
-      .verificationChecks.create({ to: e164, code: otp });
-
-    if (check.status !== "approved")
-      return res.status(400).json({ message: "Invalid or expired OTP." });
-
-    /* Save new phone */
-    // ── FIXED: Switched to .query ──
-    await db.query(`UPDATE users SET phone=?, pending_phone=NULL WHERE id=?`, [
-      pending_phone,
+    await db.query("UPDATE users SET phone=? WHERE id=?", [
+      phone.trim(),
       req.user.id,
     ]);
     res.json({ message: "Phone number updated successfully." });
   } catch (err) {
-    console.error("[profile/verify-phone-change]", err);
-    res
-      .status(500)
-      .json({ message: "Verification failed. " + (err.message || "") });
+    console.error("[profile/phone]", err);
+    res.status(500).json({ message: "Failed to update phone number." });
   }
 };
 
