@@ -56,6 +56,20 @@ const useAuthStore = create((set, get) => ({
   user: savedUser,
   token: savedToken,
 
+  setUser: (updater) => {
+    const currentUser = get().user;
+    // Allow the functional update style: setUser((prev) => ({ ...prev, name: "New" }))
+    const nextUser =
+      typeof updater === "function" ? updater(currentUser) : updater;
+
+    // Save to local storage so changes persist on refresh
+    localStorage.setItem("wisdom_user", JSON.stringify(nextUser));
+    localStorage.setItem("user", JSON.stringify(nextUser));
+
+    // Update the live state
+    set({ user: nextUser });
+  },
+
   login: async (email, password) => {
     const cleanEmail = String(email || "").trim();
 
