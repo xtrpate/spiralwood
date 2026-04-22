@@ -47,8 +47,21 @@ const limiter = rateLimit({
 
 app.use("/api", limiter);
 
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-app.use("/backups", express.static(path.join(__dirname, "backups")));
+const backupDir = process.env.BACKUP_DIR || path.join(__dirname, "backups");
+const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, "uploads");
+
+app.use(
+  "/backups",
+  express.static(
+    path.isAbsolute(backupDir) ? backupDir : path.join(__dirname, backupDir),
+  ),
+);
+app.use(
+  "/uploads",
+  express.static(
+    path.isAbsolute(uploadDir) ? uploadDir : path.join(__dirname, uploadDir),
+  ),
+);
 
 app.use("/api/public", require("./routes/public"));
 
@@ -59,7 +72,10 @@ app.use("/api/customer/products", require("./routes/customer.products"));
 app.use("/api/customer/orders", require("./routes/customer.orders"));
 app.use("/api/customer/profile", require("./routes/customer.profile"));
 app.use("/api/customer/blueprints", require("./routes/customer.blueprints"));
-app.use("/api/customer/appointments", require("./routes/customer.appointments"));
+app.use(
+  "/api/customer/appointments",
+  require("./routes/customer.appointments"),
+);
 app.use("/api/customer/warranty", require("./routes/customer.warranty"));
 app.use("/api/customer/custom-orders", customerCustomOrdersRoutes);
 
