@@ -77,7 +77,7 @@ const PAY_METHOD_LABELS = {
 const PAYMENT_GUIDES = {
   gcash: {
     title: "GCash / QR Payment",
-    accountName: "Jericho M. Flores",
+    accountName: "Spiral Wood Services",
     accountNumber: "09530695310",
     qrImage: "/payments/qr.png",
     note: "Scan the QR or send to this number, then upload proof of payment.",
