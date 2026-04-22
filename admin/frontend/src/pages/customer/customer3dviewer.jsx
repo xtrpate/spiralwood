@@ -1682,12 +1682,12 @@ export default function Customer3DViewer({
                 <div style={styles.uploadHeader}>
                   <label style={styles.footerLabel}>Reference Photos</label>
                   <span style={styles.uploadHint}>
-                    Up to 4 images • JPG / PNG / WEBP
+                    Up to 5 images • JPG / JPEG / PNG / WEBP • 5MB each
                   </span>
                 </div>
 
                 <label style={styles.uploadButton}>
-                  Upload Photo
+                  Upload Photos
                   <input
                     type="file"
                     accept="image/jpeg,image/jpg,image/png,image/webp"

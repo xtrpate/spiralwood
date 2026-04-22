@@ -532,6 +532,7 @@ export default function OrderDetailPage() {
       );
     }
   };
+
   const handleAccept = async () => {
     try {
       await api.post(`/orders/${id}/accept`);
@@ -555,6 +556,9 @@ export default function OrderDetailPage() {
     }
   };
 
+  
+  
+
   const verifyPayment = async (paymentId, action) => {
     try {
       const { data } = await api.post(`/orders/${id}/verify-payment`, {
@@ -569,6 +573,8 @@ export default function OrderDetailPage() {
       );
     }
   };
+
+
 
   const openProofPreview = (url) => {
     const resolvedUrl = buildAssetUrl(url);
@@ -617,11 +623,7 @@ export default function OrderDetailPage() {
 
     let payload = {};
 
-    if (action === "request-revision") {
-      const note = window.prompt("Enter revision note for the customer:");
-      if (note === null) return;
-      payload = { note };
-    }
+    
 
     if (action === "reject") {
       const reason = window.prompt("Enter rejection reason:");
@@ -1231,17 +1233,21 @@ export default function OrderDetailPage() {
             </p>
           </div>
 
+
+
           <div style={heroActions}>
-            {order.status === "pending" && (
-              <>
-                <button onClick={handleAccept} style={btnAccept}>
-                  Accept
-                </button>
-                <button onClick={handleDecline} style={btnDecline}>
-                  Decline
-                </button>
-              </>
-            )}
+            {normalizedOrderStatus === "pending" &&
+              isOnlineStandardOrder && (
+                <>
+                  <button onClick={handleAccept} style={btnAccept}>
+                    Accept
+                  </button>
+                  <button onClick={handleDecline} style={btnDecline}>
+                    Decline
+                  </button>
+                </>
+              )}
+            
             {isBlueprintOrder &&
               normalizedOrderStatus === "confirmed" &&
               blueprintId &&
@@ -1567,19 +1573,7 @@ export default function OrderDetailPage() {
                         : "Approve for Estimation"}
                     </button>
 
-                    <button
-                      onClick={() =>
-                        handleCustomRequestAction("request-revision")
-                      }
-                      disabled={
-                        customRequestActionLoading === "request-revision"
-                      }
-                      style={btnSecondary}
-                    >
-                      {customRequestActionLoading === "request-revision"
-                        ? "Sending..."
-                        : "Request Revision"}
-                    </button>
+                    
 
                     <button
                       onClick={() => handleCustomRequestAction("reject")}
@@ -1668,14 +1662,21 @@ export default function OrderDetailPage() {
                           label="Finish"
                           value={item.requested_finish_color || "—"}
                         />
-                        <MiniInfo
-                          label="Door Style"
-                          value={item.requested_door_style || "—"}
-                        />
-                        <MiniInfo
-                          label="Hardware"
-                          value={item.requested_hardware || "—"}
-                        />
+
+                        {String(item.requested_door_style || "").trim() ? (
+                          <MiniInfo
+                            label="Door Style"
+                            value={item.requested_door_style}
+                          />
+                        ) : null}
+
+                        {String(item.requested_hardware || "").trim() ? (
+                          <MiniInfo
+                            label="Hardware"
+                            value={item.requested_hardware}
+                          />
+                        ) : null}
+
                         <MiniInfo
                           label="Dimensions"
                           value={`W ${dims.width || 0} • H ${dims.height || 0} • D ${dims.depth || 0} ${item.requested_unit || "mm"}`}

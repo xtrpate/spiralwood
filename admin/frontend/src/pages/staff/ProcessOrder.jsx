@@ -225,7 +225,7 @@ export default function ProcessOrder() {
                       fontSize: 16,
                     }}
                   >
-                    Change (Sukli): ₱
+                    Change: ₱
                     {parseFloat(success.change || 0).toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
                     })}
@@ -743,7 +743,7 @@ export default function ProcessOrder() {
                 >
                   <span>
                     {cashReceived >= total
-                      ? "Change (Sukli)"
+                      ? "Change"
                       : "Insufficient Cash"}
                   </span>
                   <span>

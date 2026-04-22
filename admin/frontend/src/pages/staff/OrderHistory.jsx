@@ -296,7 +296,7 @@ export default function OrderHistory() {
                           <button
                             style={btnReceipt}
                             onClick={() =>
-                              navigate(`/staff/receipt/${order.id}`)
+                              navigate(`/staff/receipt/${order.receipt_id}`)
                             }
                             onMouseEnter={(e) =>
                               (e.currentTarget.style.background = "#e4e4e7")

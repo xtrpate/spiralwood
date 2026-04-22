@@ -288,7 +288,7 @@ export default function ReceiptPage() {
             {paymentMethod === "cash" && (
               <div className="total-row" style={{ fontWeight: "bold" }}>
                 {/* 👉 RULE 8: Explicitly labeled Sukli */}
-                <span>Change (Sukli)</span>
+                <span>Change</span>
                 <span>
                   ₱
                   {change.toLocaleString("en-PH", { minimumFractionDigits: 2 })}

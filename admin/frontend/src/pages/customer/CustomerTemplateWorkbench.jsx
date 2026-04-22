@@ -3,13 +3,14 @@ import { extractCustomerBlueprintScene } from "./customerBlueprintAdapter";
 import { normalizeComponent } from "../blueprints/data/componentUtils";
 import Customer3DViewer from "./customer3dviewer";
 
-const MAX_REFERENCE_PHOTOS = 4;
-const MAX_REFERENCE_FILE_SIZE = 2 * 1024 * 1024;
+const MAX_REFERENCE_PHOTOS = 5;
+const MAX_REFERENCE_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_REFERENCE_TYPES = new Set([
   "image/jpeg",
   "image/jpg",
   "image/png",
   "image/webp",
+  "application/pdf",
 ]);
 
 const toPositiveNumber = (value) => {
@@ -110,7 +111,9 @@ export default function CustomerTemplateWorkbench({
     if (!incomingFiles.length) return;
 
     if (referencePhotos.length + incomingFiles.length > MAX_REFERENCE_PHOTOS) {
-      setUploadError(`You can upload up to ${MAX_REFERENCE_PHOTOS} reference photos only.`);
+      setUploadError(
+        `You can upload up to ${MAX_REFERENCE_PHOTOS} reference files only.`,
+      );
       return;
     }
 
@@ -119,7 +122,9 @@ export default function CustomerTemplateWorkbench({
     );
 
     if (invalidType) {
-      setUploadError("Only JPG, PNG, and WEBP reference photos are allowed.");
+      setUploadError(
+        "Only JPG, JPEG, PNG, and WEBP images are allowed.",
+      );
       return;
     }
 
@@ -128,7 +133,7 @@ export default function CustomerTemplateWorkbench({
     );
 
     if (invalidSize) {
-      setUploadError("Each reference photo must be 2MB or smaller.");
+      setUploadError("Each reference file must be 5MB or smaller.");
       return;
     }
 
@@ -147,7 +152,7 @@ export default function CustomerTemplateWorkbench({
       setUploadError("");
     } catch (error) {
       console.error(error);
-      setUploadError("Failed to read the selected reference photo.");
+      setUploadError("Failed to read the selected image.");
     }
   };
 

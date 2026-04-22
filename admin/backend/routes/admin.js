@@ -264,7 +264,8 @@ router.patch(
 // CUSTOMER ACCOUNT MANAGEMENT
 // ══════════════════════════════════════════════════════════════════════════════
 router.get("/customers", adminOnly, mgmt.getCustomers);
-router.patch("/customers/:id/status", adminOnly, mgmt.updateCustomerStatus);
+router.put("/customers/:id", adminOnly, mgmt.updateCustomer);
+
 
 // ══════════════════════════════════════════════════════════════════════════════
 // USER & ROLE MANAGEMENT

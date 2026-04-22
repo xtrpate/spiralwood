@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import toast from "react-hot-toast";
+
+
 import useAuthStore from "../store/authStore";
 import "./customer/authpages.css";
 
@@ -27,6 +28,10 @@ export default function LoginPage() {
     email: "",
     password: "",
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(
+    localStorage.getItem("wisdom_remember_me") === "true",
+  );
   const [loading, setLoading] = useState(false);
 
   const setField = (key, value) =>
@@ -42,11 +47,10 @@ export default function LoginPage() {
         : location.state?.redirectTo || null;
 
     try {
-      const user = await login(form.email, form.password);
-      toast.success("Login successful.");
+      const user = await login(form.email, form.password, rememberMe);
       navigate(redirectTo || getDefaultRouteForUser(user), { replace: true });
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Login failed.");
+      console.error(err?.response?.data?.message || "Login failed.");
     } finally {
       setLoading(false);
     }
@@ -66,7 +70,7 @@ export default function LoginPage() {
           </button>
 
           <div className="auth-card-header">
-            <h2>Login</h2>
+            <h2>SIGN IN</h2>
           </div>
 
           <form className="auth-form" onSubmit={handleSubmit}>
@@ -81,21 +85,49 @@ export default function LoginPage() {
                   onChange={(e) => setField("email", e.target.value)}
                   required
                   autoFocus
+                  autoComplete="email"
                 />
               </div>
             </div>
 
             <div className="field">
               <label>Password *</label>
-              <div className="field-input-wrap">
+              <div
+                className="field-input-wrap"
+                style={{ position: "relative" }}
+              >
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   className="no-icon"
                   placeholder=""
                   value={form.password}
                   onChange={(e) => setField("password", e.target.value)}
                   required
+                  autoComplete="current-password"
+                  style={{ paddingRight: "76px" }}
                 />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  title={showPassword ? "Hide password" : "Show password"}
+                  style={{
+                    position: "absolute",
+                    right: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    padding: 0,
+                    color: "#8b8b8b",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                  }}
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
               </div>
             </div>
 
@@ -111,6 +143,8 @@ export default function LoginPage() {
               <input
                 id="remember-me"
                 type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
                 style={{ width: 16, height: 16, cursor: "pointer" }}
               />
               <label
@@ -128,7 +162,7 @@ export default function LoginPage() {
 
           <div className="auth-switch">
             <button type="button" onClick={() => navigate("/forgot-password")}>
-              Lost your password?
+              Forgot your password?
             </button>
           </div>
 

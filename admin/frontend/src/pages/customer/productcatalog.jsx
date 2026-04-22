@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Search } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
-import toast from "react-hot-toast";
+
 import api, { buildAssetUrl } from "../../services/api";
 import "./productcatalog.css";
 import { useCart } from "./cartcontext";
@@ -253,7 +253,7 @@ export default function ProductCatalog() {
       image_url: product.image_url || null,
     });
 
-    toast.success(`Added "${product.name}" to cart.`);
+    
   };
 
   const handleCardAddToCart = (product) => {
@@ -303,7 +303,7 @@ export default function ProductCatalog() {
       image_url: selected.image_url || null,
     });
 
-    toast.success(`Added ${Number(qty || 1)} × "${name}" to cart.`);
+    
     setSelected(null);
   };
 

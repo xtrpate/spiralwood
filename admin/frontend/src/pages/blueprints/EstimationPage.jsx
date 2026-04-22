@@ -1171,10 +1171,7 @@ export default function EstimationPage() {
       return;
     }
 
-    const shouldReplace = window.confirm(
-      "Papalitan nito ang current estimation rows gamit ang latest blueprint conversion data. Itutuloy?",
-    );
-
+    
     if (!shouldReplace) return;
 
     const { autoItems: existingAutoItems, manualItems } =
@@ -1277,11 +1274,7 @@ export default function EstimationPage() {
       return;
     }
 
-    const shouldApprove = window.confirm(
-      "This will send the latest quotation to the customer for review and approval. Continue?",
-    );
-
-    if (!shouldApprove) return;
+    
 
     setApproving(true);
     try {
