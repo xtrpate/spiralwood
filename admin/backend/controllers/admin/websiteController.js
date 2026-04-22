@@ -236,7 +236,7 @@ exports.getBackupLogs = async (req, res) => {
       ...r,
       filename: r.file_name,
       file_size: r.file_size_kb,
-      file_url: `/backups/${r.file_name}`,
+      file_url: `https://wisdom-ov31.onrender.com/backups/${r.file_name}`,
     }));
     res.json(normalized);
   } catch (err) {
@@ -293,6 +293,7 @@ exports.triggerManualBackup = async (req, res) => {
       message: "Backup completed successfully.",
       file: fileName,
       size_kb: sizeKb,
+      file_url: `https://wisdom-ov31.onrender.com/backups/${fileName}`,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
