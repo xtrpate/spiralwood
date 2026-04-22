@@ -139,8 +139,6 @@ export default function AdminLayout() {
   const [open, setOpen] = useState(true);
   const { clearCart } = useCart();
 
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
-
   useEffect(() => {
     if (user && user.role === "customer") {
       toast.error("Access restricted. Redirecting to storefront.");
@@ -148,11 +146,12 @@ export default function AdminLayout() {
     }
   }, [user, navigate]);
 
-  const confirmLogout = () => {
-    setShowLogoutModal(false);
-    logout();
-    clearCart(false);
-    navigate("/login");
+  const handleLogout = () => {
+    if (window.confirm("Are you sure you want to log out?")) {
+      logout();
+      clearCart(false);
+      navigate("/login");
+    }
   };
 
   const visibleItems = NAV_ITEMS.filter(
