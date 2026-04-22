@@ -289,11 +289,10 @@ exports.updateUser = async (req, res) => {
 
     const normalizedStaffType = role === "staff" ? staff_type : null;
 
-    // ── FIXED: Parsed ID ──
     await pool.query(
       `UPDATE users
        SET name = ?, email = ?, role = ?, staff_type = ?, phone = ?, is_active = ?
-       WHERE id = ? AND role != "customer"`,
+       WHERE id = ? AND role != 'customer'`,
       [
         name,
         email,
