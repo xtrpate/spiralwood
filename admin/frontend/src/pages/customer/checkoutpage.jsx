@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import { useCart } from "./cartcontext";
 import useAuthStore from "../../store/authStore";
+import toast from "react-hot-toast";
 import "./customizepage.css";
 
 const PAYMENT_METHODS = [
@@ -64,7 +65,6 @@ export default function CheckoutPage() {
   const [checkoutItems, setCheckoutItems] = useState([]);
   const [selectionReady, setSelectionReady] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
   const [form, setForm] = useState({
     name: user?.name || "",
@@ -155,25 +155,25 @@ export default function CheckoutPage() {
 
   const handleSubmit = async (e) => {
     if (e?.preventDefault) e.preventDefault();
-    setError("");
 
+    // 👉 FIX 3: Replaced all setError calls with toast.error
     if (!checkoutItems.length) {
-      setError("No selected ready-made items found for checkout.");
+      toast.error("No selected ready-made items found for checkout.");
       return;
     }
 
     if (!String(form.name || "").trim()) {
-      setError("Please enter your full name.");
+      toast.error("Please enter your full name.");
       return;
     }
 
     if (!String(form.phone || "").trim()) {
-      setError("Please enter your phone number.");
+      toast.error("Please enter your phone number.");
       return;
     }
 
     if (!String(form.payment_method || "").trim()) {
-      setError("Please select a payment method.");
+      toast.error("Please select a payment method.");
       return;
     }
 
@@ -212,7 +212,6 @@ export default function CheckoutPage() {
       removeMany(submittedKeys);
       sessionStorage.removeItem("cust_selected_keys");
 
-      // 👉 PayMongo URL interception
       if (res?.data?.payment_url) {
         window.location.assign(res.data.payment_url);
         return;
@@ -220,7 +219,8 @@ export default function CheckoutPage() {
 
       navigate("/orders", { replace: true });
     } catch (err) {
-      setError(
+      // 👉 FIX 4: Use toast for backend API errors too
+      toast.error(
         err.response?.data?.message ||
           err.response?.data?.error ||
           "Failed to place order. Please try again.",
@@ -263,8 +263,6 @@ export default function CheckoutPage() {
 
       <div className="checkout-layout">
         <div className="checkout-form-panel">
-          {error && <div className="alert alert-error">{error}</div>}
-
           <div className="checkout-section">
             <div className="checkout-section-header">
               <div className="checkout-section-num">🛒</div>
