@@ -7508,7 +7508,10 @@ export default function BlueprintDesign() {
 
           <button
             onClick={() => {
-              // 👉 AUTO-FILL PRICE: Use Estimate Grand Total first, fallback to raw Design Total
+              const rawPrice =
+                estimatedPrice !== null ? estimatedPrice : designTotal || 0;
+              const roundedPrice = Math.round(rawPrice);
+
               setPublishForm((prev) => ({
                 ...prev,
                 name: blueprint?.title || "",
