@@ -9,6 +9,13 @@ import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import "./customizepage.css";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
 
+// 👉 ADDED: Peso formatter for prices
+const formatPeso = (value) =>
+  `₱${Number(value || 0).toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
 const FALLBACK_WOOD_TYPES = [
   "Oak",
   "Pine",
@@ -236,6 +243,10 @@ const resolveImageSrc = (src) => {
   if (!raw) return "";
 
   if (
+    raw.startsWith("http://") ||
+    raw.startsWith("https://") ||
+    raw.startsWith("data:") ||
+    raw.startsWith("blob:") ||
     raw.startsWith("/template-previews/") ||
     raw.startsWith("/images/") ||
     raw.startsWith("/assets/")
@@ -1017,6 +1028,20 @@ function ProductCard({ product, onView, onCustomize }) {
           {formatMm(dimensions.depth_mm)}
         </div>
 
+        {/* 👉 ADDED: Display the base price here! */}
+        <div
+          style={{
+            marginTop: 12,
+            fontSize: 16,
+            fontWeight: 800,
+            color: "#0a0a0a",
+          }}
+        >
+          {Number(product.base_price) > 0
+            ? formatPeso(product.base_price)
+            : "Price to be quoted"}
+        </div>
+
         <div className="cust-card-actions">
           <button
             type="button"
@@ -1242,7 +1267,9 @@ export default function CustomizePage() {
         product.preview_image_url || product.thumbnail_url || "",
       item_type: "custom",
       quantity: Math.max(1, Number(draft?.quantity || 1)),
-      unit_price: 0,
+
+      // 👉 ADDED: Attach the base price to the cart payload instead of 0!
+      unit_price: Number(product.base_price || 0),
 
       wood_type: woodType,
       finish_color: finishColor,

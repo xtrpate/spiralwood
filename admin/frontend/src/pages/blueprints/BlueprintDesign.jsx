@@ -6763,6 +6763,9 @@ export default function BlueprintDesign() {
           generatedThumbnailUrl || blueprint?.thumbnail_url || null,
         is_template: Number(blueprint?.is_template) ? 1 : 0,
         is_gallery: Number(blueprint?.is_gallery) ? 1 : 0,
+        base_price: Number(publishForm?.online_price) || 0,
+        title: publishForm?.name || blueprint?.title || "",
+        description: publishForm?.description || blueprint?.description || "",
       });
 
       toast.success("Blueprint saved.");
@@ -7509,6 +7512,8 @@ export default function BlueprintDesign() {
               setPublishForm((prev) => ({
                 ...prev,
                 name: blueprint?.title || "",
+                description:
+                  blueprint?.description || "Custom 3D designed product.",
                 online_price:
                   estimatedPrice !== null ? estimatedPrice : designTotal || 0,
               }));
@@ -8966,7 +8971,7 @@ export default function BlueprintDesign() {
                     letterSpacing: "1px",
                   }}
                 >
-                  Product Name
+                  Product Name / Title
                 </label>
                 <input
                   required
@@ -8987,6 +8992,7 @@ export default function BlueprintDesign() {
                 />
               </div>
 
+              {/* 👉 FIX: Added the Description Box here! */}
               <div style={{ marginBottom: 16 }}>
                 <label
                   style={{
@@ -8999,7 +9005,46 @@ export default function BlueprintDesign() {
                     letterSpacing: "1px",
                   }}
                 >
-                  Price (₱)
+                  Description
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={publishForm.description}
+                  onChange={(e) =>
+                    setPublishForm({
+                      ...publishForm,
+                      description: e.target.value,
+                    })
+                  }
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    border: "1px solid #e4e4e7",
+                    borderRadius: 8,
+                    boxSizing: "border-box",
+                    outline: "none",
+                    fontSize: 13,
+                    color: "#18181b",
+                    resize: "vertical",
+                  }}
+                />
+              </div>
+
+              {/* 👉 FIX: Price is now at the bottom of Title and Description */}
+              <div style={{ marginBottom: 16 }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    marginBottom: 6,
+                    color: "#18181b",
+                    textTransform: "uppercase",
+                    letterSpacing: "1px",
+                  }}
+                >
+                  Base Price (₱)
                 </label>
                 <input
                   type="number"
@@ -9058,7 +9103,7 @@ export default function BlueprintDesign() {
                     background: "#fff",
                   }}
                 >
-                  <option value="1">Standard Furniture</option>
+                  {/* 👉 FIX: Removed Standard Furniture */}
                   <option value="2">Blueprints & Custom</option>
                 </select>
               </div>

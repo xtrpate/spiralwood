@@ -1074,6 +1074,7 @@ exports.update = async (req, res) => {
       "source",
       "file_url",
       "file_type",
+      "base_price", // 👉 FIX: Added base_price to allowed columns!
     ];
 
     const filtered = Object.fromEntries(

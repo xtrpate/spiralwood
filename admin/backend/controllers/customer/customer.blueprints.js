@@ -461,6 +461,7 @@ const enrichBlueprintForCustomer = (row = {}) => {
     // normalized preview/meta
     title: row.title || "",
     description: row.description || "",
+    base_price: Number(row.base_price) || 0,
     category: resolveCategoryLabel(previewTemplateType, row.category),
     category_label: resolveCategoryLabel(previewTemplateType, row.category),
 
@@ -710,6 +711,7 @@ exports.getBlueprintById = async (req, res) => {
       template_type: blueprint.template_type || blueprint.templateType || "",
       templateType: blueprint.templateType || blueprint.template_type || "",
       category_label: blueprint.category_label || blueprint.category,
+      base_price: Number(blueprint.base_price) || 0,
       dimensions: blueprint.dimensions || {
         width_mm: blueprint.width_mm,
         height_mm: blueprint.height_mm,
