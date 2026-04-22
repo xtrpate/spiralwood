@@ -65,7 +65,7 @@ export default function RegisterPage() {
     }
 
     if (!form.agreed) {
-      return setError("Please agree to the Terms of Service to continue.");
+      return setError("Please agree to the Terms of Service and Privacy Policy to continue.");
     }
 
     setLoading(true);
@@ -507,7 +507,12 @@ export default function RegisterPage() {
               </label>
             </div>
 
-            <button type="submit" className="btn-auth" disabled={loading}>
+            <button
+              type="submit"
+              className={`btn-auth ${!form.agreed || loading ? "btn-auth-disabled" : ""}`}
+              disabled={loading || !form.agreed}
+              title={!form.agreed ? "Please agree to the Terms of Service and Privacy Policy first." : ""}
+            >
               {loading ? "Creating account..." : "Create Account"}
             </button>
           </form>

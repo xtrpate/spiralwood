@@ -57,6 +57,8 @@ import LandingPage from "./pages/customer/LandingPage";
 import VerifyOtpPage from "./pages/customer/verifyotppage";
 import ResetPasswordPage from "./pages/customer/resetpasswordpage";
 import PendingApprovalPage from "./pages/customer/pendingapprovalpage";
+import TermsPage from "./pages/customer/TermsPage";
+import PrivacyPolicyPage from "./pages/customer/PrivacyPolicyPage";
 
 import POSLayout from "./pages/staff/POSLayout.jsx";
 import POSDashboard from "./pages/staff/Dashboard";
@@ -198,6 +200,8 @@ export default function App() {
                       </RedirectIfAuthenticated>
                     }
                   />
+                  <Route path="terms" element={<TermsPage />} />
+                  <Route path="privacy" element={<PrivacyPolicyPage />} />
                   <Route path="verify-otp" element={<VerifyOtpPage />} />
                   <Route
                     path="pending-approval"
