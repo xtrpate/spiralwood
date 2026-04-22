@@ -1123,8 +1123,14 @@ export default function CustomizePage() {
   );
 
   useEffect(() => {
-    fetchProducts();
-  }, [fetchProducts]);
+    const params = new URLSearchParams(location.search);
+    const q = params.get("q") || "";
+    setSearch(q);
+  }, [location.search]);
+
+  useEffect(() => {
+    fetchProducts(search);
+  }, [fetchProducts, search]);
 
   useEffect(() => {
     if (!toastMessage) return undefined;
@@ -1150,7 +1156,11 @@ export default function CustomizePage() {
 
   const handleSearch = (event) => {
     event.preventDefault();
-    fetchProducts(search);
+    const q = search.trim();
+
+    navigate(`/customize${q ? `?q=${encodeURIComponent(q)}` : ""}`, {
+      replace: false,
+    });
   };
 
   const handleAdd = (product, draft = {}) => {
@@ -1215,6 +1225,13 @@ export default function CustomizePage() {
       referencePhotos,
     });
 
+    const lightweightReferencePhotos = referencePhotos.map((photo) => ({
+      id: photo.id,
+      name: photo.name,
+      type: photo.type,
+      size: photo.size,
+    }));
+
     addToCustomCart({
       key: stableCustomKey,
       blueprint_id: product.id,
@@ -1239,7 +1256,7 @@ export default function CustomizePage() {
       unit: "mm",
       comments: initialMessage,
       initial_message: initialMessage,
-      reference_photos: referencePhotos,
+      reference_photos: lightweightReferencePhotos,
 
       base_blueprint_title: product.title,
       template_profile: profile.id,
@@ -1255,7 +1272,7 @@ export default function CustomizePage() {
         hardware,
         comments: initialMessage,
         initial_message: initialMessage,
-        reference_photos: referencePhotos,
+        reference_photo_count: lightweightReferencePhotos.length,
         template_profile: profile.id,
       },
 

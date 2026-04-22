@@ -61,6 +61,7 @@ export default function CustomerLayout() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [activeOrdersCount, setActiveOrdersCount] = useState(0);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
   const accountRef = useRef(null);
 
@@ -74,7 +75,6 @@ export default function CustomerLayout() {
     miniCartOpen,
     openMiniCart,
     closeMiniCart,
-    setCart,
     clearCart,
   } = useCart();
 
@@ -180,19 +180,69 @@ export default function CustomerLayout() {
 
     const timer = setTimeout(async () => {
       setSearchLoading(true);
+
       try {
-        const res = await api.get("/customer/products", {
-          params: { q: headerSearch, limit: 5 }, // Only grab the top 5 matches
-        });
-        const rawProducts = Array.isArray(res.data?.products)
-          ? res.data.products
+        const [productRes, blueprintRes] = await Promise.all([
+          api.get("/customer/products", {
+            params: {
+              q: headerSearch,
+              limit: 5,
+              type: "standard",
+            },
+          }),
+          api.get("/customer/blueprints", {
+            params: {
+              q: headerSearch,
+              limit: 5,
+            },
+          }),
+        ]);
+
+        const rawProducts = Array.isArray(productRes.data?.products)
+          ? productRes.data.products
           : [];
+
         const visibleProducts = rawProducts.filter(
           (item) => String(item?.type || "").toLowerCase() !== "blueprint",
         );
-        setSearchResults(visibleProducts);
+
+        const rawBlueprints = Array.isArray(blueprintRes.data?.blueprints)
+          ? blueprintRes.data.blueprints
+          : [];
+
+        const mappedProducts = visibleProducts.slice(0, 5).map((item) => ({
+          id: `product-${item.id}`,
+          entityId: item.id,
+          resultType: "product",
+          title: item.name,
+          subtitle: item.category || "Ready-Made Product",
+          badge: "Ready-Made",
+          imageUrl: item.image_url || "",
+          priceText: `₱${parseFloat(item.online_price || 0).toLocaleString(
+            "en-PH",
+            {
+              minimumFractionDigits: 2,
+            },
+          )}`,
+          searchValue: item.name,
+        }));
+
+        const mappedBlueprints = rawBlueprints.slice(0, 5).map((item) => ({
+          id: `template-${item.id}`,
+          entityId: item.id,
+          resultType: "template",
+          title: item.title,
+          subtitle: item.category_label || item.category || "Customize Template",
+          badge: "Customize",
+          imageUrl: item.preview_image_url || item.thumbnail_url || "",
+          priceText: "Customize template",
+          searchValue: item.title,
+        }));
+
+        setSearchResults([...mappedProducts, ...mappedBlueprints].slice(0, 8));
       } catch (err) {
         console.error("Navbar search error", err);
+        setSearchResults([]);
       } finally {
         setSearchLoading(false);
       }
@@ -217,23 +267,53 @@ export default function CustomerLayout() {
 
   const handleLogout = () => {
     setAccountOpen(false);
+    setMenuOpen(false);
     closeMiniCart();
+    setLogoutConfirmOpen(false);
+
+    // clear visible cart only on logout
+    // keep saved customer cart backup + cloud cart intact
     clearCart(false);
+
     logout();
-    navigate("/login");
+    navigate("/login", { replace: true });
+  };
+
+  const openLogoutConfirm = () => {
+    setAccountOpen(false);
+    setLogoutConfirmOpen(true);
+  };
+
+  const closeLogoutConfirm = () => {
+    setLogoutConfirmOpen(false);
   };
 
   const handleHeaderSearch = (e) => {
-    e.preventDefault();
-    const q = headerSearch.trim();
+  e.preventDefault();
+  const q = headerSearch.trim();
 
-    if (q) {
-      navigate(`/catalog?q=${encodeURIComponent(q)}`);
+  if (!q) {
+    navigate("/catalog");
+    setMenuOpen(false);
+    setSearchFocused(false);
+    return;
+  }
+
+  const productMatches = searchResults.filter(
+      (item) => item.resultType === "product",
+    );
+    const templateMatches = searchResults.filter(
+      (item) => item.resultType === "template",
+    );
+
+    if (!productMatches.length && templateMatches.length) {
+      navigate(`/customize?q=${encodeURIComponent(q)}`);
     } else {
-      navigate("/catalog");
+      navigate(`/catalog?q=${encodeURIComponent(q)}`);
     }
 
     setMenuOpen(false);
+    setSearchFocused(false);
   };
 
   const scrollToLandingTop = () => {
@@ -403,12 +483,11 @@ export default function CustomerLayout() {
                     position: "absolute",
                     top: "calc(100% + 8px)",
                     left: 0,
-                    width: "350px", // Fixed width so it drops down cleanly
+                    width: "380px",
                     background: "#ffffff",
                     border: "1px solid #e5e7eb",
-                    borderRadius: "8px",
                     boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)",
-                    maxHeight: "350px",
+                    maxHeight: "380px",
                     overflowY: "auto",
                     zIndex: 1000,
                     display: "flex",
@@ -424,7 +503,7 @@ export default function CustomerLayout() {
                         textAlign: "center",
                       }}
                     >
-                      Searching...
+                      Searching products and templates...
                     </div>
                   ) : searchResults.length === 0 ? (
                     <div
@@ -435,18 +514,23 @@ export default function CustomerLayout() {
                         textAlign: "center",
                       }}
                     >
-                      No results found for "{headerSearch}"
+                      No ready-made products or customize templates found for "{headerSearch}"
                     </div>
                   ) : (
-                    searchResults.map((product) => (
+                    searchResults.map((item) => (
                       <div
-                        key={product.id}
+                        key={item.id}
                         onClick={() => {
                           setSearchFocused(false);
-                          // Navigate to Catalog with this exact product targeted
-                          navigate(
-                            `/catalog?q=${encodeURIComponent(product.name)}`,
-                          );
+
+                          if (item.resultType === "template") {
+                            navigate(
+                              `/customize?q=${encodeURIComponent(item.searchValue)}&template=${item.entityId}`,
+                            );
+                            return;
+                          }
+
+                          navigate(`/catalog?q=${encodeURIComponent(item.searchValue)}`);
                         }}
                         style={{
                           display: "flex",
@@ -466,47 +550,97 @@ export default function CustomerLayout() {
                       >
                         <div
                           style={{
-                            width: "40px",
-                            height: "40px",
-                            borderRadius: "6px",
+                            width: "44px",
+                            height: "44px",
                             background: "#f8fafc",
                             overflow: "hidden",
                             flexShrink: 0,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                           }}
                         >
-                          <img
-                            src={buildAssetUrl(product.image_url)}
-                            alt={product.name}
-                            style={{
-                              width: "100%",
-                              height: "100%",
-                              objectFit: "cover",
-                            }}
-                            onError={(e) =>
-                              (e.currentTarget.style.display = "none")
-                            }
-                          />
+                          {item.imageUrl ? (
+                            <img
+                              src={buildAssetUrl(item.imageUrl)}
+                              alt={item.title}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                              }}
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                              }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: "16px" }}>
+                              {item.resultType === "template" ? "📐" : "🪵"}
+                            </span>
+                          )}
                         </div>
-                        <div style={{ flex: 1, overflow: "hidden" }}>
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <div
                             style={{
-                              fontSize: "13px",
-                              fontWeight: "600",
-                              color: "#0f172a",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              marginBottom: "2px",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: "13px",
+                                fontWeight: "600",
+                                color: "#0f172a",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {item.title}
+                            </div>
+
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                fontWeight: 700,
+                                letterSpacing: "0.04em",
+                                textTransform: "uppercase",
+                                padding: "3px 6px",
+                                border: "1px solid #d1d5db",
+                                color: "#475569",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {item.badge}
+                            </span>
+                          </div>
+
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              color: "#64748b",
                               whiteSpace: "nowrap",
                               overflow: "hidden",
                               textOverflow: "ellipsis",
                             }}
                           >
-                            {product.name}
+                            {item.subtitle}
                           </div>
-                          <div style={{ fontSize: "12px", color: "#64748b" }}>
-                            ₱
-                            {parseFloat(product.online_price).toLocaleString(
-                              "en-PH",
-                              { minimumFractionDigits: 2 },
-                            )}
-                          </div>
+                        </div>
+
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            color: "#334155",
+                            fontWeight: 600,
+                            textAlign: "right",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {item.priceText}
                         </div>
                       </div>
                     ))
@@ -615,7 +749,7 @@ export default function CustomerLayout() {
                       <button
                         type="button"
                         className="cust-dropdown-item"
-                        onClick={handleLogout}
+                        onClick={openLogoutConfirm}
                       >
                         <LogOut size={16} />
                         <span>Sign Out</span>
@@ -657,11 +791,12 @@ export default function CustomerLayout() {
 
       <div
         className={`cust-drawer-overlay ${
-          menuOpen || miniCartOpen ? "show" : ""
+          menuOpen || miniCartOpen || logoutConfirmOpen ? "show" : ""
         }`}
         onClick={() => {
           setMenuOpen(false);
           closeMiniCart();
+          if (logoutConfirmOpen) closeLogoutConfirm();
         }}
       />
 
@@ -865,6 +1000,99 @@ export default function CustomerLayout() {
           </>
         )}
       </aside>
+      {logoutConfirmOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 500,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "430px",
+              background: "#ffffff",
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.16)",
+              padding: "28px 28px 24px",
+              pointerEvents: "auto",
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                fontSize: "28px",
+                fontWeight: 700,
+                color: "#111111",
+                lineHeight: 1.1,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              Sign out
+            </h3>
+
+            <p
+              style={{
+                margin: "10px 0 0",
+                fontSize: "15px",
+                color: "#5f5f5f",
+                lineHeight: 1.6,
+              }}
+            >
+              Are you sure you want to sign out?
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "12px",
+                marginTop: "26px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeLogoutConfirm}
+                style={{
+                  minWidth: "108px",
+                  height: "44px",
+                  border: "1px solid #d1d5db",
+                  background: "#ffffff",
+                  color: "#111111",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: "15px",
+                }}
+              >
+                No
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                style={{
+                  minWidth: "108px",
+                  height: "44px",
+                  border: "1px solid #111111",
+                  background: "#111111",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  fontSize: "15px",
+                }}
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main
         className="cust-main"

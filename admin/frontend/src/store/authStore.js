@@ -1,56 +1,97 @@
 import { create } from "zustand";
 import api from "../services/api";
 
-const getStoredUser = () => {
+const AUTH_KEYS = ["wisdom_token", "wisdom_user", "token", "user"];
+const POS_KEYS = ["pos_token", "pos_user"];
+const REMEMBER_KEY = "wisdom_remember_me";
+
+const parseJson = (value) => {
   try {
-    return JSON.parse(localStorage.getItem("wisdom_user") || "null");
+    return JSON.parse(value || "null");
   } catch {
     return null;
   }
 };
 
-const savedUser = getStoredUser();
-const savedToken = localStorage.getItem("wisdom_token") || null;
+const getStoredUser = () =>
+  parseJson(localStorage.getItem("wisdom_user")) ||
+  parseJson(sessionStorage.getItem("wisdom_user")) ||
+  parseJson(localStorage.getItem("user")) ||
+  parseJson(sessionStorage.getItem("user"));
 
-if (savedToken) {
-  api.defaults.headers.common.Authorization = `Bearer ${savedToken}`;
-} else {
-  delete api.defaults.headers.common.Authorization;
-}
+const getStoredToken = () =>
+  localStorage.getItem("wisdom_token") ||
+  sessionStorage.getItem("wisdom_token") ||
+  localStorage.getItem("token") ||
+  sessionStorage.getItem("token") ||
+  null;
 
-const persistSession = (token, user) => {
-  localStorage.setItem("wisdom_token", token);
-  localStorage.setItem("wisdom_user", JSON.stringify(user));
+const hasLocalAuth = () =>
+  !!(
+    localStorage.getItem("wisdom_token") || localStorage.getItem("token")
+  );
+
+const getActiveStorage = () => (hasLocalAuth() ? localStorage : sessionStorage);
+
+const syncAuthHeader = (token) => {
+  if (token) {
+    api.defaults.headers.common.Authorization = `Bearer ${token}`;
+  } else {
+    delete api.defaults.headers.common.Authorization;
+  }
+};
+
+const removeKeys = (storage, keys) => {
+  keys.forEach((key) => storage.removeItem(key));
+};
+
+const persistSession = (token, user, rememberMe = false) => {
+  const targetStorage = rememberMe ? localStorage : sessionStorage;
+  const otherStorage = rememberMe ? sessionStorage : localStorage;
+
+  removeKeys(targetStorage, AUTH_KEYS);
+  removeKeys(otherStorage, AUTH_KEYS);
+
+  removeKeys(localStorage, POS_KEYS);
+  removeKeys(sessionStorage, POS_KEYS);
+
+  targetStorage.setItem("wisdom_token", token);
+  targetStorage.setItem("wisdom_user", JSON.stringify(user));
 
   // legacy/shared keys para sa ibang pages na umaasa pa dito
-  localStorage.setItem("token", token);
-  localStorage.setItem("user", JSON.stringify(user));
+  targetStorage.setItem("token", token);
+  targetStorage.setItem("user", JSON.stringify(user));
 
-  // clear old POS-only session para walang banggaan
-  localStorage.removeItem("pos_token");
-  localStorage.removeItem("pos_user");
+  localStorage.setItem(REMEMBER_KEY, rememberMe ? "true" : "false");
 
-  api.defaults.headers.common.Authorization = `Bearer ${token}`;
+  syncAuthHeader(token);
+};
+
+const persistUserOnly = (user) => {
+  const storage = getActiveStorage();
+
+  storage.setItem("wisdom_user", JSON.stringify(user));
+  storage.setItem("user", JSON.stringify(user));
 };
 
 const clearSession = () => {
-  // 1. Clear Auth Keys
-  localStorage.removeItem("wisdom_token");
-  localStorage.removeItem("wisdom_user");
-  localStorage.removeItem("token");
-  localStorage.removeItem("user");
-  localStorage.removeItem("pos_token");
-  localStorage.removeItem("pos_user");
+  removeKeys(localStorage, [...AUTH_KEYS, ...POS_KEYS]);
+  removeKeys(sessionStorage, [...AUTH_KEYS, ...POS_KEYS]);
 
-  // 👉 THE FIX: 2. Clear ALL Cart & Customization Keys
-  localStorage.removeItem("cust_cart");
+  // IMPORTANT:
+  // Huwag buburahin ang cust_cart para hindi mawala ang cart after logout/login
   sessionStorage.removeItem("cust_custom_cart");
   sessionStorage.removeItem("cust_selected_keys");
   sessionStorage.removeItem("cust_selected_custom_checkout");
   sessionStorage.removeItem("pos_cart");
 
-  delete api.defaults.headers.common.Authorization;
+  syncAuthHeader(null);
 };
+
+const savedUser = getStoredUser();
+const savedToken = getStoredToken();
+
+syncAuthHeader(savedToken);
 
 const useAuthStore = create((set, get) => ({
   user: savedUser,
@@ -61,15 +102,11 @@ const useAuthStore = create((set, get) => ({
     const nextUser =
       typeof updater === "function" ? updater(currentUser) : updater;
 
-    // Save to local storage so changes persist on refresh
-    localStorage.setItem("wisdom_user", JSON.stringify(nextUser));
-    localStorage.setItem("user", JSON.stringify(nextUser));
-
-    // Update the live React state
+    persistUserOnly(nextUser);
     set({ user: nextUser });
   },
 
-  login: async (email, password) => {
+  login: async (email, password, rememberMe = false) => {
     const cleanEmail = String(email || "").trim();
 
     try {
@@ -78,7 +115,7 @@ const useAuthStore = create((set, get) => ({
         password,
       });
 
-      persistSession(data.token, data.user);
+      persistSession(data.token, data.user, rememberMe);
 
       set({
         user: data.user,
@@ -92,7 +129,7 @@ const useAuthStore = create((set, get) => ({
         password,
       });
 
-      persistSession(data.token, data.user);
+      persistSession(data.token, data.user, rememberMe);
 
       set({
         user: data.user,
@@ -146,7 +183,7 @@ const useAuthStore = create((set, get) => ({
   },
 
   refreshMe: async () => {
-    const token = get().token || localStorage.getItem("wisdom_token");
+    const token = get().token || getStoredToken();
     const storedUser = getStoredUser();
 
     if (!token) {
@@ -155,7 +192,7 @@ const useAuthStore = create((set, get) => ({
       return null;
     }
 
-    api.defaults.headers.common.Authorization = `Bearer ${token}`;
+    syncAuthHeader(token);
 
     try {
       if (storedUser?.role === "admin" || storedUser?.role === "staff") {
@@ -170,13 +207,13 @@ const useAuthStore = create((set, get) => ({
               }
             : data;
 
-        localStorage.setItem("wisdom_user", JSON.stringify(mergedUser));
-        localStorage.setItem("user", JSON.stringify(mergedUser));
+        persistUserOnly(mergedUser);
         set({ user: mergedUser, token });
         return mergedUser;
       }
 
       if (storedUser?.role === "customer") {
+        persistUserOnly(storedUser);
         set({ user: storedUser, token });
         return storedUser;
       }

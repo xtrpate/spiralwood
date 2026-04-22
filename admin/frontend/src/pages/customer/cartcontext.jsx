@@ -146,7 +146,17 @@ const getInitialCart = () => {
     sessionStorage.getItem(LEGACY_CUSTOM_STORAGE_KEY),
   );
 
-  return mergeCartCollections(localCart, legacyCustomCart);
+  // Main source of truth na ang full local cart.
+  // Legacy custom cart is fallback lang for old sessions.
+  if (localCart.length > 0) {
+    return localCart
+      .map(normalizeCartItem)
+      .filter(Boolean);
+  }
+
+  return legacyCustomCart
+    .map(normalizeCartItem)
+    .filter(Boolean);
 };
 
 export function CartProvider({ children }) {
@@ -175,12 +185,25 @@ export function CartProvider({ children }) {
         if (cancelled) return;
 
         const cloudCart = Array.isArray(res?.data?.cart) ? res.data.cart : [];
+        const normalizedCloudCart = cloudCart
+          .map(normalizeCartItem)
+          .filter(Boolean);
 
-        setCart((currentLocalCart) =>
-          mergeCartCollections(cloudCart, currentLocalCart),
-        );
+        setCart((currentLocalCart) => {
+          const normalizedLocalCart = (Array.isArray(currentLocalCart)
+            ? currentLocalCart
+            : []
+          )
+            .map(normalizeCartItem)
+            .filter(Boolean);
 
-        // 👉 2. UNLOCK IT ONCE THE SAVED DATA ARRIVES SAFELY
+          // Kung may cloud cart, iyon ang source of truth para hindi magdoble.
+          // Kung wala pang cloud cart, gamitin muna ang local cart.
+          return normalizedCloudCart.length > 0
+            ? normalizedCloudCart
+            : normalizedLocalCart;
+        });
+
         setCloudLoaded(true);
       })
       .catch((err) => console.error("Failed to fetch cloud cart", err));

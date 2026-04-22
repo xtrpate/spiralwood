@@ -157,8 +157,8 @@ export default function DeliveryManagement() {
       return "";
     }
 
-    if (!["cash", "gcash", "bank_transfer"].includes(paymentMethod)) {
-      return "Please select a valid payment method.";
+    if (paymentMethod !== "cash") {
+      return "Cash is the only allowed payment method for rider collection.";
     }
 
     if (requireAmount && !rawAmount) {
@@ -534,23 +534,18 @@ export default function DeliveryManagement() {
 
                           <div>
                             <label style={infoLabel}>Payment Method</label>
-                            <select
-                              value={collectionForm.payment_method}
-                              onChange={(e) =>
-                                updateCollectionForm(
-                                  delivery.id,
-                                  "payment_method",
-                                  e.target.value,
-                                )
-                              }
-                              style={searchInput}
-                            >
-                              <option value="cash">Cash</option>
-                              <option value="gcash">GCash</option>
-                              <option value="bank_transfer">
-                                Bank Transfer
-                              </option>
-                            </select>
+                            <input
+                              type="text"
+                              value="Cash"
+                              readOnly
+                              style={{
+                                ...searchInput,
+                                background: "#fafafa",
+                                color: "#18181b",
+                                fontWeight: 700,
+                                cursor: "not-allowed",
+                              }}
+                            />
                           </div>
 
                           <div style={{ gridColumn: "1 / -1" }}>
@@ -588,7 +583,7 @@ export default function DeliveryManagement() {
                       <div style={proofStatusRow}>
                         <span style={proofStatusLabel}>
                           {hasReceipt
-                            ? "Proof already uploaded"
+                            ? "Proof already uploaded. Choose another file to replace it."
                             : "No proof uploaded yet"}
                         </span>
 
@@ -643,7 +638,8 @@ export default function DeliveryManagement() {
 
                       {selectedFile ? (
                         <div style={selectedFileText}>
-                          Selected file: {selectedFile.name}
+                          {hasReceipt ? "Selected replacement file: " : "Selected file: "}
+                          {selectedFile.name}
                         </div>
                       ) : null}
                     </div>
@@ -655,8 +651,9 @@ export default function DeliveryManagement() {
                             delivery,
                             nextStatus: delivery.status,
                             allowReceiptOnly: true,
-                            successMessage:
-                              "Proof of delivery uploaded successfully.",
+                            successMessage: hasReceipt
+                              ? "Proof of delivery replaced successfully."
+                              : "Proof of delivery uploaded successfully.",
                           })
                         }
                         disabled={
@@ -674,7 +671,9 @@ export default function DeliveryManagement() {
                       >
                         {savingId === delivery.id
                           ? "Saving..."
-                          : "Upload Proof"}
+                          : hasReceipt
+                            ? "Replace Proof"
+                            : "Upload Proof"}
                       </button>
 
                       <button
@@ -723,8 +722,8 @@ export default function DeliveryManagement() {
                       </div>
                     </div>
 
-                    {hasReceipt && delivery.signed_receipt ? (
-                      <div style={{ marginTop: 12 }}>
+                    <div style={{ marginTop: 12 }}>
+                      {hasReceipt && delivery.signed_receipt ? (
                         <a
                           href={buildAssetUrl(delivery.signed_receipt)}
                           target="_blank"
@@ -733,12 +732,69 @@ export default function DeliveryManagement() {
                         >
                           View Uploaded Proof
                         </a>
+                      ) : (
+                        <div style={helperText}>
+                          This older record has no uploaded proof yet.
+                        </div>
+                      )}
+
+                      <div style={{ ...proofPanel, marginTop: 12 }}>
+                        <div style={proofStatusRow}>
+                          <span style={proofStatusLabel}>
+                            {hasReceipt
+                              ? "Need to replace the uploaded proof?"
+                              : "Upload proof for this delivered record"}
+                          </span>
+                        </div>
+
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          disabled={savingId === delivery.id}
+                          onChange={(e) =>
+                            handleReceiptChange(delivery.id, e.target.files?.[0] || null)
+                          }
+                          style={{
+                            ...fileInput,
+                            opacity: savingId === delivery.id ? 0.6 : 1,
+                            cursor: savingId === delivery.id ? "not-allowed" : "pointer",
+                          }}
+                        />
+
+                        {selectedFile ? (
+                          <div style={selectedFileText}>
+                            Selected file: {selectedFile.name}
+                          </div>
+                        ) : null}
+
+                        <div style={buttonRow}>
+                          <button
+                            onClick={() =>
+                              saveDeliveryUpdate({
+                                delivery,
+                                nextStatus: "delivered",
+                                allowReceiptOnly: true,
+                                successMessage: hasReceipt
+                                  ? "Proof of delivery replaced successfully."
+                                  : "Proof of delivery uploaded successfully.",
+                              })
+                            }
+                            disabled={savingId === delivery.id || !selectedFile}
+                            style={
+                              savingId === delivery.id || !selectedFile
+                                ? btnDisabled
+                                : btnSecondary
+                            }
+                          >
+                            {savingId === delivery.id
+                              ? "Saving..."
+                              : hasReceipt
+                                ? "Replace Proof"
+                                : "Upload Proof"}
+                          </button>
+                        </div>
                       </div>
-                    ) : (
-                      <div style={helperText}>
-                        This older record has no uploaded proof yet.
-                      </div>
-                    )}
+                    </div>
                     <div
                       style={{
                         marginTop: "24px",

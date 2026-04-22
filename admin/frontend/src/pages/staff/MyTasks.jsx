@@ -71,6 +71,35 @@ const normalize = (value) =>
     .toLowerCase()
     .replace(/\s+/g, "_");
 
+const formatDateTime = (value) => {
+  if (!value) return "—";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const getSortableTimestamp = (value) => {
+  if (!value) return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const getLatestTaskTimestamp = (taskList = []) =>
+  taskList.reduce((latest, task) => {
+    const candidate = getSortableTimestamp(
+      task?.created_at || task?.assigned_at || task?.due_date,
+    );
+    return candidate > latest ? candidate : latest;
+  }, 0);
+
 const canStartStepInSequence = (steps, stepIndex) =>
   steps.slice(0, stepIndex).every((step) => step.status === "completed");
 
@@ -118,9 +147,20 @@ export default function MyTasks() {
   const updateTaskStatus = async (taskId, status) => {
     try {
       setBusyId(taskId);
-      await api.put(`/tasks/${taskId}/status`, { status });
-      toast.success("Production step updated.");
-      await loadTasks();
+
+      const { data } = await api.put(`/tasks/${taskId}/status`, { status });
+
+      setTasks((prev) =>
+        prev.map((task) =>
+          Number(task.id) === Number(taskId)
+            ? {
+                ...task,
+                ...(data?.task || {}),
+                status,
+              }
+            : task,
+        ),
+      );
     } catch (err) {
       toast.error(
         err?.response?.data?.message || "Failed to update production step.",
@@ -157,6 +197,22 @@ export default function MyTasks() {
       if (!bucket.dueDate && task.due_date) {
         bucket.dueDate = task.due_date;
       }
+
+      if (!bucket.adminNote && task.description) {
+        bucket.adminNote = task.description;
+      }
+
+      if (!bucket.assignedToName && task.assigned_to_name) {
+        bucket.assignedToName = task.assigned_to_name;
+      }
+
+      if (!bucket.assignedByName && task.assigned_by_name) {
+        bucket.assignedByName = task.assigned_by_name;
+      }
+
+      if (!bucket.deliveryAddress && task.delivery_address) {
+        bucket.deliveryAddress = task.delivery_address;
+      }
     });
 
     return Array.from(map.values())
@@ -168,6 +224,7 @@ export default function MyTasks() {
             ) || null;
 
           const status = normalize(matchedTask?.status || "pending");
+
           return {
             stepLabel,
             task: matchedTask,
@@ -205,12 +262,26 @@ export default function MyTasks() {
           ),
           overallStatus,
           readyForShipping,
+          latestTaskTimestamp: getLatestTaskTimestamp(order.rawTasks),
         };
       })
       .sort((a, b) => {
-        if (a.readyForShipping && !b.readyForShipping) return -1;
-        if (!a.readyForShipping && b.readyForShipping) return 1;
-        return String(a.orderNumber).localeCompare(String(b.orderNumber));
+        if (b.latestTaskTimestamp !== a.latestTaskTimestamp) {
+          return b.latestTaskTimestamp - a.latestTaskTimestamp;
+        }
+
+        const aOrderId = Number(a.orderId || 0);
+        const bOrderId = Number(b.orderId || 0);
+
+        if (bOrderId !== aOrderId) {
+          return bOrderId - aOrderId;
+        }
+
+        return String(b.orderNumber || "").localeCompare(
+          String(a.orderNumber || ""),
+          undefined,
+          { numeric: true, sensitivity: "base" },
+        );
       });
   }, [tasks]);
 
@@ -268,7 +339,7 @@ export default function MyTasks() {
       </div>
 
       <div style={boardCard}>
-        <div style={boardHeader}>Assigned Production Orders</div>
+        <div style={boardHeader}>Assigned Production Orders — Newest First</div>
 
         {loading ? (
           <div style={emptyState}>Loading production orders...</div>
@@ -331,12 +402,16 @@ export default function MyTasks() {
                     <Info label="Assigned To" value={order.assignedToName} />
                     <Info label="Assigned By" value={order.assignedByName} />
                     <Info
-                      label="Due Date"
+                      label="Assigned On"
                       value={
-                        order.dueDate
-                          ? new Date(order.dueDate).toLocaleString()
+                        order.latestTaskTimestamp
+                          ? formatDateTime(order.latestTaskTimestamp)
                           : "—"
                       }
+                    />
+                    <Info
+                      label="Due Date"
+                      value={order.dueDate ? formatDateTime(order.dueDate) : "—"}
                     />
                     <Info
                       label="Delivery Address"
@@ -404,19 +479,15 @@ export default function MyTasks() {
                                           )
                                         }
                                         disabled={busyId === step.task.id}
-                                        style={ghostBtn}
-                                        onMouseEnter={(e) =>
-                                          !busyId &&
-                                          (e.currentTarget.style.background =
-                                            "#e4e4e7")
-                                        }
-                                        onMouseLeave={(e) =>
-                                          !busyId &&
-                                          (e.currentTarget.style.background =
-                                            "#f4f4f5")
+                                        style={
+                                          busyId === step.task.id
+                                            ? disabledGhostBtn
+                                            : ghostBtn
                                         }
                                       >
-                                        Start
+                                        {busyId === step.task.id
+                                          ? "Saving..."
+                                          : "Start"}
                                       </button>
                                     )}
 
@@ -438,20 +509,17 @@ export default function MyTasks() {
                                           )
                                         }
                                         disabled={busyId === step.task.id}
-                                        style={successBtn}
-                                        onMouseEnter={(e) =>
-                                          !busyId &&
-                                          (e.currentTarget.style.background =
-                                            "#3f3f46")
-                                        }
-                                        onMouseLeave={(e) =>
-                                          !busyId &&
-                                          (e.currentTarget.style.background =
-                                            "#18181b")
+                                        style={
+                                          busyId === step.task.id
+                                            ? btnDisabled
+                                            : successBtn
                                         }
                                       >
-                                        Mark Done
+                                        {busyId === step.task.id
+                                          ? "Saving..."
+                                          : "Mark Done"}
                                       </button>
+
                                       <button
                                         onClick={() =>
                                           updateTaskStatus(
@@ -460,19 +528,15 @@ export default function MyTasks() {
                                           )
                                         }
                                         disabled={busyId === step.task.id}
-                                        style={dangerBtn}
-                                        onMouseEnter={(e) =>
-                                          !busyId &&
-                                          (e.currentTarget.style.background =
-                                            "#fee2e2")
-                                        }
-                                        onMouseLeave={(e) =>
-                                          !busyId &&
-                                          (e.currentTarget.style.background =
-                                            "#fef2f2")
+                                        style={
+                                          busyId === step.task.id
+                                            ? btnDisabled
+                                            : dangerBtn
                                         }
                                       >
-                                        Report Blocker
+                                        {busyId === step.task.id
+                                          ? "Saving..."
+                                          : "Report Blocker"}
                                       </button>
                                     </>
                                   )}
@@ -486,19 +550,15 @@ export default function MyTasks() {
                                         )
                                       }
                                       disabled={busyId === step.task.id}
-                                      style={ghostBtn}
-                                      onMouseEnter={(e) =>
-                                        !busyId &&
-                                        (e.currentTarget.style.background =
-                                          "#e4e4e7")
-                                      }
-                                      onMouseLeave={(e) =>
-                                        !busyId &&
-                                        (e.currentTarget.style.background =
-                                          "#f4f4f5")
+                                      style={
+                                        busyId === step.task.id
+                                          ? disabledGhostBtn
+                                          : ghostBtn
                                       }
                                     >
-                                      Resume
+                                      {busyId === step.task.id
+                                        ? "Saving..."
+                                        : "Resume"}
                                     </button>
                                   )}
                                 </div>
@@ -867,7 +927,17 @@ const ghostBtn = {
   fontWeight: 700,
   cursor: "pointer",
   fontSize: 12,
-  transition: "background 0.2s",
+};
+
+const disabledGhostBtn = {
+  background: "#f4f4f5",
+  color: "#a1a1aa",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
+  padding: "8px 14px",
+  fontWeight: 700,
+  cursor: "not-allowed",
+  fontSize: 12,
 };
 
 const successBtn = {
@@ -879,7 +949,6 @@ const successBtn = {
   fontWeight: 700,
   cursor: "pointer",
   fontSize: 12,
-  transition: "background 0.2s",
 };
 
 const dangerBtn = {
@@ -891,7 +960,17 @@ const dangerBtn = {
   fontWeight: 700,
   cursor: "pointer",
   fontSize: 12,
-  transition: "background 0.2s",
+};
+
+const btnDisabled = {
+  background: "#e4e4e7",
+  color: "#a1a1aa",
+  border: "1px solid #e4e4e7",
+  borderRadius: 8,
+  padding: "8px 14px",
+  fontWeight: 700,
+  cursor: "not-allowed",
+  fontSize: 12,
 };
 
 const sequenceHint = {

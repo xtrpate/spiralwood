@@ -422,7 +422,7 @@ exports.getOrders = async (req, res) => {
       `
       SELECT o.id, o.order_number, o.walkin_customer_name,
              o.walkin_customer_phone, o.total, o.payment_method,
-             o.status, o.created_at, r.receipt_number,
+             o.status, o.created_at, r.receipt_number, r.id AS receipt_id,
              u.name AS processed_by
       FROM orders o
       LEFT JOIN receipts r ON r.order_id = o.id
