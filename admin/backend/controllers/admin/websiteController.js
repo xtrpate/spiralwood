@@ -224,10 +224,9 @@ async function generateSQLDump(filePath) {
 
 exports.getBackupLogs = async (req, res) => {
   try {
-    // ── FIXED: Added empty array [] ──
     const [rows] = await pool.query(
       `SELECT bl.*, u.name AS triggered_by_name,
-              bl.storage_path AS file_url
+              bl.storage_path AS file_url 
        FROM backup_logs bl
        LEFT JOIN users u ON u.id = bl.triggered_by
        ORDER BY bl.created_at DESC LIMIT 50`,
@@ -237,6 +236,7 @@ exports.getBackupLogs = async (req, res) => {
       ...r,
       filename: r.file_name,
       file_size: r.file_size_kb,
+      file_url: `/backups/${r.file_name}`,
     }));
     res.json(normalized);
   } catch (err) {
