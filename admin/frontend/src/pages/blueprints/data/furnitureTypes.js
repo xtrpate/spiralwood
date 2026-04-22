@@ -583,8 +583,8 @@ const FURNITURE_TEMPLATE_TYPES = [
     d: 1500,
   },
   {
-    label: "Wooden Wardrobe ",
-    type: "template_closet_wardrobe",
+    label: "Wooden Wardrobe",
+    type: "template_wardrobe",
     category: "Furniture Templates",
     fill: "#b88a5a",
     material: "Plywood + Laminate",
