@@ -7508,7 +7508,8 @@ export default function BlueprintDesign() {
 
           <button
             onClick={() => {
-              estimatedPrice !== null ? estimatedPrice : designTotal || 0;
+              const rawPrice =
+                estimatedPrice !== null ? estimatedPrice : designTotal || 0;
               const roundedPrice = Math.round(rawPrice);
 
               setPublishForm((prev) => ({
