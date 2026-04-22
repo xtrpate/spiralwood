@@ -69,9 +69,27 @@ const PAY_STATUS_META = {
 const PAY_METHOD_LABELS = {
   cod: "Cash on delivery",
   cop: "Cash on pick-up",
-  gcash: "GCash",
+  gcash: "GCash / QR Payment",
   bank_transfer: "Bank transfer",
   cash: "Cash",
+};
+
+const PAYMENT_GUIDES = {
+  gcash: {
+    title: "GCash / QR Payment",
+    accountName: "Jericho M. Flores",
+    accountNumber: "09530695310",
+    qrImage: "/payments/qr.png",
+    note: "Scan the QR or send to this number, then upload proof of payment.",
+  },
+  bank_transfer: {
+    title: "Bank transfer",
+    note: "Bank transfer details are not configured yet. Use GCash / QR Payment for now.",
+  },
+  cash: {
+    title: "Cash",
+    note: "Coordinate with admin first before submitting cash payment proof.",
+  },
 };
 
 const resolveImageSrc = (src) => {
@@ -85,7 +103,8 @@ const resolveImageSrc = (src) => {
     raw.startsWith("blob:") ||
     raw.startsWith("/template-previews/") ||
     raw.startsWith("/images/") ||
-    raw.startsWith("/assets/")
+    raw.startsWith("/assets/") ||
+    raw.startsWith("/payments/")
   ) {
     return raw;
   }
@@ -101,7 +120,8 @@ const resolveAttachmentUrl = (src) => {
     raw.startsWith("http://") ||
     raw.startsWith("https://") ||
     raw.startsWith("data:") ||
-    raw.startsWith("blob:")
+    raw.startsWith("blob:") ||
+    raw.startsWith("/payments/")
   ) {
     return raw;
   }
@@ -321,6 +341,7 @@ export default function CustomRequestDetailPage() {
   const [previewItem, setPreviewItem] = useState(null);
   const [decisionLoading, setDecisionLoading] = useState("");
   const [downPaymentMethod, setDownPaymentMethod] = useState("gcash");
+  const [downPaymentAmount, setDownPaymentAmount] = useState("");
   const [downPaymentFile, setDownPaymentFile] = useState(null);
   const [downPaymentSubmitting, setDownPaymentSubmitting] = useState(false);
 
@@ -408,6 +429,13 @@ export default function CustomRequestDetailPage() {
     paymentSummary?.has_verified_down_payment,
   );
 
+  const verifiedDownPaymentTotal = Number(paymentSummary?.total_verified || 0);
+  const pendingDownPaymentTotal = Number(paymentSummary?.total_pending || 0);
+  const remainingVerifiedBalance = Math.max(
+    downPaymentDue - verifiedDownPaymentTotal,
+    0,
+  );
+
   const canDecideOnQuote =
     String(latestEstimation?.status || "")
       .trim()
@@ -417,8 +445,37 @@ export default function CustomRequestDetailPage() {
     String(latestEstimation?.status || "")
       .trim()
       .toLowerCase() === "approved" &&
-    !hasPendingDownPayment &&
     !hasVerifiedDownPayment;
+
+  useEffect(() => {
+    if (
+      String(latestEstimation?.status || "").trim().toLowerCase() === "approved" &&
+      !hasVerifiedDownPayment &&
+      !downPaymentAmount
+    ) {
+      setDownPaymentAmount(
+        remainingVerifiedBalance > 0
+          ? remainingVerifiedBalance.toFixed(2)
+          : "",
+      );
+    }
+  }, [
+    latestEstimation?.status,
+    hasVerifiedDownPayment,
+    remainingVerifiedBalance,
+    downPaymentAmount,
+  ]);
+  
+  const activePaymentGuide =
+    PAYMENT_GUIDES[downPaymentMethod] || PAYMENT_GUIDES.gcash;
+
+  const displayPaymentMethod =
+    !latestPayment &&
+    String(requestData?.payment_status || "").trim().toLowerCase() === "unpaid"
+      ? "To be selected upon payment"
+      : PAY_METHOD_LABELS[requestData?.payment_method] ||
+        requestData?.payment_method ||
+        "—";
 
   const previewBlueprint = useMemo(
     () => (previewItem ? buildPreviewBlueprint(previewItem) : null),
@@ -483,6 +540,22 @@ export default function CustomRequestDetailPage() {
 
     if (!requestData?.id) return;
 
+    const numericAmount = Number(downPaymentAmount);
+
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      toast.error("Enter a valid payment amount first.");
+      return;
+    }
+
+    if (numericAmount > remainingVerifiedBalance) {
+      toast.error(
+        `Amount cannot exceed the remaining required verified balance of ${formatMoney(
+          remainingVerifiedBalance,
+        )}.`,
+      );
+      return;
+    }
+
     if (!downPaymentFile) {
       toast.error("Upload your proof of payment first.");
       return;
@@ -490,6 +563,7 @@ export default function CustomRequestDetailPage() {
 
     const formData = new FormData();
     formData.append("payment_method", downPaymentMethod);
+    formData.append("amount", String(numericAmount));
     formData.append("proof", downPaymentFile);
 
     setDownPaymentSubmitting(true);
@@ -506,7 +580,8 @@ export default function CustomRequestDetailPage() {
 
       await loadRequestDetail(false);
       setDownPaymentFile(null);
-      toast.success("30% down payment proof submitted successfully.");
+      setDownPaymentAmount("");
+      toast.success("Down payment proof submitted successfully.");
     } catch (err) {
       toast.error(
         err.response?.data?.message ||
@@ -659,9 +734,7 @@ export default function CustomRequestDetailPage() {
                     </div>
 
                     <DetailValue label="Payment method">
-                      {PAY_METHOD_LABELS[requestData.payment_method] ||
-                        requestData.payment_method ||
-                        "—"}
+                      {displayPaymentMethod}
                     </DetailValue>
 
                     <DetailValue label="Quoted total">
@@ -837,8 +910,16 @@ export default function CustomRequestDetailPage() {
                         <DetailValue label="Remaining balance">
                           {formatMoney(
                             paymentSummary?.balance_due ||
-                              Math.max(quotedTotal - downPaymentDue, 0),
+                              Math.max(quotedTotal - verifiedDownPaymentTotal, 0),
                           )}
+                        </DetailValue>
+
+                        <DetailValue label="Verified down payment">
+                          {formatMoney(verifiedDownPaymentTotal || 0)}
+                        </DetailValue>
+
+                        <DetailValue label="Pending submissions">
+                          {formatMoney(pendingDownPaymentTotal || 0)}
                         </DetailValue>
 
                         <p className="crd-panel-copy muted">
@@ -877,54 +958,123 @@ export default function CustomRequestDetailPage() {
                           <div className="crd-info-box success">
                             Your down payment is already verified.
                           </div>
-                        ) : hasPendingDownPayment ? (
-                          <div className="crd-info-box pending">
-                            Your payment proof has already been submitted and is
-                            waiting for verification.
-                          </div>
                         ) : canSubmitDownPayment ? (
-                          <form onSubmit={handleSubmitDownPayment} className="crd-form-grid">
-                            <label className="crd-field-label">
-                              Payment method
-                            </label>
+                          <>
+                            {hasPendingDownPayment ? (
+                              <div className="crd-info-box pending">
+                                You already have pending payment submission(s). You may still send
+                                another proof if you are splitting the payment or correcting a previous
+                                upload. Admin will review each submission separately.
+                              </div>
+                            ) : null}
 
-                            <select
-                              value={downPaymentMethod}
-                              onChange={(e) =>
-                                setDownPaymentMethod(e.target.value)
-                              }
-                              className="crd-control"
-                            >
-                              <option value="gcash">GCash</option>
-                              <option value="bank_transfer">Bank transfer</option>
-                              <option value="cash">Cash</option>
-                            </select>
+                            <form onSubmit={handleSubmitDownPayment} className="crd-form-grid">
+                              <label className="crd-field-label">
+                                Payment method
+                              </label>
 
-                            <label className="crd-field-label">
-                              Upload payment proof
-                            </label>
+                              <select
+                                value={downPaymentMethod}
+                                onChange={(e) =>
+                                  setDownPaymentMethod(e.target.value)
+                                }
+                                className="crd-control"
+                              >
+                                <option value="gcash">GCash</option>
+                                <option value="cash">Cash</option>
+                              </select>
 
-                            <input
-                              type="file"
-                              accept=".jpg,.jpeg,.png,.pdf"
-                              onChange={(e) =>
-                                setDownPaymentFile(e.target.files?.[0] || null)
-                              }
-                              className="crd-file-input"
-                            />
+                              <div className="crd-payment-guide">
+                                <div className="crd-payment-guide-head">
+                                  {activePaymentGuide.title}
+                                </div>
 
-                            <button
-                              type="submit"
-                              className="btn btn-primary"
-                              disabled={downPaymentSubmitting}
-                            >
-                              {downPaymentSubmitting
-                                ? "Submitting..."
-                                : `Submit ${formatMoney(
-                                    downPaymentDue || 0,
-                                  )} payment`}
-                            </button>
-                          </form>
+                                {downPaymentMethod === "gcash" ? (
+                                  <>
+                                    <div className="crd-payment-guide-copy">
+                                      <div className="crd-payment-guide-row">
+                                        <span>Account name</span>
+                                        <strong>{activePaymentGuide.accountName}</strong>
+                                      </div>
+
+                                      <div className="crd-payment-guide-row">
+                                        <span>GCash number</span>
+                                        <strong>{activePaymentGuide.accountNumber}</strong>
+                                      </div>
+
+                                      <div className="crd-payment-guide-row">
+                                        <span>Remaining required amount</span>
+                                        <strong>{formatMoney(remainingVerifiedBalance || 0)}</strong>
+                                      </div>
+                                    </div>
+
+                                    <div className="crd-payment-qr-wrap">
+                                      <img
+                                        src={resolveImageSrc(activePaymentGuide.qrImage)}
+                                        alt="GCash QR code"
+                                        className="crd-payment-qr"
+                                        onError={(e) => {
+                                          e.currentTarget.style.display = "none";
+                                        }}
+                                      />
+                                    </div>
+
+                                    <div className="crd-help-text" style={{ marginTop: 0 }}>
+                                      {activePaymentGuide.note}
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="crd-info-box muted" style={{ marginTop: 0 }}>
+                                    {PAYMENT_GUIDES.cash.note}
+                                  </div>
+                                )}
+                              </div>
+
+                              <label className="crd-field-label">
+                                Payment amount
+                              </label>
+
+                              <input
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                value={downPaymentAmount}
+                                onChange={(e) => setDownPaymentAmount(e.target.value)}
+                                className="crd-control"
+                                placeholder="Enter amount you are submitting now"
+                              />
+
+                              <div className="crd-help-text" style={{ marginTop: -6 }}>
+                                You may submit the required 30% down payment in multiple sends, as long
+                                as the verified total does not exceed the required amount.
+                              </div>
+
+                              <label className="crd-field-label">
+                                Upload payment proof
+                              </label>
+
+                              <input
+                                type="file"
+                                accept=".jpg,.jpeg,.png,.pdf"
+                                onChange={(e) =>
+                                  setDownPaymentFile(e.target.files?.[0] || null)
+                                }
+                                className="crd-file-input"
+                              />
+
+                              <button
+                                type="submit"
+                                className="btn btn-primary"
+                                disabled={downPaymentSubmitting}
+                              >
+                                {downPaymentSubmitting
+                                  ? "Submitting..."
+                                  : `Submit ${formatMoney(
+                                      Number(downPaymentAmount || 0),
+                                    )} payment`}
+                              </button>
+                            </form>
+                          </>
                         ) : (
                           <div className="crd-info-box muted">
                             Approve the quotation first before submitting the
@@ -1302,11 +1452,7 @@ export default function CustomRequestDetailPage() {
 
                 <div className="summary-row">
                   <span>Payment method</span>
-                  <span>
-                    {PAY_METHOD_LABELS[requestData.payment_method] ||
-                      requestData.payment_method ||
-                      "—"}
-                  </span>
+                  <span>{displayPaymentMethod}</span>
                 </div>
 
                 <div className="summary-row">

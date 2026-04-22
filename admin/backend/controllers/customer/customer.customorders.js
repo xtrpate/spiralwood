@@ -498,7 +498,7 @@ exports.createCustomOrder = async (req, res) => {
         req.user.id,
         String(name).trim(),
         String(phone).trim(),
-        toAllowedBlueprintPaymentMethod(payment_method) || "bank_transfer",
+        toAllowedBlueprintPaymentMethod(payment_method) || "gcash",
         delivery_address ? String(delivery_address).trim() : null,
         notes ? String(notes).trim() : null,
       ],
@@ -1305,6 +1305,7 @@ exports.submitDownPayment = async (req, res) => {
     req.body?.payment_method,
   );
   const txPaymentMethod = toPaymentTransactionMethod(req.body?.payment_method);
+  const submittedAmount = roundMoney(req.body?.amount || 0);
   const proofUrl = req.file ? `/uploads/proofs/${req.file.filename}` : null;
 
   if (!orderId) {
@@ -1320,6 +1321,12 @@ exports.submitDownPayment = async (req, res) => {
   if (!proofUrl) {
     return res.status(400).json({
       message: "Upload your proof of payment for the 30% down payment.",
+    });
+  }
+
+  if (!(submittedAmount > 0)) {
+    return res.status(400).json({
+      message: "Enter a valid payment amount for this submission.",
     });
   }
 
@@ -1379,14 +1386,10 @@ exports.submitDownPayment = async (req, res) => {
 
     const [paymentRows] = await conn.execute(
       `SELECT id, amount, status
-       FROM payment_transactions
-       WHERE order_id = ?
-       ORDER BY id DESC`,
+      FROM payment_transactions
+      WHERE order_id = ?
+      ORDER BY id DESC`,
       [order.id],
-    );
-
-    const hasPendingSubmission = paymentRows.some(
-      (row) => normalize(row.status) === "pending",
     );
 
     const totalVerifiedPayments = roundMoney(
@@ -1395,14 +1398,6 @@ exports.submitDownPayment = async (req, res) => {
         .reduce((sum, row) => sum + Number(row.amount || 0), 0),
     );
 
-    if (hasPendingSubmission) {
-      await conn.rollback();
-      return res.status(400).json({
-        message:
-          "You already have a pending down payment submission for admin review.",
-      });
-    }
-
     if (totalVerifiedPayments + 0.0001 >= requiredDownPayment) {
       await conn.rollback();
       return res.status(400).json({
@@ -1410,16 +1405,27 @@ exports.submitDownPayment = async (req, res) => {
       });
     }
 
+    const remainingVerifiedBalance = roundMoney(
+      Math.max(requiredDownPayment - totalVerifiedPayments, 0),
+    );
+
+    if (submittedAmount - remainingVerifiedBalance > 0.0001) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: `Submitted amount cannot exceed the remaining required verified balance of ₱${remainingVerifiedBalance.toFixed(2)}.`,
+      });
+    }
+
     await conn.execute(
       `INSERT INTO payment_transactions
         (order_id, amount, payment_method, proof_url, status, notes)
-       VALUES (?, ?, ?, ?, 'pending', ?)`,
+      VALUES (?, ?, ?, ?, 'pending', ?)`,
       [
         order.id,
-        requiredDownPayment,
+        submittedAmount,
         txPaymentMethod,
         proofUrl,
-        "30% down payment for custom blueprint order.",
+        "Customer submitted down payment proof for custom blueprint order.",
       ],
     );
 
@@ -1452,8 +1458,9 @@ exports.submitDownPayment = async (req, res) => {
     await conn.commit();
 
     return res.json({
-      message: "30% down payment proof submitted successfully.",
-      down_payment: requiredDownPayment,
+      message: "Down payment proof submitted successfully.",
+      submitted_amount: submittedAmount,
+      remaining_required: remainingVerifiedBalance,
       proof_url: proofUrl,
     });
   } catch (err) {
