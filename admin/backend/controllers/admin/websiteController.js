@@ -237,6 +237,7 @@ exports.getBackupLogs = async (req, res) => {
       filename: r.file_name,
       file_size: r.file_size_kb,
       file_url: `https://wisdom-ov31.onrender.com/backups/${r.file_name}`,
+      triggered_by: r.triggered_by_name || "System",
     }));
     res.json(normalized);
   } catch (err) {
