@@ -817,7 +817,7 @@ exports.getAll = async (req, res) => {
     }
 
     if (tab === "imports") {
-      where.push('b.source = "imported" AND b.is_deleted = 0');
+      where.push("b.source = 'imported' AND b.is_deleted = 0");
     }
 
     if (tab === "gallery") {
