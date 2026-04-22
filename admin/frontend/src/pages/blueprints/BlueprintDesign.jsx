@@ -7508,8 +7508,7 @@ export default function BlueprintDesign() {
 
           <button
             onClick={() => {
-              const rawPrice =
-                estimatedPrice !== null ? estimatedPrice : designTotal || 0;
+              estimatedPrice !== null ? estimatedPrice : designTotal || 0;
               const roundedPrice = Math.round(rawPrice);
 
               setPublishForm((prev) => ({
@@ -7517,8 +7516,7 @@ export default function BlueprintDesign() {
                 name: blueprint?.title || "",
                 description:
                   blueprint?.description || "Custom 3D designed product.",
-                online_price:
-                  estimatedPrice !== null ? estimatedPrice : designTotal || 0,
+                online_price: roundedPrice,
               }));
               setPublishModal(true);
             }}
