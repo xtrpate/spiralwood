@@ -247,7 +247,6 @@ exports.getBackupLogs = async (req, res) => {
 
 exports.triggerManualBackup = async (req, res) => {
   try {
-    // 👉 FIX 3: Go up TWO levels so it saves in the main root /backups folder!
     const backupDir =
       process.env.BACKUP_DIR || path.join(__dirname, "../../backups");
     const absDir = path.isAbsolute(backupDir)
@@ -260,7 +259,33 @@ exports.triggerManualBackup = async (req, res) => {
     const fileName = `wisdom_backup_manual_${timestamp}.sql`;
     const filePath = path.join(absDir, fileName);
 
-    // ... (keep all the backup generation and SQL INSERT code exactly the same here) ...
+    // 👉 This is the variable that went missing!
+    let backupError = null;
+    let sizeKb = 0;
+
+    try {
+      await generateSQLDump(filePath);
+      sizeKb = fs.existsSync(filePath)
+        ? Math.round(fs.statSync(filePath).size / 1024)
+        : 0;
+    } catch (e) {
+      backupError = e.message;
+    }
+
+    const status = backupError ? "failed" : "success";
+
+    await pool.query(
+      `INSERT INTO backup_logs (type, triggered_by, file_name, file_size_kb, storage_path, status, notes)
+       VALUES ('manual', ?, ?, ?, ?, ?, ?)`,
+      [
+        parseInt(req.user.id),
+        fileName,
+        sizeKb,
+        filePath,
+        status,
+        backupError || null,
+      ],
+    );
 
     if (backupError) {
       return res.status(500).json({ message: "Backup failed: " + backupError });
@@ -270,7 +295,6 @@ exports.triggerManualBackup = async (req, res) => {
       message: "Backup completed successfully.",
       file: fileName,
       size_kb: sizeKb,
-      // 👉 FIX 4: Make sure the immediate download button works too!
       file_url: `https://wisdom-ov31.onrender.com/backups/${fileName}`,
     });
   } catch (err) {
