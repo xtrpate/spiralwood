@@ -24,10 +24,10 @@ async function wipeDatabase() {
       "cart_items",
       "custom_cart_items",
       "reviews",
-      // 👉 NEW: Completely wipe ALL blueprints, components, and revision history!
       "blueprint_revisions",
       "blueprint_components",
       "blueprints",
+      "receipts",
     ];
 
     for (const table of tablesToTruncate) {

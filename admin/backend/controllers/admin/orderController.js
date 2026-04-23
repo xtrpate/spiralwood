@@ -6,6 +6,7 @@ const normalize = (value) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "_");
+
 function normalizeTaskRole(value) {
   return String(value || "")
     .trim()
@@ -1097,6 +1098,16 @@ exports.updateStatus = async (req, res) => {
       [nextStatus, parseInt(req.params.id)],
     );
 
+    // 👉 NEW: Automatically sync the Rider's delivery status
+    if (nextStatus === "completed" || nextStatus === "cancelled") {
+      await conn.query(
+        `UPDATE deliveries
+         SET status = ?
+         WHERE order_id = ?`,
+        [nextStatus, parseInt(req.params.id)],
+      );
+    }
+
     await conn.commit();
 
     res.json({
@@ -1779,11 +1790,11 @@ exports.getOrderDiscussion = async (req, res) => {
           m.created_at,
           m.updated_at,
           u.name AS sender_name
-       FROM custom_order_messages m
-       LEFT JOIN users u
-         ON u.id = m.sender_id
-       WHERE m.order_id = ?
-       ORDER BY m.created_at ASC, m.id ASC`,
+        FROM custom_order_messages m
+        LEFT JOIN users u
+          ON u.id = m.sender_id
+        WHERE m.order_id = ?
+        ORDER BY m.created_at ASC, m.id ASC`,
       [orderId],
     );
 
@@ -1801,9 +1812,9 @@ exports.getOrderDiscussion = async (req, res) => {
           file_size,
           attachment_type,
           created_at
-       FROM custom_order_attachments
-       WHERE order_id = ?
-       ORDER BY created_at ASC, id ASC`,
+        FROM custom_order_attachments
+        WHERE order_id = ?
+        ORDER BY created_at ASC, id ASC`,
       [orderId],
     );
 
