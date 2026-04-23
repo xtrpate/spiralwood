@@ -1,5 +1,5 @@
 require("dotenv").config();
-const pool = require("./config/db"); // Make sure this path points to your db.js
+const pool = require("./config/db");
 
 async function wipeDatabase() {
   try {
@@ -8,7 +8,7 @@ async function wipeDatabase() {
     // 1. Temporarily disable Foreign Key Checks so MySQL doesn't block the deletions
     await pool.query("SET FOREIGN_KEY_CHECKS = 0;");
 
-    // 2. Wipe all transaction-related tables and reset their ID counters to 1
+    // 2. Wipe all transaction and blueprint tables and reset their ID counters to 1
     const tablesToTruncate = [
       "custom_order_attachments",
       "custom_order_messages",
@@ -24,6 +24,10 @@ async function wipeDatabase() {
       "cart_items",
       "custom_cart_items",
       "reviews",
+      // 👉 NEW: Completely wipe ALL blueprints, components, and revision history!
+      "blueprint_revisions",
+      "blueprint_components",
+      "blueprints",
     ];
 
     for (const table of tablesToTruncate) {
@@ -58,7 +62,7 @@ async function wipeDatabase() {
     await pool.query("SET FOREIGN_KEY_CHECKS = 1;");
 
     console.log(
-      "\n🎉 SUCCESS! All customer accounts, transactions, contracts, and appointments have been completely wiped.",
+      "\n🎉 SUCCESS! All customer accounts, transactions, and ALL blueprints have been completely wiped.",
     );
     process.exit(0);
   } catch (error) {

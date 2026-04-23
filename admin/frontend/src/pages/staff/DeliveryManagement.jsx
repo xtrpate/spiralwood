@@ -334,10 +334,16 @@ export default function DeliveryManagement() {
             const statusMeta = getStatusMeta(status);
             const selectedFile = receiptFiles[delivery.id] || null;
             const hasReceipt = Boolean(delivery.signed_receipt);
+
+            // 👉 NEW: Added isCompleted boolean
             const canStartTransit = status === "scheduled";
             const canCompleteDelivery = status === "in_transit";
             const isDelivered = status === "delivered";
+            const isCompleted = status === "completed";
             const isFailed = status === "failed";
+
+            // 👉 NEW: Summary should show for both Delivered AND Completed
+            const showSummary = isDelivered || isCompleted;
 
             const paymentBalance = Number(delivery.payment_balance || 0);
             const collectionForm = getCollectionForm(delivery);
@@ -366,12 +372,14 @@ export default function DeliveryManagement() {
                 (!hasCollectedAmountValue ||
                   collectedAmountInvalid ||
                   collectedAmountExceedsBalance));
+
             const canUploadProof =
               !canCompleteDelivery ||
               !hasOutstandingBalance ||
               (hasCollectedAmountValue &&
                 !collectedAmountInvalid &&
                 !collectedAmountExceedsBalance);
+
             return (
               <div
                 key={delivery.id}
@@ -638,44 +646,15 @@ export default function DeliveryManagement() {
 
                       {selectedFile ? (
                         <div style={selectedFileText}>
-                          {hasReceipt ? "Selected replacement file: " : "Selected file: "}
+                          {hasReceipt
+                            ? "Selected replacement file: "
+                            : "Selected file: "}
                           {selectedFile.name}
                         </div>
                       ) : null}
                     </div>
 
                     <div style={buttonRow}>
-                      <button
-                        onClick={() =>
-                          saveDeliveryUpdate({
-                            delivery,
-                            nextStatus: delivery.status,
-                            allowReceiptOnly: true,
-                            successMessage: hasReceipt
-                              ? "Proof of delivery replaced successfully."
-                              : "Proof of delivery uploaded successfully.",
-                          })
-                        }
-                        disabled={
-                          savingId === delivery.id ||
-                          !selectedFile ||
-                          !canUploadProof
-                        }
-                        style={
-                          savingId === delivery.id ||
-                          !selectedFile ||
-                          !canUploadProof
-                            ? btnDisabled
-                            : btnSecondary
-                        }
-                      >
-                        {savingId === delivery.id
-                          ? "Saving..."
-                          : hasReceipt
-                            ? "Replace Proof"
-                            : "Upload Proof"}
-                      </button>
-
                       <button
                         onClick={() =>
                           saveDeliveryUpdate({
@@ -699,11 +678,14 @@ export default function DeliveryManagement() {
                   </div>
                 )}
 
-                {isDelivered && (
+                {/* 👉 NEW: showSummary covers both Delivered and Completed statuses */}
+                {showSummary && (
                   <div style={actionSection}>
                     <div style={sectionTitle}>Delivery Summary</div>
                     <div style={helperText}>
-                      This delivery has already been completed.
+                      {isCompleted
+                        ? "This order has been officially verified and completed by the admin."
+                        : "This delivery has been dropped off. Waiting for admin verification."}
                     </div>
 
                     <div style={summaryRow}>
@@ -738,102 +720,118 @@ export default function DeliveryManagement() {
                         </div>
                       )}
 
-                      <div style={{ ...proofPanel, marginTop: 12 }}>
-                        <div style={proofStatusRow}>
-                          <span style={proofStatusLabel}>
-                            {hasReceipt
-                              ? "Need to replace the uploaded proof?"
-                              : "Upload proof for this delivered record"}
-                          </span>
-                        </div>
+                      {/* 👉 NEW: The entire upload and Undo section is strictly hidden if Completed */}
+                      {isDelivered && (
+                        <>
+                          <div style={{ ...proofPanel, marginTop: 12 }}>
+                            <div style={proofStatusRow}>
+                              <span style={proofStatusLabel}>
+                                {hasReceipt
+                                  ? "Need to replace the uploaded proof?"
+                                  : "Upload proof for this delivered record"}
+                              </span>
+                            </div>
 
-                        <input
-                          type="file"
-                          accept="image/*,.pdf"
-                          disabled={savingId === delivery.id}
-                          onChange={(e) =>
-                            handleReceiptChange(delivery.id, e.target.files?.[0] || null)
-                          }
-                          style={{
-                            ...fileInput,
-                            opacity: savingId === delivery.id ? 0.6 : 1,
-                            cursor: savingId === delivery.id ? "not-allowed" : "pointer",
-                          }}
-                        />
+                            <input
+                              type="file"
+                              accept="image/*,.pdf"
+                              disabled={savingId === delivery.id}
+                              onChange={(e) =>
+                                handleReceiptChange(
+                                  delivery.id,
+                                  e.target.files?.[0] || null,
+                                )
+                              }
+                              style={{
+                                ...fileInput,
+                                opacity: savingId === delivery.id ? 0.6 : 1,
+                                cursor:
+                                  savingId === delivery.id
+                                    ? "not-allowed"
+                                    : "pointer",
+                              }}
+                            />
 
-                        {selectedFile ? (
-                          <div style={selectedFileText}>
-                            Selected file: {selectedFile.name}
+                            {selectedFile ? (
+                              <div style={selectedFileText}>
+                                Selected file: {selectedFile.name}
+                              </div>
+                            ) : null}
+
+                            <div style={buttonRow}>
+                              <button
+                                onClick={() =>
+                                  saveDeliveryUpdate({
+                                    delivery,
+                                    nextStatus: "delivered",
+                                    allowReceiptOnly: true,
+                                    successMessage: hasReceipt
+                                      ? "Proof of delivery replaced successfully."
+                                      : "Proof of delivery uploaded successfully.",
+                                  })
+                                }
+                                disabled={
+                                  savingId === delivery.id || !selectedFile
+                                }
+                                style={
+                                  savingId === delivery.id || !selectedFile
+                                    ? btnDisabled
+                                    : btnSecondary
+                                }
+                              >
+                                {savingId === delivery.id
+                                  ? "Saving..."
+                                  : hasReceipt
+                                    ? "Replace Proof"
+                                    : "Upload Proof"}
+                              </button>
+                            </div>
                           </div>
-                        ) : null}
 
-                        <div style={buttonRow}>
-                          <button
-                            onClick={() =>
-                              saveDeliveryUpdate({
-                                delivery,
-                                nextStatus: "delivered",
-                                allowReceiptOnly: true,
-                                successMessage: hasReceipt
-                                  ? "Proof of delivery replaced successfully."
-                                  : "Proof of delivery uploaded successfully.",
-                              })
-                            }
-                            disabled={savingId === delivery.id || !selectedFile}
-                            style={
-                              savingId === delivery.id || !selectedFile
-                                ? btnDisabled
-                                : btnSecondary
-                            }
+                          <div
+                            style={{
+                              marginTop: "24px",
+                              paddingTop: "16px",
+                              borderTop: "1px dashed #e4e4e7",
+                            }}
                           >
-                            {savingId === delivery.id
-                              ? "Saving..."
-                              : hasReceipt
-                                ? "Replace Proof"
-                                : "Upload Proof"}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        marginTop: "24px",
-                        paddingTop: "16px",
-                        borderTop: "1px dashed #e4e4e7",
-                      }}
-                    >
-                      <div style={sectionTitle}>Need Corrections?</div>
-                      <div style={helperText}>
-                        If you accidentally marked this as delivered, you can
-                        undo it to correct the collection amount or proof of
-                        delivery.
-                      </div>
-                      <div style={buttonRow}>
-                        <button
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                "Are you sure you want to undo this delivery? It will be moved back to 'In Transit'.",
-                              )
-                            ) {
-                              saveDeliveryUpdate({
-                                delivery,
-                                nextStatus: "in_transit",
-                                successMessage:
-                                  "Delivery reverted to In Transit successfully.",
-                              });
-                            }
-                          }}
-                          disabled={savingId === delivery.id}
-                          style={
-                            savingId === delivery.id ? btnDisabled : btnUndo
-                          }
-                        >
-                          {savingId === delivery.id
-                            ? "Undoing..."
-                            : "Undo Delivery"}
-                        </button>
-                      </div>
+                            <div style={sectionTitle}>Need Corrections?</div>
+                            <div style={helperText}>
+                              If you accidentally marked this as delivered, you
+                              can undo it to correct the collection amount or
+                              proof of delivery.
+                            </div>
+                            <div style={buttonRow}>
+                              <button
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      "Are you sure you want to undo this delivery? It will be moved back to 'In Transit'.",
+                                    )
+                                  ) {
+                                    saveDeliveryUpdate({
+                                      delivery,
+                                      nextStatus: "in_transit",
+                                      successMessage:
+                                        "Delivery reverted to In Transit successfully.",
+                                    });
+                                  }
+                                }}
+                                disabled={savingId === delivery.id}
+                                style={
+                                  savingId === delivery.id
+                                    ? btnDisabled
+                                    : btnUndo
+                                }
+                              >
+                                {savingId === delivery.id
+                                  ? "Undoing..."
+                                  : "Undo Delivery"}
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
