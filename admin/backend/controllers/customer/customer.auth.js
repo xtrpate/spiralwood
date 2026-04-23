@@ -187,6 +187,7 @@ const sendResetOtpEmail = async (email, otp, name) => {
       "CRITICAL: Failed to send password reset email.",
       err.message,
     );
+    throw new Error("RESET_EMAIL_FAILED");
   }
 };
 
@@ -418,8 +419,6 @@ exports.forgotPassword = async (req, res) => {
 
   try {
     const normalizedEmail = String(email).trim().toLowerCase();
-    const genericMessage =
-      "If the account exists, a password reset code has been sent to the email address.";
 
     const [rows] = await db.query(
       `
@@ -432,13 +431,23 @@ exports.forgotPassword = async (req, res) => {
     );
 
     if (rows.length === 0) {
-      return res.json({ message: genericMessage });
+      return res.status(404).json({
+        message: "No account found with that email address.",
+      });
     }
 
     const user = rows[0];
 
-    if (!user.is_verified || !user.is_active) {
-      return res.json({ message: genericMessage });
+    if (!user.is_verified) {
+      return res.status(403).json({
+        message: "This email is not yet verified. Please verify your account first.",
+      });
+    }
+
+    if (!user.is_active) {
+      return res.status(403).json({
+        message: "This account is inactive. Please contact support.",
+      });
     }
 
     const resetOtp = generateOtp();
@@ -458,9 +467,18 @@ exports.forgotPassword = async (req, res) => {
     const firstName = user.name ? user.name.split(" ")[0] : "Customer";
     await sendResetOtpEmail(normalizedEmail, resetOtp, firstName);
 
-    return res.json({ message: genericMessage });
+    return res.json({
+      message: "We sent a 6-digit password reset code to your email.",
+    });
   } catch (err) {
     console.error("[forgot-password]", err);
+
+    if (err.message === "RESET_EMAIL_FAILED") {
+      return res.status(500).json({
+        message: "We couldn't send the reset code email. Please try again.",
+      });
+    }
+
     return res.status(500).json({
       message: "Server error",
       error: err.message,
