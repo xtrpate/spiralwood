@@ -231,7 +231,6 @@ exports.getDashboard = async (req, res) => {
     };
 
     // ── 2. CURRENT OPS & ORDERS ──
-    // Uses INTERVAL 8 HOUR to fix Aiven UTC Timezone mismatch
     const [[currentOpsDate]] = await pool.query(
       `
       SELECT
@@ -249,7 +248,7 @@ exports.getDashboard = async (req, res) => {
       dateParams,
     );
 
-    // All-time Open Queue (Ignores date filter so things don't suddenly disappear)
+    // All-time Open Queue (Ignores date filter)
     const [[currentOpsAllTime]] = await pool.query(`
       SELECT
         COALESCE(SUM(status NOT IN ('completed', 'cancelled')), 0) AS open_orders,
@@ -259,14 +258,14 @@ exports.getDashboard = async (req, res) => {
 
     const currentOps = { ...currentOpsDate, ...currentOpsAllTime };
 
-    // ── 3. SALES & REVENUE ──
+    // ── 3. SALES & REVENUE (Strictly using `type` for online/walkin) ──
     const [[salesTotals]] = await pool.query(
       `
       SELECT
         COALESCE(SUM(o.total), 0) AS total_revenue,
         COALESCE(AVG(o.total), 0) AS avg_order_value,
-        COALESCE(SUM(o.type = 'online' OR o.channel = 'online'), 0) AS online_orders,
-        COALESCE(SUM(o.type = 'walkin' OR o.type = 'walk-in' OR o.channel = 'walkin'), 0) AS walkin_orders
+        COALESCE(SUM(o.type = 'online'), 0) AS online_orders,
+        COALESCE(SUM(o.type = 'walkin'), 0) AS walkin_orders
       FROM orders o
       WHERE o.status != 'cancelled'
         AND DATE(DATE_ADD(o.created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
@@ -307,21 +306,25 @@ exports.getDashboard = async (req, res) => {
       payments = paymentRows;
     } catch (e) {}
 
-    // ── 5. BLUEPRINT PIPELINE (All-time queue) ──
-    const [[blueprint]] = await pool.query(`
+    // ── 5. BLUEPRINT PIPELINE (Strictly using order_type and valid statuses) ──
+    const [[blueprintDbRows]] = await pool.query(`
       SELECT
         COUNT(*) AS total_blueprint_orders,
         COALESCE(SUM(status = 'pending'), 0) AS pending_custom_review,
-        COALESCE(SUM(status = 'estimation'), 0) AS estimate_drafting,
-        COALESCE(SUM(status = 'approval'), 0) AS quotation_waiting,
-        COALESCE(SUM(status = 'approved'), 0) AS quotation_approved,
+        COALESCE(SUM(status = 'confirmed'), 0) AS quotation_approved,
         COALESCE(SUM(status = 'contract_released'), 0) AS contract_released,
         COALESCE(SUM(status = 'production'), 0) AS in_production,
         COALESCE(SUM(status IN ('shipping', 'delivered')), 0) AS ready_for_dispatch,
         COALESCE(SUM(status = 'completed'), 0) AS completed_blueprint_orders
       FROM orders
-      WHERE order_type = 'blueprint' OR type = 'blueprint' OR blueprint_id IS NOT NULL
+      WHERE order_type = 'blueprint' OR blueprint_id IS NOT NULL
     `);
+
+    const blueprint = {
+      ...blueprintDbRows,
+      estimate_drafting: 0, // Fallbacks for frontend so it doesn't crash
+      quotation_waiting: 0,
+    };
 
     // ── 6. CHARTS & RECENT ──
     let rawChartRows = [];
@@ -331,8 +334,8 @@ exports.getDashboard = async (req, res) => {
         `
         SELECT
           DATE_FORMAT(DATE_ADD(created_at, INTERVAL 8 HOUR), '%Y-%m') AS bucket,
-          COALESCE(SUM(CASE WHEN type = 'online' OR channel = 'online' THEN total ELSE 0 END), 0) AS online_sales,
-          COALESCE(SUM(CASE WHEN type = 'walkin' OR type = 'walk-in' OR channel = 'walkin' THEN total ELSE 0 END), 0) AS walkin_sales
+          COALESCE(SUM(CASE WHEN type = 'online' THEN total ELSE 0 END), 0) AS online_sales,
+          COALESCE(SUM(CASE WHEN type = 'walkin' THEN total ELSE 0 END), 0) AS walkin_sales
         FROM orders
         WHERE status != 'cancelled'
           AND DATE(DATE_ADD(created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
@@ -346,8 +349,8 @@ exports.getDashboard = async (req, res) => {
         `
         SELECT
           DATE_FORMAT(DATE_ADD(created_at, INTERVAL 8 HOUR), '%Y-%m-%d') AS bucket,
-          COALESCE(SUM(CASE WHEN type = 'online' OR channel = 'online' THEN total ELSE 0 END), 0) AS online_sales,
-          COALESCE(SUM(CASE WHEN type = 'walkin' OR type = 'walk-in' OR channel = 'walkin' THEN total ELSE 0 END), 0) AS walkin_sales
+          COALESCE(SUM(CASE WHEN type = 'online' THEN total ELSE 0 END), 0) AS online_sales,
+          COALESCE(SUM(CASE WHEN type = 'walkin' THEN total ELSE 0 END), 0) AS walkin_sales
         FROM orders
         WHERE status != 'cancelled'
           AND DATE(DATE_ADD(created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
@@ -388,7 +391,7 @@ exports.getDashboard = async (req, res) => {
         COALESCE(u.name, o.walkin_customer_name, 'Walk-in') AS customer_name,
         o.total AS total_amount,
         o.status,
-        COALESCE(o.type, o.channel) AS channel,
+        o.type AS channel,
         o.order_type,
         o.payment_status,
         o.created_at
@@ -401,14 +404,13 @@ exports.getDashboard = async (req, res) => {
       dateParams,
     );
 
-    // 👉 FIX: The exact payload your frontend is demanding
     return res.json({
       inventory,
       orders: currentOpsDate,
       currentOps,
       sales: salesStats,
       payments,
-      blueprint: blueprint || {},
+      blueprint,
       salesChart,
       chartMode,
       topProducts,
