@@ -92,23 +92,13 @@ function getPercent(value, total) {
   return Math.min(100, Math.max(0, (Number(value || 0) / Number(total)) * 100));
 }
 
+// 👉 FIX: Added 'metric-card--clickable' class for ONLY these cards
 function MetricCard({ eyebrow, title, value, meta, alert, onClick }) {
   return (
     <div
-      className="metric-card"
+      className={`metric-card ${onClick ? "metric-card--clickable" : ""}`}
       onClick={onClick}
-      style={{
-        borderLeftColor: alert ? "#ef4444" : "#18181b",
-        cursor: onClick ? "pointer" : "default",
-        transition: "transform 0.15s ease, box-shadow 0.15s ease",
-      }}
-      // Optional: Add a simple hover effect inline
-      onMouseEnter={(e) => {
-        if (onClick) e.currentTarget.style.transform = "translateY(-2px)";
-      }}
-      onMouseLeave={(e) => {
-        if (onClick) e.currentTarget.style.transform = "translateY(0)";
-      }}
+      style={{ borderLeftColor: alert ? "#ef4444" : "#18181b" }}
     >
       <div className="metric-card__eyebrow">{eyebrow}</div>
       <div
@@ -638,6 +628,7 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
+      {/* 👉 FIX: Added the navigation onClicks only to these 6 cards! */}
       <section className="metric-grid metric-grid--six">
         <MetricCard
           eyebrow="Selected Range"
@@ -1073,13 +1064,9 @@ const dashboardCss = `
   .dash-filter-card,
   .dash-card,
   .metric-card {
-    border-radius: 16px;
-    padding: 18px;
-    border-left: 4px solid #18181b;
-  }
-
-  .metric-card:hover {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    background: #ffffff;
+    border: 1px solid #e4e4e7;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
   }
 
   .hero-panel {
@@ -1295,6 +1282,17 @@ const dashboardCss = `
     border-radius: 16px;
     padding: 18px;
     border-left: 4px solid #18181b;
+  }
+
+  /* 👉 FIX: Hover effect strictly isolated to the top 6 cards */
+  .metric-card--clickable {
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .metric-card--clickable:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.06);
   }
 
   .metric-card__eyebrow {
