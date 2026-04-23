@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Mail, Lock, KeyRound, Eye, EyeOff } from "lucide-react";
+import { Mail, Lock, KeyRound } from "lucide-react";
 import "./authpages.css";
 import useAuthStore from "../../store/authStore";
 
@@ -142,7 +142,7 @@ export default function ResetPasswordPage() {
 
             <div className="field">
               <label>New Password</label>
-              <div className="field-input-wrap">
+              <div className="field-input-wrap" style={{ position: "relative" }}>
                 <Lock size={15} />
                 <input
                   type={showPw ? "text" : "password"}
@@ -150,21 +150,35 @@ export default function ResetPasswordPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  style={{ paddingRight: 40 }}
+                  style={{ paddingRight: 76 }}
                 />
                 <button
                   type="button"
-                  className="pw-toggle"
-                  onClick={() => setShowPw(!showPw)}
+                  onClick={() => setShowPw((prev) => !prev)}
+                  aria-label={showPw ? "Hide password" : "Show password"}
+                  title={showPw ? "Hide password" : "Show password"}
+                  style={{
+                    position: "absolute",
+                    right: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    padding: 0,
+                    color: "#8b8b8b",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                  }}
                 >
-                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showPw ? "Hide" : "Show"}
                 </button>
               </div>
             </div>
 
             <div className="field">
               <label>Confirm New Password</label>
-              <div className="field-input-wrap">
+              <div className="field-input-wrap" style={{ position: "relative" }}>
                 <Lock size={15} />
                 <input
                   type={showCPw ? "text" : "password"}
@@ -172,14 +186,28 @@ export default function ResetPasswordPage() {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
-                  style={{ paddingRight: 40 }}
+                  style={{ paddingRight: 76 }}
                 />
                 <button
                   type="button"
-                  className="pw-toggle"
-                  onClick={() => setShowCPw(!showCPw)}
+                  onClick={() => setShowCPw((prev) => !prev)}
+                  aria-label={showCPw ? "Hide password" : "Show password"}
+                  title={showCPw ? "Hide password" : "Show password"}
+                  style={{
+                    position: "absolute",
+                    right: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    padding: 0,
+                    color: "#8b8b8b",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                  }}
                 >
-                  {showCPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showCPw ? "Hide" : "Show"}
                 </button>
               </div>
             </div>

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 
-
 import useAuthStore from "../store/authStore";
 import "./customer/authpages.css";
 
@@ -33,12 +32,16 @@ export default function LoginPage() {
     localStorage.getItem("wisdom_remember_me") === "true",
   );
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const setField = (key, value) =>
+  const setField = (key, value) => {
+    if (errorMessage) setErrorMessage("");
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage("");
     setLoading(true);
 
     const redirectTo =
@@ -50,7 +53,11 @@ export default function LoginPage() {
       const user = await login(form.email, form.password, rememberMe);
       navigate(redirectTo || getDefaultRouteForUser(user), { replace: true });
     } catch (err) {
-      console.error(err?.response?.data?.message || "Login failed.");
+      setErrorMessage(
+        err?.message ||
+          err?.response?.data?.message ||
+          "Incorrect email or password.",
+      );
     } finally {
       setLoading(false);
     }
@@ -158,6 +165,23 @@ export default function LoginPage() {
             <button type="submit" className="btn-auth" disabled={loading}>
               {loading ? "Logging in..." : "Log in"}
             </button>
+
+            {errorMessage ? (
+              <div
+                style={{
+                  marginTop: 10,
+                  color: "#b91c1c",
+                  background: "#fef2f2",
+                  border: "1px solid #fecaca",
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                {errorMessage}
+              </div>
+            ) : null}
           </form>
 
           <div className="auth-switch">
