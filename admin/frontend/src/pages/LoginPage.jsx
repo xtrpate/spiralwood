@@ -9,7 +9,7 @@ const getDefaultRouteForUser = (user) => {
   if (user.role === "admin") return "/admin/dashboard";
 
   if (user.role === "staff") {
-    if (user.staff_type === "delivery_rider") return "/staff/deliveries";
+    if (user.staff_type === "delivery_rider") return "/staff/rider-dashboard";
     if (user.staff_type === "cashier") return "/staff/order";
     if (user.staff_type === "indoor") return "/staff/dashboard";
     return "/login";
@@ -44,10 +44,9 @@ export default function LoginPage() {
     setErrorMessage("");
     setLoading(true);
 
-    const redirectTo =
-      location.state?.from?.pathname
-        ? `${location.state.from.pathname}${location.state.from.search || ""}`
-        : location.state?.redirectTo || null;
+    const redirectTo = location.state?.from?.pathname
+      ? `${location.state.from.pathname}${location.state.from.search || ""}`
+      : location.state?.redirectTo || null;
 
     try {
       const user = await login(form.email, form.password, rememberMe);
