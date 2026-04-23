@@ -141,6 +141,14 @@ exports.createOrder = async (req, res) => {
 
     if (payment_method === "paymongo") {
       try {
+        // 👉 NEW: Fetch the customer's email from the database
+        const [[userRecord]] = await conn.query(
+          `SELECT email FROM users WHERE id = ? LIMIT 1`,
+          [req.user.id],
+        );
+        // Fallback just in case, though they should always have an email
+        const customerEmail = userRecord?.email || "";
+
         const frontendUrl =
           req.headers.origin || "https://spiralwood.onrender.com";
         const amountInCents = Math.round(parseFloat(total) * 100);
@@ -154,6 +162,7 @@ exports.createOrder = async (req, res) => {
               billing: {
                 name: name,
                 phone: phone,
+                email: customerEmail, // 👉 FIX: This auto-fills the PayMongo email box!
               },
               send_email_receipt: false,
               show_description: true,
