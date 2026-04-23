@@ -139,6 +139,8 @@ export default function AdminLayout() {
   const [open, setOpen] = useState(true);
   const { clearCart } = useCart();
 
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
   useEffect(() => {
     if (user && user.role === "customer") {
       toast.error("Access restricted. Redirecting to storefront.");
@@ -147,11 +149,13 @@ export default function AdminLayout() {
   }, [user, navigate]);
 
   const handleLogout = () => {
-    if (window.confirm("Are you sure you want to log out?")) {
-      logout();
-      clearCart(false);
-      navigate("/login");
-    }
+    setShowLogoutModal(true);
+  };
+  const confirmLogout = () => {
+    setShowLogoutModal(false);
+    logout();
+    clearCart(false);
+    navigate("/login");
   };
 
   const visibleItems = NAV_ITEMS.filter(
@@ -350,6 +354,101 @@ export default function AdminLayout() {
           <Outlet />
         </main>
       </div>
+      {showLogoutModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            backdropFilter: "blur(4px)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              background: "#0a0a0a",
+              width: 360,
+              padding: 24,
+              borderRadius: 16,
+              boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
+              border: "1px solid #27272a",
+              fontFamily: "Inter, sans-serif",
+            }}
+          >
+            <h2
+              style={{
+                marginTop: 0,
+                color: "#ffffff",
+                fontWeight: 800,
+                fontSize: 18,
+                letterSpacing: "-0.01em",
+                marginBottom: 8,
+              }}
+            >
+              Sign out
+            </h2>
+            <p
+              style={{
+                fontSize: 13,
+                color: "#a1a1aa",
+                marginBottom: 24,
+                lineHeight: 1.5,
+              }}
+            >
+              Are you sure you want to log out of your account? You will need to
+              sign back in to access the admin portal.
+            </p>
+
+            <div
+              style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}
+            >
+              <button
+                onClick={() => setShowLogoutModal(false)}
+                style={{
+                  padding: "9px 16px",
+                  background: "transparent",
+                  border: "1px solid #3f3f46",
+                  color: "#e5e7eb",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  transition: "background 0.2s",
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "#27272a")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLogout}
+                style={{
+                  padding: "9px 16px",
+                  background: "#ffffff",
+                  color: "#0a0a0a",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontWeight: 700,
+                  fontSize: 13,
+                  transition: "opacity 0.2s",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.8")}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+              >
+                Yes, log out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
