@@ -526,4 +526,11 @@
     height: 52px;
     font-size: 18px;
   }
+
+  .btn-auth:disabled,
+  .btn-auth-disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
 }
