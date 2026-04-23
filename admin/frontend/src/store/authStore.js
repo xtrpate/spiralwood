@@ -13,6 +13,12 @@ const parseJson = (value) => {
   }
 };
 
+const extractAuthErrorMessage = (err, fallback = "Incorrect email or password.") =>
+  err?.response?.data?.message ||
+  err?.response?.data?.error ||
+  err?.message ||
+  fallback;
+
 const getStoredUser = () =>
   parseJson(localStorage.getItem("wisdom_user")) ||
   parseJson(sessionStorage.getItem("wisdom_user")) ||
@@ -124,19 +130,39 @@ const useAuthStore = create((set, get) => ({
 
       return data.user;
     } catch (adminErr) {
-      const { data } = await api.post("/customer/auth/login", {
-        email: cleanEmail,
-        password,
-      });
+      try {
+        const { data } = await api.post("/customer/auth/login", {
+          email: cleanEmail,
+          password,
+        });
 
-      persistSession(data.token, data.user, rememberMe);
+        persistSession(data.token, data.user, rememberMe);
 
-      set({
-        user: data.user,
-        token: data.token,
-      });
+        set({
+          user: data.user,
+          token: data.token,
+        });
 
-      return data.user;
+        return data.user;
+      } catch (customerErr) {
+        const adminStatus = adminErr?.response?.status;
+        const customerStatus = customerErr?.response?.status;
+
+        const adminCredentialFail = adminStatus === 400 || adminStatus === 401;
+        const customerCredentialFail =
+          customerStatus === 400 || customerStatus === 401;
+
+        if (adminCredentialFail && customerCredentialFail) {
+          throw new Error("Incorrect email or password.");
+        }
+
+        throw new Error(
+          extractAuthErrorMessage(
+            customerErr,
+            extractAuthErrorMessage(adminErr, "Login failed."),
+          ),
+        );
+      }
     }
   },
 
