@@ -15,7 +15,6 @@ admin/frontend/dist/
 # Backend Uploads (Ignore user-uploaded images/pdfs during testing)
 admin/backend/uploads/
 admin/backend/backups
-admin/backend/wipe-db.js
 
 # Logs
 npm-debug.log*
