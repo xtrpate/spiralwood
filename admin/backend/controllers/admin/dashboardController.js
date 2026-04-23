@@ -187,6 +187,7 @@ exports.getDashboard = async (req, res) => {
         ? "monthly"
         : "daily";
 
+    // ── 1. INVENTORY ──
     const [[invStats]] = await pool.query(`
       SELECT
         COUNT(*) AS total_products,
@@ -203,69 +204,139 @@ exports.getDashboard = async (req, res) => {
       FROM raw_materials
     `);
 
-    const [[orderStats]] = await pool.query(
+    let stockMovements = { stock_in_total: 0, stock_out_total: 0 };
+    try {
+      const [[movements]] = await pool.query(
+        `
+        SELECT
+          COALESCE(SUM(CASE WHEN type = 'in' THEN quantity ELSE 0 END), 0) AS stock_in_total,
+          COALESCE(SUM(CASE WHEN type = 'out' THEN quantity ELSE 0 END), 0) AS stock_out_total
+        FROM stock_movements
+        WHERE DATE(DATE_ADD(created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
+      `,
+        dateParams,
+      );
+      stockMovements = movements;
+    } catch (e) {}
+
+    const inventory = {
+      ...invStats,
+      ...rawStats,
+      ...stockMovements,
+      alert_total:
+        Number(invStats.low_stock_count) +
+        Number(invStats.out_of_stock_count) +
+        Number(rawStats.raw_low_stock) +
+        Number(rawStats.raw_out_of_stock),
+    };
+
+    // ── 2. CURRENT OPS & ORDERS ──
+    // Uses INTERVAL 8 HOUR to fix Aiven UTC Timezone mismatch
+    const [[currentOpsDate]] = await pool.query(
       `
       SELECT
         COUNT(*) AS total_orders,
         COALESCE(SUM(status = 'completed'), 0) AS completed_orders,
         COALESCE(SUM(status = 'pending'), 0) AS pending_orders,
-        COALESCE(SUM(status = 'production'), 0) AS processing_orders,
-        COALESCE(SUM(status = 'shipping'), 0) AS shipped_orders,
+        COALESCE(SUM(status = 'confirmed'), 0) AS confirmed_orders,
+        COALESCE(SUM(status = 'production'), 0) AS production_orders,
+        COALESCE(SUM(status = 'shipping'), 0) AS shipping_orders,
+        COALESCE(SUM(status = 'delivered'), 0) AS delivered_orders,
         COALESCE(SUM(status = 'cancelled'), 0) AS cancelled_orders
       FROM orders
-      WHERE DATE(created_at) BETWEEN ? AND ?
+      WHERE DATE(DATE_ADD(created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
       `,
       dateParams,
     );
 
-    // Revenue + AOV must be separate from order_items join to avoid duplicated totals
+    // All-time Open Queue (Ignores date filter so things don't suddenly disappear)
+    const [[currentOpsAllTime]] = await pool.query(`
+      SELECT
+        COALESCE(SUM(status NOT IN ('completed', 'cancelled')), 0) AS open_orders,
+        COALESCE(SUM(status = 'delivered' AND (payment_status IS NULL OR payment_status != 'paid')), 0) AS delivered_unpaid_orders
+      FROM orders
+    `);
+
+    const currentOps = { ...currentOpsDate, ...currentOpsAllTime };
+
+    // ── 3. SALES & REVENUE ──
     const [[salesTotals]] = await pool.query(
       `
       SELECT
         COALESCE(SUM(o.total), 0) AS total_revenue,
         COALESCE(AVG(o.total), 0) AS avg_order_value,
-        COALESCE(SUM(o.type = 'online'), 0) AS online_orders,
-        COALESCE(SUM(o.type = 'walkin'), 0) AS walkin_orders
+        COALESCE(SUM(o.type = 'online' OR o.channel = 'online'), 0) AS online_orders,
+        COALESCE(SUM(o.type = 'walkin' OR o.type = 'walk-in' OR o.channel = 'walkin'), 0) AS walkin_orders
       FROM orders o
       WHERE o.status != 'cancelled'
-        AND DATE(o.created_at) BETWEEN ? AND ?
+        AND DATE(DATE_ADD(o.created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
       `,
       dateParams,
     );
 
-    const [[profitTotals]] = await pool.query(
-      `
-      SELECT
-        COALESCE(SUM(oi.profit_margin * oi.quantity), 0) AS total_profit
-      FROM order_items oi
-      JOIN orders o ON o.id = oi.order_id
-      WHERE o.status != 'cancelled'
-        AND DATE(o.created_at) BETWEEN ? AND ?
-      `,
-      dateParams,
-    );
+    let totalProfit = 0;
+    try {
+      const [[profitTotals]] = await pool.query(
+        `
+        SELECT COALESCE(SUM(oi.profit_margin * oi.quantity), 0) AS total_profit
+        FROM order_items oi
+        JOIN orders o ON o.id = oi.order_id
+        WHERE o.status != 'cancelled'
+          AND DATE(DATE_ADD(o.created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
+        `,
+        dateParams,
+      );
+      totalProfit = profitTotals.total_profit;
+    } catch (e) {}
 
     const salesStats = {
       total_revenue: Number(salesTotals.total_revenue || 0),
-      total_profit: Number(profitTotals.total_profit || 0),
+      total_profit: Number(totalProfit || 0),
       avg_order_value: Number(salesTotals.avg_order_value || 0),
       online_orders: Number(salesTotals.online_orders || 0),
       walkin_orders: Number(salesTotals.walkin_orders || 0),
     };
 
+    // ── 4. PAYMENTS QUEUE ──
+    let payments = { pending_reviews: 0 };
+    try {
+      const [[paymentRows]] = await pool.query(`
+        SELECT COALESCE(SUM(status = 'pending'), 0) AS pending_reviews
+        FROM payments
+      `);
+      payments = paymentRows;
+    } catch (e) {}
+
+    // ── 5. BLUEPRINT PIPELINE (All-time queue) ──
+    const [[blueprint]] = await pool.query(`
+      SELECT
+        COUNT(*) AS total_blueprint_orders,
+        COALESCE(SUM(status = 'pending'), 0) AS pending_custom_review,
+        COALESCE(SUM(status = 'estimation'), 0) AS estimate_drafting,
+        COALESCE(SUM(status = 'approval'), 0) AS quotation_waiting,
+        COALESCE(SUM(status = 'approved'), 0) AS quotation_approved,
+        COALESCE(SUM(status = 'contract_released'), 0) AS contract_released,
+        COALESCE(SUM(status = 'production'), 0) AS in_production,
+        COALESCE(SUM(status IN ('shipping', 'delivered')), 0) AS ready_for_dispatch,
+        COALESCE(SUM(status = 'completed'), 0) AS completed_blueprint_orders
+      FROM orders
+      WHERE order_type = 'blueprint' OR type = 'blueprint' OR blueprint_id IS NOT NULL
+    `);
+
+    // ── 6. CHARTS & RECENT ──
     let rawChartRows = [];
 
     if (chartMode === "monthly") {
       [rawChartRows] = await pool.query(
         `
         SELECT
-          DATE_FORMAT(created_at, '%Y-%m') AS bucket,
-          COALESCE(SUM(CASE WHEN type = 'online' THEN total ELSE 0 END), 0) AS online_sales,
-          COALESCE(SUM(CASE WHEN type = 'walkin' THEN total ELSE 0 END), 0) AS walkin_sales
+          DATE_FORMAT(DATE_ADD(created_at, INTERVAL 8 HOUR), '%Y-%m') AS bucket,
+          COALESCE(SUM(CASE WHEN type = 'online' OR channel = 'online' THEN total ELSE 0 END), 0) AS online_sales,
+          COALESCE(SUM(CASE WHEN type = 'walkin' OR type = 'walk-in' OR channel = 'walkin' THEN total ELSE 0 END), 0) AS walkin_sales
         FROM orders
         WHERE status != 'cancelled'
-          AND DATE(created_at) BETWEEN ? AND ?
-        GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+          AND DATE(DATE_ADD(created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
+        GROUP BY DATE_FORMAT(DATE_ADD(created_at, INTERVAL 8 HOUR), '%Y-%m')
         ORDER BY bucket ASC
         `,
         dateParams,
@@ -274,13 +345,13 @@ exports.getDashboard = async (req, res) => {
       [rawChartRows] = await pool.query(
         `
         SELECT
-          DATE_FORMAT(created_at, '%Y-%m-%d') AS bucket,
-          COALESCE(SUM(CASE WHEN type = 'online' THEN total ELSE 0 END), 0) AS online_sales,
-          COALESCE(SUM(CASE WHEN type = 'walkin' THEN total ELSE 0 END), 0) AS walkin_sales
+          DATE_FORMAT(DATE_ADD(created_at, INTERVAL 8 HOUR), '%Y-%m-%d') AS bucket,
+          COALESCE(SUM(CASE WHEN type = 'online' OR channel = 'online' THEN total ELSE 0 END), 0) AS online_sales,
+          COALESCE(SUM(CASE WHEN type = 'walkin' OR type = 'walk-in' OR channel = 'walkin' THEN total ELSE 0 END), 0) AS walkin_sales
         FROM orders
         WHERE status != 'cancelled'
-          AND DATE(created_at) BETWEEN ? AND ?
-        GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')
+          AND DATE(DATE_ADD(created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
+        GROUP BY DATE_FORMAT(DATE_ADD(created_at, INTERVAL 8 HOUR), '%Y-%m-%d')
         ORDER BY bucket ASC
         `,
         dateParams,
@@ -302,7 +373,7 @@ exports.getDashboard = async (req, res) => {
       FROM order_items oi
       JOIN orders o ON o.id = oi.order_id
       WHERE o.status != 'cancelled'
-        AND DATE(o.created_at) BETWEEN ? AND ?
+        AND DATE(DATE_ADD(o.created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
       GROUP BY oi.product_id, oi.product_name
       ORDER BY units_sold DESC, revenue DESC
       LIMIT 10
@@ -317,24 +388,27 @@ exports.getDashboard = async (req, res) => {
         COALESCE(u.name, o.walkin_customer_name, 'Walk-in') AS customer_name,
         o.total AS total_amount,
         o.status,
-        o.type AS channel,
+        COALESCE(o.type, o.channel) AS channel,
+        o.order_type,
+        o.payment_status,
         o.created_at
       FROM orders o
       LEFT JOIN users u ON u.id = o.customer_id
-      WHERE DATE(o.created_at) BETWEEN ? AND ?
+      WHERE DATE(DATE_ADD(o.created_at, INTERVAL 8 HOUR)) BETWEEN ? AND ?
       ORDER BY o.created_at DESC
       LIMIT 15
       `,
       dateParams,
     );
 
+    // 👉 FIX: The exact payload your frontend is demanding
     return res.json({
-      inventory: {
-        ...invStats,
-        ...rawStats,
-      },
-      orders: orderStats,
+      inventory,
+      orders: currentOpsDate,
+      currentOps,
       sales: salesStats,
+      payments,
+      blueprint: blueprint || {},
       salesChart,
       chartMode,
       topProducts,
