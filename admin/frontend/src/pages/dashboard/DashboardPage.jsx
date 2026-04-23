@@ -92,11 +92,23 @@ function getPercent(value, total) {
   return Math.min(100, Math.max(0, (Number(value || 0) / Number(total)) * 100));
 }
 
-function MetricCard({ eyebrow, title, value, meta, alert }) {
+function MetricCard({ eyebrow, title, value, meta, alert, onClick }) {
   return (
     <div
       className="metric-card"
-      style={{ borderLeftColor: alert ? "#ef4444" : "#18181b" }}
+      onClick={onClick}
+      style={{
+        borderLeftColor: alert ? "#ef4444" : "#18181b",
+        cursor: onClick ? "pointer" : "default",
+        transition: "transform 0.15s ease, box-shadow 0.15s ease",
+      }}
+      // Optional: Add a simple hover effect inline
+      onMouseEnter={(e) => {
+        if (onClick) e.currentTarget.style.transform = "translateY(-2px)";
+      }}
+      onMouseLeave={(e) => {
+        if (onClick) e.currentTarget.style.transform = "translateY(0)";
+      }}
     >
       <div className="metric-card__eyebrow">{eyebrow}</div>
       <div
@@ -634,6 +646,7 @@ export default function DashboardPage() {
           meta={`Profit ${peso.format(Number(sales.total_profit || 0))} · Avg Order ${peso.format(
             Number(sales.avg_order_value || 0),
           )}`}
+          onClick={() => navigate("/admin/sales")}
         />
 
         <MetricCard
@@ -643,6 +656,7 @@ export default function DashboardPage() {
           meta={`${num.format(currentPending)} pending · ${num.format(
             currentProduction,
           )} in production`}
+          onClick={() => navigate("/admin/orders")}
         />
 
         <MetricCard
@@ -650,6 +664,7 @@ export default function DashboardPage() {
           value={num.format(pendingReviews)}
           title="Pending Payment Review"
           meta={`${num.format(deliveredUnpaid)} delivered but unpaid`}
+          onClick={() => navigate("/admin/orders")}
         />
 
         <MetricCard
@@ -660,6 +675,7 @@ export default function DashboardPage() {
           meta={`${num.format(lowStockTotal)} low · ${num.format(
             outOfStockTotal,
           )} critical`}
+          onClick={() => navigate("/admin/products")}
         />
 
         <MetricCard
@@ -671,6 +687,7 @@ export default function DashboardPage() {
           )} pending review · ${num.format(
             Number(blueprint.quotation_waiting || 0),
           )} waiting customer`}
+          onClick={() => navigate("/admin/blueprints")}
         />
 
         <MetricCard
@@ -678,6 +695,7 @@ export default function DashboardPage() {
           value={`${num.format(onlineOrders)} / ${num.format(walkinOrders)}`}
           title="Online vs Walk-in"
           meta={`${num.format(totalChannelOrders)} orders in selected range`}
+          onClick={() => navigate("/admin/orders")}
         />
       </section>
 
@@ -1055,9 +1073,13 @@ const dashboardCss = `
   .dash-filter-card,
   .dash-card,
   .metric-card {
-    background: #ffffff;
-    border: 1px solid #e4e4e7;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    border-radius: 16px;
+    padding: 18px;
+    border-left: 4px solid #18181b;
+  }
+
+  .metric-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
   }
 
   .hero-panel {
