@@ -207,16 +207,29 @@ exports.updateCustomerStatus = async (req, res) => {
     }
     if (!map[action])
       return res.status(400).json({ message: "Invalid action." });
-    const sets = Object.keys(map[action])
-      .map((k) => `${k} = ?`)
-      .join(", ");
+    const updates = map[action];
+    const sets = Object.keys(updates).map((k) => `${k} = ?`);
+    const values = Object.values(updates);
 
-    // ── FIXED: Parsed ID ──
+    // ── FIXED: Only update approval timestamps for approve/reject actions ──
+    if (action === "approve" || action === "reject") {
+      sets.push("approved_by = ?", "approved_at = NOW()");
+      values.push(req.user.id);
+    }
+
+    // Add the ID for the WHERE clause
+    values.push(parseInt(req.params.id));
+
+    // ── FIXED: Execute the dynamic query safely ──
     await pool.query(
-      `UPDATE users SET ${sets}, approved_by = ?, approved_at = NOW() WHERE id = ?`,
-      [...Object.values(map[action]), req.user.id, parseInt(req.params.id)],
+      `UPDATE users SET ${sets.join(", ")} WHERE id = ?`,
+      values,
     );
-    res.json({ message: `Customer ${action}d.` });
+
+    // Optional fix: Corrected the grammar for the success message (prevents "rejectd")
+    const actionMessage = action === "reject" ? "rejected" : `${action}d`;
+
+    res.json({ message: `Customer ${actionMessage}.` });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

@@ -10,7 +10,7 @@ const getDefaultRouteForUser = (user) => {
 
   if (user.role === "staff") {
     if (user.staff_type === "delivery_rider") return "/staff/rider-dashboard";
-    if (user.staff_type === "cashier") return "/staff/order";
+    if (user.staff_type === "cashier") return "/staff/products";
     if (user.staff_type === "indoor") return "/staff/dashboard";
     return "/login";
   }
