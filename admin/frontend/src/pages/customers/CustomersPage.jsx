@@ -58,7 +58,7 @@ export default function CustomersPage() {
     if (!window.confirm(labels[action])) return;
 
     try {
-      const { data } = await api.patch(`/customers/${id}/status`, { action });
+      const { data } = await api.put(`/customers/${id}/status`, { action });
       toast.success(data?.message || "Customer updated.");
       setDetail(null);
       load();
