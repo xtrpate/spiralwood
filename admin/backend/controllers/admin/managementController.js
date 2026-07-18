@@ -390,6 +390,20 @@ exports.generateContract = async (req, res) => {
     await conn.commit();
     transactionActive = false;
 
+    req.auditRecord = {
+      id: insertResult.insertId,
+      old: { order_status: order.status },
+      new: {
+        order_id: order.id,
+        blueprint_id: blueprint.id,
+        order_status: "contract_released",
+        contract_generated: true,
+        is_non_refundable: false,
+        warranty_terms_present: Boolean(warranty_terms),
+        changed_fields: ["order_status", "contract"],
+      },
+    };
+
     res
       .status(201)
       .json({ message: "Contract generated.", id: insertResult.insertId });
