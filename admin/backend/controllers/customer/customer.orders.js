@@ -763,83 +763,127 @@ exports.cancelOrder = async (req, res) => {
 
 // taking back the reserve stock on unpaid online transactions
 
-/* ── Automated Task: Cancel 24-Hour Unpaid PayMongo Orders ── */
+/* ── Automated Task: Audit and Cancel Unpaid PayMongo Orders ── */
 exports.autoCancelExpiredOrders = async () => {
-  const conn = await db.getConnection();
   try {
-    await conn.beginTransaction();
-
-    // 1. Find all unpaid PayMongo orders older than 24 hours
-    const [expiredOrders] = await conn.query(
-      `SELECT id FROM orders 
+    // 1. Find expired orders (No transaction lock here to save Aiven DB limits)
+    const [expiredOrders] = await db.query(
+      `SELECT id, order_number, total, paymongo_session_id FROM orders 
        WHERE payment_method = 'paymongo' 
          AND payment_status = 'unpaid' 
          AND status = 'pending' 
-         AND created_at <= DATE_SUB(NOW(), INTERVAL 1 MINUTE)`,
+         AND created_at <= DATE_SUB(NOW(), INTERVAL 24 HOURS)`,
     );
 
-    if (expiredOrders.length === 0) {
-      await conn.commit();
-      return; // Nothing to cancel
-    }
+    if (expiredOrders.length === 0) return; // Nothing to do
 
-    // 2. Process each expired order safely
-    for (const row of expiredOrders) {
-      const orderId = row.id;
+    const base64Auth = Buffer.from(process.env.PAYMONGO_SECRET_KEY).toString(
+      "base64",
+    );
 
-      // Mark order as cancelled and leave a system note
-      await conn.query(
-        `UPDATE orders
-         SET status = 'cancelled',
-             notes = CONCAT(IFNULL(notes, ''), '\n[System]: Auto-cancelled due to 24-hour payment timeout.')
-         WHERE id = ?`,
-        [orderId],
-      );
+    // 2. Loop through and audit each order ONE BY ONE
+    for (const order of expiredOrders) {
+      let isActuallyPaid = false;
 
-      // Fetch items for this specific order
-      const [items] = await conn.query(
-        `SELECT product_id, variation_id, quantity 
-         FROM order_items 
-         WHERE order_id = ?`,
-        [orderId],
-      );
+      // Double-check with PayMongo over the network (No DB locks held during this wait!)
+      if (order.paymongo_session_id) {
+        try {
+          const sessionRes = await axios.get(
+            `https://api.paymongo.com/v1/checkout_sessions/${order.paymongo_session_id}`,
+            {
+              headers: {
+                accept: "application/json",
+                authorization: `Basic ${base64Auth}`,
+              },
+            },
+          );
+          const payments = sessionRes.data.data.attributes.payments || [];
+          isActuallyPaid = payments.some((p) => p.attributes.status === "paid");
+        } catch (pmErr) {
+          console.error(
+            `[Cron] PayMongo check failed for order ${order.order_number}:`,
+            pmErr.message,
+          );
+          continue; // Skip this order safely and try again next time the cron runs
+        }
+      }
 
-      // Restore the stock
-      for (const item of items) {
-        if (item.variation_id) {
+      // 3. Open a short, fast transaction to update this specific order
+      const conn = await db.getConnection();
+      try {
+        await conn.beginTransaction();
+
+        if (isActuallyPaid) {
+          // 🚨 RECOVERED PAYMENT! The customer paid but closed the tab.
           await conn.query(
-            `UPDATE product_variations SET stock = stock + ? WHERE id = ?`,
-            [item.quantity, item.variation_id],
+            `UPDATE orders 
+             SET payment_status = 'paid', status = 'confirmed' 
+             WHERE id = ?`,
+            [order.id],
+          );
+
+          await conn.query(
+            `INSERT INTO payment_transactions
+              (order_id, amount, payment_method, proof_url, status, verified_at, notes)
+             VALUES (?, ?, 'paymongo', '', 'pending', NOW(), 'System auto-verified via Cron Audit. Awaiting Admin confirmation.')`,
+            [order.id, order.total],
+          );
+          console.log(
+            `[Cron] Recovered missing payment for order ${order.order_number}`,
           );
         } else {
+          // ❌ TRULY UNPAID. Cancel the order and return the stock.
           await conn.query(
-            `UPDATE products SET stock = stock + ? WHERE id = ?`,
-            [item.quantity, item.product_id],
+            `UPDATE orders
+             SET status = 'cancelled',
+                 notes = CONCAT(IFNULL(notes, ''), '\n[System]: Auto-cancelled due to payment timeout.')
+             WHERE id = ?`,
+            [order.id],
+          );
+
+          const [items] = await conn.query(
+            `SELECT product_id, variation_id, quantity FROM order_items WHERE order_id = ?`,
+            [order.id],
+          );
+
+          for (const item of items) {
+            if (item.variation_id) {
+              await conn.query(
+                `UPDATE product_variations SET stock = stock + ? WHERE id = ?`,
+                [item.quantity, item.variation_id],
+              );
+            } else {
+              await conn.query(
+                `UPDATE products SET stock = stock + ? WHERE id = ?`,
+                [item.quantity, item.product_id],
+              );
+            }
+
+            await conn.query(
+              `UPDATE products
+               SET stock_status = CASE
+                 WHEN stock <= 0              THEN 'out_of_stock'
+                 WHEN stock <= reorder_point  THEN 'low_stock'
+                 ELSE 'in_stock'
+               END
+               WHERE id = ?`,
+              [item.product_id],
+            );
+          }
+          console.log(
+            `[Cron] Auto-cancelled and restocked order ${order.order_number}`,
           );
         }
 
-        // Re-evaluate stock_status
-        await conn.query(
-          `UPDATE products
-           SET stock_status = CASE
-             WHEN stock <= 0              THEN 'out_of_stock'
-             WHEN stock <= reorder_point  THEN 'low_stock'
-             ELSE 'in_stock'
-           END
-           WHERE id = ?`,
-          [item.product_id],
-        );
+        await conn.commit();
+      } catch (dbErr) {
+        if (!conn.connection._fatalError) await conn.rollback();
+        console.error(`[Cron DB Error] Order ${order.order_number}:`, dbErr);
+      } finally {
+        conn.release();
       }
     }
-
-    await conn.commit();
-    console.log(
-      `[Cron] Successfully auto-cancelled ${expiredOrders.length} expired PayMongo orders and restored stock.`,
-    );
   } catch (err) {
-    if (!conn.connection._fatalError) await conn.rollback();
     console.error("[Cron Error] Auto-cancelling expired orders:", err);
-  } finally {
-    conn.release();
   }
 };

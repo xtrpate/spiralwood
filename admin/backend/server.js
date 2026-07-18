@@ -152,7 +152,7 @@ const {
   autoCancelExpiredOrders,
 } = require("./controllers/customer/customer.orders");
 
-cron.schedule("*/30 * * * * *", () => {
+cron.schedule("0 * * * *", () => {
   console.log(
     "Running scheduled task: Checking for expired PayMongo orders...",
   );
