@@ -3,6 +3,13 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Bell } from "lucide-react";
 import api from "../services/api";
 
+const formatCustomerNotificationDate = (value) => {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString("en-PH");
+};
+
 export default function CustomerNotificationBell() {
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
@@ -154,6 +161,18 @@ export default function CustomerNotificationBell() {
                   <div style={{ fontSize: 13, color: "#52525b" }}>
                     {n.message}
                   </div>
+                  {formatCustomerNotificationDate(n.created_at) && (
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#71717a",
+                        fontWeight: 600,
+                        marginTop: 6,
+                      }}
+                    >
+                      {formatCustomerNotificationDate(n.created_at)}
+                    </div>
+                  )}
                 </div>
               ))
             )}
