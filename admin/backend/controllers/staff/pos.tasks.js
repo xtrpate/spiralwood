@@ -829,16 +829,63 @@ exports.updateTask = async (req, res) => {
       });
     }
 
+    const existingCompletedAtTime = existing.completed_at
+      ? new Date(existing.completed_at).getTime()
+      : null;
+    const nextCompletedAtTime = completedAt
+      ? new Date(completedAt).getTime()
+      : null;
+    const completedAtChanged = existingCompletedAtTime !== nextCompletedAtTime;
+
+    const changedFields = [
+      orderIdChanged && "order_id",
+      blueprintIdChanged && "blueprint_id",
+      assignedToChanged && "assigned_to",
+      taskRoleChanged && "task_role",
+      titleChanged && "title",
+      descriptionChanged && "description",
+      dueDateChanged && "due_date",
+      statusChanged && "status",
+      completedAtChanged && "completed_at",
+    ].filter(Boolean);
+
+    req.auditRecord = {
+      id: id,
+      old: {
+        order_id: existing.order_id,
+        blueprint_id: existing.blueprint_id,
+        assigned_to: existing.assigned_to,
+        task_role: existing.task_role,
+        title: existing.title,
+        description: existing.description,
+        due_date: existing.due_date,
+        status: existing.status,
+        completed_at: existing.completed_at,
+      },
+      new: {
+        order_id: nextOrderId,
+        blueprint_id: nextBlueprintId,
+        assigned_to: nextAssignedTo,
+        task_role: nextTaskRole,
+        title: nextTitle,
+        description: descriptionForUpdate,
+        due_date: dueDateForUpdate,
+        status: nextStatus,
+        completed_at: completedAt,
+        changed_fields: changedFields,
+      },
+    };
+
     if (assignedToChanged) {
-      // ── FIXED: Switched to .query ──
-      await db.query(
-        `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
-         VALUES (?, 'assignment', 'Task Updated', ?, 'system', NOW())`,
-        [
-          nextAssignedTo,
-          `A task has been assigned/updated: ${nextTitle}`,
-        ],
-      );
+      try {
+        await db.query(
+          `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
+           VALUES (?, 'assignment', 'Task Updated', ?, 'system', NOW())`,
+          [nextAssignedTo, `A task has been assigned/updated: ${nextTitle}`],
+        );
+      } catch (notifyErr) {
+        console.error("[pos.tasks updateTask notification]", notifyErr.message);
+      }
     }
 
     res.json({ message: "Task updated successfully." });
@@ -849,56 +896,107 @@ exports.updateTask = async (req, res) => {
 };
 
 exports.deleteTask = async (req, res) => {
+  const parseStrictPositiveInt = (value) => {
+    if (typeof value === "number") {
+      return Number.isSafeInteger(value) && value > 0 ? value : null;
+    }
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) return null;
+    const parsed = Number(trimmed);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  };
+
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ message: "Only admins can delete tasks." });
+  }
+
+  const taskId = parseStrictPositiveInt(req.params.id);
+  if (!taskId) {
+    return res.status(400).json({ message: "Invalid task ID." });
+  }
+
+  let conn = null;
+  let transactionActive = false;
+
   try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({ message: "Only admins can delete tasks." });
-    }
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
 
-    const parseStrictPositiveInt = (value) => {
-      if (typeof value === "number") {
-        return Number.isSafeInteger(value) && value > 0 ? value : null;
-      }
-      if (typeof value !== "string") return null;
-      const trimmed = value.trim();
-      if (!/^\d+$/.test(trimmed)) return null;
-      const parsed = Number(trimmed);
-      return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-    };
-
-    const taskId = parseStrictPositiveInt(req.params.id);
-    if (!taskId) {
-      return res.status(400).json({ message: "Invalid task ID." });
-    }
-
-    const [[task]] = await db.query(
-      `SELECT task_role FROM project_tasks WHERE id = ?`,
+    const [[task]] = await conn.query(
+      `SELECT id, order_id, blueprint_id, assigned_to, assigned_by, task_role,
+              title, description, accepted_at, status, is_read, due_date,
+              completed_at, created_at, updated_at
+       FROM project_tasks
+       WHERE id = ?
+       FOR UPDATE`,
       [taskId],
     );
 
     if (!task) {
+      await conn.rollback();
+      transactionActive = false;
       return res.status(404).json({ message: "Task not found." });
     }
 
     if (REQUIRED_PRODUCTION_STEP_KEYS.includes(normalize(task.task_role))) {
+      await conn.rollback();
+      transactionActive = false;
       return res.status(400).json({
         message: "Required production tasks cannot be deleted.",
       });
     }
 
-    // ── FIXED: Switched to .query and parsed ID ──
-    const [result] = await db.query(`DELETE FROM project_tasks WHERE id = ?`, [
-      taskId,
-    ]);
+    const [result] = await conn.query(
+      `DELETE FROM project_tasks WHERE id = ?`,
+      [taskId],
+    );
 
     if (result.affectedRows !== 1) {
+      await conn.rollback();
+      transactionActive = false;
       return res.status(404).json({
         message: "Task was already deleted or changed. Refresh and try again.",
       });
     }
 
+    await conn.commit();
+    transactionActive = false;
+
+    req.auditRecord = {
+      id: taskId,
+      old: {
+        order_id: task.order_id,
+        blueprint_id: task.blueprint_id,
+        assigned_to: task.assigned_to,
+        assigned_by: task.assigned_by,
+        task_role: task.task_role,
+        title: task.title,
+        description: task.description,
+        accepted_at: task.accepted_at,
+        status: task.status,
+        is_read: task.is_read,
+        due_date: task.due_date,
+        completed_at: task.completed_at,
+        created_at: task.created_at,
+        updated_at: task.updated_at,
+      },
+      new: null,
+    };
+
     res.json({ message: "Task deleted successfully." });
   } catch (err) {
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+      } catch (_) {
+        // do not hide the original error
+      }
+    }
     console.error("[pos.tasks DELETE /:id]", err);
-    res.status(500).json({ message: "Server error." });
+    return res.status(500).json({ message: "Server error." });
+  } finally {
+    if (conn) conn.release();
   }
 };

@@ -52,8 +52,18 @@ router.get("/staff", adminOnly, posTasksController.getStaff);
 router.get("/", indoorOnlyOrAdmin, posTasksController.getTasks);
 router.post("/", adminOnly, posTasksController.createTask);
 
-router.put("/:id", indoorOnlyOrAdmin, posTasksController.updateTask);
-router.delete("/:id", adminOnly, posTasksController.deleteTask);
+router.put(
+  "/:id",
+  adminOnly,
+  logAction("update_project_task", "project_tasks"),
+  posTasksController.updateTask,
+);
+router.delete(
+  "/:id",
+  adminOnly,
+  logAction("delete_project_task", "project_tasks"),
+  posTasksController.deleteTask,
+);
 
 router.put("/:id/accept", indoorOnlyOrAdmin, posTasksController.acceptTask);
 router.put(
