@@ -350,7 +350,7 @@ exports.updateTaskStatus = async (req, res) => {
   try {
     // ── FIXED: Switched to .query ──
     const [rows] = await db.query(
-      `SELECT id, title, status, assigned_to, assigned_by, completed_at, order_id, task_role
+      `SELECT id, title, status, assigned_to, assigned_by, accepted_at, completed_at, order_id, task_role
        FROM project_tasks
        WHERE id = ?
        LIMIT 1`,
@@ -369,6 +369,10 @@ exports.updateTaskStatus = async (req, res) => {
       return res.status(403).json({
         message: "You can only update tasks assigned to you.",
       });
+    }
+
+    if (status === existing.status) {
+      return res.json({ message: "No changes were made." });
     }
 
     if (existing.status === "completed" && status !== "completed") {
@@ -402,12 +406,17 @@ exports.updateTaskStatus = async (req, res) => {
       completedAt = null;
     }
 
+    let nextAcceptedAt = existing.accepted_at || null;
+    if (!nextAcceptedAt && status === "in_progress") {
+      nextAcceptedAt = new Date();
+    }
+
     // ── FIXED: Switched to .query ──
     const [result] = await db.query(
       `UPDATE project_tasks
-       SET status = ?, completed_at = ?, is_read = 1, updated_at = NOW()
+       SET status = ?, completed_at = ?, accepted_at = ?, is_read = 1, updated_at = NOW()
        WHERE id = ? AND status = ? AND assigned_to = ?`,
-      [status, completedAt, taskId, existing.status, existing.assigned_to],
+      [status, completedAt, nextAcceptedAt, taskId, existing.status, existing.assigned_to],
     );
 
     if (result.affectedRows !== 1) {
@@ -417,78 +426,137 @@ exports.updateTaskStatus = async (req, res) => {
       });
     }
 
-    if (existing.assigned_by) {
-      const statusLabel = String(status).replace(/_/g, " ");
+    const acceptedAtChanged =
+      (existing.accepted_at ? new Date(existing.accepted_at).getTime() : null) !==
+      (nextAcceptedAt ? new Date(nextAcceptedAt).getTime() : null);
+    const completedAtChanged =
+      (existing.completed_at ? new Date(existing.completed_at).getTime() : null) !==
+      (completedAt ? new Date(completedAt).getTime() : null);
 
-      // ── FIXED: Switched to .query ──
-      await db.query(
-        `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
-         VALUES (?, 'task_update', 'Task Status Updated', ?, 'system', NOW())`,
-        [
-          parseInt(existing.assigned_by),
-          `${req.user.name || "A staff member"} updated step "${existing.task_role}" to ${statusLabel} for ${existing.title}.`,
-        ],
-      );
+    req.auditRecord = {
+      id: taskId,
+      old: {
+        status: existing.status,
+        accepted_at: existing.accepted_at,
+        completed_at: existing.completed_at,
+      },
+      new: {
+        status,
+        accepted_at: nextAcceptedAt,
+        completed_at: completedAt,
+        changed_fields: [
+          "status",
+          acceptedAtChanged && "accepted_at",
+          completedAtChanged && "completed_at",
+        ].filter(Boolean),
+      },
+    };
+
+    try {
+      if (existing.assigned_by) {
+        const statusLabel = String(status).replace(/_/g, " ");
+
+        await db.query(
+          `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
+           VALUES (?, 'task_update', 'Task Status Updated', ?, 'system', NOW())`,
+          [
+            parseInt(existing.assigned_by),
+            `${req.user.name || "A staff member"} updated step "${existing.task_role}" to ${statusLabel} for ${existing.title}.`,
+          ],
+        );
+      }
+    } catch (notifyErr) {
+      console.error("[pos.tasks updateTaskStatus notification]", notifyErr.message);
     }
 
     let becameProductionReady = false;
 
-    if (existing.order_id && existing.assigned_by) {
-      // ── FIXED: Switched to .query ──
-      const [packetRows] = await db.query(
-        `SELECT task_role, status
-         FROM project_tasks
-         WHERE order_id = ?`,
-        [parseInt(existing.order_id)],
-      );
-
-      const existingStepKeys = new Set(
-        packetRows.map((row) => normalize(row.task_role)).filter(Boolean),
-      );
-
-      const completedStepKeys = new Set(
-        packetRows
-          .filter((row) => normalize(row.status) === "completed")
-          .map((row) => normalize(row.task_role))
-          .filter(Boolean),
-      );
-
-      const missingSteps = REQUIRED_PRODUCTION_STEP_KEYS.filter(
-        (step) => !existingStepKeys.has(step),
-      );
-
-      const incompleteSteps = REQUIRED_PRODUCTION_STEP_KEYS.filter(
-        (step) => !completedStepKeys.has(step),
-      );
-
-      if (status === "blocked") {
+    try {
+      if (existing.order_id && existing.assigned_by) {
         // ── FIXED: Switched to .query ──
-        await db.query(
-          `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
-           VALUES (?, 'task_blocked', 'Production Blocker Reported', ?, 'system', NOW())`,
-          [
-            parseInt(existing.assigned_by),
-            `${req.user.name || "A staff member"} reported a blocker on ${existing.task_role} for Order #${existing.order_id}.`,
-          ],
+        const [packetRows] = await db.query(
+          `SELECT id, task_role, status
+           FROM project_tasks
+           WHERE order_id = ?`,
+          [parseInt(existing.order_id)],
         );
-      }
 
-      if (
-        status === "completed" &&
-        missingSteps.length === 0 &&
-        incompleteSteps.length === 0
-      ) {
-        // ── FIXED: Switched to .query ──
-        await db.query(
-          `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
-           VALUES (?, 'production_ready', 'Production Ready for Shipping', ?, 'system', NOW())`,
-          [
-            parseInt(existing.assigned_by),
-            `${req.user.name || "A staff member"} completed the full production workflow for Order #${existing.order_id}. The order is now ready for shipping review.`,
-          ],
+        const isFullyReady = (rows) => {
+          const stepKeys = new Set(
+            rows.map((row) => normalize(row.task_role)).filter(Boolean),
+          );
+          const completedStepKeys = new Set(
+            rows
+              .filter((row) => normalize(row.status) === "completed")
+              .map((row) => normalize(row.task_role))
+              .filter(Boolean),
+          );
+          const missingSteps = REQUIRED_PRODUCTION_STEP_KEYS.filter(
+            (step) => !stepKeys.has(step),
+          );
+          const incompleteSteps = REQUIRED_PRODUCTION_STEP_KEYS.filter(
+            (step) => !completedStepKeys.has(step),
+          );
+          return missingSteps.length === 0 && incompleteSteps.length === 0;
+        };
+
+        // packetRows already reflects this request's committed UPDATE, so to
+        // reconstruct the state immediately before this request, substitute
+        // this row's pre-image status back in — every other row is untouched
+        // by this request and already reflects its true prior state.
+        const rowsBeforeThisRequest = packetRows.map((row) =>
+          Number(row.id) === taskId
+            ? { ...row, status: existing.status }
+            : row,
         );
-        becameProductionReady = true;
+
+        const wasProductionReadyBefore = isFullyReady(rowsBeforeThisRequest);
+        const isProductionReadyAfter = isFullyReady(packetRows);
+
+        becameProductionReady =
+          !wasProductionReadyBefore && isProductionReadyAfter;
+
+        if (status === "blocked") {
+          try {
+            await db.query(
+              `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
+               VALUES (?, 'task_blocked', 'Production Blocker Reported', ?, 'system', NOW())`,
+              [
+                parseInt(existing.assigned_by),
+                `${req.user.name || "A staff member"} reported a blocker on ${existing.task_role} for Order #${existing.order_id}.`,
+              ],
+            );
+          } catch (blockedNotifyErr) {
+            console.error(
+              "[pos.tasks updateTaskStatus blocked notification]",
+              blockedNotifyErr.message,
+            );
+          }
+        }
+
+        if (becameProductionReady) {
+          try {
+            await db.query(
+              `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
+               VALUES (?, 'production_ready', 'Production Ready for Shipping', ?, 'system', NOW())`,
+              [
+                parseInt(existing.assigned_by),
+                `${req.user.name || "A staff member"} completed the full production workflow for Order #${existing.order_id}. The order is now ready for shipping review.`,
+              ],
+            );
+          } catch (readyNotifyErr) {
+            console.error(
+              "[pos.tasks updateTaskStatus production_ready notification]",
+              readyNotifyErr.message,
+            );
+          }
+        }
       }
+    } catch (readinessErr) {
+      console.error(
+        "[pos.tasks updateTaskStatus readiness]",
+        readinessErr.message,
+      );
     }
 
     if (becameProductionReady) {
@@ -517,11 +585,6 @@ exports.updateTaskStatus = async (req, res) => {
         );
       }
     }
-    req.auditRecord = {
-      id: taskId,
-      old: { status: existing.status },
-      new: { status },
-    };
     res.json({ message: "Task status updated successfully." });
   } catch (err) {
     console.error("[pos.tasks PUT /:id/status]", err);

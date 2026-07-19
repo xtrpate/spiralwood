@@ -65,7 +65,12 @@ router.delete(
   posTasksController.deleteTask,
 );
 
-router.put("/:id/accept", indoorOnlyOrAdmin, posTasksController.acceptTask);
+router.put("/:id/accept", indoorOnlyOrAdmin, (req, res) => {
+  return res.status(410).json({
+    message:
+      "This endpoint is no longer supported. Use PUT /api/tasks/:id/status to start a task.",
+  });
+});
 router.put(
   "/:id/status",
   indoorOnlyOrAdmin,
