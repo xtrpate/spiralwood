@@ -361,8 +361,12 @@ router.post(
 router.post(
   "/orders/:id/delivery-receipt",
   adminStaff,
-  upload.uploadDeliveryReceipt,
-  orders.uploadDeliveryReceipt,
+  (req, res) => {
+    return res.status(410).json({
+      message:
+        "This delivery receipt endpoint is no longer supported. Use the Delivery Management workflow.",
+    });
+  },
 );
 
 router.post(
