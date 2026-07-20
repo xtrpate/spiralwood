@@ -508,18 +508,25 @@ router.get("/backup/download/:filename", adminOnly, website.downloadBackup);
 router.post(
   "/orders/:id/custom-request/approve",
   adminOnly,
+  logAction("approve_custom_request", "orders"),
   orders.approveCustomRequest,
 );
 
 router.post(
   "/orders/:id/custom-request/request-revision",
   adminOnly,
-  orders.requestCustomRequestRevision,
+  (req, res) => {
+    return res.status(410).json({
+      message:
+        "Custom-request revision requests are currently unavailable. Please review this request through the supported custom-request approve/reject workflow.",
+    });
+  },
 );
 
 router.post(
   "/orders/:id/custom-request/reject",
   adminOnly,
+  logAction("reject_custom_request", "orders"),
   orders.rejectCustomRequest,
 );
 
