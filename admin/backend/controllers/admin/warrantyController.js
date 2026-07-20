@@ -1,5 +1,6 @@
 // controllers/warrantyController.js (Admin)
 const db = require("../../config/db");
+const { signUploadPath } = require("../../utils/signedUrl");
 
 const splitStoredProofs = (value) => {
   const parts = String(value || "")
@@ -62,11 +63,11 @@ exports.getClaims = async (req, res) => {
         product_name: row.product_name,
         description: row.reason,
         admin_note: row.admin_note,
-        photo_url,
-        proof_url,
+        photo_url: signUploadPath(photo_url),
+        proof_url: signUploadPath(proof_url),
         warranty_expiry: row.warranty_expiry,
         status: row.status,
-        replacement_receipt: row.replacement_receipt,
+        replacement_receipt: signUploadPath(row.replacement_receipt),
         fulfilled_at: row.fulfilled_at,
         fulfilled_by: row.fulfilled_by,
         fulfilled_by_name: row.fulfilled_by_name,
