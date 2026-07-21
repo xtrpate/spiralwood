@@ -8,15 +8,38 @@ import {
   MapPin,
   UserCheck,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import useAuthStore from "../../store/authStore";
 import api from "../../services/api";
 import "./appointmentpage.css";
 
-const getMinDate = () => {
+// Helper: Get tomorrow's date as YYYY-MM-DD
+const getMinDateYMD = () => {
   const d = new Date();
   d.setDate(d.getDate() + 1);
-  return d.toISOString().split("T")[0];
+  const yr = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, "0");
+  const da = String(d.getDate()).padStart(2, "0");
+  return `${yr}-${mo}-${da}`;
+};
+
+// Helper: Format Date to YYYY-MM-DD
+const toYMD = (dateObj) => {
+  const yr = dateObj.getFullYear();
+  const mo = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const da = String(dateObj.getDate()).padStart(2, "0");
+  return `${yr}-${mo}-${da}`;
+};
+
+// Helper: Get the Monday of a given date's week
+const getStartOfWeek = (d) => {
+  const date = new Date(d);
+  const day = date.getDay();
+  // Adjust so week starts on Monday
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+  return new Date(date.setDate(diff));
 };
 
 const PURPOSE_OPTIONS = [
@@ -34,6 +57,9 @@ const PURPOSE_META = {
     desc: "Request an on-site visit so staff can inspect and measure the area.",
   },
 };
+
+// The 4 specific slots requested
+const TIME_SLOTS = ["09:00", "11:00", "13:00", "15:00"];
 
 const getPurposeLabel = (value) => {
   const match = PURPOSE_OPTIONS.find((item) => item.value === value);
@@ -68,17 +94,6 @@ const formatTimeForDisplay = (t) => {
   const [h, m] = t.split(":");
   const hr = parseInt(h, 10);
   return `${hr > 12 ? hr - 12 : hr === 0 ? 12 : hr}:${m} ${hr >= 12 ? "PM" : "AM"}`;
-};
-
-const formatDate = (str) => {
-  if (!str) return "—";
-  const d = new Date(str);
-  return d.toLocaleDateString("en-PH", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
 };
 
 const formatDateTime = (str) => {
@@ -127,24 +142,6 @@ const parseNotes = (notes) => {
   return details;
 };
 
-// Generates hours based on the store's schedule logic
-const generateTimeSlotsForDate = (dateString) => {
-  if (!dateString) return [];
-  const date = new Date(dateString);
-  const day = date.getDay(); // 0 = Sunday, 6 = Saturday
-
-  if (day === 0) return []; // Closed on Sundays
-
-  const slots = [];
-  const startHour = 8; // 8 AM
-  const endHour = day === 6 ? 12 : 17; // Sat closes at 12 PM, Weekday at 5 PM
-
-  for (let i = startHour; i < endHour; i++) {
-    slots.push(`${i.toString().padStart(2, "0")}:00`);
-  }
-  return slots;
-};
-
 export default function AppointmentPage() {
   const { user } = useAuthStore();
 
@@ -163,9 +160,14 @@ export default function AppointmentPage() {
   const [appointments, setAppointments] = useState([]);
   const [loadingAppts, setLoadingAppts] = useState(true);
 
-  // New states for availability logic
-  const [availableSlots, setAvailableSlots] = useState([]);
-  const [bookedSlots, setBookedSlots] = useState([]);
+  // New Calendar State for Weekly View
+  const [weekStart, setWeekStart] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return getStartOfWeek(tomorrow);
+  });
+
+  const [bookedSlots, setBookedSlots] = useState({});
   const [loadingSlots, setLoadingSlots] = useState(false);
 
   useEffect(() => {
@@ -176,23 +178,39 @@ export default function AppointmentPage() {
     fetchAppointments();
   }, []);
 
-  // Watch for date changes to fetch new availability
+  // Fetch the whole week's availability when the week view changes
   useEffect(() => {
-    if (preferred_date) {
-      setPreferredTime(""); // Reset selected time when changing date
-      const slots = generateTimeSlotsForDate(preferred_date);
-      setAvailableSlots(slots);
+    const fetchWeeklyAvailability = async () => {
+      setLoadingSlots(true);
+      try {
+        const days = Array.from({ length: 7 }).map((_, i) => {
+          const d = new Date(weekStart);
+          d.setDate(d.getDate() + i);
+          return toYMD(d);
+        });
 
-      if (slots.length > 0) {
-        fetchAvailability(preferred_date);
-      } else {
-        setBookedSlots([]);
+        // Ping the backend for all 7 days simultaneously
+        const promises = days.map((dateStr) =>
+          api.get(`/customer/appointments/availability?date=${dateStr}`),
+        );
+        const results = await Promise.all(promises);
+
+        const newBooked = {};
+        days.forEach((dateStr, i) => {
+          newBooked[dateStr] = results[i].data.booked || [];
+        });
+
+        setBookedSlots(newBooked);
+      } catch (err) {
+        console.error("Failed to fetch weekly slots", err);
+        setBookedSlots({});
+      } finally {
+        setLoadingSlots(false);
       }
-    } else {
-      setAvailableSlots([]);
-      setBookedSlots([]);
-    }
-  }, [preferred_date]);
+    };
+
+    fetchWeeklyAvailability();
+  }, [weekStart]);
 
   const fetchAppointments = async () => {
     setLoadingAppts(true);
@@ -206,21 +224,6 @@ export default function AppointmentPage() {
     }
   };
 
-  const fetchAvailability = async (dateStr) => {
-    setLoadingSlots(true);
-    try {
-      const res = await api.get(
-        `/customer/appointments/availability?date=${dateStr}`,
-      );
-      setBookedSlots(res.data.booked || []);
-    } catch (err) {
-      console.error("Failed to fetch slots", err);
-      setBookedSlots([]);
-    } finally {
-      setLoadingSlots(false);
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -228,9 +231,8 @@ export default function AppointmentPage() {
     if (!purpose) return setError("Please select an appointment type.");
     if (!project_description.trim())
       return setError("Please describe your project.");
-    if (!preferred_date) return setError("Please select a preferred date.");
-    if (!preferred_time)
-      return setError("Please select an available preferred time.");
+    if (!preferred_date || !preferred_time)
+      return setError("Please select an available schedule from the calendar.");
     if (!contact_number.trim())
       return setError("Please enter a contact number.");
     if (purpose === "site_measurement" && !address.trim()) {
@@ -251,6 +253,9 @@ export default function AppointmentPage() {
 
       setSubmitted(true);
       await fetchAppointments();
+
+      // Refresh current week's calendar blocks
+      setWeekStart(new Date(weekStart));
     } catch (err) {
       setError(
         err.response?.data?.message ||
@@ -267,8 +272,8 @@ export default function AppointmentPage() {
     try {
       await api.delete(`/customer/appointments/${id}`);
       await fetchAppointments();
-      // Re-fetch availability in case they cancelled for the currently viewed date
-      if (preferred_date) fetchAvailability(preferred_date);
+      // Re-fetch availability for the current week view
+      setWeekStart(new Date(weekStart));
     } catch (err) {
       alert(
         err.response?.data?.message || "Could not cancel appointment request.",
@@ -286,6 +291,35 @@ export default function AppointmentPage() {
     setNotes("");
     setSubmitted(false);
     setError("");
+  };
+
+  // Generate the 7 Date objects for the current viewed week
+  const weekDays = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+
+  const nextWeek = () => {
+    const next = new Date(weekStart);
+    next.setDate(next.getDate() + 7);
+    setWeekStart(next);
+    setPreferredDate(""); // Reset selection if they change weeks
+    setPreferredTime("");
+  };
+
+  const prevWeek = () => {
+    const prev = new Date(weekStart);
+    prev.setDate(prev.getDate() - 7);
+
+    // Check if the Sunday of the previous week is already fully in the past
+    const sundayOfPrevWeek = new Date(prev);
+    sundayOfPrevWeek.setDate(sundayOfPrevWeek.getDate() + 6);
+    if (toYMD(sundayOfPrevWeek) < getMinDateYMD()) return;
+
+    setWeekStart(prev);
+    setPreferredDate(""); // Reset selection if they change weeks
+    setPreferredTime("");
   };
 
   return (
@@ -328,7 +362,14 @@ export default function AppointmentPage() {
                   </div>
                   <div className="appt-success-row">
                     <Calendar size={15} />
-                    <span>{formatDate(preferred_date)}</span>
+                    <span>
+                      {new Date(preferred_date).toLocaleDateString("en-US", {
+                        weekday: "long",
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })}
+                    </span>
                   </div>
                   <div className="appt-success-row">
                     <Clock size={15} />
@@ -434,71 +475,129 @@ export default function AppointmentPage() {
                     </div>
                   </section>
 
+                  {/* WEEKLY PLANNER SECTION */}
                   <section className="appt-form-section">
-                    <div className="appt-section-head">
-                      <h3>Preferred Schedule</h3>
-                      <p>
-                        Choose your preferred date. Unavailable times will be
-                        blocked out.
-                      </p>
+                    <div className="appt-section-head weekly-section-head">
+                      <div>
+                        <h3>Preferred Schedule</h3>
+                        <p>Select an available time slot below.</p>
+                      </div>
+                      <div className="weekly-nav-controls">
+                        <button
+                          type="button"
+                          onClick={prevWeek}
+                          className="weekly-nav-btn"
+                        >
+                          <ChevronLeft size={20} />
+                        </button>
+                        <span className="weekly-nav-label">
+                          {weekDays[0].toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          })}{" "}
+                          -{" "}
+                          {weekDays[6].toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={nextWeek}
+                          className="weekly-nav-btn"
+                        >
+                          <ChevronRight size={20} />
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="appt-field">
-                      <label className="appt-label">
-                        <Calendar size={14} /> Preferred Date{" "}
-                        <span className="appt-required">*</span>
-                      </label>
-                      <input
-                        type="date"
-                        className="appt-input"
-                        min={getMinDate()}
-                        value={preferred_date}
-                        onChange={(e) => setPreferredDate(e.target.value)}
-                      />
+                    <div className="weekly-planner-wrapper">
+                      {loadingSlots && (
+                        <div className="weekly-loading-overlay">
+                          Loading calendar...
+                        </div>
+                      )}
+
+                      <div className="weekly-grid">
+                        {weekDays.map((dateObj, dayIndex) => {
+                          const dateStr = toYMD(dateObj);
+                          const isPast = dateStr < getMinDateYMD();
+                          const isSunday = dateObj.getDay() === 0;
+                          const dailyBookings = bookedSlots[dateStr] || [];
+
+                          return (
+                            <div
+                              key={dateStr}
+                              className={`weekly-col color-${dayIndex}`}
+                            >
+                              <div className="weekly-col-header">
+                                <div className="weekly-day">
+                                  {dateObj
+                                    .toLocaleDateString("en-US", {
+                                      weekday: "long",
+                                    })
+                                    .toUpperCase()}
+                                </div>
+                                <div className="weekly-date">
+                                  {dateObj.getDate()}
+                                </div>
+                              </div>
+
+                              <div className="weekly-slots-container">
+                                {TIME_SLOTS.map((time) => {
+                                  const isSelected =
+                                    preferred_date === dateStr &&
+                                    preferred_time === time;
+
+                                  // Block if past, sunday, or already booked.
+                                  // (Also block Saturday afternoon slots if needed based on store hours)
+                                  const isSaturdayAfternoon =
+                                    dateObj.getDay() === 6 &&
+                                    (time === "13:00" || time === "15:00");
+                                  const isUnavailable =
+                                    isPast ||
+                                    isSunday ||
+                                    isSaturdayAfternoon ||
+                                    dailyBookings.includes(time);
+
+                                  return (
+                                    <button
+                                      key={`${dateStr}-${time}`}
+                                      type="button"
+                                      disabled={isUnavailable}
+                                      onClick={() => {
+                                        setPreferredDate(dateStr);
+                                        setPreferredTime(time);
+                                      }}
+                                      className={`weekly-slot-box ${isUnavailable ? "unavailable" : "available"} ${isSelected ? "selected" : ""}`}
+                                    >
+                                      <div className="slot-time">
+                                        {formatTimeForDisplay(time)}
+                                      </div>
+                                      <div className="slot-status">
+                                        {isUnavailable
+                                          ? "Unavailable"
+                                          : "Available"}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-
-                    {preferred_date && (
-                      <div className="appt-field" style={{ marginTop: "1rem" }}>
-                        <label className="appt-label">
-                          <Clock size={14} /> Available Times{" "}
-                          <span className="appt-required">*</span>
-                        </label>
-
-                        {loadingSlots ? (
-                          <div className="appt-loading-slots">
-                            Checking availability...
-                          </div>
-                        ) : availableSlots.length === 0 ? (
-                          <div className="appt-closed-msg">
-                            We are closed on the selected date. Please choose a
-                            different day.
-                          </div>
-                        ) : (
-                          <div className="appt-time-grid">
-                            {availableSlots.map((time) => {
-                              const isBooked = bookedSlots.includes(time);
-                              const isSelected = preferred_time === time;
-                              return (
-                                <button
-                                  key={time}
-                                  type="button"
-                                  disabled={isBooked}
-                                  className={`appt-time-slot ${isBooked ? "booked" : ""} ${isSelected ? "selected" : ""}`}
-                                  onClick={() => setPreferredTime(time)}
-                                >
-                                  <div className="time-text">
-                                    {formatTimeForDisplay(time)}
-                                  </div>
-                                  {isBooked && (
-                                    <div className="time-status">
-                                      Not Available
-                                    </div>
-                                  )}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
+                    {preferred_date && preferred_time && (
+                      <div className="weekly-selection-feedback">
+                        Selected Schedule:{" "}
+                        <strong>
+                          {new Date(preferred_date).toLocaleDateString(
+                            "en-US",
+                            { month: "long", day: "numeric", year: "numeric" },
+                          )}{" "}
+                          at {formatTimeForDisplay(preferred_time)}
+                        </strong>
                       </div>
                     )}
                   </section>

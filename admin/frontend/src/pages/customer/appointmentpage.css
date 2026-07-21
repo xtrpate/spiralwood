@@ -748,7 +748,6 @@
 
 /* =========================
    APPOINTMENT READABILITY BOOST
-   Idikit sa pinakailalim ng appointmentpage.css
    ========================= */
 
 .appt-page {
@@ -1028,68 +1027,208 @@
   }
 }
 
-/* --- Time Slot Calendar Grid --- */
-.appt-time-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 12px;
-  margin-top: 10px;
+/* =========================
+   WEEKLY PLANNER CALENDAR
+   ========================= */
+
+.weekly-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 15px;
 }
 
-.appt-time-slot {
+.weekly-nav-controls {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  background: #f8f8f8;
+  border-radius: 30px;
+  padding: 4px 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.weekly-nav-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
   align-items: center;
   justify-content: center;
+  color: #333;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.weekly-nav-btn:hover {
+  background: #ebebeb;
+}
+
+.weekly-nav-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0 12px;
+  min-width: 130px;
+  text-align: center;
+}
+
+.weekly-planner-wrapper {
+  position: relative;
+  overflow-x: auto;
+  padding-bottom: 10px;
+  margin-top: 15px;
+}
+
+.weekly-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  z-index: 10;
+}
+
+.weekly-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(130px, 1fr));
+  gap: 8px;
+  background: #f2f7f1;
   padding: 12px;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  background-color: #fff;
+  border-radius: 12px;
+  border: 2px solid #e2ebd0;
+}
+
+.weekly-col {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.03);
+}
+
+.weekly-col-header {
+  padding: 12px 8px;
+  text-align: center;
+  color: #333;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.05);
+}
+
+.color-0 .weekly-col-header {
+  background-color: #9bbd8b;
+}
+.color-1 .weekly-col-header {
+  background-color: #d790b8;
+}
+.color-2 .weekly-col-header {
+  background-color: #8e94ba;
+}
+.color-3 .weekly-col-header {
+  background-color: #cbb49e;
+}
+.color-4 .weekly-col-header {
+  background-color: #e3a8d1;
+}
+.color-5 .weekly-col-header {
+  background-color: #aeb4d2;
+}
+.color-6 .weekly-col-header {
+  background-color: #a0c299;
+}
+
+.weekly-date {
+  font-size: 1.4rem;
+  font-weight: 800;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.weekly-day {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.weekly-slots-container {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 8px;
+  flex: 1;
+}
+
+.weekly-slot-box {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 6px;
+  padding: 10px 4px;
+  text-align: center;
+  transition: all 0.2s;
   cursor: pointer;
-  transition: all 0.2s ease;
-  min-height: 55px;
+  width: 100%;
 }
 
-.appt-time-slot:hover:not(.booked) {
-  border-color: #333;
-  background-color: #f9f9f9;
+.weekly-slot-box:hover:not(.unavailable):not(.selected) {
+  border-color: #ccc;
+  background: #fafafa;
 }
 
-.appt-time-slot.selected {
-  border-color: #000;
-  background-color: #000;
+.weekly-slot-box.selected {
+  border-color: #111;
+  background: #111;
   color: #fff;
 }
 
-.appt-time-slot.booked {
-  background-color: #f5f5f5;
-  border-color: #eeeeee;
-  color: #999;
+.weekly-slot-box.unavailable {
+  background: #f9f9f9;
+  border-color: #f0f0f0;
   cursor: not-allowed;
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
-.time-text {
+.slot-time {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.weekly-slot-box.unavailable .slot-time {
+  color: #999;
+  text-decoration: line-through;
+}
+
+.slot-status {
+  font-size: 0.7rem;
+  margin-top: 3px;
+  text-transform: uppercase;
   font-weight: 600;
+}
+
+.weekly-slot-box.available .slot-status {
+  color: #2e7d32;
+}
+
+.weekly-slot-box.unavailable .slot-status {
+  color: #d32f2f;
+}
+
+.weekly-slot-box.selected .slot-status {
+  color: #fff;
+}
+
+.weekly-selection-feedback {
+  margin-top: 15px;
+  padding: 12px;
+  background: #e8f5e9;
+  border: 1px solid #c8e6c9;
+  border-radius: 6px;
+  color: #2e7d32;
   font-size: 0.95rem;
-}
-
-.time-status {
-  font-size: 0.75rem;
-  margin-top: 4px;
-  color: #d32f2f;
-  font-weight: 500;
-}
-
-.appt-closed-msg {
-  color: #d32f2f;
-  font-size: 0.9rem;
-  margin-top: 8px;
-  font-weight: 500;
-}
-
-.appt-loading-slots {
-  font-size: 0.9rem;
-  color: #666;
-  margin-top: 8px;
 }
