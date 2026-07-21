@@ -253,7 +253,7 @@ export default function AppointmentPage() {
         project_description: project_description.trim(),
         preferred_date,
         preferred_time,
-        contact_number: contact_number.trim(),
+        contact_number: cleanedContact,
         address: address.trim() || undefined,
         notes: notes.trim() || undefined,
       });
