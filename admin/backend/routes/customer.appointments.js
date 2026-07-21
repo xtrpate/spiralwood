@@ -27,4 +27,11 @@ router.delete(
   appointmentController.cancelAppointment,
 );
 
+router.get(
+  "/availability",
+  authenticate,
+  requireCustomer,
+  appointmentController.getAvailability,
+);
+
 module.exports = router;

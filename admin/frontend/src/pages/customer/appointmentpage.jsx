@@ -63,11 +63,11 @@ const StatusBadge = ({ status }) => {
   return <span className={`appt-status-badge ${cls}`}>{label}</span>;
 };
 
-const formatTime = (t) => {
+const formatTimeForDisplay = (t) => {
   if (!t) return "—";
   const [h, m] = t.split(":");
   const hr = parseInt(h, 10);
-  return `${hr > 12 ? hr - 12 : hr}:${m} ${hr >= 12 ? "PM" : "AM"}`;
+  return `${hr > 12 ? hr - 12 : hr === 0 ? 12 : hr}:${m} ${hr >= 12 ? "PM" : "AM"}`;
 };
 
 const formatDate = (str) => {
@@ -127,6 +127,24 @@ const parseNotes = (notes) => {
   return details;
 };
 
+// Generates hours based on the store's schedule logic
+const generateTimeSlotsForDate = (dateString) => {
+  if (!dateString) return [];
+  const date = new Date(dateString);
+  const day = date.getDay(); // 0 = Sunday, 6 = Saturday
+
+  if (day === 0) return []; // Closed on Sundays
+
+  const slots = [];
+  const startHour = 8; // 8 AM
+  const endHour = day === 6 ? 12 : 17; // Sat closes at 12 PM, Weekday at 5 PM
+
+  for (let i = startHour; i < endHour; i++) {
+    slots.push(`${i.toString().padStart(2, "0")}:00`);
+  }
+  return slots;
+};
+
 export default function AppointmentPage() {
   const { user } = useAuthStore();
 
@@ -145,6 +163,11 @@ export default function AppointmentPage() {
   const [appointments, setAppointments] = useState([]);
   const [loadingAppts, setLoadingAppts] = useState(true);
 
+  // New states for availability logic
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [bookedSlots, setBookedSlots] = useState([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+
   useEffect(() => {
     setAddress(user?.address || "");
   }, [user]);
@@ -152,6 +175,24 @@ export default function AppointmentPage() {
   useEffect(() => {
     fetchAppointments();
   }, []);
+
+  // Watch for date changes to fetch new availability
+  useEffect(() => {
+    if (preferred_date) {
+      setPreferredTime(""); // Reset selected time when changing date
+      const slots = generateTimeSlotsForDate(preferred_date);
+      setAvailableSlots(slots);
+
+      if (slots.length > 0) {
+        fetchAvailability(preferred_date);
+      } else {
+        setBookedSlots([]);
+      }
+    } else {
+      setAvailableSlots([]);
+      setBookedSlots([]);
+    }
+  }, [preferred_date]);
 
   const fetchAppointments = async () => {
     setLoadingAppts(true);
@@ -165,19 +206,33 @@ export default function AppointmentPage() {
     }
   };
 
+  const fetchAvailability = async (dateStr) => {
+    setLoadingSlots(true);
+    try {
+      const res = await api.get(
+        `/customer/appointments/availability?date=${dateStr}`,
+      );
+      setBookedSlots(res.data.booked || []);
+    } catch (err) {
+      console.error("Failed to fetch slots", err);
+      setBookedSlots([]);
+    } finally {
+      setLoadingSlots(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
     if (!purpose) return setError("Please select an appointment type.");
-    if (!project_description.trim()) {
+    if (!project_description.trim())
       return setError("Please describe your project.");
-    }
     if (!preferred_date) return setError("Please select a preferred date.");
-    if (!preferred_time) return setError("Please select a preferred time.");
-    if (!contact_number.trim()) {
+    if (!preferred_time)
+      return setError("Please select an available preferred time.");
+    if (!contact_number.trim())
       return setError("Please enter a contact number.");
-    }
     if (purpose === "site_measurement" && !address.trim()) {
       return setError("Please enter the full address for site measurement.");
     }
@@ -212,6 +267,8 @@ export default function AppointmentPage() {
     try {
       await api.delete(`/customer/appointments/${id}`);
       await fetchAppointments();
+      // Re-fetch availability in case they cancelled for the currently viewed date
+      if (preferred_date) fetchAvailability(preferred_date);
     } catch (err) {
       alert(
         err.response?.data?.message || "Could not cancel appointment request.",
@@ -275,7 +332,7 @@ export default function AppointmentPage() {
                   </div>
                   <div className="appt-success-row">
                     <Clock size={15} />
-                    <span>{formatTime(preferred_time)}</span>
+                    <span>{formatTimeForDisplay(preferred_time)}</span>
                   </div>
                   <div className="appt-success-row">
                     <FileText size={15} />
@@ -381,45 +438,69 @@ export default function AppointmentPage() {
                     <div className="appt-section-head">
                       <h3>Preferred Schedule</h3>
                       <p>
-                        Choose your preferred schedule. Staff may confirm the
-                        closest available slot.
+                        Choose your preferred date. Unavailable times will be
+                        blocked out.
                       </p>
                     </div>
 
-                    <div className="appt-row">
-                      <div className="appt-field">
-                        <label className="appt-label">
-                          <Calendar size={14} /> Preferred Date{" "}
-                          <span className="appt-required">*</span>
-                        </label>
-                        <input
-                          type="date"
-                          className="appt-input"
-                          min={getMinDate()}
-                          value={preferred_date}
-                          onChange={(e) => setPreferredDate(e.target.value)}
-                        />
-                      </div>
-
-                      <div className="appt-field">
-                        <label className="appt-label">
-                          <Clock size={14} /> Preferred Time{" "}
-                          <span className="appt-required">*</span>
-                        </label>
-                        <input
-                          type="time"
-                          className="appt-input appt-time-input"
-                          value={preferred_time}
-                          onChange={(e) => setPreferredTime(e.target.value)}
-                          step="60"
-                        />
-                      </div>
+                    <div className="appt-field">
+                      <label className="appt-label">
+                        <Calendar size={14} /> Preferred Date{" "}
+                        <span className="appt-required">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        className="appt-input"
+                        min={getMinDate()}
+                        value={preferred_date}
+                        onChange={(e) => setPreferredDate(e.target.value)}
+                      />
                     </div>
 
-                    <div className="appt-field-help">
-                      Enter your preferred time. Staff will confirm the final
-                      available schedule.
-                    </div>
+                    {preferred_date && (
+                      <div className="appt-field" style={{ marginTop: "1rem" }}>
+                        <label className="appt-label">
+                          <Clock size={14} /> Available Times{" "}
+                          <span className="appt-required">*</span>
+                        </label>
+
+                        {loadingSlots ? (
+                          <div className="appt-loading-slots">
+                            Checking availability...
+                          </div>
+                        ) : availableSlots.length === 0 ? (
+                          <div className="appt-closed-msg">
+                            We are closed on the selected date. Please choose a
+                            different day.
+                          </div>
+                        ) : (
+                          <div className="appt-time-grid">
+                            {availableSlots.map((time) => {
+                              const isBooked = bookedSlots.includes(time);
+                              const isSelected = preferred_time === time;
+                              return (
+                                <button
+                                  key={time}
+                                  type="button"
+                                  disabled={isBooked}
+                                  className={`appt-time-slot ${isBooked ? "booked" : ""} ${isSelected ? "selected" : ""}`}
+                                  onClick={() => setPreferredTime(time)}
+                                >
+                                  <div className="time-text">
+                                    {formatTimeForDisplay(time)}
+                                  </div>
+                                  {isBooked && (
+                                    <div className="time-status">
+                                      Not Available
+                                    </div>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </section>
 
                   <section className="appt-form-section">

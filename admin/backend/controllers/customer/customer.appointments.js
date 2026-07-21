@@ -214,3 +214,38 @@ exports.cancelAppointment = async (req, res) => {
     });
   }
 };
+
+/* ── Check Availability ── */
+exports.getAvailability = async (req, res) => {
+  try {
+    const { date } = req.query;
+    if (!date) return res.status(400).json({ message: "Date is required." });
+
+    // Fetch all pending/confirmed appointments for the chosen date
+    const [rows] = await db.query(
+      `
+      SELECT TIME(scheduled_date) as booked_time
+      FROM appointments
+      WHERE DATE(scheduled_date) = ?
+        AND status IN ('pending', 'confirmed')
+      `,
+      [date],
+    );
+
+    // Format times into HH:mm (e.g., "09:00")
+    const bookedSlots = rows
+      .map((r) => {
+        const timeStr = r.booked_time;
+        return timeStr ? timeStr.substring(0, 5) : null;
+      })
+      .filter(Boolean);
+
+    return res.json({ booked: bookedSlots });
+  } catch (err) {
+    console.error("[customer.appointments AVAILABILITY]", err);
+    return res.status(500).json({
+      message: "Server error.",
+      error: err.message,
+    });
+  }
+};
