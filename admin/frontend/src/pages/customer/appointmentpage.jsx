@@ -233,8 +233,15 @@ export default function AppointmentPage() {
       return setError("Please describe your project.");
     if (!preferred_date || !preferred_time)
       return setError("Please select an available schedule from the calendar.");
-    if (!contact_number.trim())
+
+    const cleanedContact = contact_number.trim();
+    if (!cleanedContact) {
       return setError("Please enter a contact number.");
+    }
+    if (!/^09\d{9}$/.test(cleanedContact)) {
+      return setError("Contact number must be 11 digits.");
+    }
+
     if (purpose === "site_measurement" && !address.trim()) {
       return setError("Please enter the full address for site measurement.");
     }
@@ -620,8 +627,17 @@ export default function AppointmentPage() {
                         type="tel"
                         className="appt-input"
                         value={contact_number}
-                        onChange={(e) => setContactNumber(e.target.value)}
-                        maxLength={20}
+                        placeholder="09XXXXXXXXX"
+                        maxLength={11}
+                        onChange={(e) => {
+                          const onlyNums = e.target.value.replace(
+                            /[^0-9]/g,
+                            "",
+                          );
+                          if (onlyNums.length <= 11) {
+                            setContactNumber(onlyNums);
+                          }
+                        }}
                       />
                     </div>
 
