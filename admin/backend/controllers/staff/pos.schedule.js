@@ -441,6 +441,18 @@ exports.createAppointment = async (req, res) => {
 
     const appointment = await getAppointmentById(insertId);
 
+    req.auditRecord = {
+      id: insertId,
+      new: {
+        status: initialStatus,
+        provider_id: providerId || null,
+        scheduled_date: scheduledDate,
+        preferred_date: preferredDate,
+        purpose_configured: Boolean(purpose),
+        notes_configured: Boolean(notes),
+      },
+    };
+
     return res.status(201).json({
       message: providerUser
         ? "Appointment created and assigned to indoor staff."
@@ -484,8 +496,8 @@ exports.updateAppointment = async (req, res) => {
         provider_id,
         request_owner_id,
         purpose,
-        scheduled_date,
-        preferred_date,
+        DATE_FORMAT(scheduled_date, '%Y-%m-%d %H:%i:%s') AS scheduled_date,
+        DATE_FORMAT(preferred_date, '%Y-%m-%d %H:%i:%s') AS preferred_date,
         status,
         notes
       FROM appointments
@@ -569,6 +581,21 @@ exports.updateAppointment = async (req, res) => {
 
         const updated = await getAppointmentById(appointmentId);
 
+        req.auditRecord = {
+          id: appointmentId,
+          old: {
+            status: currentStatus,
+            provider_id: existing.provider_id ?? null,
+          },
+          new: {
+            status: isAccept ? "confirmed" : "pending",
+            provider_id: isReturnToAdmin ? null : existing.provider_id ?? null,
+            changed_fields: isReturnToAdmin
+              ? ["status", "provider_id"]
+              : ["status"],
+          },
+        };
+
         return res.json({
           message: isAccept
             ? "Appointment accepted successfully."
@@ -613,6 +640,12 @@ exports.updateAppointment = async (req, res) => {
       conn = null;
 
       const updated = await getAppointmentById(appointmentId);
+
+      req.auditRecord = {
+        id: appointmentId,
+        old: { status: currentStatus },
+        new: { status: requestedStatus, changed_fields: ["status"] },
+      };
 
       return res.json({
         message: "Appointment updated successfully.",
@@ -774,6 +807,22 @@ exports.updateAppointment = async (req, res) => {
       }
     }
 
+    const changedFields = [];
+    if (status !== currentStatus) changedFields.push("status");
+    if ((providerId ?? null) !== (existing.provider_id ?? null)) {
+      changedFields.push("provider_id");
+    }
+    if ((scheduledDate ?? null) !== (existing.scheduled_date ?? null)) {
+      changedFields.push("scheduled_date");
+    }
+    if ((preferredDate ?? null) !== (existing.preferred_date ?? null)) {
+      changedFields.push("preferred_date");
+    }
+    const purposeChanged = purpose !== existing.purpose;
+    const notesChanged = (notes ?? null) !== (existing.notes ?? null);
+    if (purposeChanged) changedFields.push("purpose");
+    if (notesChanged) changedFields.push("notes");
+
     await conn.query(
       `
       UPDATE appointments
@@ -806,6 +855,27 @@ exports.updateAppointment = async (req, res) => {
     conn = null;
 
     const updated = await getAppointmentById(appointmentId);
+
+    if (changedFields.length > 0) {
+      req.auditRecord = {
+        id: appointmentId,
+        old: {
+          status: currentStatus,
+          provider_id: existing.provider_id ?? null,
+          scheduled_date: existing.scheduled_date ?? null,
+          preferred_date: existing.preferred_date ?? null,
+        },
+        new: {
+          status,
+          provider_id: providerId,
+          scheduled_date: scheduledDate,
+          preferred_date: preferredDate,
+          purpose_changed: purposeChanged,
+          notes_changed: notesChanged,
+          changed_fields: changedFields,
+        },
+      };
+    }
 
     return res.json({
       message: "Appointment updated successfully.",
