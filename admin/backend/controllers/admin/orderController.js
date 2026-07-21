@@ -225,7 +225,8 @@ const getCustomRequestOrderForAdmin = async (conn, orderId) => {
         o.blueprint_id
       FROM orders o
       WHERE o.id = ?
-      LIMIT 1`,
+      LIMIT 1
+      FOR UPDATE`,
     [parseInt(orderId)],
   );
 
@@ -265,14 +266,15 @@ exports.approveCustomRequest = async (req, res) => {
     const { order } = result;
     const currentStatus = normalize(order.status);
 
-    if (["cancelled", "completed"].includes(currentStatus)) {
+    if (currentStatus !== "pending") {
       await conn.rollback();
       return res.status(400).json({
-        message: "This custom request can no longer be approved.",
+        message: "Only pending custom requests can be approved.",
       });
     }
 
     let resolvedBlueprintId = Number(order.blueprint_id || 0) || null;
+    const oldBlueprintId = resolvedBlueprintId;
 
     if (!resolvedBlueprintId) {
       const [[customItem]] = await conn.query(
@@ -394,6 +396,20 @@ exports.approveCustomRequest = async (req, res) => {
 
     await conn.commit();
 
+    req.auditRecord = {
+      id: orderId,
+      old: { status: currentStatus, blueprint_id: oldBlueprintId },
+      new: {
+        status: "confirmed",
+        blueprint_id: resolvedBlueprintId,
+        admin_note_provided: Boolean(adminNote),
+        changed_fields: [
+          "status",
+          ...(oldBlueprintId !== resolvedBlueprintId ? ["blueprint_id"] : []),
+        ],
+      },
+    };
+
     return res.json({
       message: "Custom request approved successfully.",
       blueprint_id: resolvedBlueprintId,
@@ -478,10 +494,10 @@ exports.rejectCustomRequest = async (req, res) => {
     const { order } = result;
     const currentStatus = normalize(order.status);
 
-    if (["cancelled", "completed"].includes(currentStatus)) {
+    if (currentStatus !== "pending") {
       await conn.rollback();
       return res.status(400).json({
-        message: "This custom request can no longer be rejected.",
+        message: "Only pending custom requests can be rejected.",
       });
     }
 
@@ -503,6 +519,16 @@ exports.rejectCustomRequest = async (req, res) => {
     });
 
     await conn.commit();
+
+    req.auditRecord = {
+      id: orderId,
+      old: { status: currentStatus },
+      new: {
+        status: "cancelled",
+        rejection_reason_provided: Boolean(reason),
+        changed_fields: ["status", "cancellation_reason", "cancelled_at"],
+      },
+    };
 
     return res.json({
       message: "Custom request rejected successfully.",

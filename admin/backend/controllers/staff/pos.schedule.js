@@ -69,6 +69,65 @@ const ensureStaffType = async (userId, expectedType) => {
   return user;
 };
 
+// Stage-1 assumption: the repository has no stored/configured appointment
+// duration anywhere (no column, no settings entry). A fixed 60-minute
+// duration is used only to detect provider double-booking in this stage.
+const APPOINTMENT_DURATION_MINUTES = 60;
+
+// Half-open interval overlap check: [start, start + 60min).
+// Conflict iff existing_start < new_end AND new_start < existing_end.
+// Must run on the transaction connection (conn), after the candidate
+// provider's users row is already locked by the caller — this is a plain
+// read, not the serialization point itself.
+const hasOverlappingProviderAppointment = async (
+  conn,
+  providerId,
+  scheduledDate,
+  excludeAppointmentId,
+) => {
+  const [rows] = await conn.query(
+    `SELECT id
+     FROM appointments
+     WHERE provider_id = ?
+       AND status IN ('assigned', 'confirmed')
+       AND id != ?
+       AND scheduled_date < DATE_ADD(?, INTERVAL ? MINUTE)
+       AND DATE_ADD(scheduled_date, INTERVAL ? MINUTE) > ?
+     LIMIT 1`,
+    [
+      providerId,
+      excludeAppointmentId,
+      scheduledDate,
+      APPOINTMENT_DURATION_MINUTES,
+      APPOINTMENT_DURATION_MINUTES,
+      scheduledDate,
+    ],
+  );
+
+  return rows.length > 0;
+};
+
+// Authoritative provider validation once a transaction is open. Must always
+// run on the transaction connection (conn), never on the global pool, so a
+// held transaction never blocks on a second pool connection underneath it.
+const lockAndValidateIndoorProvider = async (conn, providerId) => {
+  const [[row]] = await conn.query(
+    `SELECT id, name, role, staff_type, is_active
+     FROM users
+     WHERE id = ?
+     LIMIT 1
+     FOR UPDATE`,
+    [providerId],
+  );
+
+  if (!row) return null;
+  if (row.role !== "staff") return null;
+  if (row.staff_type !== "indoor") return null;
+  if (!row.is_active) return null;
+
+  return row;
+};
+
 const getAppointmentById = async (appointmentId) => {
   const [rows] = await db.query(
     `
@@ -254,52 +313,145 @@ exports.createAppointment = async (req, res) => {
       }
     }
 
-    let providerUser = null;
-    if (providerId) {
-      providerUser = await ensureStaffType(providerId, "indoor");
-      if (!providerUser) {
-        return res.status(400).json({
-          message:
-            "Selected appointment provider must be an active indoor staff member.",
-        });
-      }
-    }
-
     const initialStatus = providerId ? "assigned" : "pending";
 
-    const [result] = await db.query(
-      `
-      INSERT INTO appointments
-        (
-          order_id,
-          customer_id,
-          handled_by,
-          provider_id,
-          request_owner_id,
-          purpose,
-          scheduled_date,
-          preferred_date,
-          status,
-          notes
-        )
-      VALUES
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      [
-        orderId || null,
-        customerId || null,
-        req.user.id,
-        providerId || null,
-        req.user.id,
-        purpose,
-        scheduledDate,
-        preferredDate,
-        initialStatus,
-        notes,
-      ],
-    );
+    let providerUser = null;
+    let insertId;
 
-    const appointment = await getAppointmentById(result.insertId);
+    if (providerId) {
+      let conn = null;
+      let transactionActive = false;
+
+      try {
+        conn = await db.getConnection();
+        await conn.beginTransaction();
+        transactionActive = true;
+
+        const lockedProvider = await lockAndValidateIndoorProvider(
+          conn,
+          providerId,
+        );
+
+        if (!lockedProvider) {
+          await conn.rollback();
+          transactionActive = false;
+          return res.status(400).json({
+            message:
+              "Selected appointment provider must be an active indoor staff member.",
+          });
+        }
+
+        providerUser = lockedProvider;
+
+        const hasConflict = await hasOverlappingProviderAppointment(
+          conn,
+          providerId,
+          scheduledDate,
+          0,
+        );
+
+        if (hasConflict) {
+          await conn.rollback();
+          transactionActive = false;
+          return res.status(409).json({
+            message:
+              "The selected provider already has an overlapping appointment.",
+          });
+        }
+
+        const [result] = await conn.query(
+          `
+          INSERT INTO appointments
+            (
+              order_id,
+              customer_id,
+              handled_by,
+              provider_id,
+              request_owner_id,
+              purpose,
+              scheduled_date,
+              preferred_date,
+              status,
+              notes
+            )
+          VALUES
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            orderId || null,
+            customerId || null,
+            req.user.id,
+            providerId || null,
+            req.user.id,
+            purpose,
+            scheduledDate,
+            preferredDate,
+            initialStatus,
+            notes,
+          ],
+        );
+
+        await conn.commit();
+        transactionActive = false;
+        insertId = result.insertId;
+      } catch (txErr) {
+        if (conn && transactionActive) {
+          await conn.rollback();
+          transactionActive = false;
+        }
+        throw txErr;
+      } finally {
+        if (conn) conn.release();
+      }
+    } else {
+      const [result] = await db.query(
+        `
+        INSERT INTO appointments
+          (
+            order_id,
+            customer_id,
+            handled_by,
+            provider_id,
+            request_owner_id,
+            purpose,
+            scheduled_date,
+            preferred_date,
+            status,
+            notes
+          )
+        VALUES
+          (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          orderId || null,
+          customerId || null,
+          req.user.id,
+          providerId || null,
+          req.user.id,
+          purpose,
+          scheduledDate,
+          preferredDate,
+          initialStatus,
+          notes,
+        ],
+      );
+
+      insertId = result.insertId;
+    }
+
+    const appointment = await getAppointmentById(insertId);
+
+    req.auditRecord = {
+      id: insertId,
+      new: {
+        status: initialStatus,
+        provider_id: providerId || null,
+        scheduled_date: scheduledDate,
+        preferred_date: preferredDate,
+        purpose_configured: Boolean(purpose),
+        notes_configured: Boolean(notes),
+      },
+    };
 
     return res.status(201).json({
       message: providerUser
@@ -320,14 +472,21 @@ exports.createAppointment = async (req, res) => {
 };
 
 exports.updateAppointment = async (req, res) => {
+  const appointmentId = toNullableInt(req.params.id);
+
+  if (!appointmentId) {
+    return res.status(400).json({ message: "Invalid appointment id" });
+  }
+
+  let conn = null;
+  let transactionActive = false;
+
   try {
-    const appointmentId = toNullableInt(req.params.id);
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
 
-    if (!appointmentId) {
-      return res.status(400).json({ message: "Invalid appointment id" });
-    }
-
-    const [[existing]] = await db.query(
+    const [[existing]] = await conn.query(
       `
       SELECT
         id,
@@ -337,18 +496,21 @@ exports.updateAppointment = async (req, res) => {
         provider_id,
         request_owner_id,
         purpose,
-        scheduled_date,
-        preferred_date,
+        DATE_FORMAT(scheduled_date, '%Y-%m-%d %H:%i:%s') AS scheduled_date,
+        DATE_FORMAT(preferred_date, '%Y-%m-%d %H:%i:%s') AS preferred_date,
         status,
         notes
       FROM appointments
       WHERE id = ?
       LIMIT 1
+      FOR UPDATE
       `,
       [appointmentId],
     );
 
     if (!existing) {
+      await conn.rollback();
+      transactionActive = false;
       return res.status(404).json({ message: "Appointment not found" });
     }
 
@@ -356,6 +518,8 @@ exports.updateAppointment = async (req, res) => {
     const isAdmin = req.user.role === "admin";
 
     if (["done", "rejected", "cancelled"].includes(currentStatus)) {
+      await conn.rollback();
+      transactionActive = false;
       return res.status(400).json({
         message: "This appointment can no longer be changed.",
       });
@@ -366,6 +530,8 @@ exports.updateAppointment = async (req, res) => {
         Number(existing.provider_id) === Number(req.user.id);
 
       if (!isAssignedProvider) {
+        await conn.rollback();
+        transactionActive = false;
         return res.status(403).json({
           message: "You can only update appointments assigned to you.",
         });
@@ -382,13 +548,15 @@ exports.updateAppointment = async (req, res) => {
         const isReturnToAdmin = requestedStatus === "pending";
 
         if (!isAccept && !isReturnToAdmin) {
+          await conn.rollback();
+          transactionActive = false;
           return res.status(400).json({
             message:
               "Assigned appointment tasks can only be accepted or returned to admin.",
           });
         }
 
-        await db.query(
+        await conn.query(
           `
           UPDATE appointments
           SET
@@ -406,7 +574,27 @@ exports.updateAppointment = async (req, res) => {
           ],
         );
 
+        await conn.commit();
+        transactionActive = false;
+        conn.release();
+        conn = null;
+
         const updated = await getAppointmentById(appointmentId);
+
+        req.auditRecord = {
+          id: appointmentId,
+          old: {
+            status: currentStatus,
+            provider_id: existing.provider_id ?? null,
+          },
+          new: {
+            status: isAccept ? "confirmed" : "pending",
+            provider_id: isReturnToAdmin ? null : existing.provider_id ?? null,
+            changed_fields: isReturnToAdmin
+              ? ["status", "provider_id"]
+              : ["status"],
+          },
+        };
 
         return res.json({
           message: isAccept
@@ -417,6 +605,8 @@ exports.updateAppointment = async (req, res) => {
       }
 
       if (currentStatus !== "confirmed") {
+        await conn.rollback();
+        transactionActive = false;
         return res.status(400).json({
           message:
             "Only assigned or confirmed appointments can be updated by indoor staff.",
@@ -424,13 +614,15 @@ exports.updateAppointment = async (req, res) => {
       }
 
       if (!["done", "cancelled"].includes(requestedStatus)) {
+        await conn.rollback();
+        transactionActive = false;
         return res.status(400).json({
           message:
             "Indoor staff can only mark confirmed appointments as done or cancelled.",
         });
       }
 
-      await db.query(
+      await conn.query(
         `
         UPDATE appointments
         SET
@@ -442,7 +634,18 @@ exports.updateAppointment = async (req, res) => {
         [requestedStatus, nextNotes, appointmentId],
       );
 
+      await conn.commit();
+      transactionActive = false;
+      conn.release();
+      conn = null;
+
       const updated = await getAppointmentById(appointmentId);
+
+      req.auditRecord = {
+        id: appointmentId,
+        old: { status: currentStatus },
+        new: { status: requestedStatus, changed_fields: ["status"] },
+      };
 
       return res.json({
         message: "Appointment updated successfully.",
@@ -458,6 +661,13 @@ exports.updateAppointment = async (req, res) => {
     let status = currentStatus;
     let notes = existing.notes ?? null;
 
+    // Caches the provider row already locked+validated by the provider_id
+    // branch below, so the final effective-state check can reuse it instead
+    // of locking and querying the same users row a second time in this
+    // same request.
+    let lockedProviderId = null;
+    let lockedProviderRow = null;
+
     if (Object.prototype.hasOwnProperty.call(req.body, "notes")) {
       notes = normalizeText(req.body.notes) || null;
     }
@@ -465,6 +675,8 @@ exports.updateAppointment = async (req, res) => {
     if (Object.prototype.hasOwnProperty.call(req.body, "purpose")) {
       const requestedPurpose = normalizeText(req.body.purpose).toLowerCase();
       if (!APPOINTMENT_PURPOSES.includes(requestedPurpose)) {
+        await conn.rollback();
+        transactionActive = false;
         return res.status(400).json({ message: "Invalid appointment purpose" });
       }
       purpose = requestedPurpose;
@@ -473,6 +685,8 @@ exports.updateAppointment = async (req, res) => {
     if (Object.prototype.hasOwnProperty.call(req.body, "preferred_date")) {
       const normalizedPreferredDate = normalizeDateTime(req.body.preferred_date);
       if (!normalizedPreferredDate) {
+        await conn.rollback();
+        transactionActive = false;
         return res.status(400).json({
           message: "Preferred appointment date and time is invalid.",
         });
@@ -483,6 +697,8 @@ exports.updateAppointment = async (req, res) => {
     if (Object.prototype.hasOwnProperty.call(req.body, "scheduled_date")) {
       const normalizedScheduledDate = normalizeDateTime(req.body.scheduled_date);
       if (!normalizedScheduledDate) {
+        await conn.rollback();
+        transactionActive = false;
         return res.status(400).json({
           message: "Scheduled appointment date and time is invalid.",
         });
@@ -497,14 +713,22 @@ exports.updateAppointment = async (req, res) => {
         providerId = null;
         status = "pending";
       } else {
-        const providerUser = await ensureStaffType(requestedProviderId, "indoor");
+        const providerRow = await lockAndValidateIndoorProvider(
+          conn,
+          requestedProviderId,
+        );
 
-        if (!providerUser) {
+        if (!providerRow) {
+          await conn.rollback();
+          transactionActive = false;
           return res.status(400).json({
             message:
               "Selected appointment provider must be an active indoor staff member.",
           });
         }
+
+        lockedProviderId = requestedProviderId;
+        lockedProviderRow = providerRow;
 
         providerId = requestedProviderId;
         handledBy = req.user.id;
@@ -516,10 +740,14 @@ exports.updateAppointment = async (req, res) => {
       const requestedStatus = normalizeText(req.body.status).toLowerCase();
 
       if (!APPOINTMENT_STATUSES.includes(requestedStatus)) {
+        await conn.rollback();
+        transactionActive = false;
         return res.status(400).json({ message: "Invalid appointment status" });
       }
 
       if (requestedStatus === "confirmed" || requestedStatus === "done") {
+        await conn.rollback();
+        transactionActive = false;
         return res.status(400).json({
           message:
             "Only the assigned indoor staff can confirm or complete an appointment.",
@@ -527,6 +755,8 @@ exports.updateAppointment = async (req, res) => {
       }
 
       if (requestedStatus === "assigned" && !providerId) {
+        await conn.rollback();
+        transactionActive = false;
         return res.status(400).json({
           message: "Assign an indoor staff member before setting status to assigned.",
         });
@@ -539,7 +769,61 @@ exports.updateAppointment = async (req, res) => {
       status = requestedStatus;
     }
 
-    await db.query(
+    // Effective-state check: runs once, using the final computed values from
+    // every branch above — not tied to which specific field the admin sent.
+    // A reschedule-only request on an already-assigned/confirmed appointment
+    // must still be checked against its existing (unchanged) provider_id.
+    if (providerId && ["assigned", "confirmed"].includes(status)) {
+      let providerRow =
+        lockedProviderId === providerId ? lockedProviderRow : null;
+
+      if (!providerRow) {
+        providerRow = await lockAndValidateIndoorProvider(conn, providerId);
+
+        if (!providerRow) {
+          await conn.rollback();
+          transactionActive = false;
+          return res.status(400).json({
+            message:
+              "Selected appointment provider must be an active indoor staff member.",
+          });
+        }
+      }
+
+      const hasConflict = await hasOverlappingProviderAppointment(
+        conn,
+        providerId,
+        scheduledDate,
+        appointmentId,
+      );
+
+      if (hasConflict) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({
+          message:
+            "The selected provider already has an overlapping appointment.",
+        });
+      }
+    }
+
+    const changedFields = [];
+    if (status !== currentStatus) changedFields.push("status");
+    if ((providerId ?? null) !== (existing.provider_id ?? null)) {
+      changedFields.push("provider_id");
+    }
+    if ((scheduledDate ?? null) !== (existing.scheduled_date ?? null)) {
+      changedFields.push("scheduled_date");
+    }
+    if ((preferredDate ?? null) !== (existing.preferred_date ?? null)) {
+      changedFields.push("preferred_date");
+    }
+    const purposeChanged = purpose !== existing.purpose;
+    const notesChanged = (notes ?? null) !== (existing.notes ?? null);
+    if (purposeChanged) changedFields.push("purpose");
+    if (notesChanged) changedFields.push("notes");
+
+    await conn.query(
       `
       UPDATE appointments
       SET
@@ -565,17 +849,49 @@ exports.updateAppointment = async (req, res) => {
       ],
     );
 
+    await conn.commit();
+    transactionActive = false;
+    conn.release();
+    conn = null;
+
     const updated = await getAppointmentById(appointmentId);
+
+    if (changedFields.length > 0) {
+      req.auditRecord = {
+        id: appointmentId,
+        old: {
+          status: currentStatus,
+          provider_id: existing.provider_id ?? null,
+          scheduled_date: existing.scheduled_date ?? null,
+          preferred_date: existing.preferred_date ?? null,
+        },
+        new: {
+          status,
+          provider_id: providerId,
+          scheduled_date: scheduledDate,
+          preferred_date: preferredDate,
+          purpose_changed: purposeChanged,
+          notes_changed: notesChanged,
+          changed_fields: changedFields,
+        },
+      };
+    }
 
     return res.json({
       message: "Appointment updated successfully.",
       appointment: updated,
     });
   } catch (err) {
+    if (conn && transactionActive) {
+      await conn.rollback();
+      transactionActive = false;
+    }
     console.error("PATCH /api/pos/appointments/:id error:", err);
     return res.status(500).json({
       message: "Failed to update appointment",
       error: err.message,
     });
+  } finally {
+    if (conn) conn.release();
   }
 };
