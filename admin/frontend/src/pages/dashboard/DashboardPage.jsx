@@ -92,18 +92,29 @@ function getPercent(value, total) {
   return Math.min(100, Math.max(0, (Number(value || 0) / Number(total)) * 100));
 }
 
-// 👉 FIX: Added 'metric-card--clickable' class for ONLY these cards
-function MetricCard({ eyebrow, title, value, meta, alert, onClick }) {
+function MetricCard({
+  eyebrow,
+  title,
+  value,
+  meta,
+  alert,
+  color = "#18181b",
+  onClick,
+}) {
   return (
     <div
       className={`metric-card ${onClick ? "metric-card--clickable" : ""}`}
       onClick={onClick}
-      style={{ borderLeftColor: alert ? "#ef4444" : "#18181b" }}
+      style={{
+        borderLeftColor: alert ? "#ef4444" : color,
+      }}
     >
       <div className="metric-card__eyebrow">{eyebrow}</div>
       <div
         className="metric-card__value"
-        style={{ color: alert ? "#ef4444" : "#0a0a0a" }}
+        style={{
+          color: alert ? "#ef4444" : color,
+        }}
       >
         {value}
       </div>
@@ -631,6 +642,7 @@ export default function DashboardPage() {
       {/* 👉 FIX: Added the navigation onClicks only to these 6 cards! */}
       <section className="metric-grid metric-grid--six">
         <MetricCard
+          color="#16A34A"
           eyebrow="Selected Range"
           value={peso.format(Number(sales.total_revenue || 0))}
           title="Net Sales"
@@ -641,6 +653,7 @@ export default function DashboardPage() {
         />
 
         <MetricCard
+          color="#2563EB"
           eyebrow="Current Queue"
           value={num.format(currentOpenOrders)}
           title="Open Orders"
@@ -651,6 +664,7 @@ export default function DashboardPage() {
         />
 
         <MetricCard
+          color="#F59E0B"
           eyebrow="Current Queue"
           value={num.format(pendingReviews)}
           title="Pending Payment Review"
@@ -659,6 +673,7 @@ export default function DashboardPage() {
         />
 
         <MetricCard
+          color="#EF4444"
           alert={stockAlerts > 0}
           eyebrow="Inventory Alerts"
           value={num.format(stockAlerts)}
@@ -670,6 +685,7 @@ export default function DashboardPage() {
         />
 
         <MetricCard
+          color="#8B5CF6"
           eyebrow="Custom Operations"
           value={num.format(activeBlueprintJobs)}
           title="Active Blueprint Jobs"
@@ -682,6 +698,7 @@ export default function DashboardPage() {
         />
 
         <MetricCard
+          color="#0891B2"
           eyebrow="Channel Mix"
           value={`${num.format(onlineOrders)} / ${num.format(walkinOrders)}`}
           title="Online vs Walk-in"
