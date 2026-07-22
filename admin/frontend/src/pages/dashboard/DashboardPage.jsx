@@ -651,9 +651,9 @@ export default function DashboardPage() {
           title="Net Sales"
           meta={
             <>
-              <div>Profit ${peso.format(Number(sales.total_profit || 0))}</div>
+              <div>Profit: {peso.format(Number(sales.total_profit || 0))}</div>
               <div>
-                Avg Order ${peso.format(Number(sales.avg_order_value || 0))}
+                Avg Order: {peso.format(Number(sales.avg_order_value || 0))}
               </div>
             </>
           }
