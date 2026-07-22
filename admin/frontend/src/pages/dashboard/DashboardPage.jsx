@@ -101,43 +101,27 @@ function MetricCard({
   color = "#18181b",
   onClick,
 }) {
+  const borderColor = alert ? "#ef4444" : color;
+
   return (
     <div
       className={`metric-card ${onClick ? "metric-card--clickable" : ""}`}
       onClick={onClick}
       style={{
-        borderLeftColor: alert ? "#ef4444" : color,
+        borderLeftColor: borderColor,
       }}
     >
-      <div className="metric-card__header">
-        <div
-          className="metric-card__title"
-          style={{ color: alert ? "#ef4444" : color }}
-        >
-          {title}
+      <div className="metric-card__content">
+        <div className="metric-card__left">
+          <div className="metric-card__title">{title}</div>
+          <div className="metric-card__value">{value}</div>
+          {meta && <div className="metric-card__meta">{meta}</div>}
         </div>
 
-        <div
-          className="metric-card__icon"
-          style={{
-            color: alert ? "#ef4444" : color,
-          }}
-        >
-          {icon}
+        <div className="metric-card__right">
+          <div className="metric-card__icon">{icon}</div>
         </div>
-        <span className="metric-card__arrow">→</span>
       </div>
-
-      <div
-        className="metric-card__value"
-        style={{
-          color: alert ? "#ef4444" : color,
-        }}
-      >
-        {value}
-      </div>
-
-      <div className="metric-card__meta">{meta}</div>
     </div>
   );
 }
@@ -1324,60 +1308,76 @@ const dashboardCss = `
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
-  .metric-card{
-    border-radius:18px;
-    padding:22px;
-    border-left:5px solid #18181b;
-    min-height:170px;
+  .metric-card {
+    border-radius: 16px;
+    padding: 24px;
+    border: 1px solid #e4e4e7;
+    border-left: 6px solid #18181b; 
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+  }
 
-    display:flex;
-    flex-direction:column;
-}
   .metric-card--clickable {
     cursor: pointer;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
 
-  .metric-card--clickable:hover{
-    transform:translateY(-6px);
-
-    box-shadow:
-        0 12px 24px rgba(0,0,0,.08),
-        0 2px 6px rgba(0,0,0,.05);
-
-    border-color:#d4d4d8;
-}
-
-  .metric-card__eyebrow {
-    font-size: 10px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 1.2px;
-    color: #71717a;
-    margin-bottom: 10px;
+  .metric-card--clickable:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0,0,0,.06), 0 2px 6px rgba(0,0,0,.04);
+    border-color: #d4d4d8;
   }
 
-  .metric-card__value{
-    font-size:34px;
-    font-weight:800;
-    line-height:1.05;
-    margin-top:4px;
-}
+  .metric-card__content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center; 
+    width: 100%;
+    gap: 16px;
+  }
+
+  .metric-card__left {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
 
   .metric-card__title {
-    font-size: 13px;
-    font-weight: 700;
-    color: #18181b;
-    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #52525b; 
   }
 
-  .metric-card__meta{
-    margin-top:auto;
+  .metric-card__value {
+    font-size: 28px;
+    font-weight: 800;
+    color: #0a0a0a; 
+    line-height: 1.1;
+  }
 
-    font-size:12px;
-    color:#71717a;
-    line-height:1.6;
-}
+  .metric-card__meta {
+    font-size: 12px;
+    color: #71717a;
+    line-height: 1.4;
+    margin-top: 4px;
+  }
+
+  .metric-card__icon {
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    background: #f4f4f5; 
+    font-size: 22px;
+    flex-shrink: 0;
+  }
 
   .dashboard-grid {
     display: grid;
