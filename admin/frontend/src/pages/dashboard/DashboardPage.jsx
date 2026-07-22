@@ -93,10 +93,10 @@ function getPercent(value, total) {
 }
 
 function MetricCard({
-  eyebrow,
   title,
   value,
   meta,
+  icon,
   alert,
   color = "#18181b",
   onClick,
@@ -109,7 +109,25 @@ function MetricCard({
         borderLeftColor: alert ? "#ef4444" : color,
       }}
     >
-      <div className="metric-card__eyebrow">{eyebrow}</div>
+      <div className="metric-card__header">
+        <div
+          className="metric-card__title"
+          style={{ color: alert ? "#ef4444" : color }}
+        >
+          {title}
+        </div>
+
+        <div
+          className="metric-card__icon"
+          style={{
+            color: alert ? "#ef4444" : color,
+          }}
+        >
+          {icon}
+        </div>
+        <span className="metric-card__arrow">→</span>
+      </div>
+
       <div
         className="metric-card__value"
         style={{
@@ -118,7 +136,7 @@ function MetricCard({
       >
         {value}
       </div>
-      <div className="metric-card__title">{title}</div>
+
       <div className="metric-card__meta">{meta}</div>
     </div>
   );
@@ -642,30 +660,38 @@ export default function DashboardPage() {
       {/* 👉 FIX: Added the navigation onClicks only to these 6 cards! */}
       <section className="metric-grid metric-grid--six">
         <MetricCard
+          icon="💰"
           color="#16A34A"
-          eyebrow="Selected Range"
           value={peso.format(Number(sales.total_revenue || 0))}
           title="Net Sales"
-          meta={`Profit ${peso.format(Number(sales.total_profit || 0))} · Avg Order ${peso.format(
-            Number(sales.avg_order_value || 0),
-          )}`}
+          meta={
+            <>
+              <div>Profit ${peso.format(Number(sales.total_profit || 0))}</div>
+              <div>
+                Avg Order ${peso.format(Number(sales.avg_order_value || 0))}
+              </div>
+            </>
+          }
           onClick={() => navigate("/admin/sales")}
         />
 
         <MetricCard
+          icon="📦"
           color="#2563EB"
-          eyebrow="Current Queue"
           value={num.format(currentOpenOrders)}
           title="Open Orders"
-          meta={`${num.format(currentPending)} pending · ${num.format(
-            currentProduction,
-          )} in production`}
+          meta={
+            <>
+              <div>{num.format(currentPending)} Pending</div>
+              <div>{num.format(currentProduction)} In Production</div>
+            </>
+          }
           onClick={() => navigate("/admin/orders")}
         />
 
         <MetricCard
+          icon="💳"
           color="#F59E0B"
-          eyebrow="Current Queue"
           value={num.format(pendingReviews)}
           title="Pending Payment Review"
           meta={`${num.format(deliveredUnpaid)} delivered but unpaid`}
@@ -673,20 +699,23 @@ export default function DashboardPage() {
         />
 
         <MetricCard
+          icon="⚠️"
           color="#EF4444"
           alert={stockAlerts > 0}
-          eyebrow="Inventory Alerts"
           value={num.format(stockAlerts)}
           title="Low / Out of Stock"
-          meta={`${num.format(lowStockTotal)} low · ${num.format(
-            outOfStockTotal,
-          )} critical`}
+          meta={
+            <>
+              <div>{num.format(lowStockTotal)} Low Stock</div>
+              <div>{num.format(outOfStockTotal)} Critical</div>
+            </>
+          }
           onClick={() => navigate("/admin/products")}
         />
 
         <MetricCard
+          icon="📐"
           color="#8B5CF6"
-          eyebrow="Custom Operations"
           value={num.format(activeBlueprintJobs)}
           title="Active Blueprint Jobs"
           meta={`${num.format(
@@ -698,8 +727,8 @@ export default function DashboardPage() {
         />
 
         <MetricCard
+          icon="🌐"
           color="#0891B2"
-          eyebrow="Channel Mix"
           value={`${num.format(onlineOrders)} / ${num.format(walkinOrders)}`}
           title="Online vs Walk-in"
           meta={`${num.format(totalChannelOrders)} orders in selected range`}
@@ -1295,22 +1324,29 @@ const dashboardCss = `
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
-  .metric-card {
-    border-radius: 16px;
-    padding: 18px;
-    border-left: 4px solid #18181b;
-  }
+  .metric-card{
+    border-radius:18px;
+    padding:22px;
+    border-left:5px solid #18181b;
+    min-height:170px;
 
-  /* 👉 FIX: Hover effect strictly isolated to the top 6 cards */
+    display:flex;
+    flex-direction:column;
+}
   .metric-card--clickable {
     cursor: pointer;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
   }
 
-  .metric-card--clickable:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(0,0,0,0.06);
-  }
+  .metric-card--clickable:hover{
+    transform:translateY(-6px);
+
+    box-shadow:
+        0 12px 24px rgba(0,0,0,.08),
+        0 2px 6px rgba(0,0,0,.05);
+
+    border-color:#d4d4d8;
+}
 
   .metric-card__eyebrow {
     font-size: 10px;
@@ -1321,14 +1357,12 @@ const dashboardCss = `
     margin-bottom: 10px;
   }
 
-  .metric-card__value {
-    font-size: 26px;
-    line-height: 1;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    color: #0a0a0a;
-    margin-bottom: 8px;
-  }
+  .metric-card__value{
+    font-size:34px;
+    font-weight:800;
+    line-height:1.05;
+    margin-top:4px;
+}
 
   .metric-card__title {
     font-size: 13px;
@@ -1337,11 +1371,13 @@ const dashboardCss = `
     margin-bottom: 6px;
   }
 
-  .metric-card__meta {
-    font-size: 11px;
-    line-height: 1.45;
-    color: #52525b;
-  }
+  .metric-card__meta{
+    margin-top:auto;
+
+    font-size:12px;
+    color:#71717a;
+    line-height:1.6;
+}
 
   .dashboard-grid {
     display: grid;
@@ -1782,4 +1818,47 @@ const dashboardCss = `
       height: 300px;
     }
   }
+
+  .metric-card__header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    margin-bottom:14px;
+}
+
+.metric-card__icon{
+    width:52px;
+    height:52px;
+
+    display:flex;
+    align-items:center;
+    justify-content:center;
+
+    border-radius:14px;
+
+    background:#fafafa;
+    border:1px solid #ececec;
+
+    font-size:24px;
+}
+
+.metric-card__title{
+    font-size:14px;
+    font-weight:700;
+}
+
+.metric-card__arrow{
+    opacity:0;
+    transform:translateX(-6px);
+    transition:.2s;
+
+    font-size:18px;
+    color:#71717a;
+}
+
+.metric-card--clickable:hover .metric-card__arrow{
+    opacity:1;
+    transform:translateX(0);
+}
+    
 `;
