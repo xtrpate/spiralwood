@@ -120,6 +120,7 @@ function MetricCard({
 
         <div className="metric-card__right">
           <div className="metric-card__icon">{icon}</div>
+          <span className="metric-card__arrow">→</span>
         </div>
       </div>
     </div>
