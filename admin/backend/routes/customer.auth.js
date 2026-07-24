@@ -18,7 +18,12 @@ const {
 router.post("/register", registerLimiter, authController.register);
 router.post("/verify-otp", otpLimiter, authController.verifyOtp);
 router.post("/resend-otp", otpRequestLimiter, authController.resendOtp);
-router.post("/forgot-password", otpRequestLimiter, authController.forgotPassword);
+router.post(
+  "/forgot-password",
+  otpRequestLimiter,
+  authController.forgotPassword,
+);
+router.post("/verify-reset-otp", customerAuth.verifyResetOtp);
 router.post("/reset-password", otpLimiter, authController.resetPassword);
 //router.post("/login", authController.login);
 

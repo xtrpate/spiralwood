@@ -13,7 +13,10 @@ const parseJson = (value) => {
   }
 };
 
-const extractAuthErrorMessage = (err, fallback = "Incorrect email or password.") =>
+const extractAuthErrorMessage = (
+  err,
+  fallback = "Incorrect email or password.",
+) =>
   err?.response?.data?.message ||
   err?.response?.data?.error ||
   err?.message ||
@@ -33,9 +36,7 @@ const getStoredToken = () =>
   null;
 
 const hasLocalAuth = () =>
-  !!(
-    localStorage.getItem("wisdom_token") || localStorage.getItem("token")
-  );
+  !!(localStorage.getItem("wisdom_token") || localStorage.getItem("token"));
 
 const getActiveStorage = () => (hasLocalAuth() ? localStorage : sessionStorage);
 
@@ -112,7 +113,7 @@ const useAuthStore = create((set, get) => ({
     set({ user: nextUser });
   },
 
- login: async (email, password, rememberMe = false, recaptchaToken = "") => {
+  login: async (email, password, rememberMe = false, recaptchaToken = "") => {
     const cleanEmail = String(email || "").trim();
 
     try {
@@ -133,11 +134,10 @@ const useAuthStore = create((set, get) => ({
 
       // 3. Return the user (which includes their role!)
       return data.user;
-
     } catch (err) {
       // 4. Clean, unified error handling
       const finalError = new Error(
-        extractAuthErrorMessage(err, "Incorrect email or password.")
+        extractAuthErrorMessage(err, "Incorrect email or password."),
       );
 
       // Attach response so LoginPage.jsx can read "EMAIL_NOT_VERIFIED"
@@ -159,6 +159,15 @@ const useAuthStore = create((set, get) => ({
       email,
       otp,
     });
+    return data;
+  },
+
+  verifyResetOtp: async (email, otp) => {
+    const { data } = await api.post("/customer/auth/verify-reset-otp", {
+      email,
+      otp,
+    });
+
     return data;
   },
 

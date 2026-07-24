@@ -9,7 +9,8 @@ import "./authpages.css";
 import useAuthStore from "../../store/authStore";
 
 export default function VerifyOtpPage() {
-  const { verifyOtp, resendOtp } = useAuthStore();
+  const { verifyOtp, verifyResetOtp, resendOtp, forgotPassword } =
+    useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
   const isFromLogin = location.state?.fromLogin;
@@ -22,6 +23,8 @@ export default function VerifyOtpPage() {
   const [loading, setLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const otpRefs = useRef([]);
+  const purpose = location.state?.purpose || "verify_email";
+  const isForgotPassword = purpose === "forgot_password";
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -56,13 +59,41 @@ export default function VerifyOtpPage() {
 
   const handleVerify = async () => {
     const code = otp.join("");
-    if (code.length < 6) return setError("Please enter all 6 digits.");
+
+    if (code.length < 6) {
+      setError("Please enter all 6 digits.");
+      return;
+    }
+
     setError("");
     setLoading(true);
+
     try {
+      if (isForgotPassword) {
+        const result = await verifyResetOtp(email, code);
+
+        navigate("/reset-password", {
+          state: {
+            resetToken: result.resetToken,
+          },
+        });
+      } else {
+        await verifyOtp(email, code);
+
+        setSuccess("Email verified successfully. You can now sign in.");
+
+        setTimeout(() => {
+          navigate("/login");
+        }, 1500);
+      }
+
       await verifyOtp(email, code);
+
       setSuccess("Email verified successfully. You can now sign in.");
-      setTimeout(() => navigate("/login"), 1500);
+
+      setTimeout(() => {
+        navigate("/login");
+      }, 1500);
     } catch (err) {
       setError(err.response?.data?.message || "Invalid or expired code.");
     } finally {
@@ -72,8 +103,16 @@ export default function VerifyOtpPage() {
 
   const handleResend = async () => {
     if (resendCooldown > 0 || !email) return;
+
+    setError("");
+
     try {
-      await resendOtp(email);
+      if (isForgotPassword) {
+        await forgotPassword(email);
+      } else {
+        await resendOtp(email);
+      }
+
       setResendCooldown(60);
       setOtp(["", "", "", "", "", ""]);
       otpRefs.current[0]?.focus();
@@ -88,24 +127,43 @@ export default function VerifyOtpPage() {
         <div className="auth-brand-panel">
           <div className="brand-logo">W</div>
           <h1>
-            Verify Your
-            <br />
-            <span>Email</span>
+            {isForgotPassword ? (
+              <>
+                Verify
+                <br />
+                <span>Reset Code</span>
+              </>
+            ) : (
+              <>
+                Verify Your
+                <br />
+                <span>Email</span>
+              </>
+            )}
           </h1>
           <p>
-            We sent a 6-digit verification code to your email address. Enter it
-            below to confirm your identity.
+            {isForgotPassword
+              ? "We sent a 6-digit password reset code to your email. Enter it below to continue."
+              : "We sent a 6-digit verification code to your email address. Enter it below to confirm your identity."}
           </p>
         </div>
 
         <div className="auth-card-panel" style={{ justifyContent: "center" }}>
           <div className="otp-header">
             <div className="otp-icon">📧</div>
-            <h2>{isFromLogin ? "Verify to Continue" : "Check Your Email"}</h2>
+            <h2>
+              {isForgotPassword
+                ? "Verify Reset Code"
+                : isFromLogin
+                  ? "Verify to Continue"
+                  : "Check Your Email"}
+            </h2>
             <p>
-              We sent a 6-digit code to
+              {isForgotPassword
+                ? "Enter the reset code we sent to your email."
+                : "Enter the verification code we sent to your email."}
               <br />
-              <strong>{email || "your email address"}</strong>
+              <strong>{email}</strong>
             </p>
           </div>
 
@@ -143,11 +201,22 @@ export default function VerifyOtpPage() {
           >
             {loading ? (
               <>
-                <svg className="spinner-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                <svg
+                  className="spinner-icon"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                >
                   <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                 </svg>
                 Verifying...
               </>
+            ) : isForgotPassword ? (
+              "Verify Reset Code"
             ) : (
               "Verify Email"
             )}
@@ -169,7 +238,13 @@ export default function VerifyOtpPage() {
           </div>
 
           <div className="auth-switch" style={{ marginTop: 16 }}>
-            <button onClick={() => navigate("/login")}>← Back to Login</button>
+            <button
+              onClick={() =>
+                navigate(isForgotPassword ? "/forgot-password" : "/login")
+              }
+            >
+              {isForgotPassword ? "← Back" : "← Back to Login"}
+            </button>
           </div>
         </div>
       </div>

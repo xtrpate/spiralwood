@@ -9,6 +9,7 @@ require("dotenv").config();
 
 const OTP_EXPIRY_MINUTES = 15;
 const RESET_OTP_EXPIRY_MINUTES = 15;
+const RESET_TOKEN_EXPIRY = "10m";
 
 const generateOtp = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
@@ -396,6 +397,82 @@ exports.verifyOtp = async (req, res) => {
   }
 };
 
+exports.verifyResetOtp = async (req, res) => {
+  const { email, otp } = req.body;
+
+  if (!email || !otp) {
+    return res.status(400).json({
+      message: "Email and reset code are required.",
+    });
+  }
+
+  try {
+    const [rows] = await db.query(
+      `
+      SELECT
+        id,
+        otp_code,
+        otp_purpose,
+        otp_expires
+      FROM users
+      WHERE email = ?
+      AND role='customer'
+      LIMIT 1
+      `,
+      [String(email).trim().toLowerCase()],
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({
+        message: "Account not found.",
+      });
+    }
+
+    const user = rows[0];
+
+    if (user.otp_purpose !== "forgot_password") {
+      return res.status(400).json({
+        message: "Invalid reset code.",
+      });
+    }
+
+    if (String(user.otp_code) !== String(otp).trim()) {
+      return res.status(400).json({
+        message: "Invalid reset code.",
+      });
+    }
+
+    if (!user.otp_expires || new Date() > new Date(user.otp_expires)) {
+      return res.status(400).json({
+        message: "Reset code has expired.",
+      });
+    }
+
+    const resetToken = jwt.sign(
+      {
+        id: user.id,
+        email: String(email).trim().toLowerCase(),
+        purpose: "password_reset",
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: RESET_TOKEN_EXPIRY,
+      },
+    );
+
+    return res.json({
+      verified: true,
+      resetToken,
+    });
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
+      message: "Server error.",
+    });
+  }
+};
+
 exports.resendOtp = async (req, res) => {
   const { email } = req.body;
 
@@ -527,11 +604,11 @@ exports.forgotPassword = async (req, res) => {
 };
 
 exports.resetPassword = async (req, res) => {
-  const { email, otp, new_password } = req.body;
+  const { reset_token, new_password } = req.body;
 
-  if (!email || !otp || !new_password) {
+  if (!reset_token || !new_password) {
     return res.status(400).json({
-      message: "Email, reset code, and new password are required.",
+      message: "Reset session and new password are required.",
     });
   }
 
@@ -541,29 +618,34 @@ exports.resetPassword = async (req, res) => {
     });
   }
 
-  try {
-    const normalizedEmail = String(email).trim().toLowerCase();
-    const normalizedOtp = String(otp).trim();
+  let payload;
 
+  try {
+    payload = jwt.verify(reset_token, process.env.JWT_SECRET);
+  } catch {
+    return res.status(401).json({
+      message:
+        "Your reset session has expired. Please request a new reset code.",
+    });
+  }
+
+  try {
     const [rows] = await db.query(
       `
       SELECT
-    id,
-    otp_code,
-    otp_purpose,
-    otp_expires,
-    is_verified,
-    is_active
-FROM users
-      WHERE email = ? AND role = 'customer'
+        id,
+        is_verified,
+        is_active
+      FROM users
+      WHERE id = ?
       LIMIT 1
       `,
-      [normalizedEmail],
+      [payload.id],
     );
 
-    if (rows.length === 0) {
-      return res.status(400).json({
-        message: "Invalid or expired reset code.",
+    if (!rows.length) {
+      return res.status(404).json({
+        message: "Account not found.",
       });
     }
 
@@ -581,36 +663,17 @@ FROM users
       });
     }
 
-    const savedResetOtp = String(user.otp_code ?? "").trim();
-
-    if (!savedResetOtp || savedResetOtp !== normalizedOtp) {
-      return res.status(400).json({
-        message: "Invalid or expired reset code.",
-      });
-    }
-
-    if (
-      user.otp_purpose !== "forgot_password" ||
-      !user.otp_expires ||
-      new Date() > new Date(user.otp_expires)
-    ) {
-      return res.status(400).json({
-        message: "Reset code has expired. Please request a new one.",
-        code: "RESET_OTP_EXPIRED",
-      });
-    }
-
     const hashedPassword = await bcrypt.hash(new_password, 12);
 
     await db.query(
       `
       UPDATE users
-SET
-    password = ?,
-    otp_code = NULL,
-    otp_purpose = NULL,
-    otp_expires = NULL
-WHERE id = ?
+      SET
+        password = ?,
+        otp_code = NULL,
+        otp_purpose = NULL,
+        otp_expires = NULL
+      WHERE id = ?
       `,
       [hashedPassword, user.id],
     );
@@ -620,6 +683,7 @@ WHERE id = ?
     });
   } catch (err) {
     console.error("[reset-password]", err);
+
     return res.status(500).json({
       message: "Server error",
       error: err.message,
@@ -683,7 +747,14 @@ exports.login = async (req, res) => {
       const expiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
       await db.query(
-        "UPDATE users SET otp_code = ?, otp_expires = ? WHERE id = ?",
+        `
+  UPDATE users
+  SET
+    otp_code = ?,
+    otp_purpose = 'verify_email',
+    otp_expires = ?
+  WHERE id = ?
+  `,
         [newOtp, expiry, user.id],
       );
 
