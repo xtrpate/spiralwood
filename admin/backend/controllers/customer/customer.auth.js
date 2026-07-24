@@ -328,7 +328,7 @@ exports.verifyOtp = async (req, res) => {
 
     const [rows] = await db.query(
       `
-      SELECT id, otp_code, otp_expires, is_verified
+      SELECT id, otp_code, otp_purpose, otp_expires, is_verified
       FROM users
       WHERE email = ? AND role = 'customer'
       LIMIT 1
@@ -343,7 +343,15 @@ exports.verifyOtp = async (req, res) => {
     const user = rows[0];
 
     if (user.is_verified) {
-      return res.status(400).json({ message: "Email is already verified." });
+      return res.status(400).json({
+        message: "Email is already verified.",
+      });
+    }
+
+    if (user.otp_purpose !== "verify_email") {
+      return res.status(400).json({
+        message: "Invalid verification code.",
+      });
     }
 
     const savedOtp = String(user.otp_code ?? "").trim();
@@ -367,6 +375,7 @@ exports.verifyOtp = async (req, res) => {
       SET
         is_verified = TRUE,
         otp_code = NULL,
+        otp_purpose = NULL,
         otp_expires = NULL,
         approval_status = 'approved',
         is_active = TRUE
@@ -421,7 +430,7 @@ exports.resendOtp = async (req, res) => {
     await db.query(
       `
       UPDATE users
-      SET otp_code = ?, otp_expires = ?
+      SET otp_code = ?, otp_purpose = 'verify_email', otp_expires = ?
       WHERE id = ?
       `,
       [otp, expiry, rows[0].id],
