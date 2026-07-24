@@ -184,12 +184,12 @@ const useAuthStore = create((set, get) => ({
     return data;
   },
 
-  resetPassword: async (email, otp, newPassword) => {
+  resetPassword: async (resetToken, newPassword) => {
     const { data } = await api.post("/customer/auth/reset-password", {
-      email: String(email || "").trim(),
-      otp: String(otp || "").trim(),
+      reset_token: resetToken,
       new_password: newPassword,
     });
+
     return data;
   },
 

@@ -86,14 +86,6 @@ export default function VerifyOtpPage() {
           navigate("/login");
         }, 1500);
       }
-
-      await verifyOtp(email, code);
-
-      setSuccess("Email verified successfully. You can now sign in.");
-
-      setTimeout(() => {
-        navigate("/login");
-      }, 1500);
     } catch (err) {
       setError(err.response?.data?.message || "Invalid or expired code.");
     } finally {

@@ -9,8 +9,14 @@ export default function ResetPasswordPage() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [email, setEmail] = useState(location.state?.email || "");
-  const [otp, setOtp] = useState("");
+  const resetToken = location.state?.resetToken || "";
+  useEffect(() => {
+    if (!resetToken) {
+      navigate("/forgot-password", { replace: true });
+    }
+  }, [resetToken, navigate]);
+
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -31,11 +37,6 @@ export default function ResetPasswordPage() {
     setError("");
     setInfo("");
 
-    if (otp.trim().length !== 6) {
-      setError("Please enter the 6-digit reset code.");
-      return;
-    }
-
     if (password.length < 8) {
       setError("Password must be at least 8 characters.");
       return;
@@ -49,7 +50,7 @@ export default function ResetPasswordPage() {
     setLoading(true);
 
     try {
-      await resetPassword(email, otp, password);
+      await resetPassword(resetToken, password);
       navigate("/login", {
         state: {
           message: "Password reset successful. You can now sign in.",
@@ -124,25 +125,11 @@ export default function ResetPasswordPage() {
             </div>
 
             <div className="field">
-              <label>Reset Code</label>
-              <div className="field-input-wrap">
-                <KeyRound size={15} />
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="6-digit code"
-                  value={otp}
-                  onChange={(e) =>
-                    setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
-                  }
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="field">
               <label>New Password</label>
-              <div className="field-input-wrap" style={{ position: "relative" }}>
+              <div
+                className="field-input-wrap"
+                style={{ position: "relative" }}
+              >
                 <Lock size={15} />
                 <input
                   type={showPw ? "text" : "password"}
@@ -178,7 +165,10 @@ export default function ResetPasswordPage() {
 
             <div className="field">
               <label>Confirm New Password</label>
-              <div className="field-input-wrap" style={{ position: "relative" }}>
+              <div
+                className="field-input-wrap"
+                style={{ position: "relative" }}
+              >
                 <Lock size={15} />
                 <input
                   type={showCPw ? "text" : "password"}
@@ -215,7 +205,16 @@ export default function ResetPasswordPage() {
             <button type="submit" className="btn-auth" disabled={loading}>
               {loading ? (
                 <>
-                  <svg className="spinner-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                  <svg
+                    className="spinner-icon"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  >
                     <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                   </svg>
                   Resetting password...
