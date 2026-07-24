@@ -703,8 +703,6 @@ exports.login = async (req, res) => {
   try {
     const normalizedEmail = String(email).trim().toLowerCase();
 
-    // 1. Query the unified table
-    // 1. Query the unified table
     const [rows] = await db.query(
       `
       SELECT

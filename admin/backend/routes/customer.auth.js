@@ -23,7 +23,7 @@ router.post(
   otpRequestLimiter,
   authController.forgotPassword,
 );
-router.post("/verify-reset-otp", customerAuth.verifyResetOtp);
+router.post("/verify-reset-otp", otpLimiter, authController.verifyResetOtp);
 router.post("/reset-password", otpLimiter, authController.resetPassword);
 //router.post("/login", authController.login);
 
