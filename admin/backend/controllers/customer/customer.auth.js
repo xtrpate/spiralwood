@@ -92,7 +92,7 @@ const sendOtpEmail = async (email, otp, name) => {
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
-        "accept": "application/json",
+        accept: "application/json",
         "api-key": process.env.BREVO_API_KEY,
         "content-type": "application/json",
       },
@@ -191,7 +191,7 @@ const sendResetOtpEmail = async (email, otp, name) => {
     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
-        "accept": "application/json",
+        accept: "application/json",
         "api-key": process.env.BREVO_API_KEY,
         "content-type": "application/json",
       },
@@ -206,7 +206,10 @@ const sendResetOtpEmail = async (email, otp, name) => {
 
     console.log("Brevo API Success: Password Reset OTP Sent!");
   } catch (err) {
-    console.error("CRITICAL: Failed to send password reset email.", err.message);
+    console.error(
+      "CRITICAL: Failed to send password reset email.",
+      err.message,
+    );
     throw new Error("RESET_EMAIL_FAILED");
   }
 };
@@ -216,7 +219,15 @@ const sendResetOtpEmail = async (email, otp, name) => {
 ══════════════════════════════════════════════════════════════ */
 
 exports.register = async (req, res) => {
-  const { first_name, last_name, email, phone, address, password, recaptcha_token } = req.body;
+  const {
+    first_name,
+    last_name,
+    email,
+    phone,
+    address,
+    password,
+    recaptcha_token,
+  } = req.body;
 
   if (!first_name || !last_name || !email || !phone || !address || !password) {
     return res.status(400).json({ message: "All fields are required." });
@@ -230,7 +241,9 @@ exports.register = async (req, res) => {
 
   const isHuman = await verifyRecaptcha(recaptcha_token);
   if (!isHuman) {
-    return res.status(400).json({ message: "Please complete the CAPTCHA verification." });
+    return res
+      .status(400)
+      .json({ message: "Please complete the CAPTCHA verification." });
   }
 
   try {
@@ -438,7 +451,9 @@ exports.forgotPassword = async (req, res) => {
 
   const isHuman = await verifyRecaptcha(recaptcha_token);
   if (!isHuman) {
-    return res.status(400).json({ message: "Please complete the CAPTCHA verification." });
+    return res
+      .status(400)
+      .json({ message: "Please complete the CAPTCHA verification." });
   }
 
   // Same generic message for every outcome below — this prevents attackers
@@ -478,10 +493,13 @@ exports.forgotPassword = async (req, res) => {
 
     await db.query(
       `
-      UPDATE users
-      SET reset_otp = ?, reset_otp_expires = ?
-      WHERE id = ?
-      `,
+  UPDATE users
+  SET
+    otp_code = ?,
+    otp_purpose = 'forgot_password',
+    otp_expires = ?
+  WHERE id = ?
+  `,
       [resetOtp, resetExpiry, user.id],
     );
 
@@ -520,8 +538,14 @@ exports.resetPassword = async (req, res) => {
 
     const [rows] = await db.query(
       `
-      SELECT id, reset_otp, reset_otp_expires, is_verified, is_active
-      FROM users
+      SELECT
+    id,
+    otp_code,
+    otp_purpose,
+    otp_expires,
+    is_verified,
+    is_active
+FROM users
       WHERE email = ? AND role = 'customer'
       LIMIT 1
       `,
@@ -548,7 +572,7 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    const savedResetOtp = String(user.reset_otp ?? "").trim();
+    const savedResetOtp = String(user.otp_code ?? "").trim();
 
     if (!savedResetOtp || savedResetOtp !== normalizedOtp) {
       return res.status(400).json({
@@ -557,8 +581,9 @@ exports.resetPassword = async (req, res) => {
     }
 
     if (
-      !user.reset_otp_expires ||
-      new Date() > new Date(user.reset_otp_expires)
+      user.otp_purpose !== "forgot_password" ||
+      !user.otp_expires ||
+      new Date() > new Date(user.otp_expires)
     ) {
       return res.status(400).json({
         message: "Reset code has expired. Please request a new one.",
@@ -571,11 +596,12 @@ exports.resetPassword = async (req, res) => {
     await db.query(
       `
       UPDATE users
-      SET
-        password = ?,
-        reset_otp = NULL,
-        reset_otp_expires = NULL
-      WHERE id = ?
+SET
+    password = ?,
+    otp_code = NULL,
+    otp_purpose = NULL,
+    otp_expires = NULL
+WHERE id = ?
       `,
       [hashedPassword, user.id],
     );
@@ -649,14 +675,15 @@ exports.login = async (req, res) => {
 
       await db.query(
         "UPDATE users SET otp_code = ?, otp_expires = ? WHERE id = ?",
-        [newOtp, expiry, user.id]
+        [newOtp, expiry, user.id],
       );
 
       const firstName = user.name.split(" ")[0];
       await sendOtpEmail(user.email, newOtp, firstName);
 
       return res.status(403).json({
-        message: "Account not verified. A new verification code has been sent to your email.",
+        message:
+          "Account not verified. A new verification code has been sent to your email.",
         code: "EMAIL_NOT_VERIFIED",
         email: user.email,
       });
@@ -684,7 +711,7 @@ exports.login = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        staff_type: user.staff_type || null, 
+        staff_type: user.staff_type || null,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || "24h" },
