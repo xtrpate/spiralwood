@@ -8,19 +8,21 @@
 }
 
 .warranty-shell {
-  max-width: 1380px;
-  margin: 0 auto;
-  padding: 26px 18px 48px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 26px 16px 48px;
+  box-sizing: border-box;
 }
 
 /* HERO */
 .warranty-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.85fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
+  gap: 24px;
   background: linear-gradient(135deg, #08111d 0%, #111111 60%, #202020 100%);
   border: 1px solid #111111;
-  padding: 32px;
+  padding: 32px 36px;
 }
 
 .warranty-hero-copy {
@@ -213,8 +215,6 @@
   padding: 20px;
 }
 
-
-
 .warranty-process-card strong {
   display: block;
   margin-bottom: 6px;
@@ -234,8 +234,8 @@
 .warranty-main-grid {
   margin-top: 18px;
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(330px, 0.95fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1.55fr) 420px;
+  gap: 24px;
   align-items: start;
 }
 
@@ -402,7 +402,8 @@
 }
 
 .wrequired {
-  color: #111111;
+  color: #dc2626;
+  font-weight: 700;
 }
 
 .winput {
@@ -570,7 +571,9 @@
   justify-content: center;
   gap: 8px;
   cursor: pointer;
-  transition: background 0.18s ease, opacity 0.18s ease;
+  transition:
+    background 0.18s ease,
+    opacity 0.18s ease;
 }
 
 .wsubmit-btn:hover {
@@ -825,7 +828,9 @@
   text-decoration: none;
   font-size: 0.84rem;
   font-weight: 700;
-  transition: background 0.18s ease, color 0.18s ease;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
 }
 
 .wclaim-file-link:hover {

@@ -176,7 +176,9 @@ export default function WarrantyPage() {
     setOrderId(val);
 
     const found = visibleOrders.find((order) => String(order.id) === val);
+
     setOrderNumber(found?.order_number || "");
+    setProductName(found?.product_name || "");
   };
 
   const handleSubmit = async (e) => {
@@ -408,7 +410,10 @@ export default function WarrantyPage() {
 
               {!showForm && !submitted && !hasEligibleOrders && (
                 <div className="warranty-no-eligible-card">
-                  <ShieldCheck size={20} className="warranty-no-eligible-icon" />
+                  <ShieldCheck
+                    size={20}
+                    className="warranty-no-eligible-icon"
+                  />
                   <div>
                     <strong>No warranty claims available right now</strong>
                     <p>
@@ -456,7 +461,8 @@ export default function WarrantyPage() {
                             </option>
                             {visibleOrders.map((order) => (
                               <option key={order.id} value={order.id}>
-                                {order.order_number} — {formatDate(order.created_at)}
+                                {order.order_number} —{" "}
+                                {formatDate(order.created_at)}
                                 {" — "}valid until{" "}
                                 {formatDate(order.warranty_expiry)}
                               </option>
@@ -481,10 +487,9 @@ export default function WarrantyPage() {
                       <input
                         type="text"
                         className="winput"
-                        placeholder="e.g. 3-Door Wardrobe Cabinet"
                         value={productName}
-                        onChange={(e) => setProductName(e.target.value)}
-                        maxLength={255}
+                        readOnly
+                        placeholder="e.g. 3-Door Wardrobe Cabinet"
                       />
                     </div>
 
@@ -500,27 +505,42 @@ export default function WarrantyPage() {
                         rows={4}
                         maxLength={1000}
                       />
-                      <div className="wchar-count">{description.length}/1000</div>
+                      <div className="wchar-count">
+                        {description.length}/1000
+                      </div>
                     </div>
 
                     <div className="wfield-row">
                       <FileUpload
-                        label="Photo of Defect"
+                        label={
+                          <>
+                            Photo of Defect <span className="wrequired">*</span>
+                          </>
+                        }
                         hint="Required — upload a clear image of the issue"
                         name="photo"
                         file={photoFile}
                         accept="image/jpeg,image/png,image/webp"
-                        onChange={(e) => setPhotoFile(e.target.files?.[0] || null)}
+                        onChange={(e) =>
+                          setPhotoFile(e.target.files?.[0] || null)
+                        }
                         onClear={() => setPhotoFile(null)}
                       />
 
                       <FileUpload
-                        label="Proof of Purchase"
+                        label={
+                          <>
+                            Proof of Purchase{" "}
+                            <span className="wrequired">*</span>
+                          </>
+                        }
                         hint="Required — upload your receipt or confirmation"
                         name="proof"
                         file={proofFile}
                         accept="image/jpeg,image/png,image/webp,application/pdf"
-                        onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                        onChange={(e) =>
+                          setProofFile(e.target.files?.[0] || null)
+                        }
                         onClear={() => setProofFile(null)}
                       />
                     </div>
@@ -650,7 +670,9 @@ function ClaimCard({ claim }) {
 
           {claim.admin_note && (
             <div className="wclaim-admin-note">
-              <strong>{isRejected ? "Rejection Reason:" : "Admin Note:"}</strong>{" "}
+              <strong>
+                {isRejected ? "Rejection Reason:" : "Admin Note:"}
+              </strong>{" "}
               {claim.admin_note}
             </div>
           )}
