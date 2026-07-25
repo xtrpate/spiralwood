@@ -25,33 +25,42 @@ const getEligibleOrders = async (req, res) => {
     const [rows] = await db.query(
       `
       SELECT
-        o.id,
-        o.order_number,
-        o.created_at,
-        o.status,
-        o.payment_status,
-        o.total,
-        o.delivery_address,
-        d.delivered_date,
-        DATE_ADD(
-          COALESCE(d.delivered_date, o.updated_at, o.created_at),
-          INTERVAL 1 YEAR
-        ) AS warranty_expiry
-      FROM orders o
-      LEFT JOIN deliveries d
-        ON d.order_id = o.id
-      LEFT JOIN warranties w
-        ON w.order_id = o.id
-       AND w.customer_id = o.customer_id
-      WHERE o.customer_id = ?
-        AND o.status = 'completed'
-        AND o.payment_status = 'paid'
-        AND DATE_ADD(
-              COALESCE(d.delivered_date, o.updated_at, o.created_at),
-              INTERVAL 1 YEAR
-            ) >= CURDATE()
-        AND w.id IS NULL
-      ORDER BY COALESCE(d.delivered_date, o.created_at) DESC
+    o.id,
+    o.order_number,
+    o.created_at,
+    o.status,
+    o.payment_status,
+    o.total,
+    o.delivery_address,
+    d.delivered_date,
+    DATE_ADD(
+        COALESCE(d.delivered_date, o.updated_at, o.created_at),
+        INTERVAL 1 YEAR
+    ) AS warranty_expiry,
+    JSON_ARRAYAGG(
+        JSON_OBJECT(
+            'product_id', oi.product_id,
+            'product_name', oi.product_name
+        )
+    ) AS products
+FROM orders o
+INNER JOIN order_items oi
+    ON oi.order_id = o.id
+LEFT JOIN deliveries d
+    ON d.order_id = o.id
+LEFT JOIN warranties w
+    ON w.order_id = o.id
+   AND w.customer_id = o.customer_id
+WHERE o.customer_id = ?
+  AND o.status = 'completed'
+  AND o.payment_status = 'paid'
+  AND DATE_ADD(
+        COALESCE(d.delivered_date, o.updated_at, o.created_at),
+        INTERVAL 1 YEAR
+      ) >= CURDATE()
+  AND w.id IS NULL
+GROUP BY o.id
+ORDER BY COALESCE(d.delivered_date, o.created_at) DESC;
       `,
       [req.user.id],
     );

@@ -100,6 +100,7 @@ export default function WarrantyPage() {
   const [orderId, setOrderId] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
   const [productName, setProductName] = useState("");
+  const [products, setProducts] = useState([]);
   const [description, setDescription] = useState("");
   const [photoFile, setPhotoFile] = useState(null);
   const [proofFile, setProofFile] = useState(null);
@@ -178,7 +179,13 @@ export default function WarrantyPage() {
     const found = visibleOrders.find((order) => String(order.id) === val);
 
     setOrderNumber(found?.order_number || "");
-    setProductName(found?.product_name || "");
+
+    const orderProducts = Array.isArray(found?.products)
+      ? found.products
+      : JSON.parse(found?.products || "[]");
+
+    setProducts(orderProducts);
+    setProductName("");
   };
 
   const handleSubmit = async (e) => {
@@ -484,13 +491,26 @@ export default function WarrantyPage() {
                       <label className="wlabel">
                         Product / Item Name <span className="wrequired">*</span>
                       </label>
-                      <input
-                        type="text"
-                        className="winput"
-                        value={productName}
-                        readOnly
-                        placeholder="e.g. 3-Door Wardrobe Cabinet"
-                      />
+                      <div className="wselect-wrap">
+                        <select
+                          className="winput wselect"
+                          value={productName}
+                          onChange={(e) => setProductName(e.target.value)}
+                        >
+                          <option value="">Select the affected product</option>
+
+                          {products.map((item) => (
+                            <option
+                              key={item.product_id}
+                              value={item.product_name}
+                            >
+                              {item.product_name}
+                            </option>
+                          ))}
+                        </select>
+
+                        <ChevronDown size={15} className="wselect-icon" />
+                      </div>
                     </div>
 
                     <div className="wfield">
