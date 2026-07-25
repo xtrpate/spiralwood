@@ -4,6 +4,24 @@ import { Lock } from "lucide-react";
 import "./authpages.css";
 import useAuthStore from "../../store/authStore";
 
+const calcStrength = (pw) => {
+  let score = 0;
+
+  if (pw.length >= 8) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+
+  const labels = ["", "Weak", "Fair", "Good", "Strong"];
+  const colors = ["", "#e53935", "#fb8c00", "#fdd835", "#43a047"];
+
+  return {
+    score,
+    label: labels[score] || "",
+    color: colors[score] || "",
+  };
+};
+
 export default function ResetPasswordPage() {
   const { resetPassword } = useAuthStore();
   const navigate = useNavigate();
@@ -22,6 +40,7 @@ export default function ResetPasswordPage() {
   const [showCPw, setShowCPw] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const strength = calcStrength(password);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -116,6 +135,27 @@ export default function ResetPasswordPage() {
               </div>
             </div>
 
+            {password && (
+              <div className="pw-strength">
+                <div className="pw-strength-bar">
+                  <div
+                    className="pw-strength-fill"
+                    style={{
+                      width: `${(strength.score / 4) * 100}%`,
+                      background: strength.color,
+                    }}
+                  />
+                </div>
+
+                <span
+                  className="pw-strength-label"
+                  style={{ color: strength.color }}
+                >
+                  {strength.label}
+                </span>
+              </div>
+            )}
+
             <div className="field">
               <label>Confirm New Password</label>
               <div
@@ -154,6 +194,24 @@ export default function ResetPasswordPage() {
                 </button>
               </div>
             </div>
+
+            {confirmPassword && (
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color:
+                    password === confirmPassword
+                      ? "var(--auth-success)"
+                      : "var(--auth-error)",
+                  marginTop: 4,
+                }}
+              >
+                {password === confirmPassword
+                  ? "Passwords match"
+                  : "Passwords do not match"}
+              </div>
+            )}
 
             <button type="submit" className="btn-auth" disabled={loading}>
               {loading ? (
