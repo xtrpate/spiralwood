@@ -278,7 +278,7 @@ export default function Customer3DViewer({
   );
   const [selectedCompIds, setSelectedCompIds] = useState([]);
 
-  const [unit, setUnit] = useState("cm");
+  const [unit, setUnit] = useState("mm");
   const [showPerson, setShowPerson] = useState(true);
   const [personHeightMm, setPersonHeightMm] = useState(1700);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -1314,12 +1314,14 @@ export default function Customer3DViewer({
           <div style={styles.sidebarScroll}>
             <section style={styles.sidebarSection}>
               <div style={styles.sidebarSectionHeader}>
-                <div style={styles.sidebarSectionTitle}>Template Configurator</div>
+                <div style={styles.sidebarSectionTitle}>
+                  Template Configurator
+                </div>
               </div>
 
               <p style={styles.sidebarSectionNote}>
-                Adjust only the admin-approved values. Structure stays based on the
-                saved template.
+                Adjust only the admin-approved values. Structure stays based on
+                the saved template.
               </p>
 
               <div style={styles.metricsGrid}>
@@ -1437,7 +1439,9 @@ export default function Customer3DViewer({
                           width: e.target.value,
                         }))
                       }
-                      onBlur={(e) => commitPartDimension("width", e.target.value)}
+                      onBlur={(e) =>
+                        commitPartDimension("width", e.target.value)
+                      }
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           commitPartDimension("width", e.target.value);
@@ -1485,7 +1489,9 @@ export default function Customer3DViewer({
                           depth: e.target.value,
                         }))
                       }
-                      onBlur={(e) => commitPartDimension("depth", e.target.value)}
+                      onBlur={(e) =>
+                        commitPartDimension("depth", e.target.value)
+                      }
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           commitPartDimension("depth", e.target.value);
@@ -1499,7 +1505,9 @@ export default function Customer3DViewer({
             ) : (
               <section style={styles.sidebarSection}>
                 <div style={styles.sectionRow}>
-                  <label style={styles.label}>Overall Dimensions ({unit})</label>
+                  <label style={styles.label}>
+                    Overall Dimensions ({unit})
+                  </label>
                   <span style={styles.pill}>Proportional</span>
                 </div>
 
