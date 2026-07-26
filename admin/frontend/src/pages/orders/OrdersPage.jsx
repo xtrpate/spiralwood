@@ -491,12 +491,20 @@ export default function OrdersPage() {
 
                       <td style={td}>
                         <div style={primaryText}>
-                          {order.customer_name || "Unknown customer"}
+                          {order.customer_name ||
+                            order.walkin_customer_name ||
+                            "Unknown customer"}
                         </div>
                         <div style={secondaryText}>
-                          {order.customer_phone ||
-                            order.customer_email ||
-                            "No contact details"}
+                          {order.customer_phone ? (
+                            <>📞 {order.customer_phone}</>
+                          ) : order.walkin_customer_phone ? (
+                            <>📞 {order.walkin_customer_phone}</>
+                          ) : order.customer_email ? (
+                            <>✉ {order.customer_email}</>
+                          ) : (
+                            "No contact details"
+                          )}
                         </div>
                       </td>
 
