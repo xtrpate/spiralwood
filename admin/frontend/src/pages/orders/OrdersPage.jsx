@@ -681,26 +681,29 @@ const statsGrid = {
 const statCard = {
   background: "#ffffff",
   border: "1px solid #e4e4e7",
-  borderRadius: 12,
-  padding: "16px 18px",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+  borderRadius: 14,
+  padding: "18px 20px",
+  minHeight: 94,
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "space-between",
+  boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
 };
 
 const statLabel = {
-  fontSize: 10,
+  fontSize: 11,
   fontWeight: 800,
   letterSpacing: "1px",
   textTransform: "uppercase",
   color: "#71717a",
-  marginBottom: 8,
 };
 
 const statValue = {
-  fontSize: 22,
+  fontSize: 34,
   fontWeight: 800,
-  color: "#0a0a0a",
+  color: "#111827",
   lineHeight: 1,
-  letterSpacing: "-0.02em",
+  marginTop: 12,
 };
 
 const filterCard = {
