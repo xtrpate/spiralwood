@@ -548,6 +548,7 @@ exports.getAll = async (req, res) => {
     const {
       status,
       channel,
+      orderType,
       search,
       from,
       to,
@@ -562,9 +563,9 @@ exports.getAll = async (req, res) => {
       where.push("o.status = ?");
       params.push(status);
     }
-    if (channel) {
-      where.push("o.type = ?");
-      params.push(channel);
+    if (orderType) {
+      where.push("LOWER(o.order_type) = ?");
+      params.push(orderType.toLowerCase());
     }
     if (from && to) {
       where.push("DATE(o.created_at) BETWEEN ? AND ?");
@@ -1049,7 +1050,9 @@ exports.updateStatus = async (req, res) => {
     // above, which can also pull from contract.blueprint_id) — matches the
     // same canonical-source rule used everywhere else in this fix.
     const lifecycle = isBlueprintOrder
-      ? await resolveLifecycleByOrder(conn, { orderId: parseInt(req.params.id) })
+      ? await resolveLifecycleByOrder(conn, {
+          orderId: parseInt(req.params.id),
+        })
       : null;
 
     const lifecycleGatedStatuses = [
@@ -1469,9 +1472,8 @@ exports.verifyPayment = async (req, res) => {
         "shipping",
         "delivered",
       ];
-      const statusAllowed = ALLOWED_VERIFY_STATUSES.includes(
-        currentOrderStatus,
-      );
+      const statusAllowed =
+        ALLOWED_VERIFY_STATUSES.includes(currentOrderStatus);
 
       const blueprintArchived =
         Number(bp?.is_deleted) === 1 || normalize(bp?.stage) === "archived";
@@ -1866,7 +1868,9 @@ exports.processCancellation = async (req, res) => {
 
     if (typeof approved !== "boolean") {
       await conn.rollback();
-      return res.status(400).json({ message: "Invalid cancellation decision." });
+      return res
+        .status(400)
+        .json({ message: "Invalid cancellation decision." });
     }
 
     // Lock the cancellation row for the duration of this transaction so a
@@ -1887,9 +1891,9 @@ exports.processCancellation = async (req, res) => {
     }
     if (cancellation.decision_status !== "pending") {
       await conn.rollback();
-      return res
-        .status(409)
-        .json({ message: "This cancellation request has already been processed." });
+      return res.status(409).json({
+        message: "This cancellation request has already been processed.",
+      });
     }
 
     const [[order]] = await conn.query(
@@ -1913,7 +1917,9 @@ exports.processCancellation = async (req, res) => {
     if (approved) {
       if (!ALLOWED_POLICIES.includes(policy_applied)) {
         await conn.rollback();
-        return res.status(400).json({ message: "Invalid cancellation policy." });
+        return res
+          .status(400)
+          .json({ message: "Invalid cancellation policy." });
       }
       const numericRefund = Number(refund_amount);
       if (!Number.isFinite(numericRefund) || numericRefund < 0) {
@@ -1936,7 +1942,13 @@ exports.processCancellation = async (req, res) => {
               refund_amount = ?,
               policy_applied = ?
         WHERE id = ?`,
-      [nextDecision, req.user.id, normalizedRefund, normalizedPolicy, cancellation.id],
+      [
+        nextDecision,
+        req.user.id,
+        normalizedRefund,
+        normalizedPolicy,
+        cancellation.id,
+      ],
     );
 
     if (approved) {
@@ -1967,7 +1979,8 @@ exports.processCancellation = async (req, res) => {
     const orderStatusChanged =
       String(order.status || "") !== String(finalOrder.status || "");
     const refundStatusChanged =
-      String(order.refund_status || "") !== String(finalOrder.refund_status || "");
+      String(order.refund_status || "") !==
+      String(finalOrder.refund_status || "");
 
     req.auditRecord = {
       id: cancellation.id,
@@ -2185,8 +2198,7 @@ exports.assignStaff = async (req, res) => {
       ],
     );
 
-    const orderStatusChanged =
-      normalize(order.status) === "contract_released";
+    const orderStatusChanged = normalize(order.status) === "contract_released";
 
     if (orderStatusChanged) {
       await conn.query(
@@ -2201,9 +2213,7 @@ exports.assignStaff = async (req, res) => {
 
     req.auditRecord = {
       id: orderId,
-      old: orderStatusChanged
-        ? { status: normalize(order.status) }
-        : null,
+      old: orderStatusChanged ? { status: normalize(order.status) } : null,
       new: {
         assigned_staff_id: parseInt(staff_id),
         task_ids: createdTaskIds,
@@ -2295,7 +2305,9 @@ exports.reassignStaff = async (req, res) => {
         .json({ message: "This order is not linked to a blueprint." });
     }
 
-    if (!["contract_released", "production"].includes(normalize(order.status))) {
+    if (
+      !["contract_released", "production"].includes(normalize(order.status))
+    ) {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
@@ -2396,7 +2408,12 @@ exports.reassignStaff = async (req, res) => {
       });
     }
 
-    const SUPPORTED_TASK_STATUSES = ["pending", "in_progress", "blocked", "completed"];
+    const SUPPORTED_TASK_STATUSES = [
+      "pending",
+      "in_progress",
+      "blocked",
+      "completed",
+    ];
     const invalidStatusRow = packet.find(
       (row) => !SUPPORTED_TASK_STATUSES.includes(normalize(row.status)),
     );
@@ -2493,7 +2510,8 @@ exports.reassignStaff = async (req, res) => {
     const lostByStaff = new Map();
     for (const row of eligibleRows) {
       if (!row.assigned_to) continue;
-      if (!lostByStaff.has(row.assigned_to)) lostByStaff.set(row.assigned_to, []);
+      if (!lostByStaff.has(row.assigned_to))
+        lostByStaff.set(row.assigned_to, []);
       lostByStaff.get(row.assigned_to).push(row.task_role);
     }
 
@@ -2542,7 +2560,9 @@ exports.reassignStaff = async (req, res) => {
         transferred_task_roles: eligibleRows.map((row) =>
           getTaskRoleLabel(row.task_role),
         ),
-        transferred_task_original_statuses: eligibleRows.map((row) => row.status),
+        transferred_task_original_statuses: eligibleRows.map(
+          (row) => row.status,
+        ),
         completed_tasks_preserved: completedTasksPreserved,
       },
     };
@@ -2550,7 +2570,9 @@ exports.reassignStaff = async (req, res) => {
     const responseBody = {
       message: `${eligibleRows.length} production step(s) reassigned successfully.`,
       transferred_task_ids: eligibleRows.map((row) => row.id),
-      preserved_completed_task_ids: completedTasksPreserved.map((t) => t.task_id),
+      preserved_completed_task_ids: completedTasksPreserved.map(
+        (t) => t.task_id,
+      ),
     };
 
     await conn.commit();

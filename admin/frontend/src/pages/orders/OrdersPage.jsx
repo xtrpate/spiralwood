@@ -138,6 +138,7 @@ export default function OrdersPage() {
     search: "",
     status: "",
     channel: "",
+    orderType: "",
     from: "",
     to: "",
     page: 1,
@@ -171,6 +172,7 @@ export default function OrdersPage() {
       search: "",
       status: "",
       channel: "",
+      orderType: "",
       from: "",
       to: "",
       page: 1,
@@ -180,6 +182,7 @@ export default function OrdersPage() {
     "search",
     "status",
     "channel",
+    "orderType",
     "from",
     "to",
   ].filter((key) => Boolean(filters[key])).length;
@@ -301,6 +304,16 @@ export default function OrdersPage() {
             <option value="">All channels</option>
             <option value="online">Online</option>
             <option value="walkin">Walk-in (POS)</option>
+          </select>
+
+          <select
+            value={filters.orderType}
+            onChange={(e) => setF("orderType", e.target.value)}
+            style={{ ...inputBase, minWidth: 150 }}
+          >
+            <option value="">All Types</option>
+            <option value="standard">Standard</option>
+            <option value="blueprint">Blueprint</option>
           </select>
 
           <input
