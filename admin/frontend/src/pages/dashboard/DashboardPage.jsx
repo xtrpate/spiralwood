@@ -136,7 +136,7 @@ function MiniStat({ label, value }) {
   );
 }
 
-function ProgressRow({ label, value, total, alert }) {
+function ProgressRow({ label, value, total, color = "#18181b" }) {
   const percent = getPercent(value, total);
 
   return (
@@ -145,12 +145,13 @@ function ProgressRow({ label, value, total, alert }) {
         <span>{label}</span>
         <strong>{num.format(Number(value || 0))}</strong>
       </div>
+
       <div className="progress-row__track">
         <div
           className="progress-row__fill"
           style={{
             width: `${percent}%`,
-            background: alert ? "#ef4444" : "#18181b",
+            background: color,
           }}
         />
       </div>
@@ -804,37 +805,49 @@ export default function DashboardPage() {
               label="Pending"
               value={currentPending}
               total={currentTotalOrders}
+              color="#18181B"
             />
+
             <ProgressRow
               label="Confirmed"
               value={currentConfirmed}
               total={currentTotalOrders}
+              color="#18181B"
             />
+
             <ProgressRow
               label="In Production"
               value={currentProduction}
               total={currentTotalOrders}
+              color="#18181B"
             />
+
             <ProgressRow
               label="Shipping"
               value={currentShipping}
               total={currentTotalOrders}
+              color="#18181B"
             />
+
             <ProgressRow
               label="Delivered"
               value={currentDelivered}
               total={currentTotalOrders}
+              color="#94A3B8"
             />
+
             <ProgressRow
               label="Completed"
               value={currentCompleted}
               total={currentTotalOrders}
+              color="#22C55E"
             />
+
             <ProgressRow
               label="Cancelled"
               value={currentCancelled}
               total={currentTotalOrders}
-              alert={true}
+              color="#EF4444"
             />
           </div>
 
@@ -844,15 +857,15 @@ export default function DashboardPage() {
               <strong>{num.format(pendingReviews)}</strong>
             </div>
             <div className="ops-footnote ops-footnote--danger">
-              <span>Delivered but Unpaid</span>
-              <strong>{num.format(deliveredUnpaid)}</strong>
+              <span>Cancelled Orders</span>
+              <strong>{num.format(currentCancelled)}</strong>
             </div>
             <div className="ops-footnote ops-footnote--info">
-              <span>Orders in Selected Range</span>
+              <span>Total Orders</span>
               <strong>{num.format(totalOrders)}</strong>
             </div>
             <div className="ops-footnote ops-footnote--success">
-              <span>Completed in Selected Range</span>
+              <span>Completed Orders</span>
               <strong>{num.format(periodCompleted)}</strong>
             </div>
           </div>
@@ -1596,6 +1609,16 @@ const dashboardCss = `
     border-color: #fecaca;
     background: #fef2f2;
   }
+
+  .ops-footnote--info {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.ops-footnote--success {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
 
   .inventory-panel {
     padding: 20px;
