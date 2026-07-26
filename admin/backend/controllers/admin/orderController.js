@@ -567,6 +567,11 @@ exports.getAll = async (req, res) => {
       where.push("LOWER(o.order_type) = ?");
       params.push(orderType.toLowerCase());
     }
+
+    if (channel) {
+      where.push("LOWER(o.type) = ?");
+      params.push(channel.toLowerCase());
+    }
     if (from && to) {
       where.push("DATE(o.created_at) BETWEEN ? AND ?");
       params.push(from, to);

@@ -5,51 +5,58 @@ import toast from "react-hot-toast";
 
 const STATUS_STYLE = {
   pending: {
-    bg: "#ffffff",
-    color: "#52525b",
-    border: "#d4d4d8",
+    bg: "#FAFAFA",
+    color: "#52525B",
+    border: "#D4D4D8",
     label: "Pending",
   },
+
   confirmed: {
-    bg: "#f4f4f5",
-    color: "#18181b",
-    border: "#e4e4e7",
+    bg: "#EFF6FF",
+    color: "#1D4ED8",
+    border: "#BFDBFE",
     label: "Confirmed",
   },
+
   contract_released: {
-    bg: "#f4f4f5",
-    color: "#18181b",
-    border: "#e4e4e7",
-    label: "Contract released",
+    bg: "#EEF2FF",
+    color: "#4338CA",
+    border: "#C7D2FE",
+    label: "Contract Released",
   },
+
   production: {
-    bg: "#f4f4f5",
-    color: "#18181b",
-    border: "#e4e4e7",
+    bg: "#FEF3C7",
+    color: "#B45309",
+    border: "#FCD34D",
     label: "Production",
   },
+
   shipping: {
-    bg: "#f4f4f5",
-    color: "#18181b",
-    border: "#e4e4e7",
+    bg: "#ECFEFF",
+    color: "#0F766E",
+    border: "#A5F3FC",
     label: "Shipping",
   },
+
   delivered: {
-    bg: "#18181b",
-    color: "#ffffff",
-    border: "#18181b",
+    bg: "#F3F4F6",
+    color: "#374151",
+    border: "#D1D5DB",
     label: "Delivered",
   },
+
   completed: {
-    bg: "#0a0a0a",
-    color: "#ffffff",
-    border: "#0a0a0a",
+    bg: "#ECFDF5",
+    color: "#15803D",
+    border: "#BBF7D0",
     label: "Completed",
   },
+
   cancelled: {
-    bg: "#fef2f2",
-    color: "#991b1b",
-    border: "#fecaca",
+    bg: "#FEF2F2",
+    color: "#B91C1C",
+    border: "#FECACA",
     label: "Cancelled",
   },
 };
