@@ -481,8 +481,11 @@ export default function OrdersPage() {
 
                         <div style={secondaryText}>
                           {customRequest
-                            ? "Customer custom blueprint request"
-                            : "Standard order"}
+                            ? "Blueprint Request"
+                            : "Standard Order"}
+                          {" • "}
+                          {order.item_count || 0}{" "}
+                          {Number(order.item_count) === 1 ? "Item" : "Items"}
                         </div>
                       </td>
 
@@ -853,13 +856,13 @@ const orderLink = {
   background: "none",
   border: "none",
   padding: 0,
-  color: "#18181b",
-  fontSize: 13,
+  color: "#111827",
+  fontSize: 14,
   fontWeight: 800,
   cursor: "pointer",
-  textDecoration: "underline",
+  textDecoration: "none",
+  letterSpacing: "-0.01em",
 };
-
 const primaryText = {
   fontSize: 13,
   fontWeight: 700,
@@ -868,10 +871,11 @@ const primaryText = {
 };
 
 const secondaryText = {
-  marginTop: 4,
+  marginTop: 6,
   fontSize: 11,
-  color: "#71717a",
-  lineHeight: 1.45,
+  color: "#6B7280",
+  lineHeight: 1.5,
+  fontWeight: 500,
 };
 
 const softBadge = {
