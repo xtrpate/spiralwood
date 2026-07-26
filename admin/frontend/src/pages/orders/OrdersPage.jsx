@@ -213,13 +213,41 @@ export default function OrdersPage() {
     ).length;
 
     return [
-      { label: "Total orders", value: total },
-      { label: "Needs review", value: readyForReview },
-      { label: "Custom requests", value: customRequests },
-      { label: "Quote needed", value: quoteNeeded },
-      { label: "Paid orders", value: paid },
-      { label: "Online orders", value: online },
-      { label: "Pending status", value: pending },
+      {
+        label: "Total Orders",
+        value: total,
+        accent: "#2563EB",
+      },
+      {
+        label: "Needs Review",
+        value: readyForReview,
+        accent: "#F59E0B",
+      },
+      {
+        label: "Custom Requests",
+        value: customRequests,
+        accent: "#8B5CF6",
+      },
+      {
+        label: "Quote Needed",
+        value: quoteNeeded,
+        accent: "#EA580C",
+      },
+      {
+        label: "Paid Orders",
+        value: paid,
+        accent: "#22C55E",
+      },
+      {
+        label: "Online Orders",
+        value: online,
+        accent: "#0891B2",
+      },
+      {
+        label: "Pending Status",
+        value: pending,
+        accent: "#71717A",
+      },
     ];
   }, [orders, total]);
 
@@ -242,9 +270,20 @@ export default function OrdersPage() {
 
       <div style={statsGrid}>
         {stats.map((item) => (
-          <div key={item.label} style={statCard}>
+          <div
+            key={item.label}
+            style={{
+              ...statCard,
+              borderLeft: `4px solid ${item.accent}`,
+            }}
+          >
             <div style={statLabel}>{item.label}</div>
-            <div style={statValue}>{item.value}</div>
+            <div
+              style={{
+                ...statValue,
+                color: item.accent,
+              }}
+            ></div>
           </div>
         ))}
       </div>
