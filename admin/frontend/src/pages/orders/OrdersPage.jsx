@@ -278,12 +278,8 @@ export default function OrdersPage() {
             }}
           >
             <div style={statLabel}>{item.label}</div>
-            <div
-              style={{
-                ...statValue,
-                color: item.accent,
-              }}
-            ></div>
+
+            <div style={statValue}>{item.value}</div>
           </div>
         ))}
       </div>
