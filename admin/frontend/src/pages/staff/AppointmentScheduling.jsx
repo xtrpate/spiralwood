@@ -744,6 +744,30 @@ export default function AppointmentScheduling() {
         ))}
       </div>
 
+      {isAdmin && (
+        <SectionCard
+          title="Appointment Calendar"
+          subtitle="View weekly appointment availability before assigning or creating appointments."
+        >
+          <div
+            style={{
+              border: "1px solid #E4E4E7",
+              borderRadius: 16,
+              background: "#FAFAFA",
+              minHeight: 430,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              color: "#71717A",
+              fontSize: 15,
+              fontWeight: 600,
+            }}
+          >
+            Weekly Appointment Calendar (Coming in the next update)
+          </div>
+        </SectionCard>
+      )}
+
       {error ? (
         <div
           style={{
