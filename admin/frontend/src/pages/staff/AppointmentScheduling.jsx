@@ -856,19 +856,134 @@ export default function AppointmentScheduling() {
         >
           <div
             style={{
-              border: "1px solid #E4E4E7",
-              borderRadius: 16,
-              background: "#FAFAFA",
-              minHeight: 430,
               display: "flex",
-              justifyContent: "center",
+              justifyContent: "space-between",
               alignItems: "center",
-              color: "#71717A",
-              fontSize: 15,
-              fontWeight: 600,
+              marginBottom: 20,
+              flexWrap: "wrap",
+              gap: 12,
             }}
           >
-            Weekly Appointment Calendar (Coming in the next update)
+            <button style={btnGhost} onClick={prevWeek}>
+              ← Previous Week
+            </button>
+
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: 15,
+                color: "#18181b",
+              }}
+            >
+              {weekDays[0].toLocaleDateString("en-PH", {
+                month: "short",
+                day: "numeric",
+              })}
+              {" - "}
+              {weekDays[6].toLocaleDateString("en-PH", {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+            </div>
+
+            <button style={btnGhost} onClick={nextWeek}>
+              Next Week →
+            </button>
+          </div>
+
+          <div
+            style={{
+              overflowX: "auto",
+            }}
+          >
+            <table
+              style={{
+                width: "100%",
+                borderCollapse: "collapse",
+                minWidth: 900,
+              }}
+            >
+              <thead>
+                <tr>
+                  <th
+                    style={{
+                      padding: 12,
+                      border: "1px solid #e4e4e7",
+                      background: "#fafafa",
+                      width: 120,
+                    }}
+                  >
+                    Time
+                  </th>
+
+                  {weekDays.map((day) => (
+                    <th
+                      key={toYMD(day)}
+                      style={{
+                        padding: 12,
+                        border: "1px solid #e4e4e7",
+                        background: "#fafafa",
+                        textAlign: "center",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>
+                        {day.toLocaleDateString("en-PH", {
+                          weekday: "short",
+                        })}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "#71717a",
+                          marginTop: 4,
+                        }}
+                      >
+                        {day.toLocaleDateString("en-PH", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody>
+                {TIME_SLOTS.map((slot) => (
+                  <tr key={slot}>
+                    <td
+                      style={{
+                        border: "1px solid #e4e4e7",
+                        padding: 14,
+                        fontWeight: 700,
+                        background: "#fafafa",
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {formatTimeForDisplay(slot)}
+                    </td>
+
+                    {weekDays.map((day) => (
+                      <td
+                        key={`${toYMD(day)}-${slot}`}
+                        style={{
+                          border: "1px solid #e4e4e7",
+                          height: 90,
+                          padding: 10,
+                          textAlign: "center",
+                          verticalAlign: "middle",
+                        }}
+                      >
+                        ...
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </SectionCard>
       )}
