@@ -85,7 +85,11 @@ exports.createAppointment = async (req, res) => {
       WHERE customer_id = ?
         AND purpose = ?
         AND scheduled_date = ?
-        AND status IN ('pending', 'confirmed')
+        AND status IN (
+    'pending',
+    'awaiting_staff_acceptance',
+    'confirmed'
+)
       LIMIT 1
       `,
       [req.user.id, purpose, scheduled_date],
@@ -193,13 +197,14 @@ exports.cancelAppointment = async (req, res) => {
       });
     }
 
-    if (appointment.status !== "pending") {
+    const cancellableStatuses = ["pending", "awaiting_staff_acceptance"];
+
+    if (!cancellableStatuses.includes(appointment.status)) {
       return res.status(400).json({
-        message: "Only pending appointment requests can be cancelled.",
+        message: "This appointment can no longer be cancelled online.",
       });
     }
 
-    // ── FIXED: Switched to .query and added parseInt ──
     await db.query(
       `UPDATE appointments SET status = 'cancelled' WHERE id = ?`,
       [parseInt(req.params.id)],
@@ -227,7 +232,11 @@ exports.getAvailability = async (req, res) => {
       SELECT TIME(scheduled_date) as booked_time
       FROM appointments
       WHERE DATE(scheduled_date) = ?
-        AND status IN ('pending', 'confirmed')
+  AND status IN (
+      'pending',
+      'awaiting_staff_acceptance',
+      'confirmed'
+  )
       `,
       [date],
     );

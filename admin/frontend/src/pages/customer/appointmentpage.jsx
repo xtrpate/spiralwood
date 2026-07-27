@@ -274,12 +274,17 @@ export default function AppointmentPage() {
   };
 
   const handleCancel = async (id) => {
-    if (!window.confirm("Cancel this appointment request?")) return;
+    if (
+      !window.confirm(
+        "Are you sure you want to cancel this appointment?\n\nThis action cannot be undone.",
+      )
+    )
+      return;
 
     try {
       await api.delete(`/customer/appointments/${id}`);
       await fetchAppointments();
-      // Re-fetch availability for the current week view
+      alert("Appointment cancelled successfully.");
       setWeekStart(new Date(weekStart));
     } catch (err) {
       alert(
@@ -792,7 +797,9 @@ export default function AppointmentPage() {
                         </div>
                       )}
 
-                      {a.status === "pending" && (
+                      {["pending", "awaiting_staff_acceptance"].includes(
+                        a.status,
+                      ) && (
                         <button
                           type="button"
                           className="appt-btn-cancel"
