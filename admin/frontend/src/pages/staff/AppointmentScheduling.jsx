@@ -1000,14 +1000,17 @@ export default function AppointmentScheduling() {
                           return (
                             <div
                               style={{
-                                display: "inline-flex",
-                                alignItems: "center",
+                                display: "flex",
+                                flexDirection: "column",
                                 justifyContent: "center",
+                                alignItems: "center",
                                 width: "100%",
                                 height: "100%",
+                                borderRadius: 10,
+                                background: booked ? "#fef2f2" : "#f8fffa",
                               }}
                             >
-                              <span
+                              <div
                                 style={{
                                   padding: "6px 12px",
                                   borderRadius: 999,
@@ -1021,7 +1024,18 @@ export default function AppointmentScheduling() {
                                 }}
                               >
                                 {booked ? "Booked" : "Available"}
-                              </span>
+                                {booked && (
+                                  <div
+                                    style={{
+                                      marginTop: 6,
+                                      fontSize: 11,
+                                      color: "#991b1b",
+                                    }}
+                                  >
+                                    Occupied
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           );
                         })()}
