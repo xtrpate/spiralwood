@@ -977,7 +977,54 @@ export default function AppointmentScheduling() {
                           verticalAlign: "middle",
                         }}
                       >
-                        ...
+                        {(() => {
+                          const date = toYMD(day);
+
+                          const booked = (bookedSlots[date] || []).includes(
+                            slot,
+                          );
+
+                          if (loadingSlots) {
+                            return (
+                              <span
+                                style={{
+                                  color: "#a1a1aa",
+                                  fontSize: 12,
+                                }}
+                              >
+                                Loading...
+                              </span>
+                            );
+                          }
+
+                          return (
+                            <div
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                width: "100%",
+                                height: "100%",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  padding: "6px 12px",
+                                  borderRadius: 999,
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  background: booked ? "#fef2f2" : "#f0fdf4",
+                                  color: booked ? "#991b1b" : "#166534",
+                                  border: booked
+                                    ? "1px solid #fecaca"
+                                    : "1px solid #bbf7d0",
+                                }}
+                              >
+                                {booked ? "Booked" : "Available"}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
                     ))}
                   </tr>
