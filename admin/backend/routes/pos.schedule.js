@@ -24,6 +24,12 @@ router.get(
   posScheduleController.getAppointments,
 );
 
+router.get(
+  "/appointments/availability",
+  appointmentAccess,
+  posScheduleController.getAvailability,
+);
+
 router.post(
   "/appointments",
   adminOnly,

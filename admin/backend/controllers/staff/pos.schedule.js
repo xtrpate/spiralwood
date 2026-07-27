@@ -1,6 +1,5 @@
 const db = require("../../config/db");
 
-
 const APPOINTMENT_STATUSES = [
   "pending",
   "assigned",
@@ -243,6 +242,47 @@ exports.getAppointments = async (req, res) => {
     return res.status(500).json({
       message: "Failed to load appointments",
       error: err.message,
+    });
+  }
+};
+
+exports.getAvailability = async (req, res) => {
+  try {
+    const { date } = req.query;
+
+    if (!date) {
+      return res.status(400).json({
+        message: "Date is required.",
+      });
+    }
+
+    const [rows] = await db.query(
+      `
+      SELECT TIME(scheduled_date) AS booked_time
+      FROM appointments
+      WHERE DATE(scheduled_date) = ?
+        AND status IN (
+          'pending',
+          'assigned',
+          'confirmed'
+        )
+      `,
+      [date],
+    );
+
+    const booked = rows
+      .map((r) => {
+        const time = r.booked_time;
+        return time ? time.substring(0, 5) : null;
+      })
+      .filter(Boolean);
+
+    return res.json({ booked });
+  } catch (err) {
+    console.error("[appointments availability]", err);
+
+    return res.status(500).json({
+      message: "Server error.",
     });
   }
 };
@@ -540,7 +580,7 @@ exports.updateAppointment = async (req, res) => {
       const requestedStatus = normalizeText(req.body.status).toLowerCase();
       const nextNotes =
         req.body.notes === undefined
-          ? existing.notes ?? null
+          ? (existing.notes ?? null)
           : normalizeText(req.body.notes) || null;
 
       if (currentStatus === "assigned") {
@@ -589,7 +629,9 @@ exports.updateAppointment = async (req, res) => {
           },
           new: {
             status: isAccept ? "confirmed" : "pending",
-            provider_id: isReturnToAdmin ? null : existing.provider_id ?? null,
+            provider_id: isReturnToAdmin
+              ? null
+              : (existing.provider_id ?? null),
             changed_fields: isReturnToAdmin
               ? ["status", "provider_id"]
               : ["status"],
@@ -683,7 +725,9 @@ exports.updateAppointment = async (req, res) => {
     }
 
     if (Object.prototype.hasOwnProperty.call(req.body, "preferred_date")) {
-      const normalizedPreferredDate = normalizeDateTime(req.body.preferred_date);
+      const normalizedPreferredDate = normalizeDateTime(
+        req.body.preferred_date,
+      );
       if (!normalizedPreferredDate) {
         await conn.rollback();
         transactionActive = false;
@@ -695,7 +739,9 @@ exports.updateAppointment = async (req, res) => {
     }
 
     if (Object.prototype.hasOwnProperty.call(req.body, "scheduled_date")) {
-      const normalizedScheduledDate = normalizeDateTime(req.body.scheduled_date);
+      const normalizedScheduledDate = normalizeDateTime(
+        req.body.scheduled_date,
+      );
       if (!normalizedScheduledDate) {
         await conn.rollback();
         transactionActive = false;
@@ -758,7 +804,8 @@ exports.updateAppointment = async (req, res) => {
         await conn.rollback();
         transactionActive = false;
         return res.status(400).json({
-          message: "Assign an indoor staff member before setting status to assigned.",
+          message:
+            "Assign an indoor staff member before setting status to assigned.",
         });
       }
 

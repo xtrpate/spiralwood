@@ -396,7 +396,7 @@ export default function AppointmentScheduling() {
 
         const responses = await Promise.all(
           days.map((date) =>
-            api.get(`/customer/appointments/availability?date=${date}`),
+            api.get(`/pos/appointments/availability?date=${date}`),
           ),
         );
 
