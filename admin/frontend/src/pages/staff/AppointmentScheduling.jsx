@@ -79,6 +79,40 @@ const formatDateTime = (value) => {
   });
 };
 
+const getMinDateYMD = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+const toYMD = (dateObj) => {
+  return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(dateObj.getDate()).padStart(2, "0")}`;
+};
+
+const getStartOfWeek = (d) => {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1);
+
+  return new Date(date.setDate(diff));
+};
+
+const TIME_SLOTS = ["09:00", "11:00", "13:00", "15:00"];
+
+const formatTimeForDisplay = (time) => {
+  const [h, m] = time.split(":");
+  const hr = Number(h);
+
+  return `${hr > 12 ? hr - 12 : hr}:${m} ${hr >= 12 ? "PM" : "AM"}`;
+};
+
 const humanizePurpose = (value) => {
   if (!value) return "—";
 
@@ -276,6 +310,17 @@ export default function AppointmentScheduling() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // for calendar schedule
+  const [weekStart, setWeekStart] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return getStartOfWeek(tomorrow);
+  });
+
+  const [bookedSlots, setBookedSlots] = useState({});
+
+  const [loadingSlots, setLoadingSlots] = useState(false);
+
   const getProviderId = useCallback((appointment) => {
     return Number(
       appointment?.provider_id ??
@@ -337,6 +382,41 @@ export default function AppointmentScheduling() {
     fetchAppointments();
     fetchProviders();
   }, [fetchAppointments, fetchProviders]);
+
+  useEffect(() => {
+    const fetchWeeklyAvailability = async () => {
+      setLoadingSlots(true);
+
+      try {
+        const days = Array.from({ length: 7 }).map((_, i) => {
+          const d = new Date(weekStart);
+          d.setDate(d.getDate() + i);
+          return toYMD(d);
+        });
+
+        const responses = await Promise.all(
+          days.map((date) =>
+            api.get(`/customer/appointments/availability?date=${date}`),
+          ),
+        );
+
+        const booked = {};
+
+        days.forEach((date, index) => {
+          booked[date] = responses[index].data.booked || [];
+        });
+
+        setBookedSlots(booked);
+      } catch (err) {
+        console.error(err);
+        setBookedSlots({});
+      } finally {
+        setLoadingSlots(false);
+      }
+    };
+
+    fetchWeeklyAvailability();
+  }, [weekStart]);
 
   const adminNewRequests = useMemo(
     () =>
@@ -402,6 +482,31 @@ export default function AppointmentScheduling() {
         ) && isAssignedToCurrentIndoorStaff(a),
     );
   }, [appointments, isIndoorStaff, isAssignedToCurrentIndoorStaff]);
+
+  const weekDays = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+
+  // week calendar navigation
+  const nextWeek = () => {
+    const next = new Date(weekStart);
+    next.setDate(next.getDate() + 7);
+    setWeekStart(next);
+  };
+
+  const prevWeek = () => {
+    const prev = new Date(weekStart);
+    prev.setDate(prev.getDate() - 7);
+
+    const sunday = new Date(prev);
+    sunday.setDate(sunday.getDate() + 6);
+
+    if (toYMD(sunday) < getMinDateYMD()) return;
+
+    setWeekStart(prev);
+  };
 
   const handleManualSubmit = async (e) => {
     e.preventDefault();
