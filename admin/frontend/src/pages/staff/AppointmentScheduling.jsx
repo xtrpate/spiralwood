@@ -500,11 +500,6 @@ export default function AppointmentScheduling() {
     const prev = new Date(weekStart);
     prev.setDate(prev.getDate() - 7);
 
-    const sunday = new Date(prev);
-    sunday.setDate(sunday.getDate() + 6);
-
-    if (toYMD(sunday) < getMinDateYMD()) return;
-
     setWeekStart(prev);
   };
 
