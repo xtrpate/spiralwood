@@ -544,8 +544,27 @@ export default function OrdersPage() {
                         </span>
                       </td>
 
-                      <td style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}>
-                        {formatMoney(order.total_amount)}
+                      <td style={td}>
+                        <div
+                          style={{
+                            fontWeight: 800,
+                            fontSize: 15,
+                            color: "#111827",
+                          }}
+                        >
+                          {formatMoney(order.total_amount)}
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 11,
+                            color: "#6B7280",
+                            fontWeight: 500,
+                          }}
+                        >
+                          {paymentTone.label}
+                        </div>
                       </td>
 
                       <td style={td}>
