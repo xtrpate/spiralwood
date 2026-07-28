@@ -55,6 +55,7 @@ export default function DeliveryManagement() {
   const [collectionForms, setCollectionForms] = useState({});
 
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [failureModal, setFailureModal] = useState(null);
   const [failureReasonInput, setFailureReasonInput] = useState("");
 
@@ -296,20 +297,34 @@ export default function DeliveryManagement() {
     }
   };
 
+  const STATUS_FILTERS = [
+    { value: "all", label: "All" },
+    { value: "scheduled", label: "Scheduled" },
+    { value: "in_transit", label: "In Transit" },
+    { value: "delivered", label: "Delivered" },
+    { value: "failed", label: "Failed" },
+    { value: "completed", label: "Completed" },
+  ];
+
   const filteredDeliveries = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return deliveries;
 
-    return deliveries.filter((item) =>
-      [
+    return deliveries.filter((item) => {
+      const matchesStatus =
+        statusFilter === "all" || normalize(item.status) === statusFilter;
+
+      if (!matchesStatus) return false;
+      if (!keyword) return true;
+
+      return [
         String(item.order_number || ""),
         String(item.customer_name || ""),
         String(item.address || ""),
         String(item.status || ""),
         String(item.driver_name || ""),
-      ].some((field) => field.toLowerCase().includes(keyword)),
-    );
-  }, [deliveries, search]);
+      ].some((field) => field.toLowerCase().includes(keyword));
+    });
+  }, [deliveries, search, statusFilter]);
 
   return (
     <div style={pageShell}>
@@ -334,6 +349,24 @@ export default function DeliveryManagement() {
           onChange={(e) => setSearch(e.target.value)}
           style={searchInput}
         />
+        {isDeliveryRider && (
+          <div style={statusFilterRow}>
+            {STATUS_FILTERS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setStatusFilter(option.value)}
+                style={
+                  statusFilter === option.value
+                    ? statusFilterButtonActive
+                    : statusFilterButton
+                }
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {error ? <div style={alertError}>{error}</div> : null}
@@ -1105,6 +1138,31 @@ const searchInput = {
   fontSize: "13px",
   color: "#18181b",
   boxSizing: "border-box",
+};
+
+const statusFilterRow = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "8px",
+  marginTop: "12px",
+};
+
+const statusFilterButton = {
+  padding: "6px 14px",
+  borderRadius: "999px",
+  border: "1px solid #e4e4e7",
+  background: "#fafafa",
+  color: "#71717a",
+  fontSize: "12px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const statusFilterButtonActive = {
+  ...statusFilterButton,
+  background: "#0a0a0a",
+  borderColor: "#0a0a0a",
+  color: "#ffffff",
 };
 
 const alertError = {

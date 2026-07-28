@@ -26,6 +26,59 @@ const normalizeDateTime = (value) => {
   return cleaned.length === 16 ? `${cleaned}:00` : cleaned;
 };
 
+// Confirmed Delivery Schedule is date-only. This validator is used only
+// for that field on delivery creation — it does not touch or replace
+// normalizeDateTime above, which remains used as-is for the Requested
+// Delivery Date. Accepts a bare "YYYY-MM-DD" value, or a full datetime
+// beginning with "YYYY-MM-DD" and a valid time (from an older/cached
+// frontend), and normalizes either to just "YYYY-MM-DD". Anchored
+// start-to-end so no leading/trailing garbage is accepted, and the
+// year/month/day must form a real calendar date. Pure string/integer
+// handling — no Date object, no timezone conversion. Returns null for
+// anything empty or malformed.
+const CONFIRMED_SCHEDULE_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/;
+
+const isRealCalendarDate = (year, month, day) => {
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day)
+  ) {
+    return false;
+  }
+
+  if (month < 1 || month > 12) return false;
+  if (day < 1 || day > 31) return false;
+
+  const daysInMonth = new Date(year, month, 0).getDate();
+  return day <= daysInMonth;
+};
+
+const normalizeConfirmedScheduleDateOnly = (value) => {
+  const raw = normalizeText(value);
+  if (!raw) return null;
+
+  const match = CONFIRMED_SCHEDULE_PATTERN.exec(raw);
+  if (!match) return null;
+
+  const [, yearStr, monthStr, dayStr, hourStr, minuteStr, secondStr] = match;
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+
+  if (!isRealCalendarDate(year, month, day)) return null;
+
+  if (hourStr !== undefined) {
+    const hour = Number(hourStr);
+    const minute = Number(minuteStr);
+    const second = secondStr !== undefined ? Number(secondStr) : 0;
+    if (hour > 23 || minute > 59 || second > 59) return null;
+  }
+
+  return `${yearStr}-${monthStr}-${dayStr}`;
+};
+
 const buildSignedReceiptPath = (file) => {
   if (!file || !file.filename) return null;
   return `/uploads/delivery-receipts/${file.filename}`.replace(/\\/g, "/");
@@ -219,13 +272,20 @@ exports.createDelivery = async (req, res) => {
   const orderId = toNullableInt(req.body.order_id);
   const driverId = toNullableInt(req.body.driver_id);
   const address = normalizeText(req.body.address);
-  const scheduledDate = normalizeDateTime(req.body.scheduled_date);
+  const scheduledDateRaw = normalizeText(req.body.scheduled_date);
+  const scheduledDate = normalizeConfirmedScheduleDateOnly(scheduledDateRaw);
   const notes = normalizeText(req.body.notes) || "";
   const rescheduleReason = normalizeText(req.body.reschedule_reason) || "";
 
-  if (!orderId || !driverId || !address || !scheduledDate) {
+  if (!orderId || !driverId || !address || !scheduledDateRaw) {
     return res.status(400).json({
       message: "order_id, driver_id, address, and scheduled_date are required",
+    });
+  }
+
+  if (!scheduledDate) {
+    return res.status(400).json({
+      message: "Confirmed delivery schedule must be a valid date.",
     });
   }
 
@@ -296,7 +356,7 @@ exports.createDelivery = async (req, res) => {
     if (
       requestedDate &&
       scheduledDate &&
-      requestedDate !== scheduledDate &&
+      requestedDate.slice(0, 10) !== scheduledDate &&
       rescheduleReason
     ) {
       finalNotesParts.push(`Reschedule Reason: ${rescheduleReason}`);
