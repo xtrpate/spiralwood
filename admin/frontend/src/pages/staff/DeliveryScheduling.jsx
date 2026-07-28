@@ -113,11 +113,15 @@ export default function DeliveryScheduling() {
 
     if (!form.scheduled_date) {
       nextErrors.scheduled_date = "Confirmed delivery schedule is required.";
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(form.scheduled_date)) {
+      nextErrors.scheduled_date = "Confirmed delivery schedule is invalid.";
     } else {
-      const parsed = new Date(form.scheduled_date);
-      if (Number.isNaN(parsed.getTime())) {
-        nextErrors.scheduled_date = "Confirmed delivery schedule is invalid.";
-      } else if (parsed.getTime() < now.getTime() - 60000) {
+      const pad = (n) => String(n).padStart(2, "0");
+      const todayLocal = `${now.getFullYear()}-${pad(
+        now.getMonth() + 1,
+      )}-${pad(now.getDate())}`;
+
+      if (form.scheduled_date < todayLocal) {
         nextErrors.scheduled_date =
           "Confirmed delivery schedule cannot be in the past.";
       }
@@ -126,7 +130,7 @@ export default function DeliveryScheduling() {
     if (
       form.requested_date &&
       form.scheduled_date &&
-      form.requested_date !== form.scheduled_date &&
+      form.requested_date.slice(0, 10) !== form.scheduled_date &&
       !String(form.reschedule_reason || "").trim()
     ) {
       nextErrors.reschedule_reason =
@@ -356,13 +360,16 @@ export default function DeliveryScheduling() {
                     const requestedDate = normalizeDateTimeInput(
                       getRequestedScheduleFromOrder(selectedOrder),
                     );
+                    const requestedDateOnly = requestedDate
+                      ? requestedDate.slice(0, 10)
+                      : "";
 
                     setForm((prev) => ({
                       ...prev,
                       order_id: nextOrderId,
                       address: selectedOrder?.delivery_address || prev.address,
                       requested_date: requestedDate,
-                      scheduled_date: requestedDate || prev.scheduled_date,
+                      scheduled_date: requestedDateOnly || prev.scheduled_date,
                       reschedule_reason: "",
                     }));
 
@@ -482,7 +489,7 @@ export default function DeliveryScheduling() {
               <div>
                 <label style={labelStyle}>Confirmed Delivery Schedule *</label>
                 <input
-                  type="datetime-local"
+                  type="date"
                   value={form.scheduled_date}
                   onChange={(e) => {
                     setForm((prev) => ({
