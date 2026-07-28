@@ -109,7 +109,7 @@ exports.createAppointment = async (req, res) => {
         (
           order_id,
           customer_id,
-          handled_by,
+          reviewed_by,
           purpose,
           scheduled_date,
           preferred_date,
@@ -149,11 +149,11 @@ exports.getAppointments = async (req, res) => {
         a.preferred_date,
         a.status,
         a.notes,
-        a.updated_at AS created_at,
+        a.created_at,
         u.name AS assigned_to_name,
         o.order_number
       FROM appointments a
-      LEFT JOIN users u ON u.id = a.handled_by
+      LEFT JOIN users u ON u.id = a.assigned_staff_id
       LEFT JOIN orders o ON o.id = a.order_id
       WHERE a.customer_id = ?
       ORDER BY a.updated_at DESC, a.id DESC

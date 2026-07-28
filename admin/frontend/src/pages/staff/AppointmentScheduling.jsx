@@ -18,9 +18,9 @@ const PURPOSE_LABELS = {
 
 const STATUS_LABELS = {
   pending: "Pending Review",
-  assigned: "Awaiting Staff Acceptance",
+  awaiting_staff_acceptance: "Awaiting Staff Acceptance",
   confirmed: "Confirmed",
-  done: "Completed",
+  completed: "Completed",
   rejected: "Rejected",
   cancelled: "Cancelled",
 };
@@ -30,7 +30,7 @@ const getStatusStyle = (status) => {
   const s = String(status || "").toLowerCase();
   switch (s) {
     case "pending":
-    case "assigned":
+    case "awaiting_staff_acceptance":
       return {
         background: "#ffffff",
         color: "#52525b",
@@ -42,7 +42,7 @@ const getStatusStyle = (status) => {
         color: "#18181b",
         border: "1px solid #e4e4e7",
       };
-    case "done":
+    case "completed":
       return {
         background: "#0a0a0a",
         color: "#ffffff",
@@ -292,14 +292,14 @@ export default function AppointmentScheduling() {
   const isIndoorStaff = user?.role === "staff" && user?.staff_type === "indoor";
 
   const [appointments, setAppointments] = useState([]);
-  const [providers, setProviders] = useState([]);
+  const [assignedStaff, setAssignedStaff] = useState([]);
   const [assignmentDrafts, setAssignmentDrafts] = useState({});
   const [showForm, setShowForm] = useState(false);
 
   const [form, setForm] = useState({
     order_id: "",
     customer_id: "",
-    provider_id: "",
+    assigned_staff_id: "",
     purpose: "installation",
     scheduled_date: "",
     notes: "",
@@ -321,9 +321,9 @@ export default function AppointmentScheduling() {
 
   const [loadingSlots, setLoadingSlots] = useState(false);
 
-  const getProviderId = useCallback((appointment) => {
+  const getAssignStaffId = useCallback((appointment) => {
     return Number(
-      appointment?.provider_id ??
+      appointment?.assigned_staff_id ??
         appointment?.assigned_to ??
         appointment?.assigned_provider_id ??
         0,
@@ -331,8 +331,8 @@ export default function AppointmentScheduling() {
   }, []);
 
   const isAssignedToCurrentIndoorStaff = useCallback(
-    (appointment) => getProviderId(appointment) === Number(user?.id || 0),
-    [getProviderId, user?.id],
+    (appointment) => getAssignStaffId(appointment) === Number(user?.id || 0),
+    [getAssignStaffId, user?.id],
   );
 
   const fetchAppointments = useCallback(async () => {
@@ -346,7 +346,9 @@ export default function AppointmentScheduling() {
 
         list.forEach((item) => {
           if (next[item.id] === undefined) {
-            next[item.id] = String(item.provider_id ?? item.assigned_to ?? "");
+            next[item.id] = String(
+              item.assigned_staff_id ?? item.assigned_to ?? "",
+            );
           }
         });
 
@@ -358,13 +360,13 @@ export default function AppointmentScheduling() {
     }
   }, []);
 
-  const fetchProviders = useCallback(async () => {
+  const fetchAssignStaff = useCallback(async () => {
     if (!isAdmin) return;
 
     try {
       const res = await api.get("/users");
       const list = Array.isArray(res.data) ? res.data : [];
-      setProviders(
+      setAssignedStaff(
         list.filter(
           (p) =>
             p.role === "staff" &&
@@ -373,15 +375,15 @@ export default function AppointmentScheduling() {
         ),
       );
     } catch (err) {
-      console.error("Failed to fetch providers:", err);
-      setProviders([]);
+      console.error("Failed to fetch assigned staff:", err);
+      setAssignedStaff([]);
     }
   }, [isAdmin]);
 
   useEffect(() => {
     fetchAppointments();
-    fetchProviders();
-  }, [fetchAppointments, fetchProviders]);
+    fetchAssignStaff();
+  }, [fetchAppointments, fetchAssignStaff]);
 
   useEffect(() => {
     const fetchWeeklyAvailability = async () => {
@@ -429,7 +431,8 @@ export default function AppointmentScheduling() {
   const adminAwaitingAcceptance = useMemo(
     () =>
       appointments.filter(
-        (a) => String(a.status || "").toLowerCase() === "assigned",
+        (a) =>
+          String(a.status || "").toLowerCase() === "awaiting_staff_acceptance",
       ),
     [appointments],
   );
@@ -445,7 +448,7 @@ export default function AppointmentScheduling() {
   const adminClosedAppointments = useMemo(
     () =>
       appointments.filter((a) =>
-        ["done", "rejected", "cancelled"].includes(
+        ["completed", "rejected", "cancelled"].includes(
           String(a.status || "").toLowerCase(),
         ),
       ),
@@ -457,7 +460,7 @@ export default function AppointmentScheduling() {
 
     return appointments.filter(
       (a) =>
-        String(a.status || "").toLowerCase() === "assigned" &&
+        String(a.status || "").toLowerCase() === "awaiting_staff_acceptance" &&
         isAssignedToCurrentIndoorStaff(a),
     );
   }, [appointments, isIndoorStaff, isAssignedToCurrentIndoorStaff]);
@@ -477,7 +480,7 @@ export default function AppointmentScheduling() {
 
     return appointments.filter(
       (a) =>
-        ["done", "cancelled", "rejected"].includes(
+        ["completed", "cancelled", "rejected"].includes(
           String(a.status || "").toLowerCase(),
         ) && isAssignedToCurrentIndoorStaff(a),
     );
@@ -513,7 +516,7 @@ export default function AppointmentScheduling() {
       const payload = {
         order_id: form.order_id || undefined,
         customer_id: form.customer_id || undefined,
-        provider_id: form.provider_id || undefined,
+        assigned_staff_id: form.assigned_staff_id || undefined,
         purpose: form.purpose,
         scheduled_date: form.scheduled_date,
         preferred_date: form.scheduled_date,
@@ -523,7 +526,7 @@ export default function AppointmentScheduling() {
       await api.post("/pos/appointments", payload);
 
       setSuccess(
-        form.provider_id
+        form.assigned_staff_id
           ? "Manual appointment request saved and assigned. Waiting for indoor staff acceptance."
           : "Manual appointment request created successfully.",
       );
@@ -531,7 +534,7 @@ export default function AppointmentScheduling() {
       setForm({
         order_id: "",
         customer_id: "",
-        provider_id: "",
+        assigned_staff_id: "",
         purpose: "installation",
         scheduled_date: "",
         notes: "",
@@ -567,10 +570,10 @@ export default function AppointmentScheduling() {
     }
   };
 
-  const handleAssignProvider = async (appointment) => {
+  const handleAssignStaff = async (appointment) => {
     const selectedProviderId =
       assignmentDrafts[appointment.id] ||
-      String(appointment.provider_id || appointment.assigned_to || "");
+      String(appointment.assigned_staff_id || appointment.assigned_to || "");
 
     if (!selectedProviderId) {
       setError("Select an indoor staff member first before assigning.");
@@ -579,7 +582,7 @@ export default function AppointmentScheduling() {
 
     await handleAction(
       appointment.id,
-      { provider_id: Number(selectedProviderId) },
+      { assigned_staff_id: Number(selectedProviderId) },
       "Appointment assigned to indoor staff. Waiting for staff acceptance.",
     );
   };
@@ -617,7 +620,7 @@ export default function AppointmentScheduling() {
 
   const getRequestedBy = (appointment) => {
     if (appointment.request_owner_name) return appointment.request_owner_name;
-    if (appointment.handled_by_name) return appointment.handled_by_name;
+    if (appointment.reviewed_by_name) return appointment.reviewed_by_name;
 
     if (Number(appointment.customer_id || 0) > 0) {
       return "Customer Portal";
@@ -631,7 +634,7 @@ export default function AppointmentScheduling() {
   };
 
   const getAssignedStaff = (appointment) =>
-    appointment.provider_name || "Not assigned";
+    appointment.assigned_staff_name || "Not assigned";
 
   const renderRequestRefCell = (appointment) => (
     <td style={tdStyle}>
@@ -1124,16 +1127,16 @@ export default function AppointmentScheduling() {
                 <label style={labelStyle}>Assign Indoor Staff (optional)</label>
                 <select
                   style={inputStyle}
-                  value={form.provider_id}
+                  value={form.assigned_staff_id}
                   onChange={(e) =>
                     setForm((prev) => ({
                       ...prev,
-                      provider_id: e.target.value,
+                      assigned_staff_id: e.target.value,
                     }))
                   }
                 >
                   <option value="">Not assigned yet</option>
-                  {providers.map((p) => (
+                  {assignedStaff.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
                     </option>
@@ -1280,7 +1283,7 @@ export default function AppointmentScheduling() {
                             }
                           >
                             <option value="">Select indoor staff</option>
-                            {providers.map((p) => (
+                            {assignedStaff.map((p) => (
                               <option key={p.id} value={p.id}>
                                 {p.name}
                               </option>
@@ -1299,7 +1302,7 @@ export default function AppointmentScheduling() {
                             <button
                               style={btnGhost}
                               disabled={actionLoadingId === a.id}
-                              onClick={() => handleAssignProvider(a)}
+                              onClick={() => handleAssignStaff(a)}
                             >
                               <UserCheck size={14} /> Assign
                             </button>
@@ -1370,7 +1373,7 @@ export default function AppointmentScheduling() {
                             <button
                               style={btnGhost}
                               disabled={actionLoadingId === a.id}
-                              onClick={() => handleAssignProvider(a)}
+                              onClick={() => handleAssignStaff(a)}
                             >
                               <UserCheck size={14} /> Reassign
                             </button>
@@ -1567,7 +1570,10 @@ export default function AppointmentScheduling() {
                               onClick={() =>
                                 handleAction(
                                   a.id,
-                                  { status: "pending", provider_id: null },
+                                  {
+                                    status: "pending",
+                                    assigned_staff_id: null,
+                                  },
                                   "Appointment returned to admin for reassignment.",
                                 )
                               }
@@ -1637,7 +1643,7 @@ export default function AppointmentScheduling() {
                               onClick={() =>
                                 handleAction(
                                   a.id,
-                                  { status: "done" },
+                                  { status: "completed" },
                                   "Appointment marked as completed.",
                                 )
                               }

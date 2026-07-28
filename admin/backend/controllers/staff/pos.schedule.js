@@ -2,9 +2,9 @@ const db = require("../../config/db");
 
 const APPOINTMENT_STATUSES = [
   "pending",
-  "assigned",
+  "awaiting_staff_acceptance",
   "confirmed",
-  "done",
+  "completed",
   "rejected",
   "cancelled",
 ];
@@ -80,21 +80,21 @@ const APPOINTMENT_DURATION_MINUTES = 60;
 // read, not the serialization point itself.
 const hasOverlappingProviderAppointment = async (
   conn,
-  providerId,
+  assignedStaffId,
   scheduledDate,
   excludeAppointmentId,
 ) => {
   const [rows] = await conn.query(
     `SELECT id
      FROM appointments
-     WHERE provider_id = ?
-       AND status IN ('assigned', 'confirmed')
+     WHERE assigned_staff_id = ?
+       AND status IN ('awaiting_staff_acceptance', 'confirmed')
        AND id != ?
        AND scheduled_date < DATE_ADD(?, INTERVAL ? MINUTE)
        AND DATE_ADD(scheduled_date, INTERVAL ? MINUTE) > ?
      LIMIT 1`,
     [
-      providerId,
+      assignedStaffId,
       excludeAppointmentId,
       scheduledDate,
       APPOINTMENT_DURATION_MINUTES,
@@ -109,14 +109,14 @@ const hasOverlappingProviderAppointment = async (
 // Authoritative provider validation once a transaction is open. Must always
 // run on the transaction connection (conn), never on the global pool, so a
 // held transaction never blocks on a second pool connection underneath it.
-const lockAndValidateIndoorProvider = async (conn, providerId) => {
+const lockAndValidateIndoorProvider = async (conn, assignedStaffId) => {
   const [[row]] = await conn.query(
     `SELECT id, name, role, staff_type, is_active
      FROM users
      WHERE id = ?
      LIMIT 1
      FOR UPDATE`,
-    [providerId],
+    [assignedStaffId],
   );
 
   if (!row) return null;
@@ -134,11 +134,11 @@ const getAppointmentById = async (appointmentId) => {
       a.id,
       a.order_id,
       a.customer_id,
-      a.handled_by,
-      a.provider_id,
+      a.reviewed_by,
+      a.assigned_staff_id,
       a.request_owner_id,
-      a.handled_by AS handled_by_id,
-      a.provider_id AS assigned_to,
+      a.reviewed_by AS reviewed_by_id,
+      a.assigned_staff_id AS assigned_to,
       a.purpose,
       a.scheduled_date,
       a.preferred_date,
@@ -165,8 +165,8 @@ const getAppointmentById = async (appointmentId) => {
     LEFT JOIN orders o ON o.id = a.order_id
     LEFT JOIN users customer ON customer.id = a.customer_id
     LEFT JOIN users request_owner ON request_owner.id = a.request_owner_id
-    LEFT JOIN users handler ON handler.id = a.handled_by
-    LEFT JOIN users provider ON provider.id = a.provider_id
+    LEFT JOIN users handler ON handler.id = a.reviewed_by
+    LEFT JOIN users provider ON provider.id = a.assigned_staff_id
     WHERE a.id = ?
     LIMIT 1
     `,
@@ -183,11 +183,11 @@ exports.getAppointments = async (req, res) => {
         a.id,
         a.order_id,
         a.customer_id,
-        a.handled_by,
-        a.provider_id,
+        a.reviewed_by,
+        a.assigned_staff_id,
         a.request_owner_id,
-        a.handled_by AS handled_by_id,
-        a.provider_id AS assigned_to,
+        a.reviewed_by AS reviewed_by_id,
+        a.assigned_staff_id AS assigned_to,
         a.purpose,
         a.scheduled_date,
         a.preferred_date,
@@ -214,22 +214,22 @@ exports.getAppointments = async (req, res) => {
       LEFT JOIN orders o ON o.id = a.order_id
       LEFT JOIN users customer ON customer.id = a.customer_id
       LEFT JOIN users request_owner ON request_owner.id = a.request_owner_id
-      LEFT JOIN users handler ON handler.id = a.handled_by
-      LEFT JOIN users provider ON provider.id = a.provider_id
+      LEFT JOIN users handler ON handler.id = a.reviewed_by
+      LEFT JOIN users provider ON provider.id = a.assigned_staff_id
     `;
 
     const params = [];
 
     if (req.user.role === "staff") {
       sql += `
-        WHERE a.provider_id = ?
+        WHERE a.assigned_staff_id = ?
       `;
       params.push(req.user.id);
     }
 
     sql += `
       ORDER BY
-        FIELD(a.status, 'pending', 'assigned', 'confirmed', 'done', 'rejected', 'cancelled'),
+        FIELD(a.status, 'pending', 'awaiting_staff_acceptance', 'confirmed', 'completed', 'rejected', 'cancelled'),
         COALESCE(a.scheduled_date, a.preferred_date) ASC,
         a.id DESC
       LIMIT 200
@@ -263,7 +263,7 @@ exports.getAvailability = async (req, res) => {
       WHERE DATE(scheduled_date) = ?
         AND status IN (
           'pending',
-          'assigned',
+          'awaiting_staff_acceptance',
           'confirmed'
         )
       `,
@@ -299,7 +299,7 @@ exports.createAppointment = async (req, res) => {
       normalizeDateTime(req.body.scheduled_date) || preferredDate;
 
     const notes = normalizeText(req.body.notes) || null;
-    const providerId = toNullableInt(req.body.provider_id);
+    const assignedStaffId = toNullableInt(req.body.assigned_staff_id);
 
     if (!APPOINTMENT_PURPOSES.includes(purpose)) {
       return res.status(400).json({ message: "Invalid appointment purpose" });
@@ -353,12 +353,14 @@ exports.createAppointment = async (req, res) => {
       }
     }
 
-    const initialStatus = providerId ? "assigned" : "pending";
+    const initialStatus = assignedStaffId
+      ? "awaiting_staff_acceptance"
+      : "pending";
 
-    let providerUser = null;
+    let assignedStaff = null;
     let insertId;
 
-    if (providerId) {
+    if (assignedStaffId) {
       let conn = null;
       let transactionActive = false;
 
@@ -369,7 +371,7 @@ exports.createAppointment = async (req, res) => {
 
         const lockedProvider = await lockAndValidateIndoorProvider(
           conn,
-          providerId,
+          assignedStaffId,
         );
 
         if (!lockedProvider) {
@@ -377,15 +379,15 @@ exports.createAppointment = async (req, res) => {
           transactionActive = false;
           return res.status(400).json({
             message:
-              "Selected appointment provider must be an active indoor staff member.",
+              "Selected assigned staff member must be an active indoor staff member.",
           });
         }
 
-        providerUser = lockedProvider;
+        assignedStaff = lockedProvider;
 
         const hasConflict = await hasOverlappingProviderAppointment(
           conn,
-          providerId,
+          assignedStaffId,
           scheduledDate,
           0,
         );
@@ -395,7 +397,7 @@ exports.createAppointment = async (req, res) => {
           transactionActive = false;
           return res.status(409).json({
             message:
-              "The selected provider already has an overlapping appointment.",
+              "The assigned staff already has an overlapping appointment.",
           });
         }
 
@@ -405,8 +407,8 @@ exports.createAppointment = async (req, res) => {
             (
               order_id,
               customer_id,
-              handled_by,
-              provider_id,
+              reviewed_by,
+              assigned_staff_id,
               request_owner_id,
               purpose,
               scheduled_date,
@@ -421,7 +423,7 @@ exports.createAppointment = async (req, res) => {
             orderId || null,
             customerId || null,
             req.user.id,
-            providerId || null,
+            assignedStaffId || null,
             req.user.id,
             purpose,
             scheduledDate,
@@ -450,8 +452,8 @@ exports.createAppointment = async (req, res) => {
           (
             order_id,
             customer_id,
-            handled_by,
-            provider_id,
+            reviewed_by,
+            assigned_staff_id,
             request_owner_id,
             purpose,
             scheduled_date,
@@ -466,7 +468,7 @@ exports.createAppointment = async (req, res) => {
           orderId || null,
           customerId || null,
           req.user.id,
-          providerId || null,
+          assignedStaffId || null,
           req.user.id,
           purpose,
           scheduledDate,
@@ -485,7 +487,7 @@ exports.createAppointment = async (req, res) => {
       id: insertId,
       new: {
         status: initialStatus,
-        provider_id: providerId || null,
+        assigned_staff_id: assignedStaffId || null,
         scheduled_date: scheduledDate,
         preferred_date: preferredDate,
         purpose_configured: Boolean(purpose),
@@ -494,12 +496,12 @@ exports.createAppointment = async (req, res) => {
     };
 
     return res.status(201).json({
-      message: providerUser
+      message: assignedStaff
         ? "Appointment created and assigned to indoor staff."
         : "Appointment request created successfully.",
       appointment,
-      assigned_provider: providerUser
-        ? { id: providerUser.id, name: providerUser.name }
+      assigned_staff: assignedStaff
+        ? { id: assignedStaff.id, name: assignedStaff.name }
         : null,
     });
   } catch (err) {
@@ -532,8 +534,8 @@ exports.updateAppointment = async (req, res) => {
         id,
         order_id,
         customer_id,
-        handled_by,
-        provider_id,
+        reviewed_by,
+        assigned_staff_id,
         request_owner_id,
         purpose,
         DATE_FORMAT(scheduled_date, '%Y-%m-%d %H:%i:%s') AS scheduled_date,
@@ -557,7 +559,7 @@ exports.updateAppointment = async (req, res) => {
     const currentStatus = normalizeText(existing.status).toLowerCase();
     const isAdmin = req.user.role === "admin";
 
-    if (["done", "rejected", "cancelled"].includes(currentStatus)) {
+    if (["completed", "rejected", "cancelled"].includes(currentStatus)) {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
@@ -567,7 +569,7 @@ exports.updateAppointment = async (req, res) => {
 
     if (!isAdmin) {
       const isAssignedProvider =
-        Number(existing.provider_id) === Number(req.user.id);
+        Number(existing.assigned_staff_id) === Number(req.user.id);
 
       if (!isAssignedProvider) {
         await conn.rollback();
@@ -583,7 +585,7 @@ exports.updateAppointment = async (req, res) => {
           ? (existing.notes ?? null)
           : normalizeText(req.body.notes) || null;
 
-      if (currentStatus === "assigned") {
+      if (currentStatus === "awaiting_staff_acceptance") {
         const isAccept = requestedStatus === "confirmed";
         const isReturnToAdmin = requestedStatus === "pending";
 
@@ -600,14 +602,14 @@ exports.updateAppointment = async (req, res) => {
           `
           UPDATE appointments
           SET
-            provider_id = ?,
+            assigned_staff_id = ?,
             status = ?,
             notes = ?,
             updated_at = NOW()
           WHERE id = ?
           `,
           [
-            isReturnToAdmin ? null : existing.provider_id,
+            isReturnToAdmin ? null : existing.assigned_staff_id,
             isAccept ? "confirmed" : "pending",
             nextNotes,
             appointmentId,
@@ -625,15 +627,15 @@ exports.updateAppointment = async (req, res) => {
           id: appointmentId,
           old: {
             status: currentStatus,
-            provider_id: existing.provider_id ?? null,
+            assigned_staff_id: existing.assigned_staff_id ?? null,
           },
           new: {
             status: isAccept ? "confirmed" : "pending",
-            provider_id: isReturnToAdmin
+            assigned_staff_id: isReturnToAdmin
               ? null
-              : (existing.provider_id ?? null),
+              : (existing.assigned_staff_id ?? null),
             changed_fields: isReturnToAdmin
-              ? ["status", "provider_id"]
+              ? ["status", "assigned_staff_id"]
               : ["status"],
           },
         };
@@ -655,12 +657,12 @@ exports.updateAppointment = async (req, res) => {
         });
       }
 
-      if (!["done", "cancelled"].includes(requestedStatus)) {
+      if (!["completed", "cancelled"].includes(requestedStatus)) {
         await conn.rollback();
         transactionActive = false;
         return res.status(400).json({
           message:
-            "Indoor staff can only mark confirmed appointments as done or cancelled.",
+            "Indoor staff can only mark confirmed appointments as completed or cancelled.",
         });
       }
 
@@ -695,19 +697,19 @@ exports.updateAppointment = async (req, res) => {
       });
     }
 
-    let handledBy = existing.handled_by ?? null;
-    let providerId = existing.provider_id ?? null;
+    let handledBy = existing.reviewed_by ?? null;
+    let assignedStaffId = existing.assigned_staff_id ?? null;
     let purpose = existing.purpose;
     let scheduledDate = existing.scheduled_date ?? null;
     let preferredDate = existing.preferred_date ?? null;
     let status = currentStatus;
     let notes = existing.notes ?? null;
 
-    // Caches the provider row already locked+validated by the provider_id
+    // Caches the provider row already locked+validated by the assigned_staff_id
     // branch below, so the final effective-state check can reuse it instead
     // of locking and querying the same users row a second time in this
     // same request.
-    let lockedProviderId = null;
+    let lockedAssignedStaffId = null;
     let lockedProviderRow = null;
 
     if (Object.prototype.hasOwnProperty.call(req.body, "notes")) {
@@ -752,11 +754,11 @@ exports.updateAppointment = async (req, res) => {
       scheduledDate = normalizedScheduledDate;
     }
 
-    if (Object.prototype.hasOwnProperty.call(req.body, "provider_id")) {
-      const requestedProviderId = toNullableInt(req.body.provider_id);
+    if (Object.prototype.hasOwnProperty.call(req.body, "assigned_staff_id")) {
+      const requestedProviderId = toNullableInt(req.body.assigned_staff_id);
 
       if (!requestedProviderId) {
-        providerId = null;
+        assignedStaffId = null;
         status = "pending";
       } else {
         const providerRow = await lockAndValidateIndoorProvider(
@@ -769,16 +771,16 @@ exports.updateAppointment = async (req, res) => {
           transactionActive = false;
           return res.status(400).json({
             message:
-              "Selected appointment provider must be an active indoor staff member.",
+              "Selected assigned staff member must be an active indoor staff member.",
           });
         }
 
-        lockedProviderId = requestedProviderId;
+        lockedAssignedStaffId = requestedProviderId;
         lockedProviderRow = providerRow;
 
-        providerId = requestedProviderId;
+        assignedStaffId = requestedProviderId;
         handledBy = req.user.id;
-        status = "assigned";
+        status = "awaiting_staff_acceptance";
       }
     }
 
@@ -791,7 +793,7 @@ exports.updateAppointment = async (req, res) => {
         return res.status(400).json({ message: "Invalid appointment status" });
       }
 
-      if (requestedStatus === "confirmed" || requestedStatus === "done") {
+      if (requestedStatus === "confirmed" || requestedStatus === "completed") {
         await conn.rollback();
         transactionActive = false;
         return res.status(400).json({
@@ -800,17 +802,17 @@ exports.updateAppointment = async (req, res) => {
         });
       }
 
-      if (requestedStatus === "assigned" && !providerId) {
+      if (requestedStatus === "awaiting_staff_acceptance" && !assignedStaffId) {
         await conn.rollback();
         transactionActive = false;
         return res.status(400).json({
           message:
-            "Assign an indoor staff member before setting status to assigned.",
+            "Assign an indoor staff member before setting the appointment to Awaiting Staff Acceptance.",
         });
       }
 
       if (requestedStatus === "pending") {
-        providerId = null;
+        assignedStaffId = null;
       }
 
       status = requestedStatus;
@@ -819,27 +821,33 @@ exports.updateAppointment = async (req, res) => {
     // Effective-state check: runs once, using the final computed values from
     // every branch above — not tied to which specific field the admin sent.
     // A reschedule-only request on an already-assigned/confirmed appointment
-    // must still be checked against its existing (unchanged) provider_id.
-    if (providerId && ["assigned", "confirmed"].includes(status)) {
+    // must still be checked against its existing (unchanged) assigned_staff_id.
+    if (
+      assignedStaffId &&
+      ["awaiting_staff_acceptance", "confirmed"].includes(status)
+    ) {
       let providerRow =
-        lockedProviderId === providerId ? lockedProviderRow : null;
+        lockedAssignedStaffId === assignedStaffId ? lockedProviderRow : null;
 
       if (!providerRow) {
-        providerRow = await lockAndValidateIndoorProvider(conn, providerId);
+        providerRow = await lockAndValidateIndoorProvider(
+          conn,
+          assignedStaffId,
+        );
 
         if (!providerRow) {
           await conn.rollback();
           transactionActive = false;
           return res.status(400).json({
             message:
-              "Selected appointment provider must be an active indoor staff member.",
+              "Selected assigned staff member must be an active indoor staff member.",
           });
         }
       }
 
       const hasConflict = await hasOverlappingProviderAppointment(
         conn,
-        providerId,
+        assignedStaffId,
         scheduledDate,
         appointmentId,
       );
@@ -848,16 +856,15 @@ exports.updateAppointment = async (req, res) => {
         await conn.rollback();
         transactionActive = false;
         return res.status(409).json({
-          message:
-            "The selected provider already has an overlapping appointment.",
+          message: "The assigned staff already has an overlapping appointment.",
         });
       }
     }
 
     const changedFields = [];
     if (status !== currentStatus) changedFields.push("status");
-    if ((providerId ?? null) !== (existing.provider_id ?? null)) {
-      changedFields.push("provider_id");
+    if ((assignedStaffId ?? null) !== (existing.assigned_staff_id ?? null)) {
+      changedFields.push("assigned_staff_id");
     }
     if ((scheduledDate ?? null) !== (existing.scheduled_date ?? null)) {
       changedFields.push("scheduled_date");
@@ -874,8 +881,8 @@ exports.updateAppointment = async (req, res) => {
       `
       UPDATE appointments
       SET
-        handled_by = ?,
-        provider_id = ?,
+        reviewed_by = ?,
+        assigned_staff_id = ?,
         purpose = ?,
         scheduled_date = ?,
         preferred_date = ?,
@@ -886,7 +893,7 @@ exports.updateAppointment = async (req, res) => {
       `,
       [
         handledBy,
-        providerId,
+        assignedStaffId,
         purpose,
         scheduledDate,
         preferredDate,
@@ -908,13 +915,13 @@ exports.updateAppointment = async (req, res) => {
         id: appointmentId,
         old: {
           status: currentStatus,
-          provider_id: existing.provider_id ?? null,
+          assigned_staff_id: existing.assigned_staff_id ?? null,
           scheduled_date: existing.scheduled_date ?? null,
           preferred_date: existing.preferred_date ?? null,
         },
         new: {
           status,
-          provider_id: providerId,
+          assigned_staff_id: assignedStaffId,
           scheduled_date: scheduledDate,
           preferred_date: preferredDate,
           purpose_changed: purposeChanged,
