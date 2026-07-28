@@ -88,12 +88,6 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
   {
-    label: "Cancellations",
-    path: "/admin/orders/cancellations",
-    icon: "❌",
-    roles: ["admin"],
-  },
-  {
     label: "Sales Reports",
     path: "/admin/sales",
     icon: "📈",
