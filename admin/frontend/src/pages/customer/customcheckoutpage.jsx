@@ -9,18 +9,6 @@ import useAuthStore from "../../store/authStore";
 
 const PAYMENT_METHODS = [
   {
-    value: "cod",
-    icon: "💵",
-    label: "Cash on Delivery",
-    desc: "Preferred only — final payment flow depends on admin quotation",
-  },
-  {
-    value: "cop",
-    icon: "🏪",
-    label: "Cash on Pick-up",
-    desc: "Preferred only — final payment flow depends on admin quotation",
-  },
-  {
     value: "gcash",
     icon: "📱",
     label: "GCash",
