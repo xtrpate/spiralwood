@@ -461,30 +461,32 @@ export default function DeliveryScheduling() {
                 )}
               </div>
 
-              <div>
-                <label style={labelStyle}>Requested Delivery Date & Time</label>
-                <input
-                  type="datetime-local"
-                  value={form.requested_date}
-                  readOnly
-                  placeholder="Cashier / customer requested schedule"
-                  style={{
-                    ...inputStyle,
-                    background: "#fafafa",
-                    color: "#71717a",
-                  }}
-                />
-                <p
-                  style={{
-                    color: "#71717a",
-                    fontSize: 12,
-                    marginTop: 6,
-                    fontWeight: 500,
-                  }}
-                >
-                  This is the customer / cashier preferred schedule.
-                </p>
-              </div>
+              {form.requested_date && (
+                <div>
+                  <label style={labelStyle}>Requested Delivery Date & Time</label>
+                  <input
+                    type="datetime-local"
+                    value={form.requested_date}
+                    readOnly
+                    placeholder="Cashier / customer requested schedule"
+                    style={{
+                      ...inputStyle,
+                      background: "#fafafa",
+                      color: "#71717a",
+                    }}
+                  />
+                  <p
+                    style={{
+                      color: "#71717a",
+                      fontSize: 12,
+                      marginTop: 6,
+                      fontWeight: 500,
+                    }}
+                  >
+                    This is the customer / cashier preferred schedule.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label style={labelStyle}>Confirmed Delivery Schedule *</label>
