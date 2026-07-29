@@ -12,10 +12,14 @@ const customOrderController = require("../controllers/customer/customer.customor
    Upload dirs
 ────────────────────────────────────────────────────────── */
 const proofsDir = path.join(__dirname, "../uploads/proofs");
-const customAssetsDir = path.join(__dirname, "../uploads/custom-request-assets");
+const customAssetsDir = path.join(
+  __dirname,
+  "../uploads/custom-request-assets",
+);
 
 if (!fs.existsSync(proofsDir)) fs.mkdirSync(proofsDir, { recursive: true });
-if (!fs.existsSync(customAssetsDir)) fs.mkdirSync(customAssetsDir, { recursive: true });
+if (!fs.existsSync(customAssetsDir))
+  fs.mkdirSync(customAssetsDir, { recursive: true });
 
 const ALLOWED_ASSET_EXT = [".jpg", ".jpeg", ".jfif", ".png", ".webp", ".pdf"];
 
@@ -25,7 +29,9 @@ function fileFilter(req, file, cb) {
     cb(null, true);
     return;
   }
-  const err = new Error("Only JPG, PNG, JFIF, WEBP, and PDF files are allowed.");
+  const err = new Error(
+    "Only JPG, PNG, JFIF, WEBP, and PDF files are allowed.",
+  );
   err.status = 400;
   cb(err);
 }
@@ -56,7 +62,8 @@ const proofUpload = (req, res, next) => {
       if (!verifyFileSignature(req.file.path, ext)) {
         fs.unlink(req.file.path, () => {});
         return res.status(400).json({
-          message: "Proof content does not match its file extension. Upload rejected.",
+          message:
+            "Proof content does not match its file extension. Upload rejected.",
         });
       }
     }
@@ -95,7 +102,8 @@ const assetUpload = (req, res, next) => {
       if (!verifyFileSignature(file.path, ext)) {
         fs.unlink(file.path, () => {});
         return res.status(400).json({
-          message: "One of the attachments does not match its file extension. Upload rejected.",
+          message:
+            "One of the attachments does not match its file extension. Upload rejected.",
         });
       }
     }
@@ -171,6 +179,13 @@ router.post(
   requireCustomer,
   assetUpload,
   customOrderController.postCustomOrderMessage,
+);
+
+router.post(
+  "/:id/pay",
+  authenticate,
+  requireCustomer,
+  customOrderController.createPayMongoCheckout,
 );
 
 module.exports = router;

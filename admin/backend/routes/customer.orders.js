@@ -38,7 +38,9 @@ const rawUpload = multer({
       cb(null, true);
       return;
     }
-    const err = new Error("Only JPG, PNG, GIF, JFIF, and PDF files are allowed.");
+    const err = new Error(
+      "Only JPG, PNG, GIF, JFIF, and PDF files are allowed.",
+    );
     err.status = 400;
     cb(err);
   },
@@ -53,7 +55,8 @@ const upload = (req, res, next) => {
       if (!verifyFileSignature(req.file.path, ext)) {
         fs.unlink(req.file.path, () => {});
         return res.status(400).json({
-          message: "Payment proof content does not match its file extension. Upload rejected.",
+          message:
+            "Payment proof content does not match its file extension. Upload rejected.",
         });
       }
     }
