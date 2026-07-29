@@ -562,11 +562,28 @@ export default function CustomRequestDetailPage() {
   };
 
   const handlePayNow = async () => {
-    console.log("Launch PayMongo Checkout");
+    if (!requestData?.id) return;
 
-    // Next phase:
-    // const res = await api.post(...);
-    // window.location.href = res.data.payment_url;
+    try {
+      const res = await api.post(
+        `/customer/custom-orders/${requestData.id}/pay`,
+      );
+
+      if (!res.data?.payment_url) {
+        toast.error("Unable to launch PayMongo checkout.");
+        return;
+      }
+
+      window.location.href = res.data.payment_url;
+    } catch (err) {
+      console.error(err);
+
+      toast.error(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          "Failed to launch PayMongo checkout.",
+      );
+    }
   };
 
   return (
