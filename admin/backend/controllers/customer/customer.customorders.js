@@ -422,24 +422,18 @@ exports.createCustomOrder = async (req, res) => {
     return res.status(400).json({ message: "Phone is required." });
   }
 
-  // Preferred payment method for a custom/blueprint request is optional.
-  // Empty/whitespace-only stays empty here (resolved to the "gcash"
-  // fallback only at insert time, unchanged from prior behavior). A
-  // non-empty value must be exactly gcash or bank_transfer — anything
-  // else (including cod, cop, cash, paymongo, or a manually tampered
-  // value) is rejected outright with 400 rather than being silently
-  // coerced.
   const trimmedPreferredPaymentMethod = String(payment_method || "").trim();
+
   const normalizedPreferredPaymentMethod = trimmedPreferredPaymentMethod
     ? trimmedPreferredPaymentMethod.toLowerCase().replace(/\s+/g, "_")
     : "";
 
   if (
     normalizedPreferredPaymentMethod &&
-    !["gcash", "bank_transfer"].includes(normalizedPreferredPaymentMethod)
+    normalizedPreferredPaymentMethod !== "paymongo"
   ) {
     return res.status(400).json({
-      message: "Choose GCash or Bank Transfer as the preferred payment method.",
+      message: "Invalid payment method.",
     });
   }
 
@@ -543,7 +537,7 @@ exports.createCustomOrder = async (req, res) => {
         req.user.id,
         String(name).trim(),
         String(phone).trim(),
-        normalizedPreferredPaymentMethod || "gcash",
+        normalizedPreferredPaymentMethod || "paymongo",
         delivery_address ? String(delivery_address).trim() : null,
         notes ? String(notes).trim() : null,
       ],
