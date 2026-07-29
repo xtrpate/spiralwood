@@ -179,9 +179,9 @@ exports.createOrder = async (req, res) => {
       (
         order_number, walkin_customer_name, walkin_customer_phone, type, order_type,
         status, payment_method, payment_status, subtotal, tax, discount, delivery_fee, total,
-        notes, delivery_address, requested_delivery_date, delivery_request_notes
+        notes, delivery_address, delivery_lat, delivery_lng, requested_delivery_date, delivery_request_notes
       )
-      VALUES (?, ?, ?, 'walkin', 'standard', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, 'walkin', 'standard', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         orderNumber,
@@ -197,6 +197,8 @@ exports.createOrder = async (req, res) => {
         total,
         storedOrderNotes,
         delivery?.address?.trim() || null,
+        delivery?.lat || null,
+        delivery?.lng || null,
         normalizedRequestedDeliveryDate,
         deliveryRequestNotes || null,
       ],
