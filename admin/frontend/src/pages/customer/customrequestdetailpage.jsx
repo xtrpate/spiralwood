@@ -403,7 +403,7 @@ export default function CustomRequestDetailPage() {
     [requestData],
   );
 
-  const displayPaymentMethod = "Online Payment (PayMongo)";
+  const displayPaymentMethod = "Online Payment";
 
   const latestEstimation = requestData?.latest_estimation || null;
 
@@ -674,7 +674,15 @@ export default function CustomRequestDetailPage() {
                 </div>
 
                 <div className="checkout-section-body">
-                  <div className="crd-overview-grid">
+                  <div
+                    className="crd-overview-grid"
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit, minmax(280px, 1fr))",
+                      gap: "24px",
+                    }}
+                  >
                     <DetailValue label="Request number">
                       {requestData.order_number || "—"}
                     </DetailValue>
@@ -884,7 +892,8 @@ export default function CustomRequestDetailPage() {
               {quotationAvailable &&
               latestEstimation &&
               !quotationActionBlocked &&
-              !quotationIntegrityWarning ? (
+              !quotationIntegrityWarning &&
+              estimationStatusKey === "approved" ? (
                 <div className="checkout-section">
                   <div className="checkout-section-header">
                     <div className="checkout-section-num">03</div>
@@ -913,10 +922,10 @@ export default function CustomRequestDetailPage() {
                         </DetailValue>
 
                         <p className="crd-panel-copy muted">
-                          Payments are securely processed through{" "}
-                          <strong>PayMongo</strong>. Once your payment is
-                          completed, your payment status will automatically
-                          update without requiring manual verification.
+                          Payments are securely processed online. Once your
+                          payment is completed, your payment status will
+                          automatically update without requiring manual
+                          verification.
                         </p>
 
                         {latestPayment ? (
@@ -971,10 +980,6 @@ export default function CustomRequestDetailPage() {
                             Supported payment methods:
                           </p>
 
-                          <div className="crd-help-text">
-                            Securely powered by PayMongo
-                          </div>
-
                           <ul className="crd-payment-method-list">
                             <li>GCash</li>
                             <li>Maya</li>
@@ -1018,12 +1023,11 @@ export default function CustomRequestDetailPage() {
                           }
                           onClick={handlePayNow}
                         >
-                          {["paid", "partial"].includes(
-                            requestData?.payment_status,
-                          ) ? (
-                            <>
-                              <div>✓ Down Payment Completed</div>
-                            </>
+                          {requestData?.payment_status === "paid" ||
+                          balanceDue <= 0 ? (
+                            <div>Fully Paid</div>
+                          ) : requestData?.payment_status === "partial" ? (
+                            <div>Down Payment Completed</div>
                           ) : (
                             <>
                               <div>Pay 30% Down Payment</div>
@@ -1033,8 +1037,8 @@ export default function CustomRequestDetailPage() {
                         </button>
 
                         <div className="crd-help-text">
-                          You will be redirected to PayMongo's secure checkout
-                          page to complete your payment.
+                          You will be redirected to our secure checkout page to
+                          complete your payment.
                         </div>
                       </div>
                     </div>
@@ -1093,8 +1097,16 @@ export default function CustomRequestDetailPage() {
                         </div>
 
                         <div className="checkout-item-details">
-                          <div className="crd-item-head">
-                            <div>
+                          <div
+                            className="crd-item-head"
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "flex-start",
+                              width: "100%",
+                            }}
+                          >
+                            <div style={{ paddingRight: "16px" }}>
                               <div className="checkout-item-name">
                                 {getDisplayTitle(item)}
                               </div>

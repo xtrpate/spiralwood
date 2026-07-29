@@ -601,7 +601,7 @@ exports.verifyPayment = async (req, res) => {
           await conn.query(
             `INSERT INTO payment_transactions
               (order_id, amount, payment_method, proof_url, status, verified_at, notes)
-             VALUES (?, ?, 'paymongo', '', 'pending', NOW(), 'System verified via PayMongo API. Awaiting Admin confirmation.')`,
+             VALUES (?, ?, 'paymongo', '', 'verified', NOW(), 'Automatically verified via PayMongo checkout.')`,
             [order.id, order.total],
           );
 
@@ -780,14 +780,14 @@ exports.autoCancelExpiredOrders = async () => {
           await conn.query(
             `INSERT INTO payment_transactions
               (order_id, amount, payment_method, proof_url, status, verified_at, notes)
-             VALUES (?, ?, 'paymongo', '', 'pending', NOW(), 'System auto-verified via Cron Audit. Awaiting Admin confirmation.')`,
+             VALUES (?, ?, 'paymongo', '', 'verified', NOW(), 'Automatically verified via PayMongo checkout (Recovered by System Audit).')`,
             [order.id, order.total],
           );
           console.log(
             `[Cron] Recovered missing payment for order ${order.order_number}`,
           );
         } else {
-          // ❌ TRULY UNPAID. Cancel the order and return the stock.
+          // Cancel the order and return the stock.
           await conn.query(
             `UPDATE orders
              SET status = 'cancelled',

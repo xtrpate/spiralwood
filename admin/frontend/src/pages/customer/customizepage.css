@@ -463,6 +463,7 @@
   font-weight: 800;
   color: #111111;
   letter-spacing: 0.01em;
+  word-wrap: break-word;
 }
 
 .cust-modal-head p {
@@ -482,6 +483,7 @@
   place-items: center;
   cursor: pointer;
   color: #111111;
+  flex-shrink: 0;
 }
 
 .cust-modal-close:hover {
@@ -491,7 +493,7 @@
 .cust-modal-content {
   flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
   padding: 12px;
   background: #ffffff;
 }
@@ -820,7 +822,7 @@
   color: #8b7a67;
 }
 
-@media (max-width: 980px) {
+@media (max-width: 1180px) {
   .cust-modal-grid,
   .cust-viewer-controls {
     grid-template-columns: 1fr;
