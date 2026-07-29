@@ -351,21 +351,31 @@ export default function CustomRequestDetailPage() {
         return;
       }
 
-      try {
-        await api.post(`/customer/custom-orders/${id}/verify-payment`);
+      let isSuccess = false;
 
-        toast.success("Payment verified successfully.");
+      try {
+        const res = await api.post(
+          `/customer/custom-orders/${id}/verify-payment`,
+        );
+
+        // 👉 FIX: Strictly check the boolean sent by the backend
+        if (res.data && res.data.success === false) {
+          toast.error(res.data.message || "Payment is still processing.");
+        } else {
+          toast.success(res.data.message || "Payment verified successfully.");
+          isSuccess = true;
+        }
       } catch (err) {
         toast.error(err.response?.data?.message || "Unable to verify payment.");
       } finally {
-        params.delete("verify_success");
-
-        const url =
-          window.location.pathname +
-          (params.toString() ? `?${params.toString()}` : "");
-
-        window.history.replaceState({}, "", url);
-
+        // 👉 FIX: Only delete the URL trigger if it actually worked!
+        if (isSuccess) {
+          params.delete("verify_success");
+          const url =
+            window.location.pathname +
+            (params.toString() ? `?${params.toString()}` : "");
+          window.history.replaceState({}, "", url);
+        }
         await loadRequestDetail(true);
       }
     };

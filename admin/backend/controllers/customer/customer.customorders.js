@@ -2580,20 +2580,25 @@ exports.verifyPayment = async (req, res) => {
         .json({ success: false, message: "No pending payment session found." });
     }
 
-    // 2. NETWORK CALL: Ask PayMongo while the database connection is free (No locks active)
+    // 2. NETWORK CALL: Ask PayMongo while the database connection is free
     const session = await retrieveCheckoutSession(
       fastOrder.paymongo_session_id,
     );
-    const payments = session.attributes.payments || [];
-    const hasSuccessfulPayment = payments.some(
-      (payment) => payment.attributes.status === "paid",
-    );
+    const payments = session.attributes?.payments || [];
+    const paymentIntent = session.attributes?.payment_intent;
+
+    // 👉 FIX: Check BOTH the payments array and the underlying payment intent
+    const hasSuccessfulPayment =
+      payments.some((p) => p.attributes?.status === "paid") ||
+      (paymentIntent && paymentIntent.attributes?.status === "succeeded");
 
     if (!hasSuccessfulPayment) {
       conn.release();
-      return res.json({
+      // 👉 FIX: Return HTTP 400 Bad Request so the frontend knows it failed
+      return res.status(400).json({
         success: false,
-        message: "Payment has not been completed yet.",
+        message:
+          "Payment is still processing. Please wait a moment and refresh the page.",
       });
     }
 
