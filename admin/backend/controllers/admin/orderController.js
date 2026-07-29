@@ -723,7 +723,10 @@ exports.getOne = async (req, res) => {
     }
 
     const [[delivery]] = await pool.query(
-      `SELECT * FROM deliveries WHERE order_id = ? LIMIT 1`,
+      `SELECT * FROM deliveries 
+       WHERE order_id = ? 
+       ORDER BY id DESC 
+       LIMIT 1`,
       [orderId],
     );
 
