@@ -2746,8 +2746,8 @@ exports.createPayMongoCheckout = async (req, res) => {
       customer,
       amount: downPayment,
       description: `30% Down Payment for ${order.order_number}`,
-      successUrl: `${frontendUrl}/custom-orders/${order.id}?verify_success=true`,
-      cancelUrl: `${frontendUrl}/custom-orders/${order.id}`,
+      successUrl: `${frontendUrl}/custom-requests/${order.id}?verify_success=true`,
+      cancelUrl: `${frontendUrl}/custom-requests/${order.id}`,
       metadata: {
         order_id: order.id,
         order_type: "blueprint",
