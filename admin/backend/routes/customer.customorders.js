@@ -50,4 +50,11 @@ router.post(
   customOrderController.rejectEstimation,
 );
 
+router.post(
+  "/:id/pay",
+  authenticate,
+  requireCustomer,
+  customOrderController.createPayMongoCheckout,
+);
+
 module.exports = router;

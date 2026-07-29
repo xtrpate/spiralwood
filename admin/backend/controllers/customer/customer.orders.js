@@ -1,6 +1,9 @@
 // controllers/customer/customer.orders.js
 const db = require("../../config/db"); // Uses the unified db config
-const axios = require("axios");
+const {
+  createCheckoutSession,
+  retrieveCheckoutSession,
+} = require("../../services/paymongoService");
 const { isValidPositiveInteger } = require("../../utils/validators");
 
 /* ── Standard checkout constants ── */
@@ -363,54 +366,27 @@ exports.createOrder = async (req, res) => {
         );
         const customerEmail = userRecord?.email || "";
 
-        const frontendUrl =
-          req.headers.origin || "https://spiralwood.onrender.com";
-        const amountInCents = Math.round(parseFloat(total) * 100);
-        const base64Auth = Buffer.from(
-          process.env.PAYMONGO_SECRET_KEY,
-        ).toString("base64");
+        const frontendUrl = process.env.FRONTEND_URL || req.headers.origin;
 
-        const paymongoPayload = {
-          data: {
-            attributes: {
-              billing: {
-                name: name,
-                phone: phone,
-                email: customerEmail,
-              },
-              send_email_receipt: false,
-              show_description: true,
-              show_line_items: true,
-              description: `Order ${order_number} - Spiral Wood`,
-              payment_method_types: ["card", "gcash", "paymaya"],
-              line_items: [
-                {
-                  currency: "PHP",
-                  amount: amountInCents,
-                  name: `Order ${order_number}`,
-                  quantity: 1,
-                },
-              ],
-              success_url: `${frontendUrl}/orders?verify_success=true&order=${order_number}`,
-              cancel_url: `${frontendUrl}/cart`,
-            },
+        const checkout = await createCheckoutSession({
+          customer: {
+            name,
+            phone,
+            email: customerEmail,
           },
-        };
-
-        const paymongoRes = await axios.post(
-          "https://api.paymongo.com/v1/checkout_sessions",
-          paymongoPayload,
-          {
-            headers: {
-              accept: "application/json",
-              "content-type": "application/json",
-              authorization: `Basic ${base64Auth}`,
-            },
+          amount: total,
+          description: `Order ${order_number} - Spiral Wood`,
+          successUrl: `${frontendUrl}/orders?verify_success=true&order=${order_number}`,
+          cancelUrl: `${frontendUrl}/cart`,
+          metadata: {
+            order_id: order_id,
+            order_type: "standard",
           },
-        );
+        });
 
-        const checkoutUrl = paymongoRes.data.data.attributes.checkout_url;
-        const sessionId = paymongoRes.data.data.id;
+        const checkoutUrl = checkout.checkoutUrl;
+
+        const sessionId = checkout.sessionId;
 
         await conn.query(
           `UPDATE orders 
@@ -602,21 +578,9 @@ exports.verifyPayment = async (req, res) => {
 
     // 2. Ask PayMongo over the network (Database is completely free and unlocked right now)
     if (order.paymongo_session_id) {
-      const base64Auth = Buffer.from(process.env.PAYMONGO_SECRET_KEY).toString(
-        "base64",
-      );
+      const session = await retrieveCheckoutSession(order.paymongo_session_id);
 
-      const sessionRes = await axios.get(
-        `https://api.paymongo.com/v1/checkout_sessions/${order.paymongo_session_id}`,
-        {
-          headers: {
-            accept: "application/json",
-            authorization: `Basic ${base64Auth}`,
-          },
-        },
-      );
-
-      const payments = sessionRes.data.data.attributes.payments || [];
+      const payments = session.attributes.payments || [];
       const hasSuccessfulPayment = payments.some(
         (payment) => payment.attributes.status === "paid",
       );
@@ -775,11 +739,7 @@ exports.autoCancelExpiredOrders = async () => {
          AND created_at <= DATE_SUB(NOW(), INTERVAL 24 HOURS)`,
     );
 
-    if (expiredOrders.length === 0) return; // Nothing to do
-
-    const base64Auth = Buffer.from(process.env.PAYMONGO_SECRET_KEY).toString(
-      "base64",
-    );
+    if (expiredOrders.length === 0) return;
 
     // 2. Loop through and audit each order ONE BY ONE
     for (const order of expiredOrders) {
@@ -788,16 +748,11 @@ exports.autoCancelExpiredOrders = async () => {
       // Double-check with PayMongo over the network (No DB locks held during this wait!)
       if (order.paymongo_session_id) {
         try {
-          const sessionRes = await axios.get(
-            `https://api.paymongo.com/v1/checkout_sessions/${order.paymongo_session_id}`,
-            {
-              headers: {
-                accept: "application/json",
-                authorization: `Basic ${base64Auth}`,
-              },
-            },
+          const session = await retrieveCheckoutSession(
+            order.paymongo_session_id,
           );
-          const payments = sessionRes.data.data.attributes.payments || [];
+
+          const payments = session.attributes.payments || [];
           isActuallyPaid = payments.some((p) => p.attributes.status === "paid");
         } catch (pmErr) {
           console.error(

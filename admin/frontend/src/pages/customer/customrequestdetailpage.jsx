@@ -59,37 +59,11 @@ const ESTIMATION_STATUS_META = {
 const PAY_STATUS_META = {
   unpaid: { label: "Unpaid", color: "#111111", bg: "#f8f8f8" },
   partial: {
-    label: "Partial / Proof submitted",
+    label: "Partially Paid",
     color: "#111111",
     bg: "#f3f4f6",
   },
   paid: { label: "Paid", color: "#111111", bg: "#f3f4f6" },
-};
-
-const PAY_METHOD_LABELS = {
-  cod: "Cash on delivery",
-  cop: "Cash on pick-up",
-  gcash: "GCash / QR Payment",
-  bank_transfer: "Bank transfer",
-  cash: "Cash",
-};
-
-const PAYMENT_GUIDES = {
-  gcash: {
-    title: "GCash / QR Payment",
-    accountName: "Spiral Wood Services",
-    accountNumber: "09530695310",
-    qrImage: "/payments/qr.png",
-    note: "Scan the QR or send to this number, then upload proof of payment.",
-  },
-  bank_transfer: {
-    title: "Bank transfer",
-    note: "Bank transfer details are not configured yet. Use GCash / QR Payment for now.",
-  },
-  cash: {
-    title: "Cash",
-    note: "Coordinate with admin first before submitting cash payment proof.",
-  },
 };
 
 const resolveImageSrc = (src) => {
@@ -295,7 +269,9 @@ const isImageAttachment = (attachment = {}) => {
 };
 
 const getSenderMeta = (entry = {}) => {
-  const role = String(entry?.sender_role || "").trim().toLowerCase();
+  const role = String(entry?.sender_role || "")
+    .trim()
+    .toLowerCase();
 
   if (role === "admin") {
     return {
@@ -340,10 +316,6 @@ export default function CustomRequestDetailPage() {
   const [error, setError] = useState("");
   const [previewItem, setPreviewItem] = useState(null);
   const [decisionLoading, setDecisionLoading] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("gcash");
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentFile, setPaymentFile] = useState(null);
-  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
 
   const [discussionMessage, setDiscussionMessage] = useState("");
   const [discussionFiles, setDiscussionFiles] = useState([]);
@@ -393,6 +365,8 @@ export default function CustomRequestDetailPage() {
       },
     [requestData],
   );
+
+  const displayPaymentMethod = "Online Payment (PayMongo)";
 
   const latestEstimation = requestData?.latest_estimation || null;
 
@@ -446,62 +420,7 @@ export default function CustomRequestDetailPage() {
   const downPaymentDue = Number(paymentSummary.down_payment_due ?? 0);
   const balanceDue = Number(paymentSummary.balance_due ?? 0);
   const verifiedPaymentTotal = Number(paymentSummary.total_verified ?? 0);
-  const pendingPaymentTotal = Number(paymentSummary.total_pending ?? 0);
   const latestPayment = paymentSummary.latest_transaction || null;
-  const canSubmitInitialDownPayment = Boolean(
-    paymentSummary.can_submit_initial_down_payment,
-  );
-  const canSubmitRemainingBalance = Boolean(
-    paymentSummary.can_submit_remaining_balance,
-  );
-  const paymentStage = String(paymentSummary.payment_stage || "unavailable")
-    .trim()
-    .toLowerCase();
-  const paymentActionMessage =
-    String(paymentSummary.payment_action_message || "").trim() ||
-    "Please contact support if you need assistance with payment.";
-
-  // Exactly one backend action flag must be true before a proof form can
-  // appear. This prevents the frontend from guessing authorization from
-  // order.status, order.payment_status, or synthetic payment rows.
-  let paymentSubmissionKind = null;
-
-  if (
-    paymentStage === "initial" &&
-    canSubmitInitialDownPayment &&
-    !canSubmitRemainingBalance
-  ) {
-    paymentSubmissionKind = "initial";
-  } else if (
-    paymentStage === "remaining_balance" &&
-    canSubmitRemainingBalance &&
-    !canSubmitInitialDownPayment
-  ) {
-    paymentSubmissionKind = "remaining_balance";
-  }
-
-  let paymentActionTone = "muted";
-
-  if (paymentStage === "pending_review") {
-    paymentActionTone = "pending";
-  } else if (
-    paymentStage === "fully_paid" ||
-    paymentStage === "awaiting_contract"
-  ) {
-    paymentActionTone = "success";
-  }
-
-  const canSubmitPaymentProof = Boolean(paymentSubmissionKind);
-  const isRemainingBalanceSubmission =
-    paymentSubmissionKind === "remaining_balance";
-  const remainingInitialDownPayment = Math.max(
-    downPaymentDue - verifiedPaymentTotal,
-    0,
-  );
-  const paymentSubmissionLimit = isRemainingBalanceSubmission
-    ? balanceDue
-    : remainingInitialDownPayment;
-
   const estimationStatusKey = String(latestEstimation?.status || "")
     .trim()
     .toLowerCase();
@@ -519,39 +438,14 @@ export default function CustomRequestDetailPage() {
     estimationStatusKey === "sent" &&
     orderStatusKey === "confirmed";
 
-  useEffect(() => {
-    if (!canSubmitPaymentProof) {
-      setPaymentAmount("");
-      return;
-    }
-
-    setPaymentAmount(
-      paymentSubmissionLimit > 0 ? paymentSubmissionLimit.toFixed(2) : "",
-    );
-  }, [
-    canSubmitPaymentProof,
-    paymentSubmissionKind,
-    paymentSubmissionLimit,
-  ]);
-
-  const activePaymentGuide =
-    PAYMENT_GUIDES[paymentMethod] || PAYMENT_GUIDES.gcash;
-
-  const displayPaymentMethod =
-    !latestPayment &&
-    String(requestData?.payment_status || "").trim().toLowerCase() === "unpaid"
-      ? "To be selected upon payment"
-      : PAY_METHOD_LABELS[requestData?.payment_method] ||
-        requestData?.payment_method ||
-        "—";
-
   const previewBlueprint = useMemo(
     () => (previewItem ? buildPreviewBlueprint(previewItem) : null),
     [previewItem],
   );
 
   const discussionThread = useMemo(
-    () => (Array.isArray(requestData?.discussion) ? requestData.discussion : []),
+    () =>
+      Array.isArray(requestData?.discussion) ? requestData.discussion : [],
     [requestData],
   );
 
@@ -613,95 +507,6 @@ export default function CustomRequestDetailPage() {
     }
   };
 
-  const handleSubmitPaymentProof = async (e) => {
-    e.preventDefault();
-
-    if (!requestData?.id) return;
-
-    if (quotationActionBlocked || quotationIntegrityWarning) {
-      toast.error(
-        "Your quotation is under review. Please contact support if you need assistance.",
-      );
-      return;
-    }
-
-    // The backend-provided action flags are the only frontend eligibility
-    // source. The selected endpoint still revalidates everything under
-    // transaction locks before accepting the uploaded proof.
-    if (!paymentSubmissionKind) {
-      toast.error(paymentActionMessage);
-      return;
-    }
-
-    if (!(paymentSubmissionLimit > 0)) {
-      toast.error(
-        "Payment details changed. Please refresh the page before submitting.",
-      );
-      return;
-    }
-
-    const numericAmount = Number(paymentAmount);
-
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-      toast.error("Enter a valid payment amount first.");
-      return;
-    }
-
-    if (numericAmount - paymentSubmissionLimit > 0.0001) {
-      toast.error(
-        `Amount cannot exceed the current allowed amount of ${formatMoney(
-          paymentSubmissionLimit,
-        )}.`,
-      );
-      return;
-    }
-
-    if (!paymentFile) {
-      toast.error("Upload your proof of payment first.");
-      return;
-    }
-
-    const endpoint =
-      paymentSubmissionKind === "remaining_balance"
-        ? `/customer/custom-orders/${requestData.id}/remaining-balance`
-        : `/customer/custom-orders/${requestData.id}/down-payment`;
-    const successMessage =
-      paymentSubmissionKind === "remaining_balance"
-        ? "Remaining-balance payment proof submitted successfully."
-        : "Down payment proof submitted successfully.";
-    const failureMessage =
-      paymentSubmissionKind === "remaining_balance"
-        ? "Failed to submit remaining-balance payment proof."
-        : "Failed to submit down payment.";
-
-    const formData = new FormData();
-    formData.append("payment_method", paymentMethod);
-    formData.append("amount", String(numericAmount));
-    formData.append("proof", paymentFile);
-
-    setPaymentSubmitting(true);
-    try {
-      await api.post(endpoint, formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
-
-      await loadRequestDetail(false);
-      setPaymentFile(null);
-      setPaymentAmount("");
-      toast.success(successMessage);
-    } catch (err) {
-      toast.error(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          failureMessage,
-      );
-    } finally {
-      setPaymentSubmitting(false);
-    }
-  };
-
   const handleDiscussionFilesChange = (e) => {
     const picked = Array.from(e.target.files || []);
     setDiscussionFiles((prev) => [...prev, ...picked].slice(0, 5));
@@ -754,6 +559,14 @@ export default function CustomRequestDetailPage() {
     } finally {
       setDiscussionSubmitting(false);
     }
+  };
+
+  const handlePayNow = async () => {
+    console.log("Launch PayMongo Checkout");
+
+    // Next phase:
+    // const res = await api.post(...);
+    // window.location.href = res.data.payment_url;
   };
 
   return (
@@ -1027,204 +840,145 @@ export default function CustomRequestDetailPage() {
                   <div className="checkout-section-body">
                     <div className="crd-grid-split">
                       <div className="crd-panel crd-panel-soft">
-                        <h4>Payment summary</h4>
+                        <h4>Payment Summary</h4>
 
                         <DetailValue label="Quoted total">
                           {formatMoney(quotedTotal || 0)}
                         </DetailValue>
 
-                        <DetailValue label="Required 30% down payment">
+                        <DetailValue label="30% Down Payment">
                           {formatMoney(downPaymentDue || 0)}
                         </DetailValue>
 
-                        <DetailValue label="Verified payments">
+                        <DetailValue label="Amount Paid">
                           {formatMoney(verifiedPaymentTotal || 0)}
                         </DetailValue>
 
-                        <DetailValue label="Pending submissions">
-                          {formatMoney(pendingPaymentTotal || 0)}
-                        </DetailValue>
-
-                        <DetailValue label="Remaining balance">
+                        <DetailValue label="Remaining Balance">
                           {formatMoney(balanceDue || 0)}
                         </DetailValue>
 
                         <p className="crd-panel-copy muted">
-                          Only verified transactions reduce your remaining
-                          balance. Every uploaded proof still requires admin
-                          review.
+                          Payments are securely processed through{" "}
+                          <strong>PayMongo</strong>. Once your payment is
+                          completed, your payment status will automatically
+                          update without requiring manual verification.
                         </p>
 
                         {latestPayment ? (
                           <div className="crd-info-box">
                             <div className="crd-info-title">
-                              Latest payment submission
+                              Latest Transaction
                             </div>
-                            <div>Status: {prettifyText(latestPayment.status)}</div>
+
                             <div>
-                              Amount: {formatMoney(latestPayment.amount || 0)}
+                              <strong>Status:</strong>{" "}
+                              {prettifyText(latestPayment.status)}
                             </div>
+
                             <div>
-                              Method:{" "}
+                              <strong>Amount Paid:</strong>{" "}
+                              {formatMoney(latestPayment.amount || 0)}
+                            </div>
+
+                            <div>
+                              <strong>Payment Method:</strong>{" "}
                               {prettifyText(
                                 latestPayment.payment_method,
-                                "Payment method",
+                                "Online Payment",
                               )}
                             </div>
+
                             <div>
-                              Submitted: {formatDate(latestPayment.created_at)}
+                              <strong>Paid On:</strong>{" "}
+                              {formatDate(latestPayment.created_at)}
                             </div>
                           </div>
                         ) : null}
                       </div>
 
                       <div className="crd-panel">
-                        <h4>Payment action</h4>
+                        <h4>Secure Online Payment</h4>
 
-                        {canSubmitPaymentProof ? (
-                          <>
-                            <div
-                              className="crd-info-box"
-                              style={{ marginBottom: 14 }}
-                            >
-                              {paymentActionMessage}
-                            </div>
-
-                            <form
-                              onSubmit={handleSubmitPaymentProof}
-                              className="crd-form-grid"
-                            >
-                              <label className="crd-field-label">
-                                Payment method
-                              </label>
-
-                              <select
-                                value={paymentMethod}
-                                onChange={(e) =>
-                                  setPaymentMethod(e.target.value)
-                                }
-                                className="crd-control"
-                              >
-                                <option value="gcash">GCash</option>
-                                <option value="cash">Cash</option>
-                              </select>
-
-                              <div className="crd-payment-guide">
-                                <div className="crd-payment-guide-head">
-                                  {activePaymentGuide.title}
-                                </div>
-
-                                {paymentMethod === "gcash" ? (
-                                  <>
-                                    <div className="crd-payment-guide-copy">
-                                      <div className="crd-payment-guide-row">
-                                        <span>Account name</span>
-                                        <strong>{activePaymentGuide.accountName}</strong>
-                                      </div>
-
-                                      <div className="crd-payment-guide-row">
-                                        <span>GCash number</span>
-                                        <strong>{activePaymentGuide.accountNumber}</strong>
-                                      </div>
-
-                                      <div className="crd-payment-guide-row">
-                                        <span>
-                                          {isRemainingBalanceSubmission
-                                            ? "Current remaining balance"
-                                            : "Remaining required down payment"}
-                                        </span>
-                                        <strong>
-                                          {formatMoney(paymentSubmissionLimit || 0)}
-                                        </strong>
-                                      </div>
-                                    </div>
-
-                                    <div className="crd-payment-qr-wrap">
-                                      <img
-                                        src={resolveImageSrc(activePaymentGuide.qrImage)}
-                                        alt="GCash QR code"
-                                        className="crd-payment-qr"
-                                        onError={(e) => {
-                                          e.currentTarget.style.display = "none";
-                                        }}
-                                      />
-                                    </div>
-
-                                    <div
-                                      className="crd-help-text"
-                                      style={{ marginTop: 0 }}
-                                    >
-                                      {activePaymentGuide.note}
-                                    </div>
-                                  </>
-                                ) : (
-                                  <div
-                                    className="crd-info-box muted"
-                                    style={{ marginTop: 0 }}
-                                  >
-                                    {PAYMENT_GUIDES.cash.note}
-                                  </div>
-                                )}
-                              </div>
-
-                              <label className="crd-field-label">
-                                Payment amount
-                              </label>
-
-                              <input
-                                type="number"
-                                min="0.01"
-                                step="0.01"
-                                value={paymentAmount}
-                                onChange={(e) =>
-                                  setPaymentAmount(e.target.value)
-                                }
-                                className="crd-control"
-                                placeholder="Enter amount you are submitting now"
-                              />
-
-                              <div
-                                className="crd-help-text"
-                                style={{ marginTop: -6 }}
-                              >
-                                {isRemainingBalanceSubmission
-                                  ? "You may submit the remaining balance in multiple sends, but only one proof may await review at a time."
-                                  : "You may submit the required 30% down payment in multiple sends, but only one proof may await review at a time."}
-                              </div>
-
-                              <label className="crd-field-label">
-                                Upload payment proof
-                              </label>
-
-                              <input
-                                type="file"
-                                accept=".jpg,.jpeg,.png,.pdf"
-                                onChange={(e) =>
-                                  setPaymentFile(e.target.files?.[0] || null)
-                                }
-                                className="crd-file-input"
-                              />
-
-                              <button
-                                type="submit"
-                                className="btn btn-primary"
-                                disabled={paymentSubmitting}
-                              >
-                                {paymentSubmitting
-                                  ? "Submitting..."
-                                  : `Submit ${formatMoney(
-                                      Number(paymentAmount || 0),
-                                    )} proof`}
-                              </button>
-                            </form>
-                          </>
-                        ) : (
-                          <div
-                            className={`crd-info-box ${paymentActionTone}`}
-                          >
-                            {paymentActionMessage}
+                        <div className="crd-info-box" style={{ marginTop: 0 }}>
+                          <div className="crd-info-title">
+                            Your quotation has been approved and is ready for
+                            payment.
                           </div>
-                        )}
+
+                          <p style={{ margin: "8px 0 0" }}>
+                            To continue with production, please complete the
+                            required
+                            <strong> 30% down payment </strong>
+                            using our secure PayMongo payment gateway.
+                          </p>
+
+                          <p style={{ margin: "12px 0 0" }}>
+                            Supported payment methods:
+                          </p>
+
+                          <div className="crd-help-text">
+                            Securely powered by PayMongo
+                          </div>
+
+                          <ul className="crd-payment-method-list">
+                            <li>GCash</li>
+                            <li>Maya</li>
+                            <li>Online Banking</li>
+                            <li>Credit / Debit Card</li>
+                          </ul>
+                        </div>
+
+                        <div className="crd-payment-breakdown">
+                          <div className="summary-row">
+                            <span>Quoted Total</span>
+                            <strong>{formatMoney(quotedTotal)}</strong>
+                          </div>
+
+                          <div className="summary-row">
+                            <span>30% Down Payment</span>
+                            <strong>{formatMoney(downPaymentDue)}</strong>
+                          </div>
+
+                          <div className="summary-row">
+                            <span>Amount Paid</span>
+                            <strong>{formatMoney(verifiedPaymentTotal)}</strong>
+                          </div>
+
+                          <div className="summary-row">
+                            <span>Remaining Balance</span>
+                            <strong>{formatMoney(balanceDue)}</strong>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="btn btn-primary crd-paymongo-btn"
+                          disabled={
+                            !quotationAvailable ||
+                            quotationActionBlocked ||
+                            quotationIntegrityWarning ||
+                            requestData.payment_status === "paid" ||
+                            downPaymentDue <= 0
+                          }
+                          onClick={handlePayNow}
+                        >
+                          {requestData?.payment_status === "paid" ? (
+                            <>
+                              <div>✓ Down Payment Completed</div>
+                            </>
+                          ) : (
+                            <>
+                              <div>Pay 30% Down Payment</div>
+                              <strong>{formatMoney(downPaymentDue)}</strong>
+                            </>
+                          )}
+                        </button>
+
+                        <div className="crd-help-text">
+                          You will be redirected to PayMongo's secure checkout
+                          page to complete your payment.
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1334,14 +1088,18 @@ export default function CustomRequestDetailPage() {
 
                             {(dims.width || dims.height || dims.depth) && (
                               <span className="custom-spec-tag">
-                                W {formatMm(dims.width)} • H {formatMm(dims.height)} •
-                                D {formatMm(dims.depth)}
+                                W {formatMm(dims.width)} • H{" "}
+                                {formatMm(dims.height)} • D{" "}
+                                {formatMm(dims.depth)}
                               </span>
                             )}
                           </div>
 
                           {item.comments ? (
-                            <div className="checkout-item-sub" style={{ marginTop: 6 }}>
+                            <div
+                              className="checkout-item-sub"
+                              style={{ marginTop: 6 }}
+                            >
                               {item.comments}
                             </div>
                           ) : null}
@@ -1349,7 +1107,9 @@ export default function CustomRequestDetailPage() {
                           {Array.isArray(item.reference_photos) &&
                           item.reference_photos.length ? (
                             <div className="crd-ref-wrap">
-                              <div className="crd-field-label">Reference photos</div>
+                              <div className="crd-field-label">
+                                Reference photos
+                              </div>
 
                               <div className="crd-ref-grid">
                                 {item.reference_photos.map((photo) => (
@@ -1371,7 +1131,9 @@ export default function CustomRequestDetailPage() {
                           ) : null}
                         </div>
 
-                        <div className="checkout-item-qty">×{item.quantity || 1}</div>
+                        <div className="checkout-item-qty">
+                          ×{item.quantity || 1}
+                        </div>
 
                         <div className="checkout-item-price crd-quote-note">
                           Quote needed
@@ -1391,7 +1153,9 @@ export default function CustomRequestDetailPage() {
                 <div className="checkout-section-body">
                   <div className="crd-form-grid">
                     <div>
-                      <label className="crd-field-label">Delivery address</label>
+                      <label className="crd-field-label">
+                        Delivery address
+                      </label>
                       <div className="crd-read-box">
                         {requestData.delivery_address ||
                           "No delivery address provided."}
@@ -1489,7 +1253,8 @@ export default function CustomRequestDetailPage() {
                                           className="crd-attachment-file"
                                         >
                                           <div className="crd-attachment-name">
-                                            {attachment.file_name || "Attachment"}
+                                            {attachment.file_name ||
+                                              "Attachment"}
                                           </div>
                                           <div className="crd-attachment-open">
                                             Open attachment
@@ -1506,7 +1271,10 @@ export default function CustomRequestDetailPage() {
                       </div>
                     </div>
 
-                    <form onSubmit={handleSendDiscussionMessage} className="crd-chat-form">
+                    <form
+                      onSubmit={handleSendDiscussionMessage}
+                      className="crd-chat-form"
+                    >
                       <div className="crd-chat-form-title">Send message</div>
 
                       <textarea
@@ -1549,7 +1317,9 @@ export default function CustomRequestDetailPage() {
 
                               <button
                                 type="button"
-                                onClick={() => handleRemoveDiscussionFile(index)}
+                                onClick={() =>
+                                  handleRemoveDiscussionFile(index)
+                                }
                                 className="crd-remove-btn"
                               >
                                 Remove
@@ -1618,7 +1388,10 @@ export default function CustomRequestDetailPage() {
           </div>
 
           {previewItem && previewBlueprint ? (
-            <div className="crd-preview-backdrop" onClick={() => setPreviewItem(null)}>
+            <div
+              className="crd-preview-backdrop"
+              onClick={() => setPreviewItem(null)}
+            >
               <div
                 className="crd-preview-modal"
                 onClick={(e) => e.stopPropagation()}
@@ -1639,7 +1412,10 @@ export default function CustomRequestDetailPage() {
                 </div>
 
                 <div className="crd-preview-body">
-                  <CustomerTemplateWorkbench blueprint={previewBlueprint} readOnly />
+                  <CustomerTemplateWorkbench
+                    blueprint={previewBlueprint}
+                    readOnly
+                  />
                 </div>
               </div>
             </div>

@@ -9,16 +9,10 @@ import useAuthStore from "../../store/authStore";
 
 const PAYMENT_METHODS = [
   {
-    value: "gcash",
-    icon: "📱",
-    label: "GCash",
-    desc: "Preferred only — actual payment will be requested after estimate approval",
-  },
-  {
-    value: "bank_transfer",
-    icon: "🏦",
-    label: "Bank Transfer",
-    desc: "Preferred only — actual payment will be requested after estimate approval",
+    value: "paymongo",
+    icon: "💳",
+    label: "Online Payment",
+    desc: "Securely pay via GCash, Maya, Bank Transfer, or Credit/Debit Card after your quotation has been approved.",
   },
 ];
 
@@ -107,7 +101,7 @@ export default function CustomCheckoutPage() {
     name: user?.name || "",
     phone: user?.phone || "",
     delivery_address: user?.address || "",
-    payment_method: "",
+    payment_method: "paymongo",
     notes: "",
   });
 
@@ -146,7 +140,9 @@ export default function CustomCheckoutPage() {
       }
 
       const keySet = new Set(selectedKeys);
-      const matchedItems = (customCart || []).filter((item) => keySet.has(item.key));
+      const matchedItems = (customCart || []).filter((item) =>
+        keySet.has(item.key),
+      );
 
       if (!matchedItems.length) {
         sessionStorage.removeItem("cust_selected_custom_checkout");
@@ -255,10 +251,7 @@ export default function CustomCheckoutPage() {
           <p>Review your custom items and submit them for admin quotation</p>
         </div>
 
-        <button
-          className="btn btn-secondary"
-          onClick={() => navigate("/cart")}
-        >
+        <button className="btn btn-secondary" onClick={() => navigate("/cart")}>
           ← Back to Cart
         </button>
       </div>
@@ -346,9 +339,14 @@ export default function CustomCheckoutPage() {
                         {formatTemplateLabel(item)} • Customer-edited draft
                       </div>
 
-                      <div className="custom-cart-specs" style={{ marginTop: 4 }}>
+                      <div
+                        className="custom-cart-specs"
+                        style={{ marginTop: 4 }}
+                      >
                         {item.wood_type && (
-                          <span className="custom-spec-tag">🪵 {item.wood_type}</span>
+                          <span className="custom-spec-tag">
+                            🪵 {item.wood_type}
+                          </span>
                         )}
 
                         {(item.finish_color || item.color) && (
@@ -358,11 +356,15 @@ export default function CustomCheckoutPage() {
                         )}
 
                         {item.door_style && (
-                          <span className="custom-spec-tag">🚪 {item.door_style}</span>
+                          <span className="custom-spec-tag">
+                            🚪 {item.door_style}
+                          </span>
                         )}
 
                         {item.hardware && (
-                          <span className="custom-spec-tag">🔩 {item.hardware}</span>
+                          <span className="custom-spec-tag">
+                            🔩 {item.hardware}
+                          </span>
                         )}
 
                         {(dims.width || dims.height || dims.depth) && (
@@ -375,13 +377,18 @@ export default function CustomCheckoutPage() {
                       </div>
 
                       {item.comments ? (
-                        <div className="checkout-item-sub" style={{ marginTop: 4 }}>
+                        <div
+                          className="checkout-item-sub"
+                          style={{ marginTop: 4 }}
+                        >
                           💬 {item.comments}
                         </div>
                       ) : null}
                     </div>
 
-                    <div className="checkout-item-qty">×{item.quantity || 1}</div>
+                    <div className="checkout-item-qty">
+                      ×{item.quantity || 1}
+                    </div>
 
                     <div
                       className="checkout-item-price"
@@ -439,14 +446,13 @@ export default function CustomCheckoutPage() {
           <div className="checkout-section">
             <div className="checkout-section-header">
               <div className="checkout-section-num">2</div>
-              <h3>Preferred Payment Method</h3>
+              <h3>Payment Method</h3>
             </div>
 
             <div className="checkout-section-body">
               <p style={{ fontSize: 12, color: "#aaa", marginBottom: 14 }}>
-                Optional only. No payment is required at this stage. Final
-                quotation and payment instructions will be given after admin
-                review.
+                Payment will be securely processed through PayMongo after your
+                quotation has been approved.
               </p>
 
               <div className="payment-methods">
@@ -466,6 +472,44 @@ export default function CustomCheckoutPage() {
                     <div className="payment-method-check" />
                   </div>
                 ))}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 18,
+                  padding: "14px 16px",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 10,
+                  background: "#fafafa",
+                  fontSize: 14,
+                  lineHeight: 1.7,
+                  color: "#555",
+                }}
+              >
+                <strong style={{ color: "#111" }}>How payment works</strong>
+
+                <div style={{ marginTop: 8 }}>
+                  • No payment is collected when submitting your custom request.
+                </div>
+
+                <div>
+                  • Our team will review your design and prepare your quotation.
+                </div>
+
+                <div>
+                  • Once approved, you'll receive a secure PayMongo payment
+                  page.
+                </div>
+
+                <div>
+                  • Only the required <strong>30% down payment</strong> will be
+                  charged.
+                </div>
+
+                <div>
+                  • You can pay using GCash, Maya, Online Banking, or
+                  Credit/Debit Card.
+                </div>
               </div>
             </div>
           </div>
@@ -540,7 +584,7 @@ export default function CustomCheckoutPage() {
               "Submitting…"
             ) : (
               <>
-                <Scissors size={16} /> Submit Custom Request
+                <Scissors size={16} /> Submit Request for Quotation
               </>
             )}
           </button>

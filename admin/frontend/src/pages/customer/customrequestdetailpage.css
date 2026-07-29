@@ -818,3 +818,30 @@
     width: 150px;
   }
 }
+
+.crd-payment-breakdown {
+  margin: 18px 0;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  background: #fafafa;
+  display: grid;
+  gap: 10px;
+}
+
+.crd-paymongo-btn {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.crd-payment-method-list {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.crd-payment-method-list li {
+  color: #111111;
+  font-size: 13px;
+  line-height: 1.5;
+}

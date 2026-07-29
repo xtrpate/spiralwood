@@ -1,4 +1,5 @@
 const db = require("../../config/db");
+const { createCheckoutSession } = require("../../services/paymongoService");
 const fs = require("fs");
 const path = require("path");
 const { authenticate, requireCustomer } = require("../../middleware/auth");
@@ -889,7 +890,8 @@ exports.getCustomOrderById = async (req, res) => {
     const blueprintArchivedForPayment = lifecycle.blueprint
       ? isBlueprintArchived(lifecycle.blueprint)
       : false;
-    const estimationApprovedForPayment = latestEstimation?.status === "approved";
+    const estimationApprovedForPayment =
+      latestEstimation?.status === "approved";
     const rawOrderTotal = Number(order.total || 0);
     const totalsValidForPayment =
       quotationAvailable &&
@@ -921,7 +923,8 @@ exports.getCustomOrderById = async (req, res) => {
         "Your payment options are temporarily unavailable while our team reviews this order. Please contact support if you need assistance.";
     } else if (!quotationAvailable) {
       paymentStage = "unavailable";
-      paymentActionMessage = quotationMessage || "Payment is not available yet.";
+      paymentActionMessage =
+        quotationMessage || "Payment is not available yet.";
     } else if (canonicalOrderStatus === "cancelled") {
       paymentStage = "unavailable";
       paymentActionMessage =
@@ -937,7 +940,8 @@ exports.getCustomOrderById = async (req, res) => {
       }
     } else if (hasPendingPayment) {
       paymentStage = "pending_review";
-      paymentActionMessage = "Your payment proof is awaiting admin verification.";
+      paymentActionMessage =
+        "Your payment proof is awaiting admin verification.";
     } else if (isFullyPaid) {
       paymentStage = "fully_paid";
       paymentActionMessage = "Your full payment has been verified.";
@@ -1375,7 +1379,8 @@ exports.acceptEstimation = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(409).json({
-        message: "Order status changed before this could be saved. Please refresh and try again.",
+        message:
+          "Order status changed before this could be saved. Please refresh and try again.",
         integrity_reason: "ORDER_STATE_CHANGED",
       });
     }
@@ -1736,11 +1741,7 @@ exports.rejectEstimation = async (req, res) => {
          AND customer_id = ?
          AND order_type = 'blueprint'
          AND status = 'confirmed'`,
-      [
-        reason || "Customer rejected the quotation.",
-        order.id,
-        req.user.id,
-      ],
+      [reason || "Customer rejected the quotation.", order.id, req.user.id],
     );
 
     if (orderUpdateResult.affectedRows === 0) {
@@ -1918,7 +1919,8 @@ exports.submitDownPayment = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "The quotation must be approved before submitting a down payment.",
+        message:
+          "The quotation must be approved before submitting a down payment.",
       });
     }
 
@@ -2530,5 +2532,113 @@ exports.postCustomOrderMessage = async (req, res) => {
     });
   } finally {
     if (conn) conn.release();
+  }
+};
+
+exports.createPayMongoCheckout = async (req, res) => {
+  const conn = await db.getConnection();
+
+  try {
+    const orderId = parseInt(req.params.id);
+
+    const lifecycle = await resolveLifecycleByOrder(conn, {
+      orderId,
+      lockOrder: true,
+      lockBlueprint: true,
+    });
+
+    if (
+      lifecycle.status !== "OK" ||
+      !lifecycle.order ||
+      !lifecycle.blueprint ||
+      !lifecycle.estimation
+    ) {
+      return sendLifecycleConflict(res);
+    }
+
+    const order = lifecycle.order;
+    const blueprint = lifecycle.blueprint;
+    const estimation = lifecycle.estimation;
+
+    if (Number(order.customer_id) !== Number(req.user.id)) {
+      return res.status(404).json({
+        message: "Custom order not found.",
+      });
+    }
+
+    const [[customer]] = await conn.execute(
+      `SELECT
+      name,
+      phone,
+      email
+   FROM users
+   WHERE id = ?
+   LIMIT 1`,
+      [req.user.id],
+    );
+
+    if (!order) {
+      return res.status(404).json({
+        message: "Custom order not found.",
+      });
+    }
+
+    if (String(order.payment_status).toLowerCase() === "paid") {
+      return res.status(400).json({
+        message: "This order has already been paid.",
+      });
+    }
+
+    const downPayment = calcDownPaymentAmount(order.total);
+
+    if (
+      order.paymongo_session_id &&
+      order.payment_url &&
+      normalize(order.payment_status) === "unpaid"
+    ) {
+      return res.json({
+        payment_url: order.payment_url,
+        reused: true,
+      });
+    }
+
+    const frontendUrl = process.env.FRONTEND_URL || req.headers.origin;
+
+    const checkout = await createCheckoutSession({
+      customer,
+      amount: downPayment,
+      description: `30% Down Payment for ${order.order_number}`,
+      successUrl: `${frontendUrl}/custom-orders/${order.id}?verify_success=true`,
+      cancelUrl: `${frontendUrl}/custom-orders/${order.id}`,
+      metadata: {
+        order_id: order.id,
+        order_type: "blueprint",
+      },
+    });
+
+    const checkoutUrl = checkout.checkoutUrl;
+
+    const sessionId = checkout.sessionId;
+
+    await conn.execute(
+      `UPDATE orders
+       SET
+         payment_url = ?,
+         paymongo_session_id = ?
+       WHERE id = ?`,
+      [checkoutUrl, sessionId, order.id],
+    );
+
+    return res.json({
+      payment_url: checkoutUrl,
+    });
+  } catch (err) {
+    console.error(err.response?.data || err);
+
+    return res.status(500).json({
+      message: "Failed to create PayMongo checkout.",
+    });
+  } finally {
+    conn.release();
   }
 };
