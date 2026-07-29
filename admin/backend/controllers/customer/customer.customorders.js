@@ -2547,7 +2547,7 @@ exports.verifyPayment = async (req, res) => {
 
     // 1. FAST READ: Check idempotency WITHOUT locking the database
     const [[fastOrder]] = await conn.execute(
-      `SELECT id, customer_id, payment_status, paymongo_session_id, total 
+      `SELECT id, customer_id, payment_status, paymongo_session_id 
        FROM orders WHERE id = ? LIMIT 1`,
       [orderId],
     );
@@ -2562,10 +2562,8 @@ exports.verifyPayment = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized." });
     }
 
-    // IDEMPOTENCY CHECK: If the frontend fired twice or the user reloaded
     if (!fastOrder.paymongo_session_id) {
       conn.release();
-      // If the system already marked it partial/paid, return success so the frontend doesn't throw a scary error toast on reload.
       if (
         fastOrder.payment_status === "partial" ||
         fastOrder.payment_status === "paid"
@@ -2587,14 +2585,12 @@ exports.verifyPayment = async (req, res) => {
     const payments = session.attributes?.payments || [];
     const paymentIntent = session.attributes?.payment_intent;
 
-    // 👉 FIX: Check BOTH the payments array and the underlying payment intent
     const hasSuccessfulPayment =
       payments.some((p) => p.attributes?.status === "paid") ||
       (paymentIntent && paymentIntent.attributes?.status === "succeeded");
 
     if (!hasSuccessfulPayment) {
       conn.release();
-      // 👉 FIX: Return HTTP 400 Bad Request so the frontend knows it failed
       return res.status(400).json({
         success: false,
         message:
@@ -2602,17 +2598,21 @@ exports.verifyPayment = async (req, res) => {
       });
     }
 
-    // 3. SECURE WRITE: Now that we know they paid, open a fast transaction and lock the row
+    // 3. SECURE WRITE: Open transaction and lock the row
     await conn.beginTransaction();
     transactionActive = true;
 
     const lifecycle = await resolveLifecycleByOrder(conn, {
       orderId,
-      lockOrder: true, // 👈 FOR UPDATE lock engages here
+      lockOrder: true,
       lockBlueprint: true,
     });
 
-    if (lifecycle.status !== "OK" || !lifecycle.order) {
+    if (
+      lifecycle.status !== "OK" ||
+      !lifecycle.order ||
+      !lifecycle.estimation
+    ) {
       await conn.rollback();
       transactionActive = false;
       return sendLifecycleConflict(res);
@@ -2620,27 +2620,38 @@ exports.verifyPayment = async (req, res) => {
 
     const lockedOrder = lifecycle.order;
 
-    // Double-check: Did another request verify this while we were talking to PayMongo?
-    if (!lockedOrder.paymongo_session_id) {
+    // 👉 FIX 1: Explicitly check the DB row inside the lock, because lifecycle.order hides the session ID column
+    const [[lockedCheck]] = await conn.execute(
+      `SELECT paymongo_session_id FROM orders WHERE id = ?`,
+      [lockedOrder.id],
+    );
+
+    if (!lockedCheck.paymongo_session_id) {
       await conn.rollback();
       transactionActive = false;
       return res.json({
         success: true,
-        message: "Payment was already verified by another process.",
+        message: "Payment was already verified.",
       });
     }
 
-    const downPaymentAmount = calcDownPaymentAmount(lockedOrder.total);
+    // 👉 FIX 2: Safely calculate the 30% from the estimation, bypassing the stripped order object entirely
+    const normalizedEstimation = await normalizeLifecycleEstimation(
+      conn,
+      lifecycle.estimation,
+    );
+    const quotedTotal = roundMoney(normalizedEstimation.grand_total || 0);
+    const downPaymentAmount = calcDownPaymentAmount(quotedTotal);
 
-    // Insert the verified payment transaction
+    // 4. INSERT THE RECORD
     await conn.execute(
       `INSERT INTO payment_transactions
         (order_id, amount, payment_method, proof_url, status, verified_at, notes)
        VALUES (?, ?, 'paymongo', ?, 'verified', NOW(), 'Automatically verified via PayMongo checkout.')`,
-      [lockedOrder.id, downPaymentAmount, session.id], // Saving session.id as proof for tracing
+      [lockedOrder.id, downPaymentAmount, session.id],
     );
 
-    // Update order status to 'partial' and destroy the PayMongo links
+    // 5. UPDATE THE ORDER
     await conn.execute(
       `UPDATE orders
        SET payment_status = 'partial',
