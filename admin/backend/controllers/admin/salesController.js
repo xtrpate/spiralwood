@@ -39,12 +39,12 @@ exports.getReport = async (req, res) => {
               MAX(COALESCE(u.name,  o.walkin_customer_name))  AS customer_name,
               MAX(COALESCE(u.phone, o.walkin_customer_phone)) AS customer_phone,
               MAX(r.receipt_number) AS receipt_number,
-              MAX(d.status)  AS delivery_status,
+              (SELECT status FROM deliveries WHERE order_id = o.id ORDER BY id DESC LIMIT 1) AS delivery_status,
+              (SELECT COALESCE(SUM(amount), 0) FROM payment_transactions pt WHERE pt.order_id = o.id AND LOWER(pt.status) = 'verified') AS collected_amount,
               COALESCE(SUM(oi.profit_margin * oi.quantity), 0) AS total_profit
        FROM orders o
        LEFT JOIN users u       ON u.id  = o.customer_id
        LEFT JOIN receipts r    ON r.order_id = o.id
-       LEFT JOIN deliveries d  ON d.order_id = o.id
        LEFT JOIN order_items oi ON oi.order_id = o.id
        WHERE ${where.join(" AND ")}
        GROUP BY o.id
@@ -56,6 +56,7 @@ exports.getReport = async (req, res) => {
       `SELECT
         COUNT(*) AS total_orders,
         COALESCE(SUM(order_totals.total_amount), 0) AS total_revenue,
+        COALESCE(SUM(order_totals.collected_amount), 0) AS actual_collected,
         COALESCE(SUM(order_totals.total_profit), 0) AS total_profit,
         COALESCE(AVG(order_totals.total_amount), 0) AS avg_order_value,
         SUM(order_totals.channel = 'online') AS online_count,
@@ -65,6 +66,7 @@ exports.getReport = async (req, res) => {
           o.id,
           o.type AS channel,
           o.total AS total_amount,
+          (SELECT COALESCE(SUM(amount), 0) FROM payment_transactions pt WHERE pt.order_id = o.id AND LOWER(pt.status) = 'verified') AS collected_amount,
           COALESCE(SUM(oi.profit_margin * oi.quantity), 0) AS total_profit
         FROM orders o
         LEFT JOIN order_items oi ON oi.order_id = o.id
