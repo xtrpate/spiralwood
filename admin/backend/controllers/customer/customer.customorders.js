@@ -1,5 +1,8 @@
 const db = require("../../config/db");
-const { createCheckoutSession } = require("../../services/paymongoService");
+const {
+  createCheckoutSession,
+  retrieveCheckoutSession,
+} = require("../../services/paymongoService");
 const fs = require("fs");
 const path = require("path");
 const { authenticate, requireCustomer } = require("../../middleware/auth");
@@ -2526,6 +2529,147 @@ exports.postCustomOrderMessage = async (req, res) => {
     });
   } finally {
     if (conn) conn.release();
+  }
+};
+
+exports.verifyPayment = async (req, res) => {
+  let conn = null;
+  let transactionActive = false;
+
+  try {
+    const orderId = parseStrictPositiveInt(req.params.id);
+
+    if (!orderId) {
+      return res.status(400).json({ message: "Invalid custom request ID." });
+    }
+
+    conn = await db.getConnection();
+
+    // 1. FAST READ: Check idempotency WITHOUT locking the database
+    const [[fastOrder]] = await conn.execute(
+      `SELECT id, customer_id, payment_status, paymongo_session_id, total 
+       FROM orders WHERE id = ? LIMIT 1`,
+      [orderId],
+    );
+
+    if (!fastOrder) {
+      conn.release();
+      return res.status(404).json({ message: "Custom order not found." });
+    }
+
+    if (Number(fastOrder.customer_id) !== Number(req.user.id)) {
+      conn.release();
+      return res.status(403).json({ message: "Unauthorized." });
+    }
+
+    // IDEMPOTENCY CHECK: If the frontend fired twice or the user reloaded
+    if (!fastOrder.paymongo_session_id) {
+      conn.release();
+      // If the system already marked it partial/paid, return success so the frontend doesn't throw a scary error toast on reload.
+      if (
+        fastOrder.payment_status === "partial" ||
+        fastOrder.payment_status === "paid"
+      ) {
+        return res.json({
+          success: true,
+          message: "Payment already verified.",
+        });
+      }
+      return res
+        .status(400)
+        .json({ success: false, message: "No pending payment session found." });
+    }
+
+    // 2. NETWORK CALL: Ask PayMongo while the database connection is free (No locks active)
+    const session = await retrieveCheckoutSession(
+      fastOrder.paymongo_session_id,
+    );
+    const payments = session.attributes.payments || [];
+    const hasSuccessfulPayment = payments.some(
+      (payment) => payment.attributes.status === "paid",
+    );
+
+    if (!hasSuccessfulPayment) {
+      conn.release();
+      return res.json({
+        success: false,
+        message: "Payment has not been completed yet.",
+      });
+    }
+
+    // 3. SECURE WRITE: Now that we know they paid, open a fast transaction and lock the row
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const lifecycle = await resolveLifecycleByOrder(conn, {
+      orderId,
+      lockOrder: true, // 👈 FOR UPDATE lock engages here
+      lockBlueprint: true,
+    });
+
+    if (lifecycle.status !== "OK" || !lifecycle.order) {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    const lockedOrder = lifecycle.order;
+
+    // Double-check: Did another request verify this while we were talking to PayMongo?
+    if (!lockedOrder.paymongo_session_id) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.json({
+        success: true,
+        message: "Payment was already verified by another process.",
+      });
+    }
+
+    const downPaymentAmount = calcDownPaymentAmount(lockedOrder.total);
+
+    // Insert the verified payment transaction
+    await conn.execute(
+      `INSERT INTO payment_transactions
+        (order_id, amount, payment_method, proof_url, status, verified_at, notes)
+       VALUES (?, ?, 'paymongo', ?, 'verified', NOW(), 'Automatically verified via PayMongo checkout.')`,
+      [lockedOrder.id, downPaymentAmount, session.id], // Saving session.id as proof for tracing
+    );
+
+    // Update order status to 'partial' and destroy the PayMongo links
+    await conn.execute(
+      `UPDATE orders
+       SET payment_status = 'partial',
+           payment_url = NULL,
+           paymongo_session_id = NULL,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [lockedOrder.id],
+    );
+
+    await conn.commit();
+    transactionActive = false;
+
+    return res.json({
+      success: true,
+      message: "Payment verified successfully.",
+    });
+  } catch (err) {
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+      } catch (rollbackErr) {
+        console.error("Rollback failed:", rollbackErr);
+      }
+    }
+    console.error(
+      "[customer.customorders verifyPayment]",
+      err.response?.data || err,
+    );
+    return res.status(500).json({ message: "Failed to verify payment." });
+  } finally {
+    if (conn) {
+      conn.release();
+    }
   }
 };
 

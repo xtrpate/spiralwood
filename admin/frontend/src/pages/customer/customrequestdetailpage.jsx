@@ -343,8 +343,35 @@ export default function CustomRequestDetailPage() {
   );
 
   useEffect(() => {
-    loadRequestDetail(true);
-  }, [loadRequestDetail]);
+    const verifyPayment = async () => {
+      const params = new URLSearchParams(window.location.search);
+
+      if (params.get("verify_success") !== "true") {
+        loadRequestDetail(true);
+        return;
+      }
+
+      try {
+        await api.post(`/customer/custom-orders/${id}/verify-payment`);
+
+        toast.success("Payment verified successfully.");
+      } catch (err) {
+        toast.error(err.response?.data?.message || "Unable to verify payment.");
+      } finally {
+        params.delete("verify_success");
+
+        const url =
+          window.location.pathname +
+          (params.toString() ? `?${params.toString()}` : "");
+
+        window.history.replaceState({}, "", url);
+
+        await loadRequestDetail(true);
+      }
+    };
+
+    verifyPayment();
+  }, [id, loadRequestDetail]);
 
   const statusMeta = useMemo(
     () =>
@@ -976,11 +1003,14 @@ export default function CustomRequestDetailPage() {
                             quotationActionBlocked ||
                             quotationIntegrityWarning ||
                             requestData.payment_status === "paid" ||
+                            requestData.payment_status === "partial" ||
                             downPaymentDue <= 0
                           }
                           onClick={handlePayNow}
                         >
-                          {requestData?.payment_status === "paid" ? (
+                          {["paid", "partial"].includes(
+                            requestData?.payment_status,
+                          ) ? (
                             <>
                               <div>✓ Down Payment Completed</div>
                             </>

@@ -188,4 +188,11 @@ router.post(
   customOrderController.createPayMongoCheckout,
 );
 
+router.post(
+  "/:id/verify-payment",
+  authenticate,
+  requireCustomer,
+  customOrderController.verifyPayment,
+);
+
 module.exports = router;
