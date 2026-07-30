@@ -166,13 +166,22 @@ router.post(
   customOrderController.submitDownPayment,
 );
 
-router.post(
-  "/:id/remaining-balance",
-  authenticate,
-  requireCustomer,
-  proofUpload,
-  customOrderController.submitRemainingBalancePayment,
-);
+// PHASE 5 — RETIRED (Final Decision 1): this used to accept a proof
+// upload (cash/cod/cop/gcash/bank_transfer) for the blueprint remaining
+// balance and overwrite orders.payment_method — which conflicts with the
+// new remaining_payment_method design (orders.payment_method must stay
+// the immutable INITIAL method). Intercepted here, before multer or the
+// controller run, so no file is written, no payment_transactions row is
+// created, orders.payment_method is never touched, and no success audit
+// is logged. customOrderController.submitRemainingBalancePayment is kept
+// in the controller file only as inert dead code; it is no longer wired
+// to any route.
+router.post("/:id/remaining-balance", authenticate, requireCustomer, (req, res) => {
+  return res.status(410).json({
+    message:
+      "This remaining-balance payment flow has been retired. Choose Cash or Online Payment from the order page.",
+  });
+});
 
 router.post(
   "/:id/messages",
@@ -202,6 +211,15 @@ router.post(
   authenticate,
   requireCustomer,
   customOrderController.verifyPayment,
+);
+
+// PHASE 5 — Blueprint Rider Final Cash Collection (Final Decision 3).
+router.post(
+  "/:id/remaining-payment-method",
+  authenticate,
+  requireCustomer,
+  logAction("select_blueprint_remaining_payment_method", "orders"),
+  customOrderController.selectRemainingPaymentMethod,
 );
 
 module.exports = router;

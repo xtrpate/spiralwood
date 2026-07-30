@@ -322,6 +322,8 @@ export default function CustomRequestDetailPage() {
   const [discussionSubmitting, setDiscussionSubmitting] = useState(false);
   const [selectingMethod, setSelectingMethod] = useState(false);
   const [selectionError, setSelectionError] = useState("");
+  const [selectingRemainingMethod, setSelectingRemainingMethod] = useState(false);
+  const [remainingMethodError, setRemainingMethodError] = useState("");
 
   const loadRequestDetail = useCallback(
     async (showLoader = true) => {
@@ -496,6 +498,31 @@ export default function CustomRequestDetailPage() {
     Number(verifiedPaymentTotal || 0) <= 0 &&
     !hasPendingPaymentTransaction &&
     !paymentMethodChangeLocked;
+
+  // PHASE 5 — Blueprint Rider Final Cash Collection. The backend
+  // (selectRemainingPaymentMethod / getCustomOrderById) re-derives and
+  // locks every one of these conditions itself; these are display-only.
+  const remainingPaymentMethod = String(
+    paymentSummary.remaining_payment_method || "",
+  )
+    .trim()
+    .toLowerCase();
+  const deliveryStatusForRemainingMethod = String(
+    paymentSummary.delivery_status || "",
+  )
+    .trim()
+    .toLowerCase();
+  const canSelectRemainingPaymentMethod = Boolean(
+    paymentSummary.can_select_remaining_payment_method,
+  );
+  const remainingPaymentMethodLocked = Boolean(
+    paymentSummary.remaining_payment_method_locked,
+  );
+  const REMAINING_METHOD_LABELS = {
+    cash: "Cash",
+    paymongo: "Online Payment",
+  };
+
   const estimationStatusKey = String(latestEstimation?.status || "")
     .trim()
     .toLowerCase();
@@ -681,6 +708,30 @@ export default function CustomRequestDetailPage() {
       );
     } finally {
       setSelectingMethod(false);
+    }
+  };
+
+  // PHASE 5 — Blueprint Rider Final Cash Collection.
+  const handleSelectRemainingPaymentMethod = async (method) => {
+    if (selectingRemainingMethod) return;
+
+    setSelectingRemainingMethod(true);
+    setRemainingMethodError("");
+
+    try {
+      await api.post(
+        `/customer/custom-orders/${requestData.id}/remaining-payment-method`,
+        { remaining_payment_method: method },
+      );
+      await loadRequestDetail(false);
+    } catch (err) {
+      setRemainingMethodError(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          "Failed to update the remaining payment method.",
+      );
+    } finally {
+      setSelectingRemainingMethod(false);
     }
   };
 
@@ -1334,6 +1385,86 @@ export default function CustomRequestDetailPage() {
                           ) : null}
                         </div>
                       )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* PHASE 5 — Blueprint Rider Final Cash Collection */}
+              {remainingPaymentMethodLocked ? (
+                <div className="checkout-section">
+                  <div className="checkout-section-header">
+                    <div className="checkout-section-num">03B</div>
+                    <h3>Remaining Balance Payment Method</h3>
+                  </div>
+                  <div style={{ padding: "0 4px 4px" }}>
+                    <p>
+                      Locked for this delivery:{" "}
+                      <strong>
+                        {REMAINING_METHOD_LABELS[remainingPaymentMethod] ||
+                          "Not set"}
+                      </strong>
+                    </p>
+                    <p className="crd-mini-meta">
+                      This can no longer be changed for this order.
+                    </p>
+                  </div>
+                </div>
+              ) : canSelectRemainingPaymentMethod ? (
+                <div className="checkout-section">
+                  <div className="checkout-section-header">
+                    <div className="checkout-section-num">03B</div>
+                    <h3>Choose Payment Method for Remaining Balance</h3>
+                  </div>
+
+                  {remainingMethodError ? (
+                    <div className="crd-alert crd-alert-error">
+                      {remainingMethodError}
+                    </div>
+                  ) : null}
+
+                  <div className="crd-payment-method-grid">
+                    <div className="crd-payment-method-card">
+                      <h4>Cash</h4>
+                      <p>
+                        Pay the exact remaining balance to the assigned
+                        rider upon delivery.
+                      </p>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={
+                          selectingRemainingMethod ||
+                          remainingPaymentMethod === "cash"
+                        }
+                        onClick={() =>
+                          handleSelectRemainingPaymentMethod("cash")
+                        }
+                      >
+                        {remainingPaymentMethod === "cash"
+                          ? "Selected: Cash"
+                          : "Choose Cash"}
+                      </button>
+                    </div>
+
+                    <div className="crd-payment-method-card">
+                      <h4>Online Payment</h4>
+                      <p>Pay the exact remaining balance online.</p>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={
+                          selectingRemainingMethod ||
+                          remainingPaymentMethod === "paymongo"
+                        }
+                        onClick={() =>
+                          handleSelectRemainingPaymentMethod("paymongo")
+                        }
+                      >
+                        {remainingPaymentMethod === "paymongo"
+                          ? "Selected: Online Payment"
+                          : "Choose Online Payment"}
+                      </button>
                     </div>
                   </div>
                 </div>

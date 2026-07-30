@@ -1,6 +1,30 @@
 // controllers/staff/pos.deliveries.js
+const fs = require("fs");
 const db = require("../../config/db");
 const { signUploadPath } = require("../../utils/signedUrl");
+const {
+  parseDecimalToCentsStrict,
+  centsToDecimalString,
+  centsToAmount,
+} = require("../../utils/paymentAmounts");
+
+// PHASE 5 corrective patch — deletes ONLY the file this specific request
+// freshly uploaded via multer (req.file), never an existing, already
+// persisted deliveries.signed_receipt. Never called after a successful
+// commit. Safe to call even when no file was uploaded (no-op). Logs a
+// failure without throwing — cleanup must never replace or mask the
+// original HTTP error already being returned.
+const cleanupFreshUpload = (file) => {
+  if (!file || !file.path) return;
+  fs.unlink(file.path, (err) => {
+    if (err && err.code !== "ENOENT") {
+      console.error(
+        "[updateDeliveryStatus] failed to remove orphaned upload:",
+        err,
+      );
+    }
+  });
+};
 
 const DELIVERY_STATUSES = ["scheduled", "in_transit", "delivered", "failed"];
 
@@ -196,6 +220,8 @@ exports.getDeliveries = async (req, res) => {
         o.total,
         o.payment_method,
         o.payment_status,
+        o.order_type,
+        o.remaining_payment_method,
         o.delivery_lat,
         o.delivery_lng,
         o.created_at AS order_created_at,
@@ -538,6 +564,12 @@ exports.updateDeliveryStatus = async (req, res) => {
   }
 
   let conn;
+  // PHASE 5 corrective patch — hoisted so the catch block below can
+  // decide whether an orphaned upload needs cleanup on an unexpected
+  // exception (e.g. the deliveries UPDATE or the payment_transactions
+  // INSERT throwing). Both stay false for every non-blueprint request.
+  let isBlueprintOrder = false;
+  let isCompletingDeliveryNow = false;
   try {
     conn = await db.getConnection();
     await conn.beginTransaction();
@@ -563,7 +595,8 @@ exports.updateDeliveryStatus = async (req, res) => {
     }
 
     const [[order]] = await conn.query(
-      `SELECT id, order_number, total, status, payment_status, customer_id
+      `SELECT id, order_number, total, status, payment_status, customer_id,
+              order_type, remaining_payment_method
        FROM orders
        WHERE id = ?
        LIMIT 1
@@ -588,6 +621,180 @@ exports.updateDeliveryStatus = async (req, res) => {
       return res.status(400).json({
         message: `Invalid delivery transition from ${currentStatus} to ${requestedStatus}.`,
       });
+    }
+
+    isBlueprintOrder =
+      normalizeText(order.order_type || "").toLowerCase() === "blueprint";
+    isCompletingDeliveryNow =
+      requestedStatus === "delivered" && currentStatus !== "delivered";
+
+    // PHASE 5 -- BLUEPRINT RIDER FINAL CASH COLLECTION
+    // Isolated branch inside this shared delivery-completion flow. Only
+    // activates for order_type = 'blueprint' when the rider is
+    // completing the delivery (the transition table only ever allows
+    // "delivered" to be reached from "in_transit", so this always means
+    // in_transit -> delivered). Standard, walk-in, COD, COP, and
+    // ready-to-ship completions never enter this block and are
+    // completely unaffected by it.
+    let blueprintCashCollection = null;
+
+    if (isBlueprintOrder && isCompletingDeliveryNow) {
+      // 1) Assigned-rider authorization — checked FIRST, before the
+      // order's lifecycle status is ever inspected, so an unauthorized
+      // caller (admin, cashier, another rider, unrelated staff) never
+      // learns whether the order is cancelled, completed, paid, or
+      // otherwise active. Only the assigned, active delivery_rider may
+      // proceed past this point.
+      const isAssignedActiveRider =
+        req.user.role === "staff" &&
+        req.user.staff_type === "delivery_rider" &&
+        Boolean(req.user.is_active) &&
+        Number(existing.driver_id) === Number(req.user.id);
+
+      if (!isAssignedActiveRider) {
+        await conn.rollback();
+        cleanupFreshUpload(req.file);
+        return res.status(403).json({
+          message:
+            "Only the assigned delivery rider may complete this blueprint delivery.",
+        });
+      }
+
+      // 2) Cancelled/completed order guard — only reached after
+      // authorization succeeds. A legitimately fully paid ACTIVE order
+      // is not rejected here (fully paid is handled later, where it
+      // falls through to a normal delivery completion with no new
+      // transaction) — this only blocks orders whose lifecycle has
+      // already ended.
+      const orderStatusNormalized = normalizeText(order.status || "").toLowerCase();
+
+      if (["cancelled", "completed"].includes(orderStatusNormalized)) {
+        await conn.rollback();
+        cleanupFreshUpload(req.file);
+        return res.status(409).json({
+          reason_code: "BLUEPRINT_ORDER_NOT_DELIVERABLE",
+          message:
+            orderStatusNormalized === "cancelled"
+              ? "This order has been cancelled and can no longer be delivered."
+              : "This order has already been completed.",
+        });
+      }
+
+      // 3) Fresh Proof of Delivery photo check.
+      if (!uploadedReceiptPath) {
+        await conn.rollback();
+        return res.status(400).json({
+          message:
+            "Please upload a fresh Proof of Delivery photo to complete this delivery.",
+        });
+      }
+
+      // Lock order for this branch: orders (locked above) -> deliveries
+      // (locked above) -> payment_transactions (locked here). The
+      // backend, never the client, computes the exact remaining balance.
+      const [blueprintPaymentRows] = await conn.query(
+        `SELECT id, amount, status
+         FROM payment_transactions
+         WHERE order_id = ?
+         ORDER BY id
+         FOR UPDATE`,
+        [existing.order_id],
+      );
+
+      let verifiedCentsBlueprint = 0;
+      let hasPendingPaymentBlueprint = false;
+      let hasInvalidAmountBlueprint = false;
+
+      for (const row of blueprintPaymentRows) {
+        const cents = parseDecimalToCentsStrict(row.amount);
+        if (cents === null) {
+          hasInvalidAmountBlueprint = true;
+          continue;
+        }
+        const st = normalizeText(row.status).toLowerCase();
+        if (st === "verified") verifiedCentsBlueprint += cents;
+        else if (st === "pending") hasPendingPaymentBlueprint = true;
+      }
+
+      if (hasInvalidAmountBlueprint) {
+        await conn.rollback();
+        cleanupFreshUpload(req.file);
+        return res.status(409).json({
+          message:
+            "This order's payment records are inconsistent. Please contact support.",
+        });
+      }
+
+      const orderTotalCentsBlueprint = parseDecimalToCentsStrict(order.total);
+      if (orderTotalCentsBlueprint === null) {
+        await conn.rollback();
+        cleanupFreshUpload(req.file);
+        return res.status(409).json({
+          message: "This order's total is invalid. Please contact support.",
+        });
+      }
+
+      const remainingCentsBlueprint = Math.max(
+        0,
+        orderTotalCentsBlueprint - verifiedCentsBlueprint,
+      );
+      const remainingMethod =
+        normalizeText(order.remaining_payment_method || "").toLowerCase() ||
+        null;
+
+      if (remainingCentsBlueprint > 0) {
+        if (!remainingMethod) {
+          await conn.rollback();
+          cleanupFreshUpload(req.file);
+          return res.status(409).json({
+            reason_code: "REMAINING_PAYMENT_METHOD_REQUIRED",
+            message:
+              "The customer has not yet chosen how to pay the remaining balance.",
+          });
+        }
+
+        if (remainingMethod === "paymongo") {
+          await conn.rollback();
+          cleanupFreshUpload(req.file);
+          return res.status(409).json({
+            reason_code: "ONLINE_PAYMENT_NOT_CONFIRMED",
+            message: "Awaiting Online Payment Confirmation.",
+          });
+        }
+
+        if (remainingMethod !== "cash") {
+          await conn.rollback();
+          cleanupFreshUpload(req.file);
+          return res.status(409).json({
+            message:
+              "This order's remaining payment method is invalid. Please contact support.",
+          });
+        }
+
+        if (hasPendingPaymentBlueprint) {
+          await conn.rollback();
+          cleanupFreshUpload(req.file);
+          return res.status(409).json({
+            message:
+              "A payment is already awaiting admin review for this order.",
+          });
+        }
+
+        blueprintCashCollection = {
+          amountCents: remainingCentsBlueprint,
+          verifiedCentsBefore: verifiedCentsBlueprint,
+        };
+      } else if (
+        remainingMethod === "paymongo" &&
+        normalizeText(order.payment_status || "").toLowerCase() !== "paid"
+      ) {
+        await conn.rollback();
+        cleanupFreshUpload(req.file);
+        return res.status(409).json({
+          reason_code: "ONLINE_PAYMENT_NOT_CONFIRMED",
+          message: "Awaiting Online Payment Confirmation.",
+        });
+      }
     }
 
     if (
@@ -640,22 +847,27 @@ exports.updateDeliveryStatus = async (req, res) => {
     const hasPendingPaymentBefore =
       Number(paymentSummaryBefore?.has_pending || 0) === 1;
 
-    const isCompletingDeliveryNow =
-      requestedStatus === "delivered" && currentStatus !== "delivered";
+    // isCompletingDeliveryNow is already declared above (needed earlier
+    // for the Phase 5 blueprint branch's own gating).
 
     // One condition, used consistently everywhere a rider collection is
     // gated below — never a re-derived or slightly different version of
-    // the same check.
+    // the same check. PHASE 5: explicitly excludes blueprint orders —
+    // those are fully handled by the isolated branch above, which never
+    // trusts collectedAmount/collectedPaymentMethod from the client.
     const shouldRecordDeliveryCollection =
       isCompletingDeliveryNow &&
+      !isBlueprintOrder &&
       currentBalance > 0.009 &&
       !hasPendingPaymentBefore;
 
     // A real balance is due, but an existing real payment_transactions
     // row is already pending review — delivery still completes, but no
-    // second, redundant pending collection is created.
+    // second, redundant pending collection is created. PHASE 5: also
+    // excluded for blueprint orders (handled entirely above).
     const collectionSkippedForPendingPayment =
       isCompletingDeliveryNow &&
+      !isBlueprintOrder &&
       currentBalance > 0.009 &&
       hasPendingPaymentBefore;
 
@@ -760,6 +972,30 @@ exports.updateDeliveryStatus = async (req, res) => {
           paymentNotes,
         ],
       );
+    }
+
+    let blueprintPaymentTransactionId = null;
+
+    // PHASE 5 -- server-calculated amount only. collected_amount and
+    // payment_method from the request body are never read here.
+    if (blueprintCashCollection) {
+      const amountDecimalString = centsToDecimalString(
+        blueprintCashCollection.amountCents,
+      );
+
+      const [blueprintInsertResult] = await conn.query(
+        `INSERT INTO payment_transactions
+          (order_id, amount, payment_method, proof_url, verified_by, verified_at, status, notes)
+         VALUES (?, ?, 'cash', ?, NULL, NULL, 'pending', ?)`,
+        [
+          existing.order_id,
+          amountDecimalString,
+          nextSignedReceipt,
+          "Collected on delivery.",
+        ],
+      );
+
+      blueprintPaymentTransactionId = blueprintInsertResult.insertId;
     }
 
     const [[paymentRollup]] = await conn.query(
@@ -941,6 +1177,8 @@ exports.updateDeliveryStatus = async (req, res) => {
         o.total,
         o.payment_method,
         o.payment_status,
+        o.order_type,
+        o.remaining_payment_method,
         o.delivery_lat,
         o.delivery_lng,
         o.created_at AS order_created_at,
@@ -999,6 +1237,52 @@ exports.updateDeliveryStatus = async (req, res) => {
 
     await conn.commit();
 
+    // PHASE 5 -- dedicated audit for the blueprint rider cash collection,
+    // written only after the transaction has actually committed. Kept
+    // separate from the generic "update_delivery_status" audit below
+    // (which is logged by the route's own logAction middleware) since
+    // this needs its own action name. Only safe, structured, non-PII
+    // values -- no customer name/address/phone, no raw file paths.
+    if (blueprintCashCollection && blueprintPaymentTransactionId) {
+      try {
+        await db.query(
+          `INSERT INTO audit_logs
+             (user_id, action, table_name, record_id, old_values, new_values, ip_address)
+           VALUES (?, 'confirm_blueprint_rider_cash_collection', 'payment_transactions', ?, ?, ?, ?)`,
+          [
+            req.user.id,
+            blueprintPaymentTransactionId,
+            JSON.stringify({
+              collection_status: "pending",
+            }),
+            JSON.stringify({
+              order_id: existing.order_id,
+              delivery_id: deliveryId,
+              payment_transaction_id: blueprintPaymentTransactionId,
+              amount_collected: centsToAmount(
+                blueprintCashCollection.amountCents,
+              ),
+              previous_verified_total: centsToAmount(
+                blueprintCashCollection.verifiedCentsBefore,
+              ),
+              current_verified_remaining_balance: centsToAmount(
+                blueprintCashCollection.amountCents,
+              ),
+              collection_status: "pending",
+            }),
+            req.ip || null,
+          ],
+        );
+      } catch (auditErr) {
+        // Non-blocking -- never turn a successful collection into a
+        // failed response because of an audit-logging error.
+        console.error(
+          "[updateDeliveryStatus confirm_blueprint_rider_cash_collection audit]",
+          auditErr,
+        );
+      }
+    }
+
     req.auditRecord = {
       id: deliveryId,
       old: {
@@ -1036,7 +1320,10 @@ exports.updateDeliveryStatus = async (req, res) => {
 
     let message = "Delivery updated successfully";
 
-    if (shouldRecordDeliveryCollection) {
+    if (blueprintCashCollection) {
+      message =
+        "Delivery completed. The collected cash is now pending admin verification.";
+    } else if (shouldRecordDeliveryCollection) {
       message =
         "Delivery completed. Final collected payment is now pending admin verification.";
     } else if (collectionSkippedForPendingPayment) {
@@ -1065,6 +1352,13 @@ exports.updateDeliveryStatus = async (req, res) => {
     });
   } catch (err) {
     if (conn) await conn.rollback();
+    // PHASE 5 corrective patch: only for a blueprint completion attempt
+    // that had already passed its own gate and uploaded a fresh photo —
+    // never for standard/COD/COP requests, and never touches an
+    // existing deliveries.signed_receipt.
+    if (isBlueprintOrder && isCompletingDeliveryNow) {
+      cleanupFreshUpload(req.file);
+    }
     console.error("PATCH /api/pos/deliveries/:id/status error:", err);
     res.status(500).json({ message: "Failed to update delivery status" });
   } finally {

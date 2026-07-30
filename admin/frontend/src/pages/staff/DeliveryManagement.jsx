@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api, { buildAssetUrl } from "../../services/api";
 import useAuthStore from "../../store/authStore";
 
@@ -86,6 +86,65 @@ export default function DeliveryManagement() {
     loadDeliveries();
   }, [loadDeliveries]);
 
+  // PHASE 5 correction — automatic payment-status refresh for blueprint
+  // deliveries still waiting on the customer's remaining-payment choice
+  // or on PayMongo confirmation. Never reloads the page and never
+  // touches receiptFiles/collectionForms — only the deliveries list is
+  // re-fetched, silently, in the background.
+  const deliveriesRef = useRef(deliveries);
+  useEffect(() => {
+    deliveriesRef.current = deliveries;
+  }, [deliveries]);
+
+  const isAutoRefreshingRef = useRef(false);
+
+  const needsAutoRefresh = useCallback((list) => {
+    return (list || []).some((d) => {
+      if (normalize(d.order_type) !== "blueprint") return false;
+      if (!["scheduled", "in_transit"].includes(normalize(d.status))) {
+        return false;
+      }
+      const method = normalize(d.remaining_payment_method);
+      const balance = Number(d.payment_balance || 0);
+      if (!method) return true;
+      if (method === "paymongo" && balance > 0.009) return true;
+      return false;
+    });
+  }, []);
+
+  const silentRefreshDeliveries = useCallback(async () => {
+    // Prevent overlapping requests — if a refresh is still in flight,
+    // skip this tick entirely rather than queueing another call.
+    if (isAutoRefreshingRef.current) return;
+    isAutoRefreshingRef.current = true;
+
+    try {
+      const res = await api.get("/pos/deliveries");
+      const list = Array.isArray(res.data) ? res.data : [];
+      setDeliveries(list);
+    } catch (err) {
+      // Temporary failure: keep whatever is currently on screen and
+      // simply try again on the next 5-second tick. Never surface this
+      // as a blocking error and never clear existing state.
+      console.error(
+        "Background payment-status refresh failed:",
+        err?.response?.data || err,
+      );
+    } finally {
+      isAutoRefreshingRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (needsAutoRefresh(deliveriesRef.current)) {
+        silentRefreshDeliveries();
+      }
+    }, 5000);
+
+    return () => clearInterval(intervalId);
+  }, [needsAutoRefresh, silentRefreshDeliveries]);
+
   const handleReceiptChange = (id, file) => {
     setReceiptFiles((prev) => ({
       ...prev,
@@ -133,12 +192,12 @@ export default function DeliveryManagement() {
     const isPdf = file.type === "application/pdf";
 
     if (!isImage && !isPdf) {
-      return "Only image or PDF files are allowed for signed receipt upload.";
+      return "Only image or PDF files are allowed for Proof of Delivery upload.";
     }
 
     const maxFileSize = 5 * 1024 * 1024;
     if (file.size > maxFileSize) {
-      return "Signed receipt file is too large. Maximum allowed size is 5 MB.";
+      return "Proof of Delivery file is too large. Maximum allowed size is 5 MB.";
     }
 
     return null;
@@ -197,8 +256,14 @@ export default function DeliveryManagement() {
     const targetStatus = normalize(nextStatus || currentStatus);
     const collectionForm = getCollectionForm(delivery);
 
+    // PHASE 5: blueprint orders have their own backend-computed
+    // balance/method gating (see updateDeliveryStatus's isolated
+    // branch); the legacy client-side collected-amount validation below
+    // does not apply to them and must be skipped entirely.
+    const isBlueprintDelivery = normalize(delivery.order_type) === "blueprint";
+
     const collectionError =
-      targetStatus === "failed"
+      isBlueprintDelivery || targetStatus === "failed"
         ? ""
         : validateCollectionForm(delivery, collectionForm, {
             requireAmount: targetStatus === "delivered",
@@ -213,6 +278,15 @@ export default function DeliveryManagement() {
     const fileError = validateReceiptFile(selectedFile);
     if (fileError) {
       setError(fileError);
+      setSuccess("");
+      return;
+    }
+
+    // PHASE 5: a blueprint delivery being completed always needs a
+    // FRESH photo — an old deliveries.signed_receipt from an earlier
+    // in_transit upload never satisfies this, unlike the generic path.
+    if (isBlueprintDelivery && targetStatus === "delivered" && !selectedFile) {
+      setError("Please upload a fresh Proof of Delivery photo to complete this delivery.");
       setSuccess("");
       return;
     }
@@ -241,7 +315,10 @@ export default function DeliveryManagement() {
         fd.append("failure_reason", failureReason || "");
       }
 
-      if (targetStatus === "delivered") {
+      // PHASE 5: never send collected_amount/payment_method for
+      // blueprint orders — the backend computes and controls both, and
+      // ignores these fields entirely for order_type = 'blueprint'.
+      if (targetStatus === "delivered" && !isBlueprintDelivery) {
         fd.append("collected_amount", collectionForm.amount || "");
         fd.append("payment_method", collectionForm.payment_method || "cash");
         fd.append("collection_notes", collectionForm.collection_notes || "");
@@ -397,6 +474,34 @@ export default function DeliveryManagement() {
             const paymentBalance = Number(delivery.payment_balance || 0);
             const collectionForm = getCollectionForm(delivery);
 
+            // PHASE 5 — Blueprint Rider Final Cash Collection. This
+            // entire block only ever changes behavior for blueprint
+            // orders; every variable/branch below defaults to the
+            // original standard/walk-in/COD/COP behavior when false.
+            const isBlueprintDelivery =
+              normalize(delivery.order_type) === "blueprint";
+            const remainingPaymentMethod = normalize(
+              delivery.remaining_payment_method,
+            );
+            const pendingPaymentCount = Number(
+              delivery.pending_payment_count || 0,
+            );
+            const blueprintHasPendingCollection =
+              isBlueprintDelivery && pendingPaymentCount > 0;
+            const blueprintAwaitingOnline =
+              isBlueprintDelivery &&
+              remainingPaymentMethod === "paymongo" &&
+              paymentBalance > 0.009;
+            const blueprintMethodRequired =
+              isBlueprintDelivery &&
+              !remainingPaymentMethod &&
+              paymentBalance > 0.009;
+            const blueprintReadyForCashConfirm =
+              isBlueprintDelivery &&
+              remainingPaymentMethod === "cash" &&
+              paymentBalance > 0.009 &&
+              !blueprintHasPendingCollection;
+
             const hasOutstandingBalance = paymentBalance > 0.009;
             const rawCollectedAmount = String(
               collectionForm.amount ?? "",
@@ -413,21 +518,27 @@ export default function DeliveryManagement() {
               hasCollectedAmountValue &&
               parsedCollectedAmount > paymentBalance + 0.01;
 
-            const completeDeliveryDisabled =
-              savingId === delivery.id ||
-              (!hasReceipt && !selectedFile) ||
-              (canCompleteDelivery &&
-                hasOutstandingBalance &&
-                (!hasCollectedAmountValue ||
-                  collectedAmountInvalid ||
-                  collectedAmountExceedsBalance));
+            const completeDeliveryDisabled = isBlueprintDelivery
+              ? savingId === delivery.id ||
+                !selectedFile || // PHASE 5: always a FRESH photo, never hasReceipt fallback
+                blueprintHasPendingCollection ||
+                blueprintAwaitingOnline ||
+                blueprintMethodRequired
+              : savingId === delivery.id ||
+                (!hasReceipt && !selectedFile) ||
+                (canCompleteDelivery &&
+                  hasOutstandingBalance &&
+                  (!hasCollectedAmountValue ||
+                    collectedAmountInvalid ||
+                    collectedAmountExceedsBalance));
 
-            const canUploadProof =
-              !canCompleteDelivery ||
-              !hasOutstandingBalance ||
-              (hasCollectedAmountValue &&
-                !collectedAmountInvalid &&
-                !collectedAmountExceedsBalance);
+            const canUploadProof = isBlueprintDelivery
+              ? true
+              : !canCompleteDelivery ||
+                !hasOutstandingBalance ||
+                (hasCollectedAmountValue &&
+                  !collectedAmountInvalid &&
+                  !collectedAmountExceedsBalance);
 
             return (
               <div
@@ -552,120 +663,262 @@ export default function DeliveryManagement() {
 
                 {canCompleteDelivery && (
                   <div style={actionSection}>
-                    {hasOutstandingBalance && (
+                    {isBlueprintDelivery ? (
                       <div style={{ marginBottom: "16px" }}>
-                        <div style={sectionTitle}>
-                          Remaining Balance Collection
-                        </div>
-                        <div style={helperText}>
-                          Record the amount collected from the customer during
-                          delivery. Admin will verify this payment before the
-                          order can be completed.
-                        </div>
-
                         <div
                           style={{
-                            marginTop: "12px",
-                            display: "grid",
-                            gridTemplateColumns:
-                              "repeat(auto-fit, minmax(180px, 1fr))",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
                             gap: "12px",
                           }}
                         >
-                          <div>
-                            <label style={infoLabel}>Collected Amount</label>
-                            <input
-                              type="number"
-                              min="0"
-                              max={paymentBalance.toFixed(2)}
-                              step="0.01"
-                              value={collectionForm.amount}
-                              onChange={(e) =>
-                                updateCollectionForm(
-                                  delivery.id,
-                                  "amount",
-                                  e.target.value,
-                                )
-                              }
-                              style={searchInput}
-                              placeholder={`Max ${paymentBalance.toFixed(2)}`}
-                            />
-                            {(!hasCollectedAmountValue ||
-                              collectedAmountInvalid ||
-                              collectedAmountExceedsBalance) && (
-                              <div
-                                style={{
-                                  marginTop: 6,
-                                  fontSize: "12px",
-                                  color: "#b91c1c",
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {!hasCollectedAmountValue
-                                  ? "Collected amount is required before completing delivery."
-                                  : collectedAmountInvalid
-                                    ? "Collected amount must be greater than zero."
-                                    : `Collected amount cannot exceed ₱${paymentBalance.toLocaleString(
-                                        "en-PH",
-                                        { minimumFractionDigits: 2 },
-                                      )}.`}
+                          <div style={sectionTitle}>
+                            Remaining Balance — Blueprint Order
+                          </div>
+                          {blueprintMethodRequired || blueprintAwaitingOnline ? (
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: "#71717a",
+                                fontStyle: "italic",
+                              }}
+                            >
+                              Checking payment status automatically...
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {blueprintMethodRequired ? (
+                          <div style={helperText}>
+                            The customer has not yet chosen how to pay the
+                            remaining balance. Delivery cannot be completed
+                            yet.
+                          </div>
+                        ) : remainingPaymentMethod === "paymongo" ? (
+                          <>
+                            <div style={helperText}>
+                              {blueprintAwaitingOnline
+                                ? "Awaiting Online Payment Confirmation"
+                                : "Online Payment Confirmed"}
+                            </div>
+                            <div
+                              style={{
+                                marginTop: "12px",
+                                display: "grid",
+                                gridTemplateColumns:
+                                  "repeat(auto-fit, minmax(180px, 1fr))",
+                                gap: "12px",
+                              }}
+                            >
+                              <div>
+                                <label style={infoLabel}>
+                                  Cash to Collect
+                                </label>
+                                <input
+                                  type="text"
+                                  value="₱0.00"
+                                  readOnly
+                                  style={{
+                                    ...searchInput,
+                                    background: "#fafafa",
+                                    color: "#18181b",
+                                    fontWeight: 700,
+                                    cursor: "not-allowed",
+                                  }}
+                                />
                               </div>
-                            )}
+                            </div>
+                          </>
+                        ) : blueprintHasPendingCollection ? (
+                          <div style={helperText}>
+                            Cash collection is awaiting admin verification.
+                          </div>
+                        ) : blueprintReadyForCashConfirm ? (
+                          <>
+                            <div style={helperText}>
+                              Payment Method: Cash. Collect the exact amount
+                              below from the customer and confirm.
+                            </div>
+                            <div
+                              style={{
+                                marginTop: "12px",
+                                display: "grid",
+                                gridTemplateColumns:
+                                  "repeat(auto-fit, minmax(180px, 1fr))",
+                                gap: "12px",
+                              }}
+                            >
+                              <div>
+                                <label style={infoLabel}>
+                                  Amount to Collect
+                                </label>
+                                <input
+                                  type="text"
+                                  value={`₱${paymentBalance.toLocaleString(
+                                    "en-PH",
+                                    { minimumFractionDigits: 2 },
+                                  )}`}
+                                  readOnly
+                                  style={{
+                                    ...searchInput,
+                                    background: "#fafafa",
+                                    color: "#18181b",
+                                    fontWeight: 700,
+                                    cursor: "not-allowed",
+                                  }}
+                                />
+                              </div>
+                              <div>
+                                <label style={infoLabel}>
+                                  Payment Method
+                                </label>
+                                <input
+                                  type="text"
+                                  value="Cash"
+                                  readOnly
+                                  style={{
+                                    ...searchInput,
+                                    background: "#fafafa",
+                                    color: "#18181b",
+                                    fontWeight: 700,
+                                    cursor: "not-allowed",
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div style={helperText}>
+                            This order has no outstanding balance.
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      hasOutstandingBalance && (
+                        <div style={{ marginBottom: "16px" }}>
+                          <div style={sectionTitle}>
+                            Remaining Balance Collection
+                          </div>
+                          <div style={helperText}>
+                            Record the amount collected from the customer during
+                            delivery. Admin will verify this payment before the
+                            order can be completed.
                           </div>
 
-                          <div>
-                            <label style={infoLabel}>Payment Method</label>
-                            <input
-                              type="text"
-                              value="Cash"
-                              readOnly
-                              style={{
-                                ...searchInput,
-                                background: "#fafafa",
-                                color: "#18181b",
-                                fontWeight: 700,
-                                cursor: "not-allowed",
-                              }}
-                            />
-                          </div>
+                          <div
+                            style={{
+                              marginTop: "12px",
+                              display: "grid",
+                              gridTemplateColumns:
+                                "repeat(auto-fit, minmax(180px, 1fr))",
+                              gap: "12px",
+                            }}
+                          >
+                            <div>
+                              <label style={infoLabel}>Collected Amount</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max={paymentBalance.toFixed(2)}
+                                step="0.01"
+                                value={collectionForm.amount}
+                                onChange={(e) =>
+                                  updateCollectionForm(
+                                    delivery.id,
+                                    "amount",
+                                    e.target.value,
+                                  )
+                                }
+                                style={searchInput}
+                                placeholder={`Max ${paymentBalance.toFixed(2)}`}
+                              />
+                              {(!hasCollectedAmountValue ||
+                                collectedAmountInvalid ||
+                                collectedAmountExceedsBalance) && (
+                                <div
+                                  style={{
+                                    marginTop: 6,
+                                    fontSize: "12px",
+                                    color: "#b91c1c",
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {!hasCollectedAmountValue
+                                    ? "Collected amount is required before completing delivery."
+                                    : collectedAmountInvalid
+                                      ? "Collected amount must be greater than zero."
+                                      : `Collected amount cannot exceed ₱${paymentBalance.toLocaleString(
+                                          "en-PH",
+                                          { minimumFractionDigits: 2 },
+                                        )}.`}
+                                </div>
+                              )}
+                            </div>
 
-                          <div style={{ gridColumn: "1 / -1" }}>
-                            <label style={infoLabel}>Collection Note</label>
-                            <textarea
-                              rows={2}
-                              value={collectionForm.collection_notes}
-                              onChange={(e) =>
-                                updateCollectionForm(
-                                  delivery.id,
-                                  "collection_notes",
-                                  e.target.value,
-                                )
-                              }
-                              style={{
-                                ...searchInput,
-                                minHeight: 88,
-                                resize: "vertical",
-                                fontFamily: "inherit",
-                              }}
-                              placeholder="Example: Full remaining balance collected during turnover."
-                            />
+                            <div>
+                              <label style={infoLabel}>Payment Method</label>
+                              <input
+                                type="text"
+                                value="Cash"
+                                readOnly
+                                style={{
+                                  ...searchInput,
+                                  background: "#fafafa",
+                                  color: "#18181b",
+                                  fontWeight: 700,
+                                  cursor: "not-allowed",
+                                }}
+                              />
+                            </div>
+
+                            <div style={{ gridColumn: "1 / -1" }}>
+                              <label style={infoLabel}>Collection Note</label>
+                              <textarea
+                                rows={2}
+                                value={collectionForm.collection_notes}
+                                onChange={(e) =>
+                                  updateCollectionForm(
+                                    delivery.id,
+                                    "collection_notes",
+                                    e.target.value,
+                                  )
+                                }
+                                style={{
+                                  ...searchInput,
+                                  minHeight: 88,
+                                  resize: "vertical",
+                                  fontFamily: "inherit",
+                                }}
+                                placeholder="Example: Full remaining balance collected during turnover."
+                              />
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )
                     )}
 
-                    <div style={sectionTitle}>Proof of Delivery</div>
+                    <div style={sectionTitle}>
+                      {isBlueprintDelivery
+                        ? "Upload Proof of Delivery Photo"
+                        : "Proof of Delivery"}
+                    </div>
                     <div style={helperText}>
-                      Upload the signed receipt or customer handoff photo first,
-                      then complete the delivery.
+                      {isBlueprintDelivery
+                        ? "A fresh photo is required every time to complete this delivery."
+                        : "Upload the Proof of Delivery photo first, then complete the delivery."}
                     </div>
 
                     <div style={proofPanel}>
                       <div style={proofStatusRow}>
                         <span style={proofStatusLabel}>
-                          {hasReceipt
-                            ? "Proof already uploaded. Choose another file to replace it."
-                            : "No proof uploaded yet"}
+                          {isBlueprintDelivery
+                            ? selectedFile
+                              ? "Fresh photo selected."
+                              : "Upload a fresh Proof of Delivery photo to continue."
+                            : hasReceipt
+                              ? "Proof already uploaded. Choose another file to replace it."
+                              : "No proof uploaded yet"}
                         </span>
 
                         {hasReceipt && delivery.signed_receipt ? (
@@ -804,7 +1057,7 @@ export default function DeliveryManagement() {
                           rel="noreferrer"
                           style={viewLink}
                         >
-                          View Uploaded Proof
+                          View Proof of Delivery
                         </a>
                       ) : (
                         <div style={helperText}>
