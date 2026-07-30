@@ -371,498 +371,634 @@ export default function AppointmentPage() {
         </div>
       </div>
 
-      <div className="appt-layout">
-        <div className="appt-form-col">
-          <div className="appt-card">
-            {submitted ? (
-              <div className="appt-success">
-                <div className="appt-success-icon">
-                  <CheckCircle size={42} strokeWidth={1.5} />
-                </div>
+      {initialLoad ? (
+        /* 👉 SKELETON LAYOUT - NOW USING SHIMMER ANIMATION */
+        <div className="appt-layout">
+          <div className="appt-form-col">
+            <div
+              className="appt-card"
+              style={{
+                height: "650px",
+                background: "#ffffff",
+                borderColor: "#e5e7eb",
+                padding: "24px",
+              }}
+            >
+              <div
+                className="appt-skeleton-block"
+                style={{ width: "220px", height: "28px", marginBottom: "8px" }}
+              ></div>
+              <div
+                className="appt-skeleton-block"
+                style={{ width: "350px", height: "16px", marginBottom: "32px" }}
+              ></div>
 
-                <div className="appt-success-copy">
-                  <span className="appt-success-eyebrow">
-                    Request Submitted
-                  </span>
-                  <h2>Appointment request sent successfully</h2>
-                  <p>
-                    Our staff will review your request, assign the appropriate
-                    team member, and confirm the schedule with you.
-                  </p>
-                </div>
-
-                <div className="appt-success-details">
-                  <div className="appt-success-row">
-                    <UserCheck size={15} />
-                    <span>{getPurposeLabel(purpose)}</span>
-                  </div>
-                  <div className="appt-success-row">
-                    <Calendar size={15} />
-                    <span>
-                      {new Date(preferred_date).toLocaleDateString("en-US", {
-                        weekday: "long",
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </span>
-                  </div>
-                  <div className="appt-success-row">
-                    <Clock size={15} />
-                    <span>{formatTimeForDisplay(preferred_time)}</span>
-                  </div>
-                  <div className="appt-success-row">
-                    <FileText size={15} />
-                    <span>{project_description}</span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="appt-btn-secondary"
-                  onClick={resetForm}
-                >
-                  Submit Another Request
-                </button>
+              <div
+                className="appt-skeleton-block"
+                style={{ width: "150px", height: "20px", marginBottom: "16px" }}
+              ></div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "12px",
+                  marginBottom: "32px",
+                }}
+              >
+                <div
+                  className="appt-skeleton-block"
+                  style={{ height: "70px", borderRadius: "8px" }}
+                ></div>
+                <div
+                  className="appt-skeleton-block"
+                  style={{ height: "70px", borderRadius: "8px" }}
+                ></div>
               </div>
-            ) : (
-              <>
-                <div className="appt-card-header">
-                  <span className="appt-section-kicker">Appointment Form</span>
-                  <h2>Appointment Request Details</h2>
-                  <p>
-                    Consultation and site measurement requests can be submitted
-                    online. Installation scheduling is arranged by staff after
-                    order confirmation.
-                  </p>
+
+              <div
+                className="appt-skeleton-block"
+                style={{ width: "150px", height: "20px", marginBottom: "16px" }}
+              ></div>
+              <div
+                className="appt-skeleton-block"
+                style={{ width: "100%", height: "120px", borderRadius: "8px" }}
+              ></div>
+            </div>
+          </div>
+
+          <div className="appt-info-col">
+            <div
+              className="appt-card"
+              style={{
+                height: "320px",
+                background: "#ffffff",
+                borderColor: "#e5e7eb",
+                padding: "24px",
+              }}
+            >
+              <div
+                className="appt-skeleton-block"
+                style={{ width: "140px", height: "24px", marginBottom: "24px" }}
+              ></div>
+              <div
+                className="appt-skeleton-block"
+                style={{
+                  width: "100%",
+                  height: "60px",
+                  marginBottom: "12px",
+                  borderRadius: "8px",
+                }}
+              ></div>
+              <div
+                className="appt-skeleton-block"
+                style={{
+                  width: "100%",
+                  height: "60px",
+                  marginBottom: "12px",
+                  borderRadius: "8px",
+                }}
+              ></div>
+              <div
+                className="appt-skeleton-block"
+                style={{ width: "100%", height: "60px", borderRadius: "8px" }}
+              ></div>
+            </div>
+
+            <div
+              className="appt-card"
+              style={{
+                height: "280px",
+                background: "#ffffff",
+                borderColor: "#e5e7eb",
+                padding: "24px",
+              }}
+            >
+              <div
+                className="appt-skeleton-block"
+                style={{ width: "160px", height: "24px", marginBottom: "24px" }}
+              ></div>
+              <div
+                className="appt-skeleton-block"
+                style={{
+                  width: "100%",
+                  height: "90px",
+                  marginBottom: "12px",
+                  borderRadius: "8px",
+                }}
+              ></div>
+              <div
+                className="appt-skeleton-block"
+                style={{ width: "100%", height: "90px", borderRadius: "8px" }}
+              ></div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* 👉 REAL FORM LAYOUT - SHOWS WHEN LOADED */
+        <div className="appt-layout">
+          <div className="appt-form-col">
+            <div className="appt-card">
+              {submitted ? (
+                <div className="appt-success">
+                  <div className="appt-success-icon">
+                    <CheckCircle size={42} strokeWidth={1.5} />
+                  </div>
+
+                  <div className="appt-success-copy">
+                    <span className="appt-success-eyebrow">
+                      Request Submitted
+                    </span>
+                    <h2>Appointment request sent successfully</h2>
+                    <p>
+                      Our staff will review your request, assign the appropriate
+                      team member, and confirm the schedule with you.
+                    </p>
+                  </div>
+
+                  <div className="appt-success-details">
+                    <div className="appt-success-row">
+                      <UserCheck size={15} />
+                      <span>{getPurposeLabel(purpose)}</span>
+                    </div>
+                    <div className="appt-success-row">
+                      <Calendar size={15} />
+                      <span>
+                        {new Date(preferred_date).toLocaleDateString("en-US", {
+                          weekday: "long",
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })}
+                      </span>
+                    </div>
+                    <div className="appt-success-row">
+                      <Clock size={15} />
+                      <span>{formatTimeForDisplay(preferred_time)}</span>
+                    </div>
+                    <div className="appt-success-row">
+                      <FileText size={15} />
+                      <span>{project_description}</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="appt-btn-secondary"
+                    onClick={resetForm}
+                  >
+                    Submit Another Request
+                  </button>
                 </div>
+              ) : (
+                <>
+                  <div className="appt-card-header">
+                    <span className="appt-section-kicker">
+                      Appointment Form
+                    </span>
+                    <h2>Appointment Request Details</h2>
+                    <p>
+                      Consultation and site measurement requests can be
+                      submitted online. Installation scheduling is arranged by
+                      staff after order confirmation.
+                    </p>
+                  </div>
 
-                <form onSubmit={handleSubmit} className="appt-form">
-                  <section className="appt-form-section">
-                    <div className="appt-section-head">
-                      <h3>Appointment Type</h3>
-                      <p>Select one option.</p>
-                    </div>
-
-                    <div className="appt-purpose-grid">
-                      {PURPOSE_OPTIONS.map((item) => {
-                        const isActive = purpose === item.value;
-                        const meta = PURPOSE_META[item.value];
-
-                        return (
-                          <button
-                            key={item.value}
-                            type="button"
-                            className={`appt-purpose-option ${isActive ? "active" : ""}`}
-                            onClick={() => setPurpose(item.value)}
-                          >
-                            <span className="appt-purpose-title">
-                              {meta?.title || item.label}
-                            </span>
-                            <span className="appt-purpose-desc">
-                              {meta?.desc || ""}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-
-                  <section className="appt-form-section">
-                    <div className="appt-section-head">
-                      <h3>Project Details</h3>
-                      <p>
-                        Describe the furniture or service you need so our staff
-                        can review it properly.
-                      </p>
-                    </div>
-
-                    <div className="appt-field">
-                      <label className="appt-label">
-                        <FileText size={14} /> Project Description{" "}
-                        <span className="appt-required">*</span>
-                      </label>
-                      <textarea
-                        className="appt-textarea appt-textarea-lg"
-                        placeholder="e.g. 3-door wardrobe with mirror, kitchen cabinet set, floating shelves..."
-                        value={project_description}
-                        onChange={(e) => setProjectDescription(e.target.value)}
-                        rows={4}
-                        maxLength={500}
-                      />
-                      <div className="appt-char-count">
-                        {project_description.length}/500
+                  <form onSubmit={handleSubmit} className="appt-form">
+                    <section className="appt-form-section">
+                      <div className="appt-section-head">
+                        <h3>Appointment Type</h3>
+                        <p>Select one option.</p>
                       </div>
-                    </div>
 
-                    <div className="appt-field">
-                      <label className="appt-label">
-                        Additional Notes{" "}
-                        <span className="appt-optional">(optional)</span>
-                      </label>
-                      <textarea
-                        className="appt-textarea"
-                        placeholder="Any extra details, style preferences, dimensions, or questions..."
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                        rows={3}
-                        maxLength={300}
-                      />
-                    </div>
-                  </section>
-
-                  {/* WEEKLY PLANNER SECTION */}
-                  <section className="appt-form-section">
-                    <div className="appt-section-head weekly-section-head">
-                      <div>
-                        <h3>Preferred Schedule</h3>
-                        <p>Select an available time slot below.</p>
-                      </div>
-                      <div className="weekly-nav-controls">
-                        <button
-                          type="button"
-                          onClick={prevWeek}
-                          className="weekly-nav-btn"
-                        >
-                          <ChevronLeft size={20} />
-                        </button>
-                        <span className="weekly-nav-label">
-                          {weekDays[0].toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                          })}{" "}
-                          -{" "}
-                          {weekDays[6].toLocaleDateString("en-US", {
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={nextWeek}
-                          className="weekly-nav-btn"
-                        >
-                          <ChevronRight size={20} />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="weekly-planner-wrapper">
-                      {loadingSlots && (
-                        <div className="weekly-loading-overlay">
-                          Loading calendar...
-                        </div>
-                      )}
-
-                      <div className="weekly-grid">
-                        {weekDays.map((dateObj, dayIndex) => {
-                          const dateStr = toYMD(dateObj);
-                          const isPast = dateStr < getMinDateYMD();
-                          const isSunday = dateObj.getDay() === 0;
-                          const dailyBookings = bookedSlots[dateStr] || [];
+                      <div className="appt-purpose-grid">
+                        {PURPOSE_OPTIONS.map((item) => {
+                          const isActive = purpose === item.value;
+                          const meta = PURPOSE_META[item.value];
 
                           return (
-                            <div
-                              key={dateStr}
-                              className={`weekly-col color-${dayIndex}`}
+                            <button
+                              key={item.value}
+                              type="button"
+                              className={`appt-purpose-option ${isActive ? "active" : ""}`}
+                              onClick={() => setPurpose(item.value)}
                             >
-                              <div className="weekly-col-header">
-                                <div className="weekly-day">
-                                  {dateObj
-                                    .toLocaleDateString("en-US", {
-                                      weekday: "long",
-                                    })
-                                    .toUpperCase()}
-                                </div>
-                                <div className="weekly-date">
-                                  {dateObj.getDate()}
-                                </div>
-                              </div>
-
-                              <div className="weekly-slots-container">
-                                {TIME_SLOTS.map((time) => {
-                                  const isSelected =
-                                    preferred_date === dateStr &&
-                                    preferred_time === time;
-
-                                  // Block if past, sunday, or already booked.
-                                  // (Also block Saturday afternoon slots if needed based on store hours)
-                                  const isSaturdayAfternoon =
-                                    dateObj.getDay() === 6 &&
-                                    (time === "13:00" || time === "15:00");
-                                  const isUnavailable =
-                                    isPast ||
-                                    isSunday ||
-                                    isSaturdayAfternoon ||
-                                    dailyBookings.includes(time);
-
-                                  return (
-                                    <button
-                                      key={`${dateStr}-${time}`}
-                                      type="button"
-                                      disabled={isUnavailable}
-                                      onClick={() => {
-                                        setPreferredDate(dateStr);
-                                        setPreferredTime(time);
-                                      }}
-                                      className={`weekly-slot-box ${isUnavailable ? "unavailable" : "available"} ${isSelected ? "selected" : ""}`}
-                                    >
-                                      <div className="slot-time">
-                                        {formatTimeForDisplay(time)}
-                                      </div>
-                                      <div className="slot-status">
-                                        {isUnavailable
-                                          ? "Unavailable"
-                                          : "Available"}
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
+                              <span className="appt-purpose-title">
+                                {meta?.title || item.label}
+                              </span>
+                              <span className="appt-purpose-desc">
+                                {meta?.desc || ""}
+                              </span>
+                            </button>
                           );
                         })}
                       </div>
-                    </div>
-                    {preferred_date && preferred_time && (
-                      <div className="weekly-selection-feedback">
-                        Selected Schedule:{" "}
-                        <strong>
-                          {new Date(preferred_date).toLocaleDateString(
-                            "en-US",
-                            { month: "long", day: "numeric", year: "numeric" },
-                          )}{" "}
-                          at {formatTimeForDisplay(preferred_time)}
-                        </strong>
+                    </section>
+
+                    <section className="appt-form-section">
+                      <div className="appt-section-head">
+                        <h3>Project Details</h3>
+                        <p>
+                          Describe the furniture or service you need so our
+                          staff can review it properly.
+                        </p>
                       </div>
-                    )}
-                  </section>
 
-                  <section className="appt-form-section">
-                    <div className="appt-section-head">
-                      <h3>Contact Information</h3>
-                      <p>
-                        We will use this information to confirm the appointment
-                        or suggest an adjustment if needed.
-                      </p>
-                    </div>
-
-                    <div className="appt-field">
-                      <label className="appt-label">
-                        <Phone size={14} /> Contact Number{" "}
-                        <span className="appt-required">*</span>
-                      </label>
-                      <input
-                        type="tel"
-                        className="appt-input"
-                        value={contact_number}
-                        placeholder="09XXXXXXXXX"
-                        maxLength={11}
-                        onChange={(e) => {
-                          const onlyNums = e.target.value.replace(
-                            /[^0-9]/g,
-                            "",
-                          );
-                          if (onlyNums.length <= 11) {
-                            setContactNumber(onlyNums);
-                          }
-                        }}
-                        style={{
-                          maxWidth: "320px",
-                          borderColor:
-                            contact_number && !/^09\d{9}$/.test(contact_number)
-                              ? "#dc2626"
-                              : undefined,
-                        }}
-                      />
-                      {contact_number && !/^09\d{9}$/.test(contact_number) && (
-                        <div
-                          style={{
-                            color: "#dc2626",
-                            fontSize: 12,
-                            marginTop: 2,
-                            fontWeight: 600,
-                          }}
-                        >
-                          Number must be exactly 11 digits and start with 09.
-                        </div>
-                      )}
-                    </div>
-
-                    {purpose === "site_measurement" && (
                       <div className="appt-field">
                         <label className="appt-label">
-                          <MapPin size={14} /> Site Address{" "}
+                          <FileText size={14} /> Project Description{" "}
                           <span className="appt-required">*</span>
                         </label>
                         <textarea
+                          className="appt-textarea appt-textarea-lg"
+                          placeholder="e.g. 3-door wardrobe with mirror, kitchen cabinet set, floating shelves..."
+                          value={project_description}
+                          onChange={(e) =>
+                            setProjectDescription(e.target.value)
+                          }
+                          rows={4}
+                          maxLength={500}
+                        />
+                        <div className="appt-char-count">
+                          {project_description.length}/500
+                        </div>
+                      </div>
+
+                      <div className="appt-field">
+                        <label className="appt-label">
+                          Additional Notes{" "}
+                          <span className="appt-optional">(optional)</span>
+                        </label>
+                        <textarea
                           className="appt-textarea"
-                          placeholder="Enter the full address where the measurement will take place."
-                          value={address}
-                          onChange={(e) => setAddress(e.target.value)}
+                          placeholder="Any extra details, style preferences, dimensions, or questions..."
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
                           rows={3}
                           maxLength={300}
                         />
                       </div>
-                    )}
-                  </section>
+                    </section>
 
-                  {error && <div className="appt-error">{error}</div>}
-
-                  <div className="appt-form-actions">
-                    <button
-                      type="submit"
-                      className="appt-btn-primary"
-                      disabled={submitting}
-                    >
-                      {submitting ? (
-                        <>
-                          <span className="appt-spinner" /> Submitting…
-                        </>
-                      ) : (
-                        "Submit Request"
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="appt-info-col">
-          <div className="appt-card appt-info-card">
-            <div className="appt-side-header">
-              <span className="appt-section-kicker">Process</span>
-              <h3>What to Expect</h3>
-            </div>
-
-            <div className="appt-steps">
-              <div className="appt-step">
-                <div>
-                  <strong>1. Submit Request</strong>
-                  <p>
-                    Choose the appointment type, add your project details, and
-                    send your preferred schedule.
-                  </p>
-                </div>
-              </div>
-
-              <div className="appt-step">
-                <div>
-                  <strong>2. Staff Review</strong>
-                  <p>
-                    Our team reviews your request and checks availability before
-                    assigning the appropriate staff member.
-                  </p>
-                </div>
-              </div>
-
-              <div className="appt-step">
-                <div>
-                  <strong>3. Confirmation</strong>
-                  <p>
-                    Once confirmed, you will receive the final appointment
-                    schedule from our staff.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="appt-note-box">
-              Consultation and site measurement requests are reviewed manually.
-              Installation scheduling is handled by staff after order
-              confirmation.
-            </div>
-
-            <div className="appt-hours">
-              <div className="appt-hours-title">Available Hours</div>
-              <div className="appt-hours-row">
-                <span>Monday – Friday</span>
-                <span>8:00 AM – 5:00 PM</span>
-              </div>
-              <div className="appt-hours-row">
-                <span>Saturday</span>
-                <span>8:00 AM – 12:00 PM</span>
-              </div>
-              <div className="appt-hours-row closed">
-                <span>Sunday</span>
-                <span>Closed</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="appt-card">
-            <div className="appt-side-header">
-              <span className="appt-section-kicker">History</span>
-              <h3 className="appt-my-title">My Appointments</h3>
-            </div>
-
-            {loadingAppts ? (
-              <div className="appt-list">
-                {Array(3)
-                  .fill(0)
-                  .map((_, i) => (
-                    <ApptSkeletonItem key={i} />
-                  ))}
-              </div>
-            ) : appointments.length === 0 ? (
-              <div className="appt-empty">
-                <Calendar size={30} strokeWidth={1} />
-                <p>No appointments yet</p>
-              </div>
-            ) : (
-              <div className="appt-list">
-                {appointments.map((a) => {
-                  const details = parseNotes(a.notes);
-
-                  return (
-                    <div key={a.id} className="appt-item">
-                      <div className="appt-item-top">
-                        <div className="appt-item-purpose">
-                          {getPurposeLabel(a.purpose)}
+                    {/* WEEKLY PLANNER SECTION */}
+                    <section className="appt-form-section">
+                      <div className="appt-section-head weekly-section-head">
+                        <div>
+                          <h3>Preferred Schedule</h3>
+                          <p>Select an available time slot below.</p>
                         </div>
-                        <StatusBadge status={a.status} />
+                        <div className="weekly-nav-controls">
+                          <button
+                            type="button"
+                            onClick={prevWeek}
+                            className="weekly-nav-btn"
+                          >
+                            <ChevronLeft size={20} />
+                          </button>
+                          <span className="weekly-nav-label">
+                            {weekDays[0].toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })}{" "}
+                            -{" "}
+                            {weekDays[6].toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={nextWeek}
+                            className="weekly-nav-btn"
+                          >
+                            <ChevronRight size={20} />
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="appt-item-meta">
-                        <span>
-                          <Calendar size={12} />{" "}
-                          {formatDateTime(a.scheduled_date)}
-                        </span>
+                      <div className="weekly-planner-wrapper">
+                        {loadingSlots && (
+                          <div className="weekly-loading-overlay">
+                            Loading calendar...
+                          </div>
+                        )}
+
+                        <div className="weekly-grid">
+                          {weekDays.map((dateObj, dayIndex) => {
+                            const dateStr = toYMD(dateObj);
+                            const isPast = dateStr < getMinDateYMD();
+                            const isSunday = dateObj.getDay() === 0;
+                            const dailyBookings = bookedSlots[dateStr] || [];
+
+                            return (
+                              <div
+                                key={dateStr}
+                                className={`weekly-col color-${dayIndex}`}
+                              >
+                                <div className="weekly-col-header">
+                                  <div className="weekly-day">
+                                    {dateObj
+                                      .toLocaleDateString("en-US", {
+                                        weekday: "long",
+                                      })
+                                      .toUpperCase()}
+                                  </div>
+                                  <div className="weekly-date">
+                                    {dateObj.getDate()}
+                                  </div>
+                                </div>
+
+                                <div className="weekly-slots-container">
+                                  {TIME_SLOTS.map((time) => {
+                                    const isSelected =
+                                      preferred_date === dateStr &&
+                                      preferred_time === time;
+
+                                    // Block if past, sunday, or already booked.
+                                    // (Also block Saturday afternoon slots if needed based on store hours)
+                                    const isSaturdayAfternoon =
+                                      dateObj.getDay() === 6 &&
+                                      (time === "13:00" || time === "15:00");
+                                    const isUnavailable =
+                                      isPast ||
+                                      isSunday ||
+                                      isSaturdayAfternoon ||
+                                      dailyBookings.includes(time);
+
+                                    return (
+                                      <button
+                                        key={`${dateStr}-${time}`}
+                                        type="button"
+                                        disabled={isUnavailable}
+                                        onClick={() => {
+                                          setPreferredDate(dateStr);
+                                          setPreferredTime(time);
+                                        }}
+                                        className={`weekly-slot-box ${isUnavailable ? "unavailable" : "available"} ${isSelected ? "selected" : ""}`}
+                                      >
+                                        <div className="slot-time">
+                                          {formatTimeForDisplay(time)}
+                                        </div>
+                                        <div className="slot-status">
+                                          {isUnavailable
+                                            ? "Unavailable"
+                                            : "Available"}
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      {preferred_date && preferred_time && (
+                        <div className="weekly-selection-feedback">
+                          Selected Schedule:{" "}
+                          <strong>
+                            {new Date(preferred_date).toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "long",
+                                day: "numeric",
+                                year: "numeric",
+                              },
+                            )}{" "}
+                            at {formatTimeForDisplay(preferred_time)}
+                          </strong>
+                        </div>
+                      )}
+                    </section>
+
+                    <section className="appt-form-section">
+                      <div className="appt-section-head">
+                        <h3>Contact Information</h3>
+                        <p>
+                          We will use this information to confirm the
+                          appointment or suggest an adjustment if needed.
+                        </p>
                       </div>
 
-                      {details.projectDescription && (
-                        <div className="appt-item-body">
-                          {details.projectDescription}
+                      <div className="appt-field">
+                        <label className="appt-label">
+                          <Phone size={14} /> Contact Number{" "}
+                          <span className="appt-required">*</span>
+                        </label>
+                        <input
+                          type="tel"
+                          className="appt-input"
+                          value={contact_number}
+                          placeholder="09XXXXXXXXX"
+                          maxLength={11}
+                          onChange={(e) => {
+                            const onlyNums = e.target.value.replace(
+                              /[^0-9]/g,
+                              "",
+                            );
+                            if (onlyNums.length <= 11) {
+                              setContactNumber(onlyNums);
+                            }
+                          }}
+                          style={{
+                            maxWidth: "320px",
+                            borderColor:
+                              contact_number &&
+                              !/^09\d{9}$/.test(contact_number)
+                                ? "#dc2626"
+                                : undefined,
+                          }}
+                        />
+                        {contact_number &&
+                          !/^09\d{9}$/.test(contact_number) && (
+                            <div
+                              style={{
+                                color: "#dc2626",
+                                fontSize: 12,
+                                marginTop: 2,
+                                fontWeight: 600,
+                              }}
+                            >
+                              Number must be exactly 11 digits and start with
+                              09.
+                            </div>
+                          )}
+                      </div>
+
+                      {purpose === "site_measurement" && (
+                        <div className="appt-field">
+                          <label className="appt-label">
+                            <MapPin size={14} /> Site Address{" "}
+                            <span className="appt-required">*</span>
+                          </label>
+                          <textarea
+                            className="appt-textarea"
+                            placeholder="Enter the full address where the measurement will take place."
+                            value={address}
+                            onChange={(e) => setAddress(e.target.value)}
+                            rows={3}
+                            maxLength={300}
+                          />
                         </div>
                       )}
+                    </section>
 
-                      {a.assigned_to_name && (
-                        <div className="appt-item-assigned">
-                          Assigned Staff: {a.assigned_to_name}
-                        </div>
-                      )}
+                    {error && <div className="appt-error">{error}</div>}
 
-                      {["pending", "awaiting_staff_acceptance"].includes(
-                        a.status,
-                      ) && (
-                        <button
-                          type="button"
-                          className="appt-btn-cancel"
-                          onClick={() => handleCancel(a.id)}
-                        >
-                          <X size={12} /> Cancel Request
-                        </button>
-                      )}
+                    <div className="appt-form-actions">
+                      <button
+                        type="submit"
+                        className="appt-btn-primary"
+                        disabled={submitting}
+                      >
+                        {submitting ? (
+                          <>
+                            <span className="appt-spinner" /> Submitting…
+                          </>
+                        ) : (
+                          "Submit Request"
+                        )}
+                      </button>
                     </div>
-                  );
-                })}
+                  </form>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="appt-info-col">
+            <div className="appt-card appt-info-card">
+              <div className="appt-side-header">
+                <span className="appt-section-kicker">Process</span>
+                <h3>What to Expect</h3>
               </div>
-            )}
+
+              <div className="appt-steps">
+                <div className="appt-step">
+                  <div>
+                    <strong>1. Submit Request</strong>
+                    <p>
+                      Choose the appointment type, add your project details, and
+                      send your preferred schedule.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="appt-step">
+                  <div>
+                    <strong>2. Staff Review</strong>
+                    <p>
+                      Our team reviews your request and checks availability
+                      before assigning the appropriate staff member.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="appt-step">
+                  <div>
+                    <strong>3. Confirmation</strong>
+                    <p>
+                      Once confirmed, you will receive the final appointment
+                      schedule from our staff.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="appt-note-box">
+                Consultation and site measurement requests are reviewed
+                manually. Installation scheduling is handled by staff after
+                order confirmation.
+              </div>
+
+              <div className="appt-hours">
+                <div className="appt-hours-title">Available Hours</div>
+                <div className="appt-hours-row">
+                  <span>Monday – Friday</span>
+                  <span>8:00 AM – 5:00 PM</span>
+                </div>
+                <div className="appt-hours-row">
+                  <span>Saturday</span>
+                  <span>8:00 AM – 12:00 PM</span>
+                </div>
+                <div className="appt-hours-row closed">
+                  <span>Sunday</span>
+                  <span>Closed</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="appt-card">
+              <div className="appt-side-header">
+                <span className="appt-section-kicker">History</span>
+                <h3 className="appt-my-title">My Appointments</h3>
+              </div>
+
+              {loadingAppts ? (
+                <div className="appt-list">
+                  {Array(3)
+                    .fill(0)
+                    .map((_, i) => (
+                      <ApptSkeletonItem key={i} />
+                    ))}
+                </div>
+              ) : appointments.length === 0 ? (
+                <div className="appt-empty">
+                  <Calendar size={30} strokeWidth={1} />
+                  <p>No appointments yet</p>
+                </div>
+              ) : (
+                <div className="appt-list">
+                  {appointments.map((a) => {
+                    const details = parseNotes(a.notes);
+
+                    return (
+                      <div key={a.id} className="appt-item">
+                        <div className="appt-item-top">
+                          <div className="appt-item-purpose">
+                            {getPurposeLabel(a.purpose)}
+                          </div>
+                          <StatusBadge status={a.status} />
+                        </div>
+
+                        <div className="appt-item-meta">
+                          <span>
+                            <Calendar size={12} />{" "}
+                            {formatDateTime(a.scheduled_date)}
+                          </span>
+                        </div>
+
+                        {details.projectDescription && (
+                          <div className="appt-item-body">
+                            {details.projectDescription}
+                          </div>
+                        )}
+
+                        {a.assigned_to_name && (
+                          <div className="appt-item-assigned">
+                            Assigned Staff: {a.assigned_to_name}
+                          </div>
+                        )}
+
+                        {["pending", "awaiting_staff_acceptance"].includes(
+                          a.status,
+                        ) && (
+                          <button
+                            type="button"
+                            className="appt-btn-cancel"
+                            onClick={() => handleCancel(a.id)}
+                          >
+                            <X size={12} /> Cancel Request
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
