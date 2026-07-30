@@ -418,6 +418,23 @@ export default function CartPage() {
           <span>Checkout Details</span>
         </div>
 
+        <div className="fm-cart-page-hero">
+          <div>
+            <h1>Shopping Cart</h1>
+            <p>
+              Review your selected items and quantities before proceeding to
+              checkout.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="fm-cart-hero-btn"
+            onClick={() => navigate("/catalog")}
+          >
+            ← Continue Shopping
+          </button>
+        </div>
+
         <ChevronRight size={16} className="fm-cart-progress-arrow" />
 
         <div className="fm-cart-step">

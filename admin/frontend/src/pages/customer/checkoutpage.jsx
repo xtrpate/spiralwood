@@ -321,19 +321,9 @@ export default function CheckoutPage() {
     }
   };
 
-  if (!selectionReady) {
-    return (
-      <div className="checkout-page">
-        <div className="page-hero">
-          <h1>Checkout</h1>
-          <p>Loading selected ready-made items…</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="checkout-page">
+      {/* 👉 STATIC HEADER - ALWAYS VISIBLE */}
       <div
         className="fm-cart-shell"
         style={{ paddingBottom: 0, paddingTop: "28px" }}
@@ -374,91 +364,458 @@ export default function CheckoutPage() {
         </button>
       </div>
 
-      <div className="checkout-layout">
-        <div className="checkout-form-panel">
-          <div className="checkout-section">
-            <div className="checkout-section-header">
-              <div className="checkout-section-num">🛒</div>
-              <h3>Your Ready-Made Items</h3>
-              <span
-                style={{ marginLeft: "auto", fontSize: 12, color: "#111111" }}
+      {!selectionReady ? (
+        /* 👉 SKELETON LAYOUT - USES EXISTING SHIMMER CSS */
+        <div className="checkout-layout">
+          <div className="checkout-form-panel">
+            <div className="checkout-section">
+              <div className="checkout-section-header">
+                <div
+                  className="skeleton-line"
+                  style={{
+                    width: "200px",
+                    height: "24px",
+                    borderRadius: "4px",
+                  }}
+                ></div>
+              </div>
+              <div
+                className="checkout-section-body"
+                style={{ display: "grid", gap: "16px" }}
               >
-                {checkoutItems.length} item
-                {checkoutItems.length !== 1 ? "s" : ""} • {totalUnits} unit
-                {totalUnits !== 1 ? "s" : ""}
-              </span>
+                <div
+                  className="skeleton-line"
+                  style={{
+                    width: "100%",
+                    height: "92px",
+                    borderRadius: "8px",
+                    maxWidth: "none",
+                  }}
+                ></div>
+                <div
+                  className="skeleton-line"
+                  style={{
+                    width: "100%",
+                    height: "92px",
+                    borderRadius: "8px",
+                    maxWidth: "none",
+                  }}
+                ></div>
+              </div>
             </div>
 
-            <div className="checkout-items-preview">
-              {checkoutItems.map((item) => (
-                <div key={item.key} className="checkout-item-row">
-                  <div className="checkout-item-thumb">
-                    {item.image_url || item.preview_image_url ? (
-                      <img
-                        src={resolveCartImageSrc(
-                          item.image_url || item.preview_image_url,
-                        )}
-                        alt={item.product_name}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          borderRadius: 8,
-                        }}
-                        onError={(e) => {
-                          e.target.style.display = "none";
-                          if (e.target.nextSibling) {
-                            e.target.nextSibling.style.display = "flex";
-                          }
-                        }}
-                      />
-                    ) : null}
+            <div className="checkout-section">
+              <div className="checkout-section-header">
+                <div
+                  className="skeleton-line"
+                  style={{
+                    width: "180px",
+                    height: "24px",
+                    borderRadius: "4px",
+                  }}
+                ></div>
+              </div>
+              <div
+                className="checkout-section-body"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "14px",
+                }}
+              >
+                <div
+                  className="skeleton-line"
+                  style={{ height: "48px", borderRadius: "6px", width: "100%" }}
+                ></div>
+                <div
+                  className="skeleton-line"
+                  style={{ height: "48px", borderRadius: "6px", width: "100%" }}
+                ></div>
+                <div
+                  className="skeleton-line"
+                  style={{
+                    gridColumn: "1 / -1",
+                    height: "48px",
+                    borderRadius: "6px",
+                    width: "100%",
+                  }}
+                ></div>
+              </div>
+            </div>
+          </div>
 
-                    <div
-                      style={{
-                        display:
-                          item.image_url || item.preview_image_url
-                            ? "none"
-                            : "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        height: "100%",
-                        fontSize: 20,
-                      }}
-                    >
-                      🪵
+          <div className="checkout-summary">
+            <div className="checkout-summary-header">
+              <div
+                className="skeleton-line"
+                style={{
+                  width: "140px",
+                  height: "24px",
+                  borderRadius: "4px",
+                  background: "rgba(255,255,255,0.2)",
+                }}
+              ></div>
+            </div>
+            <div style={{ padding: "20px" }}>
+              <div
+                className="skeleton-line"
+                style={{
+                  width: "100%",
+                  height: "20px",
+                  marginBottom: "16px",
+                  borderRadius: "4px",
+                }}
+              ></div>
+              <div
+                className="skeleton-line"
+                style={{
+                  width: "100%",
+                  height: "20px",
+                  marginBottom: "16px",
+                  borderRadius: "4px",
+                }}
+              ></div>
+              <div
+                className="skeleton-line"
+                style={{
+                  width: "100%",
+                  height: "20px",
+                  marginBottom: "32px",
+                  borderRadius: "4px",
+                }}
+              ></div>
+              <div
+                className="skeleton-line"
+                style={{ width: "100%", height: "52px", borderRadius: "0" }}
+              ></div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* 👉 REAL FORM LAYOUT - SHOWS WHEN LOADED */
+        <div className="checkout-layout">
+          <div className="checkout-form-panel">
+            <div className="checkout-section">
+              <div className="checkout-section-header">
+                <div className="checkout-section-num">🛒</div>
+                <h3>Your Ready-Made Items</h3>
+                <span
+                  style={{ marginLeft: "auto", fontSize: 12, color: "#111111" }}
+                >
+                  {checkoutItems.length} item
+                  {checkoutItems.length !== 1 ? "s" : ""} • {totalUnits} unit
+                  {totalUnits !== 1 ? "s" : ""}
+                </span>
+              </div>
+
+              <div className="checkout-items-preview">
+                {checkoutItems.map((item) => (
+                  <div key={item.key} className="checkout-item-row">
+                    <div className="checkout-item-thumb">
+                      {item.image_url || item.preview_image_url ? (
+                        <img
+                          src={resolveCartImageSrc(
+                            item.image_url || item.preview_image_url,
+                          )}
+                          alt={item.product_name}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                            borderRadius: 8,
+                          }}
+                          onError={(e) => {
+                            e.target.style.display = "none";
+                            if (e.target.nextSibling) {
+                              e.target.nextSibling.style.display = "flex";
+                            }
+                          }}
+                        />
+                      ) : null}
+
+                      <div
+                        style={{
+                          display:
+                            item.image_url || item.preview_image_url
+                              ? "none"
+                              : "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          height: "100%",
+                          fontSize: 20,
+                        }}
+                      >
+                        🪵
+                      </div>
+                    </div>
+
+                    <div className="checkout-item-details">
+                      <div className="checkout-item-name">
+                        {item.product_name}
+                      </div>
+
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "#111111",
+                          marginTop: 4,
+                          fontWeight: 500,
+                        }}
+                      >
+                        Ready-Made Product
+                      </div>
+
+                      {item.stock_status ? (
+                        <div
+                          className="checkout-item-sub"
+                          style={{ marginTop: 4 }}
+                        >
+                          Stock: {item.stock_status}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="checkout-item-qty">
+                      ×{item.quantity || 1}
+                    </div>
+
+                    <div className="checkout-item-price">
+                      {formatPeso(
+                        Number(item.unit_price || 0) *
+                          Math.max(1, Number(item.quantity || 1)),
+                      )}
                     </div>
                   </div>
+                ))}
+              </div>
+            </div>
 
-                  <div className="checkout-item-details">
-                    <div className="checkout-item-name">
+            <div className="checkout-section">
+              <div className="checkout-section-header">
+                <div className="checkout-section-num">1</div>
+                <h3>Contact Information</h3>
+              </div>
+
+              <div className="checkout-section-body">
+                <div className="form-grid">
+                  <div className="form-field">
+                    <label>Full Name *</label>
+                    <input
+                      type="text"
+                      placeholder="Juan dela Cruz"
+                      value={form.name}
+                      onChange={(e) => setField("name", e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-field">
+                    <label>Phone Number *</label>
+                    <input
+                      type="tel"
+                      placeholder="09XXXXXXXXX"
+                      value={form.phone}
+                      onChange={(e) => setField("phone", e.target.value)}
+                    />
+                  </div>
+
+                  {showAddressSection ? (
+                    <>
+                      {hasDefaultAddress && (
+                        <div className="form-field full">
+                          <label
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              cursor: "pointer",
+                            }}
+                          >
+                            <span
+                              style={{
+                                position: "relative",
+                                display: "inline-flex",
+                                width: 18,
+                                height: 18,
+                                flexShrink: 0,
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={useDefaultAddress}
+                                onChange={(e) =>
+                                  handleToggleDefaultAddress(e.target.checked)
+                                }
+                                style={{
+                                  position: "absolute",
+                                  inset: 0,
+                                  width: "100%",
+                                  height: "100%",
+                                  margin: 0,
+                                  padding: 0,
+                                  opacity: 0,
+                                  cursor: "pointer",
+                                }}
+                              />
+                              <span
+                                aria-hidden="true"
+                                style={{
+                                  width: 18,
+                                  height: 18,
+                                  boxSizing: "border-box",
+                                  borderRadius: 4,
+                                  border: useDefaultAddress
+                                    ? "2px solid #1d4ed8"
+                                    : "2px solid #999",
+                                  background: useDefaultAddress
+                                    ? "#1d4ed8"
+                                    : "#fff",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  flexShrink: 0,
+                                  pointerEvents: "none",
+                                }}
+                              >
+                                {useDefaultAddress && (
+                                  <svg
+                                    width="11"
+                                    height="11"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="white"
+                                    strokeWidth="4"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <polyline points="20 6 9 17 4 12" />
+                                  </svg>
+                                )}
+                              </span>
+                            </span>
+                            Use my default delivery address
+                          </label>
+
+                          {useDefaultAddress && (
+                            <div
+                              style={{
+                                fontSize: 13,
+                                color: "#444",
+                                marginTop: 6,
+                                paddingLeft: 26,
+                              }}
+                            >
+                              📍 {user?.address}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {!useDefaultAddress && (
+                        <div className="form-field full">
+                          <LocationPicker
+                            label="Use a different delivery address"
+                            addressValue={form.delivery_address}
+                            onAddressChange={handleAddressInputChange}
+                            value={deliveryPin}
+                            onChange={handlePinChange}
+                          />
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="form-field full">
+                      <p
+                        style={{
+                          fontSize: 13,
+                          color: "#666",
+                          margin: 0,
+                        }}
+                      >
+                        Cash on Pick-up — no delivery address needed. You'll pay
+                        and collect your order in-store.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="checkout-section">
+              <div className="checkout-section-header">
+                <div className="checkout-section-num">2</div>
+                <h3>Payment Method</h3>
+              </div>
+
+              <div className="checkout-section-body">
+                <div className="payment-methods">
+                  {PAYMENT_METHODS.map((method) => (
+                    <div
+                      key={method.value}
+                      className={`payment-method-card ${
+                        form.payment_method === method.value ? "selected" : ""
+                      }`}
+                      onClick={() => setField("payment_method", method.value)}
+                    >
+                      <div className="payment-method-icon">{method.icon}</div>
+
+                      <div className="payment-method-info">
+                        <span className="payment-method-name">
+                          {method.label}
+                        </span>
+                        <span className="payment-method-desc">
+                          {method.desc}
+                        </span>
+                      </div>
+
+                      <div
+                        className={`payment-method-check ${
+                          form.payment_method === method.value ? "selected" : ""
+                        }`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="checkout-section">
+              <div className="checkout-section-header">
+                <div className="checkout-section-num">3</div>
+                <h3>Additional Notes</h3>
+              </div>
+
+              <div className="checkout-section-body">
+                <div className="form-field">
+                  <textarea
+                    className="order-notes"
+                    rows={3}
+                    placeholder="Any other instructions for your order…"
+                    value={form.notes}
+                    onChange={(e) => setField("notes", e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="checkout-summary">
+            <div className="checkout-summary-header">
+              <h3>Order Summary</h3>
+            </div>
+
+            <div className="checkout-summary-items">
+              {checkoutItems.map((item) => (
+                <div key={item.key} className="checkout-summary-item">
+                  <div>
+                    <div className="checkout-summary-item-name">
                       {item.product_name}
                     </div>
-
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "#111111",
-                        marginTop: 4,
-                        fontWeight: 500,
-                      }}
-                    >
-                      Ready-Made Product
+                    <div className="checkout-summary-item-qty">
+                      ×{item.quantity || 1}
                     </div>
-
-                    {item.stock_status ? (
-                      <div
-                        className="checkout-item-sub"
-                        style={{ marginTop: 4 }}
-                      >
-                        Stock: {item.stock_status}
-                      </div>
-                    ) : null}
                   </div>
 
-                  <div className="checkout-item-qty">×{item.quantity || 1}</div>
-
-                  <div className="checkout-item-price">
+                  <div className="checkout-summary-item-price">
                     {formatPeso(
                       Number(item.unit_price || 0) *
                         Math.max(1, Number(item.quantity || 1)),
@@ -467,275 +824,42 @@ export default function CheckoutPage() {
                 </div>
               ))}
             </div>
-          </div>
 
-          <div className="checkout-section">
-            <div className="checkout-section-header">
-              <div className="checkout-section-num">1</div>
-              <h3>Contact Information</h3>
-            </div>
-
-            <div className="checkout-section-body">
-              <div className="form-grid">
-                <div className="form-field">
-                  <label>Full Name *</label>
-                  <input
-                    type="text"
-                    placeholder="Juan dela Cruz"
-                    value={form.name}
-                    onChange={(e) => setField("name", e.target.value)}
-                  />
-                </div>
-
-                <div className="form-field">
-                  <label>Phone Number *</label>
-                  <input
-                    type="tel"
-                    placeholder="09XXXXXXXXX"
-                    value={form.phone}
-                    onChange={(e) => setField("phone", e.target.value)}
-                  />
-                </div>
-
-                {showAddressSection ? (
-                  <>
-                    {hasDefaultAddress && (
-                      <div className="form-field full">
-                        <label
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            cursor: "pointer",
-                          }}
-                        >
-                          <span
-                            style={{
-                              position: "relative",
-                              display: "inline-flex",
-                              width: 18,
-                              height: 18,
-                              flexShrink: 0,
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={useDefaultAddress}
-                              onChange={(e) =>
-                                handleToggleDefaultAddress(e.target.checked)
-                              }
-                              style={{
-                                position: "absolute",
-                                inset: 0,
-                                width: "100%",
-                                height: "100%",
-                                margin: 0,
-                                padding: 0,
-                                opacity: 0,
-                                cursor: "pointer",
-                              }}
-                            />
-                            <span
-                              aria-hidden="true"
-                              style={{
-                                width: 18,
-                                height: 18,
-                                boxSizing: "border-box",
-                                borderRadius: 4,
-                                border: useDefaultAddress
-                                  ? "2px solid #1d4ed8"
-                                  : "2px solid #999",
-                                background: useDefaultAddress
-                                  ? "#1d4ed8"
-                                  : "#fff",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                flexShrink: 0,
-                                pointerEvents: "none",
-                              }}
-                            >
-                              {useDefaultAddress && (
-                                <svg
-                                  width="11"
-                                  height="11"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="white"
-                                  strokeWidth="4"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                              )}
-                            </span>
-                          </span>
-                          Use my default delivery address
-                        </label>
-
-                        {useDefaultAddress && (
-                          <div
-                            style={{
-                              fontSize: 13,
-                              color: "#444",
-                              marginTop: 6,
-                              paddingLeft: 26,
-                            }}
-                          >
-                            📍 {user?.address}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {!useDefaultAddress && (
-                      <div className="form-field full">
-                        <LocationPicker
-                          label="Use a different delivery address"
-                          addressValue={form.delivery_address}
-                          onAddressChange={handleAddressInputChange}
-                          value={deliveryPin}
-                          onChange={handlePinChange}
-                        />
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="form-field full">
-                    <p
-                      style={{
-                        fontSize: 13,
-                        color: "#666",
-                        margin: 0,
-                      }}
-                    >
-                      Cash on Pick-up — no delivery address needed. You'll pay
-                      and collect your order in-store.
-                    </p>
-                  </div>
-                )}
+            <div className="checkout-summary-totals">
+              <div className="summary-row">
+                <span>Subtotal</span>
+                <span>{formatPeso(subtotal)}</span>
               </div>
-            </div>
-          </div>
 
-          <div className="checkout-section">
-            <div className="checkout-section-header">
-              <div className="checkout-section-num">2</div>
-              <h3>Payment Method</h3>
-            </div>
-
-            <div className="checkout-section-body">
-              <div className="payment-methods">
-                {PAYMENT_METHODS.map((method) => (
-                  <div
-                    key={method.value}
-                    className={`payment-method-card ${
-                      form.payment_method === method.value ? "selected" : ""
-                    }`}
-                    onClick={() => setField("payment_method", method.value)}
-                  >
-                    <div className="payment-method-icon">{method.icon}</div>
-
-                    <div className="payment-method-info">
-                      <span className="payment-method-name">
-                        {method.label}
-                      </span>
-                      <span className="payment-method-desc">{method.desc}</span>
-                    </div>
-
-                    <div
-                      className={`payment-method-check ${
-                        form.payment_method === method.value ? "selected" : ""
-                      }`}
-                    />
-                  </div>
-                ))}
+              <div className="summary-row">
+                <span>Shipping</span>
+                <span style={{ color: "#111111", fontWeight: 700 }}>
+                  Calculated by store
+                </span>
               </div>
-            </div>
-          </div>
 
-          <div className="checkout-section">
-            <div className="checkout-section-header">
-              <div className="checkout-section-num">3</div>
-              <h3>Additional Notes</h3>
-            </div>
-
-            <div className="checkout-section-body">
-              <div className="form-field">
-                <textarea
-                  className="order-notes"
-                  rows={3}
-                  placeholder="Any other instructions for your order…"
-                  value={form.notes}
-                  onChange={(e) => setField("notes", e.target.value)}
-                />
+              <div className="summary-row">
+                <span>Total</span>
+                <span style={{ color: "#111111", fontWeight: 800 }}>
+                  {formatPeso(total)}
+                </span>
               </div>
+
+              <p className="summary-note" style={{ marginTop: 10 }}>
+                This checkout is for ready-made products only.
+              </p>
             </div>
+
+            <button
+              className="place-order-btn"
+              onClick={handleSubmit}
+              disabled={loading || !checkoutItems.length}
+            >
+              {loading ? "Placing Order…" : "Place Order"}
+            </button>
           </div>
         </div>
-
-        <div className="checkout-summary">
-          <div className="checkout-summary-header">
-            <h3>Order Summary</h3>
-          </div>
-
-          <div className="checkout-summary-items">
-            {checkoutItems.map((item) => (
-              <div key={item.key} className="checkout-summary-item">
-                <div>
-                  <div className="checkout-summary-item-name">
-                    {item.product_name}
-                  </div>
-                  <div className="checkout-summary-item-qty">
-                    ×{item.quantity || 1}
-                  </div>
-                </div>
-
-                <div className="checkout-summary-item-price">
-                  {formatPeso(
-                    Number(item.unit_price || 0) *
-                      Math.max(1, Number(item.quantity || 1)),
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="checkout-summary-totals">
-            <div className="summary-row">
-              <span>Subtotal</span>
-              <span>{formatPeso(subtotal)}</span>
-            </div>
-
-            <div className="summary-row">
-              <span>Shipping</span>
-              <span style={{ color: "#111111", fontWeight: 700 }}>
-                Calculated by store
-              </span>
-            </div>
-
-            <div className="summary-row">
-              <span>Total</span>
-              <span style={{ color: "#111111", fontWeight: 800 }}>
-                {formatPeso(total)}
-              </span>
-            </div>
-
-            <p className="summary-note" style={{ marginTop: 10 }}>
-              This checkout is for ready-made products only.
-            </p>
-          </div>
-
-          <button
-            className="place-order-btn"
-            onClick={handleSubmit}
-            disabled={loading || !checkoutItems.length}
-          >
-            {loading ? "Placing Order…" : "Place Order"}
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
