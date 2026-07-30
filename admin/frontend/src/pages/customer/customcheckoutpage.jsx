@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { Scissors } from "lucide-react";
 import { useCustomCart } from "./customcartcontext";
@@ -6,6 +6,43 @@ import { buildAssetUrl } from "../../services/api";
 import api from "../../services/api";
 import "./customizepage.css";
 import useAuthStore from "../../store/authStore";
+import LocationPicker from "../../components/LocationPicker";
+
+// Strict parsing prevents blank strings, whitespace, booleans, arrays,
+// and objects from being coerced into a fake numeric coordinate such as 0.
+const parseStrictCoordinate = (value) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value !== "string") return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getValidCoordPair = (lat, lng) => {
+  const latitude = parseStrictCoordinate(lat);
+  const longitude = parseStrictCoordinate(lng);
+
+  if (
+    latitude === null ||
+    longitude === null ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+
+  return { lat: latitude, lng: longitude };
+};
+
+const isValidCoordPair = (lat, lng) => Boolean(getValidCoordPair(lat, lng));
 
 const formatTemplateLabel = (item = {}) => {
   if (item?.template_profile) {
@@ -98,14 +135,77 @@ export default function CustomCheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // PHASE 6A — Blueprint Address and Map Fix.
+  // useDefaultAddress: whether this request is currently using the saved
+  //   profile address/pin as a shortcut (checkbox state).
+  // deliveryPin: the CURRENT pin for this request only — never written
+  //   back to the user's profile.
+  // userToggledRef: becomes true the moment the customer manually edits
+  //   the address text or the map pin. Once true, incoming profile
+  //   updates stop silently overwriting the customer's in-progress choice.
+  const [useDefaultAddress, setUseDefaultAddress] = useState(() =>
+    Boolean(String(user?.address || "").trim()),
+  );
+  const [deliveryPin, setDeliveryPin] = useState(() =>
+    getValidCoordPair(user?.address_lat, user?.address_lng),
+  );
+  const [locationPickerKey, setLocationPickerKey] = useState(0);
+  const userToggledRef = useRef(false);
+
   useEffect(() => {
     setForm((prev) => ({
       ...prev,
       name: user?.name || prev.name || "",
       phone: user?.phone || prev.phone || "",
-      delivery_address: user?.address || prev.delivery_address || "",
+      delivery_address: userToggledRef.current
+        ? prev.delivery_address
+        : user?.address || prev.delivery_address || "",
     }));
+
+    if (userToggledRef.current) return;
+
+    const hasDefault = Boolean(String(user?.address || "").trim());
+    setUseDefaultAddress(hasDefault);
+    setDeliveryPin(
+      hasDefault
+        ? getValidCoordPair(user?.address_lat, user?.address_lng)
+        : null,
+    );
+    setLocationPickerKey((current) => current + 1);
   }, [user]);
+
+  // Re-checking "Use my default delivery address" always pulls the
+  // latest saved profile values, even if the customer had switched to a
+  // custom address/pin earlier in this session.
+  const handleToggleDefaultAddress = (checked) => {
+    userToggledRef.current = true;
+    setUseDefaultAddress(checked);
+    if (checked) {
+      set("delivery_address", user?.address || "");
+      setDeliveryPin(
+        getValidCoordPair(user?.address_lat, user?.address_lng),
+      );
+      setLocationPickerKey((current) => current + 1);
+    }
+  };
+
+  // Any manual address text edit is a custom-address override for this
+  // request only — it never touches users.address. LocationPicker owns
+  // the address input itself, so this receives plain text, not an event.
+  const handleAddressInputChange = (text) => {
+    userToggledRef.current = true;
+    setUseDefaultAddress(false);
+    set("delivery_address", text);
+  };
+
+  // Fired for every LocationPicker pin change: click-to-place, drag,
+  // search result, "use my current location", and "clear pin". All of
+  // these are custom-address overrides.
+  const handlePinChange = (next) => {
+    userToggledRef.current = true;
+    setUseDefaultAddress(false);
+    setDeliveryPin(next);
+  };
 
   useEffect(() => {
     try {
@@ -150,6 +250,12 @@ export default function CustomCheckoutPage() {
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
+  const hasDefaultAddress = Boolean(String(user?.address || "").trim());
+  const hasDefaultPin = isValidCoordPair(
+    user?.address_lat,
+    user?.address_lng,
+  );
+
   const totalUnits = useMemo(
     () =>
       checkoutItems.reduce(
@@ -178,6 +284,28 @@ export default function CustomCheckoutPage() {
       return;
     }
 
+    if (!String(form.delivery_address || "").trim()) {
+      setError("Please enter your project/delivery address.");
+      return;
+    }
+
+    // PHASE 6A: the location pin is mandatory for every new blueprint/
+    // custom-request order — never submit a NULL, half-set, or
+    // out-of-range pin (strict validator — see isValidCoordPair).
+    const validDeliveryPin = getValidCoordPair(
+      deliveryPin?.lat,
+      deliveryPin?.lng,
+    );
+
+    if (!validDeliveryPin) {
+      setError(
+        useDefaultAddress
+          ? "Your default address has no saved map pin. Please select a location on the map before submitting."
+          : "Please select a valid location pin on the map before submitting.",
+      );
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -185,7 +313,9 @@ export default function CustomCheckoutPage() {
         items: checkoutItems,
         name: form.name,
         phone: form.phone,
-        delivery_address: form.delivery_address,
+        delivery_address: String(form.delivery_address || "").trim(),
+        delivery_lat: validDeliveryPin.lat,
+        delivery_lng: validDeliveryPin.lng,
         notes: form.notes,
       });
 
@@ -419,13 +549,122 @@ export default function CustomCheckoutPage() {
                   />
                 </div>
 
+                {hasDefaultAddress && (
+                  <div className="form-field full">
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: "relative",
+                          display: "inline-flex",
+                          width: 18,
+                          height: 18,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={useDefaultAddress}
+                          onChange={(e) =>
+                            handleToggleDefaultAddress(e.target.checked)
+                          }
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            width: "100%",
+                            height: "100%",
+                            margin: 0,
+                            padding: 0,
+                            opacity: 0,
+                            cursor: "pointer",
+                          }}
+                        />
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            width: 18,
+                            height: 18,
+                            boxSizing: "border-box",
+                            borderRadius: 4,
+                            border: useDefaultAddress
+                              ? "2px solid #1d4ed8"
+                              : "2px solid #999",
+                            background: useDefaultAddress
+                              ? "#1d4ed8"
+                              : "#fff",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                            pointerEvents: "none",
+                          }}
+                        >
+                          {useDefaultAddress && (
+                            <svg
+                              width="11"
+                              height="11"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="white"
+                              strokeWidth="4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </span>
+                      </span>
+                      Use my default delivery address
+                    </label>
+
+                    {useDefaultAddress && (
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: "#444",
+                          marginTop: 6,
+                          paddingLeft: 26,
+                        }}
+                      >
+                        📍 {user?.address}
+                        {!hasDefaultPin && (
+                          <div
+                            style={{
+                              marginTop: 6,
+                              fontSize: 12.5,
+                              color: "#b91c1c",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Your default address has no saved map pin.
+                            Location pin unavailable — please select a
+                            location on the map below to continue.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="form-field full">
-                  <label>Project / Delivery Address</label>
-                  <input
-                    type="text"
-                    placeholder="Street, Barangay, City, Province"
-                    value={form.delivery_address}
-                    onChange={(e) => set("delivery_address", e.target.value)}
+                  <LocationPicker
+                    key={`custom-checkout-location-${locationPickerKey}`}
+                    label={
+                      useDefaultAddress
+                        ? "Default Delivery Location"
+                        : "Project / Delivery Address"
+                    }
+                    addressValue={form.delivery_address}
+                    onAddressChange={handleAddressInputChange}
+                    value={deliveryPin}
+                    onChange={handlePinChange}
                   />
                 </div>
               </div>

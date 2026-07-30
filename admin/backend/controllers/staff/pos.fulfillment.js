@@ -1409,6 +1409,7 @@ exports.getRiderHistory = async (req, res) => {
       `SELECT 
          d.id AS delivery_id, 
          o.order_number, 
+         o.order_type,
          COALESCE(o.walkin_customer_name, u.name, 'Walk-in Customer') AS customer_name, 
          d.address, 
          d.status, 

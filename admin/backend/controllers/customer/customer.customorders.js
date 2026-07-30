@@ -49,6 +49,25 @@ const toSafeObjectOrNull = (value) => {
     : null;
 };
 
+// Strict coordinate parser for blueprint/custom request delivery pins.
+// Unlike a plain Number(value) cast, this explicitly rejects booleans,
+// arrays, objects, and blank/whitespace-only strings BEFORE conversion —
+// so Number("") / Number("   ") / Number([]) can never slip through as 0.
+// Returns the finite numeric coordinate, or null if the value is invalid.
+const parseStrictCoordinate = (value) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value !== "string") return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
 const toSafeEditorSnapshot = (value) => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -417,8 +436,15 @@ const normalizeCustomOrderItem = (row = {}) => {
 
 /* ── Submit Custom Order / Request ── */
 exports.createCustomOrder = async (req, res) => {
-  const { items, name, phone, delivery_address, notes } =
-    req.body;
+  const {
+    items,
+    name,
+    phone,
+    delivery_address,
+    delivery_lat,
+    delivery_lng,
+    notes,
+  } = req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: "No items in custom order." });
@@ -430,6 +456,43 @@ exports.createCustomOrder = async (req, res) => {
 
   if (!String(phone || "").trim()) {
     return res.status(400).json({ message: "Phone is required." });
+  }
+
+  const cleanDeliveryAddress =
+    typeof delivery_address === "string" ? delivery_address.trim() : "";
+
+  if (!cleanDeliveryAddress) {
+    return res.status(400).json({ message: "Delivery address is required." });
+  }
+
+  // Every new blueprint/custom request must include a complete, valid
+  // delivery coordinate pair. Unlike the standard-order flow (where the
+  // map pin is optional), this is mandatory here — no half-a-pin allowed.
+  const hasDeliveryLat = delivery_lat !== undefined && delivery_lat !== null;
+  const hasDeliveryLng = delivery_lng !== undefined && delivery_lng !== null;
+
+  if (!hasDeliveryLat || !hasDeliveryLng) {
+    return res.status(400).json({
+      message:
+        "A delivery map location (latitude and longitude) is required for custom/blueprint requests.",
+    });
+  }
+
+  const cleanDeliveryLat = parseStrictCoordinate(delivery_lat);
+  const cleanDeliveryLng = parseStrictCoordinate(delivery_lng);
+
+  if (
+    cleanDeliveryLat === null ||
+    cleanDeliveryLng === null ||
+    cleanDeliveryLat < -90 ||
+    cleanDeliveryLat > 90 ||
+    cleanDeliveryLng < -180 ||
+    cleanDeliveryLng > 180
+  ) {
+    return res.status(400).json({
+      message:
+        "Invalid map location. Latitude must be between -90 and 90, and longitude between -180 and 180.",
+    });
   }
 
   const cleanedItems = items
@@ -525,14 +588,16 @@ exports.createCustomOrder = async (req, res) => {
         (order_number, customer_id, blueprint_id, type, order_type, status,
           walkin_customer_name, walkin_customer_phone,
           payment_method, payment_status,
-          delivery_address, notes, subtotal, total)
-      VALUES (?, ?, NULL, 'online', 'blueprint', 'pending', ?, ?, NULL, 'unpaid', ?, ?, 0, 0)`,
+          delivery_address, delivery_lat, delivery_lng, notes, subtotal, total)
+      VALUES (?, ?, NULL, 'online', 'blueprint', 'pending', ?, ?, NULL, 'unpaid', ?, ?, ?, ?, 0, 0)`,
       [
         order_number,
         req.user.id,
         String(name).trim(),
         String(phone).trim(),
-        delivery_address ? String(delivery_address).trim() : null,
+        cleanDeliveryAddress,
+        cleanDeliveryLat,
+        cleanDeliveryLng,
         notes ? String(notes).trim() : null,
       ],
     );

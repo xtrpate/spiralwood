@@ -2,37 +2,57 @@ import { useState, useEffect } from "react";
 import api from "../../services/api";
 import { Package, Truck, CheckCircle, MapPin } from "lucide-react";
 
-// Builds a safe Google Maps link: valid finite in-range coords first,
-// then falls back to the text address, or null if neither exists.
-// Guards explicitly against null/undefined BEFORE calling Number() —
-// Number(null) coerces to 0 (a "valid" but wrong coordinate), which
-// is what let null,null through the old Number.isFinite(Number(x)) check.
-const getGoogleMapsHref = (lat, lng, address) => {
-  const hasLat = lat !== null && lat !== undefined && lat !== "";
-  const hasLng = lng !== null && lng !== undefined && lng !== "";
-
-  if (hasLat && hasLng) {
-    const latNum = Number(lat);
-    const lngNum = Number(lng);
-    if (
-      Number.isFinite(latNum) &&
-      Number.isFinite(lngNum) &&
-      latNum >= -90 &&
-      latNum <= 90 &&
-      lngNum >= -180 &&
-      lngNum <= 180
-    ) {
-      return `https://www.google.com/maps/search/?api=1&query=${latNum},${lngNum}`;
-    }
+const parseMapCoordinate = (value) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
   }
+
+  if (typeof value !== "string") return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+// Blueprint orders are coordinates-only. Never fall back to a text search.
+const getBlueprintMapsHref = (lat, lng) => {
+  const latitude = parseMapCoordinate(lat);
+  const longitude = parseMapCoordinate(lng);
+
+  if (
+    latitude === null ||
+    longitude === null ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+
+  return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+};
+
+// Ready-to-Ship / standard orders keep their existing text-address fallback.
+const getStandardMapsHref = (lat, lng, address) => {
+  const coordinateHref = getBlueprintMapsHref(lat, lng);
+  if (coordinateHref) return coordinateHref;
 
   const trimmedAddress = String(address || "").trim();
-  if (trimmedAddress) {
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trimmedAddress)}`;
-  }
-
-  return null;
+  return trimmedAddress
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trimmedAddress)}`
+    : null;
 };
+
+const isBlueprintOrderType = (orderType) =>
+  String(orderType || "").trim().toLowerCase() === "blueprint";
+
+const getGoogleMapsHref = (lat, lng, address, orderType) =>
+  isBlueprintOrderType(orderType)
+    ? getBlueprintMapsHref(lat, lng)
+    : getStandardMapsHref(lat, lng, address);
 
 export default function RiderDashboard() {
   const [stats, setStats] = useState(null);
@@ -239,6 +259,10 @@ export default function RiderDashboard() {
                     delivery.delivery_lat,
                     delivery.delivery_lng,
                     delivery.address,
+                    delivery.order_type,
+                  );
+                  const isBlueprintDelivery = isBlueprintOrderType(
+                    delivery.order_type,
                   );
                   return (
                   <tr
@@ -287,6 +311,21 @@ export default function RiderDashboard() {
                           >
                             <MapPin size={14} color="#2563eb" />
                           </a>
+                        ) : isBlueprintDelivery ? (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                              flexShrink: 0,
+                              color: "#a1a1aa",
+                              fontSize: 11,
+                              fontWeight: 700,
+                            }}
+                          >
+                            <MapPin size={14} color="#a1a1aa" />
+                            Location pin unavailable
+                          </span>
                         ) : (
                           <span
                             title="Location unavailable"

@@ -4,6 +4,39 @@ import useAuthStore from "../../store/authStore";
 
 const normalize = (value) => String(value || "").toLowerCase();
 
+const parseMapCoordinate = (value) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value !== "string") return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getGoogleMapsHref = (lat, lng) => {
+  const latitude = parseMapCoordinate(lat);
+  const longitude = parseMapCoordinate(lng);
+
+  if (
+    latitude === null ||
+    longitude === null ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+
+  return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+};
+
+
 const formatDateTime = (value) => {
   if (!value) return "—";
   const date = new Date(value);
@@ -583,10 +616,14 @@ export default function DeliveryManagement() {
                     value={
                       <>
                         {delivery.address || "—"}
-                        {Number.isFinite(Number(delivery.delivery_lat)) &&
-                          Number.isFinite(Number(delivery.delivery_lng)) && (
+                        {(() => {
+                          const mapsHref = getGoogleMapsHref(
+                            delivery.delivery_lat,
+                            delivery.delivery_lng,
+                          );
+                          return mapsHref ? (
                             <a
-                              href={`https://www.google.com/maps/search/?api=1&query=${delivery.delivery_lat},${delivery.delivery_lng}`}
+                              href={mapsHref}
                               target="_blank"
                               rel="noopener noreferrer"
                               style={{
@@ -599,7 +636,20 @@ export default function DeliveryManagement() {
                             >
                               Open in Google Maps ↗
                             </a>
-                          )}
+                          ) : isBlueprintDelivery ? (
+                            <span
+                              style={{
+                                display: "block",
+                                marginTop: 4,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: "#a1a1aa",
+                              }}
+                            >
+                              Location pin unavailable
+                            </span>
+                          ) : null;
+                        })()}
                       </>
                     }
                   />

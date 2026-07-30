@@ -6,6 +6,39 @@ import toast from "react-hot-toast";
 import CustomerTemplateWorkbench from "../customer/CustomerTemplateWorkbench";
 import OrderDiscussionPanel from "./OrderDiscussionPanel";
 
+const parseMapCoordinate = (value) => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value !== "string") return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getGoogleMapsHref = (lat, lng) => {
+  const latitude = parseMapCoordinate(lat);
+  const longitude = parseMapCoordinate(lng);
+
+  if (
+    latitude === null ||
+    longitude === null ||
+    latitude < -90 ||
+    latitude > 90 ||
+    longitude < -180 ||
+    longitude > 180
+  ) {
+    return null;
+  }
+
+  return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+};
+
+
 const STATUS_STYLE = {
   pending: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
   confirmed: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
@@ -1689,10 +1722,14 @@ export default function OrderDetailPage() {
                   value={
                     <>
                       {order.delivery_address}
-                      {Number.isFinite(Number(order.delivery_lat)) &&
-                        Number.isFinite(Number(order.delivery_lng)) && (
+                      {(() => {
+                        const mapsHref = getGoogleMapsHref(
+                          order.delivery_lat,
+                          order.delivery_lng,
+                        );
+                        return mapsHref ? (
                           <a
-                            href={`https://www.google.com/maps/search/?api=1&query=${order.delivery_lat},${order.delivery_lng}`}
+                            href={mapsHref}
                             target="_blank"
                             rel="noopener noreferrer"
                             style={{
@@ -1705,7 +1742,20 @@ export default function OrderDetailPage() {
                           >
                             Open in Google Maps ↗
                           </a>
-                        )}
+                        ) : isBlueprintOrder ? (
+                          <span
+                            style={{
+                              marginLeft: 8,
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#a1a1aa",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Location pin unavailable
+                          </span>
+                        ) : null;
+                      })()}
                     </>
                   }
                 />
@@ -2398,10 +2448,14 @@ export default function OrderDetailPage() {
                     value={
                       <>
                         {order.delivery.address || "—"}
-                        {Number.isFinite(Number(order.delivery_lat)) &&
-                          Number.isFinite(Number(order.delivery_lng)) && (
+                        {(() => {
+                          const mapsHref = getGoogleMapsHref(
+                            order.delivery_lat,
+                            order.delivery_lng,
+                          );
+                          return mapsHref ? (
                             <a
-                              href={`https://www.google.com/maps/search/?api=1&query=${order.delivery_lat},${order.delivery_lng}`}
+                              href={mapsHref}
                               target="_blank"
                               rel="noopener noreferrer"
                               style={{
@@ -2414,7 +2468,20 @@ export default function OrderDetailPage() {
                             >
                               Open in Google Maps ↗
                             </a>
-                          )}
+                          ) : isBlueprintOrder ? (
+                            <span
+                              style={{
+                                marginLeft: 8,
+                                fontSize: 12,
+                                fontWeight: 700,
+                                color: "#a1a1aa",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              Location pin unavailable
+                            </span>
+                          ) : null;
+                        })()}
                       </>
                     }
                   />
