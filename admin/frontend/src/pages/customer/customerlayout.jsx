@@ -698,6 +698,11 @@ export default function CustomerLayout() {
                 openMiniCart();
               }}
               aria-label="Open cart"
+              disabled={location.pathname === "/cart"}
+              style={{
+                opacity: location.pathname === "/cart" ? 0.5 : 1,
+                cursor: location.pathname === "/cart" ? "default" : "pointer",
+              }}
             >
               <span className="cust-cart-summary-total">
                 {formatPeso(cartTotal)}
