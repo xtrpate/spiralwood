@@ -5,6 +5,11 @@ const { signUploadPath } = require("../../utils/signedUrl");
 const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
+const {
+  roundMoney,
+  calcDownPaymentAmount,
+} = require("../../utils/paymentAmounts");
+const { parseStrictPositiveInt } = require("../../utils/validators");
 
 const normalize = (value) =>
   String(value || "")
@@ -645,9 +650,98 @@ const adminInsertDiscussionNotificationSafe = async (
   }
 };
 
+// Local to this file (never imported from another controller) — mirrors
+// the exact response shape already used by the existing verifyPayment
+// lifecycle-conflict path in this same file, for consistency.
+const sendLifecycleConflict = (res, lifecycle = {}) =>
+  res.status(409).json({
+    message:
+      lifecycle.message ||
+      "This order's blueprint lifecycle or status is not in a valid state for this action.",
+    integrity_reason: lifecycle.reason,
+    conflicting_order_ids: lifecycle.conflicting_order_ids,
+  });
+
+// ── Phase 3: Blueprint Cash-at-Store 30% down payment eligibility ──
+// Single source of truth for the eligibility rules, used identically by
+// exports.getOne (display, unlocked read) and
+// exports.recordBlueprintCashDownPayment (enforcement, locked read).
+const BLUEPRINT_CASH_DOWN_PAYMENT_REASON = {
+  NOT_BLUEPRINT: "NOT_BLUEPRINT",
+  ORDER_NOT_CONFIRMED: "ORDER_NOT_CONFIRMED",
+  QUOTATION_NOT_APPROVED: "QUOTATION_NOT_APPROVED",
+  PAYMENT_METHOD_NOT_CASH: "PAYMENT_METHOD_NOT_CASH",
+  PAYMENT_ALREADY_RECORDED: "PAYMENT_ALREADY_RECORDED",
+  PAYMENT_PENDING_REVIEW: "PAYMENT_PENDING_REVIEW",
+  PAYMONGO_SESSION_PRESENT: "PAYMONGO_SESSION_PRESENT",
+  INVALID_REQUIRED_AMOUNT: "INVALID_REQUIRED_AMOUNT",
+};
+
+const BLUEPRINT_CASH_DOWN_PAYMENT_REASON_MESSAGE = {
+  NOT_BLUEPRINT: "This is not a blueprint order.",
+  ORDER_NOT_CONFIRMED: "The order is not in a confirmed state.",
+  QUOTATION_NOT_APPROVED: "The quotation has not been approved.",
+  PAYMENT_METHOD_NOT_CASH: "This order is not set to Cash at Store.",
+  PAYMENT_ALREADY_RECORDED:
+    "The required 30% down payment has already been recorded.",
+  PAYMENT_PENDING_REVIEW:
+    "A payment is already awaiting review for this order.",
+  PAYMONGO_SESSION_PRESENT:
+    "This order's payment state is inconsistent. Please contact support.",
+  INVALID_REQUIRED_AMOUNT: "The order total is not finalized yet.",
+};
+
+const evaluateBlueprintCashDownPaymentEligibility = ({
+  order,
+  estimation,
+  verifiedPaymentTotal,
+  hasPendingPayment,
+  hasPayMongoSessionData,
+  requiredAmount,
+}) => {
+  const build = (code) => ({
+    eligible: false,
+    reason_code: code,
+    reason_message: BLUEPRINT_CASH_DOWN_PAYMENT_REASON_MESSAGE[code],
+  });
+
+  if (normalize(order.order_type) !== "blueprint") {
+    return build(BLUEPRINT_CASH_DOWN_PAYMENT_REASON.NOT_BLUEPRINT);
+  }
+  if (normalize(order.status) !== "confirmed") {
+    return build(BLUEPRINT_CASH_DOWN_PAYMENT_REASON.ORDER_NOT_CONFIRMED);
+  }
+  if (!estimation || normalize(estimation.status) !== "approved") {
+    return build(BLUEPRINT_CASH_DOWN_PAYMENT_REASON.QUOTATION_NOT_APPROVED);
+  }
+  if (normalize(order.payment_method) !== "cash") {
+    return build(BLUEPRINT_CASH_DOWN_PAYMENT_REASON.PAYMENT_METHOD_NOT_CASH);
+  }
+  if (
+    normalize(order.payment_status) !== "unpaid" ||
+    Number(verifiedPaymentTotal || 0) > 0
+  ) {
+    return build(BLUEPRINT_CASH_DOWN_PAYMENT_REASON.PAYMENT_ALREADY_RECORDED);
+  }
+  if (hasPendingPayment) {
+    return build(BLUEPRINT_CASH_DOWN_PAYMENT_REASON.PAYMENT_PENDING_REVIEW);
+  }
+  if (hasPayMongoSessionData) {
+    return build(BLUEPRINT_CASH_DOWN_PAYMENT_REASON.PAYMONGO_SESSION_PRESENT);
+  }
+  if (!(requiredAmount > 0)) {
+    return build(BLUEPRINT_CASH_DOWN_PAYMENT_REASON.INVALID_REQUIRED_AMOUNT);
+  }
+
+  return { eligible: true, reason_code: null, reason_message: null };
+};
+
 exports.getOne = async (req, res) => {
   try {
-    const orderId = parseInt(req.params.id);
+    const orderId = parseStrictPositiveInt(req.params.id);
+    if (!orderId) {
+      return res.status(400).json({ message: "Invalid order id." });
+    }
 
     const [[order]] = await pool.query(
       `SELECT 
@@ -809,6 +903,41 @@ exports.getOne = async (req, res) => {
       order.payment_proof = signUploadPath(order.payment_proof);
     }
 
+    // Phase 3 eligibility uses only real, persisted payment_transactions
+    // rows -- verifiedPaymentTotal above is already persisted-only
+    // (computed directly from paymentTransactions further up). This
+    // pending check is a separate, persisted-only variant of the
+    // display-array-based hasPendingPayment used above (which may include
+    // the synthetic initial_* legacy-proof row and must not be reused
+    // here).
+    const hasPendingPersistedPayment = paymentTransactions.some(
+      (payment) => normalize(payment.status) === "pending",
+    );
+
+    // Raw PayMongo session fields are never sent to the frontend -- only
+    // this derived boolean is. Deleted from `order` below, before the
+    // response spread.
+    const hasPayMongoSessionData = Boolean(
+      order.paymongo_session_id || order.payment_url,
+    );
+    delete order.paymongo_session_id;
+    delete order.payment_url;
+
+    const blueprintCashDownPaymentRequiredAmount =
+      normalize(order.order_type) === "blueprint"
+        ? calcDownPaymentAmount(totalAmount)
+        : 0;
+
+    const blueprintCashDownPaymentEligibility =
+      evaluateBlueprintCashDownPaymentEligibility({
+        order,
+        estimation: latestEstimation,
+        verifiedPaymentTotal,
+        hasPendingPayment: hasPendingPersistedPayment,
+        hasPayMongoSessionData,
+        requiredAmount: blueprintCashDownPaymentRequiredAmount,
+      });
+
     res.json({
       ...order,
       items,
@@ -819,6 +948,12 @@ exports.getOne = async (req, res) => {
       payment_verified_total: verifiedPaymentTotal,
       payment_balance: paymentBalance,
       payment_status_display: paymentStatusDisplay,
+      blueprint_cash_down_payment: {
+        eligible: blueprintCashDownPaymentEligibility.eligible,
+        required_amount: blueprintCashDownPaymentRequiredAmount,
+        reason_code: blueprintCashDownPaymentEligibility.reason_code,
+        reason_message: blueprintCashDownPaymentEligibility.reason_message,
+      },
       custom_request_items: customRequestItems,
       has_custom_request_data: customRequestItems.length > 0,
       latest_estimation: latestEstimation,
@@ -3105,6 +3240,216 @@ exports.postOrderDiscussionMessage = async (req, res) => {
       message: "Failed to send discussion reply.",
       error: err.message,
     });
+  } finally {
+    if (conn) conn.release();
+  }
+};
+
+// ── Phase 3: Admin recording of the exact first 30% Cash-at-Store down
+// payment for a blueprint order. Admin-only. Creates exactly one
+// immediately-verified payment_transactions row and advances
+// orders.payment_status to 'partial'. Never accepts customer id,
+// verifier id, amount, method, or status from the request body -- every
+// value is server-derived. ──
+exports.recordBlueprintCashDownPayment = async (req, res) => {
+  let conn = null;
+  let transactionActive = false;
+
+  try {
+    const orderId = parseStrictPositiveInt(req.params.id);
+    if (!orderId) {
+      return res.status(400).json({ message: "Invalid order id." });
+    }
+
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const lifecycle = await resolveLifecycleByOrder(conn, {
+      orderId,
+      lockOrder: true,
+      lockBlueprint: true,
+    });
+
+    if (
+      lifecycle.status !== "OK" ||
+      !lifecycle.order ||
+      !lifecycle.blueprint ||
+      !lifecycle.estimation
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res, lifecycle);
+    }
+
+    const order = lifecycle.order;
+    const estimation = lifecycle.estimation;
+
+    const [lockedPaymentRows] = await conn.query(
+      `SELECT id, amount, payment_method, status
+       FROM payment_transactions
+       WHERE order_id = ?
+       ORDER BY id
+       FOR UPDATE`,
+      [orderId],
+    );
+
+    const verifiedPaymentTotal = lockedPaymentRows
+      .filter((row) => normalize(row.status) === "verified")
+      .reduce((sum, row) => sum + Number(row.amount || 0), 0);
+
+    const hasPendingPayment = lockedPaymentRows.some(
+      (row) => normalize(row.status) === "pending",
+    );
+
+    const hasPayMongoSessionData = Boolean(
+      order.paymongo_session_id || order.payment_url,
+    );
+
+    const requiredAmount = calcDownPaymentAmount(order.total);
+
+    const eligibility = evaluateBlueprintCashDownPaymentEligibility({
+      order,
+      estimation,
+      verifiedPaymentTotal,
+      hasPendingPayment,
+      hasPayMongoSessionData,
+      requiredAmount,
+    });
+
+    if (!eligibility.eligible) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({ message: eligibility.reason_message });
+    }
+
+    const [insertResult] = await conn.execute(
+      `INSERT INTO payment_transactions
+        (order_id, amount, payment_method, proof_url, verified_by, verified_at, status, notes)
+       VALUES (?, ?, 'cash', NULL, ?, NOW(), 'verified', ?)`,
+      [
+        orderId,
+        requiredAmount,
+        req.user.id,
+        "30% down payment recorded at store.",
+      ],
+    );
+
+    if (
+      insertResult.affectedRows !== 1 ||
+      !Number.isSafeInteger(insertResult.insertId) ||
+      insertResult.insertId <= 0
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "Failed to record the payment. Please try again.",
+      });
+    }
+
+    const [updateResult] = await conn.execute(
+      `UPDATE orders
+       SET payment_status = 'partial'
+       WHERE id = ?
+         AND order_type = 'blueprint'
+         AND status = 'confirmed'
+         AND payment_method = 'cash'
+         AND payment_status = 'unpaid'
+         AND paymongo_session_id IS NULL
+         AND payment_url IS NULL`,
+      [orderId],
+    );
+
+    if (updateResult.affectedRows !== 1) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "This order's state changed. Please refresh and try again.",
+      });
+    }
+
+    // Final authoritative re-read, still inside the same locked
+    // transaction, exact comparison only -- no cent-level tolerance.
+    const [finalPaymentRows] = await conn.query(
+      `SELECT id, amount, payment_method, status
+       FROM payment_transactions
+       WHERE order_id = ?
+       ORDER BY id
+       FOR UPDATE`,
+      [orderId],
+    );
+
+    const finalVerifiedRows = finalPaymentRows.filter(
+      (row) => normalize(row.status) === "verified",
+    );
+    const finalHasPendingRow = finalPaymentRows.some(
+      (row) => normalize(row.status) === "pending",
+    );
+
+    const finalVerifiedTotal = roundMoney(
+      finalVerifiedRows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    );
+
+    const insertedRow = finalVerifiedRows.find(
+      (row) => Number(row.id) === Number(insertResult.insertId),
+    );
+
+    const finalConditionsMet =
+      finalVerifiedRows.length === 1 &&
+      Boolean(insertedRow) &&
+      normalize(insertedRow.payment_method) === "cash" &&
+      roundMoney(insertedRow.amount) === roundMoney(requiredAmount) &&
+      finalVerifiedTotal === roundMoney(requiredAmount) &&
+      !finalHasPendingRow;
+
+    if (!finalConditionsMet) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "Payment verification mismatch. Please contact support.",
+      });
+    }
+
+    const preparedAuditRecord = {
+      id: insertResult.insertId,
+      old: { payment_status: "unpaid" },
+      new: {
+        order_id: orderId,
+        payment_status: "partial",
+        payment_method: "cash",
+        amount: requiredAmount,
+      },
+    };
+
+    await conn.commit();
+    transactionActive = false;
+
+    req.auditRecord = preparedAuditRecord;
+
+    const remainingBalance = roundMoney(
+      Math.max(0, Number(order.total || 0) - finalVerifiedTotal),
+    );
+
+    return res.json({
+      success: true,
+      message: "Cash down payment recorded successfully.",
+      payment_transaction_id: insertResult.insertId,
+      amount_recorded: requiredAmount,
+      verified_total: finalVerifiedTotal,
+      remaining_balance: remainingBalance,
+      payment_status: "partial",
+    });
+  } catch (err) {
+    req.auditRecord = null;
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+      } catch (rollbackErr) {
+        console.error("Rollback failed:", rollbackErr);
+      }
+    }
+    console.error("[orderController recordBlueprintCashDownPayment]", err);
+    return res.status(500).json({ message: "Failed to record cash payment." });
   } finally {
     if (conn) conn.release();
   }

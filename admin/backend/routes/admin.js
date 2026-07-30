@@ -349,6 +349,13 @@ router.post(
   orders.verifyPayment,
 );
 
+router.post(
+  "/orders/:id/blueprint-cash-down-payment",
+  adminOnly,
+  logAction("record_blueprint_cash_down_payment", "payment_transactions"),
+  orders.recordBlueprintCashDownPayment,
+);
+
 router.get("/orders/:id/discussion", adminStaff, orders.getOrderDiscussion);
 
 router.post(

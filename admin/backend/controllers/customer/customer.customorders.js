@@ -11,6 +11,11 @@ const { verifyBufferSignature } = require("../../utils/verifyFileSignature");
 const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
+const {
+  roundMoney,
+  calcDownPaymentAmount,
+} = require("../../utils/paymentAmounts");
+const { parseStrictPositiveInt } = require("../../utils/validators");
 
 const customRequestAssetsDir = path.join(
   __dirname,
@@ -1021,11 +1026,6 @@ const normalize = (value) =>
     .trim()
     .toLowerCase();
 
-const roundMoney = (value) =>
-  Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
-
-const calcDownPaymentAmount = (total) => roundMoney(roundMoney(total) * 0.3);
-
 const toAllowedBlueprintPaymentMethod = (value) => {
   const key = normalize(value).replace(/\s+/g, "_");
   return ["cod", "cop", "cash", "gcash", "bank_transfer"].includes(key)
@@ -1093,13 +1093,7 @@ const cleanupUploadedFile = async (filePath) => {
 // silently truncates a value like "5.5" to 5 via parseInt). Used only by
 // the 5 functions hardened in this pass; toPositiveInt itself is left
 // untouched since other, unrelated functions in this file still use it.
-const parseStrictPositiveInt = (value) => {
-  if (value === undefined || value === null) return null;
-  const str = String(value).trim();
-  if (!/^\d+$/.test(str)) return null;
-  const num = Number(str);
-  return Number.isSafeInteger(num) && num > 0 ? num : null;
-};
+// (parseStrictPositiveInt itself now lives in ../../utils/validators.)
 
 // payment_status is derived ONLY from verified payment_transactions rows
 // — never hard-reset to a fixed value, and never based on a stored

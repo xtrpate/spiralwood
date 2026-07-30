@@ -401,6 +401,8 @@ export default function OrderDetailPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const paymentReviewLockRef = useRef(false);
   const [reviewingPayment, setReviewingPayment] = useState({ id: null, action: "" });
+  const [recordingCashPayment, setRecordingCashPayment] = useState(false);
+  const [cashPaymentError, setCashPaymentError] = useState("");
 
   const [proofPreview, setProofPreview] = useState({
     open: false,
@@ -603,6 +605,39 @@ export default function OrderDetailPage() {
     } finally {
       paymentReviewLockRef.current = false;
       setReviewingPayment({ id: null, action: "" });
+    }
+  };
+
+  const recordBlueprintCashDownPayment = async () => {
+    if (recordingCashPayment) return;
+
+    const requiredAmount =
+      order?.blueprint_cash_down_payment?.required_amount || 0;
+
+    setCashPaymentError("");
+
+    const confirmed = window.confirm(
+      `Confirm that ${formatMoney(
+        requiredAmount,
+      )} was received in cash at the store. This will immediately record the payment as verified and change the order payment status to Partial.`,
+    );
+    if (!confirmed) return;
+
+    setRecordingCashPayment(true);
+    try {
+      const { data } = await api.post(
+        `/orders/${id}/blueprint-cash-down-payment`,
+      );
+      setCashPaymentError("");
+      toast.success(data?.message || "Cash down payment recorded successfully.");
+      await load();
+    } catch (err) {
+      setCashPaymentError(
+        err?.response?.data?.message ||
+          "Failed to record cash payment. Please try again.",
+      );
+    } finally {
+      setRecordingCashPayment(false);
     }
   };
 
@@ -1940,6 +1975,54 @@ export default function OrderDetailPage() {
 
       {activeTab === "payment" && (
         <>
+          {String(order?.order_type || "").toLowerCase() === "blueprint" &&
+          order?.blueprint_cash_down_payment ? (
+            <Section title="Cash at Store — 30% Down Payment">
+              <InfoRow
+                label="Quoted total"
+                value={formatMoney(order.total_amount || order.total || 0)}
+              />
+              <InfoRow
+                label="Required 30% down payment"
+                value={formatMoney(
+                  order.blueprint_cash_down_payment.required_amount,
+                )}
+              />
+              <InfoRow
+                label="Verified amount"
+                value={formatMoney(order.payment_verified_total || 0)}
+              />
+              <InfoRow
+                label="Remaining balance"
+                value={formatMoney(order.payment_balance || 0)}
+              />
+
+              {cashPaymentError ? (
+                <div style={infoNotice}>{cashPaymentError}</div>
+              ) : null}
+
+              {order.blueprint_cash_down_payment.eligible ? (
+                <button
+                  type="button"
+                  style={btnAccept}
+                  disabled={recordingCashPayment}
+                  onClick={recordBlueprintCashDownPayment}
+                >
+                  {recordingCashPayment
+                    ? "Recording..."
+                    : `Record ${formatMoney(
+                        order.blueprint_cash_down_payment.required_amount,
+                      )} as Received`}
+                </button>
+              ) : (
+                <div style={infoNotice}>
+                  {order.blueprint_cash_down_payment.reason_message ||
+                    "Cash at Store recording is not available for this order."}
+                </div>
+              )}
+            </Section>
+          ) : null}
+
           <Section title="Payment Transactions">
             {!hasPaymentRecords ? (
               normalizedPaymentStatus === "paid" && isCashLikePaymentMethod ? (
