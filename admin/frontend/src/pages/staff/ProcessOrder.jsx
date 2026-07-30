@@ -1,7 +1,39 @@
 import { useState, useEffect } from "react";
 import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle, Receipt } from "lucide-react";
+import { CheckCircle, Receipt, MapPin } from "lucide-react";
+import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import L from "leaflet";
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+  iconUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+  shadowUrl:
+    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+});
+
+function MapInvalidator() {
+  const map = useMapEvents({});
+  useEffect(() => {
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
+  }, [map]);
+  return null;
+}
+
+function LocationPicker({ position, setPosition }) {
+  useMapEvents({
+    click(e) {
+      setPosition([e.latlng.lat, e.latlng.lng]);
+    },
+  });
+
+  return position === null ? null : <Marker position={position} />;
+}
 
 const isValidPHPhone = (value) => {
   const digits = String(value || "").replace(/\D/g, "");
@@ -21,14 +53,17 @@ export default function ProcessOrder() {
     discount: "",
 
     need_delivery: false,
-    delivery_fee: "", // 👉 STATE FOR DELIVERY FEE
+    delivery_fee: "",
     delivery_address: "",
+    delivery_lat: null,
+    delivery_lng: null,
     delivery_requested_date: "",
     delivery_notes: "",
 
     notes: "",
   });
 
+  const [mapPosition, setMapPosition] = useState(null); // Default center around Marilao/Bulacan
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(null);
   const [error, setError] = useState("");
@@ -37,6 +72,15 @@ export default function ProcessOrder() {
     const saved = sessionStorage.getItem("pos_cart");
     if (saved) setCart(JSON.parse(saved));
   }, []);
+
+  const handleMapClick = (coords) => {
+    setMapPosition(coords);
+    setForm((prev) => ({
+      ...prev,
+      delivery_lat: coords[0],
+      delivery_lng: coords[1],
+    }));
+  };
 
   const subtotal = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0);
 
@@ -48,7 +92,6 @@ export default function ProcessOrder() {
     discountAmount = discountInput;
   }
 
-  // 👉 MATH: Include delivery fee in total
   const deliveryFeeAmt = parseFloat(form.delivery_fee) || 0;
   const total = Math.max(
     subtotal - discountAmount + (form.need_delivery ? deliveryFeeAmt : 0),
@@ -127,12 +170,14 @@ export default function ProcessOrder() {
         cash_received: form.payment_method === "cash" ? cashReceived : null,
         change: form.payment_method === "cash" ? change : null,
         discount: discountAmount,
-        delivery_fee: form.need_delivery ? deliveryFeeAmt : 0, // 👉 Send Delivery Fee to Backend
+        delivery_fee: form.need_delivery ? deliveryFeeAmt : 0,
         notes: form.notes,
         items: cart,
         delivery: form.need_delivery
           ? {
               address: form.delivery_address.trim(),
+              lat: form.delivery_lat,
+              lng: form.delivery_lng,
               requested_date: form.delivery_requested_date,
               notes: form.delivery_notes.trim(),
             }
@@ -158,7 +203,7 @@ export default function ProcessOrder() {
           alignItems: "center",
           justifyContent: "center",
           minHeight: "60vh",
-          fontFamily: "'Inter', sans-serif"
+          fontFamily: "'Inter', sans-serif",
         }}
       >
         <div
@@ -171,15 +216,27 @@ export default function ProcessOrder() {
           }}
         >
           <CheckCircle size={56} color="#059669" style={{ marginBottom: 16 }} />
-          <h2 style={{ color: "#0a0a0a", marginBottom: 8, fontSize: 24, fontWeight: 800, letterSpacing: "-0.01em" }}>
+          <h2
+            style={{
+              color: "#0a0a0a",
+              marginBottom: 8,
+              fontSize: 24,
+              fontWeight: 800,
+              letterSpacing: "-0.01em",
+            }}
+          >
             Order Successful!
           </h2>
 
           <p style={{ color: "#52525b", marginBottom: 6, fontSize: 14 }}>
-            Order #: <strong style={{ color: "#18181b" }}>{success.order_number}</strong>
+            Order #:{" "}
+            <strong style={{ color: "#18181b" }}>{success.order_number}</strong>
           </p>
           <p style={{ color: "#52525b", marginBottom: 6, fontSize: 14 }}>
-            Receipt #: <strong style={{ color: "#18181b" }}>{success.receipt_number}</strong>
+            Receipt #:{" "}
+            <strong style={{ color: "#18181b" }}>
+              {success.receipt_number}
+            </strong>
           </p>
 
           {success.delivery && (
@@ -188,14 +245,22 @@ export default function ProcessOrder() {
             </p>
           )}
 
-          <div style={{ margin: "24px 0", padding: "20px", background: "#fafafa", borderRadius: 12, border: "1px solid #e4e4e7" }}>
+          <div
+            style={{
+              margin: "24px 0",
+              padding: "20px",
+              background: "#fafafa",
+              borderRadius: 12,
+              border: "1px solid #e4e4e7",
+            }}
+          >
             <p
               style={{
                 fontSize: 28,
                 fontWeight: 800,
                 color: "#0a0a0a",
                 margin: "0 0 12px",
-                letterSpacing: "-0.02em"
+                letterSpacing: "-0.02em",
               }}
             >
               ₱
@@ -207,7 +272,9 @@ export default function ProcessOrder() {
             {success.cash_received !== null &&
               success.cash_received !== undefined && (
                 <>
-                  <p style={{ color: "#52525b", marginBottom: 6, fontSize: 14 }}>
+                  <p
+                    style={{ color: "#52525b", marginBottom: 6, fontSize: 14 }}
+                  >
                     Cash Received:{" "}
                     <strong style={{ color: "#18181b" }}>
                       ₱
@@ -264,9 +331,12 @@ export default function ProcessOrder() {
                   notes: "",
                   need_delivery: false,
                   delivery_address: "",
+                  delivery_lat: null,
+                  delivery_lng: null,
                   delivery_requested_date: "",
                   delivery_notes: "",
                 });
+                setMapPosition(null);
                 navigate("/staff/products");
               }}
             >
@@ -285,7 +355,14 @@ export default function ProcessOrder() {
           <h1 style={pageTitle}>Process Order & Payment</h1>
         </div>
         <div style={{ ...cardStyle, textAlign: "center", padding: 60 }}>
-          <p style={{ color: "#71717a", fontSize: 14, fontWeight: 600, marginBottom: 20 }}>
+          <p
+            style={{
+              color: "#71717a",
+              fontSize: 14,
+              fontWeight: 600,
+              marginBottom: 20,
+            }}
+          >
             No items in cart.
           </p>
           <button
@@ -303,14 +380,29 @@ export default function ProcessOrder() {
     <div style={{ fontFamily: "'Inter', sans-serif", paddingBottom: 40 }}>
       <div style={pageHeader}>
         <h1 style={pageTitle}>Process Order & Payment</h1>
-        <p style={pageSubtitle}>Review cart and complete payment for walk-in customer</p>
+        <p style={pageSubtitle}>
+          Review cart and complete payment for walk-in customer
+        </p>
       </div>
 
       <div
-        style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 24, alignItems: "start" }}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 380px",
+          gap: 24,
+          alignItems: "start",
+        }}
       >
         <div style={{ ...cardStyle, padding: 32 }}>
-          <h3 style={{ margin: "0 0 24px", fontWeight: 800, fontSize: 18, color: "#0a0a0a", letterSpacing: "-0.01em" }}>
+          <h3
+            style={{
+              margin: "0 0 24px",
+              fontWeight: 800,
+              fontSize: 18,
+              color: "#0a0a0a",
+              letterSpacing: "-0.01em",
+            }}
+          >
             Customer, Payment & Delivery
           </h3>
 
@@ -330,7 +422,9 @@ export default function ProcessOrder() {
             </div>
 
             <div style={formField}>
-              <label style={labelStyle}>Phone Number{phoneIsRequired ? " *" : ""}</label>
+              <label style={labelStyle}>
+                Phone Number{phoneIsRequired ? " *" : ""}
+              </label>
               <input
                 type="tel"
                 placeholder="09XXXXXXXXX"
@@ -344,10 +438,23 @@ export default function ProcessOrder() {
                       .slice(0, 11),
                   })
                 }
-                style={{ ...inputStyle, borderColor: (form.customer_phone && !phoneIsValid) ? "#dc2626" : "#e4e4e7" }}
+                style={{
+                  ...inputStyle,
+                  borderColor:
+                    form.customer_phone && !phoneIsValid
+                      ? "#dc2626"
+                      : "#e4e4e7",
+                }}
               />
               {form.customer_phone && !phoneIsValid && (
-                <div style={{ color: "#dc2626", fontSize: 12, marginTop: 6, fontWeight: 600 }}>
+                <div
+                  style={{
+                    color: "#dc2626",
+                    fontSize: 12,
+                    marginTop: 6,
+                    fontWeight: 600,
+                  }}
+                >
                   Enter a valid 11-digit PH mobile number starting with 09.
                 </div>
               )}
@@ -396,7 +503,7 @@ export default function ProcessOrder() {
                     outline: "none",
                     background: "#fff",
                     color: "#18181b",
-                    fontSize: 13
+                    fontSize: 13,
                   }}
                 >
                   <option value="amount">₱</option>
@@ -445,10 +552,17 @@ export default function ProcessOrder() {
                 background: "#fafafa",
                 border: "1px solid #e4e4e7",
                 borderRadius: 12,
-                padding: 24
+                padding: 24,
               }}
             >
-              <h4 style={{ margin: "0 0 16px", fontWeight: 800, fontSize: 15, color: "#0a0a0a" }}>
+              <h4
+                style={{
+                  margin: "0 0 16px",
+                  fontWeight: 800,
+                  fontSize: 15,
+                  color: "#0a0a0a",
+                }}
+              >
                 Fulfillment Options
               </h4>
               <div
@@ -462,11 +576,13 @@ export default function ProcessOrder() {
                     fontSize: 13,
                     fontWeight: 700,
                     color: "#18181b",
-                    cursor: "pointer"
+                    cursor: "pointer",
                   }}
                 >
                   <div
-                    onClick={() => setForm({ ...form, need_delivery: !form.need_delivery })}
+                    onClick={() =>
+                      setForm({ ...form, need_delivery: !form.need_delivery })
+                    }
                     style={{
                       width: 44,
                       height: 24,
@@ -475,7 +591,7 @@ export default function ProcessOrder() {
                       background: form.need_delivery ? "#18181b" : "#d4d4d8",
                       position: "relative",
                       transition: "background .2s",
-                      flexShrink: 0
+                      flexShrink: 0,
                     }}
                   >
                     <div
@@ -501,10 +617,9 @@ export default function ProcessOrder() {
                       display: "grid",
                       gridTemplateColumns: "1fr 1fr",
                       gap: 16,
-                      marginTop: 8
+                      marginTop: 8,
                     }}
                   >
-                    {/* 👉 Delivery Address and Delivery Fee side-by-side */}
                     <div
                       style={{
                         gridColumn: "1 / -1",
@@ -544,7 +659,57 @@ export default function ProcessOrder() {
                         />
                       </div>
                     </div>
-                    
+
+                    {/* 👉 Map selector added here */}
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label style={labelStyle}>
+                        <MapPin
+                          size={14}
+                          style={{
+                            display: "inline",
+                            marginRight: 4,
+                            verticalAlign: "middle",
+                          }}
+                        />
+                        Pin Exact Location on Map (Optional)
+                      </label>
+                      <div
+                        style={{
+                          height: 260,
+                          borderRadius: 10,
+                          overflow: "hidden",
+                          border: "1px solid #e4e4e7",
+                          marginTop: 6,
+                        }}
+                      >
+                        <MapContainer
+                          center={[14.7887, 120.9472]}
+                          zoom={13}
+                          style={{ height: "100%", width: "100%" }}
+                        >
+                          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                          <MapInvalidator />
+                          <LocationPicker
+                            position={mapPosition}
+                            setPosition={handleMapClick}
+                          />
+                        </MapContainer>
+                      </div>
+                      {form.delivery_lat && (
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "#059669",
+                            marginTop: 4,
+                            fontWeight: 700,
+                          }}
+                        >
+                          ✓ Location pinned: {form.delivery_lat.toFixed(5)},{" "}
+                          {form.delivery_lng.toFixed(5)}
+                        </div>
+                      )}
+                    </div>
+
                     <div style={{ gridColumn: "1 / -1" }}>
                       <label style={labelStyle}>Preferred Date & Time *</label>
                       <input
@@ -560,7 +725,7 @@ export default function ProcessOrder() {
                         style={inputStyle}
                       />
                     </div>
-                    
+
                     <div style={{ gridColumn: "1 / -1" }}>
                       <label style={labelStyle}>Delivery Notes</label>
                       <input
@@ -579,13 +744,19 @@ export default function ProcessOrder() {
             </div>
 
             <div style={formField}>
-              <label style={labelStyle}>Additional Notes / Special Instructions</label>
+              <label style={labelStyle}>
+                Additional Notes / Special Instructions
+              </label>
               <textarea
                 rows={3}
                 placeholder="Add any final instructions for the admin or build team here..."
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
+                style={{
+                  ...inputStyle,
+                  resize: "vertical",
+                  fontFamily: "inherit",
+                }}
               />
             </div>
 
@@ -599,14 +770,22 @@ export default function ProcessOrder() {
                   fontSize: 13,
                   fontWeight: 600,
                   marginTop: 20,
-                  border: "1px solid #fecaca"
+                  border: "1px solid #fecaca",
                 }}
               >
                 {error}
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 12, marginTop: 32, justifyContent: "space-between", flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                marginTop: 32,
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+              }}
+            >
               <button
                 type="button"
                 style={btnSecondary}
@@ -616,7 +795,11 @@ export default function ProcessOrder() {
               </button>
               <button
                 type="submit"
-                style={canSubmit ? btnPrimary : { ...btnPrimary, opacity: 0.5, cursor: "not-allowed" }}
+                style={
+                  canSubmit
+                    ? btnPrimary
+                    : { ...btnPrimary, opacity: 0.5, cursor: "not-allowed" }
+                }
                 disabled={!canSubmit}
               >
                 {loading
@@ -629,10 +812,27 @@ export default function ProcessOrder() {
 
         {/* Right Sidebar - Summary */}
         <div style={{ ...cardStyle, padding: 0, height: "fit-content" }}>
-          <div style={{ padding: "20px 24px", borderBottom: "1px solid #f4f4f5", background: "#fafafa" }}>
-            <h3 style={{ margin: 0, fontWeight: 800, fontSize: 16, color: "#0a0a0a", letterSpacing: "1px", textTransform: "uppercase" }}>Order Summary</h3>
+          <div
+            style={{
+              padding: "20px 24px",
+              borderBottom: "1px solid #f4f4f5",
+              background: "#fafafa",
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                fontWeight: 800,
+                fontSize: 16,
+                color: "#0a0a0a",
+                letterSpacing: "1px",
+                textTransform: "uppercase",
+              }}
+            >
+              Order Summary
+            </h3>
           </div>
-          
+
           <div style={{ maxHeight: 320, overflowY: "auto", padding: "0 24px" }}>
             {cart.map((item) => (
               <div
@@ -646,14 +846,30 @@ export default function ProcessOrder() {
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 700, color: "#0a0a0a", marginBottom: 2 }}>{item.product_name}</div>
+                  <div
+                    style={{
+                      fontWeight: 700,
+                      color: "#0a0a0a",
+                      marginBottom: 2,
+                    }}
+                  >
+                    {item.product_name}
+                  </div>
                   {(item.wood_type || item.dimensions) && (
-                    <div style={{ fontSize: 11, color: "#71717a", fontWeight: 500 }}>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "#71717a",
+                        fontWeight: 500,
+                      }}
+                    >
                       {item.wood_type}{" "}
                       {item.dimensions ? `(${item.dimensions})` : ""}
                     </div>
                   )}
-                  <div style={{ color: "#71717a", marginTop: 4, fontWeight: 600 }}>
+                  <div
+                    style={{ color: "#71717a", marginTop: 4, fontWeight: 600 }}
+                  >
                     x{item.quantity} @ ₱{item.unit_price.toLocaleString()}
                   </div>
                 </div>
@@ -667,11 +883,18 @@ export default function ProcessOrder() {
             ))}
           </div>
 
-          <div style={{ padding: 24, background: "#fafafa", borderTop: "1px solid #e4e4e7" }}>
+          <div
+            style={{
+              padding: 24,
+              background: "#fafafa",
+              borderTop: "1px solid #e4e4e7",
+            }}
+          >
             <div style={summaryRowStyle}>
               <span>Subtotal</span>
               <span style={{ fontWeight: 600, color: "#18181b" }}>
-                ₱{subtotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                ₱
+                {subtotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
               </span>
             </div>
 
@@ -684,7 +907,8 @@ export default function ProcessOrder() {
                     : `(Flat)`}
                 </span>
                 <span style={{ fontWeight: 600 }}>
-                  -₱{discountAmount.toLocaleString("en-PH", {
+                  -₱
+                  {discountAmount.toLocaleString("en-PH", {
                     minimumFractionDigits: 2,
                   })}
                 </span>
@@ -695,7 +919,8 @@ export default function ProcessOrder() {
               <div style={summaryRowStyle}>
                 <span>Delivery Fee</span>
                 <span style={{ fontWeight: 600, color: "#18181b" }}>
-                  +₱{deliveryFeeAmt.toLocaleString("en-PH", {
+                  +₱
+                  {deliveryFeeAmt.toLocaleString("en-PH", {
                     minimumFractionDigits: 2,
                   })}
                 </span>
@@ -712,7 +937,7 @@ export default function ProcessOrder() {
                 marginTop: 16,
                 paddingTop: 16,
                 borderTop: "1px solid #e4e4e7",
-                letterSpacing: "-0.01em"
+                letterSpacing: "-0.01em",
               }}
             >
               <span>TOTAL</span>
@@ -723,10 +948,17 @@ export default function ProcessOrder() {
 
             {form.payment_method === "cash" && (
               <>
-                <div style={{ ...summaryRowStyle, marginTop: 16, color: "#52525b" }}>
+                <div
+                  style={{
+                    ...summaryRowStyle,
+                    marginTop: 16,
+                    color: "#52525b",
+                  }}
+                >
                   <span>Cash Received</span>
                   <span style={{ fontWeight: 700, color: "#18181b" }}>
-                    ₱{cashReceived.toLocaleString("en-PH", {
+                    ₱
+                    {cashReceived.toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
                     })}
                   </span>
@@ -742,12 +974,11 @@ export default function ProcessOrder() {
                   }}
                 >
                   <span>
-                    {cashReceived >= total
-                      ? "Change"
-                      : "Insufficient Cash"}
+                    {cashReceived >= total ? "Change" : "Insufficient Cash"}
                   </span>
                   <span>
-                    ₱{Math.abs(cashReceived - total).toLocaleString("en-PH", {
+                    ₱
+                    {Math.abs(cashReceived - total).toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
                     })}
                   </span>
@@ -772,7 +1003,7 @@ const pageTitle = {
   fontWeight: 800,
   color: "#0a0a0a",
   margin: 0,
-  letterSpacing: "-0.02em"
+  letterSpacing: "-0.02em",
 };
 
 const pageSubtitle = {
@@ -800,7 +1031,7 @@ const labelStyle = {
   fontWeight: 800,
   color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "1px"
+  letterSpacing: "1px",
 };
 
 const inputStyle = {
@@ -813,7 +1044,7 @@ const inputStyle = {
   outline: "none",
   boxSizing: "border-box",
   background: "#ffffff",
-  transition: "border-color 0.2s"
+  transition: "border-color 0.2s",
 };
 
 const summaryRowStyle = {
@@ -837,7 +1068,7 @@ const btnPrimary = {
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 700,
-  transition: "background 0.2s"
+  transition: "background 0.2s",
 };
 
 const btnSecondary = {
@@ -853,5 +1084,5 @@ const btnSecondary = {
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 700,
-  transition: "background 0.2s"
+  transition: "background 0.2s",
 };
