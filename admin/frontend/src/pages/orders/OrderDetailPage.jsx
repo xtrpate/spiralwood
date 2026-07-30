@@ -2056,7 +2056,7 @@ export default function OrderDetailPage() {
               verifiedTotal > 0 && verifiedTotal < minimumRequiredTotal;
 
             return (
-              <Section title="Cash at Store Payment">
+              <Section title="Blueprint Payment Summary">
                 <InfoRow
                   label="Quoted total"
                   value={formatMoney(cashSummary.total || 0)}
