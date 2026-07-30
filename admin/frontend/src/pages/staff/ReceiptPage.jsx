@@ -47,6 +47,10 @@ export default function ReceiptPage() {
   const paymentMethod = String(receipt.payment_method || "")
     .trim()
     .toLowerCase();
+  const PAYMENT_METHOD_LABELS = { gcash: "GCash" };
+  const paymentMethodLabel =
+    PAYMENT_METHOD_LABELS[paymentMethod] ||
+    (paymentMethod ? paymentMethod.replace("_", " ") : "");
 
   const subtotal = Number(receipt.subtotal ?? 0);
   const discount = Number(receipt.discount ?? 0);
@@ -178,7 +182,7 @@ export default function ReceiptPage() {
             <div className="meta-row">
               <span>Payment:</span>
               <span style={{ textTransform: "capitalize" }}>
-                {paymentMethod.replace("_", " ") || "N/A"}
+                {paymentMethodLabel || "N/A"}
               </span>
             </div>
             {receipt.walkin_customer_phone && (
