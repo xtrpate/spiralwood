@@ -112,10 +112,15 @@ export default function WarrantyPage() {
 
   const [claims, setClaims] = useState([]);
   const [loadingClaims, setLoadingClaims] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchClaims();
-    fetchOrders();
+    const loadInitialData = async () => {
+      await Promise.all([fetchClaims(), fetchOrders()]);
+      setLoading(false);
+    };
+
+    loadInitialData();
   }, []);
 
   const fetchOrders = async () => {
@@ -266,6 +271,159 @@ export default function WarrantyPage() {
 
     await Promise.all([fetchClaims(), fetchOrders()]);
   };
+
+  if (loading) {
+    return (
+      <div
+        className="warranty-page"
+        style={{
+          animation: "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        }}
+      >
+        <div className="warranty-shell">
+          {/* Skeleton Hero */}
+          <div
+            style={{
+              height: "300px",
+              background: "#1a1a1a",
+              width: "100%",
+              marginBottom: "24px",
+              padding: "48px",
+              display: "flex",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ width: "40%" }}>
+              <div
+                style={{
+                  height: "16px",
+                  width: "160px",
+                  background: "#333",
+                  marginBottom: "16px",
+                }}
+              />
+              <div
+                style={{
+                  height: "48px",
+                  width: "80%",
+                  background: "#333",
+                  marginBottom: "24px",
+                }}
+              />
+              <div
+                style={{ height: "70px", width: "100%", background: "#333" }}
+              />
+            </div>
+            <div
+              style={{
+                width: "40%",
+                border: "1px solid #333",
+                padding: "32px",
+                background: "#111",
+              }}
+            >
+              <div
+                style={{
+                  height: "18px",
+                  width: "50%",
+                  background: "#333",
+                  marginBottom: "24px",
+                }}
+              />
+              <div
+                style={{ height: "100px", width: "100%", background: "#333" }}
+              />
+            </div>
+          </div>
+
+          {/* Skeleton Summary Grid */}
+          <div
+            className="warranty-summary-grid"
+            style={{ marginBottom: "40px" }}
+          >
+            {[1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="warranty-summary-card"
+                style={{
+                  height: "100px",
+                  background: "#ffffff",
+                  border: "1px solid #e5e7eb",
+                }}
+              >
+                <div
+                  style={{
+                    height: "12px",
+                    width: "60%",
+                    background: "#f3f4f6",
+                    marginBottom: "16px",
+                  }}
+                />
+                <div
+                  style={{
+                    height: "32px",
+                    width: "40%",
+                    background: "#e5e7eb",
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Skeleton Coverage Summary Section */}
+          <div className="warranty-section">
+            <div
+              style={{
+                height: "32px",
+                width: "250px",
+                background: "#e5e7eb",
+                marginBottom: "12px",
+              }}
+            />
+            <div
+              style={{
+                height: "16px",
+                width: "400px",
+                background: "#f3f4f6",
+                marginBottom: "32px",
+              }}
+            />
+
+            <div className="warranty-policy-grid">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="wpolicy-card"
+                  style={{
+                    height: "240px",
+                    background: "#ffffff",
+                    border: "1px solid #e5e7eb",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: "24px",
+                      width: "50%",
+                      background: "#f3f4f6",
+                      marginBottom: "24px",
+                    }}
+                  />
+                  <div
+                    style={{
+                      height: "120px",
+                      width: "100%",
+                      background: "#f3f4f6",
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
+      </div>
+    );
+  }
 
   return (
     <div className="warranty-page">

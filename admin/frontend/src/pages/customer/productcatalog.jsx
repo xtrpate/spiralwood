@@ -457,14 +457,6 @@ export default function ProductCatalog() {
         )}
       </div>
 
-      <div className="catalog-breadcrumbs">
-        <button type="button" onClick={() => navigate("/")}>
-          Home
-        </button>
-        <span>/</span>
-        <span>Products</span>
-      </div>
-
       <div className="catalog-page-head">
         <div className="catalog-page-copy">
           <h1>Product Catalog</h1>
