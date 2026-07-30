@@ -700,7 +700,7 @@ export default function CustomerLayout() {
               aria-label="Open cart"
               disabled={location.pathname === "/cart"}
               style={{
-                opacity: location.pathname === "/cart" ? 0.5 : 1,
+                opacity: location.pathname === "/cart" ? 1 : 1,
                 cursor: location.pathname === "/cart" ? "default" : "pointer",
               }}
             >
