@@ -5,6 +5,7 @@ import {
   Navigate,
   Outlet,
 } from "react-router-dom";
+import "leaflet/dist/leaflet.css";
 import { Toaster } from "react-hot-toast";
 import useAuthStore from "./store/authStore";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -74,7 +75,6 @@ import POSSalesReports from "./pages/staff/SalesReports";
 import POSBlueprintView from "./pages/staff/BlueprintView";
 import POSInventoryLookup from "./pages/staff/InventoryLookup";
 import POSOrderHistory from "./pages/staff/OrderHistory";
-import POSBlueprintPayments from "./pages/staff/BlueprintPayments.jsx";
 import RiderDashboard from "./pages/staff/RiderDashboard";
 import RiderHistory from "./pages/staff/RiderHistory";
 
@@ -446,14 +446,6 @@ export default function App() {
                   element={
                     <RequireStaffType allowedTypes={["cashier"]}>
                       <POSProductSearch />
-                    </RequireStaffType>
-                  }
-                />
-                <Route
-                  path="blueprint-payments"
-                  element={
-                    <RequireStaffType allowedTypes={["cashier"]}>
-                      <POSBlueprintPayments />
                     </RequireStaffType>
                   }
                 />
