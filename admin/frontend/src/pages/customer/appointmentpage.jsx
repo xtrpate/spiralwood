@@ -73,6 +73,23 @@ const getPurposeLabel = (value) => {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 };
 
+const ApptSkeletonItem = () => (
+  <div className="appt-skeleton-item">
+    <div
+      className="appt-skeleton-block"
+      style={{ width: "60%", height: "14px" }}
+    ></div>
+    <div
+      className="appt-skeleton-block"
+      style={{ width: "40%", height: "10px" }}
+    ></div>
+    <div
+      className="appt-skeleton-block"
+      style={{ width: "90%", height: "12px" }}
+    ></div>
+  </div>
+);
+
 const StatusBadge = ({ status }) => {
   const map = {
     pending: { cls: "appt-badge-pending", label: "Pending" },
@@ -782,8 +799,12 @@ export default function AppointmentPage() {
             </div>
 
             {loadingAppts ? (
-              <div className="appt-loading">
-                <div className="appt-spinner" /> Loading…
+              <div className="appt-list">
+                {Array(3)
+                  .fill(0)
+                  .map((_, i) => (
+                    <ApptSkeletonItem key={i} />
+                  ))}
               </div>
             ) : appointments.length === 0 ? (
               <div className="appt-empty">
