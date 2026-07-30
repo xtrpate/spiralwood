@@ -222,4 +222,20 @@ router.post(
   customOrderController.selectRemainingPaymentMethod,
 );
 
+// PHASE 5B — Blueprint Remaining Balance Online Payment.
+router.post(
+  "/:id/remaining-balance/pay",
+  authenticate,
+  requireCustomer,
+  customOrderController.createRemainingBalancePayMongoCheckout,
+);
+
+router.post(
+  "/:id/remaining-balance/verify-payment",
+  authenticate,
+  requireCustomer,
+  logAction("verify_blueprint_remaining_balance_payment", "payment_transactions"),
+  customOrderController.verifyRemainingBalancePayment,
+);
+
 module.exports = router;

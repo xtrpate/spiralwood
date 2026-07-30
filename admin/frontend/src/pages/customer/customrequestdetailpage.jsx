@@ -323,6 +323,7 @@ export default function CustomRequestDetailPage() {
   const [selectingMethod, setSelectingMethod] = useState(false);
   const [selectionError, setSelectionError] = useState("");
   const [selectingRemainingMethod, setSelectingRemainingMethod] = useState(false);
+  const [payingRemainingBalance, setPayingRemainingBalance] = useState(false);
   const [remainingMethodError, setRemainingMethodError] = useState("");
 
   const loadRequestDetail = useCallback(
@@ -350,17 +351,23 @@ export default function CustomRequestDetailPage() {
     const verifyPayment = async () => {
       const params = new URLSearchParams(window.location.search);
 
-      if (params.get("verify_success") !== "true") {
+      const isInitialVerify = params.get("verify_success") === "true";
+      const isRemainingVerify = params.get("verify_remaining_success") === "true";
+
+      if (!isInitialVerify && !isRemainingVerify) {
         loadRequestDetail(true);
         return;
       }
 
+      const paramKey = isInitialVerify ? "verify_success" : "verify_remaining_success";
+      const endpoint = isInitialVerify
+        ? `/customer/custom-orders/${id}/verify-payment`
+        : `/customer/custom-orders/${id}/remaining-balance/verify-payment`;
+
       let isSuccess = false;
 
       try {
-        const res = await api.post(
-          `/customer/custom-orders/${id}/verify-payment`,
-        );
+        const res = await api.post(endpoint);
 
         // 👉 FIX: Strictly check the boolean sent by the backend
         if (res.data && res.data.success === false) {
@@ -374,7 +381,7 @@ export default function CustomRequestDetailPage() {
       } finally {
         // 👉 FIX: Only delete the URL trigger if it actually worked!
         if (isSuccess) {
-          params.delete("verify_success");
+          params.delete(paramKey);
           const url =
             window.location.pathname +
             (params.toString() ? `?${params.toString()}` : "");
@@ -522,6 +529,21 @@ export default function CustomRequestDetailPage() {
     cash: "Cash",
     paymongo: "Online Payment",
   };
+
+  // PHASE 5B — Blueprint Remaining Balance Online Payment. The backend
+  // (createRemainingBalancePayMongoCheckout) re-derives and locks every
+  // one of these itself; this is display-only, for showing/hiding the
+  // "Pay Remaining Balance Online" button. An already-active PayMongo
+  // session does not hide the button — clicking it safely reuses (or
+  // safely replaces, if expired) the existing session server-side.
+  const canPayRemainingBalanceOnline =
+    remainingPaymentMethod === "paymongo" &&
+    String(requestData?.payment_status || "").trim().toLowerCase() !== "paid" &&
+    Number(verifiedPaymentTotal || 0) > 0 &&
+    balanceDue > 0 &&
+    ["scheduled", "in_transit"].includes(deliveryStatusForRemainingMethod) &&
+    !["cancelled", "completed"].includes(orderStatusKey) &&
+    !Boolean(paymentSummary.has_pending_payment);
 
   const estimationStatusKey = String(latestEstimation?.status || "")
     .trim()
@@ -685,6 +707,36 @@ export default function CustomRequestDetailPage() {
           err.response?.data?.error ||
           "Failed to launch PayMongo checkout.",
       );
+    }
+  };
+
+  // PHASE 5B — Blueprint Remaining Balance Online Payment.
+  const handlePayRemainingBalanceOnline = async () => {
+    if (!requestData?.id || payingRemainingBalance) return;
+
+    setPayingRemainingBalance(true);
+
+    try {
+      const res = await api.post(
+        `/customer/custom-orders/${requestData.id}/remaining-balance/pay`,
+      );
+
+      if (!res.data?.payment_url) {
+        toast.error("Unable to launch PayMongo checkout.");
+        return;
+      }
+
+      window.location.href = res.data.payment_url;
+    } catch (err) {
+      console.error(err);
+
+      toast.error(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          "Failed to launch PayMongo checkout.",
+      );
+    } finally {
+      setPayingRemainingBalance(false);
     }
   };
 
@@ -1465,6 +1517,39 @@ export default function CustomRequestDetailPage() {
                           ? "Selected: Online Payment"
                           : "Choose Online Payment"}
                       </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* PHASE 5B — Blueprint Remaining Balance Online Payment */}
+              {canPayRemainingBalanceOnline ? (
+                <div className="checkout-section">
+                  <div className="checkout-section-header">
+                    <div className="checkout-section-num">03C</div>
+                    <h3>Pay Remaining Balance Online</h3>
+                  </div>
+                  <div style={{ padding: "0 4px 4px" }}>
+                    <div className="summary-row">
+                      <span>Remaining Balance</span>
+                      <strong>{formatMoney(balanceDue)}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-primary crd-paymongo-btn"
+                      disabled={payingRemainingBalance}
+                      onClick={handlePayRemainingBalanceOnline}
+                    >
+                      <div>
+                        {payingRemainingBalance
+                          ? "Redirecting..."
+                          : "Pay Remaining Balance Online"}
+                      </div>
+                      <strong>{formatMoney(balanceDue)}</strong>
+                    </button>
+                    <div className="crd-help-text">
+                      You will be redirected to our secure checkout page to
+                      complete your payment.
                     </div>
                   </div>
                 </div>
