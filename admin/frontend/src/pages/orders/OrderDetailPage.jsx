@@ -242,9 +242,9 @@ const getTimelineNote = (
       }
 
       return hasSignedDeliveryReceipt
-        ? "Signed receipt uploaded"
+        ? "Proof of Delivery uploaded"
         : order?.delivery
-          ? "Awaiting signed receipt"
+          ? "Awaiting Proof of Delivery"
           : "Not yet delivered";
 
     case "completed":
@@ -1261,7 +1261,7 @@ export default function OrderDetailPage() {
               : normalizedOrderStatus === "delivered"
                 ? requiresDeliveryReceiptForCompletion &&
                   !hasSignedDeliveryReceipt
-                  ? "Upload signed receipt and complete"
+                  ? "Upload Proof of Delivery and complete"
                   : "Complete order"
                 : normalizedOrderStatus === "completed"
                   ? "Order closed"
@@ -2056,7 +2056,7 @@ export default function OrderDetailPage() {
               verifiedTotal > 0 && verifiedTotal < minimumRequiredTotal;
 
             return (
-              <Section title="Cash at Store Payment">
+              <Section title="Blueprint Payment Summary">
                 <InfoRow
                   label="Quoted total"
                   value={formatMoney(cashSummary.total || 0)}
@@ -2419,7 +2419,7 @@ export default function OrderDetailPage() {
                     }
                   />
                   <InfoRow
-                    label="Signed Receipt"
+                    label="Proof of Delivery"
                     value={
                       order.delivery.signed_receipt ? (
                         <div
@@ -2493,7 +2493,7 @@ export default function OrderDetailPage() {
                     }}
                   >
                     Create or link a delivery record first before uploading a
-                    signed delivery receipt.
+                    Proof of Delivery photo.
                   </div>
                 </Section>
               ) : null}
@@ -2778,9 +2778,9 @@ export default function OrderDetailPage() {
           <div style={{ ...modalBox, width: 820, maxWidth: "96vw" }}>
             <div style={modalHeader}>
               <div>
-                <h3 style={modalTitle}>Signed Delivery Receipt</h3>
+                <h3 style={modalTitle}>Proof of Delivery</h3>
                 <p style={modalSubtitle}>
-                  Review the uploaded signed delivery receipt for this order.
+                  Review the uploaded Proof of Delivery photo for this order.
                 </p>
               </div>
             </div>
@@ -2789,13 +2789,13 @@ export default function OrderDetailPage() {
               {deliveryReceiptPreview.type === "image" ? (
                 <img
                   src={deliveryReceiptPreview.url}
-                  alt="Signed delivery receipt"
+                  alt="Proof of Delivery"
                   style={proofPreviewImage}
                 />
               ) : deliveryReceiptPreview.type === "pdf" ? (
                 <iframe
                   src={deliveryReceiptPreview.url}
-                  title="Signed delivery receipt preview"
+                  title="Proof of Delivery preview"
                   style={proofPreviewFrame}
                 />
               ) : (
