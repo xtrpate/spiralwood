@@ -171,6 +171,10 @@ export default function AppointmentPage() {
   const [loadingSlots, setLoadingSlots] = useState(false);
 
   useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  useEffect(() => {
     setAddress(user?.address || "");
   }, [user]);
 
