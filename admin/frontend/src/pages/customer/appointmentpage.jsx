@@ -176,6 +176,7 @@ export default function AppointmentPage() {
 
   useEffect(() => {
     setAddress(user?.address || "");
+    setContactNumber(user?.phone || "");
   }, [user]);
 
   useEffect(() => {
@@ -243,7 +244,7 @@ export default function AppointmentPage() {
       return setError("Please enter a contact number.");
     }
     if (!/^09\d{9}$/.test(cleanedContact)) {
-      return setError("Contact number must be 11 digits.");
+      return setError("Contact number must be 11 digits and starts with '09'.");
     }
 
     if (purpose === "site_measurement" && !address.trim()) {
@@ -263,6 +264,7 @@ export default function AppointmentPage() {
       });
 
       setSubmitted(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
       await fetchAppointments();
 
       // Refresh current week's calendar blocks
@@ -647,7 +649,26 @@ export default function AppointmentPage() {
                             setContactNumber(onlyNums);
                           }
                         }}
+                        style={{
+                          maxWidth: "320px",
+                          borderColor:
+                            contact_number && !/^09\d{9}$/.test(contact_number)
+                              ? "#dc2626"
+                              : undefined,
+                        }}
                       />
+                      {contact_number && !/^09\d{9}$/.test(contact_number) && (
+                        <div
+                          style={{
+                            color: "#dc2626",
+                            fontSize: 12,
+                            marginTop: 2,
+                            fontWeight: 600,
+                          }}
+                        >
+                          Number must be exactly 11 digits and start with 09.
+                        </div>
+                      )}
                     </div>
 
                     {purpose === "site_measurement" && (
