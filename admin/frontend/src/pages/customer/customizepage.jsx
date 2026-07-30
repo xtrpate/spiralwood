@@ -1361,8 +1361,8 @@ export default function CustomizePage() {
         )}
       </div>
 
-      <div className="page-hero">
-        <div>
+      <div className="cust-page-head">
+        <div className="cust-page-copy">
           <h1>Customize Your Order</h1>
           <p>
             Choose an admin-approved furniture template, preview it, then
@@ -1370,34 +1370,28 @@ export default function CustomizePage() {
           </p>
         </div>
 
-        <button
-          type="button"
-          className="cust-primary-btn"
-          onClick={() => navigate("/cart")}
-        >
-          View Cart {cartCount > 0 ? `(${cartCount})` : ""}
-        </button>
+        <div className="cust-page-meta">
+          {!loading && (
+            <div className="cust-results-info">
+              Showing {total} template{total !== 1 ? "s" : ""}
+            </div>
+          )}
+        </div>
       </div>
 
-      <form className="cust-search-bar" onSubmit={handleSearch}>
-        <div className="cust-search-input-wrap">
-          <Search size={18} />
-          <input
-            type="text"
-            placeholder="Search templates..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-
-        <button type="submit" className="cust-search-btn">
-          Search
-        </button>
-
-        <span className="cust-search-count">
-          {total} design{total !== 1 ? "s" : ""} available
-        </span>
-      </form>
+      <div className="cust-toolbar">
+        <form className="cust-search-shell" onSubmit={handleSearch}>
+          <div className="cust-search">
+            <Search size={16} />
+            <input
+              type="text"
+              placeholder="Search templates..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        </form>
+      </div>
 
       <div className="cust-products-grid">{renderedCards}</div>
 
