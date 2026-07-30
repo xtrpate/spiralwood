@@ -483,6 +483,8 @@ export default function CustomRequestDetailPage() {
   const downPaymentDue = Number(paymentSummary.down_payment_due ?? 0);
   const balanceDue = Number(paymentSummary.balance_due ?? 0);
   const verifiedPaymentTotal = Number(paymentSummary.total_verified ?? 0);
+  const paymentMethodFieldLabel =
+    verifiedPaymentTotal > 0 ? "Initial payment method" : "Selected payment method";
   const latestPayment = paymentSummary.latest_transaction || null;
   const paymentMethodChangeLocked = Boolean(
     paymentSummary.payment_method_change_locked,
@@ -776,7 +778,7 @@ export default function CustomRequestDetailPage() {
                       </span>
                     </div>
 
-                    <DetailValue label="Payment method">
+                    <DetailValue label={paymentMethodFieldLabel}>
                       {displayPaymentMethod}
                     </DetailValue>
 
@@ -1725,7 +1727,7 @@ export default function CustomRequestDetailPage() {
                 </div>
 
                 <div className="summary-row">
-                  <span>Payment method</span>
+                  <span>{paymentMethodFieldLabel}</span>
                   <span>{displayPaymentMethod}</span>
                 </div>
 

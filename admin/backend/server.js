@@ -123,6 +123,10 @@ app.use("/api/pos/products", require("./routes/pos.products"));
 app.use("/api/pos/orders", require("./routes/pos.orders"));
 app.use("/api/pos/blueprints", require("./routes/pos.blueprints"));
 app.use("/api/pos/tasks", require("./routes/pos.tasks"));
+app.use(
+  "/api/pos/blueprint-cash-payments",
+  require("./routes/pos.blueprintPayments"),
+);
 app.use("/api/pos", require("./routes/pos.fulfillment"));
 app.use("/api/pos", require("./routes/pos.schedule"));
 app.use("/api/pos", require("./routes/pos.receipts"));

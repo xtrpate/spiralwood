@@ -51,6 +51,11 @@ export default function POSLayout() {
           icon: ClipboardList,
           label: "Transaction History",
         },
+        {
+          to: "/staff/blueprint-payments",
+          icon: FileText,
+          label: "Blueprint Payments",
+        },
         { to: "/staff/reports", icon: BarChart3, label: "Sales Reports" },
       ];
     }
