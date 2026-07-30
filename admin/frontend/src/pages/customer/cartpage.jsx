@@ -405,38 +405,36 @@ export default function CartPage() {
   return (
     <div className="fm-cart-shell">
       {toastNotification}
+
+      {/* 1. TITLE COMES FIRST */}
+      <div className="fm-cart-page-hero">
+        <div>
+          <h1>Shopping Cart</h1>
+          <p>
+            Review your selected items and quantities before proceeding to
+            checkout.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="fm-cart-hero-btn"
+          onClick={() => navigate("/catalog")}
+        >
+          ← Continue Shopping
+        </button>
+      </div>
+
       <div className="fm-cart-progress">
         <div className="fm-cart-step active">
           <span className="fm-cart-step-num">1</span>
           <span>Shopping Cart</span>
         </div>
-
         <ChevronRight size={16} className="fm-cart-progress-arrow" />
-
         <div className="fm-cart-step">
           <span className="fm-cart-step-num">2</span>
           <span>Checkout Details</span>
         </div>
-
-        <div className="fm-cart-page-hero">
-          <div>
-            <h1>Shopping Cart</h1>
-            <p>
-              Review your selected items and quantities before proceeding to
-              checkout.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="fm-cart-hero-btn"
-            onClick={() => navigate("/catalog")}
-          >
-            ← Continue Shopping
-          </button>
-        </div>
-
         <ChevronRight size={16} className="fm-cart-progress-arrow" />
-
         <div className="fm-cart-step">
           <span className="fm-cart-step-num">3</span>
           <span>Order Complete</span>
