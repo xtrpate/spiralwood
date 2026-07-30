@@ -19,6 +19,12 @@ const getStatusStyle = (status) => {
   };
 };
 
+const PAYMENT_METHOD_LABELS = { gcash: "GCash" };
+const formatPaymentMethod = (value) => {
+  const normalized = String(value || "").toLowerCase();
+  return PAYMENT_METHOD_LABELS[normalized] || normalized.replace("_", " ");
+};
+
 export default function OrderHistory() {
   const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
@@ -261,7 +267,7 @@ export default function OrderHistory() {
                           fontWeight: 500,
                         }}
                       >
-                        {String(order.payment_method).replace("_", " ")}
+                        {formatPaymentMethod(order.payment_method)}
                       </td>
                       <td
                         style={{

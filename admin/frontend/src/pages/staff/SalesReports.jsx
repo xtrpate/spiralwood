@@ -152,6 +152,10 @@ export default function SalesReports() {
       ? value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
       : "—";
 
+  const PAYMENT_METHOD_LABELS = { gcash: "GCash" };
+  const humanizePaymentMethod = (value) =>
+    PAYMENT_METHOD_LABELS[String(value || "").toLowerCase()] || humanize(value);
+
   const summaryData = (data?.summary || []).map((item) => ({
     ...item,
     formatted_period: formatPeriodLabel(
@@ -465,7 +469,9 @@ export default function SalesReports() {
                       cx="50%"
                       cy="50%"
                       outerRadius={85}
-                      label={({ payment_method }) => humanize(payment_method)}
+                      label={({ payment_method }) =>
+                        humanizePaymentMethod(payment_method)
+                      }
                       labelLine={{ stroke: "#a1a1aa" }}
                     >
                       {data.payment_breakdown.map((_, i) => (
@@ -480,7 +486,7 @@ export default function SalesReports() {
                     <Tooltip
                       formatter={(value, _name, item) => [
                         `${value} transactions`,
-                        humanize(item?.payload?.payment_method),
+                        humanizePaymentMethod(item?.payload?.payment_method),
                       ]}
                       contentStyle={{
                         background: "#18181b",
@@ -772,7 +778,7 @@ export default function SalesReports() {
                                 whiteSpace: "nowrap",
                               }}
                             >
-                              {humanize(t.payment_method)}
+                              {humanizePaymentMethod(t.payment_method)}
                             </span>
                           </td>
                           <td style={tdStyle}>{money(t.subtotal)}</td>
