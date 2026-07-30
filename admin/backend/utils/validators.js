@@ -61,10 +61,23 @@ function isValidPositiveInteger(value) {
   return !isNaN(num) && isFinite(num) && Number.isInteger(num) && num > 0;
 }
 
+// Stricter than isValidPositiveInteger above: rejects decimals ("5.0"),
+// scientific notation ("1e2"), non-digit characters ("130abc"), and
+// unsafe integer values -- and returns the parsed number directly (or
+// null) rather than a boolean.
+function parseStrictPositiveInt(value) {
+  if (value === undefined || value === null) return null;
+  const str = String(value).trim();
+  if (!/^\d+$/.test(str)) return null;
+  const num = Number(str);
+  return Number.isSafeInteger(num) && num > 0 ? num : null;
+}
+
 module.exports = {
   isValidNonNegativeNumber,
   isValidNonNegativeInteger,
   isValidPositiveInteger,
+  parseStrictPositiveInt,
   isNonEmptyString,
   isValidUnitLabel,
   isValidPhoneNumber,

@@ -5,6 +5,10 @@ const { signUploadPath } = require("../../utils/signedUrl");
 const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
+const { parseStrictPositiveInt } = require("../../utils/validators");
+const {
+  buildPaymentSummaryFromRows,
+} = require("../../services/blueprintCashPaymentService");
 
 const normalize = (value) =>
   String(value || "")
@@ -647,7 +651,10 @@ const adminInsertDiscussionNotificationSafe = async (
 
 exports.getOne = async (req, res) => {
   try {
-    const orderId = parseInt(req.params.id);
+    const orderId = parseStrictPositiveInt(req.params.id);
+    if (!orderId) {
+      return res.status(400).json({ message: "Invalid order id." });
+    }
 
     const [[order]] = await pool.query(
       `SELECT 
@@ -809,6 +816,29 @@ exports.getOne = async (req, res) => {
       order.payment_proof = signUploadPath(order.payment_proof);
     }
 
+    // Correction 13: build the restricted payment summary from the rows
+    // THIS request already fetched (order, latestEstimation,
+    // paymentTransactions) -- never a second, independently-fetched
+    // snapshot -- so this response and the shared service can never
+    // disagree about the same request's data. Must run BEFORE the
+    // paymongo_session_id/payment_url fields are stripped from `order`
+    // below, since buildPaymentSummaryFromRows needs them to compute
+    // hasPayMongoSessionData.
+    const blueprintCashPaymentSummary =
+      normalize(order.order_type) === "blueprint"
+        ? buildPaymentSummaryFromRows({
+            order,
+            estimation: latestEstimation,
+            paymentRows: paymentTransactions,
+          })
+        : null;
+
+    // Raw PayMongo session fields are never sent to the frontend -- only
+    // the derived boolean already folded into blueprintCashPaymentSummary
+    // above is. Deleted from `order` here, before the response spread.
+    delete order.paymongo_session_id;
+    delete order.payment_url;
+
     res.json({
       ...order,
       items,
@@ -819,6 +849,7 @@ exports.getOne = async (req, res) => {
       payment_verified_total: verifiedPaymentTotal,
       payment_balance: paymentBalance,
       payment_status_display: paymentStatusDisplay,
+      blueprint_cash_payment: blueprintCashPaymentSummary,
       custom_request_items: customRequestItems,
       has_custom_request_data: customRequestItems.length > 0,
       latest_estimation: latestEstimation,

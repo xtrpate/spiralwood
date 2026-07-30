@@ -7,15 +7,6 @@ import api from "../../services/api";
 import "./customizepage.css";
 import useAuthStore from "../../store/authStore";
 
-const PAYMENT_METHODS = [
-  {
-    value: "paymongo",
-    icon: "💳",
-    label: "Online Payment",
-    desc: "Securely pay via GCash, Maya, Bank Transfer, or Credit/Debit Card after your quotation has been approved.",
-  },
-];
-
 const formatTemplateLabel = (item = {}) => {
   if (item?.template_profile) {
     return `${String(item.template_profile)
@@ -101,7 +92,6 @@ export default function CustomCheckoutPage() {
     name: user?.name || "",
     phone: user?.phone || "",
     delivery_address: user?.address || "",
-    payment_method: "paymongo",
     notes: "",
   });
 
@@ -196,7 +186,6 @@ export default function CustomCheckoutPage() {
         name: form.name,
         phone: form.phone,
         delivery_address: form.delivery_address,
-        payment_method: form.payment_method || "",
         notes: form.notes,
       });
 
@@ -446,77 +435,6 @@ export default function CustomCheckoutPage() {
           <div className="checkout-section">
             <div className="checkout-section-header">
               <div className="checkout-section-num">2</div>
-              <h3>Payment Method</h3>
-            </div>
-
-            <div className="checkout-section-body">
-              <p style={{ fontSize: 12, color: "#aaa", marginBottom: 14 }}>
-                Payment will be securely processed through PayMongo after your
-                quotation has been approved.
-              </p>
-
-              <div className="payment-methods">
-                {PAYMENT_METHODS.map((m) => (
-                  <div
-                    key={m.value}
-                    className={`payment-method-card ${
-                      form.payment_method === m.value ? "selected" : ""
-                    }`}
-                    onClick={() => set("payment_method", m.value)}
-                  >
-                    <div className="payment-method-icon">{m.icon}</div>
-                    <div className="payment-method-info">
-                      <span className="payment-method-name">{m.label}</span>
-                      <span className="payment-method-desc">{m.desc}</span>
-                    </div>
-                    <div className="payment-method-check" />
-                  </div>
-                ))}
-              </div>
-
-              <div
-                style={{
-                  marginTop: 18,
-                  padding: "14px 16px",
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 10,
-                  background: "#fafafa",
-                  fontSize: 14,
-                  lineHeight: 1.7,
-                  color: "#555",
-                }}
-              >
-                <strong style={{ color: "#111" }}>How payment works</strong>
-
-                <div style={{ marginTop: 8 }}>
-                  • No payment is collected when submitting your custom request.
-                </div>
-
-                <div>
-                  • Our team will review your design and prepare your quotation.
-                </div>
-
-                <div>
-                  • Once approved, you'll receive a secure PayMongo payment
-                  page.
-                </div>
-
-                <div>
-                  • Only the required <strong>30% down payment</strong> will be
-                  charged.
-                </div>
-
-                <div>
-                  • You can pay using GCash, Maya, Online Banking, or
-                  Credit/Debit Card.
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="checkout-section">
-            <div className="checkout-section-header">
-              <div className="checkout-section-num">3</div>
               <h3>Additional Notes</h3>
             </div>
 

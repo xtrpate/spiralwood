@@ -320,6 +320,8 @@ export default function CustomRequestDetailPage() {
   const [discussionMessage, setDiscussionMessage] = useState("");
   const [discussionFiles, setDiscussionFiles] = useState([]);
   const [discussionSubmitting, setDiscussionSubmitting] = useState(false);
+  const [selectingMethod, setSelectingMethod] = useState(false);
+  const [selectionError, setSelectionError] = useState("");
 
   const loadRequestDetail = useCallback(
     async (showLoader = true) => {
@@ -403,7 +405,31 @@ export default function CustomRequestDetailPage() {
     [requestData],
   );
 
-  const displayPaymentMethod = "Online Payment";
+  const PAYMENT_METHOD_LABELS = {
+    paymongo: "Online Payment",
+    cash: "Cash at Store",
+    gcash: "GCash",
+    bank_transfer: "Bank Transfer",
+    cod: "Cash on Delivery",
+    cop: "Cash on Pick-up",
+  };
+
+  const normalizedOrderPaymentMethod = String(
+    requestData?.payment_method || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  const isKnownPaymentMethod = ["cash", "paymongo"].includes(
+    normalizedOrderPaymentMethod,
+  );
+  const isHistoricalUnsupportedMethod =
+    Boolean(normalizedOrderPaymentMethod) && !isKnownPaymentMethod;
+
+  const displayPaymentMethod = normalizedOrderPaymentMethod
+    ? PAYMENT_METHOD_LABELS[normalizedOrderPaymentMethod] ||
+      prettifyText(normalizedOrderPaymentMethod, "Unknown")
+    : "Not selected yet";
 
   const latestEstimation = requestData?.latest_estimation || null;
 
@@ -457,7 +483,19 @@ export default function CustomRequestDetailPage() {
   const downPaymentDue = Number(paymentSummary.down_payment_due ?? 0);
   const balanceDue = Number(paymentSummary.balance_due ?? 0);
   const verifiedPaymentTotal = Number(paymentSummary.total_verified ?? 0);
+  const paymentMethodFieldLabel =
+    verifiedPaymentTotal > 0 ? "Initial payment method" : "Selected payment method";
   const latestPayment = paymentSummary.latest_transaction || null;
+  const paymentMethodChangeLocked = Boolean(
+    paymentSummary.payment_method_change_locked,
+  );
+  const hasPendingPaymentTransaction =
+    Number(paymentSummary.total_pending || 0) > 0;
+  const canChooseMethod =
+    requestData?.payment_status === "unpaid" &&
+    Number(verifiedPaymentTotal || 0) <= 0 &&
+    !hasPendingPaymentTransaction &&
+    !paymentMethodChangeLocked;
   const estimationStatusKey = String(latestEstimation?.status || "")
     .trim()
     .toLowerCase();
@@ -623,6 +661,29 @@ export default function CustomRequestDetailPage() {
     }
   };
 
+  const handleSelectPaymentMethod = async (method) => {
+    if (selectingMethod) return;
+
+    setSelectingMethod(true);
+    setSelectionError("");
+
+    try {
+      await api.post(
+        `/customer/custom-orders/${requestData.id}/payment-method`,
+        { payment_method: method },
+      );
+      await loadRequestDetail(false);
+    } catch (err) {
+      setSelectionError(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          "Failed to update payment method.",
+      );
+    } finally {
+      setSelectingMethod(false);
+    }
+  };
+
   return (
     <div className="crd-page">
       <div className="page-hero">
@@ -717,7 +778,7 @@ export default function CustomRequestDetailPage() {
                       </span>
                     </div>
 
-                    <DetailValue label="Payment method">
+                    <DetailValue label={paymentMethodFieldLabel}>
                       {displayPaymentMethod}
                     </DetailValue>
 
@@ -922,10 +983,18 @@ export default function CustomRequestDetailPage() {
                         </DetailValue>
 
                         <p className="crd-panel-copy muted">
-                          Payments are securely processed online. Once your
-                          payment is completed, your payment status will
-                          automatically update without requiring manual
-                          verification.
+                          {requestData.payment_status === "partial" ||
+                          requestData.payment_status === "paid"
+                            ? "Your verified payments are reflected below. Contact us if you have questions about this order's payment history."
+                            : hasPendingPaymentTransaction
+                              ? "A payment is currently awaiting verification for this order."
+                              : isHistoricalUnsupportedMethod
+                                ? "A supported payment method must be selected before continuing."
+                                : normalizedOrderPaymentMethod === "cash"
+                                  ? "Your payment will remain unpaid until the 30% cash down payment is received and verified at the Spiral Wood store."
+                                  : normalizedOrderPaymentMethod === "paymongo"
+                                    ? "Payments are securely processed online. Once your payment is completed, your payment status will automatically update without requiring manual verification."
+                                    : "Choose Cash at Store or Online Payment to continue with the required 30% down payment."}
                         </p>
 
                         {latestPayment ? (
@@ -946,10 +1015,17 @@ export default function CustomRequestDetailPage() {
 
                             <div>
                               <strong>Payment Method:</strong>{" "}
-                              {prettifyText(
-                                latestPayment.payment_method,
-                                "Online Payment",
-                              )}
+                              {latestPayment.payment_method
+                                ? PAYMENT_METHOD_LABELS[
+                                    String(latestPayment.payment_method)
+                                      .trim()
+                                      .toLowerCase()
+                                  ] ||
+                                  prettifyText(
+                                    latestPayment.payment_method,
+                                    "Unknown",
+                                  )
+                                : "No payment recorded yet"}
                             </div>
 
                             <div>
@@ -960,87 +1036,304 @@ export default function CustomRequestDetailPage() {
                         ) : null}
                       </div>
 
-                      <div className="crd-panel">
-                        <h4>Secure Online Payment</h4>
-
-                        <div className="crd-info-box" style={{ marginTop: 0 }}>
-                          <div className="crd-info-title">
-                            Your quotation has been approved and is ready for
-                            payment.
-                          </div>
-
-                          <p style={{ margin: "8px 0 0" }}>
-                            To continue with production, please complete the
-                            required
-                            <strong> 30% down payment </strong>
-                            using our secure PayMongo payment gateway.
-                          </p>
-
-                          <p style={{ margin: "12px 0 0" }}>
-                            Supported payment methods:
-                          </p>
-
-                          <ul className="crd-payment-method-list">
-                            <li>GCash</li>
-                            <li>Maya</li>
-                            <li>Online Banking</li>
-                            <li>Credit / Debit Card</li>
-                          </ul>
-                        </div>
-
-                        <div className="crd-payment-breakdown">
-                          <div className="summary-row">
-                            <span>Quoted Total</span>
-                            <strong>{formatMoney(quotedTotal)}</strong>
-                          </div>
-
-                          <div className="summary-row">
-                            <span>30% Down Payment</span>
-                            <strong>{formatMoney(downPaymentDue)}</strong>
-                          </div>
-
-                          <div className="summary-row">
-                            <span>Amount Paid</span>
-                            <strong>{formatMoney(verifiedPaymentTotal)}</strong>
-                          </div>
-
-                          <div className="summary-row">
-                            <span>Remaining Balance</span>
-                            <strong>{formatMoney(balanceDue)}</strong>
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          className="btn btn-primary crd-paymongo-btn"
-                          disabled={
-                            !quotationAvailable ||
-                            quotationActionBlocked ||
-                            quotationIntegrityWarning ||
-                            requestData.payment_status === "paid" ||
-                            requestData.payment_status === "partial" ||
-                            downPaymentDue <= 0
-                          }
-                          onClick={handlePayNow}
+                      {selectionError ? (
+                        <div
+                          className="crd-info-box pending"
+                          style={{ gridColumn: "1 / -1" }}
                         >
-                          {requestData?.payment_status === "paid" ||
-                          balanceDue <= 0 ? (
-                            <div>Fully Paid</div>
-                          ) : requestData?.payment_status === "partial" ? (
-                            <div>Down Payment Completed</div>
-                          ) : (
-                            <>
-                              <div>Pay 30% Down Payment</div>
-                              <strong>{formatMoney(downPaymentDue)}</strong>
-                            </>
-                          )}
-                        </button>
-
-                        <div className="crd-help-text">
-                          You will be redirected to our secure checkout page to
-                          complete your payment.
+                          {selectionError}
                         </div>
-                      </div>
+                      ) : null}
+
+                      {requestData.payment_status === "partial" ||
+                      requestData.payment_status === "paid" ? (
+                        <div className="crd-panel">
+                          <h4>Payment Method</h4>
+                          <div
+                            className="crd-info-box"
+                            style={{ marginTop: 0 }}
+                          >
+                            <div className="crd-info-title">
+                              {displayPaymentMethod}
+                            </div>
+                            <p style={{ margin: "8px 0 0" }}>
+                              The payment method for this order can no
+                              longer be changed.
+                            </p>
+                          </div>
+                        </div>
+                      ) : hasPendingPaymentTransaction ? (
+                        <div className="crd-panel">
+                          <h4>Payment Method</h4>
+                          <div
+                            className="crd-info-box pending"
+                            style={{ marginTop: 0 }}
+                          >
+                            <div className="crd-info-title">
+                              {displayPaymentMethod}
+                            </div>
+                            <p style={{ margin: "8px 0 0" }}>
+                              A payment is currently awaiting verification for
+                              this order. Your payment method cannot be
+                              changed while a payment is pending review.
+                            </p>
+                          </div>
+                        </div>
+                      ) : !normalizedOrderPaymentMethod ? (
+                        canChooseMethod ? (
+                          <div className="crd-panel">
+                            <h4>Choose a Payment Method</h4>
+
+                            <div className="crd-grid-split">
+                              <div className="crd-panel crd-panel-soft">
+                                <h4>Cash at Store</h4>
+                                <p className="crd-panel-copy muted">
+                                  Pay the required 30% down payment at the
+                                  Spiral Wood physical store.
+                                </p>
+                                <div className="summary-row">
+                                  <span>30% Down Payment</span>
+                                  <strong>
+                                    {formatMoney(downPaymentDue)}
+                                  </strong>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  disabled={selectingMethod}
+                                  onClick={() =>
+                                    handleSelectPaymentMethod("cash")
+                                  }
+                                >
+                                  Choose Cash at Store
+                                </button>
+                              </div>
+
+                              <div className="crd-panel crd-panel-soft">
+                                <h4>Online Payment</h4>
+                                <p className="crd-panel-copy muted">
+                                  Pay securely via GCash, Maya, Online
+                                  Banking, or Credit/Debit Card.
+                                </p>
+                                <div className="summary-row">
+                                  <span>30% Down Payment</span>
+                                  <strong>
+                                    {formatMoney(downPaymentDue)}
+                                  </strong>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  disabled={selectingMethod}
+                                  onClick={() =>
+                                    handleSelectPaymentMethod("paymongo")
+                                  }
+                                >
+                                  Choose Online Payment
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="crd-panel">
+                            <h4>Payment Method</h4>
+                            <div
+                              className="crd-info-box pending"
+                              style={{ marginTop: 0 }}
+                            >
+                              <div className="crd-info-title">
+                                Not selected yet
+                              </div>
+                              <p style={{ margin: "8px 0 0" }}>
+                                Payment method selection is currently
+                                unavailable for this order.
+                              </p>
+                            </div>
+                          </div>
+                        )
+                      ) : normalizedOrderPaymentMethod === "cash" ? (
+                        <div className="crd-panel">
+                          <h4>Cash at Store</h4>
+
+                          <div
+                            className="crd-info-box"
+                            style={{ marginTop: 0 }}
+                          >
+                            <div className="crd-info-title">
+                              Your quotation has been approved.
+                            </div>
+                            <p style={{ margin: "8px 0 0" }}>
+                              Pay the required{" "}
+                              <strong>30% down payment</strong> at the Spiral
+                              Wood physical store.
+                            </p>
+                          </div>
+
+                          <div className="crd-payment-breakdown">
+                            <div className="summary-row">
+                              <span>Quoted Total</span>
+                              <strong>{formatMoney(quotedTotal)}</strong>
+                            </div>
+                            <div className="summary-row">
+                              <span>30% Down Payment</span>
+                              <strong>{formatMoney(downPaymentDue)}</strong>
+                            </div>
+                          </div>
+
+                          {canChooseMethod ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary crd-small-btn"
+                              disabled={selectingMethod}
+                              onClick={() =>
+                                handleSelectPaymentMethod("paymongo")
+                              }
+                            >
+                              Change to Online Payment
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : normalizedOrderPaymentMethod === "paymongo" ? (
+                        <div className="crd-panel">
+                          <h4>Secure Online Payment</h4>
+
+                          <div
+                            className="crd-info-box"
+                            style={{ marginTop: 0 }}
+                          >
+                            <div className="crd-info-title">
+                              Your quotation has been approved and is ready
+                              for payment.
+                            </div>
+
+                            <p style={{ margin: "8px 0 0" }}>
+                              To continue with production, please complete
+                              the required
+                              <strong> 30% down payment </strong>
+                              using our secure PayMongo payment gateway.
+                            </p>
+
+                            <p style={{ margin: "12px 0 0" }}>
+                              Supported payment methods:
+                            </p>
+
+                            <ul className="crd-payment-method-list">
+                              <li>GCash</li>
+                              <li>Maya</li>
+                              <li>Online Banking</li>
+                              <li>Credit / Debit Card</li>
+                            </ul>
+                          </div>
+
+                          <div className="crd-payment-breakdown">
+                            <div className="summary-row">
+                              <span>Quoted Total</span>
+                              <strong>{formatMoney(quotedTotal)}</strong>
+                            </div>
+
+                            <div className="summary-row">
+                              <span>30% Down Payment</span>
+                              <strong>{formatMoney(downPaymentDue)}</strong>
+                            </div>
+
+                            <div className="summary-row">
+                              <span>Amount Paid</span>
+                              <strong>
+                                {formatMoney(verifiedPaymentTotal)}
+                              </strong>
+                            </div>
+
+                            <div className="summary-row">
+                              <span>Remaining Balance</span>
+                              <strong>{formatMoney(balanceDue)}</strong>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="btn btn-primary crd-paymongo-btn"
+                            disabled={
+                              normalizedOrderPaymentMethod !== "paymongo" ||
+                              requestData.payment_status !== "unpaid" ||
+                              Number(verifiedPaymentTotal || 0) > 0 ||
+                              Number(paymentSummary.total_pending || 0) > 0 ||
+                              downPaymentDue <= 0
+                            }
+                            onClick={handlePayNow}
+                          >
+                            <div>Pay 30% Down Payment</div>
+                            <strong>{formatMoney(downPaymentDue)}</strong>
+                          </button>
+
+                          <div className="crd-help-text">
+                            You will be redirected to our secure checkout
+                            page to complete your payment.
+                          </div>
+
+                          {canChooseMethod ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary crd-small-btn"
+                              disabled={selectingMethod}
+                              onClick={() =>
+                                handleSelectPaymentMethod("cash")
+                              }
+                            >
+                              Change to Cash at Store
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="crd-panel">
+                          <h4>Payment Method</h4>
+                          <div
+                            className="crd-info-box pending"
+                            style={{ marginTop: 0 }}
+                          >
+                            <div className="crd-info-title">
+                              {displayPaymentMethod}
+                            </div>
+                            <p style={{ margin: "8px 0 0" }}>
+                              A supported payment method must be selected to
+                              continue.
+                            </p>
+                          </div>
+
+                          {canChooseMethod ? (
+                            <div
+                              className="crd-grid-split"
+                              style={{ marginTop: 16 }}
+                            >
+                              <div className="crd-panel crd-panel-soft">
+                                <h4>Cash at Store</h4>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  disabled={selectingMethod}
+                                  onClick={() =>
+                                    handleSelectPaymentMethod("cash")
+                                  }
+                                >
+                                  Choose Cash at Store
+                                </button>
+                              </div>
+                              <div className="crd-panel crd-panel-soft">
+                                <h4>Online Payment</h4>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  disabled={selectingMethod}
+                                  onClick={() =>
+                                    handleSelectPaymentMethod("paymongo")
+                                  }
+                                >
+                                  Choose Online Payment
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1434,7 +1727,7 @@ export default function CustomRequestDetailPage() {
                 </div>
 
                 <div className="summary-row">
-                  <span>Payment method</span>
+                  <span>{paymentMethodFieldLabel}</span>
                   <span>{displayPaymentMethod}</span>
                 </div>
 

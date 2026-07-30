@@ -401,6 +401,9 @@ export default function OrderDetailPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const paymentReviewLockRef = useRef(false);
   const [reviewingPayment, setReviewingPayment] = useState({ id: null, action: "" });
+  const [recordingCashPayment, setRecordingCashPayment] = useState(false);
+  const [cashPaymentError, setCashPaymentError] = useState("");
+  const [customCashAmount, setCustomCashAmount] = useState("");
 
   const [proofPreview, setProofPreview] = useState({
     open: false,
@@ -603,6 +606,103 @@ export default function OrderDetailPage() {
     } finally {
       paymentReviewLockRef.current = false;
       setReviewingPayment({ id: null, action: "" });
+    }
+  };
+
+  // Strict preview-only parser for the SUBMITTED amount -- rejects
+  // everything the backend's parseStrictMoneyToCents rejects (empty,
+  // zero, negative, plus signs, commas, currency symbols, letters,
+  // scientific notation, more than two decimal places). Used only to
+  // decide whether the confirmation dialog may open and to format the
+  // confirmation text -- the raw trimmed string, never a value derived
+  // from this parser, is what gets sent to the backend. Returns null
+  // for invalid input; never silently truncates extra decimal digits.
+  const parseStrictPreviewCents = (value) => {
+    const str = String(value ?? "").trim();
+    const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(str);
+    if (!match) return null;
+    const whole = match[1];
+    const frac = (match[2] || "").padEnd(2, "0");
+    const centsStr = `${whole}${frac}`;
+    if (!/^\d+$/.test(centsStr)) return null;
+    const cents = Number(centsStr);
+    if (!Number.isSafeInteger(cents) || cents <= 0) return null;
+    return cents;
+  };
+
+  // Same anchored-regex, no-floating-point approach, but for a TRUSTED
+  // server-supplied decimal (e.g. remaining_balance), which may
+  // legitimately be zero.
+  const parseTrustedDisplayCents = (value) => {
+    const str = String(value ?? "").trim();
+    const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(str);
+    if (!match) return null;
+    const whole = match[1];
+    const frac = (match[2] || "").padEnd(2, "0");
+    const centsStr = `${whole}${frac}`;
+    if (!/^\d+$/.test(centsStr)) return null;
+    const cents = Number(centsStr);
+    if (!Number.isSafeInteger(cents) || cents < 0) return null;
+    return cents;
+  };
+
+  const recordBlueprintCashPayment = async (amountRaw) => {
+    if (recordingCashPayment) return;
+
+    const summary = order?.blueprint_cash_payment;
+    const trimmedAmount = String(amountRaw || "").trim();
+    if (!summary || !trimmedAmount) return;
+
+    setCashPaymentError("");
+
+    const amountCents = parseStrictPreviewCents(trimmedAmount);
+    const remainingBeforeCents = parseTrustedDisplayCents(
+      summary.remaining_balance,
+    );
+
+    if (amountCents === null || remainingBeforeCents === null) {
+      setCashPaymentError("Enter a valid payment amount.");
+      return;
+    }
+
+    const remainingAfterCents = Math.max(0, remainingBeforeCents - amountCents);
+
+    let previewStatus;
+    if (amountCents === remainingBeforeCents) {
+      previewStatus = "Paid";
+    } else if (amountCents < remainingBeforeCents) {
+      previewStatus = "Partial";
+    } else {
+      previewStatus =
+        "exceeds the displayed remaining balance -- the server will validate this";
+    }
+
+    const confirmed = window.confirm(
+      `Confirm that ${formatMoney(amountCents / 100)} was received in cash at the store for order ${summary.order_number}.\n\n` +
+        `Current remaining balance: ${formatMoney(remainingBeforeCents / 100)}\n` +
+        `Remaining balance after this payment: ${formatMoney(remainingAfterCents / 100)}\n\n` +
+        `This cash payment will be recorded as immediately verified. ` +
+        `Resulting payment status: ${previewStatus}.`,
+    );
+    if (!confirmed) return;
+
+    setRecordingCashPayment(true);
+    try {
+      const { data } = await api.post(
+        `/pos/blueprint-cash-payments/${id}`,
+        { amount: trimmedAmount },
+      );
+      setCashPaymentError("");
+      toast.success(data?.message || "Cash payment recorded successfully.");
+      setCustomCashAmount("");
+      await load();
+    } catch (err) {
+      setCashPaymentError(
+        err?.response?.data?.message ||
+          "Failed to record cash payment. Please try again.",
+      );
+    } finally {
+      setRecordingCashPayment(false);
     }
   };
 
@@ -1940,6 +2040,140 @@ export default function OrderDetailPage() {
 
       {activeTab === "payment" && (
         <>
+          {(() => {
+            const cashSummary = order?.blueprint_cash_payment || null;
+            const isBlueprintOrder =
+              String(order?.order_type || "").toLowerCase() === "blueprint";
+
+            if (!isBlueprintOrder || !cashSummary) return null;
+
+            const verifiedTotal = Number(cashSummary.verified_total || 0);
+            const minimumRequiredTotal = Number(
+              cashSummary.minimum_required_total || 0,
+            );
+            const showFirstPaymentMinimum = verifiedTotal === 0;
+            const showAdditionalMinimum =
+              verifiedTotal > 0 && verifiedTotal < minimumRequiredTotal;
+
+            return (
+              <Section title="Cash at Store Payment">
+                <InfoRow
+                  label="Quoted total"
+                  value={formatMoney(cashSummary.total || 0)}
+                />
+                {showFirstPaymentMinimum ? (
+                  <InfoRow
+                    label="Minimum first payment (30%)"
+                    value={formatMoney(minimumRequiredTotal)}
+                  />
+                ) : null}
+                {showAdditionalMinimum ? (
+                  <InfoRow
+                    label="Minimum additional payment needed to reach 30%"
+                    value={formatMoney(
+                      cashSummary.minimum_additional_payment || 0,
+                    )}
+                  />
+                ) : null}
+                <InfoRow
+                  label="Verified amount"
+                  value={formatMoney(verifiedTotal)}
+                />
+                <InfoRow
+                  label="Remaining balance"
+                  value={formatMoney(cashSummary.remaining_balance || 0)}
+                />
+
+                {cashPaymentError ? (
+                  <div style={infoNotice}>{cashPaymentError}</div>
+                ) : null}
+
+                {cashSummary.can_record_payment ? (
+                  <div style={{ marginTop: 12 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 8,
+                        marginBottom: 12,
+                      }}
+                    >
+                      {(cashSummary.quick_amounts || []).map((amount) => {
+                        // Quick amounts come from the backend already
+                        // rounded to two decimals -- converting a
+                        // trusted, already-clean value into a fixed
+                        // two-decimal string here is safe and explicit,
+                        // never a re-derivation of precision from user
+                        // input.
+                        const amountStr = Number(amount).toFixed(2);
+                        return (
+                          <button
+                            key={amountStr}
+                            type="button"
+                            style={btnAccept}
+                            disabled={recordingCashPayment}
+                            onClick={() =>
+                              recordBlueprintCashPayment(amountStr)
+                            }
+                          >
+                            {recordingCashPayment
+                              ? "Recording..."
+                              : `Record ${formatMoney(amountStr)}`}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ marginTop: 8 }}>
+                      <label style={labelSm}>Custom amount</label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          value={customCashAmount}
+                          onChange={(e) =>
+                            setCustomCashAmount(e.target.value)
+                          }
+                          style={inputFull}
+                          disabled={recordingCashPayment}
+                        />
+                        <button
+                          type="button"
+                          style={btnSecondary}
+                          disabled={
+                            recordingCashPayment || !customCashAmount.trim()
+                          }
+                          onClick={() => {
+                            const trimmed = customCashAmount.trim();
+                            if (!trimmed) {
+                              setCashPaymentError(
+                                "Enter a valid payment amount.",
+                              );
+                              return;
+                            }
+                            // No client-side rounding/reshaping of the
+                            // raw string -- the backend's strict parser
+                            // is the sole authority on precision and
+                            // format.
+                            recordBlueprintCashPayment(trimmed);
+                          }}
+                        >
+                          Record
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={infoNotice}>
+                    {cashSummary.reason_message ||
+                      "Cash at Store recording is not available for this order."}
+                  </div>
+                )}
+              </Section>
+            );
+          })()}
+
           <Section title="Payment Transactions">
             {!hasPaymentRecords ? (
               normalizedPaymentStatus === "paid" && isCashLikePaymentMethod ? (
