@@ -64,6 +64,12 @@ export default function CartPage() {
 
   const [selected, setSelected] = useState(new Set());
   const [checkoutError, setCheckoutError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoading(false), 400);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     setSelected((prev) => {
@@ -273,6 +279,125 @@ export default function CartPage() {
             </div>
           )}
         </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div
+        className="fm-cart-shell"
+        style={{
+          animation: "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        }}
+      >
+        <div className="fm-cart-progress">
+          <div
+            style={{
+              width: "100%",
+              height: "24px",
+              background: "#f3f4f6",
+              borderRadius: "6px",
+              maxWidth: "400px",
+              margin: "0 auto",
+            }}
+          />
+        </div>
+        <div className="fm-cart-grid">
+          <section className="fm-cart-main">
+            <div
+              style={{
+                height: "40px",
+                background: "#f3f4f6",
+                marginBottom: "16px",
+              }}
+            />
+            {[1, 2].map((i) => (
+              <div
+                key={i}
+                style={{
+                  height: "120px",
+                  background: "#ffffff",
+                  border: "1px solid #e5e7eb",
+                  marginBottom: "12px",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "16px",
+                }}
+              >
+                <div
+                  style={{
+                    width: "80px",
+                    height: "80px",
+                    background: "#f3f4f6",
+                    marginRight: "16px",
+                  }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div
+                    style={{
+                      height: "20px",
+                      width: "60%",
+                      background: "#f3f4f6",
+                      marginBottom: "8px",
+                    }}
+                  />
+                  <div
+                    style={{
+                      height: "16px",
+                      width: "40%",
+                      background: "#f3f4f6",
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </section>
+          <aside className="fm-cart-summary">
+            <div
+              className="fm-cart-summary-card"
+              style={{
+                height: "320px",
+                background: "#ffffff",
+                border: "1px solid #e5e7eb",
+              }}
+            >
+              <div
+                style={{
+                  height: "28px",
+                  width: "140px",
+                  background: "#f3f4f6",
+                  marginBottom: "24px",
+                }}
+              />
+              <div
+                style={{
+                  height: "20px",
+                  width: "100%",
+                  background: "#f3f4f6",
+                  marginBottom: "16px",
+                }}
+              />
+              <div
+                style={{
+                  height: "20px",
+                  width: "100%",
+                  background: "#f3f4f6",
+                  marginBottom: "32px",
+                }}
+              />
+              <div
+                style={{
+                  height: "48px",
+                  width: "100%",
+                  background: "#e5e7eb",
+                  borderRadius: "0",
+                }}
+              />
+            </div>
+          </aside>
+        </div>
+        <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
       </div>
     );
   }

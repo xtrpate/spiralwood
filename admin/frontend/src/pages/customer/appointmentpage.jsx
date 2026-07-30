@@ -159,6 +159,7 @@ export default function AppointmentPage() {
 
   const [appointments, setAppointments] = useState([]);
   const [loadingAppts, setLoadingAppts] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
 
   // New Calendar State for Weekly View
   const [weekStart, setWeekStart] = useState(() => {
@@ -226,6 +227,7 @@ export default function AppointmentPage() {
       setAppointments([]);
     } finally {
       setLoadingAppts(false);
+      setInitialLoad(false);
     }
   };
 
@@ -339,6 +341,227 @@ export default function AppointmentPage() {
     setPreferredDate(""); // Reset selection if they change weeks
     setPreferredTime("");
   };
+
+  if (initialLoad) {
+    return (
+      <div
+        className="appt-page"
+        style={{
+          animation: "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        }}
+      >
+        {/* Skeleton Hero */}
+        <div
+          className="appt-hero"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
+            minHeight: "140px",
+          }}
+        >
+          <div
+            style={{
+              width: "280px",
+              height: "36px",
+              background: "#e5e7eb",
+              marginBottom: "12px",
+              borderRadius: "6px",
+            }}
+          ></div>
+          <div
+            style={{
+              width: "60%",
+              height: "20px",
+              background: "#f3f4f6",
+              borderRadius: "6px",
+              maxWidth: "600px",
+            }}
+          ></div>
+        </div>
+
+        {/* Skeleton Layout Body */}
+        <div className="appt-layout">
+          {/* Main Form Skeleton */}
+          <div className="appt-form-col">
+            <div
+              className="appt-card"
+              style={{
+                height: "650px",
+                background: "#ffffff",
+                borderColor: "#e5e7eb",
+                padding: "24px",
+              }}
+            >
+              <div
+                style={{
+                  width: "220px",
+                  height: "28px",
+                  background: "#e5e7eb",
+                  marginBottom: "8px",
+                  borderRadius: "6px",
+                }}
+              ></div>
+              <div
+                style={{
+                  width: "350px",
+                  height: "16px",
+                  background: "#f3f4f6",
+                  marginBottom: "32px",
+                  borderRadius: "6px",
+                }}
+              ></div>
+
+              <div
+                style={{
+                  width: "150px",
+                  height: "20px",
+                  background: "#e5e7eb",
+                  marginBottom: "16px",
+                  borderRadius: "6px",
+                }}
+              ></div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "12px",
+                  marginBottom: "32px",
+                }}
+              >
+                <div
+                  style={{
+                    height: "70px",
+                    background: "#f3f4f6",
+                    borderRadius: "8px",
+                  }}
+                ></div>
+                <div
+                  style={{
+                    height: "70px",
+                    background: "#f3f4f6",
+                    borderRadius: "8px",
+                  }}
+                ></div>
+              </div>
+
+              <div
+                style={{
+                  width: "150px",
+                  height: "20px",
+                  background: "#e5e7eb",
+                  marginBottom: "16px",
+                  borderRadius: "6px",
+                }}
+              ></div>
+              <div
+                style={{
+                  width: "100%",
+                  height: "120px",
+                  background: "#f3f4f6",
+                  borderRadius: "8px",
+                }}
+              ></div>
+            </div>
+          </div>
+
+          {/* Right Sidebar Skeletons */}
+          <div className="appt-info-col">
+            <div
+              className="appt-card"
+              style={{
+                height: "320px",
+                background: "#ffffff",
+                borderColor: "#e5e7eb",
+                padding: "24px",
+              }}
+            >
+              <div
+                style={{
+                  width: "140px",
+                  height: "24px",
+                  background: "#e5e7eb",
+                  marginBottom: "24px",
+                  borderRadius: "6px",
+                }}
+              ></div>
+              <div
+                style={{
+                  width: "100%",
+                  height: "60px",
+                  background: "#f3f4f6",
+                  marginBottom: "12px",
+                  borderRadius: "8px",
+                }}
+              ></div>
+              <div
+                style={{
+                  width: "100%",
+                  height: "60px",
+                  background: "#f3f4f6",
+                  marginBottom: "12px",
+                  borderRadius: "8px",
+                }}
+              ></div>
+              <div
+                style={{
+                  width: "100%",
+                  height: "60px",
+                  background: "#f3f4f6",
+                  borderRadius: "8px",
+                }}
+              ></div>
+            </div>
+
+            <div
+              className="appt-card"
+              style={{
+                height: "280px",
+                background: "#ffffff",
+                borderColor: "#e5e7eb",
+                padding: "24px",
+              }}
+            >
+              <div
+                style={{
+                  width: "160px",
+                  height: "24px",
+                  background: "#e5e7eb",
+                  marginBottom: "24px",
+                  borderRadius: "6px",
+                }}
+              ></div>
+              <div
+                style={{
+                  width: "100%",
+                  height: "90px",
+                  background: "#f3f4f6",
+                  borderRadius: "8px",
+                  marginBottom: "12px",
+                }}
+              ></div>
+              <div
+                style={{
+                  width: "100%",
+                  height: "90px",
+                  background: "#f3f4f6",
+                  borderRadius: "8px",
+                }}
+              ></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Inline style for the pulse animation */}
+        <style>{`
+          @keyframes appt-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .6; }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <div className="appt-page">

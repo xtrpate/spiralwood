@@ -622,9 +622,42 @@ export default function WarrantyPage() {
             </div>
 
             {loadingClaims ? (
-              <div className="wclaims-loading">
-                <span className="wspinner wspinner-dark" />
-                <span>Loading claims…</span>
+              <div
+                style={{
+                  animation:
+                    "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+                  display: "grid",
+                  gap: "10px",
+                }}
+              >
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    style={{
+                      height: "86px",
+                      background: "#ffffff",
+                      border: "1px solid #e5e7eb",
+                      padding: "16px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: "18px",
+                        width: "60%",
+                        background: "#f3f4f6",
+                        marginBottom: "8px",
+                      }}
+                    />
+                    <div
+                      style={{
+                        height: "14px",
+                        width: "40%",
+                        background: "#f3f4f6",
+                      }}
+                    />
+                  </div>
+                ))}
+                <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
               </div>
             ) : claims.length === 0 ? (
               <div className="wclaims-empty">

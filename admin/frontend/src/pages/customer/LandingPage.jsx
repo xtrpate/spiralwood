@@ -6,13 +6,13 @@ import useAuthStore from "../../store/authStore";
 import api, { buildAssetUrl } from "../../services/api";
 import { useCart } from "./cartcontext";
 
-// 🏠 Relative path to your cabinet image
 import cabinetImg from "../assets/cabinet.png";
 
 export default function LandingPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const { addToCart } = useCart();
 
   const latestProducts = [...products]
@@ -103,13 +103,15 @@ export default function LandingPage() {
         const list = Array.isArray(res.data)
           ? res.data
           : Array.isArray(res.data?.products)
-          ? res.data.products
-          : [];
+            ? res.data.products
+            : [];
 
         setProducts(list);
       } catch (err) {
         console.error("Failed to load products", err);
         setProducts([]);
+      } finally {
+        setLoading(false); // 👉 ADD THIS
       }
     };
 
@@ -118,6 +120,60 @@ export default function LandingPage() {
 
   if (user?.role === "admin") {
     return <Navigate to="/admin/dashboard" replace />;
+  }
+
+  if (loading) {
+    return (
+      <div
+        style={{
+          backgroundColor: "#fdfbf9",
+          minHeight: "100vh",
+          width: "100vw",
+          marginLeft: "calc(50% - 50vw)",
+          marginRight: "calc(50% - 50vw)",
+          animation: "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        }}
+      >
+        <div style={{ width: "100%", height: "65vh", background: "#e5e7eb" }} />
+        <section
+          style={{ padding: "26px 14px", maxWidth: "1820px", margin: "0 auto" }}
+        >
+          <div
+            style={{
+              height: "36px",
+              width: "260px",
+              background: "#e5e7eb",
+              margin: "0 auto 30px",
+              borderRadius: "6px",
+            }}
+          />
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+              gap: "16px",
+              marginBottom: "18px",
+            }}
+          >
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} style={{ height: "365px", background: "#f3f4f6" }} />
+            ))}
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+              gap: "16px",
+            }}
+          >
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} style={{ height: "365px", background: "#f3f4f6" }} />
+            ))}
+          </div>
+        </section>
+        <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
+      </div>
+    );
   }
 
   if (user?.role === "staff") {
@@ -249,7 +305,9 @@ export default function LandingPage() {
             <div
               key={`top-${i}`}
               onClick={() =>
-                navigate(`/catalog?category=${encodeURIComponent(cat.category)}`)
+                navigate(
+                  `/catalog?category=${encodeURIComponent(cat.category)}`,
+                )
               }
               style={{
                 cursor: "pointer",
@@ -310,7 +368,9 @@ export default function LandingPage() {
             <div
               key={`bottom-${i}`}
               onClick={() =>
-                navigate(`/catalog?category=${encodeURIComponent(cat.category)}`)
+                navigate(
+                  `/catalog?category=${encodeURIComponent(cat.category)}`,
+                )
               }
               style={{
                 cursor: "pointer",
@@ -398,7 +458,9 @@ export default function LandingPage() {
                   <div
                     key={product.id}
                     onClick={() =>
-                      navigate(`/catalog?q=${encodeURIComponent(product?.name || "")}`)
+                      navigate(
+                        `/catalog?q=${encodeURIComponent(product?.name || "")}`,
+                      )
                     }
                     style={{
                       cursor: "pointer",

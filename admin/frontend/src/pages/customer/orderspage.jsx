@@ -272,9 +272,64 @@ function OrderModal({
         </button>
 
         {loading ? (
-          <div className="om-loading">
-            <div className="om-spinner" />
-            <p>Loading order details…</p>
+          <div
+            className="om-loading"
+            style={{
+              animation: "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+              padding: "32px",
+              display: "block",
+            }}
+          >
+            <div
+              style={{
+                height: "32px",
+                width: "150px",
+                background: "#f3f4f6",
+                marginBottom: "8px",
+                borderRadius: "4px",
+              }}
+            />
+            <div
+              style={{
+                height: "16px",
+                width: "100px",
+                background: "#f3f4f6",
+                marginBottom: "32px",
+                borderRadius: "4px",
+              }}
+            />
+            <div
+              style={{
+                height: "100px",
+                width: "100%",
+                background: "#f3f4f6",
+                marginBottom: "24px",
+                borderRadius: "8px",
+              }}
+            />
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "2fr 1fr",
+                gap: "24px",
+              }}
+            >
+              <div
+                style={{
+                  height: "200px",
+                  background: "#f3f4f6",
+                  borderRadius: "8px",
+                }}
+              />
+              <div
+                style={{
+                  height: "200px",
+                  background: "#f3f4f6",
+                  borderRadius: "8px",
+                }}
+              />
+            </div>
+            <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
           </div>
         ) : !order ? (
           <div className="om-loading">
@@ -664,9 +719,47 @@ export default function OrdersPage() {
       </div>
 
       {loading ? (
-        <div className="orders-empty">
-          <div className="orders-spinner" />
-          <p>Loading your orders…</p>
+        <div
+          style={{
+            animation: "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+            marginTop: "24px",
+          }}
+        >
+          {[1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="order-card"
+              style={{
+                height: "180px",
+                background: "#ffffff",
+                borderColor: "#e5e7eb",
+                marginBottom: "16px",
+                padding: "24px",
+              }}
+            >
+              <div
+                style={{
+                  height: "24px",
+                  width: "200px",
+                  background: "#f3f4f6",
+                  marginBottom: "16px",
+                }}
+              />
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(4, 1fr)",
+                  gap: "16px",
+                }}
+              >
+                <div style={{ height: "60px", background: "#f3f4f6" }} />
+                <div style={{ height: "60px", background: "#f3f4f6" }} />
+                <div style={{ height: "60px", background: "#f3f4f6" }} />
+                <div style={{ height: "60px", background: "#f3f4f6" }} />
+              </div>
+            </div>
+          ))}
+          <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
         </div>
       ) : filtered.length === 0 ? (
         <div className="orders-empty-premium">
