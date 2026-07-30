@@ -6,6 +6,7 @@ const fs = require("fs");
 const { verifyFileSignature } = require("../utils/verifyFileSignature");
 
 const { authenticate, requireCustomer } = require("../middleware/auth");
+const { logAction } = require("../middleware/auditLog");
 const customOrderController = require("../controllers/customer/customer.customorders");
 
 /* ──────────────────────────────────────────────────────────
@@ -186,6 +187,14 @@ router.post(
   authenticate,
   requireCustomer,
   customOrderController.createPayMongoCheckout,
+);
+
+router.post(
+  "/:id/payment-method",
+  authenticate,
+  requireCustomer,
+  logAction("select_blueprint_payment_method", "orders"),
+  customOrderController.selectPaymentMethod,
 );
 
 router.post(

@@ -410,7 +410,7 @@ const normalizeCustomOrderItem = (row = {}) => {
 
 /* ── Submit Custom Order / Request ── */
 exports.createCustomOrder = async (req, res) => {
-  const { items, name, phone, delivery_address, payment_method, notes } =
+  const { items, name, phone, delivery_address, notes } =
     req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
@@ -423,21 +423,6 @@ exports.createCustomOrder = async (req, res) => {
 
   if (!String(phone || "").trim()) {
     return res.status(400).json({ message: "Phone is required." });
-  }
-
-  const trimmedPreferredPaymentMethod = String(payment_method || "").trim();
-
-  const normalizedPreferredPaymentMethod = trimmedPreferredPaymentMethod
-    ? trimmedPreferredPaymentMethod.toLowerCase().replace(/\s+/g, "_")
-    : "";
-
-  if (
-    normalizedPreferredPaymentMethod &&
-    normalizedPreferredPaymentMethod !== "paymongo"
-  ) {
-    return res.status(400).json({
-      message: "Invalid payment method.",
-    });
   }
 
   const cleanedItems = items
@@ -534,13 +519,12 @@ exports.createCustomOrder = async (req, res) => {
           walkin_customer_name, walkin_customer_phone,
           payment_method, payment_status,
           delivery_address, notes, subtotal, total)
-      VALUES (?, ?, NULL, 'online', 'blueprint', 'pending', ?, ?, ?, 'unpaid', ?, ?, 0, 0)`,
+      VALUES (?, ?, NULL, 'online', 'blueprint', 'pending', ?, ?, NULL, 'unpaid', ?, ?, 0, 0)`,
       [
         order_number,
         req.user.id,
         String(name).trim(),
         String(phone).trim(),
-        normalizedPreferredPaymentMethod || "paymongo",
         delivery_address ? String(delivery_address).trim() : null,
         notes ? String(notes).trim() : null,
       ],
@@ -716,6 +700,8 @@ exports.getCustomOrderById = async (req, res) => {
           order_type,
           status,
           payment_method,
+          paymongo_session_id,
+          payment_url,
           payment_status,
           delivery_address,
           notes,
@@ -740,6 +726,15 @@ exports.getCustomOrderById = async (req, res) => {
     }
 
     const order = orders[0];
+
+    // Read once, then stripped from `order` before the response spread
+    // below so the raw session id / URL are never sent to the client —
+    // only the derived boolean is exposed.
+    const paymentMethodChangeLocked = Boolean(
+      order.paymongo_session_id || order.payment_url,
+    );
+    delete order.paymongo_session_id;
+    delete order.payment_url;
 
     const [items] = await conn.execute(
       `SELECT
@@ -1001,6 +996,7 @@ exports.getCustomOrderById = async (req, res) => {
         balance_due: balanceDue,
         has_verified_down_payment: hasVerifiedDownPayment,
         latest_transaction: normalizedPayments[0] || null,
+        payment_method_change_locked: paymentMethodChangeLocked,
         can_submit_initial_down_payment: canSubmitInitialDownPayment,
         can_submit_remaining_balance: canSubmitRemainingBalance,
         payment_stage: paymentStage,
@@ -2690,10 +2686,15 @@ exports.verifyPayment = async (req, res) => {
 };
 
 exports.createPayMongoCheckout = async (req, res) => {
-  const conn = await db.getConnection();
+  let conn = null;
+  let transactionActive = false;
 
   try {
     const orderId = parseInt(req.params.id);
+
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
 
     const lifecycle = await resolveLifecycleByOrder(conn, {
       orderId,
@@ -2707,55 +2708,105 @@ exports.createPayMongoCheckout = async (req, res) => {
       !lifecycle.blueprint ||
       !lifecycle.estimation
     ) {
+      await conn.rollback();
+      transactionActive = false;
       return sendLifecycleConflict(res);
     }
 
     const order = lifecycle.order;
-    const blueprint = lifecycle.blueprint;
     const estimation = lifecycle.estimation;
 
     if (Number(order.customer_id) !== Number(req.user.id)) {
-      return res.status(404).json({
-        message: "Custom order not found.",
-      });
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Custom order not found." });
     }
 
-    const [[customer]] = await conn.execute(
-      `SELECT
-      name,
-      phone,
-      email
-   FROM users
-   WHERE id = ?
-   LIMIT 1`,
-      [req.user.id],
-    );
-
-    if (!order) {
-      return res.status(404).json({
-        message: "Custom order not found.",
-      });
+    if (normalize(order.order_type) !== "blueprint") {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
     }
 
-    if (String(order.payment_status).toLowerCase() === "paid") {
+    if (normalize(order.status) !== "confirmed") {
+      await conn.rollback();
+      transactionActive = false;
       return res.status(400).json({
-        message: "This order has already been paid.",
+        message:
+          "You can pay the 30% down payment only after approving the quotation.",
       });
     }
 
-    const downPayment = calcDownPaymentAmount(order.total);
+    if (normalize(estimation.status) !== "approved") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "The quotation must be approved before submitting a down payment.",
+      });
+    }
 
-    if (
-      order.paymongo_session_id &&
-      order.payment_url &&
-      normalize(order.payment_status) === "unpaid"
-    ) {
+    if (normalize(order.payment_status) !== "unpaid") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "The required 30% down payment has already been recorded.",
+      });
+    }
+
+    if (Number(lifecycle.verified_payment_total || 0) > 0) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "The required 30% down payment has already been recorded.",
+      });
+    }
+
+    if (lifecycle.has_pending_payment_transaction) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "A payment is already awaiting review for this order.",
+      });
+    }
+
+    if (normalize(order.payment_method) !== "paymongo") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Select Online Payment before creating a payment session.",
+      });
+    }
+
+    const hasSessionId = Boolean(order.paymongo_session_id);
+    const hasPaymentUrl = Boolean(order.payment_url);
+    const hasCompleteSession = hasSessionId && hasPaymentUrl;
+    const hasIncompleteSession = hasSessionId !== hasPaymentUrl;
+
+    if (hasIncompleteSession) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "The online payment session is incomplete. Please contact support.",
+      });
+    }
+
+    if (hasCompleteSession) {
+      await conn.commit();
+      transactionActive = false;
       return res.json({
         payment_url: order.payment_url,
         reused: true,
       });
     }
 
+    const [[customer]] = await conn.execute(
+      `SELECT name, phone, email FROM users WHERE id = ? LIMIT 1`,
+      [req.user.id],
+    );
+
+    const downPayment = calcDownPaymentAmount(order.total);
     const frontendUrl = process.env.FRONTEND_URL || req.headers.origin;
 
     const checkout = await createCheckoutSession({
@@ -2771,28 +2822,248 @@ exports.createPayMongoCheckout = async (req, res) => {
     });
 
     const checkoutUrl = checkout.checkoutUrl;
-
     const sessionId = checkout.sessionId;
 
-    await conn.execute(
+    const [updateResult] = await conn.execute(
       `UPDATE orders
        SET
          payment_url = ?,
          paymongo_session_id = ?
-       WHERE id = ?`,
-      [checkoutUrl, sessionId, order.id],
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+         AND status = 'confirmed'
+         AND payment_status = 'unpaid'
+         AND payment_method = 'paymongo'
+         AND paymongo_session_id IS NULL
+         AND payment_url IS NULL`,
+      [checkoutUrl, sessionId, order.id, req.user.id],
     );
+
+    if (updateResult.affectedRows !== 1) {
+      await conn.rollback();
+      transactionActive = false;
+      // The PayMongo checkout session above was already created on
+      // PayMongo's side before this guarded UPDATE ran. If the UPDATE did
+      // not commit, that specific session id/URL becomes an orphan,
+      // unreferenced by any order row — it cannot be reached by
+      // verifyPayment (which looks up sessions via the order's own stored
+      // paymongo_session_id) and so poses no double-charge risk, but it is
+      // not automatically cancelled here since no session-cancellation
+      // call exists in the current PayMongo service. Flagged for
+      // awareness only — not fixed in this phase.
+      return res.status(409).json({
+        message: "This order's state changed. Please refresh and try again.",
+      });
+    }
+
+    await conn.commit();
+    transactionActive = false;
 
     return res.json({
       payment_url: checkoutUrl,
     });
   } catch (err) {
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+      } catch (rollbackErr) {
+        console.error("Rollback failed:", rollbackErr);
+      }
+    }
     console.error(err.response?.data || err);
 
     return res.status(500).json({
       message: "Failed to create PayMongo checkout.",
     });
   } finally {
-    conn.release();
+    if (conn) conn.release();
+  }
+};
+
+exports.selectPaymentMethod = async (req, res) => {
+  let conn = null;
+  let transactionActive = false;
+
+  try {
+    const orderId = parseStrictPositiveInt(req.params.id);
+    if (!orderId) {
+      return res.status(400).json({ message: "Invalid custom request ID." });
+    }
+
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const lifecycle = await resolveLifecycleByOrder(conn, {
+      orderId,
+      lockOrder: true,
+      lockBlueprint: true,
+    });
+
+    if (
+      lifecycle.status !== "OK" ||
+      !lifecycle.order ||
+      !lifecycle.blueprint ||
+      !lifecycle.estimation
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    const order = lifecycle.order;
+
+    if (Number(order.customer_id) !== Number(req.user.id)) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Custom request not found." });
+    }
+
+    if (normalize(order.order_type) !== "blueprint") {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    if (normalize(order.status) !== "confirmed") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "You can choose a payment method only after approving the quotation.",
+      });
+    }
+
+    if (normalize(lifecycle.estimation.status) !== "approved") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "The quotation must be approved before choosing a payment method.",
+      });
+    }
+
+    if (normalize(order.payment_status) !== "unpaid") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "The payment method can no longer be changed for this order.",
+      });
+    }
+
+    if (Number(lifecycle.verified_payment_total || 0) > 0) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "A payment has already been recorded for this order.",
+      });
+    }
+
+    if (lifecycle.has_pending_payment_transaction) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "A payment is already awaiting review for this order.",
+      });
+    }
+
+    const normalizedMethod = normalize(req.body?.payment_method).replace(
+      /\s+/g,
+      "_",
+    );
+
+    if (!["cash", "paymongo"].includes(normalizedMethod)) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Choose Cash at Store or Online Payment.",
+      });
+    }
+
+    const previousMethod = order.payment_method || null;
+
+    const hasSessionId = Boolean(order.paymongo_session_id);
+    const hasPaymentUrl = Boolean(order.payment_url);
+    const hasCompleteSession = hasSessionId && hasPaymentUrl;
+    const hasIncompleteSession = hasSessionId !== hasPaymentUrl;
+
+    if (hasIncompleteSession) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "The online payment session is incomplete. Please contact support.",
+      });
+    }
+
+    if (previousMethod === "cash" && hasCompleteSession) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "This order's payment state is inconsistent. Please contact support.",
+      });
+    }
+
+    if (previousMethod === normalizedMethod) {
+      await conn.commit();
+      transactionActive = false;
+      return res.json({ success: true, payment_method: normalizedMethod });
+    }
+
+    if (hasCompleteSession) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "An online payment session is already in progress. Complete or wait for it to expire before changing your payment method.",
+      });
+    }
+
+    const [updateResult] = await conn.execute(
+      `UPDATE orders
+       SET payment_method = ?
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+         AND payment_status = 'unpaid'`,
+      [normalizedMethod, orderId, req.user.id],
+    );
+
+    if (updateResult.affectedRows !== 1) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "This order's state changed. Please refresh and try again.",
+      });
+    }
+
+    const preparedAuditRecord = {
+      id: orderId,
+      old: { payment_method: previousMethod },
+      new: { payment_method: normalizedMethod },
+    };
+
+    await conn.commit();
+    transactionActive = false;
+
+    req.auditRecord = preparedAuditRecord;
+
+    return res.json({ success: true, payment_method: normalizedMethod });
+  } catch (err) {
+    req.auditRecord = null;
+
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+      } catch (rollbackErr) {
+        console.error("Rollback failed:", rollbackErr);
+      }
+    }
+    console.error("[customer.customorders selectPaymentMethod]", err);
+    return res.status(500).json({ message: "Failed to update payment method." });
+  } finally {
+    if (conn) conn.release();
   }
 };
