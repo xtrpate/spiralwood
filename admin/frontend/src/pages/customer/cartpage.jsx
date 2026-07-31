@@ -209,221 +209,216 @@ export default function CartPage() {
     </div>
   );
 
-  if (cart.length === 0) {
-    return (
-      <div className="fm-cart-shell">
-        {toastNotification}
-        <div className="fm-cart-progress">
-          <div className="fm-cart-step active">
-            <span className="fm-cart-step-num">1</span>
-            <span>Shopping Cart</span>
-          </div>
-          <ChevronRight size={16} className="fm-cart-progress-arrow" />
-          <div className="fm-cart-step">
-            <span className="fm-cart-step-num">2</span>
-            <span>Checkout Details</span>
-          </div>
-          <ChevronRight size={16} className="fm-cart-progress-arrow" />
-          <div className="fm-cart-step">
-            <span className="fm-cart-step-num">3</span>
-            <span>Order Complete</span>
-          </div>
+  // Rendered unconditionally in every state (loading, empty, loaded) so the
+  // header never gets swapped out or affected by the loading skeleton.
+  const headerSection = (
+    <div className="fm-cart-page-hero">
+      <div>
+        <h1>Shopping Cart</h1>
+        <p>
+          Review your selected items and quantities before proceeding to
+          checkout.
+        </p>
+      </div>
+      <button
+        type="button"
+        className="fm-cart-hero-btn"
+        onClick={() => navigate("/catalog")}
+      >
+        ← Continue Shopping
+      </button>
+    </div>
+  );
+
+  const emptyCartBody = (
+    <>
+      <div className="fm-cart-progress">
+        <div className="fm-cart-step active">
+          <span className="fm-cart-step-num">1</span>
+          <span>Shopping Cart</span>
         </div>
-
-        <div className="fm-cart-empty-premium">
-          <div className="fm-cart-empty-icon-wrapper">
-            <ShoppingBag size={48} strokeWidth={1.5} />
-          </div>
-          <h2>Your cart is currently empty</h2>
-          <p>
-            Looks like you haven't added anything yet. Discover our premium
-            ready-made furniture or start a custom blueprint design.
-          </p>
-
-          <div className="fm-cart-empty-actions">
-            <button
-              type="button"
-              className="fm-cart-primary-btn"
-              onClick={() => navigate("/catalog")}
-            >
-              <Package size={16} />
-              Shop Ready-Made
-            </button>
-
-            <button
-              type="button"
-              className="fm-cart-secondary-btn"
-              onClick={() => navigate("/customize")}
-            >
-              <Scissors size={16} />
-              Custom Blueprint
-            </button>
-          </div>
-
-          {customerUser && (
-            <div style={{ marginTop: "32px", textAlign: "center" }}>
-              <button
-                onClick={() => navigate("/orders")}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "#6b7280",
-                  textDecoration: "underline",
-                  cursor: "pointer",
-                  fontSize: "0.9rem",
-                  fontWeight: 600,
-                }}
-              >
-                View order history
-              </button>
-            </div>
-          )}
+        <ChevronRight size={16} className="fm-cart-progress-arrow" />
+        <div className="fm-cart-step">
+          <span className="fm-cart-step-num">2</span>
+          <span>Checkout Details</span>
+        </div>
+        <ChevronRight size={16} className="fm-cart-progress-arrow" />
+        <div className="fm-cart-step">
+          <span className="fm-cart-step-num">3</span>
+          <span>Order Complete</span>
         </div>
       </div>
-    );
-  }
 
-  if (loading) {
-    return (
-      <div
-        className="fm-cart-shell"
-        style={{
-          animation: "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-        }}
-      >
-        <div className="fm-cart-progress">
+      <div className="fm-cart-empty-premium">
+        <div className="fm-cart-empty-icon-wrapper">
+          <ShoppingBag size={48} strokeWidth={1.5} />
+        </div>
+        <h2>Your cart is currently empty</h2>
+        <p>
+          Looks like you haven't added anything yet. Discover our premium
+          ready-made furniture or start a custom blueprint design.
+        </p>
+
+        <div className="fm-cart-empty-actions">
+          <button
+            type="button"
+            className="fm-cart-primary-btn"
+            onClick={() => navigate("/catalog")}
+          >
+            <Package size={16} />
+            Shop Ready-Made
+          </button>
+
+          <button
+            type="button"
+            className="fm-cart-secondary-btn"
+            onClick={() => navigate("/customize")}
+          >
+            <Scissors size={16} />
+            Custom Blueprint
+          </button>
+        </div>
+
+        {customerUser && (
+          <div style={{ marginTop: "32px", textAlign: "center" }}>
+            <button
+              onClick={() => navigate("/orders")}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#6b7280",
+                textDecoration: "underline",
+                cursor: "pointer",
+                fontSize: "0.9rem",
+                fontWeight: 600,
+              }}
+            >
+              View order history
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+
+  const loadingBody = (
+    <div
+      style={{
+        animation: "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+      }}
+    >
+      <div className="fm-cart-progress">
+        <div
+          style={{
+            width: "100%",
+            height: "24px",
+            background: "#f3f4f6",
+            borderRadius: "6px",
+            maxWidth: "400px",
+            margin: "0 auto",
+          }}
+        />
+      </div>
+      <div className="fm-cart-grid">
+        <section className="fm-cart-main">
           <div
             style={{
-              width: "100%",
-              height: "24px",
+              height: "40px",
               background: "#f3f4f6",
-              borderRadius: "6px",
-              maxWidth: "400px",
-              margin: "0 auto",
+              marginBottom: "16px",
             }}
           />
-        </div>
-        <div className="fm-cart-grid">
-          <section className="fm-cart-main">
+          {[1, 2].map((i) => (
+            <div
+              key={i}
+              style={{
+                height: "120px",
+                background: "#ffffff",
+                border: "1px solid #e5e7eb",
+                marginBottom: "12px",
+                display: "flex",
+                alignItems: "center",
+                padding: "16px",
+              }}
+            >
+              <div
+                style={{
+                  width: "80px",
+                  height: "80px",
+                  background: "#f3f4f6",
+                  marginRight: "16px",
+                }}
+              />
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{
+                    height: "20px",
+                    width: "60%",
+                    background: "#f3f4f6",
+                    marginBottom: "8px",
+                  }}
+                />
+                <div
+                  style={{
+                    height: "16px",
+                    width: "40%",
+                    background: "#f3f4f6",
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </section>
+        <aside className="fm-cart-summary">
+          <div
+            className="fm-cart-summary-card"
+            style={{
+              height: "320px",
+              background: "#ffffff",
+              border: "1px solid #e5e7eb",
+            }}
+          >
             <div
               style={{
-                height: "40px",
+                height: "28px",
+                width: "140px",
+                background: "#f3f4f6",
+                marginBottom: "24px",
+              }}
+            />
+            <div
+              style={{
+                height: "20px",
+                width: "100%",
                 background: "#f3f4f6",
                 marginBottom: "16px",
               }}
             />
-            {[1, 2].map((i) => (
-              <div
-                key={i}
-                style={{
-                  height: "120px",
-                  background: "#ffffff",
-                  border: "1px solid #e5e7eb",
-                  marginBottom: "12px",
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "16px",
-                }}
-              >
-                <div
-                  style={{
-                    width: "80px",
-                    height: "80px",
-                    background: "#f3f4f6",
-                    marginRight: "16px",
-                  }}
-                />
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      height: "20px",
-                      width: "60%",
-                      background: "#f3f4f6",
-                      marginBottom: "8px",
-                    }}
-                  />
-                  <div
-                    style={{
-                      height: "16px",
-                      width: "40%",
-                      background: "#f3f4f6",
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </section>
-          <aside className="fm-cart-summary">
             <div
-              className="fm-cart-summary-card"
               style={{
-                height: "320px",
-                background: "#ffffff",
-                border: "1px solid #e5e7eb",
+                height: "20px",
+                width: "100%",
+                background: "#f3f4f6",
+                marginBottom: "32px",
               }}
-            >
-              <div
-                style={{
-                  height: "28px",
-                  width: "140px",
-                  background: "#f3f4f6",
-                  marginBottom: "24px",
-                }}
-              />
-              <div
-                style={{
-                  height: "20px",
-                  width: "100%",
-                  background: "#f3f4f6",
-                  marginBottom: "16px",
-                }}
-              />
-              <div
-                style={{
-                  height: "20px",
-                  width: "100%",
-                  background: "#f3f4f6",
-                  marginBottom: "32px",
-                }}
-              />
-              <div
-                style={{
-                  height: "48px",
-                  width: "100%",
-                  background: "#e5e7eb",
-                  borderRadius: "0",
-                }}
-              />
-            </div>
-          </aside>
-        </div>
-        <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
+            />
+            <div
+              style={{
+                height: "48px",
+                width: "100%",
+                background: "#e5e7eb",
+                borderRadius: "0",
+              }}
+            />
+          </div>
+        </aside>
       </div>
-    );
-  }
+      <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
+    </div>
+  );
 
-  return (
-    <div className="fm-cart-shell">
-      {toastNotification}
-
-      {/* 1. TITLE COMES FIRST */}
-      <div className="fm-cart-page-hero">
-        <div>
-          <h1>Shopping Cart</h1>
-          <p>
-            Review your selected items and quantities before proceeding to
-            checkout.
-          </p>
-        </div>
-        <button
-          type="button"
-          className="fm-cart-hero-btn"
-          onClick={() => navigate("/catalog")}
-        >
-          ← Continue Shopping
-        </button>
-      </div>
-
+  const cartBody = (
+    <>
       <div className="fm-cart-progress">
         <div className="fm-cart-step active">
           <span className="fm-cart-step-num">1</span>
@@ -731,6 +726,20 @@ export default function CartPage() {
           </div>
         </aside>
       </div>
+    </>
+  );
+
+  // Single unified return (same pattern as customizepage.jsx): the toast and
+  // header are rendered exactly once, unconditionally, at the top. Only the
+  // body below them swaps between empty / loading-skeleton / loaded content,
+  // so the header is never duplicated across branches and is never wrapped
+  // inside the loading skeleton's pulse animation.
+  return (
+    <div className="fm-cart-shell">
+      {toastNotification}
+      {headerSection}
+
+      {cart.length === 0 ? emptyCartBody : loading ? loadingBody : cartBody}
     </div>
   );
 }

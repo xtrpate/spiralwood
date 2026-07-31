@@ -15,73 +15,57 @@
   box-sizing: border-box;
 }
 
-/* HERO */
-.warranty-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
+/* CLEAN HERO HEADER */
+.warranty-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 24px;
-  background: linear-gradient(135deg, #08111d 0%, #111111 60%, #202020 100%);
-  border: 1px solid #111111;
-  padding: 32px 36px;
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid #e8e8e8;
+  background: transparent;
 }
 
-.warranty-hero-copy {
-  min-width: 0;
-}
-
-.warranty-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 0.76rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 14px;
-}
-
-.warranty-hero h1 {
-  margin: 0 0 10px;
-  font-size: 2.35rem;
+.warranty-page-copy h1 {
+  margin: 0 0 8px;
+  font-size: 2.2rem;
   font-weight: 800;
-  line-height: 1.02;
-  color: #ffffff;
-  letter-spacing: -0.04em;
+  line-height: 1.05;
+  color: #111111;
 }
 
-.warranty-hero p {
+.warranty-page-copy p {
   margin: 0;
   max-width: 760px;
-  font-size: 1rem;
-  line-height: 1.8;
-  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.98rem;
+  line-height: 1.7;
+  color: #4f4f4f;
 }
 
 .warranty-hero-panel {
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.04);
-  padding: 20px;
-  align-self: stretch;
+  border: 1px solid #e5e7eb;
+  background: #fafafa;
+  padding: 18px 24px;
+  min-width: 280px;
+  border-radius: 8px;
 }
 
 .warranty-hero-panel-title {
-  margin-bottom: 14px;
-  font-size: 0.82rem;
+  margin-bottom: 12px;
+  font-size: 0.75rem;
   font-weight: 800;
-  color: #ffffff;
+  color: #6b7280;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .warranty-hero-panel-list {
   display: grid;
-  gap: 10px;
-  font-size: 0.94rem;
-  line-height: 1.7;
-  color: rgba(255, 255, 255, 0.86);
+  gap: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #111111;
 }
 
 /* SUMMARY */
@@ -908,8 +892,7 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .warranty-main-grid,
-  .warranty-hero {
+  .warranty-main-grid {
     grid-template-columns: 1fr;
   }
 
@@ -924,11 +907,19 @@
 }
 
 @media (max-width: 720px) {
+  .warranty-page-head {
+    flex-direction: column;
+  }
+
+  .warranty-hero-panel {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
   .warranty-shell {
     padding: 18px 12px 36px;
   }
 
-  .warranty-hero,
   .warranty-section,
   .warranty-claims-wrap,
   .warranty-requirements-card,

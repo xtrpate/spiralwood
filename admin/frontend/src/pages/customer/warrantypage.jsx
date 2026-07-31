@@ -281,61 +281,54 @@ export default function WarrantyPage() {
         }}
       >
         <div className="warranty-shell">
-          {/* Skeleton Hero */}
+          {/* Clean Skeleton Hero */}
           <div
             style={{
-              height: "300px",
-              background: "#1a1a1a",
-              width: "100%",
-              marginBottom: "24px",
-              padding: "48px",
               display: "flex",
               justifyContent: "space-between",
+              gap: "24px",
+              marginBottom: "24px",
+              paddingBottom: "24px",
+              borderBottom: "1px solid #e8e8e8",
             }}
           >
-            <div style={{ width: "40%" }}>
+            <div style={{ width: "60%" }}>
+              <div
+                style={{
+                  height: "38px",
+                  width: "300px",
+                  background: "#f3f4f6",
+                  marginBottom: "12px",
+                  borderRadius: "6px",
+                }}
+              />
               <div
                 style={{
                   height: "16px",
-                  width: "160px",
-                  background: "#333",
-                  marginBottom: "16px",
+                  width: "80%",
+                  background: "#f3f4f6",
+                  marginBottom: "8px",
+                  borderRadius: "4px",
                 }}
               />
               <div
                 style={{
-                  height: "48px",
-                  width: "80%",
-                  background: "#333",
-                  marginBottom: "24px",
+                  height: "16px",
+                  width: "60%",
+                  background: "#f3f4f6",
+                  borderRadius: "4px",
                 }}
-              />
-              <div
-                style={{ height: "70px", width: "100%", background: "#333" }}
               />
             </div>
             <div
               style={{
-                width: "40%",
-                border: "1px solid #333",
-                padding: "32px",
-                background: "#111",
+                width: "280px",
+                height: "140px",
+                background: "#f3f4f6",
+                borderRadius: "8px",
               }}
-            >
-              <div
-                style={{
-                  height: "18px",
-                  width: "50%",
-                  background: "#333",
-                  marginBottom: "24px",
-                }}
-              />
-              <div
-                style={{ height: "100px", width: "100%", background: "#333" }}
-              />
-            </div>
+            />
           </div>
-
           {/* Skeleton Summary Grid */}
           <div
             className="warranty-summary-grid"
@@ -428,9 +421,8 @@ export default function WarrantyPage() {
   return (
     <div className="warranty-page">
       <div className="warranty-shell">
-        <section className="warranty-hero">
-          <div className="warranty-hero-copy">
-            <div className="warranty-eyebrow">Customer Support</div>
+        <section className="warranty-page-head">
+          <div className="warranty-page-copy">
             <h1>Warranty & Claims</h1>
             <p>
               Submit a warranty request for eligible completed and paid orders.
@@ -440,14 +432,12 @@ export default function WarrantyPage() {
           </div>
 
           <div className="warranty-hero-panel">
-            <div className="warranty-hero-panel-title">
-              Claim Service Overview
-            </div>
+            <div className="warranty-hero-panel-title">Service Overview</div>
             <div className="warranty-hero-panel-list">
-              <div>• 1-year warranty coverage</div>
-              <div>• Completed and paid orders only</div>
-              <div>• Review within 3–5 business days</div>
-              <div>• Approved repairs at no added cost</div>
+              <div>✓ 1-year warranty coverage</div>
+              <div>✓ Completed and paid orders only</div>
+              <div>✓ Review within 3–5 days</div>
+              <div>✓ Approved repairs at no added cost</div>
             </div>
           </div>
         </section>

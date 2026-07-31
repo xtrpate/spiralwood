@@ -7,6 +7,7 @@ import useAuthStore from "../../store/authStore";
 import toast from "react-hot-toast";
 import LocationPicker from "../../components/LocationPicker";
 import "./customizepage.css";
+import "./cart.css";
 
 const PAYMENT_METHODS = [
   {
@@ -321,47 +322,44 @@ export default function CheckoutPage() {
     }
   };
 
+  // Rendered unconditionally in every state (loading, empty, loaded) so the
+  // header never gets swapped out or affected by the skeleton — same pattern
+  // as cartpage.jsx.
+  const headerSection = (
+    <div className="fm-cart-page-hero">
+      <div>
+        <h1>Checkout</h1>
+        <p>Review your ready-made items and place your order</p>
+      </div>
+      <button
+        type="button"
+        className="fm-cart-hero-btn"
+        onClick={() => navigate("/cart")}
+      >
+        ← Back to Cart
+      </button>
+    </div>
+  );
+
   return (
     <div className="checkout-page">
-      {/* 👉 STATIC HEADER - ALWAYS VISIBLE */}
-      <div
-        className="fm-cart-shell"
-        style={{ paddingBottom: 0, paddingTop: "28px" }}
-      >
-        <div className="fm-cart-progress">
-          <div className="fm-cart-step">
-            <span className="fm-cart-step-num">1</span>
-            <span>Shopping Cart</span>
-          </div>
-          <ChevronRight size={16} className="fm-cart-progress-arrow" />
-          <div className="fm-cart-step active">
-            <span className="fm-cart-step-num">2</span>
-            <span>Checkout Details</span>
-          </div>
-          <ChevronRight size={16} className="fm-cart-progress-arrow" />
-          <div className="fm-cart-step">
-            <span className="fm-cart-step-num">3</span>
-            <span>Order Complete</span>
-          </div>
-        </div>
-      </div>
+      {headerSection}
 
-      <div
-        className="page-hero"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-        }}
-      >
-        <div>
-          <h1>Checkout</h1>
-          <p>Review your ready-made items and place your order</p>
+      <div className="fm-cart-progress">
+        <div className="fm-cart-step">
+          <span className="fm-cart-step-num">1</span>
+          <span>Shopping Cart</span>
         </div>
-
-        <button className="btn btn-secondary" onClick={() => navigate("/cart")}>
-          ← Back to Cart
-        </button>
+        <ChevronRight size={16} className="fm-cart-progress-arrow" />
+        <div className="fm-cart-step active">
+          <span className="fm-cart-step-num">2</span>
+          <span>Checkout Details</span>
+        </div>
+        <ChevronRight size={16} className="fm-cart-progress-arrow" />
+        <div className="fm-cart-step">
+          <span className="fm-cart-step-num">3</span>
+          <span>Order Complete</span>
+        </div>
       </div>
 
       {!selectionReady ? (

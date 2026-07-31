@@ -3,7 +3,7 @@
    ========================================================= */
 
 .fm-cart-shell {
-  padding: 28px 0 42px;
+  padding: 0 0 42px;
 }
 
 .fm-cart-progress {
@@ -1355,25 +1355,27 @@
 
 .fm-cart-page-hero {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
-  max-width: 1520px;
-  margin: 0 auto;
-  padding: 28px 28px 18px;
-  border-bottom: 1px solid #e5e7eb;
+  gap: 18px;
+  margin-bottom: 24px;
+  padding: 24px 36px 18px;
+  border-bottom: 1px solid #e8e8e8;
+  background: transparent;
 }
 
 .fm-cart-page-hero h1 {
-  margin: 0 0 6px;
-  font-size: 2rem;
+  margin: 0 0 8px;
+  font-size: 2.2rem;
   font-weight: 800;
+  line-height: 1.05;
   color: #111111;
 }
 
 .fm-cart-page-hero p {
   margin: 0;
-  font-size: 0.94rem;
+  max-width: 760px;
+  font-size: 0.98rem;
   line-height: 1.7;
   color: #4b5563;
 }
@@ -1395,11 +1397,11 @@
   background: #f7f7f7;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 700px) {
   .fm-cart-page-hero {
     flex-direction: column;
     align-items: flex-start;
-    padding: 22px 16px 16px;
+    padding: 22px 20px 16px;
   }
 
   .fm-cart-hero-btn {
