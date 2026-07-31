@@ -189,7 +189,7 @@ export default function MyTasks() {
       clearTimeout(scrollTimer);
       clearTimeout(highlightTimer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [searchParams, loading, tasks]);
 
   const updateTaskStatus = async (taskId, status) => {
