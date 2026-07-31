@@ -71,6 +71,7 @@ import POSDeliveryScheduling from "./pages/staff/DeliveryScheduling";
 import POSDeliveryManagement from "./pages/staff/DeliveryManagement";
 import POSAppointmentScheduling from "./pages/staff/AppointmentScheduling";
 import POSReceiptPage from "./pages/staff/ReceiptPage";
+import BlueprintReceiptPage from "./pages/staff/BlueprintReceiptPage";
 import POSSalesReports from "./pages/staff/SalesReports";
 import POSBlueprintView from "./pages/staff/BlueprintView";
 import BlueprintPayments from "./pages/staff/BlueprintPayments";
@@ -593,6 +594,15 @@ export default function App() {
                   element={
                     <RequireStaffType allowedTypes={["cashier"]}>
                       <POSReceiptPage />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="blueprint-receipt/:id"
+                  element={
+                    <RequireStaffType allowedTypes={["cashier"]}>
+                      <BlueprintReceiptPage />
                     </RequireStaffType>
                   }
                 />

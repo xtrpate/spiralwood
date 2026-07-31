@@ -1,5 +1,6 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 
 const formatMoney = (value) =>
@@ -113,6 +114,27 @@ const infoNotice = {
   marginTop: 12,
 };
 
+const successBox = {
+  background: "#f0fdf4",
+  border: "1px solid #bbf7d0",
+  borderRadius: 10,
+  padding: "14px 16px",
+  fontSize: 13,
+  color: "#166534",
+  marginTop: 16,
+};
+
+const btnSecondarySm = {
+  padding: "8px 14px",
+  background: "#ffffff",
+  color: "#18181b",
+  border: "1px solid #d4d4d8",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
 function InfoRow({ label, value }) {
   return (
     <div style={infoRow}>
@@ -123,6 +145,7 @@ function InfoRow({ label, value }) {
 }
 
 export default function BlueprintPayments() {
+  const navigate = useNavigate();
   const [orderNumberInput, setOrderNumberInput] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
@@ -131,6 +154,7 @@ export default function BlueprintPayments() {
   const [customAmount, setCustomAmount] = useState("");
   const [recording, setRecording] = useState(false);
   const [recordError, setRecordError] = useState("");
+  const [lastPaymentResult, setLastPaymentResult] = useState(null);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -145,6 +169,7 @@ export default function BlueprintPayments() {
     setSearchError("");
     setRecordError("");
     setSummary(null);
+    setLastPaymentResult(null);
 
     try {
       const { data } = await api.get(
@@ -215,6 +240,7 @@ export default function BlueprintPayments() {
     if (!confirmed) return;
 
     setRecording(true);
+    setLastPaymentResult(null);
     try {
       const { data } = await api.post(
         `/pos/blueprint-cash-payments/${summary.order_id}`,
@@ -223,6 +249,7 @@ export default function BlueprintPayments() {
       setRecordError("");
       toast.success(data?.message || "Cash payment recorded successfully.");
       setCustomAmount("");
+      setLastPaymentResult(data);
       await refreshSummary();
     } catch (err) {
       setRecordError(
@@ -305,6 +332,29 @@ export default function BlueprintPayments() {
 
           {recordError ? (
             <div style={infoNotice}>{recordError}</div>
+          ) : null}
+
+          {lastPaymentResult ? (
+            <div style={successBox}>
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>
+                Payment recorded successfully.
+              </div>
+              <div>Receipt #: {lastPaymentResult.receipt_number}</div>
+              {lastPaymentResult.payment_label ? (
+                <div style={{ textTransform: "capitalize" }}>
+                  Payment type: {lastPaymentResult.payment_label.replace("_", " ")}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                style={{ ...btnSecondarySm, marginTop: 10 }}
+                onClick={() =>
+                  navigate(`/staff/blueprint-receipt/${lastPaymentResult.receipt_id}`)
+                }
+              >
+                View Receipt
+              </button>
+            </div>
           ) : null}
 
           {summary.can_record_payment ? (

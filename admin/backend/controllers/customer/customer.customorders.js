@@ -12,6 +12,9 @@ const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const {
+  ensureReceiptForVerifiedPayment,
+} = require("../../services/blueprintReceiptService");
+const {
   roundMoney,
   calcDownPaymentAmount,
   parseDecimalToCentsStrict,
@@ -2776,7 +2779,7 @@ exports.verifyPayment = async (req, res) => {
     const downPaymentAmount = calcDownPaymentAmount(quotedTotal);
 
     // 4. INSERT THE RECORD
-    await conn.execute(
+    const [paymentInsertResult] = await conn.execute(
       `INSERT INTO payment_transactions
         (order_id, amount, payment_method, proof_url, status, verified_at, notes)
        VALUES (?, ?, 'paymongo', ?, 'verified', NOW(), 'Automatically verified via PayMongo checkout.')`,
@@ -2794,8 +2797,22 @@ exports.verifyPayment = async (req, res) => {
       [lockedOrder.id],
     );
 
+    // 6. Receipt — created inside this same transaction, after the
+    // payment transaction is verified and the order is updated, before
+    // commit. A failure here rolls back the whole verification.
+    await ensureReceiptForVerifiedPayment(conn, {
+      orderId: lockedOrder.id,
+      paymentTransactionId: paymentInsertResult.insertId,
+      issuedByUserId: req.user.id,
+    });
+
     await conn.commit();
     transactionActive = false;
+
+    // Note: this route has no logAction middleware wired (unlike
+    // verifyRemainingBalancePayment below), so req.auditRecord is
+    // intentionally not set here -- matching this function's existing
+    // behavior. The receipt itself is already committed above.
 
     return res.json({
       success: true,
@@ -4024,6 +4041,17 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
       [nextPaymentStatus, order.id],
     );
 
+    // Receipt — created inside this same transaction, after the payment
+    // transaction is verified and orders.payment_status is updated, and
+    // before commit. Never reached for the earlier "already fully paid"
+    // branch above, since that branch commits and returns before this
+    // INSERT (and before insertResult even exists).
+    const receiptResult = await ensureReceiptForVerifiedPayment(conn, {
+      orderId: order.id,
+      paymentTransactionId: insertResult.insertId,
+      issuedByUserId: req.user.id,
+    });
+
     await insertNotificationSafe(conn, order.customer_id, {
       type: "blueprint_remaining_balance_paid",
       title: "Remaining Balance Paid",
@@ -4048,6 +4076,9 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
         verified_total: centsToAmount(finalVerifiedCents),
         remaining_balance: 0,
         payment_status: nextPaymentStatus,
+        receipt_id: receiptResult.receiptId,
+        receipt_number: receiptResult.receiptNumber,
+        payment_label: receiptResult.paymentLabel,
       },
     };
 
