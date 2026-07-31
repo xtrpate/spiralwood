@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import api from "../../services/api";
 import { Truck, Plus } from "lucide-react";
 
@@ -98,6 +99,8 @@ export default function DeliveryScheduling() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [focusedDeliveryId, setFocusedDeliveryId] = useState(null);
 
   const validateForm = () => {
     const nextErrors = {};
@@ -188,6 +191,44 @@ export default function DeliveryScheduling() {
     fetchEligibleOrders();
     fetchRiders();
   }, [fetchDeliveries, fetchEligibleOrders, fetchRiders]);
+
+  // Notification double-click focus support. No filter on this page
+  // hides a delivery row, so we only need to locate, scroll, and
+  // briefly highlight it. Fails safely if the delivery no longer
+  // exists — never guesses a record from message text.
+  useEffect(() => {
+    const focusId = searchParams.get("focus_delivery_id");
+    if (!focusId || listLoading) return;
+
+    const numericId = Number(focusId);
+    const match = deliveries.find((d) => Number(d.id) === numericId);
+
+    if (!match) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("focus_delivery_id");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    setFocusedDeliveryId(numericId);
+
+    const scrollTimer = setTimeout(() => {
+      document
+        .getElementById(`delivery-row-${numericId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+
+    const highlightTimer = setTimeout(() => setFocusedDeliveryId(null), 4000);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("focus_delivery_id");
+    setSearchParams(next, { replace: true });
+
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(highlightTimer);
+    };
+  }, [searchParams, listLoading, deliveries]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -738,7 +779,16 @@ export default function DeliveryScheduling() {
               </thead>
               <tbody>
                 {deliveries.map((d) => (
-                  <tr key={d.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
+                  <tr
+                    key={d.id}
+                    id={`delivery-row-${d.id}`}
+                    style={{
+                      borderBottom: "1px solid #f4f4f5",
+                      ...(focusedDeliveryId === d.id
+                        ? { boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                        : null),
+                    }}
+                  >
                     <td style={{ padding: "16px 20px", color: "#18181b" }}>
                       <strong style={{ fontWeight: 800 }}>
                         {d.order_number}

@@ -1,6 +1,6 @@
 // src/pages/tasks/TasksPage.jsx
 import React, { useEffect, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
 import useAuthStore from "../../store/authStore";
@@ -80,6 +80,8 @@ export default function TasksPage() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterRole, setFilterRole] = useState("all");
   const [search, setSearch] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [focusedTaskId, setFocusedTaskId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -140,6 +142,51 @@ export default function TasksPage() {
     setTarget(t);
     setModal("view");
   };
+
+  // Notification double-click focus support: reads ?focus_task_id= set
+  // by NotificationBell navigation, clears any filter that would hide
+  // the record, scrolls it into view, highlights it briefly, and opens
+  // its existing view modal. Fails safely (no crash, one-time toast) if
+  // the task no longer exists — never guesses a record from anything
+  // other than this query param.
+  useEffect(() => {
+    const focusId = searchParams.get("focus_task_id");
+    if (!focusId || loading) return;
+
+    const numericId = Number(focusId);
+    const match = tasks.find((t) => Number(t.id) === numericId);
+
+    if (!match) {
+      toast.error("That task could not be found. It may have been removed.");
+      const next = new URLSearchParams(searchParams);
+      next.delete("focus_task_id");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    setFilterStatus("all");
+    setFilterRole("all");
+    setSearch("");
+    setFocusedTaskId(match.id);
+    openView(match);
+
+    const scrollTimer = setTimeout(() => {
+      document
+        .getElementById(`task-row-${match.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+
+    const highlightTimer = setTimeout(() => setFocusedTaskId(null), 4000);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("focus_task_id");
+    setSearchParams(next, { replace: true });
+
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(highlightTimer);
+    };
+  }, [searchParams, loading, tasks]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -493,10 +540,17 @@ export default function TasksPage() {
           return (
             <div
               key={t.id}
+              id={`task-row-${t.id}`}
               style={{
                 ...S.card,
                 borderColor: overdue ? "#fecaca" : "#e4e4e7",
                 borderLeft: `4px solid ${overdue ? "#dc2626" : sm.color}`,
+                ...(focusedTaskId === t.id
+                  ? {
+                      boxShadow: "0 0 0 3px #0a0a0a",
+                      transition: "box-shadow 0.3s ease",
+                    }
+                  : null),
               }}
             >
               <div

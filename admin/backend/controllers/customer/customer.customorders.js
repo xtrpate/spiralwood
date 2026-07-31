@@ -18,6 +18,9 @@ const {
   centsToAmount,
 } = require("../../utils/paymentAmounts");
 const { parseStrictPositiveInt } = require("../../utils/validators");
+const {
+  createNotificationSafe,
+} = require("../../utils/notificationHelper");
 
 const customRequestAssetsDir = path.join(
   __dirname,
@@ -1166,20 +1169,24 @@ const resolveExistingProductId = async (conn, value) => {
 const insertNotificationSafe = async (
   conn,
   userId,
-  { type = "order_update", title, message },
+  {
+    type = "order_update",
+    title,
+    message,
+    targetType = null,
+    targetId = null,
+    targetOrderId = null,
+  },
 ) => {
-  if (!userId) return;
-
-  try {
-    await conn.execute(
-      `INSERT INTO notifications
-        (user_id, type, title, message, is_read, channel, sent_at, created_at)
-       VALUES (?, ?, ?, ?, 0, 'system', NOW(), NOW())`,
-      [userId, type, title, message],
-    );
-  } catch (err) {
-    console.error("[customer.customorders notification skipped]", err);
-  }
+  await createNotificationSafe(conn, {
+    userId,
+    type,
+    title,
+    message,
+    targetType,
+    targetId,
+    targetOrderId,
+  });
 };
 
 // Safely deletes an uploaded file from disk when the request that
@@ -1493,6 +1500,9 @@ exports.acceptEstimation = async (req, res) => {
       type: "estimation_customer_approved",
       title: "Quotation Approved by Customer",
       message: `Customer approved the quotation for ${order.order_number}. Required 30% down payment: ₱${downPaymentAmount.toFixed(2)}.`,
+      targetType: "order",
+      targetId: order.id,
+      targetOrderId: order.id,
     });
 
     await conn.commit();
@@ -1675,6 +1685,9 @@ exports.requestEstimationRevision = async (req, res) => {
       message: note
         ? `Customer requested a quotation revision for ${order.order_number}. Note: ${note}`
         : `Customer requested a quotation revision for ${order.order_number}.`,
+      targetType: "blueprint_estimation",
+      targetId: blueprint.id,
+      targetOrderId: order.id,
     });
 
     await conn.commit();
@@ -1864,6 +1877,9 @@ exports.rejectEstimation = async (req, res) => {
       message: reason
         ? `Customer rejected the quotation for ${order.order_number}. Reason: ${reason}`
         : `Customer rejected the quotation for ${order.order_number}.`,
+      targetType: "order",
+      targetId: order.id,
+      targetOrderId: order.id,
     });
 
     await conn.commit();
@@ -2138,6 +2154,9 @@ exports.submitDownPayment = async (req, res) => {
       type: "blueprint_down_payment_submitted",
       title: "30% Down Payment Submitted",
       message: `Customer submitted the 30% down payment for ${order.order_number}. Please verify the payment proof.`,
+      targetType: "order",
+      targetId: order.id,
+      targetOrderId: order.id,
     });
 
     await conn.commit();
@@ -2497,6 +2516,9 @@ exports.submitRemainingBalancePayment = async (req, res) => {
       type: "blueprint_remaining_balance_submitted",
       title: "Remaining Balance Payment Submitted",
       message: `Customer submitted a remaining-balance payment proof for ${order.order_number}. Please verify the payment proof.`,
+      targetType: "order",
+      targetId: order.id,
+      targetOrderId: order.id,
     });
 
     await conn.commit();
@@ -2615,6 +2637,9 @@ exports.postCustomOrderMessage = async (req, res) => {
       type: "custom_request_new_message",
       title: "New Customer Discussion Message",
       message: `Customer sent a new discussion message for ${order.order_number}.`,
+      targetType: "order",
+      targetId: order.id,
+      targetOrderId: order.id,
     });
 
     await conn.commit();
@@ -4003,6 +4028,9 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
       type: "blueprint_remaining_balance_paid",
       title: "Remaining Balance Paid",
       message: `Your remaining balance payment for order ${order.order_number || `#${order.id}`} has been verified.`,
+      targetType: "custom_request",
+      targetId: order.id,
+      targetOrderId: order.id,
     });
 
     // Audited only after the write succeeds. No customer name, address,

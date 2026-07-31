@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import useAuthStore from "../../store/authStore";
 
@@ -91,6 +92,8 @@ export default function DeliveryManagement() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [failureModal, setFailureModal] = useState(null);
   const [failureReasonInput, setFailureReasonInput] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [focusedDeliveryId, setFocusedDeliveryId] = useState(null);
 
   const loadDeliveries = useCallback(async () => {
     setLoading(true);
@@ -118,6 +121,46 @@ export default function DeliveryManagement() {
   useEffect(() => {
     loadDeliveries();
   }, [loadDeliveries]);
+
+  // Notification double-click focus support: clears any status/search
+  // filter that would hide the record, locates it, scrolls it into
+  // view, and briefly highlights it. Fails safely if the delivery no
+  // longer exists — never guesses a record from message text.
+  useEffect(() => {
+    const focusId = searchParams.get("focus_delivery_id");
+    if (!focusId || loading) return;
+
+    const numericId = Number(focusId);
+    const match = deliveries.find((d) => Number(d.id) === numericId);
+
+    if (!match) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("focus_delivery_id");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    setStatusFilter("all");
+    setSearch("");
+    setFocusedDeliveryId(numericId);
+
+    const scrollTimer = setTimeout(() => {
+      document
+        .getElementById(`delivery-card-${numericId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+
+    const highlightTimer = setTimeout(() => setFocusedDeliveryId(null), 4000);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("focus_delivery_id");
+    setSearchParams(next, { replace: true });
+
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(highlightTimer);
+    };
+  }, [searchParams, loading, deliveries]);
 
   // PHASE 5 correction — automatic payment-status refresh for blueprint
   // deliveries still waiting on the customer's remaining-payment choice
@@ -576,10 +619,14 @@ export default function DeliveryManagement() {
             return (
               <div
                 key={delivery.id}
+                id={`delivery-card-${delivery.id}`}
                 style={{
                   ...deliveryCard,
                   borderColor: statusMeta.border,
                   background: "#ffffff",
+                  ...(focusedDeliveryId === delivery.id
+                    ? { boxShadow: "0 0 0 3px #0a0a0a" }
+                    : null),
                 }}
               >
                 <div style={deliveryHeader}>

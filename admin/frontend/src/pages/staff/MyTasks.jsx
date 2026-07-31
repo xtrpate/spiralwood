@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api from "../../services/api";
 import useAuthStore from "../../store/authStore";
@@ -116,6 +117,8 @@ export default function MyTasks() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [focusedTaskId, setFocusedTaskId] = useState(null);
 
   const loadTasks = async () => {
     setLoading(true);
@@ -143,6 +146,51 @@ export default function MyTasks() {
   useEffect(() => {
     loadTasks();
   }, []); // eslint-disable-line
+
+  // Notification double-click focus support: this page has no filters
+  // that would hide a task, so we only need to locate it, scroll it
+  // into view, and briefly highlight it. Fails safely if the task no
+  // longer exists (e.g. deleted) — never guesses from message text.
+  useEffect(() => {
+    const focusId = searchParams.get("focus_task_id");
+    if (!focusId || loading) return;
+
+    const numericId = Number(focusId);
+    const match = tasks.find((t) => Number(t.id) === numericId);
+
+    if (!match) {
+      toast.error("That task could not be found. It may have been removed.");
+      const next = new URLSearchParams(searchParams);
+      next.delete("focus_task_id");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    setFocusedTaskId(numericId);
+
+    const scrollTimer = setTimeout(() => {
+      const stepEl = document.getElementById(`task-step-${numericId}`);
+      const orderEl = match.order_id
+        ? document.getElementById(`order-group-${match.order_id}`)
+        : null;
+      (stepEl || orderEl)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 50);
+
+    const highlightTimer = setTimeout(() => setFocusedTaskId(null), 4000);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("focus_task_id");
+    setSearchParams(next, { replace: true });
+
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(highlightTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, loading, tasks]);
 
   const updateTaskStatus = async (taskId, status) => {
     try {
@@ -353,7 +401,11 @@ export default function MyTasks() {
                 ORDER_STATUS_META.assigned;
 
               return (
-                <div key={order.key} style={orderCard}>
+                <div
+                  key={order.key}
+                  id={`order-group-${order.orderId}`}
+                  style={orderCard}
+                >
                   <div style={orderTop}>
                     <div style={{ flex: 1, minWidth: 260 }}>
                       <div style={orderHeaderRow}>
@@ -445,7 +497,20 @@ export default function MyTasks() {
                           getPreviousRequiredStepLabel(order.steps, stepIndex);
 
                         return (
-                          <div key={step.stepLabel} style={stepRow}>
+                          <div
+                            key={step.stepLabel}
+                            id={step.task ? `task-step-${step.task.id}` : undefined}
+                            style={
+                              step.task && focusedTaskId === step.task.id
+                                ? {
+                                    ...stepRow,
+                                    boxShadow: "0 0 0 3px #0a0a0a",
+                                    borderRadius: 8,
+                                    transition: "box-shadow 0.3s ease",
+                                  }
+                                : stepRow
+                            }
+                          >
                             <div style={stepLeft}>
                               <div style={stepName}>{step.stepLabel}</div>
                               <div style={stepSubtext}>
