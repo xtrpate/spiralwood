@@ -1,7 +1,9 @@
 // src/components/NotificationBell.jsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import api from "../services/api";
+import useAuthStore from "../store/authStore";
 
 const S = {
   btn: {
@@ -67,19 +69,118 @@ const S = {
     background: isRead ? "#ffffff" : "#fafafa",
     border: `1px solid ${isRead ? "#e4e4e7" : "#d4d4d8"}`,
     transition: "background 0.2s",
+    userSelect: "none",
   }),
 };
 
+// Double click/tap must be detected explicitly rather than relying on the
+// browser's native onDoubleClick, since that event does not fire reliably
+// across desktop mouse, Chrome responsive/device mode, and mobile
+// double-tap in the same way. A short window (DOUBLE_CLICK_WINDOW_MS) is
+// used instead: the first click starts a timer that performs the
+// single-click behavior (mark as read only); a second click on the same
+// notification within that window cancels the timer and performs the
+// double-click behavior (mark as read once, close the panel, navigate).
+const DOUBLE_CLICK_WINDOW_MS = 280;
+
+// Resolves the exact destination for a notification based on its
+// (target_type, target_id, target_order_id) and the logged-in user's own
+// role/staff_type — never based on which role happened to receive the
+// notification. This lets the same notification "shape" route correctly
+// no matter which admin/staff account is viewing it.
+function resolveNotificationRoute(n, { isAdmin, isIndoorStaff, isDeliveryRider }) {
+  const targetType = n?.target_type || null;
+  const targetId = n?.target_id ?? null;
+  const targetOrderId = n?.target_order_id ?? null;
+
+  // Legacy notifications (no target fields) or anything we don't
+  // recognize: never guess a specific record from the message text.
+  // Fall back to the safest role-appropriate list/dashboard page.
+  const safeFallback = () => {
+    if (isAdmin) return "/admin/dashboard";
+    if (isDeliveryRider) return "/staff/rider-dashboard";
+    if (isIndoorStaff) return "/staff/dashboard";
+    return "/admin/dashboard";
+  };
+
+  if (!targetType || targetId == null) {
+    return safeFallback();
+  }
+
+  switch (targetType) {
+    case "order":
+    case "custom_request":
+      // Admin's order detail route is the only exact-record route
+      // available for both plain orders and blueprint/custom-request
+      // orders (there is no separate admin custom-request page — it is
+      // reviewed from the order itself).
+      if (isAdmin) return `/admin/orders/${targetId}`;
+      return safeFallback();
+
+    case "blueprint_estimation":
+      if (isAdmin) return `/admin/blueprints/${targetId}/estimation`;
+      return safeFallback();
+
+    case "task":
+      if (isAdmin) return `/admin/tasks?focus_task_id=${targetId}`;
+      if (isIndoorStaff) return `/staff/tasks?focus_task_id=${targetId}`;
+      return safeFallback();
+
+    case "delivery":
+      if (isAdmin) return `/admin/delivery?focus_delivery_id=${targetId}`;
+      if (isDeliveryRider) return `/staff/deliveries?focus_delivery_id=${targetId}`;
+      return safeFallback();
+
+    case "appointment":
+      // No active notification creation point produces this today —
+      // wired for forward compatibility only.
+      if (isAdmin) return `/admin/appointments?focus_appointment_id=${targetId}`;
+      if (isIndoorStaff) return `/staff/appointment?focus_appointment_id=${targetId}`;
+      return safeFallback();
+
+    default:
+      return safeFallback();
+  }
+}
+
 export default function NotificationBell({ compact = false }) {
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
+
+  const isAdmin = user?.role === "admin";
+  const isIndoorStaff = user?.role === "staff" && user?.staff_type === "indoor";
+  const isDeliveryRider =
+    user?.role === "staff" && user?.staff_type === "delivery_rider";
+
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
+  // Click-detection state kept in refs (not React state) so a stale
+  // closure inside a pending setTimeout never fires against the wrong
+  // notification and so nothing needs to re-render on every keystroke of
+  // the timer.
+  const pendingTimerRef = useRef(null);
+  const pendingIdRef = useRef(null);
+  const markingInFlightRef = useRef(new Set());
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (pendingTimerRef.current) {
+        clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const fetchNotifications = useCallback(async () => {
     try {
       const { data } = await api.get("/tasks/notifications");
-      setNotifications(data);
+      if (isMountedRef.current) setNotifications(data);
     } catch {
       // A failed notification fetch must never break the surrounding page.
     }
@@ -102,13 +203,74 @@ export default function NotificationBell({ compact = false }) {
     } catch {}
   };
 
-  const markOneRead = async (id) => {
+  // Guarded so the same notification is never PATCHed twice concurrently
+  // (prevents duplicate requests / HTTP 429 from rapid clicks).
+  const markOneRead = useCallback(async (id) => {
+    if (markingInFlightRef.current.has(id)) return;
+    const alreadyRead = notifications.find((n) => n.id === id)?.is_read;
+    if (alreadyRead) return;
+
+    markingInFlightRef.current.add(id);
     try {
       await api.patch(`/tasks/notifications/${id}/read`);
-      setNotifications((p) =>
-        p.map((n) => (n.id === id ? { ...n, is_read: 1 } : n)),
-      );
-    } catch {}
+      if (isMountedRef.current) {
+        setNotifications((p) =>
+          p.map((n) => (n.id === id ? { ...n, is_read: 1 } : n)),
+        );
+      }
+    } catch {
+      // Best-effort — a failed mark-as-read must never block navigation
+      // or surface an error to the user.
+    } finally {
+      markingInFlightRef.current.delete(id);
+    }
+  }, [notifications]);
+
+  const clearPendingTimer = () => {
+    if (pendingTimerRef.current) {
+      clearTimeout(pendingTimerRef.current);
+      pendingTimerRef.current = null;
+    }
+  };
+
+  const handleNotificationClick = (n) => {
+    // Second click on the SAME notification within the window: this is
+    // the double-click/tap. Cancel the pending single-click timer, mark
+    // read once, close the panel, and navigate.
+    if (pendingIdRef.current === n.id) {
+      clearPendingTimer();
+      pendingIdRef.current = null;
+      markOneRead(n.id);
+      setOpen(false);
+      const dest = resolveNotificationRoute(n, {
+        isAdmin,
+        isIndoorStaff,
+        isDeliveryRider,
+      });
+      navigate(dest);
+      return;
+    }
+
+    // A different notification was clicked while one was still pending:
+    // let the previous one resolve as a normal single click (mark read
+    // only) right away, then start tracking the new one. Never navigate
+    // using the stale/previous notification.
+    if (pendingIdRef.current != null) {
+      clearPendingTimer();
+      const previousId = pendingIdRef.current;
+      pendingIdRef.current = null;
+      markOneRead(previousId);
+    }
+
+    pendingIdRef.current = n.id;
+    pendingTimerRef.current = setTimeout(() => {
+      // Timer fired without a second click: single-click behavior only.
+      if (pendingIdRef.current === n.id) {
+        pendingIdRef.current = null;
+      }
+      pendingTimerRef.current = null;
+      markOneRead(n.id);
+    }, DOUBLE_CLICK_WINDOW_MS);
   };
 
   return (
@@ -196,9 +358,7 @@ export default function NotificationBell({ compact = false }) {
                 <div
                   key={n.id}
                   style={S.notifItem(!n.is_read)}
-                  onClick={() => {
-                    if (!n.is_read) markOneRead(n.id);
-                  }}
+                  onClick={() => handleNotificationClick(n)}
                 >
                   <div
                     style={{

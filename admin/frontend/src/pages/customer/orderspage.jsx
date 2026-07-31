@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import "./orders.css";
 import { PackageSearch, ShoppingBag } from "lucide-react";
@@ -551,6 +551,8 @@ export default function OrdersPage() {
   const [selectedId, setSelectedId] = useState(null);
   const [filter, setFilter] = useState("all");
   const [customRequestMap, setCustomRequestMap] = useState({});
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [focusedOrderId, setFocusedOrderId] = useState(null);
 
   const fetchOrders = () => {
     setLoading(true);
@@ -661,6 +663,49 @@ export default function OrdersPage() {
 
     setSelectedId(order.id);
   };
+
+  // Notification double-click focus support: clears the status tab
+  // filter so the record can't be hidden, locates it, scrolls it into
+  // view, briefly highlights it, and opens it through the existing
+  // handleOpenOrder logic (which itself correctly redirects to the
+  // custom-request page for blueprint orders). Fails safely if the
+  // order no longer exists — never guesses a record from message text.
+  useEffect(() => {
+    const focusId = searchParams.get("focus_order_id");
+    if (!focusId || loading) return;
+
+    const numericId = Number(focusId);
+    const match = orders.find((o) => Number(o.id) === numericId);
+
+    if (!match) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("focus_order_id");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    setFilter("all");
+    setFocusedOrderId(numericId);
+    handleOpenOrder(match);
+
+    const scrollTimer = setTimeout(() => {
+      document
+        .getElementById(`order-card-${numericId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+
+    const highlightTimer = setTimeout(() => setFocusedOrderId(null), 4000);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("focus_order_id");
+    setSearchParams(next, { replace: true });
+
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(highlightTimer);
+    };
+
+  }, [searchParams, loading, orders]);
 
   const STATUS_TABS = [
     { key: "all", label: "All orders" },
@@ -818,8 +863,14 @@ export default function OrdersPage() {
             return (
               <div
                 key={order.id}
+                id={`order-card-${order.id}`}
                 className="order-card"
                 onClick={() => handleOpenOrder(order)}
+                style={
+                  focusedOrderId === order.id
+                    ? { boxShadow: "0 0 0 3px #0a0a0a" }
+                    : undefined
+                }
               >
                 <div className="order-card-top">
                   <div>

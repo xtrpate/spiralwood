@@ -16,7 +16,8 @@ const parseStrictPositiveInt = (value) => {
 exports.getNotifications = async (req, res) => {
   try {
     const [notifications] = await db.query(
-      `SELECT id, type, title, message, is_read, created_at
+      `SELECT id, type, title, message, is_read, created_at,
+              target_type, target_id, target_order_id
        FROM notifications
        WHERE user_id = ?
        ORDER BY created_at DESC

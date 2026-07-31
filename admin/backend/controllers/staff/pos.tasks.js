@@ -1,5 +1,8 @@
 // controllers/staff/pos.tasks.js
 const db = require("../../config/db"); // Uses the unified db config
+const {
+  createNotificationSafe,
+} = require("../../utils/notificationHelper");
 
 const ensureIndoorAssignee = async (userId) => {
   // ── FIXED: Switched to .query and parsed ID ──
@@ -320,15 +323,18 @@ exports.acceptTask = async (req, res) => {
       });
     }
 
-    // ── FIXED: Switched to .query ──
-    await db.query(
-      `INSERT INTO notifications (user_id, type, title, message, channel, sent_at) 
-       VALUES (?, 'task_update', 'Task Accepted', ?, 'system', NOW())`,
-      [
-        parseInt(task.assigned_by),
-        `${req.user.name || "A staff member"} has accepted the task: ${task.title}`,
-      ],
-    );
+    // Best-effort: task acceptance above has already committed under
+    // autocommit. A notification failure here must never be reported
+    // to the staff member as a failed task acceptance.
+    await createNotificationSafe(db, {
+      userId: parseInt(task.assigned_by),
+      type: "task_update",
+      title: "Task Accepted",
+      message: `${req.user.name || "A staff member"} has accepted the task: ${task.title}`,
+      targetType: "task",
+      targetId: task.id,
+      targetOrderId: task.order_id,
+    });
 
     res.json({ message: "Assignment accepted." });
   } catch (err) {
@@ -452,21 +458,18 @@ exports.updateTaskStatus = async (req, res) => {
       },
     };
 
-    try {
-      if (existing.assigned_by) {
-        const statusLabel = String(status).replace(/_/g, " ");
+    if (existing.assigned_by) {
+      const statusLabel = String(status).replace(/_/g, " ");
 
-        await db.query(
-          `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
-           VALUES (?, 'task_update', 'Task Status Updated', ?, 'system', NOW())`,
-          [
-            parseInt(existing.assigned_by),
-            `${req.user.name || "A staff member"} updated step "${existing.task_role}" to ${statusLabel} for ${existing.title}.`,
-          ],
-        );
-      }
-    } catch (notifyErr) {
-      console.error("[pos.tasks updateTaskStatus notification]", notifyErr.message);
+      await createNotificationSafe(db, {
+        userId: parseInt(existing.assigned_by),
+        type: "task_update",
+        title: "Task Status Updated",
+        message: `${req.user.name || "A staff member"} updated step "${existing.task_role}" to ${statusLabel} for ${existing.title}.`,
+        targetType: "task",
+        targetId: existing.id,
+        targetOrderId: existing.order_id,
+      });
     }
 
     let becameProductionReady = false;
@@ -517,39 +520,27 @@ exports.updateTaskStatus = async (req, res) => {
           !wasProductionReadyBefore && isProductionReadyAfter;
 
         if (status === "blocked") {
-          try {
-            await db.query(
-              `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
-               VALUES (?, 'task_blocked', 'Production Blocker Reported', ?, 'system', NOW())`,
-              [
-                parseInt(existing.assigned_by),
-                `${req.user.name || "A staff member"} reported a blocker on ${existing.task_role} for Order #${existing.order_id}.`,
-              ],
-            );
-          } catch (blockedNotifyErr) {
-            console.error(
-              "[pos.tasks updateTaskStatus blocked notification]",
-              blockedNotifyErr.message,
-            );
-          }
+          await createNotificationSafe(db, {
+            userId: parseInt(existing.assigned_by),
+            type: "task_blocked",
+            title: "Production Blocker Reported",
+            message: `${req.user.name || "A staff member"} reported a blocker on ${existing.task_role} for Order #${existing.order_id}.`,
+            targetType: "task",
+            targetId: existing.id,
+            targetOrderId: existing.order_id,
+          });
         }
 
         if (becameProductionReady) {
-          try {
-            await db.query(
-              `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
-               VALUES (?, 'production_ready', 'Production Ready for Shipping', ?, 'system', NOW())`,
-              [
-                parseInt(existing.assigned_by),
-                `${req.user.name || "A staff member"} completed the full production workflow for Order #${existing.order_id}. The order is now ready for shipping review.`,
-              ],
-            );
-          } catch (readyNotifyErr) {
-            console.error(
-              "[pos.tasks updateTaskStatus production_ready notification]",
-              readyNotifyErr.message,
-            );
-          }
+          await createNotificationSafe(db, {
+            userId: parseInt(existing.assigned_by),
+            type: "production_ready",
+            title: "Production Ready for Shipping",
+            message: `${req.user.name || "A staff member"} completed the full production workflow for Order #${existing.order_id}. The order is now ready for shipping review.`,
+            targetType: "order",
+            targetId: existing.order_id,
+            targetOrderId: existing.order_id,
+          });
         }
       }
     } catch (readinessErr) {
@@ -940,15 +931,15 @@ exports.updateTask = async (req, res) => {
     };
 
     if (assignedToChanged) {
-      try {
-        await db.query(
-          `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
-           VALUES (?, 'assignment', 'Task Updated', ?, 'system', NOW())`,
-          [nextAssignedTo, `A task has been assigned/updated: ${nextTitle}`],
-        );
-      } catch (notifyErr) {
-        console.error("[pos.tasks updateTask notification]", notifyErr.message);
-      }
+      await createNotificationSafe(db, {
+        userId: nextAssignedTo,
+        type: "assignment",
+        title: "Task Updated",
+        message: `A task has been assigned/updated: ${nextTitle}`,
+        targetType: "task",
+        targetId: taskId,
+        targetOrderId: nextOrderId,
+      });
     }
 
     res.json({ message: "Task updated successfully." });

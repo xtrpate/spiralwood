@@ -9,6 +9,10 @@ const { parseStrictPositiveInt } = require("../../utils/validators");
 const {
   buildPaymentSummaryFromRows,
 } = require("../../services/blueprintCashPaymentService");
+const {
+  createNotification,
+  createNotificationSafe,
+} = require("../../utils/notificationHelper");
 
 const normalize = (value) =>
   String(value || "")
@@ -92,20 +96,24 @@ const normalizeCustomRequestItem = (item = {}) => {
 const sendSystemNotificationSafe = async (
   conn,
   userId,
-  { type = "custom_request_update", title, message },
+  {
+    type = "custom_request_update",
+    title,
+    message,
+    targetType = null,
+    targetId = null,
+    targetOrderId = null,
+  },
 ) => {
-  if (!userId) return;
-
-  try {
-    await conn.query(
-      `INSERT INTO notifications
-        (user_id, type, title, message, is_read, channel, sent_at, created_at)
-       VALUES (?, ?, ?, ?, 0, 'system', NOW(), NOW())`,
-      [userId, type, title, message],
-    );
-  } catch (err) {
-    console.error("[orders notification insert skipped]", err?.message || err);
-  }
+  await createNotificationSafe(conn, {
+    userId,
+    type,
+    title,
+    message,
+    targetType,
+    targetId,
+    targetOrderId,
+  });
 };
 
 const buildCustomRequestBlueprintPayload = ({
@@ -396,6 +404,9 @@ exports.approveCustomRequest = async (req, res) => {
       message: adminNote
         ? `Your custom request ${order.order_number} was approved for admin estimation review. Note: ${adminNote}`
         : `Your custom request ${order.order_number} was approved for admin estimation review.`,
+      targetType: "custom_request",
+      targetId: order.id,
+      targetOrderId: order.id,
     });
 
     await conn.commit();
@@ -461,6 +472,9 @@ exports.requestCustomRequestRevision = async (req, res) => {
       message: adminNote
         ? `Admin requested revision for custom request ${order.order_number}. Note: ${adminNote}`
         : `Admin requested revision for custom request ${order.order_number}. Please review and update your submitted design.`,
+      targetType: "custom_request",
+      targetId: order.id,
+      targetOrderId: order.id,
     });
 
     await conn.commit();
@@ -520,6 +534,9 @@ exports.rejectCustomRequest = async (req, res) => {
       message: reason
         ? `Your custom request ${order.order_number} was rejected. Reason: ${reason}`
         : `Your custom request ${order.order_number} was rejected by admin.`,
+      targetType: "custom_request",
+      targetId: order.id,
+      targetOrderId: order.id,
     });
 
     await conn.commit();
@@ -632,21 +649,24 @@ const adminSafeTextOrNull = (value) => {
 const adminInsertDiscussionNotificationSafe = async (
   conn,
   userId,
-  { type = "order_update", title, message },
+  {
+    type = "order_update",
+    title,
+    message,
+    targetType = null,
+    targetId = null,
+    targetOrderId = null,
+  },
 ) => {
-  if (!userId) return;
-
-  try {
-    // ── FIXED: Switched to .query ──
-    await conn.query(
-      `INSERT INTO notifications
-        (user_id, type, title, message, is_read, channel, sent_at, created_at)
-       VALUES (?, ?, ?, ?, 0, 'system', NOW(), NOW())`,
-      [userId, type, title, message],
-    );
-  } catch (err) {
-    console.error("[admin.order discussion notification skipped]", err);
-  }
+  await createNotificationSafe(conn, {
+    userId,
+    type,
+    title,
+    message,
+    targetType,
+    targetId,
+    targetOrderId,
+  });
 };
 
 exports.getOne = async (req, res) => {
@@ -1297,21 +1317,15 @@ exports.updateStatus = async (req, res) => {
     }
 
     if (nextStatus === "completed" && order.customer_id) {
-      try {
-        await conn.query(
-          `INSERT INTO notifications (user_id, type, title, message, is_read, channel, sent_at, created_at)
-           VALUES (?, 'order_update', 'Order Completed', ?, 0, 'system', NOW(), NOW())`,
-          [
-            order.customer_id,
-            `Your order ${order.order_number || `#${order.id}`} has been completed. Thank you for choosing Spiral Wood Services.`,
-          ],
-        );
-      } catch (customerNotificationError) {
-        console.error(
-          "[orderController.updateStatus customer notification]",
-          customerNotificationError,
-        );
-      }
+      await createNotificationSafe(conn, {
+        userId: order.customer_id,
+        type: "order_update",
+        title: "Order Completed",
+        message: `Your order ${order.order_number || `#${order.id}`} has been completed. Thank you for choosing Spiral Wood Services.`,
+        targetType: "order",
+        targetId: order.id,
+        targetOrderId: order.id,
+      });
     }
 
     await conn.commit();
@@ -1766,26 +1780,21 @@ exports.verifyPayment = async (req, res) => {
     );
 
     if (order.customer_id) {
-      try {
-        await conn.query(
-          `INSERT INTO notifications (user_id, type, title, message, is_read, channel, sent_at, created_at)
-           VALUES (?, 'payment_update', ?, ?, 0, 'system', NOW(), NOW())`,
-          [
-            order.customer_id,
-            normalizedAction === "verified"
-              ? "Payment Verified"
-              : "Payment Could Not Be Verified",
-            normalizedAction === "verified"
-              ? `A payment for your order ${order.order_number || `#${order.id}`} has been verified.`
-              : `A payment for your order ${order.order_number || `#${order.id}`} could not be verified. Please review your order or contact our team for assistance.`,
-          ],
-        );
-      } catch (customerNotificationError) {
-        console.error(
-          "[orderController.verifyPayment customer notification]",
-          customerNotificationError,
-        );
-      }
+      await createNotificationSafe(conn, {
+        userId: order.customer_id,
+        type: "payment_update",
+        title:
+          normalizedAction === "verified"
+            ? "Payment Verified"
+            : "Payment Could Not Be Verified",
+        message:
+          normalizedAction === "verified"
+            ? `A payment for your order ${order.order_number || `#${order.id}`} has been verified.`
+            : `A payment for your order ${order.order_number || `#${order.id}`} could not be verified. Please review your order or contact our team for assistance.`,
+        targetType: "order",
+        targetId: order.id,
+        targetOrderId: order.id,
+      });
     }
 
     await conn.commit();
@@ -2227,15 +2236,15 @@ exports.assignStaff = async (req, res) => {
       createdTaskIds.push(taskResult.insertId);
     }
 
-    await conn.query(
-      `INSERT INTO notifications
-        (user_id, type, title, message, channel, sent_at)
-       VALUES (?, 'assignment', 'New Production Order Assigned', ?, 'system', NOW())`,
-      [
-        parseInt(staff_id),
-        `You have been assigned the full production workflow for ${order.order_number || `Order #${orderId}`}. Complete Cutting Machine, Edge Banding, Horizontal Drilling, Retouching, and Packing.`,
-      ],
-    );
+    await createNotification(conn, {
+      userId: parseInt(staff_id),
+      type: "assignment",
+      title: "New Production Order Assigned",
+      message: `You have been assigned the full production workflow for ${order.order_number || `Order #${orderId}`}. Complete Cutting Machine, Edge Banding, Horizontal Drilling, Retouching, and Packing.`,
+      targetType: "task",
+      targetId: createdTaskIds[0],
+      targetOrderId: orderId,
+    });
 
     const orderStatusChanged = normalize(order.status) === "contract_released";
 
@@ -2537,14 +2546,15 @@ exports.reassignStaff = async (req, res) => {
       staffNameById = new Map(nameRows.map((row) => [row.id, row.name]));
     }
 
-    await conn.query(
-      `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
-       VALUES (?, 'assignment', 'Production Steps Reassigned to You', ?, 'system', NOW())`,
-      [
-        newStaffId,
-        `You have been assigned ${eligibleRows.length} remaining production step(s) for ${order.order_number || `Order #${orderId}`}.`,
-      ],
-    );
+    await createNotification(conn, {
+      userId: newStaffId,
+      type: "assignment",
+      title: "Production Steps Reassigned to You",
+      message: `You have been assigned ${eligibleRows.length} remaining production step(s) for ${order.order_number || `Order #${orderId}`}.`,
+      targetType: "task",
+      targetId: eligibleRows[0].id,
+      targetOrderId: orderId,
+    });
 
     const lostByStaff = new Map();
     for (const row of eligibleRows) {
@@ -2555,14 +2565,18 @@ exports.reassignStaff = async (req, res) => {
     }
 
     for (const [oldStaffId, roles] of lostByStaff.entries()) {
-      await conn.query(
-        `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
-         VALUES (?, 'assignment', 'Reassigned Off Production Steps', ?, 'system', NOW())`,
-        [
-          oldStaffId,
-          `You have been reassigned off ${roles.length} pending production step(s) for ${order.order_number || `Order #${orderId}`}. Your completed work remains on record.`,
-        ],
+      const firstLostRow = eligibleRows.find(
+        (row) => row.assigned_to === oldStaffId,
       );
+      await createNotification(conn, {
+        userId: oldStaffId,
+        type: "assignment",
+        title: "Reassigned Off Production Steps",
+        message: `You have been reassigned off ${roles.length} pending production step(s) for ${order.order_number || `Order #${orderId}`}. Your completed work remains on record.`,
+        targetType: "task",
+        targetId: firstLostRow ? firstLostRow.id : null,
+        targetOrderId: orderId,
+      });
     }
 
     const previousAssignments = eligibleRows.map((row) => ({
@@ -3117,6 +3131,9 @@ exports.postOrderDiscussionMessage = async (req, res) => {
       type: "custom_request_admin_reply",
       title: "New Admin Reply",
       message: `Admin sent a new discussion reply for ${order.order_number}.`,
+      targetType: "custom_request",
+      targetId: order.id,
+      targetOrderId: order.id,
     });
 
     await conn.commit();

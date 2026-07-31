@@ -1,5 +1,6 @@
 // src/components/CustomerNotificationBell.jsx
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Bell } from "lucide-react";
 import api from "../services/api";
 
@@ -10,16 +11,64 @@ const formatCustomerNotificationDate = (value) => {
   return d.toLocaleString("en-PH");
 };
 
+// See components/NotificationBell.jsx for the full rationale of this
+// window-based double click/tap detection (native onDoubleClick is not
+// used because it does not behave consistently across desktop mouse,
+// Chrome responsive/device mode, and mobile double-tap).
+const DOUBLE_CLICK_WINDOW_MS = 280;
+
+// This bell only ever renders for a logged-in customer, so the
+// destination only needs to branch on target_type, not on role.
+function resolveCustomerNotificationRoute(n) {
+  const targetType = n?.target_type || null;
+  const targetId = n?.target_id ?? null;
+
+  // Legacy notifications (no target fields) or anything unrecognized:
+  // never guess a specific record from the message text. Fall back to
+  // the customer's own order list, which is always safe to open.
+  if (!targetType || targetId == null) {
+    return "/orders";
+  }
+
+  switch (targetType) {
+    case "custom_request":
+      // /custom-requests/:id resolves against orders.id (confirmed via
+      // the backend controller), so target_id is always an order id here.
+      return `/custom-requests/${targetId}`;
+    case "order":
+      return `/orders?focus_order_id=${targetId}`;
+    default:
+      return "/orders";
+  }
+}
+
 export default function CustomerNotificationBell() {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
+  const pendingTimerRef = useRef(null);
+  const pendingIdRef = useRef(null);
+  const markingInFlightRef = useRef(new Set());
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (pendingTimerRef.current) {
+        clearTimeout(pendingTimerRef.current);
+        pendingTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const fetchNotifications = useCallback(async () => {
     try {
       const { data } = await api.get("/customer/notifications");
-      setNotifications(data);
+      if (isMountedRef.current) setNotifications(data);
     } catch {
       // A failed notification fetch must never break the surrounding page.
     }
@@ -41,13 +90,65 @@ export default function CustomerNotificationBell() {
     } catch {}
   };
 
-  const markOneRead = async (id) => {
+  // Guarded so the same notification is never PATCHed twice concurrently
+  // (prevents duplicate requests / HTTP 429 from rapid taps).
+  const markOneRead = useCallback(async (id) => {
+    if (markingInFlightRef.current.has(id)) return;
+    const alreadyRead = notifications.find((n) => n.id === id)?.is_read;
+    if (alreadyRead) return;
+
+    markingInFlightRef.current.add(id);
     try {
       await api.patch(`/customer/notifications/${id}/read`);
-      setNotifications((p) =>
-        p.map((n) => (n.id === id ? { ...n, is_read: 1 } : n)),
-      );
-    } catch {}
+      if (isMountedRef.current) {
+        setNotifications((p) =>
+          p.map((n) => (n.id === id ? { ...n, is_read: 1 } : n)),
+        );
+      }
+    } catch {
+      // Best-effort — a failed mark-as-read must never block navigation
+      // or surface an error to the customer.
+    } finally {
+      markingInFlightRef.current.delete(id);
+    }
+  }, [notifications]);
+
+  const clearPendingTimer = () => {
+    if (pendingTimerRef.current) {
+      clearTimeout(pendingTimerRef.current);
+      pendingTimerRef.current = null;
+    }
+  };
+
+  const handleNotificationClick = (n) => {
+    // Second click/tap on the SAME notification within the window.
+    if (pendingIdRef.current === n.id) {
+      clearPendingTimer();
+      pendingIdRef.current = null;
+      markOneRead(n.id);
+      setOpen(false);
+      navigate(resolveCustomerNotificationRoute(n));
+      return;
+    }
+
+    // A different notification was tapped while one was still pending —
+    // let the previous one resolve as a plain single click, then start
+    // tracking the new one. Never navigate using the stale notification.
+    if (pendingIdRef.current != null) {
+      clearPendingTimer();
+      const previousId = pendingIdRef.current;
+      pendingIdRef.current = null;
+      markOneRead(previousId);
+    }
+
+    pendingIdRef.current = n.id;
+    pendingTimerRef.current = setTimeout(() => {
+      if (pendingIdRef.current === n.id) {
+        pendingIdRef.current = null;
+      }
+      pendingTimerRef.current = null;
+      markOneRead(n.id);
+    }, DOUBLE_CLICK_WINDOW_MS);
   };
 
   return (
@@ -136,14 +237,13 @@ export default function CustomerNotificationBell() {
               notifications.map((n) => (
                 <div
                   key={n.id}
-                  onClick={() => {
-                    if (!n.is_read) markOneRead(n.id);
-                  }}
+                  onClick={() => handleNotificationClick(n)}
                   style={{
                     padding: "10px 12px",
                     borderRadius: 8,
                     marginBottom: 8,
                     cursor: "pointer",
+                    userSelect: "none",
                     background: n.is_read ? "#ffffff" : "#fafafa",
                     border: `1px solid ${n.is_read ? "#e4e4e7" : "#d4d4d8"}`,
                   }}

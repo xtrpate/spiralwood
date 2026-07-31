@@ -7,6 +7,10 @@ const {
   centsToDecimalString,
   centsToAmount,
 } = require("../../utils/paymentAmounts");
+const {
+  createNotification,
+  createNotificationSafe,
+} = require("../../utils/notificationHelper");
 
 // PHASE 5 corrective patch — deletes ONLY the file this specific request
 // freshly uploaded via multer (req.file), never an existing, already
@@ -475,40 +479,28 @@ exports.createDelivery = async (req, res) => {
       delivery.signed_receipt = signUploadPath(delivery.signed_receipt);
     }
 
-    try {
-      await db.query(
-        `INSERT INTO notifications (user_id, type, title, message, is_read, channel, sent_at, created_at)
-         VALUES (?, ?, ?, ?, 0, 'system', NOW(), NOW())`,
-        [
-          driverId,
-          "assignment",
-          "New Delivery Assigned",
-          `You have been assigned a delivery for ${order.order_number}, scheduled for ${scheduledDate}.`,
-        ],
-      );
-    } catch (notificationError) {
-      console.error("[createDelivery rider notification]", notificationError);
-    }
+    await createNotificationSafe(db, {
+      userId: driverId,
+      type: "assignment",
+      title: "New Delivery Assigned",
+      message: `You have been assigned a delivery for ${order.order_number}, scheduled for ${scheduledDate}.`,
+      targetType: "delivery",
+      targetId: delivery?.id ?? result.insertId,
+      targetOrderId: orderId,
+    });
 
     if (order.customer_id) {
-      try {
-        await db.query(
-          `INSERT INTO notifications (user_id, type, title, message, is_read, channel, sent_at, created_at)
-           VALUES (?, 'delivery_update', ?, ?, 0, 'system', NOW(), NOW())`,
-          [
-            order.customer_id,
-            isRedeliverySchedule ? "Redelivery Scheduled" : "Delivery Scheduled",
-            isRedeliverySchedule
-              ? `A new delivery schedule for your order ${order.order_number} has been arranged for ${scheduledDate}.`
-              : `Your order ${order.order_number} has been scheduled for delivery on ${scheduledDate}.`,
-          ],
-        );
-      } catch (customerNotificationError) {
-        console.error(
-          "[createDelivery customer notification]",
-          customerNotificationError,
-        );
-      }
+      await createNotificationSafe(db, {
+        userId: order.customer_id,
+        type: "delivery_update",
+        title: isRedeliverySchedule ? "Redelivery Scheduled" : "Delivery Scheduled",
+        message: isRedeliverySchedule
+          ? `A new delivery schedule for your order ${order.order_number} has been arranged for ${scheduledDate}.`
+          : `Your order ${order.order_number} has been scheduled for delivery on ${scheduledDate}.`,
+        targetType: "order",
+        targetId: orderId,
+        targetOrderId: orderId,
+      });
     }
 
     res.status(201).json({
@@ -1054,107 +1046,82 @@ exports.updateDeliveryStatus = async (req, res) => {
       existing.assigned_by &&
       Number(existing.assigned_by) !== Number(req.user.id)
     ) {
-      await conn.query(
-        // 👉 ADDED is_read and created_at
-        `INSERT INTO notifications (user_id, type, title, message, is_read, channel, sent_at, created_at)
-         VALUES (?, 'delivery_update', ?, ?, 0, 'system', NOW(), NOW())`,
-        [
-          existing.assigned_by,
-          isFailureUpdate
-            ? "Delivery Marked as Failed"
-            : "Delivery Status Updated",
-          isFailureUpdate
-            ? `${req.user.name || "Assigned rider"} marked delivery #${deliveryId} as failed for ${order.order_number || `#${existing.order_id}`}. Reason: ${failureReason}.`
-            : `${req.user.name || "Assigned rider"} updated delivery #${deliveryId} to ${requestedStatus.replace(/_/g, " ")}.`,
-        ],
-      );
+      await createNotification(conn, {
+        userId: existing.assigned_by,
+        type: "delivery_update",
+        title: isFailureUpdate
+          ? "Delivery Marked as Failed"
+          : "Delivery Status Updated",
+        message: isFailureUpdate
+          ? `${req.user.name || "Assigned rider"} marked delivery #${deliveryId} as failed for ${order.order_number || `#${existing.order_id}`}. Reason: ${failureReason}.`
+          : `${req.user.name || "Assigned rider"} updated delivery #${deliveryId} to ${requestedStatus.replace(/_/g, " ")}.`,
+        targetType: "delivery",
+        targetId: deliveryId,
+        targetOrderId: existing.order_id,
+      });
     }
 
     if (isFailureUpdate && order.customer_id) {
-      try {
-        await conn.query(
-          `INSERT INTO notifications (user_id, type, title, message, is_read, channel, sent_at, created_at)
-           VALUES (?, 'delivery_update', 'Delivery Attempt Unsuccessful', ?, 0, 'system', NOW(), NOW())`,
-          [
-            order.customer_id,
-            `We attempted to deliver your order ${order.order_number || `#${existing.order_id}`} but were unable to complete it. Our team will contact you to arrange another delivery.`,
-          ],
-        );
-      } catch (customerNotificationError) {
-        console.error(
-          "[updateDeliveryStatus customer notification]",
-          customerNotificationError,
-        );
-      }
+      await createNotificationSafe(conn, {
+        userId: order.customer_id,
+        type: "delivery_update",
+        title: "Delivery Attempt Unsuccessful",
+        message: `We attempted to deliver your order ${order.order_number || `#${existing.order_id}`} but were unable to complete it. Our team will contact you to arrange another delivery.`,
+        targetType: "order",
+        targetId: existing.order_id,
+        targetOrderId: existing.order_id,
+      });
     }
 
     if (isStartingTransitNow && order.customer_id) {
-      try {
-        await conn.query(
-          `INSERT INTO notifications (user_id, type, title, message, is_read, channel, sent_at, created_at)
-           VALUES (?, 'delivery_update', 'Your Delivery Is on the Way', ?, 0, 'system', NOW(), NOW())`,
-          [
-            order.customer_id,
-            `Your order ${order.order_number || `#${existing.order_id}`} is now on the way.`,
-          ],
-        );
-      } catch (customerNotificationError) {
-        console.error(
-          "[updateDeliveryStatus customer notification]",
-          customerNotificationError,
-        );
-      }
+      await createNotificationSafe(conn, {
+        userId: order.customer_id,
+        type: "delivery_update",
+        title: "Your Delivery Is on the Way",
+        message: `Your order ${order.order_number || `#${existing.order_id}`} is now on the way.`,
+        targetType: "order",
+        targetId: existing.order_id,
+        targetOrderId: existing.order_id,
+      });
     }
 
     if (isCompletingDeliveryNow && order.customer_id) {
-      try {
-        await conn.query(
-          `INSERT INTO notifications (user_id, type, title, message, is_read, channel, sent_at, created_at)
-           VALUES (?, 'delivery_update', 'Your Order Has Arrived', ?, 0, 'system', NOW(), NOW())`,
-          [
-            order.customer_id,
-            `Your order ${order.order_number || `#${existing.order_id}`} has been delivered. Thank you for choosing Spiral Wood Services.`,
-          ],
-        );
-      } catch (customerNotificationError) {
-        console.error(
-          "[updateDeliveryStatus customer notification]",
-          customerNotificationError,
-        );
-      }
+      await createNotificationSafe(conn, {
+        userId: order.customer_id,
+        type: "delivery_update",
+        title: "Your Order Has Arrived",
+        message: `Your order ${order.order_number || `#${existing.order_id}`} has been delivered. Thank you for choosing Spiral Wood Services.`,
+        targetType: "order",
+        targetId: existing.order_id,
+        targetOrderId: existing.order_id,
+      });
     }
 
     if (isUndoingDeliveryNow && order.customer_id) {
-      try {
-        await conn.query(
-          `INSERT INTO notifications (user_id, type, title, message, is_read, channel, sent_at, created_at)
-           VALUES (?, 'delivery_update', 'Delivery Status Corrected', ?, 0, 'system', NOW(), NOW())`,
-          [
-            order.customer_id,
-            `The delivery status for your order ${order.order_number || `#${existing.order_id}`} was corrected. Our team is still completing your delivery.`,
-          ],
-        );
-      } catch (customerNotificationError) {
-        console.error(
-          "[updateDeliveryStatus customer notification]",
-          customerNotificationError,
-        );
-      }
+      await createNotificationSafe(conn, {
+        userId: order.customer_id,
+        type: "delivery_update",
+        title: "Delivery Status Corrected",
+        message: `The delivery status for your order ${order.order_number || `#${existing.order_id}`} was corrected. Our team is still completing your delivery.`,
+        targetType: "order",
+        targetId: existing.order_id,
+        targetOrderId: existing.order_id,
+      });
     }
 
     if (existing.assigned_by && shouldRecordDeliveryCollection) {
-      await conn.query(
-        // 👉 ADDED is_read and created_at
-        `INSERT INTO notifications (user_id, type, title, message, is_read, channel, sent_at, created_at)
-         VALUES (?, 'payment_review', 'Delivery Payment Pending Review', ?, 0, 'system', NOW(), NOW())`,
-        [
-          existing.assigned_by,
-          `${req.user.name || "Assigned rider"} recorded ₱${collectedAmount.toLocaleString(
-            "en-PH",
-            { minimumFractionDigits: 2 },
-          )} collected on delivery for ${order.order_number || `#${existing.order_id}`}. Review the pending payment before completing the order.`,
-        ],
-      );
+      await createNotification(conn, {
+        userId: existing.assigned_by,
+        type: "payment_review",
+        title: "Delivery Payment Pending Review",
+        message: `${req.user.name || "Assigned rider"} recorded ₱${collectedAmount.toLocaleString(
+          "en-PH",
+          { minimumFractionDigits: 2 },
+        )} collected on delivery for ${order.order_number || `#${existing.order_id}`}. Review the pending payment before completing the order.`,
+        targetType: "order",
+        targetId: order.id,
+        targetOrderId: order.id,
+      });
     }
 
     const [[updated]] = await conn.query(

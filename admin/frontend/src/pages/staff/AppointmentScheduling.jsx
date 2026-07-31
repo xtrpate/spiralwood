@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import api from "../../services/api";
 import useAuthStore from "../../store/authStore";
 import {
@@ -295,6 +296,8 @@ export default function AppointmentScheduling() {
   const [assignedStaff, setAssignedStaff] = useState([]);
   const [assignmentDrafts, setAssignmentDrafts] = useState({});
   const [showForm, setShowForm] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [focusedAppointmentId, setFocusedAppointmentId] = useState(null);
 
   const [form, setForm] = useState({
     order_id: "",
@@ -384,6 +387,50 @@ export default function AppointmentScheduling() {
     fetchAppointments();
     fetchAssignStaff();
   }, [fetchAppointments, fetchAssignStaff]);
+
+  // Notification double-click focus support (forward compatibility —
+  // no active notification creation point produces focus_appointment_id
+  // today, but the page is wired so it works the moment one does).
+  // Every bucket renders unconditionally on this page (no tab/filter
+  // hides a row), so we only need to locate the appointment across all
+  // buckets, scroll it into view, and briefly highlight it. Fails
+  // safely if the appointment no longer exists.
+  useEffect(() => {
+    const focusId = searchParams.get("focus_appointment_id");
+    if (!focusId || loading) return;
+
+    const numericId = Number(focusId);
+    const match = appointments.find((a) => Number(a.id) === numericId);
+
+    if (!match) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("focus_appointment_id");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    setFocusedAppointmentId(numericId);
+
+    const scrollTimer = setTimeout(() => {
+      document
+        .getElementById(`appointment-row-${numericId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+
+    const highlightTimer = setTimeout(
+      () => setFocusedAppointmentId(null),
+      4000,
+    );
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("focus_appointment_id");
+    setSearchParams(next, { replace: true });
+
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(highlightTimer);
+    };
+  }, [searchParams, loading, appointments]);
 
   useEffect(() => {
     const fetchWeeklyAvailability = async () => {
@@ -1263,7 +1310,15 @@ export default function AppointmentScheduling() {
                   </thead>
                   <tbody>
                     {adminNewRequests.map((a) => (
-                      <tr key={a.id} style={trStyle}>
+                      <tr
+                        key={a.id}
+                        id={`appointment-row-${a.id}`}
+                        style={
+                          focusedAppointmentId === a.id
+                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            : trStyle
+                        }
+                      >
                         {renderRequestRefCell(a)}
                         {renderCustomerCell(a)}
                         {renderServiceCell(a)}
@@ -1354,7 +1409,15 @@ export default function AppointmentScheduling() {
                   </thead>
                   <tbody>
                     {adminAwaitingAcceptance.map((a) => (
-                      <tr key={a.id} style={trStyle}>
+                      <tr
+                        key={a.id}
+                        id={`appointment-row-${a.id}`}
+                        style={
+                          focusedAppointmentId === a.id
+                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            : trStyle
+                        }
+                      >
                         {renderRequestRefCell(a)}
                         {renderCustomerCell(a)}
                         {renderServiceCell(a)}
@@ -1424,7 +1487,15 @@ export default function AppointmentScheduling() {
                   </thead>
                   <tbody>
                     {adminConfirmedAppointments.map((a) => (
-                      <tr key={a.id} style={trStyle}>
+                      <tr
+                        key={a.id}
+                        id={`appointment-row-${a.id}`}
+                        style={
+                          focusedAppointmentId === a.id
+                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            : trStyle
+                        }
+                      >
                         {renderRequestRefCell(a)}
                         {renderCustomerCell(a)}
                         {renderServiceCell(a)}
@@ -1486,7 +1557,15 @@ export default function AppointmentScheduling() {
                   </thead>
                   <tbody>
                     {adminClosedAppointments.map((a) => (
-                      <tr key={a.id} style={trStyle}>
+                      <tr
+                        key={a.id}
+                        id={`appointment-row-${a.id}`}
+                        style={
+                          focusedAppointmentId === a.id
+                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            : trStyle
+                        }
+                      >
                         {renderRequestRefCell(a)}
                         {renderCustomerCell(a)}
                         {renderServiceCell(a)}
@@ -1533,7 +1612,15 @@ export default function AppointmentScheduling() {
                   </thead>
                   <tbody>
                     {staffNewAssignments.map((a) => (
-                      <tr key={a.id} style={trStyle}>
+                      <tr
+                        key={a.id}
+                        id={`appointment-row-${a.id}`}
+                        style={
+                          focusedAppointmentId === a.id
+                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            : trStyle
+                        }
+                      >
                         {renderRequestRefCell(a)}
                         {renderCustomerCell(a)}
                         {renderServiceCell(a)}
@@ -1613,7 +1700,15 @@ export default function AppointmentScheduling() {
                   </thead>
                   <tbody>
                     {staffConfirmedAppointments.map((a) => (
-                      <tr key={a.id} style={trStyle}>
+                      <tr
+                        key={a.id}
+                        id={`appointment-row-${a.id}`}
+                        style={
+                          focusedAppointmentId === a.id
+                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            : trStyle
+                        }
+                      >
                         {renderRequestRefCell(a)}
                         {renderCustomerCell(a)}
                         {renderServiceCell(a)}
@@ -1696,7 +1791,15 @@ export default function AppointmentScheduling() {
                   </thead>
                   <tbody>
                     {staffClosedAppointments.map((a) => (
-                      <tr key={a.id} style={trStyle}>
+                      <tr
+                        key={a.id}
+                        id={`appointment-row-${a.id}`}
+                        style={
+                          focusedAppointmentId === a.id
+                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            : trStyle
+                        }
+                      >
                         {renderRequestRefCell(a)}
                         {renderCustomerCell(a)}
                         {renderServiceCell(a)}

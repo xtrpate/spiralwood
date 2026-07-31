@@ -5,6 +5,9 @@ const {
   resolveLifecycleByBlueprint,
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
+const {
+  createNotificationSafe,
+} = require("../../utils/notificationHelper");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function safeJsonParse(value, fallback = {}) {
@@ -2205,21 +2208,15 @@ exports.approveEstimation = async (req, res) => {
     );
 
     if (Number(order.customer_id) > 0) {
-      try {
-        await conn.query(
-          `INSERT INTO notifications
-            (user_id, type, title, message, is_read, channel, sent_at, created_at)
-           VALUES (?, ?, ?, ?, 0, 'system', NOW(), NOW())`,
-          [
-            parseInt(order.customer_id),
-            "estimation_sent",
-            "Quotation Ready for Review",
-            `Your quotation for ${order.order_number || `order #${order.id}`} is ready. Please review it from your custom request page.`,
-          ],
-        );
-      } catch (notifyErr) {
-        console.error("[approveEstimation notification skipped]", notifyErr);
-      }
+      await createNotificationSafe(conn, {
+        userId: parseInt(order.customer_id),
+        type: "estimation_sent",
+        title: "Quotation Ready for Review",
+        message: `Your quotation for ${order.order_number || `order #${order.id}`} is ready. Please review it from your custom request page.`,
+        targetType: "custom_request",
+        targetId: order.id,
+        targetOrderId: order.id,
+      });
     }
 
     const [[sentEstimation]] = await conn.query(
