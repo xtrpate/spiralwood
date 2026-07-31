@@ -73,6 +73,7 @@ import POSAppointmentScheduling from "./pages/staff/AppointmentScheduling";
 import POSReceiptPage from "./pages/staff/ReceiptPage";
 import POSSalesReports from "./pages/staff/SalesReports";
 import POSBlueprintView from "./pages/staff/BlueprintView";
+import BlueprintPayments from "./pages/staff/BlueprintPayments";
 import POSInventoryLookup from "./pages/staff/InventoryLookup";
 import POSOrderHistory from "./pages/staff/OrderHistory";
 import RiderDashboard from "./pages/staff/RiderDashboard";
@@ -90,65 +91,103 @@ window.addEventListener("error", (e) => {
 
 function RequireAuth({ children, roles }) {
   const { user } = useAuthStore();
-  if (!user) return <Navigate to="/login" replace />;
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
   if (roles && !roles.includes(user.role)) {
     return <Navigate to={getDefaultRouteForUser(user)} replace />;
   }
+
   return children;
 }
 
 function RequireStaffType({ children, allowedTypes }) {
   const { user } = useAuthStore();
-  if (!user) return <Navigate to="/login" replace />;
-  if (user.role === "admin") return children;
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user.role === "admin") {
+    return children;
+  }
+
   if (user.role !== "staff") {
     return <Navigate to={getDefaultRouteForUser(user)} replace />;
   }
+
   if (!allowedTypes.includes(user.staff_type)) {
     return <Navigate to={getDefaultRouteForUser(user)} replace />;
   }
+
   return children;
 }
 
 function RequireStaffOnlyType({ children, allowedTypes }) {
   const { user } = useAuthStore();
-  if (!user) return <Navigate to="/login" replace />;
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
   if (user.role !== "staff") {
     return <Navigate to={getDefaultRouteForUser(user)} replace />;
   }
+
   if (!allowedTypes.includes(user.staff_type)) {
     return <Navigate to={getDefaultRouteForUser(user)} replace />;
   }
+
   return children;
 }
 
 function getDefaultRouteForUser(user) {
-  if (!user) return "/login";
-  if (user.role === "admin") return "/admin/dashboard";
+  if (!user) {
+    return "/login";
+  }
+
+  if (user.role === "admin") {
+    return "/admin/dashboard";
+  }
+
   if (user.role === "staff") {
-    if (user.staff_type === "delivery_rider") return "/staff/rider-dashboard";
-    if (user.staff_type === "cashier") return "/staff/order";
+    if (user.staff_type === "delivery_rider") {
+      return "/staff/rider-dashboard";
+    }
+
+    if (user.staff_type === "cashier") {
+      return "/staff/order";
+    }
+
     return "/staff/dashboard";
   }
 
   return "/";
-  return "/catalog";
 }
 
 function RedirectIfAuthenticated({ children }) {
   const { user } = useAuthStore();
+
   if (user) {
     return <Navigate to={getDefaultRouteForUser(user)} replace />;
   }
+
   return children;
 }
 
 function BlockNonCustomerPortal({ children }) {
   const { user } = useAuthStore();
-  if (!user) return children;
+
+  if (!user) {
+    return children;
+  }
+
   if (user.role !== "customer") {
     return <Navigate to={getDefaultRouteForUser(user)} replace />;
   }
+
   return children;
 }
 
@@ -159,6 +198,7 @@ export default function App() {
         <CartProvider>
           <CustomCartProvider>
             <Toaster position="top-center" toastOptions={{ duration: 4000 }} />
+
             <Routes>
               {/* CUSTOMER PORTAL */}
               <Route element={<Outlet />}>
@@ -171,6 +211,7 @@ export default function App() {
                   }
                 >
                   <Route index element={<LandingPage />} />
+
                   <Route
                     path="login"
                     element={
@@ -179,6 +220,7 @@ export default function App() {
                       </RedirectIfAuthenticated>
                     }
                   />
+
                   <Route
                     path="register"
                     element={
@@ -187,6 +229,7 @@ export default function App() {
                       </RedirectIfAuthenticated>
                     }
                   />
+
                   <Route
                     path="forgot-password"
                     element={
@@ -195,6 +238,7 @@ export default function App() {
                       </RedirectIfAuthenticated>
                     }
                   />
+
                   <Route
                     path="reset-password"
                     element={
@@ -203,20 +247,25 @@ export default function App() {
                       </RedirectIfAuthenticated>
                     }
                   />
+
                   <Route path="terms" element={<TermsPage />} />
                   <Route path="privacy" element={<PrivacyPolicyPage />} />
                   <Route path="verify-otp" element={<VerifyOtpPage />} />
+
                   <Route
                     path="pending-approval"
                     element={<PendingApprovalPage />}
                   />
+
                   <Route path="catalog" element={<ProductCatalog />} />
                   <Route path="cart" element={<CartPage />} />
                   <Route path="customize" element={<CustomizePage />} />
+
                   <Route
                     path="custom-cart"
                     element={<Navigate to="/cart" replace />}
                   />
+
                   <Route
                     path="checkout"
                     element={
@@ -225,10 +274,12 @@ export default function App() {
                       </RequireAuth>
                     }
                   />
+
                   <Route
-                    path="/order-complete"
+                    path="order-complete"
                     element={<OrderCompletePage />}
                   />
+
                   <Route
                     path="custom-checkout"
                     element={
@@ -237,6 +288,7 @@ export default function App() {
                       </RequireAuth>
                     }
                   />
+
                   <Route
                     path="custom-requests/:id"
                     element={
@@ -245,6 +297,7 @@ export default function App() {
                       </RequireAuth>
                     }
                   />
+
                   <Route
                     path="appointment"
                     element={
@@ -253,6 +306,7 @@ export default function App() {
                       </RequireAuth>
                     }
                   />
+
                   <Route
                     path="orders"
                     element={
@@ -261,6 +315,7 @@ export default function App() {
                       </RequireAuth>
                     }
                   />
+
                   <Route
                     path="warranty"
                     element={
@@ -269,6 +324,7 @@ export default function App() {
                       </RequireAuth>
                     }
                   />
+
                   <Route
                     path="profilesettings"
                     element={
@@ -300,44 +356,56 @@ export default function App() {
                 }
               >
                 <Route path="tasks" element={<TasksPage />} />
+
                 <Route
                   path="appointments"
                   element={<POSAppointmentScheduling />}
                 />
+
                 <Route path="delivery" element={<POSDeliveryScheduling />} />
+
                 <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<DashboardPage />} />
                 <Route path="products" element={<ProductsPage />} />
                 <Route path="products/new" element={<ProductFormPage />} />
                 <Route path="products/:id/edit" element={<ProductFormPage />} />
                 <Route path="inventory/raw" element={<RawMaterialsPage />} />
+
                 <Route
                   path="inventory/build"
                   element={<BuildMaterialsPage />}
                 />
+
                 <Route
                   path="inventory/movements"
                   element={<StockMovementPage />}
                 />
+
                 <Route path="inventory/suppliers" element={<SuppliersPage />} />
                 <Route path="blueprints" element={<BlueprintsPage />} />
+
                 <Route
                   path="blueprints/:id/design"
                   element={<BlueprintDesign />}
                 />
+
                 <Route
                   path="blueprints/:id/estimation"
                   element={<EstimationPage />}
                 />
+
                 <Route path="contracts" element={<ContractsPage />} />
                 <Route path="orders" element={<OrdersPage />} />
                 <Route path="orders/:id" element={<OrderDetailPage />} />
+
                 <Route
                   path="orders/cancellations"
                   element={<CancellationsPage />}
                 />
+
                 <Route path="sales" element={<SalesReportPage />} />
                 <Route path="warranty" element={<WarrantyPage />} />
+
                 <Route
                   path="customers"
                   element={
@@ -346,6 +414,7 @@ export default function App() {
                     </RequireAuth>
                   }
                 />
+
                 <Route
                   path="users"
                   element={
@@ -354,6 +423,7 @@ export default function App() {
                     </RequireAuth>
                   }
                 />
+
                 <Route
                   path="website/settings"
                   element={
@@ -362,6 +432,7 @@ export default function App() {
                     </RequireAuth>
                   }
                 />
+
                 <Route
                   path="website/faqs"
                   element={
@@ -370,6 +441,7 @@ export default function App() {
                     </RequireAuth>
                   }
                 />
+
                 <Route
                   path="website/pages"
                   element={
@@ -378,6 +450,7 @@ export default function App() {
                     </RequireAuth>
                   }
                 />
+
                 <Route
                   path="backup"
                   element={
@@ -386,6 +459,7 @@ export default function App() {
                     </RequireAuth>
                   }
                 />
+
                 <Route
                   path="audit-logs"
                   element={
@@ -413,6 +487,7 @@ export default function App() {
                     </RequireStaffType>
                   }
                 />
+
                 <Route
                   path="rider-history"
                   element={
@@ -421,7 +496,6 @@ export default function App() {
                     </RequireStaffType>
                   }
                 />
-                {/* ---------------------------------- */}
 
                 <Route
                   path="dashboard"
@@ -441,6 +515,7 @@ export default function App() {
                     />
                   }
                 />
+
                 <Route
                   path="products"
                   element={
@@ -449,6 +524,7 @@ export default function App() {
                     </RequireStaffType>
                   }
                 />
+
                 <Route
                   path="tasks"
                   element={
@@ -457,6 +533,7 @@ export default function App() {
                     </RequireStaffType>
                   }
                 />
+
                 <Route
                   path="order"
                   element={
@@ -465,6 +542,7 @@ export default function App() {
                     </RequireStaffType>
                   }
                 />
+
                 <Route
                   path="history"
                   element={
@@ -473,6 +551,16 @@ export default function App() {
                     </RequireStaffType>
                   }
                 />
+
+                <Route
+                  path="blueprint-payments"
+                  element={
+                    <RequireStaffType allowedTypes={["cashier"]}>
+                      <BlueprintPayments />
+                    </RequireStaffType>
+                  }
+                />
+
                 <Route
                   path="delivery"
                   element={
@@ -481,6 +569,7 @@ export default function App() {
                     </RequireAuth>
                   }
                 />
+
                 <Route
                   path="deliveries"
                   element={
@@ -489,6 +578,7 @@ export default function App() {
                     </RequireStaffType>
                   }
                 />
+
                 <Route
                   path="appointment"
                   element={
@@ -497,6 +587,7 @@ export default function App() {
                     </RequireStaffOnlyType>
                   }
                 />
+
                 <Route
                   path="receipt/:id"
                   element={
@@ -505,6 +596,7 @@ export default function App() {
                     </RequireStaffType>
                   }
                 />
+
                 <Route
                   path="reports"
                   element={
@@ -513,6 +605,7 @@ export default function App() {
                     </RequireStaffType>
                   }
                 />
+
                 <Route
                   path="inventory"
                   element={
@@ -521,6 +614,7 @@ export default function App() {
                     </RequireStaffType>
                   }
                 />
+
                 <Route
                   path="blueprints"
                   element={
