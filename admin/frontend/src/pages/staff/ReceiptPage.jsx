@@ -47,14 +47,40 @@ export default function ReceiptPage() {
   const paymentMethod = String(receipt.payment_method || "")
     .trim()
     .toLowerCase();
-  const PAYMENT_METHOD_LABELS = { gcash: "GCash" };
+  const PAYMENT_METHOD_LABELS = { gcash: "GCash", bank_transfer: "Bank Transfer" };
   const paymentMethodLabel =
     PAYMENT_METHOD_LABELS[paymentMethod] ||
     (paymentMethod ? paymentMethod.replace("_", " ") : "");
 
   const subtotal = Number(receipt.subtotal ?? 0);
   const discount = Number(receipt.discount ?? 0);
+  const deliveryFee = Number(receipt.delivery_fee ?? 0);
+  const tax = Number(receipt.tax ?? 0);
   const total = Number(receipt.total ?? 0);
+
+  // Never print a full customer phone number. Show the first 4 and last 2
+  // digits only; mask everything else. Falls back to nothing if no phone
+  // was captured on the order.
+  const maskPhone = (value) => {
+    const digits = String(value || "").replace(/\D/g, "");
+    if (digits.length < 6) return null;
+    const visibleStart = digits.slice(0, 4);
+    const visibleEnd = digits.slice(-2);
+    const masked = "•".repeat(digits.length - 6);
+    return `${visibleStart}${masked}${visibleEnd}`;
+  };
+  const maskedPhone = maskPhone(receipt.walkin_customer_phone);
+
+  // Optional business/footer fields are shown ONLY when actually configured
+  // in website_settings -- never fabricated. warranty_period_days is a real
+  // configured value (see pos.receipts.js), so it is safe to surface here.
+  const warrantyPeriodDays = receipt.business?.warranty_period_days
+    ? Number(receipt.business.warranty_period_days)
+    : null;
+  const thankYouMessage =
+    receipt.business?.thank_you_message?.trim() ||
+    "Thank you for your purchase!";
+  const returnNote = receipt.business?.return_policy_note?.trim() || null;
 
   const hasCashReceived =
     receipt.cash_received !== null &&
@@ -102,7 +128,7 @@ export default function ReceiptPage() {
               letterSpacing: "-0.02em",
             }}
           >
-            Official Receipt
+            POS Sales Receipt
           </h1>
           <p
             style={{
@@ -154,7 +180,7 @@ export default function ReceiptPage() {
             </p>
             <p className="biz-info">{receipt.business?.business_phone || ""}</p>
             <div className="receipt-divider" />
-            <p className="receipt-title">OFFICIAL RECEIPT</p>
+            <p className="receipt-title">POS SALES RECEIPT</p>
           </div>
 
           {/* Meta */}
@@ -185,10 +211,14 @@ export default function ReceiptPage() {
                 {paymentMethodLabel || "N/A"}
               </span>
             </div>
-            {receipt.walkin_customer_phone && (
+            <div className="meta-row">
+              <span>Status:</span>
+              <span style={{ color: "#059669" }}>PAID</span>
+            </div>
+            {maskedPhone && (
               <div className="meta-row">
                 <span>Phone:</span>
-                <span>{receipt.walkin_customer_phone}</span>
+                <span>{maskedPhone}</span>
               </div>
             )}
             <div className="meta-row">
@@ -214,7 +244,7 @@ export default function ReceiptPage() {
                 <tr key={i}>
                   <td>
                     {item.product_name}
-                    {item.wood_type && (
+                    {(item.variation_name || item.wood_type) && (
                       <div
                         style={{
                           fontSize: "10px",
@@ -222,7 +252,9 @@ export default function ReceiptPage() {
                           marginTop: 2,
                         }}
                       >
-                        {item.wood_type}
+                        {[item.variation_name, item.wood_type]
+                          .filter(Boolean)
+                          .join(" • ")}
                       </div>
                     )}
                   </td>
@@ -267,6 +299,27 @@ export default function ReceiptPage() {
                   {discount.toLocaleString("en-PH", {
                     minimumFractionDigits: 2,
                   })}
+                </span>
+              </div>
+            )}
+
+            {deliveryFee > 0 && (
+              <div className="total-row">
+                <span>Delivery Fee</span>
+                <span>
+                  ₱
+                  {deliveryFee.toLocaleString("en-PH", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+            )}
+
+            {tax > 0 && (
+              <div className="total-row">
+                <span>Tax</span>
+                <span>
+                  ₱{tax.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
                 </span>
               </div>
             )}
@@ -324,7 +377,7 @@ export default function ReceiptPage() {
               </div>
             )}
             <p style={{ fontWeight: 800, color: "#18181b" }}>
-              Thank you for your purchase!
+              {thankYouMessage}
             </p>
             <p
               style={{
@@ -334,8 +387,19 @@ export default function ReceiptPage() {
                 lineHeight: 1.4,
               }}
             >
-              This is your official receipt. Items sold are non-refundable
-              unless covered by warranty.
+              {returnNote ||
+                (warrantyPeriodDays
+                  ? `Items sold may be covered under warranty for ${warrantyPeriodDays} day${warrantyPeriodDays === 1 ? "" : "s"} from the date of purchase, subject to the shop's warranty policy.`
+                  : "Please keep this receipt for your records.")}
+            </p>
+            <p
+              style={{
+                fontSize: 9,
+                color: "#a1a1aa",
+                marginTop: 8,
+              }}
+            >
+              System-generated POS sales receipt.
             </p>
           </div>
         </div>

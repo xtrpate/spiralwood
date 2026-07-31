@@ -464,23 +464,21 @@ export default function ProcessOrder() {
               <label style={labelStyle}>Payment Method *</label>
               <select
                 value={form.payment_method}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    payment_method: e.target.value,
-                    cash_received:
-                      e.target.value === "cash" ? form.cash_received : "",
-                  })
-                }
-                required
-                style={inputStyle}
+                disabled
+                style={{ ...inputStyle, background: "#f4f4f5", color: "#52525b" }}
               >
                 <option value="cash">Cash</option>
-                <option value="gcash">GCash</option>
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="cod">Cash on Delivery (COD)</option>
-                <option value="cop">Cash on Pick-up (COP)</option>
               </select>
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#71717a",
+                  marginTop: 6,
+                }}
+              >
+                Only cash is currently available at the cashier. Online
+                payment (QR Ph) is coming soon.
+              </div>
             </div>
 
             <div style={formField}>

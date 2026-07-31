@@ -1,5 +1,6 @@
 // controllers/staff/pos.orders.js
 const db = require("../../config/db");
+const { createPosSaleReceipt } = require("../../services/receiptService");
 
 /* ── Helper: Generate Walk-in Order Number ── */
 const generateOrderNumber = async (conn) => {
@@ -40,19 +41,26 @@ exports.createOrder = async (req, res) => {
   const normalizedPaymentMethod = String(payment_method || "")
     .trim()
     .toLowerCase();
-  const immediateMethods = ["cash", "gcash", "bank_transfer"];
-  const deferredMethods = ["cod", "cop"];
 
+  // ── PHASE 1 PAYMENT SAFETY CORRECTION ──────────────────────────────
+  // Cash is the ONLY payment method the cashier POS may accept until
+  // PayMongo Dynamic QR Ph is implemented (Phase 3). GCash and Bank
+  // Transfer were previously treated as immediately "paid" here with no
+  // real provider confirmation, which let stock deduct and a receipt
+  // generate for a payment that was never actually verified. COD/COP are
+  // deferred-payment customer-website concepts and are not valid at a
+  // cashier terminal that is collecting payment in person right now.
   if (!Array.isArray(items) || items.length === 0)
     return res.status(400).json({ message: "No items in order" });
   if (!normalizedPaymentMethod)
     return res.status(400).json({ message: "Payment method is required" });
-  if (
-    ![...immediateMethods, ...deferredMethods].includes(normalizedPaymentMethod)
-  )
-    return res.status(400).json({ message: "Invalid payment method" });
+  if (normalizedPaymentMethod !== "cash") {
+    return res.status(400).json({
+      message: "Only cash payment is currently available at the cashier.",
+    });
+  }
 
-  if (normalizedPaymentMethod === "cash") {
+  {
     const normalizedCash = parseFloat(cash_received);
     if (
       cash_received === null ||
@@ -132,14 +140,12 @@ exports.createOrder = async (req, res) => {
 
     const total = Math.max(subtotal + tax - discountAmt + deliveryFeeAmt, 0);
 
-    if (normalizedPaymentMethod === "cash") {
-      const normalizedCashForTotal = parseFloat(cash_received);
-      if (normalizedCashForTotal < total) {
-        await conn.rollback();
-        return res.status(400).json({
-          message: "Cash received cannot be less than the total amount.",
-        });
-      }
+    const normalizedCashForTotal = parseFloat(cash_received);
+    if (normalizedCashForTotal < total) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Cash received cannot be less than the total amount.",
+      });
     }
 
     const deliveryRequestedDate = delivery
@@ -162,16 +168,10 @@ exports.createOrder = async (req, res) => {
     const hasDeliveryRequest = Boolean(
       delivery && String(delivery.address || "").trim(),
     );
-    const initialPaymentStatus = immediateMethods.includes(
-      normalizedPaymentMethod,
-    )
-      ? "paid"
-      : "pending";
-    const initialOrderStatus = hasDeliveryRequest
-      ? "confirmed"
-      : immediateMethods.includes(normalizedPaymentMethod)
-        ? "completed"
-        : "pending";
+    // Cash is the only method reaching this point (validated above), and
+    // cash is always collected and confirmed immediately at the register.
+    const initialPaymentStatus = "paid";
+    const initialOrderStatus = hasDeliveryRequest ? "confirmed" : "completed";
 
     const [orderResult] = await conn.query(
       `
@@ -266,48 +266,40 @@ exports.createOrder = async (req, res) => {
       );
     }
 
-    if (immediateMethods.includes(normalizedPaymentMethod)) {
-      await conn.query(
-        `INSERT INTO payment_transactions (order_id, amount, payment_method, status, verified_by, verified_at) VALUES (?, ?, ?, 'verified', ?, NOW())`,
-        [orderId, total, normalizedPaymentMethod, req.user.id],
-      );
-    } else {
-      await conn.query(
-        `INSERT INTO payment_transactions (order_id, amount, payment_method, status) VALUES (?, ?, ?, 'pending')`,
-        [orderId, total, normalizedPaymentMethod],
-      );
-    }
+    const [paymentResult] = await conn.query(
+      `INSERT INTO payment_transactions (order_id, amount, payment_method, status, verified_by, verified_at) VALUES (?, ?, ?, 'verified', ?, NOW())`,
+      [orderId, total, normalizedPaymentMethod, req.user.id],
+    );
+    const paymentTransactionId = paymentResult.insertId;
 
     const receiptNumber = `OR-${Date.now()}`;
     const itemsSnapshot = JSON.stringify(items);
     const normalizedCashReceived =
-      normalizedPaymentMethod === "cash" &&
-      cash_received !== null &&
-      cash_received !== undefined
+      cash_received !== null && cash_received !== undefined
         ? parseFloat(cash_received)
         : null;
     const normalizedChange =
-      normalizedPaymentMethod === "cash" && normalizedCashReceived !== null
+      normalizedCashReceived !== null
         ? Math.max(normalizedCashReceived - total, 0)
         : null;
 
-    const [receiptResult] = await conn.query(
-      `
-      INSERT INTO receipts
-        (order_id, receipt_number, issued_to, issued_by, total_amount, cash_received, change_amount, items_snapshot, printed_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
-      `,
-      [
-        orderId,
-        receiptNumber,
-        customer_name || "Walk-in Customer",
-        req.user.id,
-        total,
-        normalizedCashReceived,
-        normalizedChange,
-        itemsSnapshot,
-      ],
-    );
+    // Receipt is created in the same transaction as the order and its
+    // verified payment_transactions row. If this throws (including a
+    // duplicate payment_transaction_id, guarded by the database's UNIQUE
+    // constraint), the outer catch below rolls back the entire sale —
+    // order, stock deduction, stock movements, and payment transaction —
+    // so a failed receipt can never leave a paid order with no receipt.
+    const receiptResult = await createPosSaleReceipt(conn, {
+      orderId,
+      paymentTransactionId,
+      receiptNumber,
+      issuedTo: customer_name || "Walk-in Customer",
+      issuedBy: req.user.id,
+      totalAmount: total,
+      cashReceived: normalizedCashReceived,
+      changeAmount: normalizedChange,
+      itemsSnapshot,
+    });
 
     // 👉 THE FIX: Removed the "INSERT INTO deliveries" query that caused the crash.
     let createdDelivery = null;
@@ -382,7 +374,7 @@ exports.createOrder = async (req, res) => {
       message: "Order created successfully",
       order_id: orderId,
       order_number: orderNumber,
-      receipt_id: receiptResult.insertId,
+      receipt_id: receiptResult.receiptId,
       receipt_number: receiptNumber,
       total,
       cash_received: normalizedCashReceived,

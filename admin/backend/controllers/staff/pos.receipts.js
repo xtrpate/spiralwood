@@ -16,6 +16,7 @@ exports.getReceiptById = async (req, res) => {
         o.subtotal,
         o.tax,
         o.discount,
+        o.delivery_fee,
         o.total,
         o.notes,
         u.name AS staff_name
@@ -52,7 +53,10 @@ exports.getReceiptById = async (req, res) => {
         'site_logo',
         'business_address',
         'business_phone',
-        'gcash_number'
+        'gcash_number',
+        'warranty_period_days',
+        'thank_you_message',
+        'return_policy_note'
       )
       `,
       [],
@@ -97,6 +101,7 @@ exports.getReceiptByOrderId = async (req, res) => {
         o.subtotal,
         o.tax,
         o.discount,
+        o.delivery_fee,
         o.total,
         o.notes,
         u.name AS staff_name
