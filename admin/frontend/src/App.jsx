@@ -52,6 +52,7 @@ import OrderCompletePage from "./pages/customer/OrderCompletePage.jsx";
 import CustomizePage from "./pages/customer/customizepage";
 import CustomCheckoutPage from "./pages/customer/customcheckoutpage";
 import CustomRequestDetailPage from "./pages/customer/customrequestdetailpage";
+import CustomerBlueprintReceiptPage from "./pages/customer/CustomerBlueprintReceiptPage";
 import AppointmentPage from "./pages/customer/appointmentpage";
 import OrdersPageCustomer from "./pages/customer/orderspage";
 import WarrantyPageCustomer from "./pages/customer/warrantypage";
@@ -295,6 +296,15 @@ export default function App() {
                     element={
                       <RequireAuth roles={["customer"]}>
                         <CustomRequestDetailPage />
+                      </RequireAuth>
+                    }
+                  />
+
+                  <Route
+                    path="custom-requests/:id/receipts/:receiptId"
+                    element={
+                      <RequireAuth roles={["customer"]}>
+                        <CustomerBlueprintReceiptPage />
                       </RequireAuth>
                     }
                   />
