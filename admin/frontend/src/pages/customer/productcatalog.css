@@ -28,7 +28,7 @@
   gap: 18px;
   margin-bottom: 24px;
   border-bottom: 1px solid #e8e8e8;
-  padding-bottom: 18px;
+  padding: 24px 36px 18px;
 }
 
 .catalog-page-copy h1 {
@@ -542,7 +542,6 @@
   justify-content: center;
   margin: 0 0 20px;
 }
-
 
 .stock-pill {
   display: inline-flex;
@@ -1103,13 +1102,13 @@
 /* ── NOTIFICATION ── */
 .premium-toast-container {
   position: fixed;
-  bottom: 32px; 
+  bottom: 32px;
   right: 24px;
   z-index: 9999;
   display: flex;
-  flex-direction: column-reverse; 
+  flex-direction: column-reverse;
   gap: 10px;
-  pointer-events: none; 
+  pointer-events: none;
 }
 
 .premium-toast {
@@ -1125,7 +1124,7 @@
   font-weight: 600;
   font-size: 14px;
   pointer-events: auto;
-  
+
   transform: translateX(120%);
   animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -1135,11 +1134,23 @@
 }
 
 @keyframes slideInRight {
-  0% { transform: translateX(120%); opacity: 0; }
-  100% { transform: translateX(0); opacity: 1; }
+  0% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 @keyframes fadeOutRight {
-  0% { transform: translateX(0); opacity: 1; }
-  100% { transform: translateX(120%); opacity: 0; } 
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(120%);
+    opacity: 0;
+  }
 }
