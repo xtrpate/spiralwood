@@ -136,10 +136,6 @@ exports.getAllProducts = async (req, res) => {
       [...params, safeLimit, offset],
     );
 
-    products.forEach((product) => {
-      product.variations = [];
-    });
-
     const [countRows] = await db.query(
       `
       SELECT COUNT(*) AS total
@@ -197,8 +193,6 @@ exports.getAllProducts = async (req, res) => {
 /* ── Get Single Product Detail By ID ── */
 exports.getProductById = async (req, res) => {
   try {
-    product.variations = [];
-
     res.json(product);
   } catch (err) {
     console.error("[customer.products/:id]", err);

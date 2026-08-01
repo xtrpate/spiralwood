@@ -296,21 +296,10 @@ export default function ProductCatalog() {
   const handleModalAddToCart = () => {
     if (!selected) return;
 
-    const hasVariations = selected.variations?.length > 0;
-    if (hasVariations && !selVariation) {
-      setCartMsg("Please select a variation first.");
-      return;
-    }
-
-    const key = selVariation
-      ? `${selected.id}-${selVariation.id}`
-      : `${selected.id}`;
-
-    const price = selVariation?.selling_price ?? selected.online_price;
-    const stock = Number(selVariation?.stock ?? selected.stock ?? 0);
-    const name = selVariation
-      ? `${selected.name} (${selVariation.variation_name})`
-      : selected.name;
+    const key = `${selected.id}`;
+    const price = selected.online_price;
+    const stock = Number(selected.stock ?? 0);
+    const name = selected.name;
 
     if (stock <= 0) {
       setCartMsg("This item is currently out of stock.");
@@ -322,13 +311,13 @@ export default function ProductCatalog() {
       product_id: selected.id,
       product_name: name,
       unit_price: parseFloat(price),
-      production_cost: selVariation?.unit_cost ?? selected.production_cost ?? 0,
+      production_cost: selected.production_cost ?? 0,
       quantity: Number(qty || 1),
       max_stock: stock,
       image_url: selected.image_url || null,
     });
 
-    setToastMsg('"{$name}" successfully added to your cart!');
+    setToastMsg(`"${name}" successfully added to your cart!`);
     setIsHiding(false);
     setSelected(null);
   };
@@ -890,9 +879,7 @@ export default function ProductCatalog() {
 
               <div className="detail-price">
                 ₱
-                {parseFloat(
-                  selVariation?.selling_price ?? selected.online_price,
-                ).toLocaleString("en-PH", {
+                {parseFloat(selected.online_price).toLocaleString("en-PH", {
                   minimumFractionDigits: 2,
                 })}
               </div>
@@ -900,33 +887,6 @@ export default function ProductCatalog() {
               {selected.description ? (
                 <p className="detail-description">{selected.description}</p>
               ) : null}
-
-              {selected.variations?.length > 0 && (
-                <div className="detail-section">
-                  <h4>Available Options</h4>
-
-                  <div className="variation-grid">
-                    {selected.variations.map((variation) => (
-                      <button
-                        type="button"
-                        key={variation.id}
-                        className={`var-chip ${
-                          selVariation?.id === variation.id ? "selected" : ""
-                        }`}
-                        onClick={() => setSelVariation(variation)}
-                        disabled={variation.stock <= 0}
-                      >
-                        {variation.variation_name}
-                        {variation.stock > 0
-                          ? ` — ₱${parseFloat(
-                              variation.selling_price,
-                            ).toLocaleString("en-PH")}`
-                          : " (Out)"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               <div className="detail-section">
                 <div className="detail-info-table">
@@ -958,15 +918,11 @@ export default function ProductCatalog() {
                       type="number"
                       className="qty-val"
                       min="1"
-                      max={
-                        Number(selVariation?.stock ?? selected.stock ?? 1) || 1
-                      }
+                      max={Number(selected.stock ?? 1) || 1}
                       value={qty}
                       onChange={(e) => {
                         const newQty = parseInt(e.target.value, 10);
-                        const maxStock =
-                          Number(selVariation?.stock ?? selected.stock ?? 1) ||
-                          1;
+                        const maxStock = Number(selected.stock ?? 1) || 1;
                         if (!isNaN(newQty) && newQty > 0) {
                           setQty(Math.min(newQty, maxStock));
                         } else if (e.target.value === "") {
@@ -982,9 +938,7 @@ export default function ProductCatalog() {
                       type="button"
                       className="qty-btn"
                       onClick={() => {
-                        const maxStock =
-                          Number(selVariation?.stock ?? selected.stock ?? 1) ||
-                          1;
+                        const maxStock = Number(selected.stock ?? 1) || 1;
                         setQty((value) =>
                           Math.min(Number(value || 1) + 1, maxStock),
                         );

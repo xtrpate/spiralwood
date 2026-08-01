@@ -271,7 +271,6 @@ export default function CheckoutPage() {
     const payloadItems = checkoutItems.map((item) => ({
       key: item.key,
       product_id: item.product_id,
-      variation_id: item.variation_id || null,
       product_name: item.product_name,
       quantity: Math.max(1, Number(item.quantity || 1)),
       unit_price: Number(item.unit_price || 0),

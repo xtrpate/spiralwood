@@ -103,8 +103,6 @@ exports.searchProducts = async (req, res) => {
         parseFloat(product.walkin_price) > 0
           ? parseFloat(product.walkin_price)
           : parseFloat(product.online_price || 0);
-
-      product.variations = [];
     }
 
     res.json(rows);

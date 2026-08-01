@@ -400,11 +400,6 @@ function OrderModal({
                           <div className="om-item-qty">
                             Quantity: {item.quantity}
                           </div>
-                          {item.variation_id && (
-                            <div className="om-item-var">
-                              Variation #{item.variation_id}
-                            </div>
-                          )}
                         </div>
 
                         <div className="om-item-price">

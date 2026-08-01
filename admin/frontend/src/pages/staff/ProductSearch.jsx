@@ -74,31 +74,6 @@ export default function ProductSearch() {
       }
     }
 
-    const variations = Array.isArray(product?.variations)
-      ? product.variations.map((variation) => {
-          const variationStock = Number(variation?.stock ?? 0);
-
-          return {
-            ...variation,
-            variation_name:
-              variation?.variation_name || variation?.name || "Variation",
-            stock: variationStock,
-            selling_price: Number(
-              variation?.selling_price ??
-                variation?.walkin_price ??
-                walkinPrice,
-            ),
-            unit_cost: Number(variation?.unit_cost ?? productionCost),
-            stock_status:
-              variationStock <= 0
-                ? "out_of_stock"
-                : variationStock <= 5
-                  ? "low_stock"
-                  : "in_stock",
-          };
-        })
-      : [];
-
     // 👉 RULE 7: Smart Dimension Formatting
     const w = product?.width_mm || product?.width || 0;
     const h = product?.height_mm || product?.height || 0;
@@ -127,7 +102,6 @@ export default function ProductSearch() {
         product?.type ||
         "Product",
       stock_status: stockStatus,
-      variations,
 
       // 👉 RULE 7: Extract Rich Details
       description: product?.description || "",
@@ -187,16 +161,11 @@ export default function ProductSearch() {
 
     const timer = setTimeout(() => {
       const filtered = allProducts.filter((product) => {
-        const variationNames = Array.isArray(product.variations)
-          ? product.variations.map((variation) => variation.variation_name)
-          : [];
-
         const haystacks = [
           product.name,
           product.barcode,
           product.category,
           product.material, // 👉 Let them search by wood type too!
-          ...variationNames,
         ];
 
         return haystacks.some((value) =>
@@ -214,12 +183,10 @@ export default function ProductSearch() {
   }, [query, allProducts]);
 
   const addToCart = useCallback(
-    (product, variation = null) => {
-      const key = variation ? `${product.id}-${variation.id}` : `${product.id}`;
-      const stockLimit = Number(variation?.stock ?? product?.stock ?? 0);
-      const displayName = variation
-        ? `${product.name} (${variation.variation_name})`
-        : product.name;
+    (product) => {
+      const key = `${product.id}`;
+      const stockLimit = Number(product?.stock ?? 0);
+      const displayName = product.name;
 
       if (stockLimit <= 0) {
         showMessage(`${displayName} is currently out of stock.`, "error");
@@ -257,12 +224,8 @@ export default function ProductSearch() {
             key,
             product_id: product.id,
             product_name: displayName,
-            unit_price: Number(
-              variation?.selling_price ?? product?.walkin_price ?? 0,
-            ),
-            production_cost: Number(
-              variation?.unit_cost ?? product?.production_cost ?? 0,
-            ),
+            unit_price: Number(product?.walkin_price ?? 0),
+            production_cost: Number(product?.production_cost ?? 0),
             quantity: 1,
             max_stock: stockLimit,
 
@@ -331,14 +294,6 @@ export default function ProductSearch() {
         }
 
         setProducts([product]);
-
-        if (product.variations?.length > 0) {
-          showMessage(
-            `${product.name} was found. Please choose a variation to continue.`,
-            "info",
-          );
-          return;
-        }
 
         if (product.stock <= 0) {
           showMessage(`${product.name} is currently out of stock.`, "error");
@@ -696,40 +651,14 @@ export default function ProductSearch() {
                       </div>
                     </div>
 
-                    {product.variations?.length > 0 ? (
-                      <div className="variation-list">
-                        {product.variations.map((variation) => (
-                          <button
-                            key={variation.id}
-                            type="button"
-                            className="var-btn"
-                            onClick={() => addToCart(product, variation)}
-                            disabled={variation.stock <= 0}
-                            title={
-                              variation.stock <= 0
-                                ? "Out of stock"
-                                : `Add ${variation.variation_name}`
-                            }
-                          >
-                            <span style={{ fontWeight: 600 }}>
-                              {variation.variation_name} ({variation.stock})
-                            </span>
-                            <span style={{ fontWeight: 800 }}>
-                              ₱{formatCurrency(variation.selling_price)}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className="add-btn"
-                        onClick={() => addToCart(product)}
-                        disabled={product.stock <= 0}
-                      >
-                        <Plus size={16} /> Add to Cart
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="add-btn"
+                      onClick={() => addToCart(product)}
+                      disabled={product.stock <= 0}
+                    >
+                      <Plus size={16} /> Add to Cart
+                    </button>
                   </div>
                 );
               })}
