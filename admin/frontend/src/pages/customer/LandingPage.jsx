@@ -58,9 +58,6 @@ export default function LandingPage() {
     String(product?.stock_status || "").toLowerCase() === "out_of_stock" ||
     Number(product?.stock || 0) <= 0;
 
-  const needsOptionSelection = (product) =>
-    (product?.variations?.length || 0) > 0;
-
   const getAvailabilityText = (product) =>
     isOutOfStock(product) ? "Out of Stock" : "In Stock";
 
@@ -74,19 +71,12 @@ export default function LandingPage() {
 
     if (!product || isOutOfStock(product)) return;
 
-    if (needsOptionSelection(product)) {
-      navigate(`/catalog?q=${encodeURIComponent(product?.name || "")}`);
-      toast("Please select product options first.");
-      return;
-    }
-
     const stock = Number(product?.stock || 0);
     if (stock <= 0) return;
 
     addToCart({
       key: `${product.id}`,
       product_id: product.id,
-      variation_id: null,
       product_name: product.name,
       unit_price: parseFloat(getProductPrice(product)),
       production_cost: product.production_cost ?? 0,

@@ -124,7 +124,6 @@ export default function ProductCatalog() {
   const [priceBounds, setPriceBounds] = useState({ min: 0, max: 0 });
   const [sortBy, setSortBy] = useState("name_asc");
 
-  const [selVariation, setSelVariation] = useState(null);
   const [qty, setQty] = useState(1);
   const [cartMsg, setCartMsg] = useState("");
   const [urlMapped, setUrlMapped] = useState(false);
@@ -261,12 +260,8 @@ export default function ProductCatalog() {
     setUrlMapped(true);
   }, [categories, location.search, urlMapped]);
 
-  const needsOptionSelection = (product) =>
-    (product?.variations?.length || 0) > 0;
-
   const openProduct = (product) => {
     setSelected(product);
-    setSelVariation(null);
     setQty(1);
     setCartMsg("");
   };
@@ -274,18 +269,12 @@ export default function ProductCatalog() {
   const quickAddToCart = (product) => {
     if (!product || product.stock_status === "out_of_stock") return;
 
-    if (needsOptionSelection(product)) {
-      openProduct(product);
-      return;
-    }
-
     const stock = Number(product.stock || 0);
     if (stock <= 0) return;
 
     addToCart({
       key: `${product.id}`,
       product_id: product.id,
-      variation_id: null,
       product_name: product.name,
       unit_price: parseFloat(product.online_price),
       production_cost: product.production_cost ?? 0,
@@ -300,11 +289,6 @@ export default function ProductCatalog() {
 
   const handleCardAddToCart = (product) => {
     if (!product || product.stock_status === "out_of_stock") return;
-
-    if (needsOptionSelection(product)) {
-      openProduct(product);
-      return;
-    }
 
     quickAddToCart(product);
   };
@@ -336,7 +320,6 @@ export default function ProductCatalog() {
     addToCart({
       key,
       product_id: selected.id,
-      variation_id: selVariation?.id || null,
       product_name: name,
       unit_price: parseFloat(price),
       production_cost: selVariation?.unit_cost ?? selected.production_cost ?? 0,

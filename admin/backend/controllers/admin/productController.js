@@ -417,55 +417,6 @@ exports.update = async (req, res) => {
       [productId],
     );
 
-    // Replace variations if provided
-    if (req.body.variations) {
-      await conn.query("DELETE FROM product_variations WHERE product_id = ?", [
-        productId,
-      ]);
-      const parsedVars =
-        typeof req.body.variations === "string"
-          ? JSON.parse(req.body.variations)
-          : req.body.variations;
-      for (const v of parsedVars) {
-        const vLabel = v.name || v.value || "unnamed";
-        if (!isValidNonNegativeNumber(v.unit_cost)) {
-          return respondInvalid(
-            conn,
-            res,
-            `Invalid unit cost for variation "${vLabel}".`,
-          );
-        }
-        if (!isValidNonNegativeNumber(v.selling_price)) {
-          return respondInvalid(
-            conn,
-            res,
-            `Invalid selling price for variation "${vLabel}".`,
-          );
-        }
-        if (!isValidNonNegativeInteger(v.stock)) {
-          return respondInvalid(
-            conn,
-            res,
-            `Invalid stock for variation "${vLabel}".`,
-          );
-        }
-        await conn.query(
-          `INSERT INTO product_variations
-             (product_id, variation_type, variation_value, variation_name, unit_cost, selling_price, stock)
-           VALUES (?,?,?,?,?,?,?)`,
-          [
-            productId,
-            v.type,
-            v.value,
-            v.name,
-            v.unit_cost ? parseFloat(v.unit_cost) : 0,
-            v.selling_price ? parseFloat(v.selling_price) : 0,
-            v.stock ? parseInt(v.stock) : 0,
-          ],
-        );
-      }
-    }
-
     // Replace BOM if provided
     if (req.body.bill_of_materials) {
       await conn.query("DELETE FROM bill_of_materials WHERE product_id = ?", [

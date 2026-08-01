@@ -256,7 +256,6 @@ export default function ProductSearch() {
           {
             key,
             product_id: product.id,
-            variation_id: variation?.id || null,
             product_name: displayName,
             unit_price: Number(
               variation?.selling_price ?? product?.walkin_price ?? 0,

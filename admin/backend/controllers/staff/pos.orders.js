@@ -91,40 +91,26 @@ exports.createOrder = async (req, res) => {
         return res.status(400).json({ message: "Invalid cart item detected" });
       }
 
-      if (item.variation_id) {
-        const [variationRows] = await conn.query(
-          `SELECT id, stock FROM product_variations WHERE id = ? LIMIT 1`,
-          [item.variation_id],
-        );
-        if (!variationRows.length) {
-          await conn.rollback();
-          return res.status(404).json({
-            message: `Variation not found for ${item.product_name || "item"}`,
-          });
-        }
-        if (Number(variationRows[0].stock || 0) < qty) {
-          await conn.rollback();
-          return res.status(400).json({
-            message: `Insufficient stock for ${item.product_name || "item"}`,
-          });
-        }
-      } else {
-        const [productRows] = await conn.query(
-          `SELECT id, stock FROM products WHERE id = ? LIMIT 1`,
-          [item.product_id],
-        );
-        if (!productRows.length) {
-          await conn.rollback();
-          return res.status(404).json({
-            message: `Product not found for ${item.product_name || "item"}`,
-          });
-        }
-        if (Number(productRows[0].stock || 0) < qty) {
-          await conn.rollback();
-          return res.status(400).json({
-            message: `Insufficient stock for ${item.product_name || "item"}`,
-          });
-        }
+      const [productRows] = await conn.query(
+        `SELECT id, stock
+   FROM products
+   WHERE id = ?
+   LIMIT 1`,
+        [item.product_id],
+      );
+
+      if (!productRows.length) {
+        await conn.rollback();
+        return res.status(404).json({
+          message: `Product not found for ${item.product_name || "item"}`,
+        });
+      }
+
+      if (Number(productRows[0].stock || 0) < qty) {
+        await conn.rollback();
+        return res.status(400).json({
+          message: `Insufficient stock for ${item.product_name || "item"}`,
+        });
       }
     }
 
@@ -215,13 +201,12 @@ exports.createOrder = async (req, res) => {
       const [itemResult] = await conn.query(
         `
         INSERT INTO order_items
-          (order_id, product_id, variation_id, product_name, quantity, unit_price, production_cost)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+          (order_id, product_id, product_name, quantity, unit_price, production_cost)
+        VALUES (?, ?, ?, ?, ?, ?)
         `,
         [
           orderId,
           item.product_id,
-          item.variation_id || null,
           item.product_name,
           quantity,
           unitPrice,
@@ -231,30 +216,26 @@ exports.createOrder = async (req, res) => {
 
       const orderItemId = itemResult.insertId;
 
-      if (item.variation_id) {
-        await conn.query(
-          `UPDATE product_variations SET stock = stock - ? WHERE id = ?`,
-          [quantity, item.variation_id],
-        );
-      } else {
-        await conn.query(`UPDATE products SET stock = stock - ? WHERE id = ?`, [
-          quantity,
-          item.product_id,
-        ]);
-        await conn.query(
-          `
-          UPDATE products
-          SET stock_status =
-            CASE
-              WHEN stock <= 0 THEN 'out_of_stock'
-              WHEN stock <= reorder_point THEN 'low_stock'
-              ELSE 'in_stock'
-            END
-          WHERE id = ?
-          `,
-          [item.product_id],
-        );
-      }
+      await conn.query(
+        `UPDATE products
+   SET stock = stock - ?
+   WHERE id = ?`,
+        [quantity, item.product_id],
+      );
+
+      await conn.query(
+        `
+  UPDATE products
+  SET stock_status =
+    CASE
+      WHEN stock <= 0 THEN 'out_of_stock'
+      WHEN stock <= reorder_point THEN 'low_stock'
+      ELSE 'in_stock'
+    END
+  WHERE id = ?
+  `,
+        [item.product_id],
+      );
 
       await conn.query(
         `
