@@ -162,6 +162,10 @@ const parseNotes = (notes) => {
 export default function AppointmentPage() {
   const { user } = useAuthStore();
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
+
   const [purpose, setPurpose] = useState("consultation");
   const [project_description, setProjectDescription] = useState("");
   const [preferred_date, setPreferredDate] = useState("");
@@ -361,8 +365,8 @@ export default function AppointmentPage() {
 
   return (
     <div className="appt-page">
-      <div className="appt-hero">
-        <div className="appt-hero-text">
+      <div className="cust-page-head">
+        <div className="cust-page-copy">
           <h1>Request an Appointment</h1>
           <p>
             Book a consultation or site measurement. Our team will review your

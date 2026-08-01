@@ -18,11 +18,17 @@
   background: transparent;
 }
 
-.appt-hero-text {
-  max-width: 760px;
+.cust-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid #e8e8e8;
+  padding: 24px 36px 18px;
 }
 
-.appt-hero-text h1 {
+.cust-page-copy h1 {
   margin: 0 0 8px;
   font-size: 2.2rem;
   font-weight: 800;
@@ -30,7 +36,7 @@
   color: #111111;
 }
 
-.appt-hero-text p {
+.cust-page-copy p {
   margin: 0;
   max-width: 760px;
   font-size: 0.98rem;

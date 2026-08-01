@@ -97,6 +97,10 @@ const SummaryStat = ({ label, value }) => (
 export default function WarrantyPage() {
   const [orders, setOrders] = useState([]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
+
   const [orderId, setOrderId] = useState("");
   const [orderNumber, setOrderNumber] = useState("");
   const [productName, setProductName] = useState("");
@@ -272,155 +276,10 @@ export default function WarrantyPage() {
     await Promise.all([fetchClaims(), fetchOrders()]);
   };
 
-  if (loading) {
-    return (
-      <div
-        className="warranty-page"
-        style={{
-          animation: "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-        }}
-      >
-        <div className="warranty-shell">
-          {/* Clean Skeleton Hero */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: "24px",
-              marginBottom: "24px",
-              paddingBottom: "24px",
-              borderBottom: "1px solid #e8e8e8",
-            }}
-          >
-            <div style={{ width: "60%" }}>
-              <div
-                style={{
-                  height: "38px",
-                  width: "300px",
-                  background: "#f3f4f6",
-                  marginBottom: "12px",
-                  borderRadius: "6px",
-                }}
-              />
-              <div
-                style={{
-                  height: "16px",
-                  width: "80%",
-                  background: "#f3f4f6",
-                  marginBottom: "8px",
-                  borderRadius: "4px",
-                }}
-              />
-              <div
-                style={{
-                  height: "16px",
-                  width: "60%",
-                  background: "#f3f4f6",
-                  borderRadius: "4px",
-                }}
-              />
-            </div>
-            <div
-              style={{
-                width: "280px",
-                height: "140px",
-                background: "#f3f4f6",
-                borderRadius: "8px",
-              }}
-            />
-          </div>
-          {/* Skeleton Summary Grid */}
-          <div
-            className="warranty-summary-grid"
-            style={{ marginBottom: "40px" }}
-          >
-            {[1, 2, 3, 4].map((i) => (
-              <div
-                key={i}
-                className="warranty-summary-card"
-                style={{
-                  height: "100px",
-                  background: "#ffffff",
-                  border: "1px solid #e5e7eb",
-                }}
-              >
-                <div
-                  style={{
-                    height: "12px",
-                    width: "60%",
-                    background: "#f3f4f6",
-                    marginBottom: "16px",
-                  }}
-                />
-                <div
-                  style={{
-                    height: "32px",
-                    width: "40%",
-                    background: "#e5e7eb",
-                  }}
-                />
-              </div>
-            ))}
-          </div>
-
-          {/* Skeleton Coverage Summary Section */}
-          <div className="warranty-section">
-            <div
-              style={{
-                height: "32px",
-                width: "250px",
-                background: "#e5e7eb",
-                marginBottom: "12px",
-              }}
-            />
-            <div
-              style={{
-                height: "16px",
-                width: "400px",
-                background: "#f3f4f6",
-                marginBottom: "32px",
-              }}
-            />
-
-            <div className="warranty-policy-grid">
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className="wpolicy-card"
-                  style={{
-                    height: "240px",
-                    background: "#ffffff",
-                    border: "1px solid #e5e7eb",
-                  }}
-                >
-                  <div
-                    style={{
-                      height: "24px",
-                      width: "50%",
-                      background: "#f3f4f6",
-                      marginBottom: "24px",
-                    }}
-                  />
-                  <div
-                    style={{
-                      height: "120px",
-                      width: "100%",
-                      background: "#f3f4f6",
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-        <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
-      </div>
-    );
-  }
-
   return (
     <div className="warranty-page">
       <div className="warranty-shell">
+        {/* 👉 STATIC HEADER - ALWAYS VISIBLE */}
         <section className="warranty-page-head">
           <div className="warranty-page-copy">
             <h1>Warranty & Claims</h1>
@@ -442,385 +301,489 @@ export default function WarrantyPage() {
           </div>
         </section>
 
-        <section className="warranty-summary-grid">
-          <SummaryStat label="Warranty Period" value="1 Year" />
-          <SummaryStat
-            label="Eligible Orders"
-            value={hasEligibleOrders ? String(visibleOrders.length) : "0"}
-          />
-          <SummaryStat label="Submitted Claims" value={String(claims.length)} />
-          <SummaryStat label="Review Window" value="3–5 Days" />
-        </section>
-
-        <section className="warranty-section">
-          <div className="warranty-section-head">
-            <h2>Coverage Summary</h2>
-            <p>
-              Clear information first, before the customer fills out the form.
-            </p>
-          </div>
-
-          <div className="warranty-policy-grid">
-            <div className="wpolicy-card">
-              <div className="wpolicy-card-title">
-                <CheckCircle size={18} />
-                <span>What's Covered</span>
-              </div>
-              <ul>
-                <li>Manufacturing defects in materials or workmanship</li>
-                <li>Structural issues under normal intended use</li>
-                <li>Defects present after delivery or installation</li>
-              </ul>
-            </div>
-
-            <div className="wpolicy-card">
-              <div className="wpolicy-card-title">
-                <AlertCircle size={18} />
-                <span>What's Not Covered</span>
-              </div>
-              <ul>
-                <li>Misuse, accidents, negligence, or improper handling</li>
-                <li>Normal wear and tear over time</li>
-                <li>Unauthorized modifications by customer or third parties</li>
-                <li>Damage from improper cleaning or maintenance</li>
-              </ul>
-            </div>
-
-            <div className="wpolicy-card wpolicy-highlight">
-              <div className="wpolicy-card-title">
-                <Clock size={18} />
-                <span>Claim Conditions</span>
-              </div>
-              <div className="wpolicy-period">1 Year</div>
-              <p>Claims must be filed within the active warranty period.</p>
-              <p>
-                Only completed and paid orders are eligible for a new claim.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className="warranty-section">
-          <div className="warranty-section-head">
-            <h2>How the Process Works</h2>
-            <p>
-              Keep the flow obvious so the customer understands what happens
-              next.
-            </p>
-          </div>
-
-          <div className="warranty-process-grid">
-            {[
-              {
-                title: "1. Check Eligibility",
-                desc: "Choose a completed and paid order that is still within the warranty period.",
-              },
-              {
-                title: "2. Submit Details",
-                desc: "Provide the product name, issue description, defect photo, and proof of purchase.",
-              },
-              {
-                title: "3. Claim Review",
-                desc: "Our team reviews your submission and may contact you if more details are needed.",
-              },
-              {
-                title: "4. Repair Coordination",
-                desc: "Approved claims move forward to repair scheduling and service completion.",
-              },
-            ].map((step) => (
-              <div key={step.title} className="warranty-process-card">
-                <strong>{step.title}</strong>
-                <p>{step.desc}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="warranty-main-grid">
-          <div className="warranty-left-column">
-            <div className="warranty-requirements-card">
-              <div className="warranty-requirements-head">
-                <ShieldCheck size={18} />
-                <span>Before You Submit</span>
-              </div>
-              <ul>
-                <li>Select an eligible completed and paid order.</li>
-                <li>Prepare one clear photo showing the defect.</li>
-                <li>Prepare your receipt or proof of purchase.</li>
-                <li>Describe the issue clearly so review is faster.</li>
-              </ul>
-            </div>
-
-            <div className="warranty-form-wrap">
-              {!showForm && !submitted && hasEligibleOrders && (
-                <button
-                  type="button"
-                  className="warranty-open-btn"
-                  onClick={() => setShowForm(true)}
+        {loading ? (
+          /* 👉 SKELETON BODY (Header is no longer hidden!) */
+          <div
+            style={{
+              animation: "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+            }}
+          >
+            <div
+              className="warranty-summary-grid"
+              style={{ marginBottom: "40px" }}
+            >
+              {[1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="warranty-summary-card"
+                  style={{
+                    height: "100px",
+                    background: "#ffffff",
+                    border: "1px solid #e5e7eb",
+                  }}
                 >
-                  <ShieldCheck size={18} />
-                  <span>File a Warranty Claim</span>
-                </button>
-              )}
-
-              {!showForm && !submitted && !hasEligibleOrders && (
-                <div className="warranty-no-eligible-card">
-                  <ShieldCheck
-                    size={20}
-                    className="warranty-no-eligible-icon"
+                  <div
+                    style={{
+                      height: "12px",
+                      width: "60%",
+                      background: "#f3f4f6",
+                      marginBottom: "16px",
+                    }}
                   />
-                  <div>
-                    <strong>No warranty claims available right now</strong>
-                    <p>
-                      You currently have no completed and paid orders eligible
-                      for a new warranty claim.
-                    </p>
-                  </div>
+                  <div
+                    style={{
+                      height: "32px",
+                      width: "40%",
+                      background: "#e5e7eb",
+                    }}
+                  />
                 </div>
-              )}
-
-              {showForm && !submitted && (
-                <div className="warranty-form-card">
-                  <div className="warranty-form-header">
-                    <div>
-                      <h2>Submit Warranty Claim</h2>
-                      <p className="warranty-form-subtext">
-                        Complete the required details below.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="warranty-form-close"
-                      onClick={() => setShowForm(false)}
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-
-                  <form onSubmit={handleSubmit} className="warranty-form">
-                    <div className="wfield">
-                      <label className="wlabel">
-                        Eligible Order <span className="wrequired">*</span>
-                      </label>
-
-                      {hasEligibleOrders ? (
-                        <div className="wselect-wrap">
-                          <select
-                            className="winput wselect"
-                            value={orderId}
-                            onChange={handleOrderSelect}
-                          >
-                            <option value="">
-                              Select a completed and paid order
-                            </option>
-                            {visibleOrders.map((order) => (
-                              <option key={order.id} value={order.id}>
-                                {order.order_number} —{" "}
-                                {formatDate(order.created_at)}
-                                {" — "}valid until{" "}
-                                {formatDate(order.warranty_expiry)}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown size={15} className="wselect-icon" />
-                        </div>
-                      ) : (
-                        <input
-                          type="text"
-                          className="winput"
-                          value="No eligible completed and paid orders available."
-                          readOnly
-                        />
-                      )}
-                    </div>
-
-                    <div className="wfield">
-                      <label className="wlabel">
-                        Product / Item Name <span className="wrequired">*</span>
-                      </label>
-                      <div className="wselect-wrap">
-                        <select
-                          className="winput wselect"
-                          value={productName}
-                          onChange={(e) => setProductName(e.target.value)}
-                        >
-                          <option value="">Select the affected product</option>
-
-                          {products.map((item) => (
-                            <option
-                              key={item.product_id}
-                              value={item.product_name}
-                            >
-                              {item.product_name}
-                            </option>
-                          ))}
-                        </select>
-
-                        <ChevronDown size={15} className="wselect-icon" />
-                      </div>
-                    </div>
-
-                    <div className="wfield">
-                      <label className="wlabel">
-                        Issue Description <span className="wrequired">*</span>
-                      </label>
-                      <textarea
-                        className="winput wtextarea"
-                        placeholder="Describe the defect clearly — what is affected, where it appears, and when you noticed it."
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        rows={4}
-                        maxLength={1000}
-                      />
-                      <div className="wchar-count">
-                        {description.length}/1000
-                      </div>
-                    </div>
-
-                    <div className="wfield-row">
-                      <FileUpload
-                        label={
-                          <>
-                            Photo of Defect <span className="wrequired">*</span>
-                          </>
-                        }
-                        hint="Required — upload a clear image of the issue"
-                        name="photo"
-                        file={photoFile}
-                        accept="image/jpeg,image/png,image/webp"
-                        onChange={(e) =>
-                          setPhotoFile(e.target.files?.[0] || null)
-                        }
-                        onClear={() => setPhotoFile(null)}
-                      />
-
-                      <FileUpload
-                        label={
-                          <>
-                            Proof of Purchase{" "}
-                            <span className="wrequired">*</span>
-                          </>
-                        }
-                        hint="Required — upload your receipt or confirmation"
-                        name="proof"
-                        file={proofFile}
-                        accept="image/jpeg,image/png,image/webp,application/pdf"
-                        onChange={(e) =>
-                          setProofFile(e.target.files?.[0] || null)
-                        }
-                        onClear={() => setProofFile(null)}
-                      />
-                    </div>
-
-                    {formError && <div className="werror">{formError}</div>}
-
-                    <button
-                      type="submit"
-                      className="wsubmit-btn"
-                      disabled={submitting || !hasEligibleOrders}
-                    >
-                      {submitting ? (
-                        <>
-                          <span className="wspinner" />
-                          <span>Submitting…</span>
-                        </>
-                      ) : (
-                        <>
-                          <ShieldCheck size={16} />
-                          <span>Submit Claim</span>
-                        </>
-                      )}
-                    </button>
-                  </form>
-                </div>
-              )}
-
-              {submitted && (
-                <div className="warranty-success">
-                  <CheckCircle size={52} strokeWidth={1.5} />
-                  <h2>Claim Submitted</h2>
-                  <p>
-                    Your warranty request has been received. Our team will
-                    review it within 3–5 business days and contact you for the
-                    next step.
-                  </p>
-                  <button
-                    type="button"
-                    className="wsubmit-btn"
-                    style={{ maxWidth: 260 }}
-                    onClick={resetForm}
-                  >
-                    Submit Another Claim
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <aside className="warranty-claims-wrap">
-            <div className="warranty-claims-head">
-              <div>
-                <h2 className="warranty-claims-title">Submitted Claims</h2>
-                <p className="warranty-claims-subtitle">
-                  Track your claim status and review uploaded files.
-                </p>
-              </div>
-              <div className="warranty-claims-count">{claims.length}</div>
+              ))}
             </div>
 
-            {loadingClaims ? (
+            <div className="warranty-section">
               <div
                 style={{
-                  animation:
-                    "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-                  display: "grid",
-                  gap: "10px",
+                  height: "32px",
+                  width: "250px",
+                  background: "#e5e7eb",
+                  marginBottom: "12px",
                 }}
-              >
+              />
+              <div
+                style={{
+                  height: "16px",
+                  width: "400px",
+                  background: "#f3f4f6",
+                  marginBottom: "32px",
+                }}
+              />
+              <div className="warranty-policy-grid">
                 {[1, 2, 3].map((i) => (
                   <div
                     key={i}
+                    className="wpolicy-card"
                     style={{
-                      height: "86px",
+                      height: "240px",
                       background: "#ffffff",
                       border: "1px solid #e5e7eb",
-                      padding: "16px",
                     }}
                   >
                     <div
                       style={{
-                        height: "18px",
-                        width: "60%",
+                        height: "24px",
+                        width: "50%",
                         background: "#f3f4f6",
-                        marginBottom: "8px",
+                        marginBottom: "24px",
                       }}
                     />
                     <div
                       style={{
-                        height: "14px",
-                        width: "40%",
+                        height: "120px",
+                        width: "100%",
                         background: "#f3f4f6",
                       }}
                     />
                   </div>
                 ))}
-                <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
               </div>
-            ) : claims.length === 0 ? (
-              <div className="wclaims-empty">
-                <ShieldCheck size={36} strokeWidth={1} />
-                <p>You haven't filed any warranty claims yet.</p>
+            </div>
+            <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
+          </div>
+        ) : (
+          <>
+            <section className="warranty-summary-grid">
+              <SummaryStat label="Warranty Period" value="1 Year" />
+              <SummaryStat
+                label="Eligible Orders"
+                value={hasEligibleOrders ? String(visibleOrders.length) : "0"}
+              />
+              <SummaryStat
+                label="Submitted Claims"
+                value={String(claims.length)}
+              />
+              <SummaryStat label="Review Window" value="3–5 Days" />
+            </section>
+
+            <section className="warranty-section">
+              <div className="warranty-section-head">
+                <h2>Coverage Summary</h2>
+                <p>
+                  Clear information first, before the customer fills out the
+                  form.
+                </p>
               </div>
-            ) : (
-              <div className="wclaims-list">
-                {claims.map((claim) => (
-                  <ClaimCard key={claim.id} claim={claim} />
+
+              <div className="warranty-policy-grid">
+                <div className="wpolicy-card">
+                  <div className="wpolicy-card-title">
+                    <CheckCircle size={18} />
+                    <span>What's Covered</span>
+                  </div>
+                  <ul>
+                    <li>Manufacturing defects in materials or workmanship</li>
+                    <li>Structural issues under normal intended use</li>
+                    <li>Defects present after delivery or installation</li>
+                  </ul>
+                </div>
+
+                <div className="wpolicy-card">
+                  <div className="wpolicy-card-title">
+                    <AlertCircle size={18} />
+                    <span>What's Not Covered</span>
+                  </div>
+                  <ul>
+                    <li>Misuse, accidents, negligence, or improper handling</li>
+                    <li>Normal wear and tear over time</li>
+                    <li>
+                      Unauthorized modifications by customer or third parties
+                    </li>
+                    <li>Damage from improper cleaning or maintenance</li>
+                  </ul>
+                </div>
+
+                <div className="wpolicy-card wpolicy-highlight">
+                  <div className="wpolicy-card-title">
+                    <Clock size={18} />
+                    <span>Claim Conditions</span>
+                  </div>
+                  <div className="wpolicy-period">1 Year</div>
+                  <p>Claims must be filed within the active warranty period.</p>
+                  <p>
+                    Only completed and paid orders are eligible for a new claim.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="warranty-section">
+              <div className="warranty-section-head">
+                <h2>How the Process Works</h2>
+                <p>
+                  Keep the flow obvious so the customer understands what happens
+                  next.
+                </p>
+              </div>
+
+              <div className="warranty-process-grid">
+                {[
+                  {
+                    title: "1. Check Eligibility",
+                    desc: "Choose a completed and paid order that is still within the warranty period.",
+                  },
+                  {
+                    title: "2. Submit Details",
+                    desc: "Provide the product name, issue description, defect photo, and proof of purchase.",
+                  },
+                  {
+                    title: "3. Claim Review",
+                    desc: "Our team reviews your submission and may contact you if more details are needed.",
+                  },
+                  {
+                    title: "4. Repair Coordination",
+                    desc: "Approved claims move forward to repair scheduling and service completion.",
+                  },
+                ].map((step) => (
+                  <div key={step.title} className="warranty-process-card">
+                    <strong>{step.title}</strong>
+                    <p>{step.desc}</p>
+                  </div>
                 ))}
               </div>
-            )}
-          </aside>
-        </section>
+            </section>
+
+            <section className="warranty-main-grid">
+              <div className="warranty-left-column">
+                <div className="warranty-requirements-card">
+                  <div className="warranty-requirements-head">
+                    <ShieldCheck size={18} />
+                    <span>Before You Submit</span>
+                  </div>
+                  <ul>
+                    <li>Select an eligible completed and paid order.</li>
+                    <li>Prepare one clear photo showing the defect.</li>
+                    <li>Prepare your receipt or proof of purchase.</li>
+                    <li>Describe the issue clearly so review is faster.</li>
+                  </ul>
+                </div>
+
+                <div className="warranty-form-wrap">
+                  {!showForm && !submitted && hasEligibleOrders && (
+                    <button
+                      type="button"
+                      className="warranty-open-btn"
+                      onClick={() => setShowForm(true)}
+                    >
+                      <ShieldCheck size={18} />
+                      <span>File a Warranty Claim</span>
+                    </button>
+                  )}
+
+                  {!showForm && !submitted && !hasEligibleOrders && (
+                    <div className="warranty-no-eligible-card">
+                      <ShieldCheck
+                        size={20}
+                        className="warranty-no-eligible-icon"
+                      />
+                      <div>
+                        <strong>No warranty claims available right now</strong>
+                        <p>
+                          You currently have no completed and paid orders
+                          eligible for a new warranty claim.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {showForm && !submitted && (
+                    <div className="warranty-form-card">
+                      <div className="warranty-form-header">
+                        <div>
+                          <h2>Submit Warranty Claim</h2>
+                          <p className="warranty-form-subtext">
+                            Complete the required details below.
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="warranty-form-close"
+                          onClick={() => setShowForm(false)}
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+
+                      <form onSubmit={handleSubmit} className="warranty-form">
+                        <div className="wfield">
+                          <label className="wlabel">
+                            Eligible Order <span className="wrequired">*</span>
+                          </label>
+
+                          {hasEligibleOrders ? (
+                            <div className="wselect-wrap">
+                              <select
+                                className="winput wselect"
+                                value={orderId}
+                                onChange={handleOrderSelect}
+                              >
+                                <option value="">
+                                  Select a completed and paid order
+                                </option>
+                                {visibleOrders.map((order) => (
+                                  <option key={order.id} value={order.id}>
+                                    {order.order_number} —{" "}
+                                    {formatDate(order.created_at)}
+                                    {" — "}valid until{" "}
+                                    {formatDate(order.warranty_expiry)}
+                                  </option>
+                                ))}
+                              </select>
+                              <ChevronDown size={15} className="wselect-icon" />
+                            </div>
+                          ) : (
+                            <input
+                              type="text"
+                              className="winput"
+                              value="No eligible completed and paid orders available."
+                              readOnly
+                            />
+                          )}
+                        </div>
+
+                        <div className="wfield">
+                          <label className="wlabel">
+                            Product / Item Name{" "}
+                            <span className="wrequired">*</span>
+                          </label>
+                          <div className="wselect-wrap">
+                            <select
+                              className="winput wselect"
+                              value={productName}
+                              onChange={(e) => setProductName(e.target.value)}
+                            >
+                              <option value="">
+                                Select the affected product
+                              </option>
+
+                              {products.map((item) => (
+                                <option
+                                  key={item.product_id}
+                                  value={item.product_name}
+                                >
+                                  {item.product_name}
+                                </option>
+                              ))}
+                            </select>
+
+                            <ChevronDown size={15} className="wselect-icon" />
+                          </div>
+                        </div>
+
+                        <div className="wfield">
+                          <label className="wlabel">
+                            Issue Description{" "}
+                            <span className="wrequired">*</span>
+                          </label>
+                          <textarea
+                            className="winput wtextarea"
+                            placeholder="Describe the defect clearly — what is affected, where it appears, and when you noticed it."
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            rows={4}
+                            maxLength={1000}
+                          />
+                          <div className="wchar-count">
+                            {description.length}/1000
+                          </div>
+                        </div>
+
+                        <div className="wfield-row">
+                          <FileUpload
+                            label={
+                              <>
+                                Photo of Defect{" "}
+                                <span className="wrequired">*</span>
+                              </>
+                            }
+                            hint="Required — upload a clear image of the issue"
+                            name="photo"
+                            file={photoFile}
+                            accept="image/jpeg,image/png,image/webp"
+                            onChange={(e) =>
+                              setPhotoFile(e.target.files?.[0] || null)
+                            }
+                            onClear={() => setPhotoFile(null)}
+                          />
+
+                          <FileUpload
+                            label={
+                              <>
+                                Proof of Purchase{" "}
+                                <span className="wrequired">*</span>
+                              </>
+                            }
+                            hint="Required — upload your receipt or confirmation"
+                            name="proof"
+                            file={proofFile}
+                            accept="image/jpeg,image/png,image/webp,application/pdf"
+                            onChange={(e) =>
+                              setProofFile(e.target.files?.[0] || null)
+                            }
+                            onClear={() => setProofFile(null)}
+                          />
+                        </div>
+
+                        {formError && <div className="werror">{formError}</div>}
+
+                        <button
+                          type="submit"
+                          className="wsubmit-btn"
+                          disabled={submitting || !hasEligibleOrders}
+                        >
+                          {submitting ? (
+                            <>
+                              <span className="wspinner" />
+                              <span>Submitting…</span>
+                            </>
+                          ) : (
+                            <>
+                              <ShieldCheck size={16} />
+                              <span>Submit Claim</span>
+                            </>
+                          )}
+                        </button>
+                      </form>
+                    </div>
+                  )}
+
+                  {submitted && (
+                    <div className="warranty-success">
+                      <CheckCircle size={52} strokeWidth={1.5} />
+                      <h2>Claim Submitted</h2>
+                      <p>
+                        Your warranty request has been received. Our team will
+                        review it within 3–5 business days and contact you for
+                        the next step.
+                      </p>
+                      <button
+                        type="button"
+                        className="wsubmit-btn"
+                        style={{ maxWidth: 260 }}
+                        onClick={resetForm}
+                      >
+                        Submit Another Claim
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <aside className="warranty-claims-wrap">
+                <div className="warranty-claims-head">
+                  <div>
+                    <h2 className="warranty-claims-title">Submitted Claims</h2>
+                    <p className="warranty-claims-subtitle">
+                      Track your claim status and review uploaded files.
+                    </p>
+                  </div>
+                  <div className="warranty-claims-count">{claims.length}</div>
+                </div>
+
+                {loadingClaims ? (
+                  <div
+                    style={{
+                      animation:
+                        "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+                      display: "grid",
+                      gap: "10px",
+                    }}
+                  >
+                    {[1, 2, 3].map((i) => (
+                      <div
+                        key={i}
+                        style={{
+                          height: "86px",
+                          background: "#ffffff",
+                          border: "1px solid #e5e7eb",
+                          padding: "16px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: "18px",
+                            width: "60%",
+                            background: "#f3f4f6",
+                            marginBottom: "8px",
+                          }}
+                        />
+                        <div
+                          style={{
+                            height: "14px",
+                            width: "40%",
+                            background: "#f3f4f6",
+                          }}
+                        />
+                      </div>
+                    ))}
+                    <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
+                  </div>
+                ) : claims.length === 0 ? (
+                  <div className="wclaims-empty">
+                    <ShieldCheck size={36} strokeWidth={1} />
+                    <p>You haven't filed any warranty claims yet.</p>
+                  </div>
+                ) : (
+                  <div className="wclaims-list">
+                    {claims.map((claim) => (
+                      <ClaimCard key={claim.id} claim={claim} />
+                    ))}
+                  </div>
+                )}
+              </aside>
+            </section>
+          </>
+        )}
       </div>
     </div>
   );

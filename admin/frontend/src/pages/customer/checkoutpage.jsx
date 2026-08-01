@@ -65,9 +65,20 @@ export default function CheckoutPage() {
   const { user } = useAuthStore();
   const { cart, removeMany } = useCart();
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
+
   const [checkoutItems, setCheckoutItems] = useState([]);
   const [selectionReady, setSelectionReady] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const [isPageLoading, setIsPageLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsPageLoading(false), 400);
+    return () => clearTimeout(timer);
+  }, []);
 
   const [form, setForm] = useState({
     name: user?.name || "",
@@ -362,9 +373,14 @@ export default function CheckoutPage() {
         </div>
       </div>
 
-      {!selectionReady ? (
-        /* 👉 SKELETON LAYOUT - USES EXISTING SHIMMER CSS */
-        <div className="checkout-layout">
+      {isPageLoading || !selectionReady ? (
+        <div
+          className="checkout-layout"
+          style={{
+            animation: "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+          }}
+        >
+          <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
           <div className="checkout-form-panel">
             <div className="checkout-section">
               <div className="checkout-section-header">
@@ -853,7 +869,13 @@ export default function CheckoutPage() {
               onClick={handleSubmit}
               disabled={loading || !checkoutItems.length}
             >
-              {loading ? "Placing Order…" : "Place Order"}
+              {loading ? (
+                <>
+                  <span className="btn-spinner" /> Placing Order…
+                </>
+              ) : (
+                "Place Order"
+              )}
             </button>
           </div>
         </div>

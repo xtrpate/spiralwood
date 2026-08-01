@@ -1,9 +1,14 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronRight, CheckCircle2, ShoppingBag } from "lucide-react";
 import "./cart.css";
 
 export default function OrderCompletePage() {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
 
   return (
     <div className="fm-cart-shell">

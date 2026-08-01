@@ -8,11 +8,13 @@ import { useCart } from "./cartcontext";
 
 import cabinetImg from "../assets/cabinet.png";
 
+let cachedProducts = null;
+
 export default function LandingPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState(cachedProducts || []);
+  const [loading, setLoading] = useState(!cachedProducts);
   const { addToCart } = useCart();
 
   const latestProducts = [...products]
@@ -97,6 +99,8 @@ export default function LandingPage() {
   };
 
   useEffect(() => {
+    if (cachedProducts) return;
+
     const fetchProducts = async () => {
       try {
         const res = await api.get("/customer/products");
@@ -106,12 +110,13 @@ export default function LandingPage() {
             ? res.data.products
             : [];
 
+        cachedProducts = list;
         setProducts(list);
       } catch (err) {
         console.error("Failed to load products", err);
         setProducts([]);
       } finally {
-        setLoading(false); // 👉 ADD THIS
+        setLoading(false);
       }
     };
 

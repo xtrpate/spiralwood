@@ -689,30 +689,27 @@ export default function CustomerLayout() {
           </button>
 
           <div className="cust-header-right">
-            <button
-              ref={cartButtonRef}
-              type="button"
-              className="cust-cart-summary-btn"
-              onClick={() => {
-                setMenuOpen(false);
-                openMiniCart();
-              }}
-              aria-label="Open cart"
-              disabled={location.pathname === "/cart"}
-              style={{
-                opacity: 1,
-                cursor: location.pathname === "/cart" ? "default" : "pointer",
-              }}
-            >
-              <span className="cust-cart-summary-total">
-                {formatPeso(cartTotal)}
-              </span>
+            {location.pathname !== "/cart" && (
+              <button
+                ref={cartButtonRef}
+                type="button"
+                className="cust-cart-summary-btn"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openMiniCart();
+                }}
+                aria-label="Open cart"
+              >
+                <span className="cust-cart-summary-total">
+                  {formatPeso(cartTotal)}
+                </span>
 
-              <span className="cust-cart-summary-icon-wrap">
-                <ShoppingCart size={21} />
-                {renderCountBadge(cartCount)}
-              </span>
-            </button>
+                <span className="cust-cart-summary-icon-wrap">
+                  <ShoppingCart size={21} />
+                  {renderCountBadge(cartCount)}
+                </span>
+              </button>
+            )}
 
             {customerUser && <CustomerNotificationBell />}
 

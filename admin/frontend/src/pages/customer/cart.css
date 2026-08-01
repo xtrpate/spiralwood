@@ -1408,3 +1408,31 @@
     width: 100%;
   }
 }
+
+.btn-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: btnSpin 0.7s linear infinite;
+  margin-right: 2px;
+}
+
+@keyframes btnSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.btn-spinner-dark {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(17, 17, 17, 0.2);
+  border-top-color: #111111;
+  border-radius: 50%;
+  animation: btnSpin 0.7s linear infinite;
+  margin-right: 6px;
+}

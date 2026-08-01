@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
-import { Search, X, CheckCircle2 } from "lucide-react";
+import { Search, X, CheckCircle2, Smartphone } from "lucide-react";
 import { useCustomCart } from "./customcartcontext";
 import { useCart } from "./cartcontext";
 import useAuthStore from "../../store/authStore";
@@ -797,7 +797,20 @@ function ModalShell({ title, subtitle, onClose, children, wide = false }) {
           </button>
         </div>
 
-        <div className="cust-modal-content">{children}</div>
+        <div className="cust-modal-content">
+          <div className="rotate-device-overlay">
+            <div className="rotate-device-icon">
+              <Smartphone size={48} strokeWidth={1.5} />
+            </div>
+            <h3>Rotate your device</h3>
+            <p>
+              Please rotate your phone to landscape mode for the best 3D
+              customization experience.
+            </p>
+          </div>
+
+          <div className="cust-modal-inner-content">{children}</div>
+        </div>
       </div>
     </div>
   );
@@ -1066,6 +1079,9 @@ function ProductCard({ product, onView, onCustomize }) {
 
 export default function CustomizePage() {
   const navigate = useNavigate();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const location = useLocation();
   const { user } = useAuthStore();
   const { addToCustomCart } = useCustomCart();

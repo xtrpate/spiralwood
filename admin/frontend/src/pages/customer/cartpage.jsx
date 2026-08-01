@@ -58,6 +58,11 @@ export default function CartPage() {
   const { user } = useAuthStore();
   const customerUser = user?.role === "customer" ? user : null;
   const { cart, updateQty, removeItem, clearCart } = useCart();
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
+
   const [itemToDelete, setItemToDelete] = useState(null);
   const [toastMsg, setToastMsg] = useState("");
   const [isHiding, setIsHiding] = useState(false);
@@ -65,6 +70,8 @@ export default function CartPage() {
   const [selected, setSelected] = useState(new Set());
   const [checkoutError, setCheckoutError] = useState("");
   const [loading, setLoading] = useState(true);
+
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 400);
@@ -177,19 +184,27 @@ export default function CartPage() {
       return;
     }
 
-    if (hasBlueprintSelected) {
-      const blueprintKeys = selectedItems.map((item) => item.key);
-      sessionStorage.setItem(
-        "cust_selected_custom_checkout",
-        JSON.stringify(blueprintKeys),
-      );
-      navigate("/custom-checkout");
-      return;
-    }
+    setIsCheckingOut(true);
 
-    const standardKeys = selectedItems.map((item) => item.key);
-    sessionStorage.setItem("cust_selected_keys", JSON.stringify(standardKeys));
-    navigate("/checkout");
+    setTimeout(() => {
+      if (hasBlueprintSelected) {
+        const blueprintKeys = selectedItems.map((item) => item.key);
+        sessionStorage.setItem(
+          "cust_selected_custom_checkout",
+          JSON.stringify(blueprintKeys),
+        );
+        navigate("/custom-checkout");
+      } else {
+        const standardKeys = selectedItems.map((item) => item.key);
+        sessionStorage.setItem(
+          "cust_selected_keys",
+          JSON.stringify(standardKeys),
+        );
+        navigate("/checkout");
+      }
+
+      setIsCheckingOut(false);
+    }, 400);
   };
 
   const summaryNote = isMixedSelection
@@ -713,15 +728,24 @@ export default function CartPage() {
               type="button"
               className={`fm-cart-checkout-btn ${!customerUser ? "guest" : ""}`}
               onClick={handleCheckout}
-              disabled={checkoutButtonDisabled}
+              disabled={checkoutButtonDisabled || isCheckingOut}
               title={
                 isMixedSelection
                   ? "Select only one order type to continue."
                   : ""
               }
             >
-              <span>{checkoutButtonLabel}</span>
-              <ArrowRight size={16} />
+              {isCheckingOut ? (
+                <>
+                  <span className="btn-spinner-dark" />
+                  <span>Proceeding...</span>
+                </>
+              ) : (
+                <>
+                  <span>{checkoutButtonLabel}</span>
+                  <ArrowRight size={16} />
+                </>
+              )}
             </button>
           </div>
         </aside>

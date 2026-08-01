@@ -546,6 +546,9 @@ function OrderModal({
 
 export default function OrdersPage() {
   const navigate = useNavigate();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
@@ -704,7 +707,6 @@ export default function OrdersPage() {
       clearTimeout(scrollTimer);
       clearTimeout(highlightTimer);
     };
-
   }, [searchParams, loading, orders]);
 
   const STATUS_TABS = [
