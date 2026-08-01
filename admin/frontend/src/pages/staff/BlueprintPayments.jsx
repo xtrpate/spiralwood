@@ -1,5 +1,6 @@
 import { useState } from "react";
 import toast from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 
 const formatMoney = (value) =>
@@ -7,6 +8,35 @@ const formatMoney = (value) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+
+// Historical data may still contain gcash/bank_transfer rows from before
+// the payment-method restrictions -- shown as-is for accurate history,
+// never offered as a choice anywhere in the current recording flow.
+const PAYMENT_METHOD_LABELS = {
+  cash: "Cash",
+  paymongo: "Online Payment",
+  gcash: "GCash",
+  bank_transfer: "Bank Transfer",
+};
+
+const PAYMENT_LABEL_TEXT = {
+  down_payment: "Down Payment",
+  partial_payment: "Partial Payment",
+  balance_payment: "Balance Payment",
+  full_payment: "Full Payment",
+};
+
+const STATUS_TEXT = {
+  verified: "Verified",
+  pending: "Pending",
+  rejected: "Rejected",
+};
+
+const STATUS_BADGE_COLORS = {
+  verified: { background: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
+  pending: { background: "#fffbeb", color: "#92400e", border: "#fde68a" },
+  rejected: { background: "#fef2f2", color: "#991b1b", border: "#fecaca" },
+};
 
 // Strict preview-only parser for the SUBMITTED amount -- rejects
 // everything the backend's parseStrictMoneyToCents rejects (empty,
@@ -113,6 +143,91 @@ const infoNotice = {
   marginTop: 12,
 };
 
+const successBox = {
+  background: "#f0fdf4",
+  border: "1px solid #bbf7d0",
+  borderRadius: 10,
+  padding: "14px 16px",
+  fontSize: 13,
+  color: "#166534",
+  marginTop: 16,
+};
+
+const btnSecondarySm = {
+  padding: "8px 14px",
+  background: "#ffffff",
+  color: "#18181b",
+  border: "1px solid #d4d4d8",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const historyTableWrap = {
+  overflowX: "auto",
+  WebkitOverflowScrolling: "touch",
+  marginTop: 8,
+};
+
+const historyTable = {
+  width: "100%",
+  minWidth: 640,
+  borderCollapse: "collapse",
+  fontSize: 13,
+};
+
+const historyTh = {
+  textAlign: "left",
+  padding: "8px 10px",
+  fontSize: 11,
+  fontWeight: 800,
+  textTransform: "uppercase",
+  letterSpacing: "0.03em",
+  color: "#71717a",
+  borderBottom: "1px solid #e4e4e7",
+  whiteSpace: "nowrap",
+};
+
+const historyTd = {
+  padding: "10px",
+  borderBottom: "1px solid #f4f4f5",
+  color: "#18181b",
+  verticalAlign: "top",
+};
+
+const badgeBase = {
+  display: "inline-block",
+  padding: "3px 10px",
+  borderRadius: 999,
+  fontSize: 11,
+  fontWeight: 700,
+  border: "1px solid",
+  whiteSpace: "nowrap",
+};
+
+function StatusBadge({ status }) {
+  const key = String(status || "").trim().toLowerCase();
+  const colors =
+    STATUS_BADGE_COLORS[key] || {
+      background: "#f4f4f5",
+      color: "#3f3f46",
+      border: "#e4e4e7",
+    };
+  return (
+    <span
+      style={{
+        ...badgeBase,
+        background: colors.background,
+        color: colors.color,
+        borderColor: colors.border,
+      }}
+    >
+      {STATUS_TEXT[key] || (status ? status : "Unknown")}
+    </span>
+  );
+}
+
 function InfoRow({ label, value }) {
   return (
     <div style={infoRow}>
@@ -123,6 +238,7 @@ function InfoRow({ label, value }) {
 }
 
 export default function BlueprintPayments() {
+  const navigate = useNavigate();
   const [orderNumberInput, setOrderNumberInput] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
@@ -131,6 +247,7 @@ export default function BlueprintPayments() {
   const [customAmount, setCustomAmount] = useState("");
   const [recording, setRecording] = useState(false);
   const [recordError, setRecordError] = useState("");
+  const [lastPaymentResult, setLastPaymentResult] = useState(null);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -145,6 +262,7 @@ export default function BlueprintPayments() {
     setSearchError("");
     setRecordError("");
     setSummary(null);
+    setLastPaymentResult(null);
 
     try {
       const { data } = await api.get(
@@ -215,6 +333,7 @@ export default function BlueprintPayments() {
     if (!confirmed) return;
 
     setRecording(true);
+    setLastPaymentResult(null);
     try {
       const { data } = await api.post(
         `/pos/blueprint-cash-payments/${summary.order_id}`,
@@ -223,6 +342,7 @@ export default function BlueprintPayments() {
       setRecordError("");
       toast.success(data?.message || "Cash payment recorded successfully.");
       setCustomAmount("");
+      setLastPaymentResult(data);
       await refreshSummary();
     } catch (err) {
       setRecordError(
@@ -307,6 +427,29 @@ export default function BlueprintPayments() {
             <div style={infoNotice}>{recordError}</div>
           ) : null}
 
+          {lastPaymentResult ? (
+            <div style={successBox}>
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>
+                Payment recorded successfully.
+              </div>
+              <div>Receipt #: {lastPaymentResult.receipt_number}</div>
+              {lastPaymentResult.payment_label ? (
+                <div style={{ textTransform: "capitalize" }}>
+                  Payment type: {lastPaymentResult.payment_label.replace("_", " ")}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                style={{ ...btnSecondarySm, marginTop: 10 }}
+                onClick={() =>
+                  navigate(`/staff/blueprint-receipt/${lastPaymentResult.receipt_id}`)
+                }
+              >
+                View Receipt
+              </button>
+            </div>
+          ) : null}
+
           {summary.can_record_payment ? (
             <div style={{ marginTop: 16 }}>
               <div
@@ -366,6 +509,96 @@ export default function BlueprintPayments() {
               {summary.reason_message ||
                 "Cash at Store recording is not available for this order."}
             </div>
+          )}
+        </div>
+      ) : null}
+
+      {summary ? (
+        <div style={card}>
+          <h2 style={title}>Payment History</h2>
+
+          {Array.isArray(summary.payment_history) &&
+          summary.payment_history.length > 0 ? (
+            <div style={historyTableWrap}>
+              <table style={historyTable}>
+                <thead>
+                  <tr>
+                    <th style={historyTh}>Date &amp; Time</th>
+                    <th style={historyTh}>Payment Type</th>
+                    <th style={historyTh}>Method</th>
+                    <th style={historyTh}>Amount</th>
+                    <th style={historyTh}>Status</th>
+                    <th style={historyTh}>Processed By</th>
+                    <th style={historyTh}>Receipt</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.payment_history.map((row) => {
+                    const method = String(row.payment_method || "")
+                      .trim()
+                      .toLowerCase();
+                    const canViewReceipt =
+                      String(row.status || "").trim().toLowerCase() ===
+                        "verified" &&
+                      Boolean(row.receipt_id) &&
+                      Boolean(row.receipt_number);
+
+                    return (
+                      <tr key={row.payment_transaction_id}>
+                        <td style={historyTd}>
+                          {row.created_at
+                            ? new Date(row.created_at).toLocaleString("en-PH")
+                            : "—"}
+                        </td>
+                        <td style={historyTd}>
+                          {PAYMENT_LABEL_TEXT[row.payment_label] || "Payment"}
+                        </td>
+                        <td style={historyTd}>
+                          {PAYMENT_METHOD_LABELS[method] ||
+                            (method ? method : "—")}
+                        </td>
+                        <td style={{ ...historyTd, fontWeight: 700 }}>
+                          {formatMoney(row.amount)}
+                        </td>
+                        <td style={historyTd}>
+                          <StatusBadge status={row.status} />
+                        </td>
+                        <td style={historyTd}>
+                          {row.processor_display || "—"}
+                        </td>
+                        <td style={historyTd}>
+                          {canViewReceipt ? (
+                            <button
+                              type="button"
+                              style={btnSecondarySm}
+                              onClick={() =>
+                                navigate(
+                                  `/staff/blueprint-receipt/${row.receipt_id}`,
+                                )
+                              }
+                            >
+                              View Receipt
+                            </button>
+                          ) : String(row.status || "")
+                              .trim()
+                              .toLowerCase() === "verified" ? (
+                            <span style={{ color: "#a1a1aa", fontSize: 12 }}>
+                              Receipt unavailable
+                            </span>
+                          ) : (
+                            <span style={{ color: "#a1a1aa", fontSize: 12 }}>
+                              —
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={infoNotice}>No payment transactions found.</div>
           )}
         </div>
       ) : null}

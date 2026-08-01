@@ -9,6 +9,9 @@ const {
 const {
   resolveLifecycleByOrder,
 } = require("./blueprintLifecycleService");
+const {
+  ensureReceiptForVerifiedPayment,
+} = require("./blueprintReceiptService");
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 
@@ -614,6 +617,16 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
       };
     }
 
+    // Receipt is created inside this same transaction, only after every
+    // integrity check above has passed, and before commit -- a failure
+    // here throws, is caught below, and rolls back the payment
+    // transaction and order.payment_status update together with it.
+    const receiptResult = await ensureReceiptForVerifiedPayment(conn, {
+      orderId,
+      paymentTransactionId: insertResult.insertId,
+      issuedByUserId: verifiedByUserId,
+    });
+
     const preparedAuditRecord = {
       id: insertResult.insertId,
       old: {
@@ -627,6 +640,9 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
         verified_total: roundMoney(finalVerifiedCents / 100),
         remaining_balance: roundMoney((orderTotalCents - finalVerifiedCents) / 100),
         payment_status: finalStatus,
+        receipt_id: receiptResult.receiptId,
+        receipt_number: receiptResult.receiptNumber,
+        payment_label: receiptResult.paymentLabel,
       },
     };
 
@@ -644,6 +660,9 @@ exports.recordCashPayment = async ({ pool, orderId, amountRaw, verifiedByUserId 
         verified_total: roundMoney(finalVerifiedCents / 100),
         remaining_balance: roundMoney((orderTotalCents - finalVerifiedCents) / 100),
         payment_status: finalStatus,
+        receipt_id: receiptResult.receiptId,
+        receipt_number: receiptResult.receiptNumber,
+        payment_label: receiptResult.paymentLabel,
       },
     };
   } catch (err) {

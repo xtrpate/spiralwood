@@ -52,6 +52,7 @@ import OrderCompletePage from "./pages/customer/OrderCompletePage.jsx";
 import CustomizePage from "./pages/customer/customizepage";
 import CustomCheckoutPage from "./pages/customer/customcheckoutpage";
 import CustomRequestDetailPage from "./pages/customer/customrequestdetailpage";
+import CustomerBlueprintReceiptPage from "./pages/customer/CustomerBlueprintReceiptPage";
 import AppointmentPage from "./pages/customer/appointmentpage";
 import OrdersPageCustomer from "./pages/customer/orderspage";
 import WarrantyPageCustomer from "./pages/customer/warrantypage";
@@ -71,6 +72,7 @@ import POSDeliveryScheduling from "./pages/staff/DeliveryScheduling";
 import POSDeliveryManagement from "./pages/staff/DeliveryManagement";
 import POSAppointmentScheduling from "./pages/staff/AppointmentScheduling";
 import POSReceiptPage from "./pages/staff/ReceiptPage";
+import BlueprintReceiptPage from "./pages/staff/BlueprintReceiptPage";
 import POSSalesReports from "./pages/staff/SalesReports";
 import POSBlueprintView from "./pages/staff/BlueprintView";
 import BlueprintPayments from "./pages/staff/BlueprintPayments";
@@ -294,6 +296,15 @@ export default function App() {
                     element={
                       <RequireAuth roles={["customer"]}>
                         <CustomRequestDetailPage />
+                      </RequireAuth>
+                    }
+                  />
+
+                  <Route
+                    path="custom-requests/:id/receipts/:receiptId"
+                    element={
+                      <RequireAuth roles={["customer"]}>
+                        <CustomerBlueprintReceiptPage />
                       </RequireAuth>
                     }
                   />
@@ -593,6 +604,15 @@ export default function App() {
                   element={
                     <RequireStaffType allowedTypes={["cashier"]}>
                       <POSReceiptPage />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="blueprint-receipt/:id"
+                  element={
+                    <RequireStaffType allowedTypes={["cashier"]}>
+                      <BlueprintReceiptPage />
                     </RequireStaffType>
                   }
                 />

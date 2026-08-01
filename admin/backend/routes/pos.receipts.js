@@ -17,4 +17,14 @@ const posAccess = [authenticate, requireCashierOrAdmin];
 router.get("/receipts", posAccess, posReceiptsController.getReceiptByOrderId);
 router.get("/receipts/:id", posAccess, posReceiptsController.getReceiptById);
 
+/* ══════════════════════════════════════════════════════════════
+   STAFF BLUEPRINT PAYMENT RECEIPTS
+══════════════════════════════════════════════════════════════ */
+
+router.get(
+  "/blueprint-receipts/:id",
+  posAccess,
+  posReceiptsController.getBlueprintReceiptById,
+);
+
 module.exports = router;

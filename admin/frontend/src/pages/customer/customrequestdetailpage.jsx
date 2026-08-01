@@ -139,6 +139,71 @@ const prettifyText = (value, fallback = "Custom furniture") => {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
+// Payment History table display maps. Kept separate from the
+// component-scoped PAYMENT_METHOD_LABELS used elsewhere on this page
+// (that one intentionally shows "Cash at Store" for the payment-method
+// selector) -- the history table always shows the plain method name.
+const HISTORY_PAYMENT_METHOD_LABELS = {
+  cash: "Cash",
+  paymongo: "Online Payment",
+  gcash: "GCash",
+  bank_transfer: "Bank Transfer",
+};
+
+const HISTORY_PAYMENT_LABEL_TEXT = {
+  down_payment: "Down Payment",
+  partial_payment: "Partial Payment",
+  balance_payment: "Balance Payment",
+  full_payment: "Full Payment",
+};
+
+const HISTORY_STATUS_TEXT = {
+  verified: "Verified",
+  pending: "Pending",
+  rejected: "Rejected",
+};
+
+const HISTORY_STATUS_COLORS = {
+  verified: { background: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
+  pending: { background: "#fffbeb", color: "#92400e", border: "#fde68a" },
+  rejected: { background: "#fef2f2", color: "#991b1b", border: "#fecaca" },
+};
+
+const historyTdStyle = {
+  padding: "10px",
+  borderBottom: "1px solid #f4f4f5",
+  color: "#18181b",
+  verticalAlign: "top",
+};
+
+function HistoryStatusBadge({ status }) {
+  const key = String(status || "").trim().toLowerCase();
+  const colors =
+    HISTORY_STATUS_COLORS[key] || {
+      background: "#f4f4f5",
+      color: "#3f3f46",
+      border: "#e4e4e7",
+    };
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "3px 10px",
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 700,
+        border: "1px solid",
+        whiteSpace: "nowrap",
+        background: colors.background,
+        color: colors.color,
+        borderColor: colors.border,
+      }}
+    >
+      {HISTORY_STATUS_TEXT[key] || (status ? status : "Unknown")}
+    </span>
+  );
+}
+
 const formatTemplateLabel = (item = {}) => {
   if (item?.template_profile) {
     return `${prettifyText(item.template_profile, "Furniture")} Template`;
@@ -326,6 +391,28 @@ export default function CustomRequestDetailPage() {
   const [payingRemainingBalance, setPayingRemainingBalance] = useState(false);
   const [remainingMethodError, setRemainingMethodError] = useState("");
 
+  const [paymentHistory, setPaymentHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState("");
+
+  const loadPaymentHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const res = await api.get(`/customer/custom-orders/${id}/receipts`);
+      setPaymentHistory(
+        Array.isArray(res.data?.payment_history) ? res.data.payment_history : [],
+      );
+    } catch (err) {
+      setPaymentHistory([]);
+      setHistoryError(
+        err.response?.data?.message || "Failed to load payment history.",
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [id]);
+
   const loadRequestDetail = useCallback(
     async (showLoader = true) => {
       if (showLoader) setLoading(true);
@@ -334,6 +421,11 @@ export default function CustomRequestDetailPage() {
       try {
         const res = await api.get(`/customer/custom-orders/${id}`);
         setRequestData(res.data);
+        // Loaded here (rather than in a separate mount-only effect) so
+        // that payment history also refreshes every time this succeeds
+        // -- including right after a PayMongo verification attempt below,
+        // with no manual page reload required.
+        await loadPaymentHistory();
       } catch (err) {
         setError(
           err.response?.data?.message ||
@@ -344,7 +436,7 @@ export default function CustomRequestDetailPage() {
         if (showLoader) setLoading(false);
       }
     },
-    [id],
+    [id, loadPaymentHistory],
   );
 
   useEffect(() => {
@@ -1551,6 +1643,131 @@ export default function CustomRequestDetailPage() {
                       You will be redirected to our secure checkout page to
                       complete your payment.
                     </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {requestData ? (
+                <div className="checkout-section">
+                  <div className="checkout-section-header">
+                    <div className="checkout-section-num">PH</div>
+                    <h3>Payment History</h3>
+                  </div>
+
+                  <div className="checkout-section-body">
+                    {historyLoading ? (
+                      <div className="crd-info-box muted">
+                        Loading payment history...
+                      </div>
+                    ) : historyError ? (
+                      <div className="crd-info-box pending">{historyError}</div>
+                    ) : paymentHistory.length === 0 ? (
+                      <div className="crd-info-box muted">
+                        No payment transactions found.
+                      </div>
+                    ) : (
+                      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                        <table
+                          style={{
+                            width: "100%",
+                            minWidth: 560,
+                            borderCollapse: "collapse",
+                            fontSize: 13,
+                          }}
+                        >
+                          <thead>
+                            <tr>
+                              {[
+                                "Date & Time",
+                                "Payment Type",
+                                "Method",
+                                "Amount",
+                                "Status",
+                                "Receipt",
+                              ].map((col) => (
+                                <th
+                                  key={col}
+                                  style={{
+                                    textAlign: "left",
+                                    padding: "8px 10px",
+                                    fontSize: 11,
+                                    fontWeight: 800,
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.03em",
+                                    color: "#71717a",
+                                    borderBottom: "1px solid #e4e4e7",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {col}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {paymentHistory.map((row) => {
+                              const method = String(row.payment_method || "")
+                                .trim()
+                                .toLowerCase();
+                              const canViewReceipt =
+                                String(row.status || "").trim().toLowerCase() ===
+                                  "verified" &&
+                                Boolean(row.receipt_id) &&
+                                Boolean(row.receipt_number);
+                              const isVerifiedNoReceipt =
+                                String(row.status || "").trim().toLowerCase() ===
+                                  "verified" && !canViewReceipt;
+
+                              return (
+                                <tr key={row.payment_transaction_id}>
+                                  <td style={historyTdStyle}>
+                                    {formatDate(row.created_at)}
+                                  </td>
+                                  <td style={historyTdStyle}>
+                                    {HISTORY_PAYMENT_LABEL_TEXT[row.payment_label] ||
+                                      "Payment"}
+                                  </td>
+                                  <td style={historyTdStyle}>
+                                    {HISTORY_PAYMENT_METHOD_LABELS[method] ||
+                                      (method ? prettifyText(method) : "—")}
+                                  </td>
+                                  <td style={{ ...historyTdStyle, fontWeight: 700 }}>
+                                    {formatMoney(row.amount)}
+                                  </td>
+                                  <td style={historyTdStyle}>
+                                    <HistoryStatusBadge status={row.status} />
+                                  </td>
+                                  <td style={historyTdStyle}>
+                                    {canViewReceipt ? (
+                                      <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        style={{ fontSize: 12, padding: "6px 12px" }}
+                                        onClick={() =>
+                                          navigate(
+                                            `/custom-requests/${id}/receipts/${row.receipt_id}`,
+                                          )
+                                        }
+                                      >
+                                        View Receipt
+                                      </button>
+                                    ) : isVerifiedNoReceipt ? (
+                                      <span style={{ color: "#a1a1aa", fontSize: 12 }}>
+                                        Receipt unavailable
+                                      </span>
+                                    ) : (
+                                      <span style={{ color: "#a1a1aa", fontSize: 12 }}>
+                                        —
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : null}

@@ -10,6 +10,9 @@ const {
   buildPaymentSummaryFromRows,
 } = require("../../services/blueprintCashPaymentService");
 const {
+  ensureReceiptForVerifiedPayment,
+} = require("../../services/blueprintReceiptService");
+const {
   createNotification,
   createNotificationSafe,
 } = require("../../utils/notificationHelper");
@@ -1707,11 +1710,13 @@ exports.verifyPayment = async (req, res) => {
     }
 
     // ── Guarded write ────────────────────────────────────────────────
+    let writtenPaymentTransactionId = realTargetId;
+
     if (isSyntheticConversion) {
       // Insert exactly one real transaction, using only canonical locked
       // order values — never client-controlled amount, method, proof
       // URL, or order id.
-      await conn.query(
+      const [syntheticInsertResult] = await conn.query(
         `INSERT INTO payment_transactions
           (order_id, amount, payment_method, proof_url, verified_by, verified_at, status, notes)
          VALUES (?, ?, ?, ?, ?, NOW(), ?, ?)`,
@@ -1725,6 +1730,7 @@ exports.verifyPayment = async (req, res) => {
           `Initial order payment ${normalizedAction}.`,
         ],
       );
+      writtenPaymentTransactionId = syntheticInsertResult.insertId;
     } else {
       const [updateResult] = await conn.query(
         `UPDATE payment_transactions
@@ -1779,6 +1785,21 @@ exports.verifyPayment = async (req, res) => {
       [nextPaymentStatus, order.id],
     );
 
+    // Receipt — only for a real "verified" outcome on a blueprint order.
+    // Never for: action=rejected, a non-blueprint order, an
+    // already-reviewed transaction (blocked earlier by the guarded
+    // UPDATE's affectedRows check), or a failed guarded update. Created
+    // inside this same transaction, before commit; a failure here rolls
+    // back the payment review and the payment_status update together.
+    let receiptResult = null;
+    if (normalizedAction === "verified" && isBlueprintOrder) {
+      receiptResult = await ensureReceiptForVerifiedPayment(conn, {
+        orderId: order.id,
+        paymentTransactionId: writtenPaymentTransactionId,
+        issuedByUserId: req.user.id,
+      });
+    }
+
     if (order.customer_id) {
       await createNotificationSafe(conn, {
         userId: order.customer_id,
@@ -1806,6 +1827,13 @@ exports.verifyPayment = async (req, res) => {
         payment_id,
         action: normalizedAction,
         payment_status: nextPaymentStatus,
+        ...(receiptResult
+          ? {
+              receipt_id: receiptResult.receiptId,
+              receipt_number: receiptResult.receiptNumber,
+              payment_label: receiptResult.paymentLabel,
+            }
+          : {}),
       },
     };
 

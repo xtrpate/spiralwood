@@ -8,6 +8,7 @@ const { verifyFileSignature } = require("../utils/verifyFileSignature");
 const { authenticate, requireCustomer } = require("../middleware/auth");
 const { logAction } = require("../middleware/auditLog");
 const customOrderController = require("../controllers/customer/customer.customorders");
+const customerReceiptsController = require("../controllers/customer/customer.receipts");
 
 /* ──────────────────────────────────────────────────────────
    Upload dirs
@@ -236,6 +237,25 @@ router.post(
   requireCustomer,
   logAction("verify_blueprint_remaining_balance_payment", "payment_transactions"),
   customOrderController.verifyRemainingBalancePayment,
+);
+
+/* ══════════════════════════════════════════════════════════════
+   CUSTOMER BLUEPRINT PAYMENT RECEIPTS (Phase 2C) — read-only,
+   strictly ownership-checked inside the controller itself.
+══════════════════════════════════════════════════════════════ */
+
+router.get(
+  "/:id/receipts",
+  authenticate,
+  requireCustomer,
+  customerReceiptsController.listReceipts,
+);
+
+router.get(
+  "/:id/receipts/:receiptId",
+  authenticate,
+  requireCustomer,
+  customerReceiptsController.getReceiptById,
 );
 
 module.exports = router;
