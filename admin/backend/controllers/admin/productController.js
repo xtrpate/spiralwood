@@ -84,19 +84,18 @@ exports.getOne = async (req, res) => {
     if (!product)
       return res.status(404).json({ message: "Product not found." });
 
-    const [variations] = await pool.query(
-      "SELECT * FROM product_variations WHERE product_id = ?",
-      [parseInt(req.params.id)],
-    );
     const [bom] = await pool.query(
       `SELECT bom.*, rm.name AS material_name, rm.unit
-       FROM bill_of_materials bom
-       JOIN raw_materials rm ON rm.id = bom.raw_material_id
-       WHERE bom.product_id = ?`,
+   FROM bill_of_materials bom
+   JOIN raw_materials rm ON rm.id = bom.raw_material_id
+   WHERE bom.product_id = ?`,
       [parseInt(req.params.id)],
     );
 
-    res.json({ ...product, variations, bill_of_materials: bom });
+    res.json({
+      ...product,
+      bill_of_materials: bom,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -113,6 +112,7 @@ exports.create = async (req, res) => {
       description,
       category_id,
       type = "standard",
+      wood_type,
       online_price,
       walkin_price,
       production_cost,
@@ -121,7 +121,6 @@ exports.create = async (req, res) => {
       is_featured = false,
       is_published = 1,
       blueprint_id,
-      variations = "[]",
       bill_of_materials = "[]",
     } = req.body;
 
@@ -129,26 +128,54 @@ exports.create = async (req, res) => {
     if (!isNonEmptyString(name)) {
       return respondInvalid(conn, res, "Product name is required.");
     }
-    if (online_price === undefined || online_price === null || online_price === "") {
+    if (
+      online_price === undefined ||
+      online_price === null ||
+      online_price === ""
+    ) {
       return respondInvalid(conn, res, "Online price is required.");
     }
     if (!isValidNonNegativeNumber(online_price)) {
-      return respondInvalid(conn, res, "Online price must be a valid non-negative number.");
+      return respondInvalid(
+        conn,
+        res,
+        "Online price must be a valid non-negative number.",
+      );
     }
-    if (walkin_price === undefined || walkin_price === null || walkin_price === "") {
+    if (
+      walkin_price === undefined ||
+      walkin_price === null ||
+      walkin_price === ""
+    ) {
       return respondInvalid(conn, res, "Walk-in price is required.");
     }
     if (!isValidNonNegativeNumber(walkin_price)) {
-      return respondInvalid(conn, res, "Walk-in price must be a valid non-negative number.");
+      return respondInvalid(
+        conn,
+        res,
+        "Walk-in price must be a valid non-negative number.",
+      );
     }
     if (!isValidNonNegativeNumber(production_cost)) {
-      return respondInvalid(conn, res, "Production cost must be a valid non-negative number.");
+      return respondInvalid(
+        conn,
+        res,
+        "Production cost must be a valid non-negative number.",
+      );
     }
     if (!isValidNonNegativeInteger(stock)) {
-      return respondInvalid(conn, res, "Stock must be a valid non-negative whole number.");
+      return respondInvalid(
+        conn,
+        res,
+        "Stock must be a valid non-negative whole number.",
+      );
     }
     if (!isValidNonNegativeInteger(reorder_point)) {
-      return respondInvalid(conn, res, "Reorder point must be a valid non-negative whole number.");
+      return respondInvalid(
+        conn,
+        res,
+        "Reorder point must be a valid non-negative whole number.",
+      );
     }
 
     const image_url = req.file
@@ -175,15 +202,16 @@ exports.create = async (req, res) => {
 
     const [result] = await conn.query(
       `INSERT INTO products
-         (barcode, name, description, category_id, type, image_url, is_featured, is_published, blueprint_id,
-          online_price, walkin_price, production_cost, stock, reorder_point)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+   (barcode, name, description, category_id, type, wood_type, image_url, is_featured, is_published, blueprint_id,
+    online_price, walkin_price, production_cost, stock, reorder_point)
+ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         barcode || null,
         name,
         description || null,
         catId,
         type,
+        wood_type || null,
         image_url,
         boolFeatured,
         is_published,
@@ -207,37 +235,6 @@ exports.create = async (req, res) => {
       [productId],
     );
 
-    // Variations
-    const parsedVars =
-      typeof variations === "string" ? JSON.parse(variations) : variations;
-    for (const v of parsedVars) {
-      const vLabel = v.name || v.value || "unnamed";
-      if (!isValidNonNegativeNumber(v.unit_cost)) {
-        return respondInvalid(conn, res, `Invalid unit cost for variation "${vLabel}".`);
-      }
-      if (!isValidNonNegativeNumber(v.selling_price)) {
-        return respondInvalid(conn, res, `Invalid selling price for variation "${vLabel}".`);
-      }
-      if (!isValidNonNegativeInteger(v.stock)) {
-        return respondInvalid(conn, res, `Invalid stock for variation "${vLabel}".`);
-      }
-      await conn.query(
-        `INSERT INTO product_variations
-           (product_id, variation_type, variation_value, variation_name,
-            unit_cost, selling_price, stock)
-         VALUES (?,?,?,?,?,?,?)`,
-        [
-          productId,
-          v.type,
-          v.value,
-          v.name,
-          v.unit_cost ? parseFloat(v.unit_cost) : 0,
-          v.selling_price ? parseFloat(v.selling_price) : 0,
-          v.stock ? parseInt(v.stock) : 0,
-        ],
-      );
-    }
-
     // Bill of Materials
     const parsedBOM =
       typeof bill_of_materials === "string"
@@ -251,10 +248,18 @@ exports.create = async (req, res) => {
         !isValidNonNegativeInteger(b.raw_material_id) ||
         Number(b.raw_material_id) <= 0
       ) {
-        return respondInvalid(conn, res, "Each bill of materials row needs a valid raw material selected.");
+        return respondInvalid(
+          conn,
+          res,
+          "Each bill of materials row needs a valid raw material selected.",
+        );
       }
       if (!isValidNonNegativeNumber(b.quantity)) {
-        return respondInvalid(conn, res, "Bill of materials quantity must be a valid non-negative number.");
+        return respondInvalid(
+          conn,
+          res,
+          "Bill of materials quantity must be a valid non-negative number.",
+        );
       }
       await conn.query(
         "INSERT INTO bill_of_materials (product_id, raw_material_id, quantity) VALUES (?,?,?)",
@@ -290,13 +295,13 @@ exports.update = async (req, res) => {
     ]);
     if (!old) return res.status(404).json({ message: "Product not found." });
 
-    // 👉 THE FIX: Explicitly allow only real database columns to prevent 'category_name' crashes
     const allowedColumns = [
       "barcode",
       "name",
       "description",
       "category_id",
       "type",
+      "wood_type",
       "is_featured",
       "online_price",
       "walkin_price",
@@ -312,30 +317,55 @@ exports.update = async (req, res) => {
     }
     if (
       req.body.online_price !== undefined &&
-      (req.body.online_price === "" || !isValidNonNegativeNumber(req.body.online_price))
+      (req.body.online_price === "" ||
+        !isValidNonNegativeNumber(req.body.online_price))
     ) {
-      return respondInvalid(conn, res, "Online price must be a valid non-negative number.");
+      return respondInvalid(
+        conn,
+        res,
+        "Online price must be a valid non-negative number.",
+      );
     }
     if (
       req.body.walkin_price !== undefined &&
-      (req.body.walkin_price === "" || !isValidNonNegativeNumber(req.body.walkin_price))
+      (req.body.walkin_price === "" ||
+        !isValidNonNegativeNumber(req.body.walkin_price))
     ) {
-      return respondInvalid(conn, res, "Walk-in price must be a valid non-negative number.");
+      return respondInvalid(
+        conn,
+        res,
+        "Walk-in price must be a valid non-negative number.",
+      );
     }
     if (
       req.body.production_cost !== undefined &&
       !isValidNonNegativeNumber(req.body.production_cost)
     ) {
-      return respondInvalid(conn, res, "Production cost must be a valid non-negative number.");
+      return respondInvalid(
+        conn,
+        res,
+        "Production cost must be a valid non-negative number.",
+      );
     }
-    if (req.body.stock !== undefined && !isValidNonNegativeInteger(req.body.stock)) {
-      return respondInvalid(conn, res, "Stock must be a valid non-negative whole number.");
+    if (
+      req.body.stock !== undefined &&
+      !isValidNonNegativeInteger(req.body.stock)
+    ) {
+      return respondInvalid(
+        conn,
+        res,
+        "Stock must be a valid non-negative whole number.",
+      );
     }
     if (
       req.body.reorder_point !== undefined &&
       !isValidNonNegativeInteger(req.body.reorder_point)
     ) {
-      return respondInvalid(conn, res, "Reorder point must be a valid non-negative whole number.");
+      return respondInvalid(
+        conn,
+        res,
+        "Reorder point must be a valid non-negative whole number.",
+      );
     }
 
     const updateData = {};
@@ -399,13 +429,25 @@ exports.update = async (req, res) => {
       for (const v of parsedVars) {
         const vLabel = v.name || v.value || "unnamed";
         if (!isValidNonNegativeNumber(v.unit_cost)) {
-          return respondInvalid(conn, res, `Invalid unit cost for variation "${vLabel}".`);
+          return respondInvalid(
+            conn,
+            res,
+            `Invalid unit cost for variation "${vLabel}".`,
+          );
         }
         if (!isValidNonNegativeNumber(v.selling_price)) {
-          return respondInvalid(conn, res, `Invalid selling price for variation "${vLabel}".`);
+          return respondInvalid(
+            conn,
+            res,
+            `Invalid selling price for variation "${vLabel}".`,
+          );
         }
         if (!isValidNonNegativeInteger(v.stock)) {
-          return respondInvalid(conn, res, `Invalid stock for variation "${vLabel}".`);
+          return respondInvalid(
+            conn,
+            res,
+            `Invalid stock for variation "${vLabel}".`,
+          );
         }
         await conn.query(
           `INSERT INTO product_variations
@@ -441,10 +483,18 @@ exports.update = async (req, res) => {
           !isValidNonNegativeInteger(b.raw_material_id) ||
           Number(b.raw_material_id) <= 0
         ) {
-          return respondInvalid(conn, res, "Each bill of materials row needs a valid raw material selected.");
+          return respondInvalid(
+            conn,
+            res,
+            "Each bill of materials row needs a valid raw material selected.",
+          );
         }
         if (!isValidNonNegativeNumber(b.quantity)) {
-          return respondInvalid(conn, res, "Bill of materials quantity must be a valid non-negative number.");
+          return respondInvalid(
+            conn,
+            res,
+            "Bill of materials quantity must be a valid non-negative number.",
+          );
         }
         await conn.query(
           "INSERT INTO bill_of_materials (product_id, raw_material_id, quantity) VALUES (?,?,?)",

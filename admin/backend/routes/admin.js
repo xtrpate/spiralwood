@@ -71,15 +71,14 @@ const replacementUpload = (req, res, next) => {
       if (!verifyFileSignature(req.file.path, ext)) {
         fs.unlink(req.file.path, () => {});
         return res.status(400).json({
-          message: "Replacement receipt content does not match its file extension.",
+          message:
+            "Replacement receipt content does not match its file extension.",
         });
       }
     }
     next();
   });
 };
-
-
 
 const customDiscussionDir = path.join(
   __dirname,
@@ -119,8 +118,6 @@ const customDiscussionUploadRaw = multer({
     cb(err);
   },
 });
-
-
 
 const customDiscussionUpload = (req, res, next) => {
   customDiscussionUploadRaw.array("attachments", 5)(req, res, (err) => {
@@ -295,7 +292,6 @@ router.patch(
 // ══════════════════════════════════════════════════════════════════════════════
 // ORDERS
 // ══════════════════════════════════════════════════════════════════════════════
-router.get("/orders/cancellations", adminOnly, orders.getCancellations);
 
 router.get(
   "/orders/:id/assignable-staff",
@@ -358,23 +354,12 @@ router.post(
   orders.postOrderDiscussionMessage,
 );
 
-router.post(
-  "/orders/:id/delivery-receipt",
-  adminStaff,
-  (req, res) => {
-    return res.status(410).json({
-      message:
-        "This delivery receipt endpoint is no longer supported. Use the Delivery Management workflow.",
-    });
-  },
-);
-
-router.post(
-  "/orders/:id/cancellation",
-  adminOnly,
-  logAction("process_cancellation", "cancellations"),
-  orders.processCancellation,
-);
+router.post("/orders/:id/delivery-receipt", adminStaff, (req, res) => {
+  return res.status(410).json({
+    message:
+      "This delivery receipt endpoint is no longer supported. Use the Delivery Management workflow.",
+  });
+});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CONTRACTS

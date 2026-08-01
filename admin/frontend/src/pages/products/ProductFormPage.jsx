@@ -10,6 +10,7 @@ const DEFAULT = {
   description: "",
   category_id: "",
   type: "standard",
+  wood_type: "",
   online_price: "",
   walkin_price: "",
   production_cost: "",
@@ -40,7 +41,6 @@ export default function ProductFormPage() {
   const [preview, setPreview] = useState("");
   const [categories, setCategories] = useState(SHOP_CATEGORIES);
   const [rawMats, setRawMats] = useState([]);
-  const [variations, setVariations] = useState([]);
   const [bom, setBom] = useState([]);
   const [saving, setSaving] = useState(false);
 
@@ -49,9 +49,8 @@ export default function ProductFormPage() {
 
     if (isEdit) {
       api.get(`/products/${id}`).then((r) => {
-        const { variations: vars, bill_of_materials: b, ...rest } = r.data;
+        const { bill_of_materials: b, ...rest } = r.data;
         setForm((prev) => ({ ...prev, ...rest }));
-        setVariations(vars || []);
         setBom(b || []);
         if (rest.image_url) setPreview(buildAssetUrl(rest.image_url));
       });
@@ -59,27 +58,6 @@ export default function ProductFormPage() {
   }, [id, isEdit]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-
-  const addVariation = () =>
-    setVariations((v) => [
-      ...v,
-      {
-        type: "wood_type",
-        value: "",
-        name: "",
-        unit_cost: "",
-        selling_price: "",
-        stock: 0,
-      },
-    ]);
-
-  const setVar = (i, k, v) =>
-    setVariations((vars) =>
-      vars.map((va, idx) => (idx === i ? { ...va, [k]: v } : va)),
-    );
-
-  const removeVar = (i) =>
-    setVariations((vars) => vars.filter((_, idx) => idx !== i));
 
   const addBom = () =>
     setBom((b) => [...b, { raw_material_id: "", quantity: "" }]);
@@ -95,14 +73,13 @@ export default function ProductFormPage() {
     try {
       const fd = new FormData();
 
-      // 👉 THE FIX: Only append the exact fields the database expects.
-      // This prevents 'category_name' or other joined fields from crashing the backend.
       const allowedFields = [
         "name",
         "barcode",
         "description",
         "category_id",
         "type",
+        "wood_type",
         "online_price",
         "walkin_price",
         "production_cost",
@@ -117,7 +94,6 @@ export default function ProductFormPage() {
         }
       });
 
-      fd.append("variations", JSON.stringify(variations));
       fd.append("bill_of_materials", JSON.stringify(bom));
       if (image) fd.append("image", image);
 
@@ -375,83 +351,22 @@ export default function ProductFormPage() {
           </Row>
         </Section>
 
-        <Section title="Product Variations (Wood Type / Design / Finish)">
-          {variations.length === 0 ? (
-            <p style={{ fontSize: 13, color: "#71717a", marginBottom: 16 }}>
-              No variations added yet.
-            </p>
-          ) : null}
-
-          {variations.map((v, i) => (
-            <div
-              key={i}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr 1.5fr 1fr 1fr auto",
-                gap: 12,
-                marginBottom: 12,
-                alignItems: "end",
-                background: "#fafafa",
-                padding: "12px 16px",
-                borderRadius: 12,
-                border: "1px solid #e4e4e7",
-              }}
+        <Section title="Wood Type">
+          <Field label="Wood Type">
+            <select
+              value={form.wood_type}
+              onChange={(e) => set("wood_type", e.target.value)}
+              style={input}
             >
-              <Field label="Type">
-                <input
-                  value={v.type}
-                  onChange={(e) => setVar(i, "type", e.target.value)}
-                  placeholder="wood_type"
-                  style={input}
-                />
-              </Field>
-              <Field label="Value">
-                <input
-                  value={v.value}
-                  onChange={(e) => setVar(i, "value", e.target.value)}
-                  placeholder="Plywood"
-                  style={input}
-                />
-              </Field>
-              <Field label="Label">
-                <input
-                  value={v.name}
-                  onChange={(e) => setVar(i, "name", e.target.value)}
-                  placeholder="Plywood (18mm)"
-                  style={input}
-                />
-              </Field>
-              <Field label="Unit Cost">
-                <input
-                  type="number"
-                  value={v.unit_cost}
-                  onChange={(e) => setVar(i, "unit_cost", e.target.value)}
-                  style={input}
-                  placeholder="0.00"
-                />
-              </Field>
-              <Field label="Selling Price">
-                <input
-                  type="number"
-                  value={v.selling_price}
-                  onChange={(e) => setVar(i, "selling_price", e.target.value)}
-                  style={input}
-                  placeholder="0.00"
-                />
-              </Field>
-              <button
-                type="button"
-                onClick={() => removeVar(i)}
-                style={btnDel}
-                title="Remove Variation"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-          <button type="button" onClick={addVariation} style={btnOutline}>
-            + Add Variation
-          </button>
+              <option value="">Select Wood Type</option>
+              <option value="Mahogany">Mahogany</option>
+              <option value="Oak">Oak</option>
+              <option value="Narra">Narra</option>
+              <option value="Plywood">Plywood</option>
+              <option value="Marine Plywood">Marine Plywood</option>
+              <option value="MDF">MDF</option>
+            </select>
+          </Field>
         </Section>
 
         <Section title="Bill of Materials (Linked Raw Materials)">

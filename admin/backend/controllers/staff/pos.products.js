@@ -104,25 +104,7 @@ exports.searchProducts = async (req, res) => {
           ? parseFloat(product.walkin_price)
           : parseFloat(product.online_price || 0);
 
-      // ── FIXED: Switched to .query ──
-      const [vars] = await db.query(
-        `
-        SELECT
-          id,
-          variation_type,
-          variation_value,
-          variation_name,
-          selling_price,
-          unit_cost,
-          stock
-        FROM product_variations
-        WHERE product_id = ?
-        ORDER BY id ASC
-        `,
-        [product.id],
-      );
-
-      product.variations = vars;
+      product.variations = [];
     }
 
     res.json(rows);

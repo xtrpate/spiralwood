@@ -132,18 +132,10 @@ exports.createOrder = async (req, res) => {
       cleanDeliveryLng = lngNum;
     }
 
-    /* ── Step 1: validate each raw line's shape, then merge duplicate
-       lines (same product_id + variation_id) so stock is checked against
-       the TOTAL requested quantity — not per line. Without this merge,
-       two lines of 3 units each (stock = 5) would each pass a per-line
-       check of "3 <= 5" while actually requesting 6 units combined. ── */
     const mergedItemsMap = new Map();
 
     for (const rawItem of items) {
       const productId = Number(rawItem?.product_id);
-      const variationId = rawItem?.variation_id
-        ? Number(rawItem.variation_id)
-        : null;
 
       if (!Number.isInteger(productId) || productId <= 0) {
         await conn.rollback();
@@ -158,12 +150,10 @@ exports.createOrder = async (req, res) => {
       }
 
       const qty = Number(rawItem.quantity);
-      const mergeKey = `${productId}_${variationId ?? "none"}`;
-      const existing = mergedItemsMap.get(mergeKey);
+      const existing = mergedItemsMap.get(productId);
 
-      mergedItemsMap.set(mergeKey, {
+      mergedItemsMap.set(productId, {
         product_id: productId,
-        variation_id: variationId,
         quantity: (existing?.quantity || 0) + qty,
       });
     }
@@ -174,7 +164,6 @@ exports.createOrder = async (req, res) => {
 
     for (const {
       product_id: productId,
-      variation_id: variationId,
       quantity: qty,
     } of mergedItemsMap.values()) {
       if (qty > MAX_ITEM_QUANTITY) {
@@ -208,43 +197,6 @@ exports.createOrder = async (req, res) => {
       let availableStock = Number(product.stock || 0);
       let displayName = product.name;
 
-      if (variationId !== null) {
-        if (!Number.isInteger(variationId) || variationId <= 0) {
-          await conn.rollback();
-          return res
-            .status(400)
-            .json({ message: "Invalid product variation." });
-        }
-
-        const [variationRows] = await conn.query(
-          `SELECT id, product_id, variation_name, variation_type, variation_value, selling_price, stock
-           FROM product_variations
-           WHERE id = ? AND product_id = ?
-           LIMIT 1
-           FOR UPDATE`,
-          [variationId, productId],
-        );
-
-        const variation = variationRows[0];
-
-        if (!variation) {
-          await conn.rollback();
-          return res.status(400).json({
-            message:
-              "One of the selected product variations is no longer available.",
-          });
-        }
-
-        unitPrice = Number(variation.selling_price || 0);
-        availableStock = Number(variation.stock || 0);
-        displayName = `${product.name} - ${
-          variation.variation_name ||
-          variation.variation_value ||
-          variation.variation_type ||
-          "Variant"
-        }`;
-      }
-
       if (qty > availableStock) {
         await conn.rollback();
         return res.status(400).json({
@@ -254,7 +206,6 @@ exports.createOrder = async (req, res) => {
 
       validatedItems.push({
         product_id: productId,
-        variation_id: variationId,
         product_name: displayName,
         quantity: qty,
         unit_price: unitPrice,
@@ -311,36 +262,25 @@ exports.createOrder = async (req, res) => {
     for (const item of validatedItems) {
       await conn.query(
         `INSERT INTO order_items
-          (order_id, product_id, variation_id,
+          (order_id, product_id,
            product_name, quantity, unit_price)
-         VALUES (?,?,?,?,?,?)`,
+         VALUES (?,?,?,?,?)`,
         [
           order_id,
           item.product_id,
-          item.variation_id,
           item.product_name,
           item.quantity,
           item.unit_price,
         ],
       );
 
-      /* Deduct stock — safe to subtract directly (no GREATEST/floor)
-         because availability was already confirmed above. */
-      if (item.variation_id) {
-        await conn.query(
-          `UPDATE product_variations
-           SET stock = stock - ?
-           WHERE id = ?`,
-          [item.quantity, item.variation_id],
-        );
-      } else {
-        await conn.query(
-          `UPDATE products
-           SET stock = stock - ?
-           WHERE id = ?`,
-          [item.quantity, item.product_id],
-        );
-      }
+      /* Deduct stock */
+      await conn.query(
+        `UPDATE products
+   SET stock = stock - ?
+   WHERE id = ?`,
+        [item.quantity, item.product_id],
+      );
 
       /* Update stock_status after deduction */
       await conn.query(
@@ -647,12 +587,12 @@ exports.cancelOrder = async (req, res) => {
     const customerId = req.user.id;
 
     // 1. Update the order ONLY if it is still 'pending'
-    // ── FIXED: Switched conn.execute to conn.query ──
     const [updateResult] = await conn.query(
       `UPDATE orders
-       SET status = 'cancelled',
-           notes = CONCAT(IFNULL(notes, ''), '\nCancellation Reason: ', ?)
-       WHERE id = ? AND customer_id = ? AND status = 'pending'`,
+   SET status = 'cancelled',
+       cancellation_reason = ?,
+       cancelled_at = NOW()
+   WHERE id = ? AND customer_id = ? AND status = 'pending'`,
       [reason || "Cancelled by customer", orderId, customerId],
     );
 
@@ -664,52 +604,30 @@ exports.cancelOrder = async (req, res) => {
       });
     }
 
-    // 👉 NEW: 2. Insert the cancellation request so Admin can see it
-    // ── FIXED: Switched conn.execute to conn.query ──
-    await conn.query(
-      `INSERT INTO cancellations (order_id, requested_by, reason, created_at)
-       VALUES (?, ?, ?, NOW())`,
-      [orderId, customerId, reason || "Cancelled by customer"],
-    );
-
-    // 3. Fetch all items associated with this cancelled order
-    // ── FIXED: Switched conn.execute to conn.query ──
+    // 2. Fetch all items associated with this cancelled order
     const [items] = await conn.query(
-      `SELECT product_id, variation_id, quantity 
-       FROM order_items 
-       WHERE order_id = ?`,
+      `SELECT product_id, quantity
+   FROM order_items
+   WHERE order_id = ?`,
       [orderId],
     );
 
-    // 4. Return the stock for each item
     for (const item of items) {
-      if (item.variation_id) {
-        // ── FIXED: Switched conn.execute to conn.query ──
-        await conn.query(
-          `UPDATE product_variations
-           SET stock = stock + ?
-           WHERE id = ?`,
-          [item.quantity, item.variation_id],
-        );
-      } else {
-        // ── FIXED: Switched conn.execute to conn.query ──
-        await conn.query(
-          `UPDATE products
-           SET stock = stock + ?
-           WHERE id = ?`,
-          [item.quantity, item.product_id],
-        );
-      }
-
-      // ── FIXED: Switched conn.execute to conn.query ──
       await conn.query(
         `UPDATE products
-         SET stock_status = CASE
-           WHEN stock <= 0              THEN 'out_of_stock'
-           WHEN stock <= reorder_point  THEN 'low_stock'
-           ELSE 'in_stock'
-         END
-         WHERE id = ?`,
+     SET stock = stock + ?
+     WHERE id = ?`,
+        [item.quantity, item.product_id],
+      );
+
+      await conn.query(
+        `UPDATE products
+     SET stock_status = CASE
+       WHEN stock <= 0 THEN 'out_of_stock'
+       WHEN stock <= reorder_point THEN 'low_stock'
+       ELSE 'in_stock'
+     END
+     WHERE id = ?`,
         [item.product_id],
       );
     }
@@ -736,7 +654,7 @@ exports.autoCancelExpiredOrders = async () => {
        WHERE payment_method = 'paymongo' 
          AND payment_status = 'unpaid' 
          AND status = 'pending' 
-         AND created_at <= DATE_SUB(NOW(), INTERVAL 24 HOURS)`,
+         AND created_at <= DATE_SUB(NOW(), INTERVAL 24 HOUR)`,
     );
 
     if (expiredOrders.length === 0) return;
@@ -797,31 +715,28 @@ exports.autoCancelExpiredOrders = async () => {
           );
 
           const [items] = await conn.query(
-            `SELECT product_id, variation_id, quantity FROM order_items WHERE order_id = ?`,
+            `SELECT product_id, quantity
+   FROM order_items
+   WHERE order_id = ?`,
             [order.id],
           );
 
           for (const item of items) {
-            if (item.variation_id) {
-              await conn.query(
-                `UPDATE product_variations SET stock = stock + ? WHERE id = ?`,
-                [item.quantity, item.variation_id],
-              );
-            } else {
-              await conn.query(
-                `UPDATE products SET stock = stock + ? WHERE id = ?`,
-                [item.quantity, item.product_id],
-              );
-            }
+            await conn.query(
+              `UPDATE products
+     SET stock = stock + ?
+     WHERE id = ?`,
+              [item.quantity, item.product_id],
+            );
 
             await conn.query(
               `UPDATE products
-               SET stock_status = CASE
-                 WHEN stock <= 0              THEN 'out_of_stock'
-                 WHEN stock <= reorder_point  THEN 'low_stock'
-                 ELSE 'in_stock'
-               END
-               WHERE id = ?`,
+     SET stock_status = CASE
+       WHEN stock <= 0 THEN 'out_of_stock'
+       WHEN stock <= reorder_point THEN 'low_stock'
+       ELSE 'in_stock'
+     END
+     WHERE id = ?`,
               [item.product_id],
             );
           }

@@ -136,40 +136,9 @@ exports.getAllProducts = async (req, res) => {
       [...params, safeLimit, offset],
     );
 
-    if (products.length > 0) {
-      const productIds = products.map((product) => product.id);
-
-      const [variationRows] = await db.query(
-        `
-        SELECT
-          id,
-          product_id,
-          variation_type,
-          variation_value,
-          variation_name,
-          selling_price,
-          unit_cost,
-          stock
-        FROM product_variations
-        WHERE product_id IN (?)
-        ORDER BY id ASC
-        `,
-        [productIds],
-      );
-
-      const variationMap = new Map();
-
-      variationRows.forEach((variation) => {
-        if (!variationMap.has(variation.product_id)) {
-          variationMap.set(variation.product_id, []);
-        }
-        variationMap.get(variation.product_id).push(variation);
-      });
-
-      products.forEach((product) => {
-        product.variations = variationMap.get(product.id) || [];
-      });
-    }
+    products.forEach((product) => {
+      product.variations = [];
+    });
 
     const [countRows] = await db.query(
       `
@@ -228,42 +197,7 @@ exports.getAllProducts = async (req, res) => {
 /* ── Get Single Product Detail By ID ── */
 exports.getProductById = async (req, res) => {
   try {
-    const [rows] = await db.execute(
-      `
-      SELECT
-        p.*,
-        c.name AS categoryvv
-      FROM products p
-      LEFT JOIN categories c ON c.id = p.category_id
-      WHERE p.id = ? AND p.is_published = 1
-      `,
-      [req.params.id],
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({ message: "Product not found." });
-    }
-
-    const product = rows[0];
-
-    const [vars] = await db.execute(
-      `
-      SELECT
-        id,
-        variation_type,
-        variation_value,
-        variation_name,
-        selling_price,
-        unit_cost,
-        stock
-      FROM product_variations
-      WHERE product_id = ?
-      ORDER BY id ASC
-      `,
-      [product.id],
-    );
-
-    product.variations = vars;
+    product.variations = [];
 
     res.json(product);
   } catch (err) {
