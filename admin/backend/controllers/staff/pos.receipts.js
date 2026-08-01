@@ -1,6 +1,11 @@
 // controllers/staff/pos.receipts_reports.js (or similar)
 const db = require("../../config/db");
 
+// Business/site settings now live in website_content (content_type='setting'),
+// replacing the removed website_settings table. These are the safe fallbacks
+// used when an optional content_key row does not exist yet.
+const DEFAULT_THANK_YOU_MESSAGE = "Thank you for your purchase!";
+
 /* ── Get Receipt by ID ── */
 exports.getReceiptById = async (req, res) => {
   try {
@@ -43,32 +48,45 @@ exports.getReceiptById = async (req, res) => {
     }
 
     // IMPORTANT FIX:
-    // website_settings uses column `value`, not `setting_value`
-    // ── FIXED: Switched to .query and added empty array [] ──
+    // website_settings was merged into website_content; settings now live
+    // as rows where content_type = 'setting', keyed by content_key/content.
     const [settings] = await db.query(
       `
-      SELECT setting_key, value
-      FROM website_settings
-      WHERE setting_key IN (
-        'site_name',
-        'site_logo',
-        'business_address',
-        'business_phone',
-        'gcash_number',
-        'warranty_period_days',
-        'thank_you_message',
-        'return_policy_note'
-      )
+      SELECT content_key, content
+      FROM website_content
+      WHERE content_type = 'setting'
+        AND is_visible = 1
+        AND content_key IN (
+          'site_name',
+          'site_logo',
+          'business_address',
+          'business_phone',
+          'gcash_number',
+          'warranty_period_days',
+          'thank_you_message',
+          'return_policy_note'
+        )
       `,
       [],
     );
 
     const biz = {};
     settings.forEach((s) => {
-      biz[s.setting_key] = s.value;
+      biz[s.content_key] = s.content;
     });
 
+    const parsedWarrantyDays = parseInt(biz.warranty_period_days, 10);
+
     biz.business_name = biz.site_name || "Spiral Wood Services";
+    biz.site_logo = biz.site_logo || null;
+    biz.gcash_number = biz.gcash_number || null;
+    biz.warranty_period_days =
+      Number.isInteger(parsedWarrantyDays) && parsedWarrantyDays > 0
+        ? parsedWarrantyDays
+        : null;
+    biz.thank_you_message = biz.thank_you_message || DEFAULT_THANK_YOU_MESSAGE;
+    biz.return_policy_note = biz.return_policy_note || null;
+
     receipt.business = biz;
 
     return res.json(receipt);
@@ -223,24 +241,28 @@ exports.getBlueprintReceiptById = async (req, res) => {
 
     const [settings] = await db.query(
       `
-      SELECT setting_key, value
-      FROM website_settings
-      WHERE setting_key IN (
-        'site_name',
-        'site_logo',
-        'business_address',
-        'business_phone',
-        'thank_you_message'
-      )
+      SELECT content_key, content
+      FROM website_content
+      WHERE content_type = 'setting'
+        AND is_visible = 1
+        AND content_key IN (
+          'site_name',
+          'site_logo',
+          'business_address',
+          'business_phone',
+          'thank_you_message'
+        )
       `,
       [],
     );
 
     const biz = {};
     settings.forEach((s) => {
-      biz[s.setting_key] = s.value;
+      biz[s.content_key] = s.content;
     });
     biz.business_name = biz.site_name || "Spiral Wood Services";
+    biz.site_logo = biz.site_logo || null;
+    biz.thank_you_message = biz.thank_you_message || DEFAULT_THANK_YOU_MESSAGE;
 
     const remainingBalance = Number(receipt.remaining_balance_after || 0);
 
