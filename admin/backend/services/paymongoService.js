@@ -15,11 +15,25 @@ const getAuthorizationHeader = () => {
 exports.createCheckoutSession = async ({
   customer,
   amount,
+  amountCents,
   description,
   successUrl,
   cancelUrl,
   metadata = {},
 }) => {
+  // Additive, backward-compatible: when a caller has already computed an
+  // exact integer-centavo amount (e.g. via utils/paymentAmounts.js — see
+  // pos.qrPayments.js), pass it directly as amountCents to avoid any
+  // floating-point multiplication at this layer. Existing callers
+  // (customer.orders.js, customer.customorders.js) never pass amountCents,
+  // so Number.isSafeInteger(undefined) is false and they fall through to
+  // the exact same Math.round(Number(amount) * 100) conversion as before —
+  // their behavior is completely unchanged.
+  const resolvedLineItemAmount =
+    Number.isSafeInteger(amountCents) && amountCents > 0
+      ? amountCents
+      : Math.round(Number(amount) * 100);
+
   const payload = {
     data: {
       attributes: {
@@ -40,7 +54,7 @@ exports.createCheckoutSession = async ({
         line_items: [
           {
             currency: "PHP",
-            amount: Math.round(Number(amount) * 100),
+            amount: resolvedLineItemAmount,
             name: description,
             quantity: 1,
           },

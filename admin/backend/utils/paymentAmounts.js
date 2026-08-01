@@ -102,4 +102,5 @@ module.exports = {
   parseStrictMoneyToCents,
   centsToDecimalString,
   centsToAmount,
+  MAX_DECIMAL_12_2_CENTS,
 };

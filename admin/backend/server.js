@@ -121,6 +121,7 @@ app.use("/api/pos/reports", require("./routes/pos.reports"));
 app.use("/api/pos/dashboard", require("./routes/pos.dashboard"));
 app.use("/api/pos/products", require("./routes/pos.products"));
 app.use("/api/pos/orders", require("./routes/pos.orders"));
+app.use("/api/pos/qr-payments", require("./routes/pos.qrPayments"));
 app.use("/api/pos/blueprints", require("./routes/pos.blueprints"));
 app.use("/api/pos/tasks", require("./routes/pos.tasks"));
 app.use(

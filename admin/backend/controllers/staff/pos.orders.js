@@ -1,6 +1,7 @@
 // controllers/staff/pos.orders.js
 const db = require("../../config/db");
 const { createPosSaleReceipt } = require("../../services/receiptService");
+const { parseStrictPositiveInt } = require("../../utils/validators");
 
 /* ── Helper: Generate Walk-in Order Number ── */
 const generateOrderNumber = async (conn) => {
@@ -84,32 +85,70 @@ exports.createOrder = async (req, res) => {
   try {
     await conn.beginTransaction();
 
+    // Normalize every product_id through the same strict positive-integer
+    // parser used elsewhere in the codebase, so a product_id sent as the
+    // JSON string "107" is treated identically to the number 107 — never
+    // used as a raw, possibly-string Map key. Quantities are parsed the
+    // same way. Deduplicating by this normalized id (summing quantity)
+    // before locking means a cart with the same product on two lines is
+    // validated against its TOTAL requested quantity rather than each
+    // line independently (which previously could pass validation on two
+    // lines of qty 3 each against a stock of 5, overselling by 1).
+    // Sorting ascending gives a single deterministic lock order shared
+    // with the QR payment-attempt flow, so cash sales and QR reservations
+    // competing for the same products can never deadlock each other.
+    const dedupedMap = new Map();
+    const normalizedItems = [];
+
     for (const item of items) {
-      const qty = parseInt(item.quantity, 10);
-      if (!item.product_id || Number.isNaN(qty) || qty <= 0) {
+      const productId = parseStrictPositiveInt(item.product_id);
+      const qty = parseStrictPositiveInt(item.quantity);
+
+      if (!productId || !qty) {
         await conn.rollback();
         return res.status(400).json({ message: "Invalid cart item detected" });
       }
 
-      const [productRows] = await conn.query(
-        `SELECT id, stock
-   FROM products
-   WHERE id = ?
-   LIMIT 1`,
-        [item.product_id],
-      );
+      normalizedItems.push({ ...item, product_id: productId, quantity: qty });
+      dedupedMap.set(productId, (dedupedMap.get(productId) || 0) + qty);
+    }
 
-      if (!productRows.length) {
+    const dedupedProductIds = Array.from(dedupedMap.keys()).sort(
+      (a, b) => a - b,
+    );
+    const productPlaceholders = dedupedProductIds.map(() => "?").join(",");
+
+    const [productRows] = await conn.query(
+      `SELECT id, stock
+   FROM products
+   WHERE id IN (${productPlaceholders})
+   ORDER BY id ASC
+   FOR UPDATE`,
+      dedupedProductIds,
+    );
+
+    const productStockMap = new Map(
+      productRows.map((row) => [row.id, Number(row.stock || 0)]),
+    );
+
+    for (const [productId, totalQty] of dedupedMap.entries()) {
+      if (!productStockMap.has(productId)) {
         await conn.rollback();
+        const missingItem = normalizedItems.find(
+          (i) => i.product_id === productId,
+        );
         return res.status(404).json({
-          message: `Product not found for ${item.product_name || "item"}`,
+          message: `Product not found for ${missingItem?.product_name || "item"}`,
         });
       }
 
-      if (Number(productRows[0].stock || 0) < qty) {
+      if (productStockMap.get(productId) < totalQty) {
         await conn.rollback();
+        const shortItem = normalizedItems.find(
+          (i) => i.product_id === productId,
+        );
         return res.status(400).json({
-          message: `Insufficient stock for ${item.product_name || "item"}`,
+          message: `Insufficient stock for ${shortItem?.product_name || "item"}`,
         });
       }
     }
@@ -192,8 +231,8 @@ exports.createOrder = async (req, res) => {
 
     const orderId = orderResult.insertId;
 
-    for (const item of items) {
-      const quantity = parseInt(item.quantity, 10);
+    for (const item of normalizedItems) {
+      const quantity = item.quantity;
       const unitPrice = parseFloat(item.unit_price || 0);
       const productionCost = parseFloat(item.production_cost || 0);
       const itemSubtotal = unitPrice * quantity;
@@ -216,12 +255,20 @@ exports.createOrder = async (req, res) => {
 
       const orderItemId = itemResult.insertId;
 
-      await conn.query(
+      const [decrementResult] = await conn.query(
         `UPDATE products
    SET stock = stock - ?
-   WHERE id = ?`,
-        [quantity, item.product_id],
+   WHERE id = ?
+     AND stock >= ?`,
+        [quantity, item.product_id, quantity],
       );
+
+      if (decrementResult.affectedRows !== 1) {
+        await conn.rollback();
+        return res.status(400).json({
+          message: `Insufficient stock for ${item.product_name || "item"}`,
+        });
+      }
 
       await conn.query(
         `
