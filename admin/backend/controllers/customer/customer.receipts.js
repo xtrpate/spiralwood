@@ -196,26 +196,34 @@ exports.getReceiptById = async (req, res) => {
 
     const receipt = rows[0];
 
+    // website_settings was merged into website_content; settings now live
+    // as rows where content_type = 'setting', keyed by content_key/content.
     const [settings] = await db.query(
       `
-      SELECT setting_key, value
-      FROM website_settings
-      WHERE setting_key IN (
-        'site_name',
-        'site_logo',
-        'business_address',
-        'business_phone',
-        'thank_you_message'
-      )
+      SELECT content_key, content
+      FROM website_content
+      WHERE content_type = 'setting'
+        AND is_visible = 1
+        AND content_key IN (
+          'site_name',
+          'site_logo',
+          'business_address',
+          'business_phone',
+          'thank_you_message'
+        )
       `,
       [],
     );
 
     const biz = {};
     settings.forEach((s) => {
-      biz[s.setting_key] = s.value;
+      biz[s.content_key] = s.content;
     });
     biz.business_name = biz.site_name || "Spiral Wood Services";
+    biz.site_logo = biz.site_logo || null;
+    biz.business_address = biz.business_address || null;
+    biz.business_phone = biz.business_phone || null;
+    biz.thank_you_message = biz.thank_you_message || "Thank you for your purchase!";
 
     const processorDisplay = buildProcessorDisplay({
       paymentMethod: receipt.payment_method_snapshot,
