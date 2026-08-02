@@ -10,6 +10,7 @@ import {
   ShoppingCart,
   Package,
   Shield,
+  LifeBuoy,
   LogOut,
   Menu,
   X,
@@ -35,6 +36,7 @@ const navItems = [
   { to: "/cart", icon: ShoppingCart, label: "Cart" },
   { to: "/orders", icon: Package, label: "My Orders" },
   { to: "/warranty", icon: Shield, label: "Warranty" },
+  { to: "/support", icon: LifeBuoy, label: "Support" },
 ];
 
 export default function CustomerLayout() {
@@ -1300,6 +1302,11 @@ export default function CustomerLayout() {
                 <li>
                   <button type="button" onClick={() => navigate("/warranty")}>
                     Warranty
+                  </button>
+                </li>
+                <li>
+                  <button type="button" onClick={() => navigate("/support")}>
+                    Customer Support
                   </button>
                 </li>
               </ul>

@@ -111,6 +111,7 @@ app.use(
   require("./routes/customer.appointments"),
 );
 app.use("/api/customer/warranty", require("./routes/customer.warranty"));
+app.use("/api/customer/support", require("./routes/customer.support"));
 app.use("/api/customer/custom-orders", customerCustomOrdersRoutes);
 app.use(
   "/api/customer/notifications",

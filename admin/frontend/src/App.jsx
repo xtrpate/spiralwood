@@ -63,6 +63,7 @@ import ResetPasswordPage from "./pages/customer/resetpasswordpage";
 import PendingApprovalPage from "./pages/customer/pendingapprovalpage";
 import TermsPage from "./pages/customer/TermsPage";
 import PrivacyPolicyPage from "./pages/customer/PrivacyPolicyPage";
+import SupportPage from "./pages/customer/supportpage";
 
 import POSLayout from "./pages/staff/POSLayout.jsx";
 import POSDashboard from "./pages/staff/Dashboard";
@@ -332,6 +333,15 @@ export default function App() {
                     element={
                       <RequireAuth roles={["customer"]}>
                         <WarrantyPageCustomer />
+                      </RequireAuth>
+                    }
+                  />
+
+                  <Route
+                    path="support"
+                    element={
+                      <RequireAuth roles={["customer"]}>
+                        <SupportPage />
                       </RequireAuth>
                     }
                   />
