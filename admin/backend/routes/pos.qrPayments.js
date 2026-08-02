@@ -3,6 +3,7 @@ const express = require("express");
 const router = express.Router();
 
 const { authenticate, requireCashierOrAdmin } = require("../middleware/auth");
+const { logAction } = require("../middleware/auditLog");
 
 const posQrPaymentsController = require("../controllers/staff/pos.qrPayments");
 
@@ -35,5 +36,23 @@ const posAccess = [requirePosQrEnabled, authenticate, requireCashierOrAdmin];
 ══════════════════════════════════════════════════════════════ */
 
 router.post("/attempts", posAccess, posQrPaymentsController.createAttempt);
+
+/* ══════════════════════════════════════════════════════════════
+   PHASE 3D-A — VERIFY PAYMENT ATTEMPT
+   Same posAccess guard chain (requirePosQrEnabled runs BEFORE
+   authenticate, exactly as above). logAction runs after the
+   controller — it only writes a row when the controller has set
+   req.auditRecord, which happens ONLY after a successful commit that
+   freshly finalizes an attempt (never on an idempotent replay of an
+   already-consumed attempt, and never on a rejected/pending/error
+   response).
+══════════════════════════════════════════════════════════════ */
+
+router.post(
+  "/attempts/:id/verify",
+  posAccess,
+  logAction("verify_pos_qr_payment", "orders"),
+  posQrPaymentsController.verifyAttempt,
+);
 
 module.exports = router;
