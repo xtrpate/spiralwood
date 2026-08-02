@@ -2,7 +2,11 @@
 const express = require("express");
 const router = express.Router();
 
-const { authenticate, requireCashierOrAdmin } = require("../middleware/auth");
+const {
+  authenticate,
+  requireCashierOrAdmin,
+  authorize,
+} = require("../middleware/auth");
 const { logAction } = require("../middleware/auditLog");
 
 const posQrPaymentsController = require("../controllers/staff/pos.qrPayments");
@@ -53,6 +57,67 @@ router.post(
   posAccess,
   logAction("verify_pos_qr_payment", "orders"),
   posQrPaymentsController.verifyAttempt,
+);
+
+/* ══════════════════════════════════════════════════════════════
+   PHASE 3D-D3 — ADMIN RECOVERY: PROVIDER-UNKNOWN ATTEMPTS
+   Independent feature gate (requirePosQrRecoveryEnabled), also BEFORE
+   authenticate — a disabled/misconfigured recovery deployment never
+   queries the users table for these routes either. Admin-only via
+   authorize("admin") (reused directly from middleware/auth.js — no
+   change to that file). Never gated by requirePosQrEnabled: normal
+   cashier QR checkout may be intentionally disabled while stuck
+   provider_unknown attempts from before the pause still need recovery.
+══════════════════════════════════════════════════════════════ */
+const requirePosQrRecoveryEnabled = (req, res, next) => {
+  if (!posQrPaymentsController.isPosQrRecoveryEnabled()) {
+    return res.status(403).json({
+      message: "Recovery actions are not enabled.",
+    });
+  }
+  next();
+};
+
+const recoveryAccess = [
+  requirePosQrRecoveryEnabled,
+  authenticate,
+  authorize("admin"),
+];
+
+router.post(
+  "/attempts/:id/attach-session",
+  recoveryAccess,
+  logAction("attach_pos_qr_provider_session", "pos_qr_payment_attempts"),
+  posQrPaymentsController.attachProviderSession,
+);
+
+/* manual-release/request performs NO database write (see controller),
+   so it deliberately has no logAction — there is nothing to audit yet;
+   the token it returns is the only artifact of this call. */
+router.post(
+  "/attempts/:id/manual-release/request",
+  recoveryAccess,
+  posQrPaymentsController.requestManualRelease,
+);
+
+router.post(
+  "/attempts/:id/manual-release/confirm",
+  recoveryAccess,
+  logAction("admin_manual_release_pos_qr_attempt", "pos_qr_payment_attempts"),
+  posQrPaymentsController.confirmManualRelease,
+);
+
+/* recovery-verify — admin-only, ownership-free equivalent of
+   /attempts/:id/verify, usable independently of POS_QR_ENABLED. logAction
+   runs after the controller, exactly like the cashier verify route above;
+   it only writes when the controller sets req.auditRecord, which happens
+   ONLY on a freshly-completed finalization (never on a pending result,
+   and never on an idempotent consumed replay). */
+router.post(
+  "/attempts/:id/recovery-verify",
+  recoveryAccess,
+  logAction("recovery_verify_pos_qr_payment", "orders"),
+  posQrPaymentsController.recoveryVerifyAttempt,
 );
 
 module.exports = router;

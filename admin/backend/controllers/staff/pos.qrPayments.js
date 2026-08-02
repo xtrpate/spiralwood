@@ -23,7 +23,16 @@ const {
   analyzeCheckoutSession,
   finalizePaidAttempt,
   getSnapshotTotalCents,
+  ALLOWED_RECOVERY_REASON_CODES,
+  attachVerifiedProviderSession,
+  confirmManualRelease,
+  loadManualReleaseSummary,
+  loadProviderUnknownAttemptForRecovery,
 } = require("../../services/posQrLifecycleService");
+const {
+  signRecoveryToken,
+  verifyRecoveryToken,
+} = require("../../utils/posQrRecoveryToken");
 const {
   parseDecimalToCentsStrict,
   centsToDecimalString,
@@ -92,6 +101,54 @@ const isPosQrTestSafeConfigured = () => {
 };
 
 exports.isPosQrTestSafeConfigured = isPosQrTestSafeConfigured;
+
+/* ── PHASE 3D-D3 — RECOVERY FEATURE GATE ─────────────────────────────
+   Deliberately INDEPENDENT of POS_QR_ENABLED: normal QR checkout may be
+   intentionally paused (e.g. a terminal-level rollout pause) while
+   attempts that became provider_unknown before the pause still need
+   admin recovery. Coupling the two gates would make recovery
+   impossible exactly when it is most likely to be needed.
+   Fail-closed: missing, or anything other than the exact string
+   "true", disables both recovery endpoints. ── */
+const isPosQrRecoveryEnabled = () =>
+  process.env.POS_QR_RECOVERY_ENABLED === "true";
+exports.isPosQrRecoveryEnabled = isPosQrRecoveryEnabled;
+
+// attach-session additionally makes a real PayMongo call (a read-only
+// retrieval, never a session creation), so it keeps its own defensive
+// test-key-only check — independent of isPosQrTestSafeConfigured()
+// above, which also requires POS_QR_ENABLED and a configured
+// FRONTEND_URL, neither of which is relevant here.
+const isRecoveryProviderCallSafe = () => {
+  const secretKey = process.env.PAYMONGO_SECRET_KEY;
+  return (
+    typeof secretKey === "string" &&
+    secretKey.length > 0 &&
+    secretKey.startsWith("sk_test_")
+  );
+};
+
+// Conservative PayMongo Checkout Session id shape check. This is a
+// format guard only (rejects obviously malformed input before any
+// network call) — the real verification is the retrieveCheckoutSession
+// round trip plus the ownership/amount checks in attachProviderSession.
+const MAX_PROVIDER_SESSION_ID_LENGTH = 100;
+const PROVIDER_SESSION_ID_PATTERN = /^cs_[A-Za-z0-9]{8,80}$/;
+const isValidProviderSessionIdFormat = (value) =>
+  typeof value === "string" &&
+  value.trim().length > 0 &&
+  value.trim().length <= MAX_PROVIDER_SESSION_ID_LENGTH &&
+  PROVIDER_SESSION_ID_PATTERN.test(value.trim());
+
+// FAIL-CLOSED allowlist for attach-session (and recovery-verify). Only
+// these three analyzeCheckoutSession() outcomes may ever be acted on;
+// any other value — including "malformed", "payment_mismatch",
+// "ambiguous_payment", or any kind this codebase does not yet know
+// about — must leave the attempt exactly as it was, with no database
+// write. Deliberately a positive allowlist rather than a negative
+// exclusion list, so a future new analysis kind defaults to safe
+// rejection instead of silently falling through.
+const ATTACH_ALLOWED_ANALYSIS_KINDS = new Set(["paid", "pending", "expired_unpaid"]);
 
 /* ── Normalization helpers — request INTENT only, never prices. These
    feed request_hash and must never change based on live DB values. ── */
@@ -1460,6 +1517,746 @@ exports.verifyAttempt = async (req, res) => {
     return res.status(finalized.httpStatus).json(finalized.payload);
   } catch (err) {
     console.error("[pos.qrPayments verifyAttempt]", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE 3D-D3 — ADMIN RECOVERY: ATTACH-SESSION
+   POST /api/pos/qr-payments/attempts/:id/attach-session
+
+   Route-level requirePosQrRecoveryEnabled + authenticate +
+   authorize("admin") already ran before this controller (see
+   routes/pos.qrPayments.js). isPosQrRecoveryEnabled() /
+   isRecoveryProviderCallSafe() below are defensive second-layer checks
+   only, matching the exact pattern already used for
+   isPosQrTestSafeConfigured() above.
+
+   NEVER calls createCheckoutSession. Phase 3D-D1's sandbox test
+   confirmed PayMongo does not deduplicate Checkout Session creation on
+   Idempotency-Key reuse (repeated calls returned different session
+   ids), so this endpoint only ever RETRIEVES a session id an admin
+   found manually in the PayMongo Dashboard — it never creates one.
+   provider_payment_id is never accepted as an alternative input; this
+   codebase's PayMongo wrapper has no verified method to resolve a
+   payment id back to its parent checkout session.
+══════════════════════════════════════════════════════════════════════ */
+exports.attachProviderSession = async (req, res) => {
+  if (!isPosQrRecoveryEnabled()) {
+    return res
+      .status(403)
+      .json({ message: "Recovery actions are not enabled." });
+  }
+  if (!isRecoveryProviderCallSafe()) {
+    return res.status(403).json({
+      message: "Recovery session attachment is not available at this terminal.",
+    });
+  }
+
+  const attemptId = parseStrictPositiveInt(req.params.id);
+  if (!attemptId) {
+    return res
+      .status(400)
+      .json({ message: "A valid payment attempt id is required." });
+  }
+
+  if (isNonEmptyString(req.body?.provider_payment_id)) {
+    return res.status(400).json({
+      message:
+        "A provider payment id cannot be used to attach a session. Locate the related Checkout Session id in the PayMongo Dashboard instead.",
+    });
+  }
+
+  const rawSessionId = req.body?.provider_session_id;
+  if (!isValidProviderSessionIdFormat(rawSessionId)) {
+    return res.status(400).json({
+      message: "A valid PayMongo Checkout Session id is required.",
+    });
+  }
+  const providerSessionId = rawSessionId.trim();
+
+  try {
+    // Transaction A — read-only guard check, no write, no provider call.
+    // Now also returns attemptVersion + snapshotHash: these are the
+    // "before" fingerprint that Transaction B re-verifies against the
+    // live row, so a snapshot mutated during the provider round trip
+    // (however unlikely, since checkout_snapshot is otherwise
+    // immutable) is caught explicitly rather than silently attached
+    // against stale data (TOCTOU protection).
+    const claimCheck = await loadProviderUnknownAttemptForRecovery(attemptId);
+    if (!claimCheck.ok) {
+      if (claimCheck.reason === "not_found") {
+        return res.status(404).json({ message: "Payment attempt not found." });
+      }
+      if (
+        claimCheck.reason === "wrong_status" ||
+        claimCheck.reason === "linked_records_present"
+      ) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: claimCheck.status || null,
+          message: "This payment attempt is not eligible for session attachment.",
+        });
+      }
+      console.error(
+        "[pos.qrPayments attachProviderSession] claim check failed",
+        { attemptId, reason: claimCheck.reason },
+      );
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    const { attempt, attemptVersion, snapshotHash } = claimCheck;
+
+    // Provider call — outside any transaction/lock.
+    let session;
+    try {
+      session = await retrieveCheckoutSession(providerSessionId, {
+        timeoutMs: 15000,
+      });
+    } catch (err) {
+      const providerStatus = err?.response?.status;
+      if (providerStatus === 404) {
+        return res.status(404).json({
+          message: "No Checkout Session was found for this id.",
+        });
+      }
+      if (typeof providerStatus === "number") {
+        return res.status(502).json({
+          message: "Unable to retrieve this session from the payment provider.",
+        });
+      }
+      return res.status(502).json({
+        message:
+          "Payment provider is temporarily unavailable. Please try again shortly.",
+      });
+    }
+
+    // Ownership check — both sides normalized to strings, since PayMongo
+    // metadata values and this attempt's own numeric id can otherwise
+    // differ only in JS type.
+    const metadata = session?.attributes?.metadata;
+    const metadataAttemptId =
+      metadata && typeof metadata === "object"
+        ? metadata.pos_qr_attempt_id
+        : undefined;
+    const metadataCheckoutToken =
+      metadata && typeof metadata === "object"
+        ? metadata.checkout_token
+        : undefined;
+
+    if (
+      String(metadataAttemptId ?? "") !== String(attempt.id) ||
+      String(metadataCheckoutToken ?? "") !== String(attempt.checkout_token)
+    ) {
+      return res.status(409).json({
+        attempt_id: attempt.id,
+        status: "provider_unknown",
+        message: "This session does not belong to this payment attempt.",
+      });
+    }
+
+    // STRICT single-line-item validation. The original
+    // createCheckoutSession integration always creates exactly one PHP
+    // line item with quantity 1 and amount === snapshot.total_cents —
+    // this now requires that EXACT shape, with no quantity default and
+    // no summation across multiple items. Anything else is rejected
+    // before any write, regardless of paid/pending/expired outcome.
+    const expectedTotalCents = getSnapshotTotalCents(attempt.checkout_snapshot);
+    const lineItems = session?.attributes?.line_items;
+    const soleItem =
+      Array.isArray(lineItems) && lineItems.length === 1 ? lineItems[0] : null;
+
+    const lineItemValid =
+      soleItem !== null &&
+      expectedTotalCents !== null &&
+      Number.isSafeInteger(expectedTotalCents) &&
+      soleItem.currency === "PHP" &&
+      Number.isSafeInteger(soleItem.amount) &&
+      soleItem.amount > 0 &&
+      soleItem.quantity === 1 &&
+      soleItem.amount === expectedTotalCents;
+
+    if (!lineItemValid) {
+      return res.status(409).json({
+        attempt_id: attempt.id,
+        status: "provider_unknown",
+        message: "This session's line items do not match this payment attempt.",
+      });
+    }
+
+    const analysis = analyzeCheckoutSession({
+      session,
+      expectedSessionId: providerSessionId,
+      expectedTotalCents,
+    });
+
+    // FAIL-CLOSED allowlist — only these three kinds may ever proceed to
+    // Transaction B. Any other value, including a kind this codebase
+    // does not yet know about, stays provider_unknown with no write.
+    if (!ATTACH_ALLOWED_ANALYSIS_KINDS.has(analysis.kind)) {
+      return res.status(409).json({
+        attempt_id: attempt.id,
+        status: "provider_unknown",
+        message:
+          "This session could not be fully verified. Manual review required.",
+      });
+    }
+
+    // Transaction B — TOCTOU-checked attach + transition ONLY. Re-checks
+    // the snapshot hash/version, then status, fresh under FOR UPDATE;
+    // never assumes Transaction A's earlier read is still valid.
+    const checkoutUrl = isNonEmptyString(session?.attributes?.checkout_url)
+      ? session.attributes.checkout_url
+      : null;
+
+    const attached = await attachVerifiedProviderSession({
+      attemptId: attempt.id,
+      providerSessionId,
+      checkoutUrl,
+      expectedAttemptVersion: attemptVersion,
+      expectedSnapshotHash: snapshotHash,
+    });
+
+    if (!attached.changed) {
+      if (attached.reason === "session_already_linked_elsewhere") {
+        return res.status(409).json({
+          attempt_id: attempt.id,
+          message:
+            "This session is already linked to a different payment attempt.",
+        });
+      }
+      if (
+        attached.reason === "stale_attempt_version" ||
+        attached.reason === "stale_snapshot_hash"
+      ) {
+        return res.status(409).json({
+          attempt_id: attempt.id,
+          message:
+            "This payment attempt changed while the session was being verified. Please try again.",
+        });
+      }
+      if (
+        attached.reason === "status_changed" ||
+        attached.reason === "linked_records_present" ||
+        attached.reason === "not_found"
+      ) {
+        return res.status(409).json({
+          attempt_id: attempt.id,
+          status: attached.status || null,
+          message: "This payment attempt is no longer eligible for session attachment.",
+        });
+      }
+      console.error("[pos.qrPayments attachProviderSession] attach failed", {
+        attemptId: attempt.id,
+        reason: attached.reason,
+      });
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    // Attach committed durably. From here, a failure in the optional
+    // paid-finalization step below does NOT revert anything (see the
+    // finalization_pending branch further down).
+    if (analysis.kind !== "paid") {
+      const outcome = analysis.kind === "expired_unpaid" ? "expired_unpaid" : "awaiting_payment";
+      req.auditRecord = {
+        id: attempt.id,
+        old: { status: "provider_unknown" },
+        new: {
+          status: "awaiting_payment",
+          provider_session_attached: true,
+          checkout_url_stored: Boolean(checkoutUrl),
+          outcome,
+          admin_user_id: req.user.id,
+        },
+      };
+      return res.status(202).json({
+        attempt_id: attempt.id,
+        status: "awaiting_payment",
+        session_attached: true,
+        message:
+          analysis.kind === "pending"
+            ? "Session attached. Payment is still pending."
+            : "Session attached. This session appears expired; automatic cleanup will confirm and release it.",
+      });
+    }
+
+    const finalized = await finalizePaidAttempt({
+      attemptId: attempt.id,
+      matchedPayment: analysis.payment,
+      actorUserId: req.user.id,
+      requireOwner: false,
+    });
+
+    if (finalized.httpStatus === 200) {
+      if (finalized.freshCommit === true) {
+        // This request itself created the order/payment/receipt.
+        req.auditRecord = {
+          id: attempt.id,
+          old: { status: "provider_unknown" },
+          new: {
+            status: "consumed",
+            provider_session_attached: true,
+            checkout_url_stored: Boolean(checkoutUrl),
+            outcome: "paid",
+            order_created: true,
+            payment_verified: true,
+            order_id: finalized.payload?.order_id ?? null,
+            payment_transaction_id: finalized.payload?.payment_transaction_id ?? null,
+            receipt_id: finalized.payload?.receipt_id ?? null,
+            admin_user_id: req.user.id,
+          },
+        };
+        return res.status(200).json(finalized.payload);
+      }
+
+      // freshCommit === false — a concurrent verification (e.g. the
+      // cashier's own /verify call, or recovery-verify) already
+      // finalized this attempt between our Transaction B commit and
+      // this finalizePaidAttempt call. Database-safe (finalizePaidAttempt
+      // itself guarantees exactly-once order/payment/receipt creation),
+      // but this request did NOT create anything — the audit record
+      // must not claim it did. Still returns the same finalized payload
+      // idempotently, and no separate verification/finalization audit
+      // is written for this replay.
+      req.auditRecord = {
+        id: attempt.id,
+        old: { status: "provider_unknown" },
+        new: {
+          status: "consumed",
+          provider_session_attached: true,
+          checkout_url_stored: Boolean(checkoutUrl),
+          outcome: "already_consumed",
+          order_created: false,
+          payment_verified: true,
+          admin_user_id: req.user.id,
+        },
+      };
+      return res.status(200).json(finalized.payload);
+    }
+
+    // Attach already committed durably; finalization did not complete
+    // this time. Nothing is reverted — the attempt remains a normal,
+    // safely-retryable awaiting_payment attempt with its reservation
+    // still active. finalizePaidAttempt's own guards make it safe to
+    // retry via the admin recovery-verify endpoint or the cleanup
+    // lifecycle.
+    console.error(
+      "[pos.qrPayments attachProviderSession] finalize-after-attach did not complete",
+      { attemptId: attempt.id, httpStatus: finalized.httpStatus },
+    );
+    req.auditRecord = {
+      id: attempt.id,
+      old: { status: "provider_unknown" },
+      new: {
+        status: "awaiting_payment",
+        provider_session_attached: true,
+        checkout_url_stored: Boolean(checkoutUrl),
+        outcome: "awaiting_payment",
+        admin_user_id: req.user.id,
+      },
+    };
+    return res.status(202).json({
+      attempt_id: attempt.id,
+      status: "awaiting_payment",
+      session_attached: true,
+      finalization_pending: true,
+      message:
+        "Session attached and verified as paid, but finalization did not complete yet. It can be retried through the admin recovery-verify endpoint (POST /api/pos/qr-payments/attempts/:id/recovery-verify).",
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments attachProviderSession]", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE 3D-D3 — ADMIN RECOVERY: MANUAL RELEASE (REQUEST)
+   POST /api/pos/qr-payments/attempts/:id/manual-release/request
+
+   Performs NO database write. Reads current state, computes a stable
+   attempt_version and checkout_snapshot hash, and signs a short-lived
+   token binding this exact admin/attempt/state/reason to a confirmation
+   the admin must submit separately via /manual-release/confirm. Only
+   the allowlisted reason_code is accepted — there is deliberately no
+   free-text "note" field on either /request or /confirm, to avoid any
+   presence-flag inconsistency between the two steps.
+══════════════════════════════════════════════════════════════════════ */
+exports.requestManualRelease = async (req, res) => {
+  if (!isPosQrRecoveryEnabled()) {
+    return res
+      .status(403)
+      .json({ message: "Recovery actions are not enabled." });
+  }
+
+  const attemptId = parseStrictPositiveInt(req.params.id);
+  if (!attemptId) {
+    return res
+      .status(400)
+      .json({ message: "A valid payment attempt id is required." });
+  }
+
+  const reasonCode = req.body?.reason_code;
+  if (
+    typeof reasonCode !== "string" ||
+    !ALLOWED_RECOVERY_REASON_CODES.has(reasonCode)
+  ) {
+    return res.status(400).json({ message: "A valid reason_code is required." });
+  }
+
+  try {
+    const summary = await loadManualReleaseSummary(attemptId);
+    if (!summary.ok) {
+      if (summary.reason === "not_found") {
+        return res.status(404).json({ message: "Payment attempt not found." });
+      }
+      if (
+        summary.reason === "wrong_status" ||
+        summary.reason === "linked_records_present" ||
+        summary.reason === "no_active_reservations" ||
+        summary.reason === "snapshot_mismatch" ||
+        summary.reason === "invalid_snapshot"
+      ) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: summary.status || null,
+          message: "This payment attempt is not eligible for manual release.",
+        });
+      }
+      console.error("[pos.qrPayments requestManualRelease] summary failed", {
+        attemptId,
+        reason: summary.reason,
+      });
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    const signed = signRecoveryToken({
+      attemptId: summary.attempt.id,
+      adminUserId: req.user.id,
+      attemptVersion: summary.attemptVersion,
+      snapshotHash: summary.snapshotHash,
+      reasonCode,
+    });
+    if (!signed) {
+      console.error(
+        "[pos.qrPayments requestManualRelease] recovery token secret unavailable",
+      );
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    return res.status(200).json({
+      attempt_id: summary.attempt.id,
+      checkout_token: summary.attempt.checkout_token,
+      status: "provider_unknown",
+      reason_code: reasonCode,
+      reserved_items: summary.reservations.map((row) => ({
+        product_id: row.product_id,
+        quantity: row.quantity,
+      })),
+      confirmation_token: signed.token,
+      expires_at: signed.payload.expires_at,
+      message:
+        "Review the reserved items above, then submit this token to /manual-release/confirm to release them.",
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments requestManualRelease]", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE 3D-D3 — ADMIN RECOVERY: MANUAL RELEASE (CONFIRM)
+   POST /api/pos/qr-payments/attempts/:id/manual-release/confirm
+══════════════════════════════════════════════════════════════════════ */
+exports.confirmManualRelease = async (req, res) => {
+  if (!isPosQrRecoveryEnabled()) {
+    return res
+      .status(403)
+      .json({ message: "Recovery actions are not enabled." });
+  }
+
+  const attemptId = parseStrictPositiveInt(req.params.id);
+  if (!attemptId) {
+    return res
+      .status(400)
+      .json({ message: "A valid payment attempt id is required." });
+  }
+
+  const reasonCode = req.body?.reason_code;
+  if (
+    typeof reasonCode !== "string" ||
+    !ALLOWED_RECOVERY_REASON_CODES.has(reasonCode)
+  ) {
+    return res.status(400).json({ message: "A valid reason_code is required." });
+  }
+
+  const rawToken = req.body?.confirmation_token;
+  if (!isNonEmptyString(rawToken)) {
+    return res.status(400).json({ message: "A confirmation_token is required." });
+  }
+
+  const verified = verifyRecoveryToken(rawToken.trim());
+  if (!verified.ok) {
+    if (verified.reason === "recovery_token_secret_unavailable") {
+      return res.status(500).json({ message: "Server error." });
+    }
+    if (verified.reason === "expired") {
+      return res.status(409).json({
+        message:
+          "This confirmation token has expired. Please request a new one.",
+      });
+    }
+    // "malformed" / "invalid_signature" / "wrong_purpose" — a tampered
+    // or forged token stays 403, distinct from a merely time-expired
+    // one (409).
+    return res
+      .status(403)
+      .json({ message: "This confirmation token is invalid." });
+  }
+
+  const token = verified.payload;
+  if (Number(token.attempt_id) !== Number(attemptId)) {
+    return res.status(409).json({
+      message: "This confirmation token does not match this payment attempt.",
+    });
+  }
+  if (Number(token.admin_user_id) !== Number(req.user.id)) {
+    return res
+      .status(403)
+      .json({ message: "This confirmation token belongs to a different admin." });
+  }
+  if (token.reason_code !== reasonCode) {
+    return res
+      .status(409)
+      .json({ message: "The reason_code does not match the confirmation token." });
+  }
+
+  try {
+    const released = await confirmManualRelease({
+      attemptId,
+      expectedAttemptVersion: token.attempt_version,
+      expectedSnapshotHash: token.snapshot_hash,
+      adminUserId: req.user.id,
+      reasonCode,
+    });
+
+    if (!released.changed) {
+      if (released.reason === "not_found") {
+        return res.status(404).json({ message: "Payment attempt not found." });
+      }
+      if (
+        released.reason === "stale_token_version" ||
+        released.reason === "stale_token_snapshot"
+      ) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          message:
+            "This payment attempt changed since the confirmation token was issued. Please request a new confirmation.",
+        });
+      }
+      if (
+        released.reason === "status_changed" ||
+        released.reason === "linked_records_present" ||
+        released.reason === "no_active_reservations" ||
+        released.reason === "snapshot_mismatch"
+      ) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: released.status || null,
+          message: "This payment attempt is no longer eligible for manual release.",
+        });
+      }
+      console.error("[pos.qrPayments confirmManualRelease] release failed", {
+        attemptId,
+        reason: released.reason,
+      });
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    req.auditRecord = {
+      id: attemptId,
+      old: { status: "provider_unknown" },
+      new: {
+        status: "cancelled",
+        reason_code: reasonCode,
+        reservations_released: released.reservationsReleased,
+        admin_user_id: req.user.id,
+      },
+    };
+
+    return res.status(200).json({
+      attempt_id: attemptId,
+      status: "cancelled",
+      reservations_released: released.reservationsReleased,
+      message: "Reservation released and stock restored.",
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments confirmManualRelease]", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE 3D-D3 (correction) — ADMIN RECOVERY: VERIFY
+   POST /api/pos/qr-payments/attempts/:id/recovery-verify
+
+   The existing /attempts/:id/verify cannot be relied on for recovery
+   because it (a) requires POS_QR_ENABLED, which recovery must work
+   without, and (b) requires the authenticated user to own the attempt
+   (attempt.cashier_id), which an admin performing recovery on someone
+   else's stuck attempt will not satisfy. This endpoint is the
+   admin-only, ownership-free equivalent, gated independently by
+   requirePosQrRecoveryEnabled instead.
+
+   NEVER calls createCheckoutSession — only ever RETRIEVES the session
+   id already stored on the attempt (from the original attempt or from
+   a prior attach-session). Reuses the exact same
+   analyzeCheckoutSession/finalizePaidAttempt primitives as the
+   cashier-facing verify endpoint and Phase 3D-C's cleanup lifecycle —
+   no new finalize/analysis logic is introduced here.
+══════════════════════════════════════════════════════════════════════ */
+exports.recoveryVerifyAttempt = async (req, res) => {
+  if (!isPosQrRecoveryEnabled()) {
+    return res
+      .status(403)
+      .json({ message: "Recovery actions are not enabled." });
+  }
+  if (!isRecoveryProviderCallSafe()) {
+    return res.status(403).json({
+      message: "Recovery verification is not available at this terminal.",
+    });
+  }
+
+  const attemptId = parseStrictPositiveInt(req.params.id);
+  if (!attemptId) {
+    return res
+      .status(400)
+      .json({ message: "A valid payment attempt id is required." });
+  }
+
+  try {
+    const [[attemptRow]] = await db.query(
+      `SELECT * FROM pos_qr_payment_attempts WHERE id = ?`,
+      [attemptId],
+    );
+
+    if (!attemptRow) {
+      return res.status(404).json({ message: "Payment attempt not found." });
+    }
+
+    // Idempotent replay for an already-consumed attempt — no provider
+    // call, no audit (freshCommit is always false on this path).
+    if (attemptRow.status === "consumed") {
+      const replay = await finalizePaidAttempt({
+        attemptId,
+        matchedPayment: null,
+        actorUserId: req.user.id,
+        requireOwner: false,
+      });
+      return res.status(replay.httpStatus).json(replay.payload);
+    }
+
+    if (attemptRow.status !== "awaiting_payment") {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: attemptRow.status,
+        message: "This payment attempt is not awaiting verification.",
+      });
+    }
+
+    if (!isNonEmptyString(attemptRow.provider_session_id)) {
+      console.error(
+        "[pos.qrPayments recoveryVerifyAttempt] awaiting_payment attempt missing provider_session_id",
+        { attemptId: attemptRow.id },
+      );
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    const expectedTotalCents = getSnapshotTotalCents(
+      attemptRow.checkout_snapshot,
+    );
+    if (!expectedTotalCents) {
+      console.error(
+        "[pos.qrPayments recoveryVerifyAttempt] invalid checkout_snapshot",
+        { attemptId: attemptRow.id },
+      );
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    let session;
+    try {
+      session = await retrieveCheckoutSession(attemptRow.provider_session_id, {
+        timeoutMs: 15000,
+      });
+    } catch (err) {
+      const providerStatus = err?.response?.status;
+      if (providerStatus === 404) {
+        return res.status(404).json({
+          message: "No Checkout Session was found for this payment attempt.",
+        });
+      }
+      if (typeof providerStatus === "number") {
+        return res.status(502).json({
+          message:
+            "Unable to verify payment status with the provider right now. Please try again.",
+        });
+      }
+      return res.status(502).json({
+        message:
+          "Payment provider is temporarily unavailable. Please try again shortly.",
+      });
+    }
+
+    const analysis = analyzeCheckoutSession({
+      session,
+      expectedSessionId: attemptRow.provider_session_id,
+      expectedTotalCents,
+    });
+
+    if (analysis.kind === "pending") {
+      return res.status(200).json({
+        attempt_id: attemptRow.id,
+        status: "pending",
+        message: "Payment has not been completed yet.",
+      });
+    }
+
+    if (analysis.kind === "expired_unpaid") {
+      return res.status(200).json({
+        attempt_id: attemptRow.id,
+        status: "pending",
+        message:
+          "The provider session has expired and is awaiting safe stock release.",
+      });
+    }
+
+    // FAIL-CLOSED allowlist — same as attach-session. Only "paid" can
+    // reach the finalize call below; malformed/payment_mismatch/
+    // ambiguous_payment/any unknown kind stays untouched, no write.
+    if (!ATTACH_ALLOWED_ANALYSIS_KINDS.has(analysis.kind)) {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: "manual_review",
+        message:
+          "A provider response could not be fully verified. Manual review required.",
+      });
+    }
+
+    const finalized = await finalizePaidAttempt({
+      attemptId,
+      matchedPayment: analysis.payment,
+      actorUserId: req.user.id,
+      requireOwner: false,
+    });
+
+    // Audit ONLY on a fresh finalization — never on a pending result,
+    // and never on an idempotent consumed replay (handled earlier).
+    if (finalized.freshCommit && finalized.auditRecord) {
+      req.auditRecord = finalized.auditRecord;
+    }
+
+    return res.status(finalized.httpStatus).json(finalized.payload);
+  } catch (err) {
+    console.error("[pos.qrPayments recoveryVerifyAttempt]", err);
     return res.status(500).json({ message: "Server error." });
   }
 };
