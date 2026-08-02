@@ -3,6 +3,7 @@ const cron = require('node-cron');
 const path = require('path');
 const fs   = require('fs');
 const pool = require('../config/db');
+const { runPosQrCleanupBatch } = require('./posQrCleanupService');
 
 // Pure Node.js SQL dump (no mysqldump binary needed)
 async function generateSQLDump(filePath) {
@@ -86,7 +87,16 @@ function startCronJobs() {
     console.log('[CRON] Running noon auto-backup...');
     runBackup('auto');
   });
-  console.log('✅  Cron jobs started: auto-backup at 12:00 AM and 12:00 PM daily.');
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      await runPosQrCleanupBatch();
+    } catch (err) {
+      console.error('[CRON] POS QR cleanup failed:', err.message);
+    }
+  });
+  console.log(
+    '✅  Cron jobs started: auto-backup at 12:00 AM and 12:00 PM daily; POS QR cleanup check every 5 minutes.',
+  );
 }
 
 module.exports = { startCronJobs, runBackup };

@@ -1,6 +1,8 @@
 const axios = require("axios");
 
 const PAYMONGO_URL = "https://api.paymongo.com/v1/checkout_sessions";
+const MIN_TIMEOUT_MS = 5000;
+const MAX_TIMEOUT_MS = 30000;
 
 const getAuthorizationHeader = () => {
   if (!process.env.PAYMONGO_SECRET_KEY) {
@@ -12,6 +14,28 @@ const getAuthorizationHeader = () => {
   )}`;
 };
 
+const resolveTimeoutMs = (value) => {
+  if (!Number.isInteger(value)) return null;
+  return Math.min(Math.max(value, MIN_TIMEOUT_MS), MAX_TIMEOUT_MS);
+};
+
+const withOptionalTimeout = (timeoutMs) => {
+  const resolved = resolveTimeoutMs(timeoutMs);
+  return resolved === null ? {} : { timeout: resolved };
+};
+
+const buildHeaders = ({ includeContentType = false, idempotencyKey } = {}) => {
+  const headers = {
+    accept: "application/json",
+    authorization: getAuthorizationHeader(),
+  };
+  if (includeContentType) headers["content-type"] = "application/json";
+  if (typeof idempotencyKey === "string" && idempotencyKey.trim()) {
+    headers["Idempotency-Key"] = idempotencyKey.trim();
+  }
+  return headers;
+};
+
 exports.createCheckoutSession = async ({
   customer,
   amount,
@@ -20,15 +44,9 @@ exports.createCheckoutSession = async ({
   successUrl,
   cancelUrl,
   metadata = {},
+  idempotencyKey,
+  timeoutMs,
 }) => {
-  // Additive, backward-compatible: when a caller has already computed an
-  // exact integer-centavo amount (e.g. via utils/paymentAmounts.js — see
-  // pos.qrPayments.js), pass it directly as amountCents to avoid any
-  // floating-point multiplication at this layer. Existing callers
-  // (customer.orders.js, customer.customorders.js) never pass amountCents,
-  // so Number.isSafeInteger(undefined) is false and they fall through to
-  // the exact same Math.round(Number(amount) * 100) conversion as before —
-  // their behavior is completely unchanged.
   const resolvedLineItemAmount =
     Number.isSafeInteger(amountCents) && amountCents > 0
       ? amountCents
@@ -42,15 +60,11 @@ exports.createCheckoutSession = async ({
           email: customer?.email || "",
           phone: customer?.phone || "",
         },
-
         send_email_receipt: false,
         show_description: true,
         show_line_items: true,
-
         description,
-
         payment_method_types: ["card", "gcash", "paymaya"],
-
         line_items: [
           {
             currency: "PHP",
@@ -59,9 +73,7 @@ exports.createCheckoutSession = async ({
             quantity: 1,
           },
         ],
-
         metadata,
-
         success_url: successUrl,
         cancel_url: cancelUrl,
       },
@@ -69,11 +81,8 @@ exports.createCheckoutSession = async ({
   };
 
   const response = await axios.post(PAYMONGO_URL, payload, {
-    headers: {
-      accept: "application/json",
-      "content-type": "application/json",
-      authorization: getAuthorizationHeader(),
-    },
+    headers: buildHeaders({ includeContentType: true, idempotencyKey }),
+    ...withOptionalTimeout(timeoutMs),
   });
 
   return {
@@ -83,15 +92,27 @@ exports.createCheckoutSession = async ({
   };
 };
 
-exports.retrieveCheckoutSession = async (sessionId) => {
+exports.retrieveCheckoutSession = async (sessionId, { timeoutMs } = {}) => {
   const response = await axios.get(`${PAYMONGO_URL}/${sessionId}`, {
-    headers: {
-      accept: "application/json",
-      authorization: getAuthorizationHeader(),
-    },
+    headers: buildHeaders(),
+    ...withOptionalTimeout(timeoutMs),
   });
 
   return response.data.data;
 };
 
+exports.expireCheckoutSession = async (sessionId, { timeoutMs } = {}) => {
+  const response = await axios.post(
+    `${PAYMONGO_URL}/${sessionId}/expire`,
+    {},
+    {
+      headers: buildHeaders({ includeContentType: true }),
+      ...withOptionalTimeout(timeoutMs),
+    },
+  );
+
+  return response.data.data;
+};
+
 exports.getAuthorizationHeader = getAuthorizationHeader;
+exports.resolveTimeoutMs = resolveTimeoutMs;
