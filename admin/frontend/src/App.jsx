@@ -38,6 +38,7 @@ import FaqsPage from "./pages/website/FaqsPage";
 import StaticPagesPage from "./pages/website/StaticPagesPage";
 import BackupPage from "./pages/backup/BackupPage";
 import AuditLogsPage from "./pages/audit/AuditLogsPage";
+import PosQrRecoveryPage from "./pages/posQr/PosQrRecoveryPage";
 
 import { CartProvider } from "./pages/customer/cartcontext";
 import { CustomCartProvider } from "./pages/customer/customcartcontext";
@@ -416,6 +417,10 @@ export default function App() {
                 />
 
                 <Route path="sales" element={<SalesReportPage />} />
+                <Route
+                  path="pos-qr-recovery"
+                  element={<PosQrRecoveryPage />}
+                />
                 <Route path="warranty" element={<WarrantyPage />} />
 
                 <Route

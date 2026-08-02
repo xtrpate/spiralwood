@@ -60,6 +60,26 @@ router.post(
 );
 
 /* ══════════════════════════════════════════════════════════════
+   PHASE 3D-E — ADMIN RECOVERY READ ENDPOINTS
+   Admin-only, but intentionally not behind the recovery action gate.
+   This keeps unresolved attempts visible while mutating recovery
+   actions are disabled.
+══════════════════════════════════════════════════════════════ */
+const recoveryReadAccess = [authenticate, authorize("admin")];
+
+router.get(
+  "/recovery/attempts",
+  recoveryReadAccess,
+  posQrPaymentsController.listRecoveryAttempts,
+);
+
+router.get(
+  "/recovery/attempts/:id",
+  recoveryReadAccess,
+  posQrPaymentsController.getRecoveryAttempt,
+);
+
+/* ══════════════════════════════════════════════════════════════
    PHASE 3D-D3 — ADMIN RECOVERY: PROVIDER-UNKNOWN ATTEMPTS
    Independent feature gate (requirePosQrRecoveryEnabled), also BEFORE
    authenticate — a disabled/misconfigured recovery deployment never

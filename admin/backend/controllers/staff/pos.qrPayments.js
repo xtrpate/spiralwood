@@ -28,6 +28,7 @@ const {
   confirmManualRelease,
   loadManualReleaseSummary,
   loadProviderUnknownAttemptForRecovery,
+  parseAndValidateSnapshot,
 } = require("../../services/posQrLifecycleService");
 const {
   signRecoveryToken,
@@ -149,6 +150,90 @@ const isValidProviderSessionIdFormat = (value) =>
 // exclusion list, so a future new analysis kind defaults to safe
 // rejection instead of silently falling through.
 const ATTACH_ALLOWED_ANALYSIS_KINDS = new Set(["paid", "pending", "expired_unpaid"]);
+
+// Phase 3D-E read-only recovery list validation. The read endpoints are
+// intentionally available even when recovery actions are disabled, but
+// they only expose unresolved statuses and a sanitized checkout summary.
+const RECOVERY_READ_STATUSES = new Set([
+  "provider_unknown",
+  "awaiting_payment",
+]);
+const DEFAULT_RECOVERY_LIST_LIMIT = 50;
+const MAX_RECOVERY_LIST_LIMIT = 100;
+
+const parseRecoveryStatusFilter = (value) => {
+  if (value === undefined) return { ok: true, value: null };
+  if (typeof value !== "string" || !RECOVERY_READ_STATUSES.has(value)) {
+    return { ok: false, value: null };
+  }
+  return { ok: true, value };
+};
+
+const parseRecoveryListLimit = (value) => {
+  if (value === undefined) return DEFAULT_RECOVERY_LIST_LIMIT;
+  if (typeof value !== "string" || !/^[1-9]\d{0,2}$/.test(value)) {
+    return null;
+  }
+  const parsed = Number(value);
+  return parsed <= MAX_RECOVERY_LIST_LIMIT ? parsed : null;
+};
+
+const toSafePositiveIntOrNull = (value) => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const buildRecoveryListAttempt = (row) => {
+  const snapshot = parseAndValidateSnapshot(row.checkout_snapshot);
+  return {
+    id: toSafePositiveIntOrNull(row.id),
+    status: row.status,
+    provider: row.provider,
+    cashier: {
+      id: toSafePositiveIntOrNull(row.cashier_id),
+      name:
+        typeof row.cashier_name === "string" && row.cashier_name.trim()
+          ? row.cashier_name
+          : null,
+    },
+    customer_name: snapshot ? snapshot.customer_name : null,
+    item_count: snapshot ? snapshot.items.length : null,
+    total: snapshot ? snapshot.total : null,
+    total_cents: snapshot ? snapshot.total_cents : null,
+    session_attached: Boolean(Number(row.session_attached)),
+    snapshot_valid: Boolean(snapshot),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    expires_at: row.expires_at,
+  };
+};
+
+const buildSafeCheckoutSummary = (snapshot) => ({
+  customer_name: snapshot.customer_name,
+  customer_phone: snapshot.customer_phone,
+  items: snapshot.items.map((item) => ({
+    product_id: item.product_id,
+    product_name: item.product_name,
+    quantity: item.quantity,
+    unit_price: item.unit_price,
+    subtotal: item.subtotal,
+  })),
+  subtotal: snapshot.subtotal,
+  discount: snapshot.discount,
+  delivery_fee: snapshot.delivery_fee,
+  total: snapshot.total,
+  total_cents: snapshot.total_cents,
+  delivery: snapshot.delivery
+    ? {
+        address: snapshot.delivery.address,
+        lat: snapshot.delivery.lat,
+        lng: snapshot.delivery.lng,
+        requested_date: snapshot.delivery.requested_date,
+        notes: snapshot.delivery.notes,
+      }
+    : null,
+  notes: snapshot.notes,
+});
 
 /* ── Normalization helpers — request INTENT only, never prices. These
    feed request_hash and must never change based on live DB values. ── */
@@ -1522,6 +1607,188 @@ exports.verifyAttempt = async (req, res) => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════
+   PHASE 3D-E — ADMIN RECOVERY READ MODEL
+
+   These endpoints are deliberately NOT guarded by
+   requirePosQrRecoveryEnabled. An admin must still be able to inspect
+   unresolved attempts while mutating recovery actions are paused. They
+   expose only an explicit, sanitized allowlist of fields; the raw
+   checkout snapshot and all provider/token/hash/idempotency fields stay
+   server-side.
+══════════════════════════════════════════════════════════════════════ */
+exports.listRecoveryAttempts = async (req, res) => {
+  const statusFilter = parseRecoveryStatusFilter(req.query.status);
+  if (!statusFilter.ok) {
+    return res.status(400).json({
+      message:
+        "status must be either provider_unknown or awaiting_payment.",
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  }
+
+  const limit = parseRecoveryListLimit(req.query.limit);
+  if (limit === null) {
+    return res.status(400).json({
+      message: `limit must be a whole number from 1 to ${MAX_RECOVERY_LIST_LIMIT}.`,
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  }
+
+  try {
+    const params = [];
+    let statusSql =
+      "attempt.status IN ('provider_unknown', 'awaiting_payment')";
+    if (statusFilter.value) {
+      statusSql += " AND attempt.status = ?";
+      params.push(statusFilter.value);
+    }
+    params.push(limit);
+
+    const [rows] = await db.query(
+      `SELECT
+         attempt.id,
+         attempt.status,
+         attempt.provider,
+         attempt.cashier_id,
+         cashier.name AS cashier_name,
+         CASE
+           WHEN attempt.provider_session_id IS NOT NULL
+             AND attempt.provider_session_id <> ''
+           THEN 1 ELSE 0
+         END AS session_attached,
+         attempt.checkout_snapshot,
+         attempt.created_at,
+         attempt.updated_at,
+         attempt.expires_at
+       FROM pos_qr_payment_attempts AS attempt
+       LEFT JOIN users AS cashier ON cashier.id = attempt.cashier_id
+       WHERE ${statusSql}
+       ORDER BY attempt.updated_at DESC, attempt.id DESC
+       LIMIT ?`,
+      params,
+    );
+
+    const attempts = rows.map(buildRecoveryListAttempt);
+    return res.status(200).json({
+      attempts,
+      count: attempts.length,
+      limit,
+      status: statusFilter.value,
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments listRecoveryAttempts]", err);
+    return res.status(500).json({
+      message: "Server error.",
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  }
+};
+
+exports.getRecoveryAttempt = async (req, res) => {
+  const attemptId = parseStrictPositiveInt(req.params.id);
+  if (!attemptId) {
+    return res.status(400).json({
+      message: "A valid payment attempt id is required.",
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  }
+
+  try {
+    const [[attempt]] = await db.query(
+      `SELECT
+         attempt.id,
+         attempt.status,
+         attempt.provider,
+         attempt.cashier_id,
+         cashier.name AS cashier_name,
+         CASE
+           WHEN attempt.provider_session_id IS NOT NULL
+             AND attempt.provider_session_id <> ''
+           THEN 1 ELSE 0
+         END AS session_attached,
+         attempt.checkout_snapshot,
+         attempt.created_at,
+         attempt.updated_at,
+         attempt.expires_at
+       FROM pos_qr_payment_attempts AS attempt
+       LEFT JOIN users AS cashier ON cashier.id = attempt.cashier_id
+       WHERE attempt.id = ?
+         AND attempt.status IN ('provider_unknown', 'awaiting_payment')`,
+      [attemptId],
+    );
+
+    // Deliberately the same 404 for a missing row and an attempt that has
+    // already moved out of the unresolved recovery statuses.
+    if (!attempt) {
+      return res.status(404).json({
+        message: "Unresolved payment attempt not found.",
+        recovery_actions_enabled: isPosQrRecoveryEnabled(),
+      });
+    }
+
+    const snapshot = parseAndValidateSnapshot(attempt.checkout_snapshot);
+    if (!snapshot) {
+      return res.status(409).json({
+        attempt_id: attemptId,
+        status: attempt.status,
+        message: "Payment attempt details could not be safely loaded.",
+        recovery_actions_enabled: isPosQrRecoveryEnabled(),
+      });
+    }
+
+    const [reservationRows] = await db.query(
+      `SELECT
+         reservation.product_id,
+         product.name AS product_name,
+         reservation.quantity
+       FROM pos_qr_stock_reservations AS reservation
+       LEFT JOIN products AS product ON product.id = reservation.product_id
+       WHERE reservation.payment_attempt_id = ?
+         AND reservation.status = 'active'
+       ORDER BY reservation.product_id ASC`,
+      [attemptId],
+    );
+
+    return res.status(200).json({
+      attempt: {
+        id: toSafePositiveIntOrNull(attempt.id),
+        status: attempt.status,
+        provider: attempt.provider,
+        cashier: {
+          id: toSafePositiveIntOrNull(attempt.cashier_id),
+          name:
+            typeof attempt.cashier_name === "string" &&
+            attempt.cashier_name.trim()
+              ? attempt.cashier_name
+              : null,
+        },
+        session_attached: Boolean(Number(attempt.session_attached)),
+        checkout_summary: buildSafeCheckoutSummary(snapshot),
+        reserved_items: reservationRows.map((row) => ({
+          product_id: toSafePositiveIntOrNull(row.product_id),
+          product_name:
+            typeof row.product_name === "string" && row.product_name.trim()
+              ? row.product_name
+              : null,
+          quantity: toSafePositiveIntOrNull(row.quantity),
+        })),
+        created_at: attempt.created_at,
+        updated_at: attempt.updated_at,
+        expires_at: attempt.expires_at,
+      },
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments getRecoveryAttempt]", err);
+    return res.status(500).json({
+      message: "Server error.",
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
    PHASE 3D-D3 — ADMIN RECOVERY: ATTACH-SESSION
    POST /api/pos/qr-payments/attempts/:id/attach-session
 
@@ -1945,7 +2212,6 @@ exports.requestManualRelease = async (req, res) => {
 
     return res.status(200).json({
       attempt_id: summary.attempt.id,
-      checkout_token: summary.attempt.checkout_token,
       status: "provider_unknown",
       reason_code: reasonCode,
       reserved_items: summary.reservations.map((row) => ({
