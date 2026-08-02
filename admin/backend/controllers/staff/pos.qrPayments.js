@@ -1428,6 +1428,224 @@ exports.createAttempt = async (req, res) => {
   }
 };
 
+/* ══════════════════════════════════════════════════════════════
+   PHASE 3D-F1 — CASHIER RESUME / LOCAL-STATE RECONCILIATION
+   POST /api/pos/qr-payments/attempts/resume
+
+   Read-only and deliberately NOT behind POS_QR_ENABLED. A cashier must
+   still be able to reconcile or safely clear stale browser state even
+   when new QR payments are paused. The checkout token is accepted only
+   in the request body, is matched together with the authenticated
+   cashier id, and is never echoed in the response.
+══════════════════════════════════════════════════════════════ */
+exports.resumeAttempt = async (req, res) => {
+  const rawCheckoutToken = req.body?.checkout_token;
+  if (typeof rawCheckoutToken !== "string") {
+    return res.status(400).json({
+      message: "A valid checkout_token is required.",
+    });
+  }
+
+  const checkoutToken = rawCheckoutToken.trim();
+  if (checkoutToken.length === 0 || checkoutToken.length > MAX_TOKEN_LENGTH) {
+    return res.status(400).json({
+      message: "A valid checkout_token is required.",
+    });
+  }
+
+  try {
+    const [[attempt]] = await db.query(
+      `SELECT
+         attempt.id,
+         attempt.status,
+         attempt.provider_session_id,
+         attempt.checkout_url,
+         attempt.order_id,
+         attempt.payment_transaction_id,
+         attempt.checkout_snapshot,
+         attempt.created_at,
+         attempt.updated_at,
+         attempt.expires_at,
+         order_row.order_number,
+         order_row.status AS order_status,
+         order_row.total AS order_total,
+         payment_row.id AS linked_payment_transaction_id,
+         receipt_row.id AS receipt_id,
+         receipt_row.receipt_number
+       FROM pos_qr_payment_attempts AS attempt
+       LEFT JOIN orders AS order_row
+         ON order_row.id = attempt.order_id
+       LEFT JOIN payment_transactions AS payment_row
+         ON payment_row.id = attempt.payment_transaction_id
+        AND payment_row.order_id = attempt.order_id
+       LEFT JOIN receipts AS receipt_row
+         ON receipt_row.payment_transaction_id = attempt.payment_transaction_id
+        AND receipt_row.order_id = attempt.order_id
+       WHERE attempt.checkout_token = ?
+         AND attempt.cashier_id = ?
+       LIMIT 1`,
+      [checkoutToken, req.user.id],
+    );
+
+    // Same response for a nonexistent token and a token owned by another
+    // cashier. This prevents cross-cashier token probing.
+    if (!attempt) {
+      return res.status(404).json({
+        resume_state: "not_found",
+        can_clear_local_state: true,
+        message: "No payment attempt was found for this checkout.",
+      });
+    }
+
+    const attemptId = toSafePositiveIntOrNull(attempt.id);
+    const base = {
+      attempt_id: attemptId,
+      status: attempt.status,
+      created_at: attempt.created_at,
+      updated_at: attempt.updated_at,
+      expires_at: attempt.expires_at,
+    };
+
+    if (["failed", "expired", "cancelled"].includes(attempt.status)) {
+      return res.status(200).json({
+        ...base,
+        resume_state: "terminal",
+        can_clear_local_state: true,
+        message: "This online payment attempt is no longer active.",
+      });
+    }
+
+    if (attempt.status === "consumed") {
+      const orderId = toSafePositiveIntOrNull(attempt.order_id);
+      const paymentTransactionId = toSafePositiveIntOrNull(
+        attempt.payment_transaction_id,
+      );
+      const linkedPaymentTransactionId = toSafePositiveIntOrNull(
+        attempt.linked_payment_transaction_id,
+      );
+      const receiptId = toSafePositiveIntOrNull(attempt.receipt_id);
+
+      if (
+        !attemptId ||
+        !orderId ||
+        !paymentTransactionId ||
+        paymentTransactionId !== linkedPaymentTransactionId ||
+        !receiptId ||
+        typeof attempt.order_number !== "string" ||
+        !attempt.order_number.trim() ||
+        typeof attempt.receipt_number !== "string" ||
+        !attempt.receipt_number.trim()
+      ) {
+        return res.status(409).json({
+          ...base,
+          resume_state: "manual_review",
+          can_clear_local_state: false,
+          message:
+            "Completed payment records could not be safely loaded. Contact an administrator.",
+        });
+      }
+
+      return res.status(200).json({
+        ...base,
+        resume_state: "consumed",
+        can_clear_local_state: true,
+        result: {
+          attempt_id: attemptId,
+          status: "consumed",
+          order_id: orderId,
+          order_number: attempt.order_number,
+          order_status: attempt.order_status,
+          payment_transaction_id: paymentTransactionId,
+          receipt_id: receiptId,
+          receipt_number: attempt.receipt_number,
+          total: attempt.order_total,
+          payment_status: "paid",
+        },
+        message: "Payment was already completed.",
+      });
+    }
+
+    if (
+      !["reserved", "creating_session", "awaiting_payment", "provider_unknown"].includes(
+        attempt.status,
+      )
+    ) {
+      return res.status(409).json({
+        ...base,
+        resume_state: "manual_review",
+        can_clear_local_state: false,
+        message: "This payment attempt could not be safely resumed.",
+      });
+    }
+
+    const snapshot = parseAndValidateSnapshot(attempt.checkout_snapshot);
+    if (!snapshot) {
+      return res.status(409).json({
+        ...base,
+        resume_state: "manual_review",
+        can_clear_local_state: false,
+        message: "Payment attempt details could not be safely loaded.",
+      });
+    }
+
+    const sessionAttached = isNonEmptyString(attempt.provider_session_id);
+    const checkoutUrl =
+      attempt.status === "awaiting_payment" &&
+      isNonEmptyString(attempt.checkout_url)
+        ? attempt.checkout_url
+        : null;
+
+    if (attempt.status === "provider_unknown") {
+      return res.status(200).json({
+        ...base,
+        resume_state: "admin_recovery_required",
+        can_clear_local_state: false,
+        requires_admin_recovery: true,
+        session_attached: sessionAttached,
+        checkout_url: null,
+        total: snapshot.total,
+        total_cents: snapshot.total_cents,
+        item_count: snapshot.items.length,
+        message:
+          "The payment provider result is unresolved. Ask an administrator to review this attempt.",
+      });
+    }
+
+    if (attempt.status === "awaiting_payment") {
+      return res.status(200).json({
+        ...base,
+        resume_state: "awaiting_payment",
+        can_clear_local_state: false,
+        requires_admin_recovery: false,
+        session_attached: sessionAttached,
+        checkout_url: checkoutUrl,
+        total: snapshot.total,
+        total_cents: snapshot.total_cents,
+        item_count: snapshot.items.length,
+        message: checkoutUrl
+          ? "Existing online payment session restored."
+          : "Payment session exists but its checkout link is unavailable.",
+      });
+    }
+
+    return res.status(200).json({
+      ...base,
+      resume_state: "preparing_payment",
+      can_clear_local_state: false,
+      requires_admin_recovery: false,
+      session_attached: sessionAttached,
+      checkout_url: null,
+      total: snapshot.total,
+      total_cents: snapshot.total_cents,
+      item_count: snapshot.items.length,
+      message: "Payment session is still being prepared.",
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments resumeAttempt]", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
 /* ══════════════════════════════════════════════════════════════════════
    PHASE 3D-A — VERIFY PAYMENT ATTEMPT
    POST /api/pos/qr-payments/attempts/:id/verify

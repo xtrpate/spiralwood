@@ -23,6 +23,18 @@ const formatStockStatus = (value) =>
     .replaceAll("_", " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
+const POS_QR_STORAGE_KEY = "pos_qr_attempt";
+
+const readStoredQrAttempt = () => {
+  try {
+    const raw = sessionStorage.getItem(POS_QR_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
 export default function ProductSearch() {
   const [query, setQuery] = useState("");
   const [barcode, setBarcode] = useState("");
@@ -36,6 +48,8 @@ export default function ProductSearch() {
       return [];
     }
   });
+  const [activeQrAttempt] = useState(() => readStoredQrAttempt());
+  const cartLocked = Boolean(activeQrAttempt?.checkout_token);
   const [searching, setSearching] = useState(true);
   const [barcodeLoading, setBarcodeLoading] = useState(false);
   const [barcodeMessage, setBarcodeMessage] = useState("");
@@ -184,6 +198,14 @@ export default function ProductSearch() {
 
   const addToCart = useCallback(
     (product) => {
+      if (cartLocked) {
+        showMessage(
+          "An online payment attempt is active. Return to that payment before changing the cart.",
+          "error",
+        );
+        return false;
+      }
+
       const key = `${product.id}`;
       const stockLimit = Number(product?.stock ?? 0);
       const displayName = product.name;
@@ -242,7 +264,7 @@ export default function ProductSearch() {
 
       return added;
     },
-    [showMessage],
+    [cartLocked, showMessage],
   );
 
   const searchByBarcode = useCallback(
@@ -322,6 +344,14 @@ export default function ProductSearch() {
 
   const updateQty = useCallback(
     (key, delta) => {
+      if (cartLocked) {
+        showMessage(
+          "The cart is locked while an online payment attempt is active.",
+          "error",
+        );
+        return;
+      }
+
       let feedback = "";
       let feedbackType = "error";
 
@@ -350,11 +380,19 @@ export default function ProductSearch() {
         showMessage(feedback, feedbackType);
       }
     },
-    [showMessage],
+    [cartLocked, showMessage],
   );
 
   const removeItem = useCallback(
     (key) => {
+      if (cartLocked) {
+        showMessage(
+          "The cart is locked while an online payment attempt is active.",
+          "error",
+        );
+        return;
+      }
+
       let removedName = "";
 
       setCart((prev) => {
@@ -367,7 +405,7 @@ export default function ProductSearch() {
         showMessage(`${removedName} has been removed from the cart.`, "info");
       }
     },
-    [showMessage],
+    [cartLocked, showMessage],
   );
 
   const cartTotal = useMemo(
@@ -381,6 +419,11 @@ export default function ProductSearch() {
   );
 
   const proceedToCheckout = useCallback(() => {
+    if (cartLocked) {
+      navigate("/staff/order");
+      return;
+    }
+
     if (cart.length === 0) {
       showMessage(
         "Your cart is empty. Please add at least one product before checkout.",
@@ -391,7 +434,7 @@ export default function ProductSearch() {
 
     sessionStorage.setItem("pos_cart", JSON.stringify(cart));
     navigate("/staff/order");
-  }, [cart, navigate, showMessage]);
+  }, [cart, cartLocked, navigate, showMessage]);
 
   return (
     <div className="search-layout">
@@ -403,6 +446,46 @@ export default function ProductSearch() {
             faster.
           </p>
         </div>
+
+        {cartLocked && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 16,
+              flexWrap: "wrap",
+              marginBottom: 18,
+              padding: "14px 16px",
+              border: "1px solid #f59e0b",
+              borderRadius: 10,
+              background: "#fffbeb",
+              color: "#92400e",
+              fontSize: 13,
+              fontWeight: 700,
+            }}
+          >
+            <span>
+              An online payment attempt is active. The reserved cart cannot be
+              changed until that payment is resolved.
+            </span>
+            <button
+              type="button"
+              onClick={() => navigate("/staff/order")}
+              style={{
+                border: 0,
+                borderRadius: 8,
+                padding: "9px 14px",
+                background: "#18181b",
+                color: "#ffffff",
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              Return to Active Payment
+            </button>
+          </div>
+        )}
 
         <div className="barcode-bar">
           <ScanLine size={18} className="search-icon" />
@@ -655,7 +738,7 @@ export default function ProductSearch() {
                       type="button"
                       className="add-btn"
                       onClick={() => addToCart(product)}
-                      disabled={product.stock <= 0}
+                      disabled={product.stock <= 0 || cartLocked}
                     >
                       <Plus size={16} /> Add to Cart
                     </button>
@@ -693,6 +776,7 @@ export default function ProductSearch() {
                     <button
                       type="button"
                       onClick={() => updateQty(item.key, -1)}
+                      disabled={cartLocked}
                     >
                       <Minus size={13} />
                     </button>
@@ -700,6 +784,7 @@ export default function ProductSearch() {
                     <button
                       type="button"
                       onClick={() => updateQty(item.key, 1)}
+                      disabled={cartLocked}
                     >
                       <Plus size={13} />
                     </button>
@@ -707,6 +792,7 @@ export default function ProductSearch() {
                       type="button"
                       className="remove-btn"
                       onClick={() => removeItem(item.key)}
+                      disabled={cartLocked}
                     >
                       <Trash2 size={13} />
                     </button>
@@ -745,7 +831,8 @@ export default function ProductSearch() {
                 className="checkout-btn"
                 onClick={proceedToCheckout}
               >
-                Proceed to Checkout <ArrowRight size={16} />
+                {cartLocked ? "Return to Active Payment" : "Proceed to Checkout"}{" "}
+                <ArrowRight size={16} />
               </button>
             </div>
           </>

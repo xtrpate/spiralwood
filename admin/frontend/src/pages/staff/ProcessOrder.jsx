@@ -124,14 +124,13 @@ export default function ProcessOrder() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(null);
   const [error, setError] = useState("");
-  const [qrAttempt, setQrAttempt] = useState(() =>
-    POS_QR_ENABLED ? readStoredQrAttempt() : null,
-  );
+  const [qrAttempt, setQrAttempt] = useState(() => readStoredQrAttempt());
   const [qrCreating, setQrCreating] = useState(false);
   const [qrVerifying, setQrVerifying] = useState(false);
+  const [qrReconciling, setQrReconciling] = useState(false);
   const [qrNotice, setQrNotice] = useState("");
   const [qrNoticeTone, setQrNoticeTone] = useState("info");
-  const resumeVerifyStartedRef = useRef(false);
+  const resumeStartedRef = useRef(false);
   const checkoutTokenRef = useRef(qrAttempt?.checkout_token || "");
   const effectivePaymentMethod = qrAttempt ? "online" : form.payment_method;
 
@@ -208,13 +207,29 @@ export default function ProcessOrder() {
     baseFormIsValid &&
     !qrCreating &&
     !qrVerifying &&
+    !qrReconciling &&
     !qrAttempt;
 
   const currentCartFingerprint = buildCartFingerprint(cart);
   const qrCartMatchesCurrent =
     !qrAttempt?.cart_fingerprint ||
     qrAttempt.cart_fingerprint === currentCartFingerprint;
-  const qrNeedsManualReview = qrAttempt?.state === "manual_review";
+  const qrNeedsManualReview = [
+    "manual_review",
+    "admin_recovery_required",
+    "payment_mismatch",
+    "access_error",
+  ].includes(qrAttempt?.state);
+  const qrDisplayTotal = Number.isFinite(Number(qrAttempt?.server_total))
+    ? Number(qrAttempt.server_total)
+    : total;
+  const qrCanVerify =
+    POS_QR_ENABLED &&
+    Number.isSafeInteger(Number(qrAttempt?.attempt_id)) &&
+    Number(qrAttempt?.attempt_id) > 0 &&
+    ["awaiting_payment", "pending", "provider_error", "returning"].includes(
+      qrAttempt?.state,
+    );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -436,12 +451,17 @@ export default function ProcessOrder() {
           attempt_id: data.attempt_id,
           state: data.status || draft.state,
         });
+      } else {
+        persistQrAttempt({
+          ...draft,
+          state: "reconcile_required",
+        });
       }
 
       setQrNoticeTone("error");
       setQrNotice(
         data.message ||
-          "Unable to prepare the online payment session. Please retry.",
+          "Payment setup could not be confirmed. Check the saved payment status before trying again.",
       );
     } finally {
       setQrCreating(false);
@@ -572,21 +592,182 @@ export default function ProcessOrder() {
     window.location.assign(qrAttempt.checkout_url);
   };
 
-  useEffect(() => {
-    if (
-      !POS_QR_ENABLED ||
-      !qrAttempt?.attempt_id ||
-      resumeVerifyStartedRef.current ||
-      ["manual_review", "payment_mismatch", "access_error"].includes(
-        qrAttempt.state,
-      )
-    ) {
-      return;
+  const reconcileQrAttempt = async (
+    attempt,
+    { silent = false, verifyAfterResume = false } = {},
+  ) => {
+    const activeAttempt = attempt || readStoredQrAttempt();
+    const checkoutToken =
+      typeof activeAttempt?.checkout_token === "string"
+        ? activeAttempt.checkout_token.trim()
+        : "";
+
+    if (!checkoutToken) {
+      persistQrAttempt(null);
+      checkoutTokenRef.current = "";
+      setQrNotice("");
+      setError(
+        "The saved online payment state was invalid and has been cleared. You may start again.",
+      );
+      return null;
     }
 
-    resumeVerifyStartedRef.current = true;
-    verifyOnlineAttempt(qrAttempt, { silent: true });
-    // Resume exactly once on mount. The backend verify endpoint is idempotent.
+    setQrReconciling(true);
+    if (!silent) {
+      setQrNoticeTone("info");
+      setQrNotice("Checking the saved online payment status...");
+    }
+
+    try {
+      const response = await api.post("/pos/qr-payments/attempts/resume", {
+        checkout_token: checkoutToken,
+      });
+      const data = response.data || {};
+
+      if (data.resume_state === "consumed" && data.result) {
+        const currentCart = readStoredCart();
+        const currentFingerprint = buildCartFingerprint(currentCart);
+        const cartMatchesAttempt =
+          Boolean(activeAttempt.cart_fingerprint) &&
+          activeAttempt.cart_fingerprint === currentFingerprint;
+
+        if (cartMatchesAttempt) {
+          sessionStorage.removeItem("pos_cart");
+          setCart([]);
+        }
+
+        persistQrAttempt(null);
+        checkoutTokenRef.current = "";
+        setQrNotice("");
+        setSuccess({
+          ...data.result,
+          cart_preserved: !cartMatchesAttempt,
+        });
+        return null;
+      }
+
+      if (
+        data.can_clear_local_state === true &&
+        ["terminal", "not_found"].includes(data.resume_state)
+      ) {
+        persistQrAttempt(null);
+        checkoutTokenRef.current = "";
+        setQrNotice("");
+        setError(
+          data.message ||
+            "The saved online payment attempt is no longer active. You may start again.",
+        );
+        return null;
+      }
+
+      const nextState =
+        data.resume_state === "admin_recovery_required"
+          ? "admin_recovery_required"
+          : data.resume_state === "manual_review"
+            ? "manual_review"
+            : data.resume_state === "awaiting_payment"
+              ? "awaiting_payment"
+              : data.resume_state === "preparing_payment"
+                ? "preparing_payment"
+                : activeAttempt.state || "reconcile_required";
+
+      const nextAttempt = {
+        ...activeAttempt,
+        attempt_id: data.attempt_id || activeAttempt.attempt_id || null,
+        checkout_url: data.checkout_url || null,
+        state: nextState,
+        server_total:
+          data.total !== undefined && data.total !== null
+            ? data.total
+            : activeAttempt.server_total,
+        server_item_count:
+          data.item_count !== undefined && data.item_count !== null
+            ? data.item_count
+            : activeAttempt.server_item_count,
+        requires_admin_recovery: Boolean(data.requires_admin_recovery),
+        created_at: data.created_at || activeAttempt.created_at,
+        updated_at: data.updated_at || activeAttempt.updated_at,
+        expires_at: data.expires_at || activeAttempt.expires_at,
+      };
+
+      persistQrAttempt(nextAttempt);
+      setQrNoticeTone(
+        ["manual_review", "admin_recovery_required"].includes(nextState)
+          ? "error"
+          : "info",
+      );
+      setQrNotice(
+        data.message || "The saved online payment attempt was restored.",
+      );
+
+      if (
+        verifyAfterResume &&
+        POS_QR_ENABLED &&
+        nextState === "awaiting_payment" &&
+        nextAttempt.attempt_id
+      ) {
+        await verifyOnlineAttempt(nextAttempt, { silent: true });
+      }
+
+      return nextAttempt;
+    } catch (err) {
+      const statusCode = err.response?.status;
+      const data = err.response?.data || {};
+
+      if (
+        statusCode === 400 ||
+        statusCode === 404 ||
+        data.can_clear_local_state === true
+      ) {
+        persistQrAttempt(null);
+        checkoutTokenRef.current = "";
+        setQrNotice("");
+        setError(
+          data.message ||
+            "No server payment attempt matched the saved browser state. The stale state was cleared.",
+        );
+        return null;
+      }
+
+      if (statusCode === 409 && data.resume_state === "manual_review") {
+        const reviewAttempt = {
+          ...activeAttempt,
+          attempt_id: data.attempt_id || activeAttempt.attempt_id || null,
+          checkout_url: null,
+          state: "manual_review",
+          created_at: data.created_at || activeAttempt.created_at,
+          updated_at: data.updated_at || activeAttempt.updated_at,
+          expires_at: data.expires_at || activeAttempt.expires_at,
+        };
+        persistQrAttempt(reviewAttempt);
+        setQrNoticeTone("error");
+        setQrNotice(
+          data.message ||
+            "This payment attempt needs administrator review before it can continue.",
+        );
+        return reviewAttempt;
+      }
+
+      setQrNoticeTone("error");
+      setQrNotice(
+        data.message ||
+          "Unable to check the saved payment right now. The current state was kept safely; please retry.",
+      );
+      return activeAttempt;
+    } finally {
+      setQrReconciling(false);
+    }
+  };
+
+  useEffect(() => {
+    const storedAttempt = readStoredQrAttempt();
+    if (!storedAttempt || resumeStartedRef.current) return;
+
+    resumeStartedRef.current = true;
+    reconcileQrAttempt(storedAttempt, {
+      silent: true,
+      verifyAfterResume: storedAttempt.state === "returning",
+    });
 
   }, []);
 
@@ -807,7 +988,13 @@ export default function ProcessOrder() {
               letterSpacing: "-0.01em",
             }}
           >
-            {qrAttempt ? "Online Payment Pending" : "Customer, Payment & Delivery"}
+            {qrAttempt
+              ? qrReconciling
+                ? "Restoring Online Payment"
+                : qrNeedsManualReview
+                  ? "Online Payment Needs Review"
+                  : "Online Payment Pending"
+              : "Customer, Payment & Delivery"}
           </h3>
 
           <form onSubmit={handleSubmit}>
@@ -1217,7 +1404,7 @@ export default function ProcessOrder() {
                   {qrCartMatchesCurrent ? (
                     <div className="pos-qr-pending-amount">
                       ₱
-                      {total.toLocaleString("en-PH", {
+                      {qrDisplayTotal.toLocaleString("en-PH", {
                         minimumFractionDigits: 2,
                       })}
                     </div>
@@ -1244,7 +1431,7 @@ export default function ProcessOrder() {
                       type="button"
                       style={btnPrimary}
                       onClick={handleOpenCheckout}
-                      disabled={qrCreating || qrVerifying}
+                      disabled={qrCreating || qrVerifying || qrReconciling}
                     >
                       Open PayMongo Checkout
                     </button>
@@ -1252,26 +1439,29 @@ export default function ProcessOrder() {
                     <button
                       type="button"
                       style={btnPrimary}
-                      onClick={handleCreateOnlinePayment}
-                      disabled={qrCreating || qrVerifying}
+                      onClick={() => reconcileQrAttempt(qrAttempt)}
+                      disabled={qrCreating || qrVerifying || qrReconciling}
                     >
-                      {qrCreating
-                        ? "Preparing Payment..."
-                        : "Retry Payment Setup"}
+                      {qrReconciling
+                        ? "Checking Payment..."
+                        : "Check Payment Status"}
                     </button>
                   )}
 
-                  {qrAttempt.attempt_id && (
+                  {(qrCanVerify || qrNeedsManualReview) && (
                     <button
                       type="button"
                       style={btnSecondary}
                       onClick={() => verifyOnlineAttempt(qrAttempt)}
                       disabled={
-                        qrCreating || qrVerifying || qrNeedsManualReview
+                        qrCreating ||
+                        qrVerifying ||
+                        qrReconciling ||
+                        qrNeedsManualReview
                       }
                     >
                       {qrNeedsManualReview
-                        ? "Manual Review Required"
+                        ? "Admin Review Required"
                         : qrVerifying
                           ? "Verifying..."
                           : "Verify Payment"}
@@ -1281,7 +1471,8 @@ export default function ProcessOrder() {
 
                 <p className="pos-qr-lock-note">
                   Order details are locked while this payment attempt is
-                  active. Do not create another payment for the same cart.
+                  active. Do not create another payment or change the reserved
+                  cart until this attempt is resolved.
                 </p>
               </div>
             )}
@@ -1546,7 +1737,15 @@ export default function ProcessOrder() {
                   }}
                 >
                   <span>Status</span>
-                  <span>{qrAttempt ? "Payment Pending" : "Ready"}</span>
+                  <span>
+                    {qrAttempt
+                      ? qrNeedsManualReview
+                        ? "Needs Review"
+                        : qrReconciling
+                          ? "Restoring"
+                          : "Payment Pending"
+                      : "Ready"}
+                  </span>
                 </div>
               </>
             )}

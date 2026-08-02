@@ -41,6 +41,20 @@ const posAccess = [requirePosQrEnabled, authenticate, requireCashierOrAdmin];
 
 router.post("/attempts", posAccess, posQrPaymentsController.createAttempt);
 
+/* ═════════════════════════════════════════════════════════════
+   PHASE 3D-F1 — CASHIER RESUME / LOCAL-STATE RECONCILIATION
+   Read-only and intentionally not gated by requirePosQrEnabled. This
+   allows an authenticated cashier/admin to reconcile stale browser
+   state even while creation of new QR attempts is disabled.
+════════════════════════════════════════════════════════════ */
+const resumeAccess = [authenticate, requireCashierOrAdmin];
+
+router.post(
+  "/attempts/resume",
+  resumeAccess,
+  posQrPaymentsController.resumeAttempt,
+);
+
 /* ══════════════════════════════════════════════════════════════
    PHASE 3D-A — VERIFY PAYMENT ATTEMPT
    Same posAccess guard chain (requirePosQrEnabled runs BEFORE
