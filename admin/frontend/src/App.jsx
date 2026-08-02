@@ -68,6 +68,7 @@ import POSLayout from "./pages/staff/POSLayout.jsx";
 import POSDashboard from "./pages/staff/Dashboard";
 import POSProductSearch from "./pages/staff/ProductSearch";
 import POSProcessOrder from "./pages/staff/ProcessOrder";
+import QrPaymentReturn from "./pages/staff/QrPaymentReturn";
 import POSDeliveryScheduling from "./pages/staff/DeliveryScheduling";
 import POSDeliveryManagement from "./pages/staff/DeliveryManagement";
 import POSAppointmentScheduling from "./pages/staff/AppointmentScheduling";
@@ -550,6 +551,15 @@ export default function App() {
                   element={
                     <RequireStaffType allowedTypes={["cashier"]}>
                       <POSProcessOrder />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="pos/qr-payments/:id"
+                  element={
+                    <RequireStaffType allowedTypes={["cashier"]}>
+                      <QrPaymentReturn />
                     </RequireStaffType>
                   }
                 />

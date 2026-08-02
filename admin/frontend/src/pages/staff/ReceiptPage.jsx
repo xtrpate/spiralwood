@@ -47,7 +47,11 @@ export default function ReceiptPage() {
   const paymentMethod = String(receipt.payment_method || "")
     .trim()
     .toLowerCase();
-  const PAYMENT_METHOD_LABELS = { gcash: "GCash", bank_transfer: "Bank Transfer" };
+  const PAYMENT_METHOD_LABELS = {
+    gcash: "GCash",
+    bank_transfer: "Bank Transfer",
+    paymongo: "Online Payment",
+  };
   const paymentMethodLabel =
     PAYMENT_METHOD_LABELS[paymentMethod] ||
     (paymentMethod ? paymentMethod.replace("_", " ") : "");
