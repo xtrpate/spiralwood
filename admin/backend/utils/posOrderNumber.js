@@ -1,105 +1,31 @@
-// services/receiptService.js
+// utils/posOrderNumber.js
 //
-// Shared receipt-creation service.
-//
-// PHASE 1 SCOPE: only createPosSaleReceipt is implemented, and it is only
-// called from controllers/staff/pos.orders.js for successful cashier CASH
-// sales. Blueprint payment receipts are Phase 2 work and are intentionally
-// NOT implemented here yet — the schema (backend/migrations/
-// 003_expand_receipts_for_payment_transactions.sql) already reserves the
-// columns a Phase 2 blueprint receipt helper will need, but no such helper
-// is added in this file until Phase 2 is approved.
-//
-// PHASE 3D-A ADDITIVE CHANGE: createPosSaleReceipt now accepts an optional
-// paymentMethodSnapshot parameter (defaults to "cash"), so the new POS QR
-// payment verification flow (controllers/staff/pos.qrPayments.js) can
-// pass "paymongo" for its receipts. Every existing caller
-// (controllers/staff/pos.orders.js) does not pass this parameter, so the
-// default applies and the stored value — and therefore all existing cash
-// POS behavior — is completely unchanged.
-//
-// Contract for createPosSaleReceipt:
-//   - Must be called with a connection (conn) that already has an ACTIVE
-//     transaction, in the same transaction that inserted the order and its
-//     verified payment_transactions row.
-//   - The caller owns beginTransaction/commit/rollback. This function does
-//     not commit or rollback anything itself.
-//   - Throws on failure (including a duplicate payment_transaction_id,
-//     which the database's UNIQUE constraint will reject with
-//     ER_DUP_ENTRY) so the caller's existing catch/rollback block aborts
-//     the whole sale — no partial state, no orphaned stock deduction.
-//   - Cashier identity (issuedBy) must be the authenticated user id from
-//     req.user.id. This function does not accept or trust any
-//     frontend-supplied identity field.
-//   - paymentMethodSnapshot must be exactly "cash" or "paymongo" — any
-//     other value throws rather than being silently coerced or stored,
-//     matching this codebase's "no silent coercions" convention.
+// Shared walk-in order-number generator for POS QR payment finalization.
+// The existing cash POS controller remains unchanged.
 
-const ALLOWED_PAYMENT_METHOD_SNAPSHOTS = new Set(["cash", "paymongo"]);
+const generateWalkInOrderNumber = async (conn) => {
+  const now = new Date();
 
-const createPosSaleReceipt = async (
-  conn,
-  {
-    orderId,
-    paymentTransactionId,
-    receiptNumber,
-    issuedTo,
-    issuedBy,
-    totalAmount,
-    cashReceived = null,
-    changeAmount = null,
-    itemsSnapshot,
-    paymentMethodSnapshot = "cash",
-  },
-) => {
-  if (!orderId) {
-    throw new Error("createPosSaleReceipt: orderId is required.");
-  }
-  if (!paymentTransactionId) {
-    throw new Error(
-      "createPosSaleReceipt: paymentTransactionId is required.",
+  const datePart =
+    `${now.getFullYear()}` +
+    `${String(now.getMonth() + 1).padStart(2, "0")}` +
+    `${String(now.getDate()).padStart(2, "0")}`;
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const suffix = Math.floor(Math.random() * 9000 + 1000);
+    const candidate = `WLK-${datePart}-${suffix}`;
+
+    const [existing] = await conn.query(
+      "SELECT id FROM orders WHERE order_number = ? LIMIT 1",
+      [candidate],
     );
-  }
-  if (!receiptNumber) {
-    throw new Error("createPosSaleReceipt: receiptNumber is required.");
-  }
-  if (!issuedBy) {
-    throw new Error(
-      "createPosSaleReceipt: issuedBy (authenticated user id) is required.",
-    );
-  }
-  if (!itemsSnapshot) {
-    throw new Error("createPosSaleReceipt: itemsSnapshot is required.");
-  }
-  if (!ALLOWED_PAYMENT_METHOD_SNAPSHOTS.has(paymentMethodSnapshot)) {
-    throw new Error(
-      `createPosSaleReceipt: unsupported paymentMethodSnapshot "${paymentMethodSnapshot}".`,
-    );
+
+    if (existing.length === 0) {
+      return candidate;
+    }
   }
 
-  const [result] = await conn.query(
-    `
-    INSERT INTO receipts
-      (order_id, payment_transaction_id, receipt_type, receipt_number,
-       issued_to, issued_by, total_amount, cash_received, change_amount,
-       payment_method_snapshot, items_snapshot, printed_at)
-    VALUES (?, ?, 'pos_sale', ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-    `,
-    [
-      orderId,
-      paymentTransactionId,
-      receiptNumber,
-      issuedTo || "Walk-in Customer",
-      issuedBy,
-      totalAmount,
-      cashReceived,
-      changeAmount,
-      paymentMethodSnapshot,
-      itemsSnapshot,
-    ],
-  );
-
-  return { receiptId: result.insertId, receiptNumber };
+  return `WLK-${datePart}-${Date.now().toString().slice(-6)}`;
 };
 
-module.exports = { createPosSaleReceipt };
+module.exports = { generateWalkInOrderNumber };
