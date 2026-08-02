@@ -14,6 +14,8 @@ exports.getReceiptById = async (req, res) => {
       `
       SELECT
         r.*,
+        DATE_FORMAT(r.created_at, '%Y-%m-%dT%H:%i:%s.000Z') AS created_at,
+        DATE_FORMAT(r.printed_at, '%Y-%m-%dT%H:%i:%s.000Z') AS printed_at,
         o.order_number,
         o.walkin_customer_name,
         o.walkin_customer_phone,
@@ -113,6 +115,8 @@ exports.getReceiptByOrderId = async (req, res) => {
       `
       SELECT
         r.*,
+        DATE_FORMAT(r.created_at, '%Y-%m-%dT%H:%i:%s.000Z') AS created_at,
+        DATE_FORMAT(r.printed_at, '%Y-%m-%dT%H:%i:%s.000Z') AS printed_at,
         o.order_number,
         o.walkin_customer_name,
         o.walkin_customer_phone,
