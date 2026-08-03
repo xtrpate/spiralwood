@@ -13,6 +13,7 @@ import {
   X,
   ChevronRight,
   ClipboardList,
+  MessageSquare,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import "./POSLayout.css";
@@ -50,6 +51,11 @@ export default function POSLayout() {
           to: "/staff/history",
           icon: ClipboardList,
           label: "Transaction History",
+        },
+        {
+          to: "/staff/support",
+          icon: MessageSquare,
+          label: "Support",
         },
         {
           to: "/staff/blueprint-payments",
@@ -155,7 +161,9 @@ export default function POSLayout() {
               </div>
             )}
           </div>
-          {(isIndoorStaff || isDeliveryRider) && <NotificationBell compact />}
+          {(isCashier || isIndoorStaff || isDeliveryRider) && (
+            <NotificationBell compact />
+          )}
           <button className="logout-btn" onClick={handleLogout} title="Logout">
             <LogOut size={18} />
           </button>

@@ -82,6 +82,7 @@ import POSInventoryLookup from "./pages/staff/InventoryLookup";
 import POSOrderHistory from "./pages/staff/OrderHistory";
 import RiderDashboard from "./pages/staff/RiderDashboard";
 import RiderHistory from "./pages/staff/RiderHistory";
+import StaffSupportPage from "./pages/staff/SupportPage";
 
 window.addEventListener("error", (e) => {
   if (
@@ -571,6 +572,15 @@ export default function App() {
                   element={
                     <RequireStaffType allowedTypes={["cashier"]}>
                       <POSOrderHistory />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="support"
+                  element={
+                    <RequireStaffType allowedTypes={["cashier"]}>
+                      <StaffSupportPage />
                     </RequireStaffType>
                   }
                 />

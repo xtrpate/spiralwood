@@ -286,6 +286,15 @@ exports.assignTicket = async (req, res) => {
       [assigned_to, req.user.id, nextStatus, ticketId],
     );
 
+    await createNotificationSafe(conn, {
+      userId: assigned_to,
+      type: "support_assignment",
+      title: "New Support Ticket Assigned",
+      message: `A support ticket has been assigned to you.`,
+      targetType: "support_ticket",
+      targetId: ticketId,
+    });
+
     await conn.commit();
 
     return res.json({

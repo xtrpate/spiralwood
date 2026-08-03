@@ -90,7 +90,7 @@ const DOUBLE_CLICK_WINDOW_MS = 280;
 // no matter which admin/staff account is viewing it.
 function resolveNotificationRoute(
   n,
-  { isAdmin, isIndoorStaff, isDeliveryRider },
+  { isAdmin, isCashier, isIndoorStaff, isDeliveryRider },
 ) {
   const targetType = n?.target_type || null;
   const targetId = n?.target_id ?? null;
@@ -101,6 +101,7 @@ function resolveNotificationRoute(
   // Fall back to the safest role-appropriate list/dashboard page.
   const safeFallback = () => {
     if (isAdmin) return "/admin/dashboard";
+    if (isCashier) return "/staff/support";
     if (isDeliveryRider) return "/staff/rider-dashboard";
     if (isIndoorStaff) return "/staff/dashboard";
     return "/admin/dashboard";
@@ -148,6 +149,11 @@ function resolveNotificationRoute(
       if (isAdmin) {
         return `/admin/support?ticket=${targetId}`;
       }
+
+      if (isCashier) {
+        return `/staff/support?ticket=${targetId}`;
+      }
+
       return safeFallback();
 
     default:
@@ -161,6 +167,7 @@ export default function NotificationBell({ compact = false }) {
 
   const isAdmin = user?.role === "admin";
   const isIndoorStaff = user?.role === "staff" && user?.staff_type === "indoor";
+  const isCashier = user?.role === "staff" && user?.staff_type === "cashier";
   const isDeliveryRider =
     user?.role === "staff" && user?.staff_type === "delivery_rider";
 
@@ -259,6 +266,7 @@ export default function NotificationBell({ compact = false }) {
       setOpen(false);
       const dest = resolveNotificationRoute(n, {
         isAdmin,
+        isCashier,
         isIndoorStaff,
         isDeliveryRider,
       });
