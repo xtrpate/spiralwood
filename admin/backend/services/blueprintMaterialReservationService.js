@@ -681,8 +681,149 @@ async function ensureBlueprintMaterialReservations(
   };
 }
 
+
+// Retry pending reservations after a direct raw-material stock-in has already
+// committed. Each order is processed in its own transaction so the existing
+// canonical lock order remains order -> blueprint -> estimation -> material.
+// Candidates are attempted oldest-first. If the oldest remaining order still
+// cannot claim the material, younger orders are not allowed to skip ahead.
+async function retryPendingStockReservationsForMaterial(
+  pool,
+  { materialId, actorUserId = null } = {},
+) {
+  const materialIdNum = Number(materialId);
+  const actorUserIdNum = actorUserId == null ? null : Number(actorUserId);
+
+  if (
+    !pool ||
+    typeof pool.query !== "function" ||
+    typeof pool.getConnection !== "function"
+  ) {
+    fail(
+      "INVALID_POOL",
+      "A database pool is required for pending-stock recovery.",
+    );
+  }
+  if (!isPositiveInt(materialIdNum)) {
+    fail("INVALID_MATERIAL_ID", "materialId must be a positive integer.");
+  }
+  if (actorUserIdNum !== null && !isPositiveInt(actorUserIdNum)) {
+    fail("INVALID_ACTOR_ID", "actorUserId must be a positive integer or null.");
+  }
+
+  const [candidateRows] = await pool.query(
+    `SELECT bmr.order_id,
+            MIN(bmr.created_at) AS first_pending_at,
+            MIN(bmr.id) AS first_reservation_id
+     FROM blueprint_material_reservations bmr
+     WHERE bmr.material_id = ?
+       AND bmr.status = 'pending_stock'
+     GROUP BY bmr.order_id
+     ORDER BY first_pending_at ASC,
+              first_reservation_id ASC,
+              bmr.order_id ASC`,
+    [materialIdNum],
+  );
+
+  const summary = {
+    triggered: true,
+    material_id: materialIdNum,
+    candidate_count: candidateRows.length,
+    attempted_count: 0,
+    recovered_count: 0,
+    still_pending_count: 0,
+    unchanged_count: 0,
+    failed_count: 0,
+    stopped_for_fifo: false,
+    recovered_order_ids: [],
+    pending_order_ids: [],
+    failures: [],
+  };
+
+  for (const candidate of candidateRows) {
+    const orderIdNum = Number(candidate.order_id);
+    if (!isPositiveInt(orderIdNum)) {
+      summary.failed_count += 1;
+      summary.stopped_for_fifo = true;
+      summary.failures.push({
+        order_id: candidate.order_id,
+        code: "INVALID_ORDER_ID",
+        message: "A pending reservation has an invalid order reference.",
+      });
+      break;
+    }
+
+    const conn = await pool.getConnection();
+    summary.attempted_count += 1;
+
+    try {
+      await conn.beginTransaction();
+
+      const result = await ensureBlueprintMaterialReservations(conn, {
+        orderId: orderIdNum,
+        actorUserId: actorUserIdNum,
+      });
+
+      const materialResult = Array.isArray(result?.materials)
+        ? result.materials.find(
+            (row) => Number(row?.material_id) === materialIdNum,
+          )
+        : null;
+
+      if (!materialResult) {
+        fail(
+          "PENDING_MATERIAL_RESULT_MISSING",
+          `Order ${orderIdNum} did not return material ${materialIdNum} during recovery.`,
+        );
+      }
+
+      await conn.commit();
+
+      const materialStatus = normalize(materialResult.status);
+      if (materialStatus === "reserved") {
+        if (materialResult.changed) {
+          summary.recovered_count += 1;
+          summary.recovered_order_ids.push(orderIdNum);
+        } else {
+          summary.unchanged_count += 1;
+        }
+        continue;
+      }
+
+      if (materialStatus === "pending_stock") {
+        summary.still_pending_count += 1;
+        summary.pending_order_ids.push(orderIdNum);
+        summary.stopped_for_fifo = true;
+        break;
+      }
+
+      summary.unchanged_count += 1;
+    } catch (err) {
+      try {
+        await conn.rollback();
+      } catch {
+        // Preserve the original recovery error.
+      }
+
+      summary.failed_count += 1;
+      summary.stopped_for_fifo = true;
+      summary.failures.push({
+        order_id: orderIdNum,
+        code: err?.code || "PENDING_STOCK_RECOVERY_FAILED",
+        message: err?.message || "Pending-stock recovery failed.",
+      });
+      break;
+    } finally {
+      conn.release();
+    }
+  }
+
+  return summary;
+}
+
 module.exports = {
   ensureBlueprintMaterialReservations,
+  retryPendingStockReservationsForMaterial,
   BlueprintMaterialReservationError,
   // Exported only for focused unit/static tests; production callers should
   // use ensureBlueprintMaterialReservations.

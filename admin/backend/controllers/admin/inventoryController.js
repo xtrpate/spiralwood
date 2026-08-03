@@ -1,6 +1,9 @@
 // controllers/inventoryController.js – Raw Materials, Build Materials, Stock Movement
 const pool = require("../../config/db");
 const {
+  retryPendingStockReservationsForMaterial,
+} = require("../../services/blueprintMaterialReservationService");
+const {
   isValidNonNegativeInteger,
   isValidUnitLabel,
   isNonEmptyString,
@@ -670,6 +673,47 @@ exports.createStockMovement = async (req, res) => {
 
       await conn.commit();
 
+      let reservationRecovery = null;
+      if (type === "in") {
+        try {
+          reservationRecovery =
+            await retryPendingStockReservationsForMaterial(pool, {
+              materialId: parseInt(material_id),
+              actorUserId: parseInt(req.user.id),
+            });
+        } catch (recoveryError) {
+          // The stock-in is already committed and must not be reported as
+          // failed or retried by the user. Surface a recovery warning instead.
+          console.error(
+            "[BPI-3] Pending-stock recovery failed after raw-material stock-in:",
+            recoveryError,
+          );
+          reservationRecovery = {
+            triggered: true,
+            material_id: parseInt(material_id),
+            candidate_count: null,
+            attempted_count: 0,
+            recovered_count: 0,
+            still_pending_count: 0,
+            unchanged_count: 0,
+            failed_count: 1,
+            stopped_for_fifo: true,
+            recovered_order_ids: [],
+            pending_order_ids: [],
+            failures: [
+              {
+                order_id: null,
+                code:
+                  recoveryError?.code || "PENDING_STOCK_RECOVERY_FAILED",
+                message:
+                  recoveryError?.message ||
+                  "Pending-stock recovery failed after stock-in.",
+              },
+            ],
+          };
+        }
+      }
+
       req.auditRecord = {
         id: r.insertId,
         old: null,
@@ -684,12 +728,30 @@ exports.createStockMovement = async (req, res) => {
           notes: notes || null,
           previous_stock: currentQty,
           new_stock: newQty,
+          reservation_recovery: reservationRecovery,
         },
       };
 
+      const recoveredCount = Number(
+        reservationRecovery?.recovered_count || 0,
+      );
+      const recoveryFailed =
+        Number(reservationRecovery?.failed_count || 0) > 0;
+
+      let responseMessage = "Stock movement recorded.";
+      if (recoveryFailed) {
+        responseMessage =
+          "Stock movement recorded, but pending blueprint reservation recovery needs review.";
+      } else if (recoveredCount > 0) {
+        responseMessage = `Stock movement recorded. ${recoveredCount} pending blueprint material reservation${
+          recoveredCount === 1 ? " was" : "s were"
+        } recovered.`;
+      }
+
       return res.status(201).json({
-        message: "Stock movement recorded.",
+        message: responseMessage,
         id: r.insertId,
+        reservation_recovery: reservationRecovery,
       });
     }
 
