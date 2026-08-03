@@ -1,21 +1,41 @@
 import TicketItem from "./TicketItem";
+import SkeletonTicket from "./SkeletonTicket";
 
 export default function TicketList({
   tickets,
   loading,
   selectedTicket,
   onSelect,
+  onClearFilters,
 }) {
   if (loading) {
-    return <div className="support-ticket-list">Loading tickets...</div>;
+    return (
+      <div className="support-ticket-list">
+        <SkeletonTicket />
+
+        <SkeletonTicket />
+
+        <SkeletonTicket />
+
+        <SkeletonTicket />
+      </div>
+    );
   }
 
   if (tickets.length === 0) {
     return (
       <div className="support-ticket-list">
-        <h3>No Tickets</h3>
+        <div className="support-empty-state">
+          <div className="support-empty-icon">🛟</div>
 
-        <p>No customer support tickets found.</p>
+          <h3>No Support Tickets</h3>
+
+          <p>There are currently no support tickets matching your filters.</p>
+
+          <button className="support-clear-filter-btn" onClick={onClearFilters}>
+            Clear Filters
+          </button>
+        </div>
       </div>
     );
   }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 
 import adminSupportService from "../../services/adminSupportService";
 
@@ -33,10 +34,13 @@ export default function TicketManagement({ ticket, onUpdated }) {
         resolution_note: resolutionNote,
       });
 
+      toast.success("Ticket updated successfully.");
+
       if (onUpdated) {
         onUpdated();
       }
     } catch (err) {
+      toast.error("Failed to update ticket.");
       console.error(err);
     } finally {
       setSaving(false);

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
 
 import adminSupportService from "../../services/adminSupportService";
 
@@ -41,8 +42,10 @@ export default function AssignDropdown({ ticket, onAssigned }) {
 
       if (onAssigned) {
         onAssigned();
+        toast.success("Ticket assigned successfully.");
       }
     } catch (err) {
+      toast.error("Failed to assign ticket.");
       console.error(err);
     } finally {
       setLoading(false);

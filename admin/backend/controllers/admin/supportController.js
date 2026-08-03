@@ -1,5 +1,7 @@
 const pool = require("../../config/db");
 
+const { createNotificationSafe } = require("../../utils/notificationHelper");
+
 // =====================================================
 // Get All Support Tickets
 // =====================================================
@@ -423,10 +425,13 @@ exports.replyToTicket = async (req, res) => {
 
     const [ticketRows] = await conn.query(
       `
-      SELECT id
-      FROM support_tickets
-      WHERE id = ?
-      `,
+  SELECT
+    id,
+    customer_id,
+    subject
+  FROM support_tickets
+  WHERE id = ?
+  `,
       [ticketId],
     );
 
@@ -452,6 +457,15 @@ exports.replyToTicket = async (req, res) => {
       `,
       [ticketId, req.user.id, message, attachment_url],
     );
+
+    await createNotificationSafe(conn, {
+      userId: ticketRows[0].customer_id,
+      type: "support_reply",
+      title: "Support Ticket Updated",
+      message: `Your support ticket "${ticketRows[0].subject}" has a new reply.`,
+      targetType: "support_ticket",
+      targetId: ticketId,
+    });
 
     // If we're waiting for the customer,
     // switch it back to in progress.

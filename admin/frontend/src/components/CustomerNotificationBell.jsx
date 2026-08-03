@@ -37,6 +37,8 @@ function resolveCustomerNotificationRoute(n) {
       return `/custom-requests/${targetId}`;
     case "order":
       return `/orders?focus_order_id=${targetId}`;
+    case "support_ticket":
+      return `/support?ticket=${targetId}`;
     default:
       return "/orders";
   }
@@ -92,26 +94,29 @@ export default function CustomerNotificationBell() {
 
   // Guarded so the same notification is never PATCHed twice concurrently
   // (prevents duplicate requests / HTTP 429 from rapid taps).
-  const markOneRead = useCallback(async (id) => {
-    if (markingInFlightRef.current.has(id)) return;
-    const alreadyRead = notifications.find((n) => n.id === id)?.is_read;
-    if (alreadyRead) return;
+  const markOneRead = useCallback(
+    async (id) => {
+      if (markingInFlightRef.current.has(id)) return;
+      const alreadyRead = notifications.find((n) => n.id === id)?.is_read;
+      if (alreadyRead) return;
 
-    markingInFlightRef.current.add(id);
-    try {
-      await api.patch(`/customer/notifications/${id}/read`);
-      if (isMountedRef.current) {
-        setNotifications((p) =>
-          p.map((n) => (n.id === id ? { ...n, is_read: 1 } : n)),
-        );
+      markingInFlightRef.current.add(id);
+      try {
+        await api.patch(`/customer/notifications/${id}/read`);
+        if (isMountedRef.current) {
+          setNotifications((p) =>
+            p.map((n) => (n.id === id ? { ...n, is_read: 1 } : n)),
+          );
+        }
+      } catch {
+        // Best-effort — a failed mark-as-read must never block navigation
+        // or surface an error to the customer.
+      } finally {
+        markingInFlightRef.current.delete(id);
       }
-    } catch {
-      // Best-effort — a failed mark-as-read must never block navigation
-      // or surface an error to the customer.
-    } finally {
-      markingInFlightRef.current.delete(id);
-    }
-  }, [notifications]);
+    },
+    [notifications],
+  );
 
   const clearPendingTimer = () => {
     if (pendingTimerRef.current) {

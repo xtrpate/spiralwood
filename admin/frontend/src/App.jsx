@@ -64,6 +64,7 @@ import PendingApprovalPage from "./pages/customer/pendingapprovalpage";
 import TermsPage from "./pages/customer/TermsPage";
 import PrivacyPolicyPage from "./pages/customer/PrivacyPolicyPage";
 import SupportPage from "./pages/customer/supportpage";
+import AdminSupportPage from "./pages/support/SupportPage";
 
 import POSLayout from "./pages/staff/POSLayout.jsx";
 import POSDashboard from "./pages/staff/Dashboard";
@@ -426,6 +427,7 @@ export default function App() {
 
                 <Route path="sales" element={<SalesReportPage />} />
                 <Route path="warranty" element={<WarrantyPage />} />
+                <Route path="support" element={<AdminSupportPage />} />
 
                 <Route
                   path="customers"

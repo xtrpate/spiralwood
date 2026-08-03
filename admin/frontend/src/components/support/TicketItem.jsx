@@ -1,4 +1,5 @@
 import StatusBadge from "./StatusBadge";
+import timeAgo from "../../utils/timeAgo";
 
 export default function TicketItem({ ticket, active, onClick }) {
   return (
@@ -23,7 +24,7 @@ export default function TicketItem({ ticket, active, onClick }) {
       <div className="ticket-footer">
         <span className={`priority ${ticket.priority}`}>{ticket.priority}</span>
 
-        <small>{new Date(ticket.created_at).toLocaleDateString()}</small>
+        <small>{timeAgo(ticket.created_at)}</small>
       </div>
     </div>
   );

@@ -1,3 +1,5 @@
+import { User, Package, Tag, AlertTriangle, UserCheck } from "lucide-react";
+
 import StatusBadge from "./StatusBadge";
 import AssignDropdown from "./AssignDropdown";
 import Conversation from "./Conversation";
@@ -26,34 +28,55 @@ export default function TicketDetails({
       <h2>{ticket.subject}</h2>
 
       <div className="ticket-meta-grid">
-        <div>
-          <span>Customer</span>
+        <div className="ticket-meta-item">
+          <span>
+            <User size={15} />
+            Customer
+          </span>
 
           <strong>{ticket.customer_name}</strong>
         </div>
 
-        <div>
-          <span>Order</span>
+        <div className="ticket-meta-item">
+          <span>
+            <Package size={15} />
+            Order
+          </span>
 
           <strong>{ticket.order_number || "N/A"}</strong>
         </div>
 
-        <div>
-          <span>Status</span>
+        <div className="ticket-meta-item">
+          <span>
+            <Tag size={15} />
+            Category
+          </span>
 
-          <StatusBadge status={ticket.status} />
+          <strong>{ticket.category.replaceAll("_", " ")}</strong>
         </div>
 
-        <div>
-          <span>Priority</span>
+        <div className="ticket-meta-item">
+          <span>
+            <AlertTriangle size={15} />
+            Priority
+          </span>
 
           <strong>{ticket.priority}</strong>
         </div>
 
-        <div>
-          <span>Assigned To</span>
+        <div className="ticket-meta-item">
+          <span>
+            <UserCheck size={15} />
+            Assigned To
+          </span>
 
           <strong>{ticket.assigned_name || "Unassigned"}</strong>
+        </div>
+
+        <div className="ticket-meta-item">
+          <span>Status</span>
+
+          <StatusBadge status={ticket.status} />
         </div>
       </div>
 

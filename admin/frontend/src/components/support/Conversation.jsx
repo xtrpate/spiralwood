@@ -1,5 +1,7 @@
+import timeAgo from "../../utils/timeAgo";
+
 export default function Conversation({ messages = [] }) {
-  if (messages.length === 0) {
+  if (!messages.length) {
     return (
       <div className="support-conversation-empty">No conversation yet.</div>
     );
@@ -10,18 +12,35 @@ export default function Conversation({ messages = [] }) {
       {messages.map((message) => {
         const isAdmin = message.sender_type === "admin";
 
+        const initials = (message.sender_name || "?")
+          .split(" ")
+          .map((part) => part[0])
+          .join("")
+          .substring(0, 2)
+          .toUpperCase();
+
         return (
           <div
             key={message.id}
             className={`conversation-row ${isAdmin ? "admin" : "customer"}`}
           >
-            <div className="conversation-meta">
-              <strong>{message.sender_name}</strong>
+            <div className="conversation-header">
+              <div className="conversation-avatar">{initials}</div>
+
+              <div>
+                <div className="conversation-name">{message.sender_name}</div>
+
+                <div className="conversation-role">
+                  {isAdmin ? "Support Team" : "Customer"}
+                </div>
+              </div>
             </div>
 
             <div className="conversation-bubble">{message.message}</div>
 
-            <small>{new Date(message.created_at).toLocaleString()}</small>
+            <div className="conversation-time">
+              {timeAgo(message.created_at)}
+            </div>
           </div>
         );
       })}

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import toast from "react-hot-toast";
 
 import adminSupportService from "../../services/adminSupportService";
 
@@ -19,12 +20,15 @@ export default function ReplyBox({ ticket, onReplySent }) {
         message,
       });
 
+      toast.success("Reply sent successfully.");
+
       setMessage("");
 
       if (onReplySent) {
         onReplySent();
       }
     } catch (err) {
+      toast.error("Failed to send reply.");
       console.error(err);
     } finally {
       setSending(false);

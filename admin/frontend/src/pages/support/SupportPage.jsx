@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 import adminSupportService from "../../services/adminSupportService";
-
 import "./SupportPage.css";
-
 import FilterBar from "../../components/support/FilterBar";
 import TicketList from "../../components/support/TicketList";
 import TicketDetails from "../../components/support/TicketDetails";
+import SummaryCard from "../../components/support/SummaryCard";
 
 export default function SupportPage() {
   const [tickets, setTickets] = useState([]);
@@ -22,6 +22,7 @@ export default function SupportPage() {
   });
 
   const [loading, setLoading] = useState(true);
+  const location = useLocation();
 
   const loadTickets = async () => {
     try {
@@ -46,6 +47,15 @@ export default function SupportPage() {
     }));
   };
 
+  const clearFilters = () => {
+    setFilters({
+      status: "",
+      category: "",
+      priority: "",
+      search: "",
+    });
+  };
+
   const openTicket = async (ticketId) => {
     try {
       const data = await adminSupportService.getTicket(ticketId);
@@ -63,6 +73,22 @@ export default function SupportPage() {
 
     loadTickets();
   }, []);
+
+  useEffect(() => {
+    if (!tickets.length) return;
+
+    const params = new URLSearchParams(location.search);
+
+    const ticketId = Number(params.get("ticket"));
+
+    if (!ticketId) return;
+
+    const ticket = tickets.find((t) => t.id === ticketId);
+
+    if (!ticket) return;
+
+    openTicket(ticket.id);
+  }, [tickets, location.search]);
 
   const refreshSelectedTicket = async () => {
     if (!selectedTicket) return;
@@ -94,6 +120,18 @@ export default function SupportPage() {
     return matchesStatus && matchesCategory && matchesPriority && matchesSearch;
   });
 
+  const summary = {
+    open: tickets.filter((t) => t.status === "open").length,
+
+    assigned: tickets.filter((t) => t.status === "assigned").length,
+
+    awaiting: tickets.filter((t) => t.status === "awaiting_customer").length,
+
+    resolved: tickets.filter(
+      (t) => t.status === "resolved" || t.status === "closed",
+    ).length,
+  };
+
   return (
     <div className="support-page">
       <div className="support-header">
@@ -110,6 +148,16 @@ export default function SupportPage() {
         </button>
       </div>
 
+      <section className="support-summary-grid">
+        <SummaryCard title="Open" value={summary.open} />
+
+        <SummaryCard title="Assigned" value={summary.assigned} />
+
+        <SummaryCard title="Awaiting" value={summary.awaiting} />
+
+        <SummaryCard title="Resolved" value={summary.resolved} />
+      </section>
+
       <FilterBar
         filters={filters}
         onChange={handleFilterChange}
@@ -123,6 +171,7 @@ export default function SupportPage() {
           loading={loading}
           selectedTicket={selectedTicket}
           onSelect={openTicket}
+          onClearFilters={clearFilters}
         />
 
         <TicketDetails

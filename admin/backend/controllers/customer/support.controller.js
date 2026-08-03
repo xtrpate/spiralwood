@@ -8,6 +8,8 @@ const VALID_CATEGORIES = [
   "other",
 ];
 
+const { createNotificationSafe } = require("../../utils/notificationHelper");
+
 /* ──────────────────────────────────────────────────────────────
    Create Support Ticket
 ────────────────────────────────────────────────────────────── */
@@ -95,6 +97,27 @@ const createTicket = async (req, res) => {
       `,
       [ticketId, req.user.id, message.trim()],
     );
+
+    // Notify all admins
+    const [admins] = await connection.query(
+      `
+  SELECT id
+  FROM users
+  WHERE role = 'admin'
+    AND is_active = 1
+  `,
+    );
+
+    for (const admin of admins) {
+      await createNotificationSafe(connection, {
+        userId: admin.id,
+        type: "support_ticket",
+        title: "New Support Ticket",
+        message: `A new support ticket has been submitted: "${subject.trim()}".`,
+        targetType: "support_ticket",
+        targetId: ticketId,
+      });
+    }
 
     await connection.commit();
 
@@ -244,28 +267,27 @@ const getTicketById = async (req, res) => {
 
     const ticket = tickets[0];
 
-    if (ticket.status === "closed") {
-      return res.status(400).json({
-        message: "This ticket is already closed.",
-      });
-    }
-
-    if (
-      !["in_progress", "awaiting_customer", "resolved"].includes(ticket.status)
-    ) {
-      return res.status(400).json({
-        message: "This ticket cannot be closed at its current status.",
-      });
-    }
-
-    await db.query(
+    const [messages] = await db.query(
       `
-  UPDATE support_tickets
-  SET
-    status = 'closed',
-    resolved_at = CURRENT_TIMESTAMP
-  WHERE id = ?
-  `,
+      SELECT
+        stm.id,
+        stm.sender_id,
+        stm.sender_type,
+        stm.message,
+        stm.attachment_url,
+        stm.created_at,
+
+        u.name AS sender_name
+
+      FROM support_ticket_messages stm
+
+      LEFT JOIN users u
+      ON u.id = stm.sender_id
+
+      WHERE stm.ticket_id = ?
+
+      ORDER BY stm.created_at ASC
+      `,
       [ticketId],
     );
 

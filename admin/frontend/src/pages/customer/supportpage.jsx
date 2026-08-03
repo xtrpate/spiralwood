@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { LifeBuoy, Clock, CheckCircle, Plus } from "lucide-react";
+import { useLocation } from "react-router-dom";
 
 import "./supportpage.css";
 
@@ -26,6 +27,8 @@ export default function SupportPage() {
   const [loading, setLoading] = useState(true);
 
   const [showForm, setShowForm] = useState(false);
+
+  const location = useLocation();
 
   useEffect(() => {
     window.scrollTo({
@@ -61,6 +64,34 @@ export default function SupportPage() {
       ).length,
     };
   }, [tickets]);
+
+  const openTicket = async (ticketId) => {
+    try {
+      const data = await supportService.getTicket(ticketId);
+
+      setSelectedTicket(data.ticket);
+
+      setMessages(data.messages);
+    } catch {
+      setMessages([]);
+    }
+  };
+
+  useEffect(() => {
+    if (!tickets.length) return;
+
+    const params = new URLSearchParams(location.search);
+
+    const ticketId = Number(params.get("ticket"));
+
+    if (!ticketId) return;
+
+    const ticket = tickets.find((t) => t.id === ticketId);
+
+    if (!ticket) return;
+
+    openTicket(ticket.id);
+  }, [tickets, location.search]);
 
   return (
     <div className="support-page">
@@ -138,19 +169,7 @@ export default function SupportPage() {
                     ticket={ticket}
                     active={selectedTicket?.id === ticket.id}
                     onClick={async (selected) => {
-                      setSelectedTicket(selected);
-
-                      try {
-                        const data = await supportService.getTicket(
-                          selected.id,
-                        );
-
-                        setSelectedTicket(data.ticket);
-
-                        setMessages(data.messages);
-                      } catch {
-                        setMessages([]);
-                      }
+                      await openTicket(selected.id);
                     }}
                   />
                 ))}
