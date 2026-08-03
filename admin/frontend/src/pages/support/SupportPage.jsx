@@ -60,6 +60,8 @@ export default function SupportPage() {
     try {
       const data = await adminSupportService.getTicket(ticketId);
 
+      console.log("Ticket API Response:", data.messages);
+
       setSelectedTicket(data.ticket);
 
       setMessages(data.messages || []);

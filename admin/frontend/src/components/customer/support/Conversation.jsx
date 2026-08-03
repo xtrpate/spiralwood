@@ -52,7 +52,15 @@ export default function Conversation({
 
       <div className="support-message-list">
         {messages.length === 0 && (
-          <div className="support-no-messages">No conversation yet.</div>
+          <div className="support-no-messages">
+            <div className="conversation-empty-icon">💬</div>
+
+            <h3>No Messages Yet</h3>
+
+            <p>
+              Once you or our support team sends a message, it will appear here.
+            </p>
+          </div>
         )}
 
         {messages.map((msg) => (

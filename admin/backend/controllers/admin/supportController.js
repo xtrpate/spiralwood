@@ -41,8 +41,15 @@ exports.getTickets = async (req, res) => {
         st.category,
         st.priority,
         st.status,
-        st.created_at,
-        st.updated_at,
+        DATE_FORMAT(
+  st.created_at,
+  '%Y-%m-%d %H:%i:%s'
+) AS created_at,
+
+DATE_FORMAT(
+  st.updated_at,
+  '%Y-%m-%d %H:%i:%s'
+) AS updated_at,
 
         customer.id AS customer_id,
         customer.name AS customer_name,
@@ -128,8 +135,19 @@ exports.getTicket = async (req, res) => {
     const [messages] = await pool.query(
       `
       SELECT
-        stm.*,
-        u.name AS sender_name
+  stm.id,
+  stm.ticket_id,
+  stm.sender_id,
+  stm.sender_type,
+  stm.message,
+  stm.attachment_url,
+
+  DATE_FORMAT(
+    stm.created_at,
+    '%Y-%m-%d %H:%i:%s'
+  ) AS created_at,
+
+  u.name AS sender_name
 
       FROM support_ticket_messages stm
 
@@ -371,9 +389,25 @@ exports.updateTicketStatus = async (req, res) => {
 
     const [updatedTicket] = await conn.query(
       `
-      SELECT *
-      FROM support_tickets
-      WHERE id = ?
+      SELECT
+  id,
+  customer_id,
+  order_id,
+  subject,
+  category,
+  priority,
+  status,
+  assigned_to,
+  assigned_by,
+
+  DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+  DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at,
+  DATE_FORMAT(assigned_at, '%Y-%m-%d %H:%i:%s') AS assigned_at,
+  DATE_FORMAT(resolved_at, '%Y-%m-%d %H:%i:%s') AS resolved_at,
+
+  resolution_note
+FROM support_tickets
+WHERE id = ?
       `,
       [ticketId],
     );

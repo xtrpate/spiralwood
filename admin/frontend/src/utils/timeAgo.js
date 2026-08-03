@@ -1,6 +1,6 @@
 export default function timeAgo(dateString) {
   const now = new Date();
-  const date = new Date(dateString);
+  const date = new Date(dateString.replace(" ", "T"));
 
   const seconds = Math.floor((now - date) / 1000);
 

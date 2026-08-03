@@ -3,7 +3,13 @@ import timeAgo from "../../utils/timeAgo";
 export default function Conversation({ messages = [] }) {
   if (!messages.length) {
     return (
-      <div className="support-conversation-empty">No conversation yet.</div>
+      <div className="support-conversation-empty">
+        <div className="conversation-empty-icon">💬</div>
+
+        <h3>No Conversation Yet</h3>
+
+        <p>Start helping the customer by sending the first reply.</p>
+      </div>
     );
   }
 
@@ -27,8 +33,14 @@ export default function Conversation({ messages = [] }) {
             <div className="conversation-header">
               <div className="conversation-avatar">{initials}</div>
 
-              <div>
-                <div className="conversation-name">{message.sender_name}</div>
+              <div className="conversation-user">
+                <div className="conversation-user-top">
+                  <div className="conversation-name">{message.sender_name}</div>
+
+                  <div className="conversation-time">
+                    {timeAgo(message.created_at)}
+                  </div>
+                </div>
 
                 <div className="conversation-role">
                   {isAdmin ? "Support Team" : "Customer"}
@@ -37,10 +49,6 @@ export default function Conversation({ messages = [] }) {
             </div>
 
             <div className="conversation-bubble">{message.message}</div>
-
-            <div className="conversation-time">
-              {timeAgo(message.created_at)}
-            </div>
           </div>
         );
       })}

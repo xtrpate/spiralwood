@@ -27,6 +27,13 @@ export default function TicketDetails({
     <div className="support-ticket-details">
       <h2>{ticket.subject}</h2>
 
+      <p className="ticket-subtitle">
+        Manage this support ticket, assign staff, update its status, and
+        communicate with the customer.
+      </p>
+
+      <h4 className="ticket-section-title">Ticket Information</h4>
+
       <div className="ticket-meta-grid">
         <div className="ticket-meta-item">
           <span>
@@ -80,13 +87,17 @@ export default function TicketDetails({
         </div>
       </div>
 
+      <h4 className="ticket-section-title">Assignment</h4>
+
       <AssignDropdown ticket={ticket} onAssigned={onAssigned} />
+
+      <h4 className="ticket-section-title">Ticket Management</h4>
 
       <TicketManagement ticket={ticket} onUpdated={onUpdated} />
 
-      <hr />
+      <hr className="ticket-divider" />
 
-      <h3>Conversation</h3>
+      <h4 className="ticket-section-title">Conversation</h4>
 
       <Conversation messages={messages} />
       <ReplyBox ticket={ticket} onReplySent={onReplySent} />

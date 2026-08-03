@@ -889,11 +889,6 @@ exports.getOne = async (req, res) => {
   }
 };
 
-// Restores product/product_variation stock for a standard (non-blueprint)
-// order's items. Called only when an order transitions into "cancelled",
-// and only after the status change itself has already been confirmed to
-// have happened (see call sites in updateStatus/decline). Blueprint/custom
-// orders never deduct stock at creation, so they are skipped here.
 async function restoreStandardOrderStock(conn, orderId) {
   const [[order]] = await conn.query(
     `SELECT order_type FROM orders WHERE id = ? LIMIT 1`,

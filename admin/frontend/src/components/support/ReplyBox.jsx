@@ -38,14 +38,24 @@ export default function ReplyBox({ ticket, onReplySent }) {
   return (
     <div className="reply-box">
       <textarea
-        placeholder="Type your reply..."
+        maxLength={1000}
+        placeholder="Write a helpful reply to the customer..."
         value={message}
         onChange={(e) => setMessage(e.target.value)}
+        disabled={sending}
       />
 
-      <button onClick={handleSubmit} disabled={sending}>
-        {sending ? "Sending..." : "Send Reply"}
-      </button>
+      <div className="reply-box-footer">
+        <span
+          className={`reply-counter ${message.length > 900 ? "warning" : ""}`}
+        >
+          {message.length} / 1000
+        </span>
+
+        <button onClick={handleSubmit} disabled={sending || !message.trim()}>
+          {sending ? "Sending..." : "Send Reply"}
+        </button>
+      </div>
     </div>
   );
 }
