@@ -13,6 +13,10 @@ const {
   ensureReceiptForVerifiedPayment,
 } = require("../../services/blueprintReceiptService");
 const {
+  consumeBlueprintMaterialsForProduction,
+  BlueprintMaterialConsumptionError,
+} = require("../../services/blueprintMaterialConsumptionService");
+const {
   createNotification,
   createNotificationSafe,
 } = require("../../utils/notificationHelper");
@@ -962,7 +966,8 @@ exports.updateStatus = async (req, res) => {
        FROM orders o
        LEFT JOIN contracts c ON c.order_id = o.id
        WHERE o.id = ?
-       LIMIT 1`,
+       LIMIT 1
+       FOR UPDATE`,
       [parseInt(req.params.id)],
     );
 
@@ -1276,6 +1281,16 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
+    let materialConsumptionResult = null;
+
+    if (isBlueprintOrder && nextStatus === "production") {
+      materialConsumptionResult =
+        await consumeBlueprintMaterialsForProduction(conn, {
+          orderId: parseInt(req.params.id),
+          actorUserId: req.user.id,
+        });
+    }
+
     const [statusUpdateResult] = await conn.query(
       `UPDATE orders
        SET status = ?
@@ -1327,13 +1342,39 @@ exports.updateStatus = async (req, res) => {
     req.auditRecord = {
       id: parseInt(req.params.id),
       old: { status: currentStatus },
-      new: { status: nextStatus },
+      new: {
+        status: nextStatus,
+        ...(materialConsumptionResult
+          ? {
+              material_consumption_reason:
+                materialConsumptionResult.reason,
+              material_reservation_ids:
+                materialConsumptionResult.reservation_ids || [],
+              stock_movement_ids:
+                materialConsumptionResult.stock_movement_ids || [],
+              materials_consumed:
+                materialConsumptionResult.consumed_count || 0,
+            }
+          : {}),
+      },
     };
     res.json({
       message: `Order status updated to "${nextStatus}".`,
+      ...(materialConsumptionResult
+        ? { material_consumption: materialConsumptionResult }
+        : {}),
     });
   } catch (err) {
     await conn.rollback();
+
+    if (err instanceof BlueprintMaterialConsumptionError) {
+      return res.status(err.statusCode || 409).json({
+        message: err.message,
+        integrity_reason: err.code,
+        ...(err.details ? { details: err.details } : {}),
+      });
+    }
+
     res.status(500).json({ message: err.message });
   } finally {
     conn.release();
@@ -1957,12 +1998,18 @@ exports.getAssignableStaff = async (req, res) => {
 
 exports.assignStaff = async (req, res) => {
   const conn = await pool.getConnection();
+  let transactionActive = false;
 
   try {
-    const orderId = parseInt(req.params.id);
-    const { staff_id, due_date, note } = req.body;
+    const orderId = parseStrictPositiveInt(req.params.id);
+    const staffId = parseStrictPositiveInt(req.body?.staff_id);
+    const { due_date, note } = req.body;
 
-    if (!staff_id || !due_date) {
+    if (!orderId) {
+      return res.status(400).json({ message: "Invalid order ID." });
+    }
+
+    if (!staffId || !due_date) {
       return res.status(400).json({
         message: "Assigned indoor staff and due date are required.",
       });
@@ -1975,15 +2022,22 @@ exports.assignStaff = async (req, res) => {
       });
     }
 
+    await conn.beginTransaction();
+    transactionActive = true;
+
     const [[order]] = await conn.query(
       `SELECT o.*, c.blueprint_id AS contract_blueprint_id
        FROM orders o
        LEFT JOIN contracts c ON c.order_id = o.id
-       WHERE o.id = ?`,
+       WHERE o.id = ?
+       LIMIT 1
+       FOR UPDATE`,
       [orderId],
     );
 
     if (!order) {
+      await conn.rollback();
+      transactionActive = false;
       return res.status(404).json({ message: "Order not found." });
     }
 
@@ -1991,14 +2045,26 @@ exports.assignStaff = async (req, res) => {
       order.contract_blueprint_id || order.blueprint_id || null;
 
     if (!blueprintId) {
+      await conn.rollback();
+      transactionActive = false;
       return res.status(400).json({
         message: "This order is not linked to a blueprint.",
+      });
+    }
+
+    if (normalize(order.order_type) !== "blueprint") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "This order is not a blueprint production order.",
       });
     }
 
     if (
       !["contract_released", "production"].includes(normalize(order.status))
     ) {
+      await conn.rollback();
+      transactionActive = false;
       return res.status(400).json({
         message:
           "Indoor staff assignment is only allowed after contract release or during production.",
@@ -2008,17 +2074,19 @@ exports.assignStaff = async (req, res) => {
     const [[staff]] = await conn.query(
       `SELECT id, name, role, staff_type, is_active
        FROM users
-       WHERE id = ? AND role = 'staff' AND staff_type = 'indoor'`,
-      [parseInt(staff_id)],
+       WHERE id = ? AND role = 'staff' AND staff_type = 'indoor'
+       LIMIT 1
+       FOR UPDATE`,
+      [staffId],
     );
 
     if (!staff || !staff.is_active) {
+      await conn.rollback();
+      transactionActive = false;
       return res.status(400).json({
         message: "Selected indoor staff member is not available.",
       });
     }
-
-    await conn.beginTransaction();
 
     const placeholders = REQUIRED_BLUEPRINT_TASK_ROLES.map(() => "?").join(
       ", ",
@@ -2028,17 +2096,29 @@ exports.assignStaff = async (req, res) => {
       `SELECT id, task_role, status, assigned_to
        FROM project_tasks
        WHERE order_id = ?
-         AND LOWER(REPLACE(task_role, ' ', '_')) IN (${placeholders})`,
+         AND LOWER(REPLACE(task_role, ' ', '_')) IN (${placeholders})
+       FOR UPDATE`,
       [orderId, ...REQUIRED_BLUEPRINT_TASK_ROLES],
     );
 
     if (existingPacket.length > 0) {
       await conn.rollback();
+      transactionActive = false;
       return res.status(400).json({
         message:
           "A production packet already exists for this order. Update the existing packet instead of assigning again.",
       });
     }
+
+    // Assignment is also a production-entry path. Consume the complete
+    // reservation set before any task or status write. If the order already
+    // entered production through the manual status path, the service returns
+    // ALREADY_CONSUMED and does not deduct twice.
+    const materialConsumptionResult =
+      await consumeBlueprintMaterialsForProduction(conn, {
+        orderId,
+        actorUserId: req.user.id,
+      });
 
     const createdTaskIds = [];
     for (const stepLabel of BLUEPRINT_PRODUCTION_TASK_ROLE_OPTIONS) {
@@ -2065,7 +2145,7 @@ exports.assignStaff = async (req, res) => {
         [
           orderId,
           blueprintId,
-          parseInt(staff_id),
+          staffId,
           req.user.id,
           stepLabel,
           title,
@@ -2077,7 +2157,7 @@ exports.assignStaff = async (req, res) => {
     }
 
     await createNotification(conn, {
-      userId: parseInt(staff_id),
+      userId: staffId,
       type: "assignment",
       title: "New Production Order Assigned",
       message: `You have been assigned the full production workflow for ${order.order_number || `Order #${orderId}`}. Complete Cutting Machine, Edge Banding, Horizontal Drilling, Retouching, and Packing.`,
@@ -2089,34 +2169,63 @@ exports.assignStaff = async (req, res) => {
     const orderStatusChanged = normalize(order.status) === "contract_released";
 
     if (orderStatusChanged) {
-      await conn.query(
+      const [statusUpdateResult] = await conn.query(
         `UPDATE orders
          SET status = 'production'
-         WHERE id = ?`,
+         WHERE id = ?
+           AND status = 'contract_released'`,
         [orderId],
       );
+
+      if (statusUpdateResult.affectedRows !== 1) {
+        throw new BlueprintMaterialConsumptionError(
+          "ORDER_STATUS_CHANGED",
+          "This order's status changed while production was starting. Please refresh and try again.",
+          409,
+        );
+      }
     }
 
     await conn.commit();
+    transactionActive = false;
 
     req.auditRecord = {
       id: orderId,
       old: orderStatusChanged ? { status: normalize(order.status) } : null,
       new: {
-        assigned_staff_id: parseInt(staff_id),
+        assigned_staff_id: staffId,
         task_ids: createdTaskIds,
         task_roles: BLUEPRINT_PRODUCTION_TASK_ROLE_OPTIONS,
+        material_consumption_reason: materialConsumptionResult.reason,
+        material_reservation_ids:
+          materialConsumptionResult.reservation_ids || [],
+        stock_movement_ids:
+          materialConsumptionResult.stock_movement_ids || [],
+        materials_consumed: materialConsumptionResult.consumed_count || 0,
         ...(orderStatusChanged ? { status: "production" } : {}),
       },
     };
-    res.json({
+    return res.json({
       message:
         "Indoor staff assigned to the full production workflow successfully.",
       steps_created: BLUEPRINT_PRODUCTION_TASK_ROLE_OPTIONS.length,
+      material_consumption: materialConsumptionResult,
     });
   } catch (err) {
-    await conn.rollback();
-    res.status(500).json({ message: err.message });
+    if (transactionActive) {
+      await conn.rollback();
+      transactionActive = false;
+    }
+
+    if (err instanceof BlueprintMaterialConsumptionError) {
+      return res.status(err.statusCode || 409).json({
+        message: err.message,
+        integrity_reason: err.code,
+        ...(err.details ? { details: err.details } : {}),
+      });
+    }
+
+    return res.status(500).json({ message: err.message });
   } finally {
     conn.release();
   }
