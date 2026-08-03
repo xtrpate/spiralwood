@@ -133,11 +133,14 @@ export default function RawMaterialsPage() {
     setSaving(true);
     try {
       if (modal.mode === "add") {
-        await api.post("/inventory/raw", modal.data);
-        toast.success("Raw material added.");
+        const { data } = await api.post("/inventory/raw", modal.data);
+        toast.success(data?.message || "Raw material added.");
       } else {
-        await api.put(`/inventory/raw/${modal.data.id}`, modal.data);
-        toast.success("Raw material updated.");
+        const { data } = await api.put(
+          `/inventory/raw/${modal.data.id}`,
+          modal.data,
+        );
+        toast.success(data?.message || "Raw material updated.");
       }
       setModal(null);
       load();
@@ -149,6 +152,16 @@ export default function RawMaterialsPage() {
   };
 
   const handleArchive = async (item) => {
+    const reservedQuantity = Number(item.reserved_quantity || 0);
+    const pendingNeedQuantity = Number(item.pending_need_quantity || 0);
+
+    if (reservedQuantity > 0 || pendingNeedQuantity > 0) {
+      toast.error(
+        "This material has active blueprint reservations or pending stock needs. Resolve or cancel those orders before archiving it.",
+      );
+      return;
+    }
+
     if (
       !window.confirm(
         `Archive "${item.name}"? It will be hidden from active inventory and new material selectors, but its history will remain.`,
@@ -318,6 +331,8 @@ export default function RawMaterialsPage() {
                 const pendingNeedQuantity = Number(
                   item.pending_need_quantity || 0,
                 );
+                const hasActiveReservations =
+                  reservedQuantity > 0 || pendingNeedQuantity > 0;
 
                 return (
                   <tr key={item.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
@@ -409,7 +424,18 @@ export default function RawMaterialsPage() {
                           </button>
                           <button
                             onClick={() => handleArchive(item)}
-                            style={{ ...btnEdit, ...btnArchive, marginLeft: 6 }}
+                            disabled={hasActiveReservations}
+                            title={
+                              hasActiveReservations
+                                ? "Resolve active reservations or pending stock needs before archiving."
+                                : "Archive raw material"
+                            }
+                            style={{
+                              ...btnEdit,
+                              ...btnArchive,
+                              ...(hasActiveReservations ? btnDisabled : {}),
+                              marginLeft: 6,
+                            }}
                           >
                             Archive
                           </button>
@@ -449,34 +475,55 @@ export default function RawMaterialsPage() {
                 ["Quantity", "quantity", "number"],
                 ["Reorder Point", "reorder_point", "number"],
                 ["Unit Cost (₱)", "unit_cost", "number"],
-              ].map(([label, key, type, required]) => (
-                <div key={key} style={{ marginBottom: 12 }}>
-                  <label style={labelSm}>{label}</label>
-                  <input
-                    type={type || "text"}
-                    required={required}
-                    min={type === "number" ? "0" : undefined}
-                    step={
-                      type === "number"
-                        ? key === "unit_cost"
-                          ? "0.01"
-                          : "1"
-                        : undefined
-                    }
-                    onKeyDown={(e) => {
-                      if (
-                        (key === "quantity" || key === "reorder_point") &&
-                        (e.key === "." || e.key.toLowerCase() === "e" || e.key === "-")
-                      ) {
-                        e.preventDefault();
+              ].map(([label, key, type, required]) => {
+                const quantityLocked =
+                  modal.mode === "edit" && key === "quantity";
+
+                return (
+                  <div key={key} style={{ marginBottom: 12 }}>
+                    <label style={labelSm}>{label}</label>
+                    <input
+                      type={type || "text"}
+                      required={required}
+                      min={type === "number" ? "0" : undefined}
+                      step={
+                        type === "number"
+                          ? key === "unit_cost"
+                            ? "0.01"
+                            : "1"
+                          : undefined
                       }
-                    }}
-                    value={modal.data[key] ?? ""}
-                    onChange={(e) => setField(key, e.target.value)}
-                    style={inputFull}
-                  />
-                </div>
-              ))}
+                      readOnly={quantityLocked}
+                      aria-readonly={quantityLocked}
+                      onKeyDown={(e) => {
+                        if (
+                          quantityLocked ||
+                          ((key === "quantity" || key === "reorder_point") &&
+                            (e.key === "." ||
+                              e.key.toLowerCase() === "e" ||
+                              e.key === "-"))
+                        ) {
+                          e.preventDefault();
+                        }
+                      }}
+                      value={modal.data[key] ?? ""}
+                      onChange={(e) => {
+                        if (!quantityLocked) setField(key, e.target.value);
+                      }}
+                      style={{
+                        ...inputFull,
+                        ...(quantityLocked ? lockedInput : {}),
+                      }}
+                    />
+                    {quantityLocked && (
+                      <div style={fieldHelp}>
+                        Use Stock Movement to change on-hand quantity so the
+                        physical stock change is recorded.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               <div style={{ marginBottom: 12 }}>
                 <label style={labelSm}>Supplier</label>
                 <select
@@ -779,6 +826,17 @@ const labelSm = {
   display: "block",
   marginBottom: 6,
 };
+const lockedInput = {
+  background: "#f4f4f5",
+  color: "#52525b",
+  cursor: "not-allowed",
+};
+const fieldHelp = {
+  marginTop: 6,
+  fontSize: 11,
+  lineHeight: 1.45,
+  color: "#71717a",
+};
 const btnPrimary = {
   padding: "9px 18px",
   background: "#18181b",
@@ -802,6 +860,10 @@ const btnArchive = {
   background: "#fff7ed",
   color: "#9a3412",
   border: "1px solid #fed7aa",
+};
+const btnDisabled = {
+  opacity: 0.5,
+  cursor: "not-allowed",
 };
 const btnHistory = {
   background: "#eff6ff",

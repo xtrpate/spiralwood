@@ -21,6 +21,58 @@ const computeStockStatus = (quantity, reorderPoint = 0) => {
   return "in_stock";
 };
 
+const normalizeQuantity = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+};
+
+const formatQuantityForMessage = (value) =>
+  normalizeQuantity(value).toLocaleString("en-PH", {
+    maximumFractionDigits: 4,
+  });
+
+const lockActiveBlueprintReservations = async (connection, materialIds) => {
+  const ids = [
+    ...new Set(
+      (Array.isArray(materialIds) ? materialIds : [materialIds])
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0),
+    ),
+  ].sort((a, b) => a - b);
+
+  if (ids.length === 0) return [];
+
+  const placeholders = ids.map(() => "?").join(",");
+  const [rows] = await connection.query(
+    `SELECT id, order_id, material_id, quantity, status
+     FROM blueprint_material_reservations
+     WHERE material_id IN (${placeholders})
+       AND status IN ('pending_stock', 'reserved')
+     ORDER BY material_id, id
+     FOR UPDATE`,
+    ids,
+  );
+
+  return rows;
+};
+
+const getReservedQuantityByMaterial = (reservationRows) => {
+  const reservedByMaterial = new Map();
+
+  for (const row of reservationRows || []) {
+    if (String(row.status || "").toLowerCase() !== "reserved") continue;
+
+    const materialId = Number(row.material_id);
+    const quantity = normalizeQuantity(row.quantity);
+    reservedByMaterial.set(
+      materialId,
+      (reservedByMaterial.get(materialId) || 0) + quantity,
+    );
+  }
+
+  return reservedByMaterial;
+};
+
 const getRawMaterialReferenceCounts = async (connection, materialId) => {
   const [[counts]] = await connection.query(
     `SELECT
@@ -288,7 +340,11 @@ exports.getRawMaterials = async (req, res) => {
 };
 
 exports.createRawMaterial = async (req, res) => {
+  const conn = await pool.getConnection();
+
   try {
+    await conn.beginTransaction();
+
     const {
       name,
       category_id = null,
@@ -304,20 +360,28 @@ exports.createRawMaterial = async (req, res) => {
     const unitCost = Number(unit_cost);
 
     if (!name || !String(name).trim()) {
+      await conn.rollback();
       return res.status(400).json({ message: "Material name is required." });
     }
 
     if (!unit || !String(unit).trim()) {
+      await conn.rollback();
       return res.status(400).json({ message: "Unit is required." });
     }
 
     if (!isValidUnitLabel(unit)) {
+      await conn.rollback();
       return res.status(400).json({
         message: "Unit must be a valid text label such as pcs, kg, meter, or sheet.",
       });
     }
 
-    if ([qty, reorderPoint, unitCost].some((v) => Number.isNaN(v) || v < 0)) {
+    if (
+      [qty, reorderPoint, unitCost].some(
+        (value) => !Number.isFinite(value) || value < 0,
+      )
+    ) {
+      await conn.rollback();
       return res.status(400).json({
         message:
           "Quantity, reorder point, and unit cost must be valid non-negative numbers.",
@@ -330,7 +394,10 @@ exports.createRawMaterial = async (req, res) => {
       category_id !== "" &&
       (!isValidNonNegativeInteger(category_id) || Number(category_id) <= 0)
     ) {
-      return res.status(400).json({ message: "Category must be a valid selection." });
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Category must be a valid selection.",
+      });
     }
 
     if (
@@ -339,40 +406,84 @@ exports.createRawMaterial = async (req, res) => {
       supplier_id !== "" &&
       (!isValidNonNegativeInteger(supplier_id) || Number(supplier_id) <= 0)
     ) {
-      return res.status(400).json({ message: "Supplier must be a valid selection." });
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Supplier must be a valid selection.",
+      });
     }
 
     const status = computeStockStatus(qty, reorderPoint);
 
-    const [r] = await pool.query(
+    const [materialResult] = await conn.query(
       `INSERT INTO raw_materials
          (name, category_id, unit, quantity, reorder_point, unit_cost, supplier_id, stock_status)
        VALUES (?,?,?,?,?,?,?,?)`,
       [
         String(name).trim(),
-        category_id ? parseInt(category_id) : null,
+        category_id ? parseInt(category_id, 10) : null,
         String(unit).trim(),
         qty,
         reorderPoint,
         unitCost,
-        supplier_id ? parseInt(supplier_id) : null,
+        supplier_id ? parseInt(supplier_id, 10) : null,
         status,
       ],
     );
 
-    const [[savedMaterial]] = await pool.query(
-      `SELECT id, name, category_id, unit, quantity, reorder_point, unit_cost, supplier_id, stock_status
-       FROM raw_materials WHERE id = ?`,
-      [r.insertId],
-    );
-
-    if (savedMaterial) {
-      req.auditRecord = { id: r.insertId, old: null, new: savedMaterial };
+    let initialMovementId = null;
+    if (qty > 0) {
+      const [movementResult] = await conn.query(
+        `INSERT INTO stock_movements
+           (material_id, product_id, type, quantity, supplier_id, order_id,
+            reference, notes, created_by)
+         VALUES (?, NULL, 'in', ?, ?, NULL, ?, ?, ?)`,
+        [
+          materialResult.insertId,
+          qty,
+          supplier_id ? parseInt(supplier_id, 10) : null,
+          `INITIAL-STOCK-${materialResult.insertId}`,
+          "Initial stock recorded when the raw material was created.",
+          parseInt(req.user.id, 10),
+        ],
+      );
+      initialMovementId = movementResult.insertId;
     }
 
-    res.status(201).json({ message: "Raw material created.", id: r.insertId });
+    const [[savedMaterial]] = await conn.query(
+      `SELECT id, name, category_id, unit, quantity, reorder_point, unit_cost,
+              supplier_id, stock_status
+       FROM raw_materials
+       WHERE id = ?
+       LIMIT 1`,
+      [materialResult.insertId],
+    );
+
+    await conn.commit();
+
+    if (savedMaterial) {
+      req.auditRecord = {
+        id: materialResult.insertId,
+        old: null,
+        new: {
+          ...savedMaterial,
+          initial_stock_movement_id: initialMovementId,
+        },
+      };
+    }
+
+    return res.status(201).json({
+      message:
+        qty > 0
+          ? "Raw material created and initial stock movement recorded."
+          : "Raw material created.",
+      id: materialResult.insertId,
+      initial_stock_movement_id: initialMovementId,
+    });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    await conn.rollback();
+    return res.status(500).json({ message: err.message });
+  } finally {
+    conn.release();
   }
 };
 
@@ -382,15 +493,19 @@ exports.updateRawMaterial = async (req, res) => {
       name,
       category_id = null,
       unit,
-      quantity = 0,
+      quantity,
       reorder_point = 0,
       unit_cost = 0,
       supplier_id = null,
     } = req.body;
 
-    const qty = Number(quantity);
+    const materialId = parseInt(req.params.id, 10);
     const reorderPoint = Number(reorder_point);
     const unitCost = Number(unit_cost);
+
+    if (!Number.isInteger(materialId) || materialId <= 0) {
+      return res.status(400).json({ message: "Invalid raw material ID." });
+    }
 
     if (!name || !String(name).trim()) {
       return res.status(400).json({ message: "Material name is required." });
@@ -406,10 +521,14 @@ exports.updateRawMaterial = async (req, res) => {
       });
     }
 
-    if ([qty, reorderPoint, unitCost].some((v) => Number.isNaN(v) || v < 0)) {
+    if (
+      !Number.isFinite(reorderPoint) ||
+      reorderPoint < 0 ||
+      !Number.isFinite(unitCost) ||
+      unitCost < 0
+    ) {
       return res.status(400).json({
-        message:
-          "Quantity, reorder point, and unit cost must be valid non-negative numbers.",
+        message: "Reorder point and unit cost must be valid non-negative numbers.",
       });
     }
 
@@ -419,7 +538,9 @@ exports.updateRawMaterial = async (req, res) => {
       category_id !== "" &&
       (!isValidNonNegativeInteger(category_id) || Number(category_id) <= 0)
     ) {
-      return res.status(400).json({ message: "Category must be a valid selection." });
+      return res.status(400).json({
+        message: "Category must be a valid selection.",
+      });
     }
 
     if (
@@ -428,65 +549,14 @@ exports.updateRawMaterial = async (req, res) => {
       supplier_id !== "" &&
       (!isValidNonNegativeInteger(supplier_id) || Number(supplier_id) <= 0)
     ) {
-      return res.status(400).json({ message: "Supplier must be a valid selection." });
-    }
-
-    const status = computeStockStatus(qty, reorderPoint);
-
-    const materialId = parseInt(req.params.id);
-
-    const [[before]] = await pool.query(
-      `SELECT id, name, category_id, unit, quantity, reorder_point, unit_cost, supplier_id, stock_status
-       FROM raw_materials WHERE id = ?`,
-      [materialId],
-    );
-
-    const [updateResult] = await pool.query(
-      `UPDATE raw_materials
-       SET name=?, category_id=?, unit=?, quantity=?,
-           reorder_point=?, unit_cost=?, supplier_id=?, stock_status=?
-       WHERE id=?`,
-      [
-        String(name).trim(),
-        category_id ? parseInt(category_id) : null,
-        String(unit).trim(),
-        qty,
-        reorderPoint,
-        unitCost,
-        supplier_id ? parseInt(supplier_id) : null,
-        status,
-        materialId,
-      ],
-    );
-
-    if (before && updateResult.affectedRows > 0) {
-      const [[after]] = await pool.query(
-        `SELECT id, name, category_id, unit, quantity, reorder_point, unit_cost, supplier_id, stock_status
-         FROM raw_materials WHERE id = ?`,
-        [materialId],
-      );
-
-      if (after) {
-        req.auditRecord = { id: materialId, old: before, new: after };
-      }
-    }
-
-    res.json({ message: "Raw material updated." });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-};
-
-exports.archiveRawMaterial = async (req, res) => {
-  try {
-    const materialId = parseInt(req.params.id, 10);
-    if (!Number.isInteger(materialId) || materialId <= 0) {
-      return res.status(400).json({ message: "Invalid raw material ID." });
+      return res.status(400).json({
+        message: "Supplier must be a valid selection.",
+      });
     }
 
     const [[before]] = await pool.query(
-      `SELECT id, name, category_id, unit, quantity, reorder_point,
-              unit_cost, supplier_id, stock_status, is_active
+      `SELECT id, name, category_id, unit, quantity, reorder_point, unit_cost,
+              supplier_id, stock_status
        FROM raw_materials
        WHERE id = ?
        LIMIT 1`,
@@ -497,11 +567,128 @@ exports.archiveRawMaterial = async (req, res) => {
       return res.status(404).json({ message: "Raw material not found." });
     }
 
+    const currentQty = normalizeQuantity(before.quantity);
+    const requestedQty =
+      quantity === undefined || quantity === null || quantity === ""
+        ? currentQty
+        : Number(quantity);
+
+    if (!Number.isFinite(requestedQty) || requestedQty < 0) {
+      return res.status(400).json({
+        message: "Quantity must be a valid non-negative number.",
+      });
+    }
+
+    if (Math.abs(requestedQty - currentQty) > 0.0000001) {
+      return res.status(409).json({
+        message:
+          "On-hand quantity cannot be changed from Edit Raw Material. Use Stock Movement so every physical stock change is recorded.",
+        current_quantity: currentQty,
+        requested_quantity: requestedQty,
+      });
+    }
+
+    const status = computeStockStatus(currentQty, reorderPoint);
+
+    const [updateResult] = await pool.query(
+      `UPDATE raw_materials
+       SET name=?, category_id=?, unit=?, reorder_point=?, unit_cost=?,
+           supplier_id=?, stock_status=?
+       WHERE id=?`,
+      [
+        String(name).trim(),
+        category_id ? parseInt(category_id, 10) : null,
+        String(unit).trim(),
+        reorderPoint,
+        unitCost,
+        supplier_id ? parseInt(supplier_id, 10) : null,
+        status,
+        materialId,
+      ],
+    );
+
+    if (updateResult.affectedRows !== 1) {
+      return res.status(409).json({
+        message: "Raw material could not be updated. Refresh and try again.",
+      });
+    }
+
+    const [[after]] = await pool.query(
+      `SELECT id, name, category_id, unit, quantity, reorder_point, unit_cost,
+              supplier_id, stock_status
+       FROM raw_materials
+       WHERE id = ?
+       LIMIT 1`,
+      [materialId],
+    );
+
+    if (after) {
+      req.auditRecord = { id: materialId, old: before, new: after };
+    }
+
+    return res.json({ message: "Raw material updated." });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
+  }
+};
+
+exports.archiveRawMaterial = async (req, res) => {
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const materialId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(materialId) || materialId <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ message: "Invalid raw material ID." });
+    }
+
+    const [[before]] = await conn.query(
+      `SELECT id, name, category_id, unit, quantity, reorder_point,
+              unit_cost, supplier_id, stock_status, is_active
+       FROM raw_materials
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [materialId],
+    );
+
+    if (!before) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Raw material not found." });
+    }
+
     if (Number(before.is_active) === 0) {
+      await conn.rollback();
       return res.json({ message: "Raw material is already archived." });
     }
 
-    const [result] = await pool.query(
+    const activeReservations = await lockActiveBlueprintReservations(
+      conn,
+      materialId,
+    );
+
+    if (activeReservations.length > 0) {
+      await conn.rollback();
+
+      const reservedCount = activeReservations.filter(
+        (row) => String(row.status).toLowerCase() === "reserved",
+      ).length;
+      const pendingCount = activeReservations.filter(
+        (row) => String(row.status).toLowerCase() === "pending_stock",
+      ).length;
+
+      return res.status(409).json({
+        message:
+          "This raw material cannot be archived while blueprint orders still reserve it or wait for it. Resolve or cancel those orders first.",
+        reserved_count: reservedCount,
+        pending_stock_count: pendingCount,
+        reservation_ids: activeReservations.map((row) => row.id),
+      });
+    }
+
+    const [result] = await conn.query(
       `UPDATE raw_materials
        SET is_active = 0
        WHERE id = ? AND is_active = 1`,
@@ -509,10 +696,13 @@ exports.archiveRawMaterial = async (req, res) => {
     );
 
     if (result.affectedRows !== 1) {
+      await conn.rollback();
       return res.status(409).json({
         message: "Raw material could not be archived. Refresh and try again.",
       });
     }
+
+    await conn.commit();
 
     req.auditRecord = {
       id: materialId,
@@ -520,9 +710,12 @@ exports.archiveRawMaterial = async (req, res) => {
       new: { ...before, is_active: 0, action: "archived" },
     };
 
-    res.json({ message: "Raw material archived." });
+    return res.json({ message: "Raw material archived." });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    await conn.rollback();
+    return res.status(500).json({ message: err.message });
+  } finally {
+    conn.release();
   }
 };
 
@@ -885,12 +1078,15 @@ exports.createStockMovement = async (req, res) => {
     // RAW MATERIAL DIRECT MOVEMENT
     // ───────────────────────────────────────────────────────────
     if (material_id) {
+      const materialId = parseInt(material_id, 10);
+
       const [[material]] = await conn.query(
-        `SELECT id, name, quantity, reorder_point
+        `SELECT id, name, unit, quantity, reorder_point, is_active
          FROM raw_materials
          WHERE id = ?
+         LIMIT 1
          FOR UPDATE`,
-        [parseInt(material_id)],
+        [materialId],
       );
 
       if (!material) {
@@ -898,64 +1094,109 @@ exports.createStockMovement = async (req, res) => {
         return res.status(404).json({ message: "Raw material not found." });
       }
 
-      const currentQty = Number(material.quantity) || 0;
-      const newQty = currentQty + delta;
-
-      if (newQty < 0) {
+      if (Number(material.is_active) !== 1) {
         await conn.rollback();
-        return res.status(400).json({
-          message: `Insufficient stock for ${material.name}. Available: ${currentQty}, needed: ${movementQty}.`,
+        return res.status(409).json({
+          message:
+            "Archived raw materials cannot receive stock movements. Restore the material first.",
         });
       }
 
-      const [r] = await conn.query(
+      const activeReservations = await lockActiveBlueprintReservations(
+        conn,
+        materialId,
+      );
+      const reservedByMaterial =
+        getReservedQuantityByMaterial(activeReservations);
+      const reservedQty = reservedByMaterial.get(materialId) || 0;
+      const currentQty = normalizeQuantity(material.quantity);
+      const availableQty = Math.max(0, currentQty - reservedQty);
+      const isPhysicalDecrease = !POSITIVE_MOVEMENT_TYPES.has(type);
+
+      if (isPhysicalDecrease && movementQty > availableQty + 0.0000001) {
+        await conn.rollback();
+        return res.status(409).json({
+          message: `${material.name} has only ${formatQuantityForMessage(
+            availableQty,
+          )} ${material.unit || "unit"} available for manual withdrawal. ${formatQuantityForMessage(
+            reservedQty,
+          )} ${material.unit || "unit"} is protected for paid blueprint orders.`,
+          material_id: materialId,
+          on_hand: currentQty,
+          reserved: reservedQty,
+          available: availableQty,
+          requested: movementQty,
+        });
+      }
+
+      const newQty = currentQty + delta;
+
+      if (newQty < -0.0000001) {
+        await conn.rollback();
+        return res.status(400).json({
+          message: `Insufficient stock for ${material.name}. On hand: ${formatQuantityForMessage(
+            currentQty,
+          )}, needed: ${formatQuantityForMessage(movementQty)}.`,
+        });
+      }
+
+      const [movementResult] = await conn.query(
         `INSERT INTO stock_movements
-           (material_id, product_id, type, quantity, supplier_id, order_id, reference, notes, created_by)
+           (material_id, product_id, type, quantity, supplier_id, order_id,
+            reference, notes, created_by)
          VALUES (?,?,?,?,?,?,?,?,?)`,
         [
-          parseInt(material_id),
+          materialId,
           null,
           type,
           movementQty,
-          supplier_id ? parseInt(supplier_id) : null,
-          order_id ? parseInt(order_id) : null,
+          supplier_id ? parseInt(supplier_id, 10) : null,
+          order_id ? parseInt(order_id, 10) : null,
           reference || null,
           notes || null,
-          parseInt(req.user.id),
+          parseInt(req.user.id, 10),
         ],
       );
 
-      await conn.query(
+      const [stockUpdateResult] = await conn.query(
         `UPDATE raw_materials
          SET quantity = ?, stock_status = ?
          WHERE id = ?`,
         [
-          newQty,
-          computeStockStatus(newQty, material.reorder_point),
-          parseInt(material_id),
+          Math.max(0, newQty),
+          computeStockStatus(Math.max(0, newQty), material.reorder_point),
+          materialId,
         ],
       );
+
+      if (stockUpdateResult.affectedRows !== 1) {
+        await conn.rollback();
+        return res.status(409).json({
+          message:
+            "Raw material stock changed before the movement could be completed. Refresh and try again.",
+        });
+      }
 
       await conn.commit();
 
       let reservationRecovery = null;
-      if (type === "in") {
+      if (POSITIVE_MOVEMENT_TYPES.has(type)) {
         try {
           reservationRecovery =
             await retryPendingStockReservationsForMaterial(pool, {
-              materialId: parseInt(material_id),
-              actorUserId: parseInt(req.user.id),
+              materialId,
+              actorUserId: parseInt(req.user.id, 10),
             });
         } catch (recoveryError) {
-          // The stock-in is already committed and must not be reported as
-          // failed or retried by the user. Surface a recovery warning instead.
+          // The stock increase is already committed. Report a warning instead
+          // of asking the user to repeat the physical stock movement.
           console.error(
-            "[BPI-3] Pending-stock recovery failed after raw-material stock-in:",
+            "[BPI-9] Pending-stock recovery failed after stock increase:",
             recoveryError,
           );
           reservationRecovery = {
             triggered: true,
-            material_id: parseInt(material_id),
+            material_id: materialId,
             candidate_count: null,
             attempted_count: 0,
             recovered_count: 0,
@@ -972,7 +1213,7 @@ exports.createStockMovement = async (req, res) => {
                   recoveryError?.code || "PENDING_STOCK_RECOVERY_FAILED",
                 message:
                   recoveryError?.message ||
-                  "Pending-stock recovery failed after stock-in.",
+                  "Pending-stock recovery failed after stock increased.",
               },
             ],
           };
@@ -980,19 +1221,22 @@ exports.createStockMovement = async (req, res) => {
       }
 
       req.auditRecord = {
-        id: r.insertId,
+        id: movementResult.insertId,
         old: null,
         new: {
-          material_id: parseInt(material_id),
+          material_id: materialId,
           product_id: null,
           type,
           quantity: movementQty,
-          supplier_id: supplier_id ? parseInt(supplier_id) : null,
-          order_id: order_id ? parseInt(order_id) : null,
+          supplier_id: supplier_id ? parseInt(supplier_id, 10) : null,
+          order_id: order_id ? parseInt(order_id, 10) : null,
           reference: reference || null,
           notes: notes || null,
           previous_stock: currentQty,
-          new_stock: newQty,
+          reserved_stock: reservedQty,
+          available_before: availableQty,
+          new_stock: Math.max(0, newQty),
+          available_after: Math.max(0, newQty - reservedQty),
           reservation_recovery: reservationRecovery,
         },
       };
@@ -1015,7 +1259,7 @@ exports.createStockMovement = async (req, res) => {
 
       return res.status(201).json({
         message: responseMessage,
-        id: r.insertId,
+        id: movementResult.insertId,
         reservation_recovery: reservationRecovery,
       });
     }
@@ -1043,16 +1287,20 @@ exports.createStockMovement = async (req, res) => {
     if (type === "in") {
       const [bomRows] = await conn.query(
         `SELECT
+            bom.id AS bom_id,
             bom.raw_material_id,
             bom.quantity AS bom_quantity,
             rm.name AS material_name,
-            rm.quantity AS available_quantity,
-            rm.reorder_point
+            rm.unit AS material_unit,
+            rm.quantity AS on_hand_quantity,
+            rm.reorder_point,
+            rm.is_active
          FROM bill_of_materials bom
          INNER JOIN raw_materials rm ON rm.id = bom.raw_material_id
          WHERE bom.product_id = ?
+         ORDER BY rm.id, bom.id
          FOR UPDATE`,
-        [parseInt(product_id)],
+        [parseInt(product_id, 10)],
       );
 
       if (!bomRows.length) {
@@ -1062,54 +1310,122 @@ exports.createStockMovement = async (req, res) => {
         });
       }
 
-      const shortages = [];
-      const consumptionRows = bomRows.map((row) => {
-        const requiredQty = (Number(row.bom_quantity) || 0) * movementQty;
-        const availableQty = Number(row.available_quantity) || 0;
+      const materialIds = [
+        ...new Set(
+          bomRows
+            .map((row) => Number(row.raw_material_id))
+            .filter((value) => Number.isInteger(value) && value > 0),
+        ),
+      ].sort((a, b) => a - b);
 
-        if (requiredQty <= 0) {
-          shortages.push(`${row.material_name} has an invalid BOM quantity.`);
-        } else if (availableQty < requiredQty) {
-          shortages.push(
-            `${row.material_name} (available: ${availableQty}, needed: ${requiredQty})`,
-          );
-        }
-
-        return {
-          raw_material_id: row.raw_material_id,
-          material_name: row.material_name,
-          requiredQty,
-          availableQty,
-          reorder_point: Number(row.reorder_point) || 0,
-        };
-      });
-
-      if (shortages.length) {
+      if (materialIds.length === 0) {
         await conn.rollback();
-        return res.status(400).json({
-          message: `Insufficient raw materials: ${shortages.join(", ")}`,
+        return res.status(409).json({
+          message:
+            "The product bill of materials has no valid raw material links.",
         });
       }
 
-      // 1) record main product stock-in movement
-      const [r] = await conn.query(
+      // Raw material rows were locked above. Lock reservation rows next to
+      // preserve the same material-before-reservation order used by BPI-3/4.
+      const activeReservations = await lockActiveBlueprintReservations(
+        conn,
+        materialIds,
+      );
+      const reservedByMaterial =
+        getReservedQuantityByMaterial(activeReservations);
+
+      const groupedRequirements = new Map();
+      const shortages = [];
+
+      for (const row of bomRows) {
+        const materialId = Number(row.raw_material_id);
+        const perProductQty = Number(row.bom_quantity);
+        const requiredQty = perProductQty * movementQty;
+
+        if (
+          !Number.isFinite(perProductQty) ||
+          perProductQty <= 0 ||
+          !Number.isFinite(requiredQty) ||
+          requiredQty <= 0
+        ) {
+          shortages.push(
+            `${row.material_name || `Material ${materialId}`} has an invalid BOM quantity.`,
+          );
+          continue;
+        }
+
+        const existing = groupedRequirements.get(materialId);
+        if (existing) {
+          existing.requiredQty += requiredQty;
+          continue;
+        }
+
+        groupedRequirements.set(materialId, {
+          raw_material_id: materialId,
+          material_name: row.material_name,
+          material_unit: row.material_unit,
+          onHandQty: normalizeQuantity(row.on_hand_quantity),
+          reservedQty: reservedByMaterial.get(materialId) || 0,
+          reorder_point: normalizeQuantity(row.reorder_point),
+          is_active: Number(row.is_active) === 1,
+          requiredQty,
+        });
+      }
+
+      const consumptionRows = [...groupedRequirements.values()].sort(
+        (left, right) => left.raw_material_id - right.raw_material_id,
+      );
+
+      for (const item of consumptionRows) {
+        item.availableQty = Math.max(0, item.onHandQty - item.reservedQty);
+        item.newRawQty = item.onHandQty - item.requiredQty;
+
+        if (!item.is_active) {
+          shortages.push(
+            `${item.material_name} is archived and cannot be used for production.`,
+          );
+        } else if (item.availableQty + 0.0000001 < item.requiredQty) {
+          shortages.push(
+            `${item.material_name} (on hand: ${formatQuantityForMessage(
+              item.onHandQty,
+            )}, reserved: ${formatQuantityForMessage(
+              item.reservedQty,
+            )}, available: ${formatQuantityForMessage(
+              item.availableQty,
+            )}, needed: ${formatQuantityForMessage(item.requiredQty)})`,
+          );
+        }
+      }
+
+      if (shortages.length) {
+        await conn.rollback();
+        return res.status(409).json({
+          message: `Insufficient unreserved raw materials: ${shortages.join(", ")}`,
+          shortages,
+        });
+      }
+
+      // 1) Record the finished product stock-in movement.
+      const [productMovementResult] = await conn.query(
         `INSERT INTO stock_movements
-           (material_id, product_id, type, quantity, supplier_id, order_id, reference, notes, created_by)
+           (material_id, product_id, type, quantity, supplier_id, order_id,
+            reference, notes, created_by)
          VALUES (?,?,?,?,?,?,?,?,?)`,
         [
           null,
-          parseInt(product_id),
+          parseInt(product_id, 10),
           type,
           movementQty,
-          supplier_id ? parseInt(supplier_id) : null,
-          order_id ? parseInt(order_id) : null,
+          supplier_id ? parseInt(supplier_id, 10) : null,
+          order_id ? parseInt(order_id, 10) : null,
           reference || null,
           notes || null,
-          parseInt(req.user.id),
+          parseInt(req.user.id, 10),
         ],
       );
 
-      // 2) add finished product stock
+      // 2) Add finished product stock.
       const newProductStock = currentProductStock + movementQty;
 
       await conn.query(
@@ -1119,68 +1435,98 @@ exports.createStockMovement = async (req, res) => {
         [
           newProductStock,
           computeStockStatus(newProductStock, product.reorder_point),
-          parseInt(product_id),
+          parseInt(product_id, 10),
         ],
       );
 
-      // 3) deduct every raw material in BOM
+      // 3) Deduct only unreserved raw material stock.
       const bomDeductions = [];
 
       for (const item of consumptionRows) {
-        const newRawQty = item.availableQty - item.requiredQty;
+        const minimumProtectedStock = item.requiredQty + item.reservedQty;
 
-        await conn.query(
+        const [deductResult] = await conn.query(
           `UPDATE raw_materials
-           SET quantity = ?, stock_status = ?
-           WHERE id = ?`,
+           SET quantity = quantity - ?
+           WHERE id = ?
+             AND quantity >= ?`,
           [
-            newRawQty,
-            computeStockStatus(newRawQty, item.reorder_point),
-            parseInt(item.raw_material_id),
+            item.requiredQty,
+            item.raw_material_id,
+            minimumProtectedStock,
           ],
         );
 
-        const [autoResult] = await conn.query(
+        if (deductResult.affectedRows !== 1) {
+          await conn.rollback();
+          return res.status(409).json({
+            message: `${item.material_name} changed before production could be recorded. Refresh and try again.`,
+          });
+        }
+
+        await conn.query(
+          `UPDATE raw_materials
+           SET stock_status = CASE
+             WHEN quantity <= 0 THEN 'out_of_stock'
+             WHEN quantity <= reorder_point THEN 'low_stock'
+             ELSE 'in_stock'
+           END
+           WHERE id = ?`,
+          [item.raw_material_id],
+        );
+
+        const movementReference =
+          reference ||
+          `BOM-PRODUCTION-${productMovementResult.insertId}-${item.raw_material_id}`;
+
+        const [materialMovementResult] = await conn.query(
           `INSERT INTO stock_movements
-             (material_id, product_id, type, quantity, supplier_id, order_id, reference, notes, created_by)
+             (material_id, product_id, type, quantity, supplier_id, order_id,
+              reference, notes, created_by)
            VALUES (?,?,?,?,?,?,?,?,?)`,
           [
-            parseInt(item.raw_material_id),
-            parseInt(product_id),
+            item.raw_material_id,
+            parseInt(product_id, 10),
             "out",
             item.requiredQty,
             null,
-            order_id ? parseInt(order_id) : null,
-            reference || `PRODUCTION-${product_id}`,
+            order_id ? parseInt(order_id, 10) : null,
+            movementReference,
             notes
               ? `${notes} | Auto-deducted for production of ${product.name}`
               : `Auto-deducted for production of ${product.name} x ${movementQty}`,
-            parseInt(req.user.id),
+            parseInt(req.user.id, 10),
           ],
         );
 
         bomDeductions.push({
-          movement_id: autoResult.insertId,
-          material_id: parseInt(item.raw_material_id),
+          movement_id: materialMovementResult.insertId,
+          material_id: item.raw_material_id,
           material_name: item.material_name,
           quantity: item.requiredQty,
-          previous_stock: item.availableQty,
-          new_stock: newRawQty,
+          previous_stock: item.onHandQty,
+          reserved_stock: item.reservedQty,
+          available_before: item.availableQty,
+          new_stock: item.newRawQty,
+          available_after: Math.max(
+            0,
+            item.newRawQty - item.reservedQty,
+          ),
         });
       }
 
       await conn.commit();
 
       req.auditRecord = {
-        id: r.insertId,
+        id: productMovementResult.insertId,
         old: null,
         new: {
           material_id: null,
-          product_id: parseInt(product_id),
+          product_id: parseInt(product_id, 10),
           type,
           quantity: movementQty,
-          supplier_id: supplier_id ? parseInt(supplier_id) : null,
-          order_id: order_id ? parseInt(order_id) : null,
+          supplier_id: supplier_id ? parseInt(supplier_id, 10) : null,
+          order_id: order_id ? parseInt(order_id, 10) : null,
           reference: reference || null,
           notes: notes || null,
           previous_stock: currentProductStock,
@@ -1191,8 +1537,8 @@ exports.createStockMovement = async (req, res) => {
 
       return res.status(201).json({
         message:
-          "Product stock added and raw materials were deducted automatically.",
-        id: r.insertId,
+          "Product stock added. Only unreserved BOM raw materials were deducted.",
+        id: productMovementResult.insertId,
       });
     }
 

@@ -163,23 +163,59 @@ export default function StockMovementPage() {
 
   const isMaterialTarget = Boolean(form.material_id);
   const isProductTarget = Boolean(form.product_id);
+  const selectedMaterial = useMemo(
+    () =>
+      rawMats.find(
+        (material) => Number(material.id) === Number(form.material_id),
+      ) || null,
+    [rawMats, form.material_id],
+  );
+  const selectedOnHand = Number(
+    selectedMaterial?.on_hand_quantity ?? selectedMaterial?.quantity ?? 0,
+  );
+  const selectedReserved = Number(selectedMaterial?.reserved_quantity || 0);
+  const selectedAvailable = Number(
+    selectedMaterial?.available_quantity ??
+      Math.max(0, selectedOnHand - selectedReserved),
+  );
+  const protectsReservedStock =
+    isMaterialTarget &&
+    (form.type === "out" || form.type === "adjustment");
 
   const helperMessage =
     isProductTarget && form.type === "in"
-      ? "Finished product production: the product stock will increase and its BOM raw materials will be deducted automatically."
+      ? "Finished product production: product stock will increase, but only unreserved BOM raw materials may be deducted."
       : isProductTarget && form.type === "out"
         ? "Finished product stock-out: the selected product stock will decrease."
         : isMaterialTarget && form.type === "in"
           ? "Raw material stock-in: use this for supplier deliveries or restocking. Pending blueprint needs may be recovered automatically."
-          : isMaterialTarget && form.type === "out"
-            ? "Manual raw material stock-out: use only for a real physical withdrawal that is not already handled by blueprint production."
-            : "Select one target only: a raw material or a finished product.";
+          : isMaterialTarget && form.type === "return"
+            ? "Returned raw material increases physical stock and may recover pending blueprint needs."
+            : protectsReservedStock
+              ? `This movement may use only ${formatQuantity(
+                  selectedAvailable,
+                )} ${selectedMaterial?.unit || "unit"} of unreserved stock.`
+              : "Select one target only: a raw material or a finished product.";
 
   const handleSave = async (event) => {
     event.preventDefault();
 
     if (!form.material_id && !form.product_id) {
       toast.error("Select a raw material or finished product.");
+      return;
+    }
+
+    const requestedQuantity = Number(form.quantity);
+    if (
+      protectsReservedStock &&
+      Number.isFinite(requestedQuantity) &&
+      requestedQuantity > selectedAvailable + 0.0000001
+    ) {
+      toast.error(
+        `Only ${formatQuantity(selectedAvailable)} ${
+          selectedMaterial?.unit || "unit"
+        } is available. Reserved blueprint stock cannot be withdrawn.`,
+      );
       return;
     }
 
@@ -446,7 +482,7 @@ export default function StockMovementPage() {
                 >
                   <option value="in">In – Delivery / Production</option>
                   <option value="out">Out – Sales / Usage</option>
-                  <option value="adjustment">Adjustment – Stock correction</option>
+                  <option value="adjustment">Adjustment – Downward stock correction</option>
                   <option value="return">Return – Stock returned</option>
                 </select>
               </div>
@@ -466,6 +502,29 @@ export default function StockMovementPage() {
                   ))}
                 </select>
               </div>
+
+              {selectedMaterial && (
+                <div style={availabilityBox}>
+                  <div>
+                    <span style={availabilityLabel}>On Hand</span>
+                    <strong>
+                      {formatQuantity(selectedOnHand)} {selectedMaterial.unit}
+                    </strong>
+                  </div>
+                  <div>
+                    <span style={availabilityLabel}>Reserved</span>
+                    <strong>
+                      {formatQuantity(selectedReserved)} {selectedMaterial.unit}
+                    </strong>
+                  </div>
+                  <div>
+                    <span style={availabilityLabel}>Available</span>
+                    <strong>
+                      {formatQuantity(selectedAvailable)} {selectedMaterial.unit}
+                    </strong>
+                  </div>
+                </div>
+              )}
 
               <div style={fieldGroup}>
                 <label style={label}>Product / Build Material</label>
@@ -492,6 +551,11 @@ export default function StockMovementPage() {
                   step="0.01"
                   required
                   min="0.01"
+                  max={
+                    protectsReservedStock
+                      ? Math.max(0, selectedAvailable)
+                      : undefined
+                  }
                   value={form.quantity}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, quantity: event.target.value }))
@@ -762,6 +826,28 @@ const label = {
   fontSize: 12,
   fontWeight: 700,
   color: "#52525b",
+};
+const availabilityBox = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 8,
+  marginTop: -4,
+  marginBottom: 12,
+  padding: "10px 12px",
+  borderRadius: 8,
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  color: "#1e3a8a",
+  fontSize: 12,
+};
+const availabilityLabel = {
+  display: "block",
+  marginBottom: 3,
+  color: "#64748b",
+  fontSize: 10,
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: 0.5,
 };
 const helperBox = {
   marginBottom: 16,
