@@ -53,12 +53,132 @@ const getRawMaterialReferenceCounts = async (connection, materialId) => {
   };
 };
 
+const getRawMaterialReservationHistory = async (materialId) => {
+  const [[material]] = await pool.query(
+    `SELECT id, name, unit, quantity, reorder_point, stock_status, is_active
+     FROM raw_materials
+     WHERE id = ?
+     LIMIT 1`,
+    [materialId],
+  );
+
+  if (!material) return null;
+
+  const [rows] = await pool.query(
+    `SELECT
+       bmr.id AS reservation_id,
+       bmr.order_id,
+       o.order_number,
+       o.status AS order_status,
+       o.payment_status,
+       COALESCE(
+         NULLIF(TRIM(customer.name), ''),
+         NULLIF(TRIM(o.walkin_customer_name), ''),
+         'Unknown customer'
+       ) AS customer_name,
+       bmr.blueprint_id,
+       bmr.estimation_id,
+       bmr.quantity,
+       bmr.unit_snapshot AS unit,
+       bmr.status,
+       bmr.issue_code,
+       bmr.issue_note,
+       bmr.reserved_at,
+       bmr.consumed_at,
+       bmr.released_at,
+       bmr.release_reason,
+       creator.name AS created_by_name,
+       consumer.name AS consumed_by_name,
+       releaser.name AS released_by_name
+     FROM blueprint_material_reservations bmr
+     LEFT JOIN orders o ON o.id = bmr.order_id
+     LEFT JOIN users customer ON customer.id = o.customer_id
+     LEFT JOIN users creator ON creator.id = bmr.created_by
+     LEFT JOIN users consumer ON consumer.id = bmr.consumed_by
+     LEFT JOIN users releaser ON releaser.id = bmr.released_by
+     WHERE bmr.material_id = ?
+     ORDER BY
+       CASE bmr.status
+         WHEN 'pending_stock' THEN 1
+         WHEN 'reserved' THEN 2
+         WHEN 'consumed' THEN 3
+         WHEN 'released' THEN 4
+         ELSE 5
+       END,
+       bmr.id DESC`,
+    [materialId],
+  );
+
+  const summary = {
+    total_records: rows.length,
+    pending_stock_count: 0,
+    reserved_count: 0,
+    consumed_count: 0,
+    released_count: 0,
+    pending_need_quantity: 0,
+    reserved_quantity: 0,
+    consumed_quantity: 0,
+    released_quantity: 0,
+  };
+
+  for (const row of rows) {
+    const status = String(row.status || "").toLowerCase();
+    const quantity = Number(row.quantity) || 0;
+
+    if (status === "pending_stock") {
+      summary.pending_stock_count += 1;
+      summary.pending_need_quantity += quantity;
+    } else if (status === "reserved") {
+      summary.reserved_count += 1;
+      summary.reserved_quantity += quantity;
+    } else if (status === "consumed") {
+      summary.consumed_count += 1;
+      summary.consumed_quantity += quantity;
+    } else if (status === "released") {
+      summary.released_count += 1;
+      summary.released_quantity += quantity;
+    }
+  }
+
+  const onHandQuantity = Number(material.quantity) || 0;
+  const availableQuantity = Math.max(
+    0,
+    onHandQuantity - summary.reserved_quantity,
+  );
+
+  return {
+    material: {
+      ...material,
+      on_hand_quantity: onHandQuantity,
+      reserved_quantity: summary.reserved_quantity,
+      available_quantity: availableQuantity,
+      pending_need_quantity: summary.pending_need_quantity,
+    },
+    summary,
+    rows,
+  };
+};
+
 // ═══════════════════════════════════════════════════════════
 // RAW MATERIALS
 // ═══════════════════════════════════════════════════════════
 
 exports.getRawMaterials = async (req, res) => {
   try {
+    if (req.query.reservation_material_id !== undefined) {
+      const materialId = Number(req.query.reservation_material_id);
+      if (!Number.isInteger(materialId) || materialId <= 0) {
+        return res.status(400).json({ message: "Invalid raw material ID." });
+      }
+
+      const history = await getRawMaterialReservationHistory(materialId);
+      if (!history) {
+        return res.status(404).json({ message: "Raw material not found." });
+      }
+
+      return res.json(history);
+    }
+
     const {
       search,
       status,
@@ -78,7 +198,8 @@ exports.getRawMaterials = async (req, res) => {
         SELECT
           material_id,
           SUM(CASE WHEN status = 'reserved' THEN quantity ELSE 0 END) AS reserved_quantity,
-          SUM(CASE WHEN status = 'pending_stock' THEN quantity ELSE 0 END) AS pending_need_quantity
+          SUM(CASE WHEN status = 'pending_stock' THEN quantity ELSE 0 END) AS pending_need_quantity,
+          COUNT(*) AS reservation_record_count
         FROM blueprint_material_reservations
         GROUP BY material_id
       ) bmr_summary ON bmr_summary.material_id = rm.id`;
@@ -120,6 +241,7 @@ exports.getRawMaterials = async (req, res) => {
               COALESCE(bmr_summary.reserved_quantity, 0) AS reserved_quantity,
               ${availableQuantitySql} AS available_quantity,
               COALESCE(bmr_summary.pending_need_quantity, 0) AS pending_need_quantity,
+              COALESCE(bmr_summary.reservation_record_count, 0) AS reservation_record_count,
               ${availabilityStatusSql} AS availability_status,
               CASE
                 WHEN EXISTS (

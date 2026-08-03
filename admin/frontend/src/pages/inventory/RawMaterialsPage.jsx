@@ -1,5 +1,6 @@
 // src/pages/inventory/RawMaterialsPage.jsx
 import React, { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
 
@@ -17,7 +18,41 @@ const formatQuantity = (value) => {
   });
 };
 
+const formatDateTime = (value) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const formatStatus = (value) =>
+  String(value || "")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const RESERVATION_FILTERS = [
+  ["all", "All"],
+  ["pending_stock", "Pending Stock"],
+  ["reserved", "Reserved"],
+  ["consumed", "Consumed"],
+  ["released", "Released"],
+];
+
+const RESERVATION_STATUS_STYLES = {
+  pending_stock: { background: "#fef2f2", color: "#991b1b", border: "#fecaca" },
+  reserved: { background: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+  consumed: { background: "#f4f4f5", color: "#27272a", border: "#d4d4d8" },
+  released: { background: "#ecfdf5", color: "#166534", border: "#bbf7d0" },
+};
+
 export default function RawMaterialsPage() {
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [filters, setFilters] = useState({
@@ -29,6 +64,8 @@ export default function RawMaterialsPage() {
   const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
+  const [reservationModal, setReservationModal] = useState(null);
+  const [reservationFilter, setReservationFilter] = useState("all");
 
   const load = useCallback(async () => {
     const { data } = await api.get("/inventory/raw", {
@@ -60,6 +97,36 @@ export default function RawMaterialsPage() {
     });
 
   const openEdit = (item) => setModal({ mode: "edit", data: { ...item } });
+
+  const openReservationHistory = async (item, initialFilter = "all") => {
+    setReservationFilter(initialFilter);
+    setReservationModal({
+      loading: true,
+      error: "",
+      material: item,
+      summary: null,
+      rows: [],
+    });
+
+    try {
+      const { data } = await api.get("/inventory/raw", {
+        params: { reservation_material_id: item.id },
+      });
+      setReservationModal({
+        loading: false,
+        error: "",
+        material: data.material || item,
+        summary: data.summary || {},
+        rows: Array.isArray(data.rows) ? data.rows : [],
+      });
+    } catch (error) {
+      setReservationModal((current) => ({
+        ...current,
+        loading: false,
+        error: "Unable to load reservation history.",
+      }));
+    }
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -134,6 +201,10 @@ export default function RawMaterialsPage() {
       ...current,
       data: { ...current.data, [key]: value },
     }));
+
+  const filteredReservationRows = (reservationModal?.rows || []).filter(
+    (row) => reservationFilter === "all" || row.status === reservationFilter,
+  );
 
   return (
     <div>
@@ -240,6 +311,13 @@ export default function RawMaterialsPage() {
                 ];
                 const isActive = Number(item.is_active) === 1;
                 const hasReferences = Number(item.has_references) === 1;
+                const reservationRecordCount = Number(
+                  item.reservation_record_count || 0,
+                );
+                const reservedQuantity = Number(item.reserved_quantity || 0);
+                const pendingNeedQuantity = Number(
+                  item.pending_need_quantity || 0,
+                );
 
                 return (
                   <tr key={item.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
@@ -256,13 +334,37 @@ export default function RawMaterialsPage() {
                       {formatQuantity(item.on_hand_quantity ?? item.quantity)}
                     </td>
                     <td style={{ ...td, fontWeight: 700 }}>
-                      {formatQuantity(item.reserved_quantity)}
+                      {reservedQuantity > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => openReservationHistory(item, "reserved")}
+                          style={quantityLink}
+                          title="View reserved orders"
+                        >
+                          {formatQuantity(reservedQuantity)}
+                        </button>
+                      ) : (
+                        formatQuantity(reservedQuantity)
+                      )}
                     </td>
                     <td style={{ ...td, fontWeight: 800 }}>
                       {formatQuantity(item.available_quantity ?? item.quantity)}
                     </td>
                     <td style={{ ...td, color: "#991b1b", fontWeight: 700 }}>
-                      {formatQuantity(item.pending_need_quantity)}
+                      {pendingNeedQuantity > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openReservationHistory(item, "pending_stock")
+                          }
+                          style={{ ...quantityLink, color: "#991b1b" }}
+                          title="View orders waiting for stock"
+                        >
+                          {formatQuantity(pendingNeedQuantity)}
+                        </button>
+                      ) : (
+                        formatQuantity(pendingNeedQuantity)
+                      )}
                     </td>
                     <td style={{ ...td, color: "#52525b" }}>{item.reorder_point}</td>
                     <td style={td}>₱ {Number(item.unit_cost).toFixed(2)}</td>
@@ -291,6 +393,15 @@ export default function RawMaterialsPage() {
                       </span>
                     </td>
                     <td style={{ ...td, whiteSpace: "nowrap" }}>
+                      {reservationRecordCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => openReservationHistory(item)}
+                          style={{ ...btnEdit, ...btnHistory, marginRight: 6 }}
+                        >
+                          History
+                        </button>
+                      )}
                       {isActive ? (
                         <>
                           <button onClick={() => openEdit(item)} style={btnEdit}>
@@ -393,6 +504,206 @@ export default function RawMaterialsPage() {
           </div>
         </div>
       )}
+
+      {reservationModal && (
+        <div
+          style={overlay}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setReservationModal(null);
+          }}
+        >
+          <div style={historyModalBox}>
+            <div style={historyHeader}>
+              <div>
+                <h3 style={{ ...modalTitle, marginBottom: 5 }}>
+                  Reservation History
+                </h3>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#27272a" }}>
+                  {reservationModal.material?.name || "Raw material"}
+                </div>
+                <div style={{ fontSize: 11, color: "#71717a", marginTop: 3 }}>
+                  Read-only allocation and usage trail for blueprint orders.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReservationModal(null)}
+                style={closeButton}
+                aria-label="Close reservation history"
+              >
+                ×
+              </button>
+            </div>
+
+            {reservationModal.loading ? (
+              <div style={historyEmpty}>Loading reservation history...</div>
+            ) : reservationModal.error ? (
+              <div style={{ ...historyEmpty, color: "#991b1b" }}>
+                {reservationModal.error}
+              </div>
+            ) : (
+              <>
+                <div style={summaryGrid}>
+                  {[
+                    [
+                      "On Hand",
+                      reservationModal.material?.on_hand_quantity,
+                      "Physical stock",
+                    ],
+                    [
+                      "Reserved",
+                      reservationModal.summary?.reserved_quantity,
+                      `${reservationModal.summary?.reserved_count || 0} order(s)`,
+                    ],
+                    [
+                      "Available",
+                      reservationModal.material?.available_quantity,
+                      "Can be assigned",
+                    ],
+                    [
+                      "Pending Need",
+                      reservationModal.summary?.pending_need_quantity,
+                      `${reservationModal.summary?.pending_stock_count || 0} order(s)`,
+                    ],
+                  ].map(([label, value, detail]) => (
+                    <div key={label} style={summaryCard}>
+                      <div style={summaryLabel}>{label}</div>
+                      <div style={summaryValue}>
+                        {formatQuantity(value)} {reservationModal.material?.unit || ""}
+                      </div>
+                      <div style={summaryDetail}>{detail}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={historyFilters}>
+                  {RESERVATION_FILTERS.map(([value, label]) => {
+                    const count =
+                      value === "all"
+                        ? reservationModal.summary?.total_records || 0
+                        : reservationModal.summary?.[`${value}_count`] || 0;
+                    const active = reservationFilter === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setReservationFilter(value)}
+                        style={active ? historyFilterActive : historyFilterButton}
+                      >
+                        {label} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div style={historyTableWrap}>
+                  <table style={historyTable}>
+                    <thead>
+                      <tr style={{ background: "#fafafa" }}>
+                        {[
+                          "Order",
+                          "Customer",
+                          "Required",
+                          "Status",
+                          "Reserved",
+                          "Consumed",
+                          "Released",
+                          "Issue / Reason",
+                        ].map((heading) => (
+                          <th key={heading} style={historyTh}>
+                            {heading}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredReservationRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} style={historyEmpty}>
+                            No reservation records for this filter.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredReservationRows.map((row) => {
+                          const badge =
+                            RESERVATION_STATUS_STYLES[row.status] ||
+                            RESERVATION_STATUS_STYLES.consumed;
+                          return (
+                            <tr
+                              key={row.reservation_id}
+                              style={{ borderBottom: "1px solid #f4f4f5" }}
+                            >
+                              <td style={historyTd}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setReservationModal(null);
+                                    navigate(`/admin/orders/${row.order_id}`);
+                                  }}
+                                  style={orderLink}
+                                >
+                                  {row.order_number || `Order #${row.order_id}`}
+                                </button>
+                                <div style={orderMeta}>
+                                  {formatStatus(row.order_status)} · {formatStatus(row.payment_status)}
+                                </div>
+                              </td>
+                              <td style={historyTd}>{row.customer_name || "—"}</td>
+                              <td style={{ ...historyTd, fontWeight: 800 }}>
+                                {formatQuantity(row.quantity)} {row.unit || ""}
+                              </td>
+                              <td style={historyTd}>
+                                <span
+                                  style={{
+                                    ...reservationBadge,
+                                    background: badge.background,
+                                    color: badge.color,
+                                    border: `1px solid ${badge.border}`,
+                                  }}
+                                >
+                                  {formatStatus(row.status)}
+                                </span>
+                              </td>
+                              <td style={historyTd}>
+                                {row.status === "pending_stock" && !row.reserved_at
+                                  ? "Waiting for stock"
+                                  : formatDateTime(row.reserved_at)}
+                                {row.created_by_name && (
+                                  <div style={orderMeta}>By {row.created_by_name}</div>
+                                )}
+                              </td>
+                              <td style={historyTd}>
+                                {formatDateTime(row.consumed_at)}
+                                {row.consumed_by_name && (
+                                  <div style={orderMeta}>By {row.consumed_by_name}</div>
+                                )}
+                              </td>
+                              <td style={historyTd}>
+                                {formatDateTime(row.released_at)}
+                                {row.released_by_name && (
+                                  <div style={orderMeta}>By {row.released_by_name}</div>
+                                )}
+                              </td>
+                              <td style={{ ...historyTd, minWidth: 220 }}>
+                                <div style={{ fontWeight: 600 }}>
+                                  {row.issue_note || row.release_reason || "—"}
+                                </div>
+                                {row.issue_code && (
+                                  <div style={orderMeta}>{row.issue_code}</div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -492,6 +803,22 @@ const btnArchive = {
   color: "#9a3412",
   border: "1px solid #fed7aa",
 };
+const btnHistory = {
+  background: "#eff6ff",
+  color: "#1d4ed8",
+  border: "1px solid #bfdbfe",
+};
+const quantityLink = {
+  padding: 0,
+  background: "transparent",
+  border: 0,
+  color: "#1d4ed8",
+  font: "inherit",
+  fontWeight: 800,
+  textDecoration: "underline",
+  textUnderlineOffset: 2,
+  cursor: "pointer",
+};
 const btnDelete = {
   background: "#fef2f2",
   color: "#991b1b",
@@ -555,4 +882,130 @@ const btnGhost = {
   borderRadius: 7,
   fontSize: 13,
   cursor: "pointer",
+};
+
+const historyModalBox = {
+  background: "#fff",
+  borderRadius: 14,
+  width: "min(1180px, calc(100vw - 36px))",
+  maxHeight: "calc(100vh - 48px)",
+  padding: 24,
+  boxShadow: "0 20px 60px rgba(0,0,0,.25)",
+  overflow: "auto",
+};
+const historyHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 20,
+  marginBottom: 18,
+};
+const closeButton = {
+  width: 34,
+  height: 34,
+  borderRadius: 8,
+  border: "1px solid #e4e4e7",
+  background: "#fff",
+  color: "#3f3f46",
+  fontSize: 22,
+  lineHeight: 1,
+  cursor: "pointer",
+};
+const summaryGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  gap: 10,
+  marginBottom: 16,
+};
+const summaryCard = {
+  border: "1px solid #e4e4e7",
+  borderRadius: 10,
+  padding: "12px 14px",
+  background: "#fafafa",
+};
+const summaryLabel = {
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#71717a",
+  textTransform: "uppercase",
+  letterSpacing: 1,
+};
+const summaryValue = {
+  marginTop: 5,
+  fontSize: 18,
+  fontWeight: 800,
+  color: "#18181b",
+};
+const summaryDetail = { marginTop: 3, fontSize: 11, color: "#71717a" };
+const historyFilters = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  marginBottom: 14,
+};
+const historyFilterButton = {
+  padding: "7px 11px",
+  borderRadius: 7,
+  border: "1px solid #e4e4e7",
+  background: "#fff",
+  color: "#52525b",
+  fontSize: 11,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+const historyFilterActive = {
+  ...historyFilterButton,
+  background: "#18181b",
+  color: "#fff",
+  border: "1px solid #18181b",
+};
+const historyTableWrap = {
+  border: "1px solid #e4e4e7",
+  borderRadius: 10,
+  overflowX: "auto",
+};
+const historyTable = {
+  width: "100%",
+  minWidth: 1050,
+  borderCollapse: "collapse",
+  fontSize: 12,
+};
+const historyTh = {
+  ...th,
+  padding: "11px 12px",
+};
+const historyTd = {
+  padding: "12px",
+  verticalAlign: "top",
+  color: "#27272a",
+};
+const historyEmpty = {
+  padding: 28,
+  textAlign: "center",
+  color: "#71717a",
+  fontSize: 13,
+};
+const reservationBadge = {
+  display: "inline-block",
+  padding: "3px 8px",
+  borderRadius: 12,
+  fontSize: 10,
+  fontWeight: 800,
+  whiteSpace: "nowrap",
+};
+const orderLink = {
+  padding: 0,
+  border: 0,
+  background: "transparent",
+  color: "#1d4ed8",
+  fontSize: 12,
+  fontWeight: 800,
+  textDecoration: "underline",
+  textUnderlineOffset: 2,
+  cursor: "pointer",
+};
+const orderMeta = {
+  marginTop: 3,
+  fontSize: 10,
+  color: "#71717a",
 };
