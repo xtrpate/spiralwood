@@ -201,6 +201,18 @@ router.put(
   logAction("update_raw_material", "raw_materials"),
   inventory.updateRawMaterial,
 );
+router.patch(
+  "/inventory/raw/:id/archive",
+  adminOnly,
+  logAction("archive_raw_material", "raw_materials"),
+  inventory.archiveRawMaterial,
+);
+router.patch(
+  "/inventory/raw/:id/restore",
+  adminOnly,
+  logAction("restore_raw_material", "raw_materials"),
+  inventory.restoreRawMaterial,
+);
 router.delete(
   "/inventory/raw/:id",
   adminOnly,

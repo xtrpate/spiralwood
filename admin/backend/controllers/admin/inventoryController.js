@@ -18,6 +18,33 @@ const computeStockStatus = (quantity, reorderPoint = 0) => {
   return "in_stock";
 };
 
+const getRawMaterialReferenceCounts = async (connection, materialId) => {
+  const [[counts]] = await connection.query(
+    `SELECT
+       (SELECT COUNT(*) FROM bill_of_materials WHERE raw_material_id = ?) AS bill_of_materials_count,
+       (SELECT COUNT(*) FROM stock_movements WHERE material_id = ?) AS stock_movements_count,
+       (SELECT COUNT(*) FROM estimation_items WHERE raw_material_id = ?) AS estimation_items_count,
+       (SELECT COUNT(*) FROM blueprint_components WHERE raw_material_id = ?) AS blueprint_components_count`,
+    [materialId, materialId, materialId, materialId],
+  );
+
+  const normalized = {
+    bill_of_materials_count: Number(counts?.bill_of_materials_count || 0),
+    stock_movements_count: Number(counts?.stock_movements_count || 0),
+    estimation_items_count: Number(counts?.estimation_items_count || 0),
+    blueprint_components_count: Number(counts?.blueprint_components_count || 0),
+  };
+
+  return {
+    ...normalized,
+    total:
+      normalized.bill_of_materials_count +
+      normalized.stock_movements_count +
+      normalized.estimation_items_count +
+      normalized.blueprint_components_count,
+  };
+};
+
 // ═══════════════════════════════════════════════════════════
 // RAW MATERIALS
 // ═══════════════════════════════════════════════════════════
@@ -27,12 +54,15 @@ exports.getRawMaterials = async (req, res) => {
     const {
       search,
       status,
+      archive_status = "active",
       supplier_id,
       category_id,
       page = 1,
       limit = 20,
     } = req.query;
-    const offset = (page - 1) * limit;
+    const pageNumber = Math.max(1, parseInt(page, 10) || 1);
+    const limitNumber = Math.min(1000, Math.max(1, parseInt(limit, 10) || 20));
+    const offset = (pageNumber - 1) * limitNumber;
     const where = ["1=1"];
     const params = [];
 
@@ -53,15 +83,38 @@ exports.getRawMaterials = async (req, res) => {
       params.push(category_id);
     }
 
+    const archiveFilter = String(archive_status || "active").toLowerCase();
+    if (archiveFilter === "archived") {
+      where.push("rm.is_active = 0");
+    } else if (archiveFilter !== "all") {
+      where.push("rm.is_active = 1");
+    }
+
     const [rows] = await pool.query(
-      `SELECT rm.*, s.name AS supplier_name, c.name AS category_name
+      `SELECT rm.*, s.name AS supplier_name, c.name AS category_name,
+              CASE
+                WHEN EXISTS (
+                  SELECT 1 FROM bill_of_materials bom
+                  WHERE bom.raw_material_id = rm.id LIMIT 1
+                ) OR EXISTS (
+                  SELECT 1 FROM stock_movements sm
+                  WHERE sm.material_id = rm.id LIMIT 1
+                ) OR EXISTS (
+                  SELECT 1 FROM estimation_items ei
+                  WHERE ei.raw_material_id = rm.id LIMIT 1
+                ) OR EXISTS (
+                  SELECT 1 FROM blueprint_components bc
+                  WHERE bc.raw_material_id = rm.id LIMIT 1
+                )
+                THEN 1 ELSE 0
+              END AS has_references
        FROM raw_materials rm
        LEFT JOIN suppliers s  ON s.id  = rm.supplier_id
        LEFT JOIN categories c ON c.id  = rm.category_id
        WHERE ${where.join(" AND ")}
-       ORDER BY rm.name ASC
+       ORDER BY rm.is_active DESC, rm.name ASC
        LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), parseInt(offset)],
+      [...params, limitNumber, offset],
     );
 
     const [[{ total }]] = await pool.query(
@@ -265,35 +318,158 @@ exports.updateRawMaterial = async (req, res) => {
   }
 };
 
-exports.deleteRawMaterial = async (req, res) => {
+exports.archiveRawMaterial = async (req, res) => {
   try {
-    const materialId = parseInt(req.params.id);
+    const materialId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(materialId) || materialId <= 0) {
+      return res.status(400).json({ message: "Invalid raw material ID." });
+    }
 
     const [[before]] = await pool.query(
-      `SELECT id, name, category_id, unit, quantity, reorder_point, unit_cost, supplier_id, stock_status
-       FROM raw_materials WHERE id = ?`,
+      `SELECT id, name, category_id, unit, quantity, reorder_point,
+              unit_cost, supplier_id, stock_status, is_active
+       FROM raw_materials
+       WHERE id = ?
+       LIMIT 1`,
       [materialId],
     );
+
+    if (!before) {
+      return res.status(404).json({ message: "Raw material not found." });
+    }
+
+    if (Number(before.is_active) === 0) {
+      return res.json({ message: "Raw material is already archived." });
+    }
+
+    const [result] = await pool.query(
+      `UPDATE raw_materials
+       SET is_active = 0
+       WHERE id = ? AND is_active = 1`,
+      [materialId],
+    );
+
+    if (result.affectedRows !== 1) {
+      return res.status(409).json({
+        message: "Raw material could not be archived. Refresh and try again.",
+      });
+    }
+
+    req.auditRecord = {
+      id: materialId,
+      old: before,
+      new: { ...before, is_active: 0, action: "archived" },
+    };
+
+    res.json({ message: "Raw material archived." });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.restoreRawMaterial = async (req, res) => {
+  try {
+    const materialId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(materialId) || materialId <= 0) {
+      return res.status(400).json({ message: "Invalid raw material ID." });
+    }
+
+    const [[before]] = await pool.query(
+      `SELECT id, name, category_id, unit, quantity, reorder_point,
+              unit_cost, supplier_id, stock_status, is_active
+       FROM raw_materials
+       WHERE id = ?
+       LIMIT 1`,
+      [materialId],
+    );
+
+    if (!before) {
+      return res.status(404).json({ message: "Raw material not found." });
+    }
+
+    if (Number(before.is_active) === 1) {
+      return res.json({ message: "Raw material is already active." });
+    }
+
+    const [result] = await pool.query(
+      `UPDATE raw_materials
+       SET is_active = 1
+       WHERE id = ? AND is_active = 0`,
+      [materialId],
+    );
+
+    if (result.affectedRows !== 1) {
+      return res.status(409).json({
+        message: "Raw material could not be restored. Refresh and try again.",
+      });
+    }
+
+    req.auditRecord = {
+      id: materialId,
+      old: before,
+      new: { ...before, is_active: 1, action: "restored" },
+    };
+
+    res.json({ message: "Raw material restored." });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+exports.deleteRawMaterial = async (req, res) => {
+  try {
+    const materialId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(materialId) || materialId <= 0) {
+      return res.status(400).json({ message: "Invalid raw material ID." });
+    }
+
+    const [[before]] = await pool.query(
+      `SELECT id, name, category_id, unit, quantity, reorder_point,
+              unit_cost, supplier_id, stock_status, is_active
+       FROM raw_materials
+       WHERE id = ?
+       LIMIT 1`,
+      [materialId],
+    );
+
+    if (!before) {
+      return res.status(404).json({ message: "Raw material not found." });
+    }
+
+    const references = await getRawMaterialReferenceCounts(pool, materialId);
+    if (references.total > 0) {
+      return res.status(409).json({
+        message:
+          "This raw material has historical or linked records and cannot be permanently deleted. Archive it instead.",
+        can_archive: true,
+        references,
+      });
+    }
 
     const [deleteResult] = await pool.query(
       "DELETE FROM raw_materials WHERE id = ?",
       [materialId],
     );
 
-    if (before && deleteResult.affectedRows > 0) {
-      req.auditRecord = {
-        id: materialId,
-        old: before,
-        new: { action: "deleted" },
-      };
+    if (deleteResult.affectedRows !== 1) {
+      return res.status(409).json({
+        message: "Raw material could not be deleted. Refresh and try again.",
+      });
     }
 
-    res.json({ message: "Raw material deleted." });
+    req.auditRecord = {
+      id: materialId,
+      old: before,
+      new: { action: "deleted" },
+    };
+
+    res.json({ message: "Raw material permanently deleted." });
   } catch (err) {
     if (err.code === "ER_ROW_IS_REFERENCED_2") {
-      return res.status(400).json({
+      return res.status(409).json({
         message:
-          "Cannot delete this raw material because it is used in one or more product recipes (bill of materials) or stock movement records.",
+          "This raw material has linked records and cannot be permanently deleted. Archive it instead.",
+        can_archive: true,
       });
     }
     res.status(500).json({ message: err.message });

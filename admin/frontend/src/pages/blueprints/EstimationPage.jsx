@@ -1,95 +1,27 @@
-// src/pages/blueprints/EstimationPage.jsx
-import React, { useEffect, useState, useMemo } from "react";
-import { useParams, useNavigate, useLocation } from "react-router-dom";
-import api from "../../services/api";
+import React, { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import api, { buildAssetUrl } from "../../services/api";
 
-const BLANK_ITEM = {
-  name: "",
-  quantity: 1,
-  unit: "pc",
-  unit_cost: "",
-  note: "",
-  source_key: "",
-  source_type: "manual",
-};
-
-const MATERIAL_TABLE_COLUMNS = [
-  { label: "#", width: "5%" },
-  { label: "Description", width: "26%" },
-  { label: "Unit", width: "9%" },
-  { label: "Qty", width: "10%" },
-  { label: "Rate (₱)", width: "13%" },
-  { label: "Amount (₱)", width: "13%" },
-  { label: "Remarks", width: "19%" },
-  { label: "", width: "5%" },
+const UNIT_OPTIONS = [
+  "pc",
+  "pcs",
+  "sheet",
+  "sq.m",
+  "m",
+  "ft",
+  "kg",
+  "L",
+  "roll",
+  "set",
+  "lot",
+  "job",
+  "service",
 ];
 
-const formatMoney = (value) =>
-  `₱ ${Number(value || 0).toLocaleString("en-PH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-
-const normalizeText = (value = "") =>
-  String(value ?? "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-const getBlueprintDisplayTitle = (blueprint = {}) =>
-  normalizeText(blueprint?.title) || "Untitled Blueprint";
-
-const getCustomerDisplayName = (blueprint = {}) =>
-  normalizeText(
-    blueprint?.client_name ||
-      blueprint?.customer_name ||
-      blueprint?.client?.name ||
-      blueprint?.customer?.name ||
-      blueprint?.walkin_customer_name ||
-      "",
-  ) || "Unassigned";
-
-const formatDateDisplay = (value) => {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-
-  return d.toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-};
-
-const getValidUntilDate = (value, days = 30) => {
-  const base = value ? new Date(value) : new Date();
-  if (Number.isNaN(base.getTime())) return new Date();
-
-  const next = new Date(base);
-  next.setDate(next.getDate() + days);
-  return next;
-};
-
-const formatEstimateStatus = (value = "") => {
-  const raw = String(value || "")
-    .trim()
-    .toLowerCase();
-  if (!raw) return "Draft";
-
-  return raw.replace(/_/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
-};
-
-const isApprovedEstimateStatus = (value = "") =>
-  String(value || "")
-    .trim()
-    .toLowerCase() === "approved";
-
-const isSentEstimateStatus = (value = "") =>
-  String(value || "")
-    .trim()
-    .toLowerCase() === "sent";
+const AUTO_SOURCE_TYPES = new Set(["component", "cutlist", "blueprint_part"]);
 
 const WOOD_FINISH_LABEL_MAP = {
   "oak-natural": "Oak Natural",
@@ -103,7 +35,7 @@ const WOOD_FINISH_LABEL_MAP = {
 };
 
 const WOOD_FINISH_PRICE_MAP = {
-  "oak-natural": 1.0,
+  "oak-natural": 1,
   "pine-light": 0.92,
   "maple-cream": 1.08,
   "beech-honey": 1.05,
@@ -113,223 +45,17 @@ const WOOD_FINISH_PRICE_MAP = {
   "ash-beige": 1.1,
 };
 
-const getWoodFinishMultiplier = (comp = {}) => {
-  const finishId = String(comp?.finish || "").trim();
-
-  if (finishId && WOOD_FINISH_PRICE_MAP[finishId]) {
-    return Number(WOOD_FINISH_PRICE_MAP[finishId]) || 1;
-  }
-
-  const material = String(comp?.material || "").toLowerCase();
-
-  if (material.includes("pine")) return 0.92;
-  if (material.includes("oak")) return 1.0;
-  if (material.includes("maple")) return 1.08;
-  if (material.includes("beech")) return 1.05;
-  if (material.includes("walnut")) return 1.22;
-  if (material.includes("mahogany")) return 1.18;
-  if (material.includes("teak")) return 1.28;
-  if (material.includes("ash")) return 1.1;
-
-  return 1;
+const MATERIAL_AREA_RATE_MAP = {
+  pine: 1450,
+  oak: 1750,
+  maple: 1900,
+  beech: 1850,
+  walnut: 2250,
+  mahogany: 2150,
+  teak: 2350,
+  ash: 1950,
+  default: 1650,
 };
-
-const getWoodFinishLabel = (comp = {}) => {
-  const finishId = String(comp?.finish || "").trim();
-  return WOOD_FINISH_LABEL_MAP[finishId] || "";
-};
-
-const getMaterialDisplayName = (comp = {}) => {
-  const finishLabel = getWoodFinishLabel(comp);
-  const material = String(comp?.material || "—").trim() || "—";
-  return finishLabel ? `${finishLabel} / ${material}` : material;
-};
-
-const isAreaUnit = (unit = "") =>
-  ["sq.m", "sqm", "m²", "m2"].includes(String(unit).trim().toLowerCase());
-
-const getItemAmount = (item = {}) =>
-  (Number(item.quantity || 0) || 0) * (Number(item.unit_cost || 0) || 0);
-
-const LABOR_LIKE_ROW_RE =
-  /\b(labor|fabrication|assembly|installation|install|carpentry|service)\b/i;
-
-const isLaborLikeItem = (item = {}) =>
-  LABOR_LIKE_ROW_RE.test(`${item?.name || ""} ${item?.note || ""}`);
-
-const normalizeItem = (raw = {}) => {
-  const unit = raw.unit || "pc";
-  const numericQty = Number(raw.quantity ?? raw.qty ?? 1) || 0;
-
-  return {
-    name: normalizeText(raw.name || raw.description || raw.label || ""),
-    quantity: isAreaUnit(unit)
-      ? Number(Math.max(0.0001, numericQty || 0.0001).toFixed(4))
-      : Math.max(1, Math.round(numericQty || 1)),
-    unit,
-    unit_cost:
-      Number(
-        raw.unit_cost ?? raw.unitCost ?? raw.unit_price ?? raw.unitPrice ?? 0,
-      ) || 0,
-    note: normalizeText(raw.note || ""),
-    source_key: raw.source_key ?? raw.sourceKey ?? "",
-    source_type: raw.source_type ?? raw.sourceType ?? "",
-  };
-};
-
-const isFilledEstimateRow = (item = {}) => {
-  const normalized = normalizeItem(item);
-  return Boolean(
-    normalizeText(normalized.name) ||
-    normalizeText(normalized.note) ||
-    Number(normalized.unit_cost || 0) > 0,
-  );
-};
-
-const NUMBERED_SUFFIX_RE = /^(.*?)(?:\s+#?\d+)(\s*\([^)]*\))?$/i;
-
-const getCondenseNameInfo = (name = "") => {
-  const cleaned = normalizeText(name);
-  if (!cleaned) {
-    return {
-      canGroup: false,
-      baseLabel: "",
-      normalizedKey: "",
-    };
-  }
-
-  const match = cleaned.match(NUMBERED_SUFFIX_RE);
-  if (!match) {
-    return {
-      canGroup: false,
-      baseLabel: cleaned,
-      normalizedKey: cleaned.toLowerCase(),
-    };
-  }
-
-  const base = normalizeText(match[1] || "");
-  const suffix = normalizeText(match[2] || "");
-  const baseLabel = normalizeText(`${base}${suffix ? ` ${suffix}` : ""}`);
-
-  return {
-    canGroup: Boolean(base),
-    baseLabel,
-    normalizedKey: baseLabel.toLowerCase(),
-  };
-};
-
-const pluralizeEstimateLabel = (label = "", qty = 1) => {
-  if (qty <= 1) return label;
-
-  const cleaned = normalizeText(label);
-  if (!cleaned) return label;
-
-  const match = cleaned.match(/^(.*?)(\s*\([^)]*\))?$/);
-  const core = normalizeText(match?.[1] || cleaned);
-  const suffix = match?.[2] || "";
-
-  let pluralCore = core;
-
-  if (/s$/i.test(core)) {
-    pluralCore = core;
-  } else if (/y$/i.test(core) && !/[aeiou]y$/i.test(core)) {
-    pluralCore = `${core.slice(0, -1)}ies`;
-  } else {
-    pluralCore = `${core}s`;
-  }
-
-  return `${pluralCore}${suffix}`;
-};
-
-const condenseAutoGeneratedItems = (rows = []) => {
-  const groupedMap = new Map();
-  const orderedRows = [];
-
-  rows.forEach((rawRow) => {
-    const row = normalizeItem(rawRow);
-
-    if (!isFilledEstimateRow(row)) return;
-
-    const { canGroup, baseLabel, normalizedKey } = getCondenseNameInfo(
-      row.name,
-    );
-
-    if (!canGroup) {
-      orderedRows.push(row);
-      return;
-    }
-
-    const key = [
-      normalizedKey,
-      normalizeText(row.unit).toLowerCase(),
-      Number(row.unit_cost || 0).toFixed(2),
-      normalizeText(row.note).toLowerCase(),
-      normalizeText(row.source_type || "").toLowerCase(),
-    ].join("|");
-
-    if (!groupedMap.has(key)) {
-      const seed = {
-        ...row,
-        name: baseLabel,
-        quantity: 0,
-        source_key: `group:${key}`,
-        source_type: row.source_type || "component",
-      };
-
-      groupedMap.set(key, seed);
-      orderedRows.push(seed);
-    }
-
-    const target = groupedMap.get(key);
-    const nextQty = Number(target.quantity || 0) + Number(row.quantity || 0);
-
-    target.quantity = isAreaUnit(row.unit)
-      ? Number(nextQty.toFixed(4))
-      : Math.max(1, Math.round(nextQty));
-  });
-
-  return orderedRows.map((row) => {
-    const qty = Number(row.quantity || 0);
-    return normalizeItem({
-      ...row,
-      name: qty > 1 ? pluralizeEstimateLabel(row.name, qty) : row.name,
-    });
-  });
-};
-
-const splitEstimationItems = (rows = []) => {
-  const result = {
-    materialItems: [],
-    laborRowsTotal: 0,
-  };
-
-  rows.forEach((row) => {
-    const normalized = normalizeItem(row);
-
-    if (!isFilledEstimateRow(normalized)) return;
-
-    if (isLaborLikeItem(normalized)) {
-      result.laborRowsTotal += getItemAmount(normalized);
-      return;
-    }
-
-    result.materialItems.push(normalized);
-  });
-
-  return result;
-};
-
-const getDraftRows = (draft = {}) => {
-  if (Array.isArray(draft?.rows)) return draft.rows;
-  if (Array.isArray(draft?.lineItems)) return draft.lineItems;
-  if (Array.isArray(draft?.line_items)) return draft.line_items;
-  return [];
-};
-
-const getComponentVolume = (comp = {}) =>
-  Math.max(1, Number(comp?.width) || 0) *
-  Math.max(1, Number(comp?.height) || 0) *
-  Math.max(1, Number(comp?.depth) || 0);
 
 const TEMPLATE_GROUP_PRICE_MAP = {
   template_dining_table: 16200,
@@ -346,258 +72,145 @@ const PART_PREFIX_GROUP_PRICE_MAP = {
   ct_: TEMPLATE_GROUP_PRICE_MAP.template_coffee_table,
 };
 
-const MATERIAL_AREA_RATE_MAP = {
-  pine: 1450,
-  oak: 1750,
-  maple: 1900,
-  beech: 1850,
-  walnut: 2250,
-  mahogany: 2150,
-  teak: 2350,
-  ash: 1950,
-  default: 1650,
-};
-
-const CUTLIST_PIECE_RATE_MAP = {
-  cabinet_body: 2800,
-  other: 1200,
-};
-
-const getMaterialRateKey = (material = "") => {
-  const value = String(material || "").toLowerCase();
-
-  if (value.includes("pine")) return "pine";
-  if (value.includes("oak")) return "oak";
-  if (value.includes("maple")) return "maple";
-  if (value.includes("beech")) return "beech";
-  if (value.includes("walnut")) return "walnut";
-  if (value.includes("mahogany")) return "mahogany";
-  if (value.includes("teak")) return "teak";
-  if (value.includes("ash")) return "ash";
-
-  return "default";
-};
-
-const getDefaultCutListUnitCost = (row = {}) => {
-  const estimationUnit = String(row?.estimationUnit || "").toLowerCase();
-  const cutListType = String(row?.cutListType || "").toLowerCase();
-  const materialRateKey = getMaterialRateKey(row?.material);
-  const areaRate =
-    MATERIAL_AREA_RATE_MAP[materialRateKey] || MATERIAL_AREA_RATE_MAP.default;
-
-  if (estimationUnit === "panel_area") {
-    return Number(areaRate.toFixed(2));
-  }
-
-  if (cutListType === "cabinet_body") {
-    const basePieceRate =
-      CUTLIST_PIECE_RATE_MAP.cabinet_body || CUTLIST_PIECE_RATE_MAP.other;
-
-    const widthFactor = Math.max(
-      0.85,
-      Math.min(1.35, (Number(row?.widthMm) || 600) / 600),
-    );
-    const heightFactor = Math.max(
-      0.85,
-      Math.min(1.35, (Number(row?.heightMm) || 720) / 720),
-    );
-    const depthFactor = Math.max(
-      0.85,
-      Math.min(1.25, (Number(row?.depthMm) || 500) / 500),
-    );
-
-    const materialFactor = areaRate / MATERIAL_AREA_RATE_MAP.default;
-
-    return Number(
-      (
-        basePieceRate *
-        widthFactor *
-        heightFactor *
-        depthFactor *
-        materialFactor
-      ).toFixed(2),
-    );
-  }
-
-  return Number(
-    (
-      (CUTLIST_PIECE_RATE_MAP.other || 1200) *
-      (areaRate / MATERIAL_AREA_RATE_MAP.default)
-    ).toFixed(2),
-  );
-};
-
-const getRecoveredGroupUnitPrice = (comp = {}) => {
-  const explicit = Number(comp?.groupUnitPrice) || 0;
-  if (explicit > 0) return explicit;
-
-  const templateType = String(comp?.templateType || "").trim();
-  if (templateType && TEMPLATE_GROUP_PRICE_MAP[templateType]) {
-    return Number(TEMPLATE_GROUP_PRICE_MAP[templateType]) || 0;
-  }
-
-  const type = String(comp?.type || "").toLowerCase();
-  const matchedPrefix = Object.keys(PART_PREFIX_GROUP_PRICE_MAP).find(
-    (prefix) => type.startsWith(prefix),
-  );
-  if (matchedPrefix) {
-    return Number(PART_PREFIX_GROUP_PRICE_MAP[matchedPrefix]) || 0;
-  }
-
-  const label = String(comp?.groupLabel || comp?.label || "").toLowerCase();
-  if (label.includes("dining table"))
-    return TEMPLATE_GROUP_PRICE_MAP.template_dining_table;
-  if (label.includes("bed")) return TEMPLATE_GROUP_PRICE_MAP.template_bed_frame;
-  if (label.includes("wardrobe"))
-    return TEMPLATE_GROUP_PRICE_MAP.template_wardrobe;
-  if (label.includes("coffee table"))
-    return TEMPLATE_GROUP_PRICE_MAP.template_coffee_table;
-
-  return 0;
-};
-
-const getComponentSurfaceAreaSqM = (width = 0, height = 0, depth = 0) => {
-  const w = Math.max(1, Number(width) || 0);
-  const h = Math.max(1, Number(height) || 0);
-  const d = Math.max(1, Number(depth) || 0);
-
-  return (2 * (w * h + w * d + h * d)) / 1000000;
-};
-
-const getComponentFloorPrice = (comp = {}) => {
-  const hint = `${comp?.label || ""} ${comp?.name || ""} ${comp?.type || ""}`
-    .toLowerCase()
+const normalizeText = (value = "") =>
+  String(value ?? "")
+    .replace(/\s+/g, " ")
     .trim();
 
-  if (/(leg|post|support|foot|base)/i.test(hint)) return 650;
-  if (/(top|tabletop|panel|shelf|door|drawer)/i.test(hint)) return 1200;
-  if (/(apron|rail|brace|stretcher)/i.test(hint)) return 450;
+const formatMoney = (value) =>
+  `₱ ${Number(value || 0).toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
-  return 350;
+const formatDateDisplay = (value) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 };
 
-const getResolvedUnitPrice = (comp = {}, allComponents = []) => {
-  const multiplier = getWoodFinishMultiplier(comp);
-
-  const direct = Number(comp?.unitPrice) || 0;
-  if (direct > 0) {
-    return Number((direct * multiplier).toFixed(2));
-  }
-
-  const groupUnitPrice = getRecoveredGroupUnitPrice(comp);
-  if (comp?.groupId && groupUnitPrice > 0) {
-    const volume = getComponentVolume(comp);
-    const groupItems = allComponents.filter((c) => c.groupId === comp.groupId);
-    const totalVolume = groupItems.reduce(
-      (sum, c) => sum + getComponentVolume(c),
-      0,
-    );
-
-    if (volume && totalVolume) {
-      const allocatedBase = groupUnitPrice * (volume / totalVolume);
-      return Number((allocatedBase * multiplier).toFixed(2));
-    }
-  }
-
-  const width = Math.max(1, Number(comp?.width) || 0);
-  const height = Math.max(1, Number(comp?.height) || 0);
-  const depth = Math.max(1, Number(comp?.depth) || 18);
-
-  const materialRateKey = getMaterialRateKey(comp?.material);
-  const areaRate =
-    MATERIAL_AREA_RATE_MAP[materialRateKey] || MATERIAL_AREA_RATE_MAP.default;
-
-  const thicknessMm = Math.max(12, Math.min(width, height, depth));
-  const thicknessFactor = Math.max(0.9, Math.min(1.8, thicknessMm / 25));
-
-  const surfaceAreaSqM = Math.max(
-    getComponentSurfaceAreaSqM(width, height, depth),
-    0.08,
-  );
-
-  const floorPrice = getComponentFloorPrice(comp);
-
-  const fallbackBase = Math.max(
-    floorPrice,
-    surfaceAreaSqM * areaRate * thicknessFactor,
-  );
-
-  return Number((fallbackBase * multiplier).toFixed(2));
+const formatDateTime = (value) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 };
 
-const buildAutoItemsFromComponents = (components = []) =>
-  condenseAutoGeneratedItems(
-    components.map((c) => {
-      const finishLabel = getWoodFinishLabel(c);
-      const materialLabel = getMaterialDisplayName(c);
+const getBlueprintDisplayTitle = (blueprint = {}) =>
+  normalizeText(blueprint?.title) || "Untitled Blueprint";
 
-      return normalizeItem({
-        name: `${c.label || "Component"}${finishLabel ? ` (${finishLabel})` : ""}`,
-        quantity: Number(c.qty) || 1,
-        unit: "pc",
-        unit_cost: getResolvedUnitPrice(c, components),
-        note: `${materialLabel} · ${c.width || 0}×${c.height || 0}×${c.depth || 0} mm`,
-        source_key: `component:${c.id || c.partCode || c.label || ""}`,
-        source_type: "component",
-      });
-    }),
+const getCustomerDisplayName = (blueprint = {}) =>
+  normalizeText(
+    blueprint?.client_name ||
+      blueprint?.customer_name ||
+      blueprint?.walkin_customer_name ||
+      "",
+  ) || "Unassigned";
+
+const formatEstimateStatus = (value = "") => {
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (!raw) return "Draft";
+  return raw.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const isAreaUnit = (unit = "") =>
+  ["sq.m", "sqm", "m²", "m2"].includes(String(unit).trim().toLowerCase());
+
+const getItemAmount = (item = {}) =>
+  (Number(item.quantity || 0) || 0) * (Number(item.unit_cost || 0) || 0);
+
+const makeLocalKey = (prefix = "row") =>
+  `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 9)}`;
+
+const normalizeItem = (raw = {}, index = 0) => {
+  const rawMaterialId = raw.raw_material_id
+    ? Number(raw.raw_material_id)
+    : null;
+  const requestedType = String(raw.source_type || raw.sourceType || "")
+    .trim()
+    .toLowerCase();
+  const sourceType = requestedType || (rawMaterialId ? "inventory_material" : "other");
+  const unit = normalizeText(raw.unit || "pc") || "pc";
+  const numericQty = Number(raw.quantity ?? raw.qty ?? 1);
+
+  return {
+    id: raw.id || null,
+    component_id: raw.component_id ? Number(raw.component_id) : null,
+    raw_material_id: rawMaterialId,
+    name: normalizeText(raw.name || raw.description || raw.label || ""),
+    quantity: isAreaUnit(unit)
+      ? Number(Math.max(0.0001, numericQty || 0.0001).toFixed(4))
+      : Math.max(1, Number.isFinite(numericQty) ? numericQty : 1),
+    unit,
+    unit_cost:
+      raw.unit_cost === "" || raw.unit_cost === null
+        ? ""
+        : Number(raw.unit_cost ?? raw.unitCost ?? raw.unit_price ?? 0) || 0,
+    note: normalizeText(raw.note || ""),
+    source_key: normalizeText(raw.source_key || raw.sourceKey || ""),
+    source_type: sourceType,
+    _source_type_explicit: Boolean(requestedType),
+    _row_key:
+      raw._row_key ||
+      normalizeText(raw.source_key || raw.sourceKey || "") ||
+      (raw.id ? `db:${raw.id}` : makeLocalKey(`${sourceType || "row"}-${index}`)),
+  };
+};
+
+const serializeItem = (item = {}) => ({
+  id: item.id || undefined,
+  component_id: item.component_id || null,
+  raw_material_id: item.raw_material_id || null,
+  name: normalizeText(item.name),
+  description: normalizeText(item.name),
+  quantity: Number(item.quantity || 0),
+  unit: normalizeText(item.unit || "pc") || "pc",
+  unit_cost: Number(item.unit_cost || 0),
+  note: normalizeText(item.note),
+  source_key: normalizeText(item.source_key),
+  source_type:
+    normalizeText(item.source_type || "") ||
+    (item.raw_material_id ? "inventory_material" : "other"),
+});
+
+const isFilledItem = (item = {}) =>
+  Boolean(
+    normalizeText(item.name) ||
+      item.raw_material_id ||
+      Number(item.unit_cost || 0) > 0 ||
+      normalizeText(item.note),
   );
 
-const buildAutoItemsFromCutListRows = (rows = []) =>
-  condenseAutoGeneratedItems(
-    rows.map((row) => {
-      const useAreaUnit =
-        String(row?.estimationUnit || "").toLowerCase() === "panel_area";
+const isInventoryItem = (item = {}) =>
+  String(item.source_type || "").trim().toLowerCase() === "inventory_material";
 
-      const quantity = useAreaUnit
-        ? Number(Number(row?.totalAreaSqM || 0).toFixed(4)) || 0.0001
-        : Math.max(1, Number(row?.qty || 1) || 1);
-
-      const unit = useAreaUnit ? "sq.m" : "pc";
-
-      const name =
-        row?.sampleLabel ||
-        [row?.partFamily || "Part", row?.partRole || "Item"]
-          .filter(Boolean)
-          .join(" / ");
-
-      const noteParts = [
-        row?.material || "—",
-        row?.cutListType || "—",
-        row?.widthMm && row?.heightMm && row?.depthMm
-          ? `${row.widthMm}×${row.heightMm}×${row.depthMm} mm`
-          : null,
-        row?.thicknessMm ? `${row.thicknessMm} mm thick` : null,
-        row?.qty ? `${row.qty} part${Number(row.qty) > 1 ? "s" : ""}` : null,
-        useAreaUnit && row?.totalAreaSqM
-          ? `${Number(row.totalAreaSqM).toFixed(4)} sq.m total`
-          : null,
-        !useAreaUnit && row?.totalVolumeCuM
-          ? `${Number(row.totalVolumeCuM).toFixed(4)} cu.m total`
-          : null,
-      ].filter(Boolean);
-
-      return normalizeItem({
-        name,
-        quantity,
-        unit,
-        unit_cost: getDefaultCutListUnitCost(row),
-        note: noteParts.join(" · "),
-        source_key:
-          row?.id ||
-          `cutrow:${[
-            row?.partFamily || "",
-            row?.partRole || "",
-            row?.material || "",
-            row?.widthMm || 0,
-            row?.heightMm || 0,
-            row?.depthMm || 0,
-            row?.thicknessMm || 0,
-          ].join("|")}`,
-        source_type: "cutlist",
-      });
-    }),
+const isBlueprintPartItem = (item = {}) => {
+  if (isInventoryItem(item)) return false;
+  const sourceType = String(item.source_type || "").toLowerCase();
+  const sourceKey = String(item.source_key || "");
+  return (
+    AUTO_SOURCE_TYPES.has(sourceType) ||
+    sourceKey.startsWith("component:") ||
+    sourceKey.startsWith("cutrow:") ||
+    sourceKey.startsWith("group:")
   );
+};
+
+const isOtherItem = (item = {}) =>
+  !isInventoryItem(item) && !isBlueprintPartItem(item);
 
 const parseBlueprintDesignData = (blueprint = {}) => {
   try {
@@ -609,308 +222,892 @@ const parseBlueprintDesignData = (blueprint = {}) => {
   }
 };
 
+const getWoodFinishMultiplier = (component = {}) => {
+  const finish = String(component?.finish || "").trim();
+  if (finish && WOOD_FINISH_PRICE_MAP[finish]) {
+    return Number(WOOD_FINISH_PRICE_MAP[finish]) || 1;
+  }
+
+  const material = String(component?.material || "").toLowerCase();
+  const match = Object.keys(MATERIAL_AREA_RATE_MAP).find(
+    (key) => key !== "default" && material.includes(key),
+  );
+  if (!match) return 1;
+  return MATERIAL_AREA_RATE_MAP[match] / MATERIAL_AREA_RATE_MAP.oak;
+};
+
+const getWoodFinishLabel = (component = {}) =>
+  WOOD_FINISH_LABEL_MAP[String(component?.finish || "").trim()] || "";
+
+const getMaterialRateKey = (material = "") => {
+  const value = String(material || "").toLowerCase();
+  return (
+    Object.keys(MATERIAL_AREA_RATE_MAP).find(
+      (key) => key !== "default" && value.includes(key),
+    ) || "default"
+  );
+};
+
+const getComponentVolume = (component = {}) =>
+  Math.max(1, Number(component?.width) || 0) *
+  Math.max(1, Number(component?.height) || 0) *
+  Math.max(1, Number(component?.depth) || 0);
+
+const getRecoveredGroupUnitPrice = (component = {}) => {
+  const explicit = Number(component?.groupUnitPrice) || 0;
+  if (explicit > 0) return explicit;
+
+  const templateType = String(component?.templateType || "").trim();
+  if (templateType && TEMPLATE_GROUP_PRICE_MAP[templateType]) {
+    return Number(TEMPLATE_GROUP_PRICE_MAP[templateType]) || 0;
+  }
+
+  const type = String(component?.type || "").toLowerCase();
+  const prefix = Object.keys(PART_PREFIX_GROUP_PRICE_MAP).find((item) =>
+    type.startsWith(item),
+  );
+  return prefix ? PART_PREFIX_GROUP_PRICE_MAP[prefix] : 0;
+};
+
+const getComponentSurfaceAreaSqM = (width = 0, height = 0, depth = 0) => {
+  const w = Math.max(1, Number(width) || 0);
+  const h = Math.max(1, Number(height) || 0);
+  const d = Math.max(1, Number(depth) || 0);
+  return (2 * (w * h + w * d + h * d)) / 1000000;
+};
+
+const getComponentFloorPrice = (component = {}) => {
+  const hint = `${component?.label || ""} ${component?.name || ""} ${component?.type || ""}`.toLowerCase();
+  if (/(leg|post|support|foot|base)/i.test(hint)) return 650;
+  if (/(top|tabletop|panel|shelf|door|drawer)/i.test(hint)) return 1200;
+  if (/(apron|rail|brace|stretcher)/i.test(hint)) return 450;
+  return 350;
+};
+
+const getResolvedUnitPrice = (component = {}, allComponents = []) => {
+  const multiplier = getWoodFinishMultiplier(component);
+  const direct = Number(component?.unitPrice) || 0;
+  if (direct > 0) return Number((direct * multiplier).toFixed(2));
+
+  const groupUnitPrice = getRecoveredGroupUnitPrice(component);
+  if (component?.groupId && groupUnitPrice > 0) {
+    const groupItems = allComponents.filter(
+      (item) => item.groupId === component.groupId,
+    );
+    const totalVolume = groupItems.reduce(
+      (sum, item) => sum + getComponentVolume(item),
+      0,
+    );
+    if (totalVolume > 0) {
+      return Number(
+        (
+          groupUnitPrice *
+          (getComponentVolume(component) / totalVolume) *
+          multiplier
+        ).toFixed(2),
+      );
+    }
+  }
+
+  const width = Math.max(1, Number(component?.width) || 0);
+  const height = Math.max(1, Number(component?.height) || 0);
+  const depth = Math.max(1, Number(component?.depth) || 18);
+  const areaRate =
+    MATERIAL_AREA_RATE_MAP[getMaterialRateKey(component?.material)] ||
+    MATERIAL_AREA_RATE_MAP.default;
+  const thickness = Math.max(12, Math.min(width, height, depth));
+  const thicknessFactor = Math.max(0.9, Math.min(1.8, thickness / 25));
+  const surfaceArea = Math.max(
+    getComponentSurfaceAreaSqM(width, height, depth),
+    0.08,
+  );
+  const base = Math.max(
+    getComponentFloorPrice(component),
+    surfaceArea * areaRate * thicknessFactor,
+  );
+  return Number((base * multiplier).toFixed(2));
+};
+
+const getDefaultCutListUnitCost = (row = {}) => {
+  const isArea =
+    String(row?.estimationUnit || "").toLowerCase() === "panel_area";
+  const areaRate =
+    MATERIAL_AREA_RATE_MAP[getMaterialRateKey(row?.material)] ||
+    MATERIAL_AREA_RATE_MAP.default;
+  if (isArea) return Number(areaRate.toFixed(2));
+  const base = String(row?.cutListType || "").toLowerCase() === "cabinet_body"
+    ? 2800
+    : 1200;
+  return Number((base * (areaRate / MATERIAL_AREA_RATE_MAP.default)).toFixed(2));
+};
+
+const condenseAutoItems = (rows = []) => {
+  const grouped = new Map();
+  const output = [];
+
+  rows.forEach((raw, index) => {
+    const row = normalizeItem(raw, index);
+    const numbered = row.name.match(/^(.*?)(?:\s+#?\d+)(\s*\([^)]*\))?$/i);
+    if (!numbered) {
+      output.push(row);
+      return;
+    }
+
+    const base = normalizeText(`${numbered[1] || ""}${numbered[2] || ""}`);
+    const key = [
+      base.toLowerCase(),
+      row.unit.toLowerCase(),
+      Number(row.unit_cost || 0).toFixed(2),
+      row.note.toLowerCase(),
+    ].join("|");
+
+    if (!grouped.has(key)) {
+      const seed = {
+        ...row,
+        name: base,
+        quantity: 0,
+        source_key: `group:${key}`,
+        _row_key: `group:${key}`,
+      };
+      grouped.set(key, seed);
+      output.push(seed);
+    }
+
+    grouped.get(key).quantity += Number(row.quantity || 0);
+  });
+
+  return output.map((row) => ({
+    ...row,
+    name:
+      Number(row.quantity || 0) > 1 && !/s$/i.test(row.name)
+        ? `${row.name}s`
+        : row.name,
+  }));
+};
+
+const buildAutoItemsFromComponents = (components = []) =>
+  condenseAutoItems(
+    components.map((component) => {
+      const finishLabel = getWoodFinishLabel(component);
+      const material = normalizeText(component?.material || "—") || "—";
+      return {
+        name: `${component.label || "Component"}${finishLabel ? ` (${finishLabel})` : ""}`,
+        quantity: Number(component.qty) || 1,
+        unit: "pc",
+        unit_cost: getResolvedUnitPrice(component, components),
+        note: `${finishLabel ? `${finishLabel} / ` : ""}${material} · ${component.width || 0}×${component.height || 0}×${component.depth || 0} mm`,
+        source_key: `component:${component.id || component.partCode || component.label || ""}`,
+        source_type: "component",
+      };
+    }),
+  );
+
+const buildAutoItemsFromCutList = (rows = []) =>
+  condenseAutoItems(
+    rows.map((row, index) => {
+      const useArea =
+        String(row?.estimationUnit || "").toLowerCase() === "panel_area";
+      const name =
+        row?.sampleLabel ||
+        [row?.partFamily || "Part", row?.partRole || "Item"]
+          .filter(Boolean)
+          .join(" / ");
+      const note = [
+        row?.material || "—",
+        row?.widthMm && row?.heightMm && row?.depthMm
+          ? `${row.widthMm}×${row.heightMm}×${row.depthMm} mm`
+          : null,
+        row?.thicknessMm ? `${row.thicknessMm} mm thick` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      return {
+        name,
+        quantity: useArea
+          ? Number(Number(row?.totalAreaSqM || 0).toFixed(4)) || 0.0001
+          : Math.max(1, Number(row?.qty || 1) || 1),
+        unit: useArea ? "sq.m" : "pc",
+        unit_cost: getDefaultCutListUnitCost(row),
+        note,
+        source_key:
+          row?.id ||
+          `cutrow:${index}:${row?.partFamily || ""}:${row?.partRole || ""}`,
+        source_type: "cutlist",
+      };
+    }),
+  );
+
 const buildPreferredAutoItems = (design = {}) => {
   if (
     Array.isArray(design?.conversionCutListRows) &&
     design.conversionCutListRows.length
   ) {
-    return buildAutoItemsFromCutListRows(design.conversionCutListRows);
+    return buildAutoItemsFromCutList(design.conversionCutListRows);
   }
-
-  return buildAutoItemsFromComponents(design?.components || []);
+  return buildAutoItemsFromComponents(
+    Array.isArray(design?.components) ? design.components : [],
+  );
 };
 
-const getItemMergeKey = (item = {}) => {
-  if (item?.source_key) return String(item.source_key);
-  return [
-    normalizeText(item?.name || "").toLowerCase(),
-    normalizeText(item?.unit || "").toLowerCase(),
-    normalizeText(item?.note || "").toLowerCase(),
-  ].join("|");
-};
-
-const normalizeEstimateNameKey = (value = "") => {
-  const cleaned = normalizeText(value);
-  if (!cleaned) return "";
-
-  const { baseLabel } = getCondenseNameInfo(cleaned);
-
-  let normalized = normalizeText(baseLabel || cleaned)
+const normalizeIdentityName = (value = "") => {
+  let result = normalizeText(value)
     .replace(/\s*\([^)]*\)\s*$/g, "")
     .toLowerCase();
-
-  if (/ies$/i.test(normalized)) {
-    normalized = normalized.replace(/ies$/i, "y");
-  } else if (/s$/i.test(normalized) && !/ss$/i.test(normalized)) {
-    normalized = normalized.replace(/s$/i, "");
+  if (/ies$/i.test(result)) result = result.replace(/ies$/i, "y");
+  else if (/s$/i.test(result) && !/ss$/i.test(result)) {
+    result = result.replace(/s$/i, "");
   }
-
-  return normalized;
+  return result;
 };
 
-const normalizeLegacyAutoName = (value = "") => normalizeEstimateNameKey(value);
-
-const isLikelyLegacyAutoDuplicate = (item = {}, autoNameSet = new Set()) => {
-  const sourceKey = String(item?.source_key || "").trim();
-  const sourceType = String(item?.source_type || "")
-    .trim()
-    .toLowerCase();
-
-  if (sourceKey || sourceType === "manual") return false;
-
-  const normalizedName = normalizeLegacyAutoName(item?.name || "");
-  if (!normalizedName || !autoNameSet.has(normalizedName)) return false;
-
-  return Number(item?.unit_cost || 0) <= 0;
-};
-
-const getEstimateLooseKey = (item = {}) => {
-  const normalizedName = normalizeLegacyAutoName(item?.name || "");
-  const normalizedUnit = normalizeText(item?.unit || "pc").toLowerCase();
-
-  const noteText = normalizeText(item?.note || "");
-  const dimensionMatch = noteText.match(
+const getDimensionIdentity = (note = "") => {
+  const match = normalizeText(note).match(
     /\d+(?:\.\d+)?\s*[x×]\s*\d+(?:\.\d+)?(?:\s*[x×]\s*\d+(?:\.\d+)?)?/i,
   );
-
-  const dimensionKey = dimensionMatch
-    ? dimensionMatch[0].replace(/\s+/g, "").toLowerCase()
-    : "";
-
-  return [normalizedName, normalizedUnit, dimensionKey].join("|");
+  return match ? match[0].replace(/\s+/g, "").toLowerCase() : "";
 };
 
-const removeZeroCostDuplicateRows = (rows = []) => {
-  const positiveRowMap = new Map();
+const getLegacyIdentity = (item = {}) =>
+  `${normalizeIdentityName(item.name)}|${getDimensionIdentity(item.note)}`;
 
-  const normalizedRows = (Array.isArray(rows) ? rows : [])
-    .map(normalizeItem)
-    .filter(isFilledEstimateRow);
+const mergeAutoRows = (latestRows = [], savedAutoRows = [], legacyRows = []) => {
+  const exactMap = new Map();
+  const identityMap = new Map();
 
-  normalizedRows.forEach((row) => {
-    const looseKey = getEstimateLooseKey(row);
-    const unitCost = Number(row.unit_cost || 0) || 0;
-
-    if (!looseKey || unitCost <= 0) return;
-
-    const existing = positiveRowMap.get(looseKey);
-    if (!existing || unitCost > existing.unit_cost) {
-      positiveRowMap.set(looseKey, {
-        unit_cost: unitCost,
-      });
+  [...savedAutoRows, ...legacyRows].forEach((row) => {
+    if (row.source_key) exactMap.set(row.source_key, row);
+    const identity = getLegacyIdentity(row);
+    if (!identity || identity === "|") return;
+    const current = identityMap.get(identity);
+    if (!current || Number(row.unit_cost || 0) > Number(current.unit_cost || 0)) {
+      identityMap.set(identity, row);
     }
   });
 
-  return normalizedRows.filter((row) => {
-    const looseKey = getEstimateLooseKey(row);
-    const unitCost = Number(row.unit_cost || 0) || 0;
-
-    if (!looseKey) return true;
-    if (unitCost > 0) return true;
-
-    return !positiveRowMap.has(looseKey);
-  });
-};
-
-const mergeAutoItemsWithExistingPrices = (
-  autoItems = [],
-  existingItems = [],
-) => {
-  const existingMap = new Map();
-
-  existingItems.forEach((item) => {
-    const key = getItemMergeKey(item);
-    if (!key) return;
-
-    existingMap.set(key, {
-      unit_cost: Number(item?.unit_cost || 0) || 0,
-      quantity: item?.quantity,
-      unit: item?.unit,
-      note: item?.note,
-      name: item?.name,
-    });
-  });
-
-  return autoItems.map((item) => {
-    const match = existingMap.get(getItemMergeKey(item));
-
-    if (!match) return normalizeItem(item);
-
-    const savedUnitCost = Number(match.unit_cost || 0) || 0;
-
-    return normalizeItem({
-      ...item,
-      name: normalizeText(match.name) || item.name,
+  return latestRows.map((raw, index) => {
+    const row = normalizeItem(raw, index);
+    const match = exactMap.get(row.source_key) || identityMap.get(getLegacyIdentity(row));
+    if (!match) return row;
+    return {
+      ...row,
+      unit_cost:
+        Number(match.unit_cost || 0) > 0 ? Number(match.unit_cost) : row.unit_cost,
       quantity:
-        Number(match.quantity || 0) > 0
-          ? Number(match.quantity)
-          : item.quantity,
-      unit: match.unit || item.unit,
-      note: normalizeText(match.note) || item.note,
-      unit_cost: savedUnitCost > 0 ? savedUnitCost : item.unit_cost,
-    });
+        Number(match.quantity || 0) > 0 ? Number(match.quantity) : row.quantity,
+      unit: normalizeText(match.unit) || row.unit,
+      note: normalizeText(match.note) || row.note,
+      _row_key: row.source_key || row._row_key,
+    };
   });
 };
 
-const isAutoGeneratedItem = (item = {}) => {
-  const sourceType = String(item?.source_type || "").toLowerCase();
-  const sourceKey = String(item?.source_key || "");
-
-  return (
-    sourceType === "component" ||
-    sourceType === "cutlist" ||
-    sourceKey.startsWith("component:") ||
-    sourceKey.startsWith("cutrow:") ||
-    sourceKey.startsWith("group:")
+const reconcileLoadedItems = (rows = [], latestAutoRows = []) => {
+  const normalized = (Array.isArray(rows) ? rows : [])
+    .map(normalizeItem)
+    .filter(isFilledItem);
+  const inventoryRows = normalized.filter(isInventoryItem);
+  const savedAutoRows = normalized.filter(isBlueprintPartItem);
+  const remaining = normalized.filter(
+    (row) => !isInventoryItem(row) && !isBlueprintPartItem(row),
   );
+  const latestIdentitySet = new Set(latestAutoRows.map(getLegacyIdentity));
+  const legacyAutoRows = remaining.filter((row) => {
+    const explicitOther =
+      row.source_type === "other" && row._source_type_explicit;
+    if (explicitOther) return false;
+    const identity = getLegacyIdentity(row);
+    return identity && latestIdentitySet.has(identity);
+  });
+  const otherRows = remaining
+    .filter((row) => !legacyAutoRows.includes(row))
+    .map((row) => ({
+      ...row,
+      source_type: "other",
+      source_key: row.source_key || makeLocalKey("other"),
+    }));
+
+  const autoRows = latestAutoRows.length
+    ? mergeAutoRows(latestAutoRows, savedAutoRows, legacyAutoRows)
+    : savedAutoRows;
+
+  const seenInventoryIds = new Set();
+  const uniqueInventory = inventoryRows.filter((row) => {
+    const id = Number(row.raw_material_id || 0);
+    if (!id || seenInventoryIds.has(id)) return false;
+    seenInventoryIds.add(id);
+    return true;
+  });
+
+  return [...autoRows, ...uniqueInventory, ...otherRows];
 };
 
-const splitExistingItemsBySource = (items = []) => {
-  const autoItems = [];
-  const manualItems = [];
-
-  items.forEach((item) => {
-    if (isAutoGeneratedItem(item)) {
-      autoItems.push(normalizeItem(item));
-      return;
-    }
-
-    manualItems.push(
-      normalizeItem({
-        ...item,
-        source_type: item?.source_type || "manual",
-      }),
-    );
-  });
-
-  return { autoItems, manualItems };
+const getDraftRows = (draft = {}) => {
+  if (Array.isArray(draft?.rows)) return draft.rows;
+  if (Array.isArray(draft?.lineItems)) return draft.lineItems;
+  if (Array.isArray(draft?.line_items)) return draft.line_items;
+  return [];
 };
 
-const reconcileEstimateRowsWithBlueprint = (
-  rows = [],
-  latestBlueprintAutoItems = [],
-) => {
-  const normalizedRows = (Array.isArray(rows) ? rows : []).map(normalizeItem);
-
-  const { autoItems: taggedAutoItems, manualItems: maybeManualItems } =
-    splitExistingItemsBySource(normalizedRows);
-
-  const latestAutoLooseKeySet = new Set(
-    (Array.isArray(latestBlueprintAutoItems) ? latestBlueprintAutoItems : [])
-      .map((item) => getEstimateLooseKey(item))
-      .filter(Boolean),
-  );
-
-  const recoveredLegacyAutoItems = maybeManualItems.filter((item) => {
-    if (!isFilledEstimateRow(item)) return false;
-
-    const looseKey = getEstimateLooseKey(item);
-    return Boolean(looseKey) && latestAutoLooseKeySet.has(looseKey);
-  });
-
-  const trueManualItems = maybeManualItems.filter((item) => {
-    if (!isFilledEstimateRow(item)) return false;
-
-    const looseKey = getEstimateLooseKey(item);
-    return !looseKey || !latestAutoLooseKeySet.has(looseKey);
-  });
-
-  const mergedAutoItems = latestBlueprintAutoItems.length
-    ? mergeAutoItemsWithExistingPrices(latestBlueprintAutoItems, [
-        ...taggedAutoItems,
-        ...recoveredLegacyAutoItems,
-      ])
-    : condenseAutoGeneratedItems([
-        ...taggedAutoItems,
-        ...recoveredLegacyAutoItems,
-      ]);
-
-  const latestAutoNameSet = new Set(
-    latestBlueprintAutoItems.map((item) =>
-      normalizeLegacyAutoName(item?.name || ""),
-    ),
-  );
-
-  const preservedManualItems = trueManualItems.filter((item) => {
-    if (!isFilledEstimateRow(item)) return false;
-
-    return !isLikelyLegacyAutoDuplicate(item, latestAutoNameSet);
-  });
-
-  return removeZeroCostDuplicateRows([
-    ...mergedAutoItems,
-    ...preservedManualItems,
-  ]);
-};
-
-const getEstimateValidationErrors = ({ items = [], costs = {} } = {}) => {
+const getValidationErrors = ({ items = [], costs = {} } = {}) => {
   const errors = [];
-  const normalizedItems = items.map(normalizeItem).filter(isFilledEstimateRow);
+  const filled = items.filter(isFilledItem);
+  if (!filled.length) errors.push("Add at least one estimate item before saving.");
 
-  if (!normalizedItems.length) {
-    errors.push("Add at least one material row before saving.");
-  }
-
-  normalizedItems.forEach((row, index) => {
-    if (!normalizeText(row.name)) {
-      errors.push(`Row ${index + 1}: Description is required.`);
+  const seenMaterialIds = new Set();
+  filled.forEach((item, index) => {
+    const label = `Item ${index + 1}`;
+    if (isInventoryItem(item) && !item.raw_material_id) {
+      errors.push(`${label}: Select an inventory material.`);
     }
-
-    const quantity = Number(row.quantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      errors.push(`Row ${index + 1}: Quantity must be greater than 0.`);
+    if (!normalizeText(item.name)) errors.push(`${label}: Description is required.`);
+    if (normalizeText(item.name).length > 255) {
+      errors.push(`${label}: Description must not exceed 255 characters.`);
     }
-
-    const unitCost = Number(row.unit_cost);
-    if (!Number.isFinite(unitCost) || unitCost <= 0) {
-      errors.push(`Row ${index + 1}: Rate must be greater than 0.`);
+    if (!Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0) {
+      errors.push(`${label}: Quantity must be greater than 0.`);
     }
-
-    if (normalizeText(row.name).length > 120) {
-      errors.push(
-        `Row ${index + 1}: Description must not exceed 120 characters.`,
-      );
+    if (
+      !isInventoryItem(item) &&
+      (!Number.isFinite(Number(item.unit_cost)) || Number(item.unit_cost) <= 0)
+    ) {
+      errors.push(`${label}: Rate must be greater than 0.`);
     }
-
-    if (normalizeText(row.note).length > 180) {
-      errors.push(`Row ${index + 1}: Remarks must not exceed 180 characters.`);
+    if (
+      isInventoryItem(item) &&
+      (!Number.isFinite(Number(item.unit_cost || 0)) || Number(item.unit_cost || 0) < 0)
+    ) {
+      errors.push(`${label}: Inventory tracking cost cannot be negative.`);
+    }
+    if (normalizeText(item.note).length > 500) {
+      errors.push(`${label}: Remarks must not exceed 500 characters.`);
+    }
+    if (isInventoryItem(item) && item.raw_material_id) {
+      const materialId = Number(item.raw_material_id);
+      if (seenMaterialIds.has(materialId)) {
+        errors.push(`${label}: The same inventory material cannot be added twice.`);
+      }
+      seenMaterialIds.add(materialId);
     }
   });
 
-  const laborCost = Number(costs.labor_cost ?? 0);
-  if (!Number.isFinite(laborCost) || laborCost < 0) {
-    errors.push("Labor cost cannot be negative.");
-  }
-
-  const overheadCost = Number(costs.overhead_cost ?? 0);
-  if (!Number.isFinite(overheadCost) || overheadCost < 0) {
+  const labor = Number(costs.labor_cost ?? 0);
+  const logistics = Number(costs.overhead_cost ?? 0);
+  const discount = Number(costs.discount ?? 0);
+  const tax = Number(costs.tax_rate ?? 0);
+  if (!Number.isFinite(labor) || labor < 0) errors.push("Labor cost cannot be negative.");
+  if (!Number.isFinite(logistics) || logistics < 0) {
     errors.push("Logistics cost cannot be negative.");
   }
-
-  const discountRate = Number(costs.discount ?? 0);
-  if (
-    !Number.isFinite(discountRate) ||
-    discountRate < 0 ||
-    discountRate > 100
-  ) {
+  if (!Number.isFinite(discount) || discount < 0 || discount > 100) {
     errors.push("Discount must be between 0% and 100%.");
   }
-
-  const taxRate = Number(costs.tax_rate ?? 0);
-  if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
+  if (!Number.isFinite(tax) || tax < 0 || tax > 100) {
     errors.push("VAT must be between 0% and 100%.");
   }
-
   return errors;
 };
 
 const showFirstValidationError = (errors = []) => {
   if (!errors.length) return false;
-
-  const extra = errors.length > 1 ? ` (+${errors.length - 1} more)` : "";
-  toast.error(`${errors[0]}${extra}`);
+  toast.error(`${errors[0]}${errors.length > 1 ? ` (+${errors.length - 1} more)` : ""}`);
   return true;
 };
+
+const resolveAttachmentUrl = (src) => {
+  const raw = String(src || "").trim();
+  if (!raw) return "";
+  if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+  return buildAssetUrl(raw);
+};
+
+const isImageAttachment = (attachment = {}) => {
+  const mime = String(attachment?.mime_type || attachment?.type || "").toLowerCase();
+  const url = String(attachment?.file_url || attachment?.url || "").toLowerCase();
+  return mime.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(url);
+};
+
+const collectBlueprintReferenceFiles = (design = {}) => {
+  const refs = design?.reference_files || design?.referenceFiles || {};
+  return Object.entries(refs)
+    .map(([view, file]) => {
+      if (!file) return null;
+      if (typeof file === "string") {
+        return { id: `blueprint-${view}`, file_url: file, file_name: `${view} reference`, type: "image" };
+      }
+      return {
+        id: `blueprint-${view}`,
+        file_url: file.url || file.file_url || "",
+        file_name: file.name || file.file_name || `${view} reference`,
+        mime_type: file.mime_type || file.type || "",
+      };
+    })
+    .filter((file) => file?.file_url);
+};
+
+const IMAGE_CUSTOMIZATION_KEY_PATTERN =
+  /(^|_)(image|photo|picture|preview|attachment|reference|file)($|_)|(^|_)(url|uri)$/i;
+
+const getImageMimeType = (src = "") => {
+  const match = String(src).match(/^data:(image\/[^;,]+)[;,]/i);
+  return match?.[1] || "";
+};
+
+const isCustomizationImageValue = (key, value) => {
+  const normalizedValue = String(value || "").trim();
+  if (!normalizedValue) return false;
+  if (/^data:image\//i.test(normalizedValue)) return true;
+  if (!IMAGE_CUSTOMIZATION_KEY_PATTERN.test(String(key || ""))) return false;
+  return (
+    /^(https?:|blob:|\/|uploads\/|assets\/)/i.test(normalizedValue) ||
+    /\.(jpg|jpeg|png|webp|gif|svg)(?:[?#].*)?$/i.test(normalizedValue)
+  );
+};
+
+const collectCustomizationReferenceFiles = (orderContext = {}) => {
+  const files = [];
+  (Array.isArray(orderContext?.items) ? orderContext.items : []).forEach((item, itemIndex) => {
+    const customization = item?.customization || {};
+    Object.entries(customization).forEach(([key, value], fieldIndex) => {
+      if (typeof value !== "string" || !isCustomizationImageValue(key, value)) return;
+      const fileUrl = value.trim();
+      files.push({
+        id: `customization-${item?.order_item_id || itemIndex}-${key}-${fieldIndex}`,
+        file_url: fileUrl,
+        file_name: `${humanizeKey(key).replace(/\s+(Url|Uri)$/i, "")} reference`,
+        mime_type: getImageMimeType(fileUrl) || "image/*",
+      });
+    });
+  });
+  return files;
+};
+
+const humanizeKey = (key = "") =>
+  String(key)
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const getCustomizationEntries = (orderContext = {}) => {
+  const entries = [];
+  (Array.isArray(orderContext?.items) ? orderContext.items : []).forEach((item) => {
+    const customization = item?.customization || {};
+    Object.entries(customization).forEach(([key, value]) => {
+      if (value === null || value === undefined || typeof value === "object") return;
+      const normalizedValue = String(value).trim();
+      if (!normalizedValue || isCustomizationImageValue(key, normalizedValue)) return;
+      entries.push({
+        label: humanizeKey(key),
+        value: normalizedValue,
+      });
+    });
+  });
+  return entries.slice(0, 12);
+};
+
+const formatInventoryQuantity = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "0";
+  return number.toLocaleString("en-PH", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 4,
+  });
+};
+
+const getInventoryAvailability = (item = {}, material = null) => {
+  const unit = String(material?.unit || item?.unit || "").trim();
+
+  if (!material) {
+    return {
+      state: "unselected",
+      label: "Select material",
+      detail: "Choose an inventory item first.",
+      unit,
+      available: 0,
+      required: Number(item?.quantity) || 0,
+      shortage: 0,
+      remaining: 0,
+    };
+  }
+
+  const availableValue = Number(material.quantity);
+  const requiredValue = Number(item.quantity);
+  const reorderValue = Number(material.reorder_point);
+  const available = Number.isFinite(availableValue) ? Math.max(0, availableValue) : 0;
+  const reorderPoint = Number.isFinite(reorderValue) ? Math.max(0, reorderValue) : 0;
+
+  if (!Number.isFinite(requiredValue) || requiredValue <= 0) {
+    return {
+      state: "invalid",
+      label: "Enter quantity",
+      detail: "Required quantity must be greater than 0.",
+      unit,
+      available,
+      required: requiredValue,
+      shortage: 0,
+      remaining: available,
+    };
+  }
+
+  const required = requiredValue;
+  const shortage = Math.max(0, required - available);
+  const remaining = Math.max(0, available - required);
+
+  if (shortage > 0) {
+    return {
+      state: "insufficient",
+      label: "Insufficient",
+      detail: `Shortage: ${formatInventoryQuantity(shortage)} ${unit}`.trim(),
+      unit,
+      available,
+      required,
+      shortage,
+      remaining: 0,
+    };
+  }
+
+  const lowAfterRequirement = remaining <= reorderPoint;
+  return {
+    state: lowAfterRequirement ? "sufficient_low" : "sufficient",
+    label: "Sufficient",
+    detail: `${
+      lowAfterRequirement ? "Low after requirement" : "Remaining"
+    }: ${formatInventoryQuantity(remaining)} ${unit}`.trim(),
+    unit,
+    available,
+    required,
+    shortage: 0,
+    remaining,
+  };
+};
+
+const getAvailabilityColors = (state) => {
+  if (state === "insufficient") {
+    return { background: "#fef2f2", border: "#fecaca", color: "#b91c1c" };
+  }
+  if (state === "sufficient_low") {
+    return { background: "#fffbeb", border: "#fde68a", color: "#92400e" };
+  }
+  if (state === "sufficient") {
+    return { background: "#f0fdf4", border: "#bbf7d0", color: "#166534" };
+  }
+  return { background: "#f4f4f5", border: "#e4e4e7", color: "#52525b" };
+};
+
+function EstimateTable({
+  title,
+  helper,
+  section,
+  rows,
+  rawMaterials,
+  readOnly,
+  onAdd,
+  onRemove,
+  onUpdate,
+  subtotal,
+  inventoryTrackingOnly = false,
+}) {
+  const isInventory = section === "inventory";
+  const showInventoryPricing = isInventory && !inventoryTrackingOnly;
+  const emptyText =
+    section === "blueprint"
+      ? "No blueprint parts available. Use Regenerate Rows after saving the design."
+      : section === "inventory"
+        ? "No inventory materials added yet."
+        : "No other materials or additional work added yet.";
+  const columnCount = isInventory
+    ? showInventoryPricing
+      ? 10
+      : 8
+    : 8;
+  const inventoryChecks = isInventory
+    ? rows.map((item) => {
+        const material = rawMaterials.find(
+          (row) => Number(row.id) === Number(item.raw_material_id),
+        );
+        return {
+          item,
+          material,
+          availability: getInventoryAvailability(item, material),
+        };
+      })
+    : [];
+  const shortageChecks = inventoryChecks.filter(
+    (entry) => entry.availability.state === "insufficient",
+  );
+  const completedChecks = inventoryChecks.filter(
+    (entry) =>
+      entry.availability.state === "sufficient" ||
+      entry.availability.state === "sufficient_low",
+  );
+
+  return (
+    <div style={{ ...card, marginBottom: 20 }}>
+      <div style={sectionHeader}>
+        <div>
+          <h3 style={sectionTitle}>{title}</h3>
+          <p style={helperText}>{helper}</p>
+        </div>
+        {onAdd && (
+          <button
+            type="button"
+            onClick={onAdd}
+            disabled={readOnly}
+            style={readOnly ? { ...btnAdd, ...btnDisabled } : btnAdd}
+          >
+            + Add {section === "inventory" ? "Inventory Material" : "Other Item"}
+          </button>
+        )}
+      </div>
+
+      <div style={{ overflowX: "auto" }}>
+        <table style={estimateTableStyle}>
+          <thead>
+            <tr style={{ background: "#fafafa" }}>
+              <th style={{ ...th, width: "5%" }}>#</th>
+              <th style={{ ...th, width: isInventory ? "30%" : "28%" }}>
+                {isInventory ? "Inventory Material" : "Description"}
+              </th>
+              {isInventory && <th style={{ ...th, width: "13%" }}>Stock</th>}
+              <th style={{ ...th, width: "10%" }}>Unit</th>
+              <th style={{ ...th, width: "10%" }}>Qty</th>
+              {isInventory && <th style={{ ...th, width: "18%" }}>Availability</th>}
+              {(!isInventory || showInventoryPricing) && (
+                <th style={{ ...th, width: "12%" }}>Rate (₱)</th>
+              )}
+              {(!isInventory || showInventoryPricing) && (
+                <th style={{ ...th, width: "13%" }}>Amount (₱)</th>
+              )}
+              <th style={{ ...th, width: isInventory ? "27%" : "20%" }}>Remarks</th>
+              <th style={{ ...th, width: "5%" }} />
+            </tr>
+          </thead>
+          <tbody>
+            {!rows.length ? (
+              <tr>
+                <td colSpan={columnCount} style={emptyCell}>
+                  {emptyText}
+                </td>
+              </tr>
+            ) : (
+              rows.map((item, index) => {
+                const selectedMaterial = rawMaterials.find(
+                  (material) => Number(material.id) === Number(item.raw_material_id),
+                );
+                const availability = isInventory
+                  ? getInventoryAvailability(item, selectedMaterial)
+                  : null;
+                const availabilityColors = getAvailabilityColors(availability?.state);
+                return (
+                  <tr key={item._row_key} style={{ borderBottom: "1px solid #f4f4f5" }}>
+                    <td style={{ ...td, color: "#71717a", fontWeight: 800 }}>
+                      {index + 1}
+                    </td>
+                    <td style={td}>
+                      {isInventory ? (
+                        <select
+                          value={item.raw_material_id || ""}
+                          onChange={(event) =>
+                            onUpdate(item._row_key, "raw_material_id", event.target.value)
+                          }
+                          style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
+                          disabled={readOnly}
+                        >
+                          <option value="">Select material...</option>
+                          {rawMaterials.map((material) => (
+                            <option key={material.id} value={material.id}>
+                              {material.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          value={item.name}
+                          onChange={(event) => onUpdate(item._row_key, "name", event.target.value)}
+                          style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%", fontWeight: 600 }}
+                          placeholder={section === "blueprint" ? "Blueprint part" : "e.g. Custom carved design"}
+                          maxLength={255}
+                          disabled={readOnly}
+                        />
+                      )}
+                    </td>
+                    {isInventory && (
+                      <td style={td}>
+                        <div style={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+                          {selectedMaterial
+                            ? `${formatInventoryQuantity(selectedMaterial.quantity)} ${selectedMaterial.unit || ""}`
+                            : "—"}
+                        </div>
+                        {selectedMaterial && (
+                          <div style={{ fontSize: 10, color: "#71717a", marginTop: 3 }}>
+                            Available now · {String(selectedMaterial.stock_status || "").replace(/_/g, " ")}
+                          </div>
+                        )}
+                      </td>
+                    )}
+                    <td style={td}>
+                      {isInventory ? (
+                        <input
+                          value={item.unit || selectedMaterial?.unit || ""}
+                          readOnly
+                          style={{ ...cellInput, width: "100%", background: "#fafafa", color: "#71717a" }}
+                        />
+                      ) : (
+                        <select
+                          value={item.unit}
+                          onChange={(event) => onUpdate(item._row_key, "unit", event.target.value)}
+                          style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
+                          disabled={readOnly}
+                        >
+                          {UNIT_OPTIONS.map((unit) => (
+                            <option key={unit} value={unit}>{unit}</option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+                    <td style={td}>
+                      <input
+                        type="number"
+                        min={isAreaUnit(item.unit) ? "0.0001" : "0.01"}
+                        step={isAreaUnit(item.unit) ? "0.0001" : "0.01"}
+                        value={item.quantity}
+                        onChange={(event) => onUpdate(item._row_key, "quantity", event.target.value)}
+                        style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
+                        disabled={readOnly}
+                      />
+                    </td>
+                    {isInventory && (
+                      <td style={td}>
+                        <div
+                          style={{
+                            padding: "7px 9px",
+                            borderRadius: 8,
+                            border: `1px solid ${availabilityColors.border}`,
+                            background: availabilityColors.background,
+                            color: availabilityColors.color,
+                            minWidth: 130,
+                          }}
+                        >
+                          <div style={{ fontSize: 11, fontWeight: 800 }}>
+                            {availability.label}
+                          </div>
+                          <div style={{ fontSize: 10, marginTop: 2, lineHeight: 1.35 }}>
+                            {availability.detail}
+                          </div>
+                        </div>
+                      </td>
+                    )}
+                    {(!isInventory || showInventoryPricing) && (
+                      <td style={td}>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.unit_cost}
+                          onChange={(event) => onUpdate(item._row_key, "unit_cost", event.target.value)}
+                          style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
+                          placeholder="0.00"
+                          disabled={readOnly}
+                        />
+                      </td>
+                    )}
+                    {(!isInventory || showInventoryPricing) && (
+                      <td style={{ ...td, fontWeight: 800, whiteSpace: "nowrap" }}>
+                        {formatMoney(getItemAmount(item))}
+                      </td>
+                    )}
+                    <td style={td}>
+                      <input
+                        value={item.note}
+                        onChange={(event) => onUpdate(item._row_key, "note", event.target.value)}
+                        style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
+                        placeholder={isInventory ? "Size, thickness, finish..." : "Reference photo, inclusions, details..."}
+                        maxLength={500}
+                        disabled={readOnly}
+                      />
+                    </td>
+                    <td style={{ ...td, textAlign: "center" }}>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={() => onRemove(item._row_key)}
+                          style={btnRemove}
+                          title="Remove row"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+          <tfoot>
+            {isInventory && inventoryTrackingOnly ? (
+              <tr style={{ background: "#fafafa", borderTop: "2px solid #e4e4e7" }}>
+                <td colSpan={columnCount} style={{ ...td, padding: "14px 16px" }}>
+                  {shortageChecks.length > 0 ? (
+                    <div
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: 10,
+                        border: "1px solid #fecaca",
+                        background: "#fef2f2",
+                        color: "#991b1b",
+                      }}
+                    >
+                      <div style={{ fontWeight: 800 }}>
+                        Inventory shortage detected
+                      </div>
+                      {shortageChecks.map(({ item, material, availability }) => (
+                        <div key={item._row_key} style={{ fontSize: 12, marginTop: 4 }}>
+                          {material?.name || item.name}: required {formatInventoryQuantity(availability.required)} {availability.unit}, available {formatInventoryQuantity(availability.available)} {availability.unit}, shortage {formatInventoryQuantity(availability.shortage)} {availability.unit}.
+                        </div>
+                      ))}
+                      <div style={{ fontSize: 11, marginTop: 7, color: "#7f1d1d" }}>
+                        The estimate may still be saved or sent. This phase only reports availability; stock is not reserved or deducted yet.
+                      </div>
+                    </div>
+                  ) : rows.length > 0 && completedChecks.length === rows.length ? (
+                    <div
+                      style={{
+                        padding: "12px 14px",
+                        borderRadius: 10,
+                        border: "1px solid #bbf7d0",
+                        background: "#f0fdf4",
+                        color: "#166534",
+                        fontWeight: 700,
+                      }}
+                    >
+                      All selected inventory materials are currently sufficient. Stock is not reserved or deducted yet.
+                    </div>
+                  ) : (
+                    <div style={{ color: "#52525b", fontWeight: 700 }}>
+                      Internal stock requirement only — not added again to the customer quotation total.
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ) : (
+              <tr style={{ background: "#fafafa", borderTop: "2px solid #e4e4e7" }}>
+                <td
+                  colSpan={isInventory ? 6 : 5}
+                  style={{ ...td, textAlign: "right", fontWeight: 800 }}
+                >
+                  {title} Subtotal
+                </td>
+                <td style={{ ...td, fontWeight: 800, fontSize: 15, whiteSpace: "nowrap" }}>
+                  {formatMoney(subtotal)}
+                </td>
+                <td colSpan={2} />
+              </tr>
+            )}
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 export default function EstimationPage() {
   const { id } = useParams();
@@ -918,10 +1115,12 @@ export default function EstimationPage() {
   const location = useLocation();
 
   const [blueprint, setBlueprint] = useState(null);
-  const [est, setEst] = useState(null);
-  const [items, setItems] = useState([{ ...BLANK_ITEM }]);
+  const [estimation, setEstimation] = useState(null);
+  const [items, setItems] = useState([]);
+  const [rawMaterials, setRawMaterials] = useState([]);
+  const [discussion, setDiscussion] = useState([]);
+  const [discussionLoading, setDiscussionLoading] = useState(false);
   const [costs, setCosts] = useState({
-    material_cost: 0,
     labor_cost: 0,
     overhead_cost: 0,
     tax_rate: 12,
@@ -932,393 +1131,338 @@ export default function EstimationPage() {
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
 
-  const parsedDesign = useMemo(
-    () => parseBlueprintDesignData(blueprint),
-    [blueprint],
+  const parsedDesign = useMemo(() => parseBlueprintDesignData(blueprint), [blueprint]);
+  const preferredAutoItems = useMemo(
+    () => buildPreferredAutoItems(parsedDesign),
+    [parsedDesign],
   );
 
-  const preferredAutoItems = useMemo(() => {
-    return buildPreferredAutoItems(parsedDesign);
-  }, [parsedDesign]);
-
   useEffect(() => {
-    const loadData = async () => {
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
       try {
-        const [bpRes, estRes] = await Promise.all([
+        const [blueprintResponse, estimationResponse, materialsResponse] = await Promise.all([
           api.get(`/blueprints/${id}`),
-          api.get(`/blueprints/${id}/estimation`).catch(() => ({ data: null })),
+          api.get(`/blueprints/${id}/estimation`).catch((error) => {
+            if (error?.response?.status === 404) return { data: null };
+            throw error;
+          }),
+          api.get("/inventory/raw", { params: { page: 1, limit: 1000 } }),
         ]);
 
-        setBlueprint(bpRes.data);
-
-        if (estRes.data) {
-          setEst(estRes.data);
-
-          const savedItems = Array.isArray(estRes.data.items)
-            ? estRes.data.items.map(normalizeItem)
-            : [];
-
-          let latestDesign = {};
-          try {
-            latestDesign =
-              typeof bpRes.data.design_data === "string"
-                ? JSON.parse(bpRes.data.design_data || "{}")
-                : bpRes.data.design_data || {};
-          } catch {
-            latestDesign = {};
-          }
-
-          const latestBlueprintAutoItems =
-            buildPreferredAutoItems(latestDesign);
-
-          const groupedSavedItems = reconcileEstimateRowsWithBlueprint(
-            savedItems,
-            latestBlueprintAutoItems,
-          );
-
-          const {
-            materialItems: cleanedSavedItems,
-            laborRowsTotal: savedLaborRowsTotal,
-          } = splitEstimationItems(groupedSavedItems);
-
-          setItems(
-            cleanedSavedItems.length ? cleanedSavedItems : [{ ...BLANK_ITEM }],
-          );
-
-          const savedLaborField = Number(estRes.data.labor_cost || 0) || 0;
-
-          setCosts({
-            material_cost: estRes.data.material_cost || 0,
-            labor_cost:
-              savedLaborField > 0 ? savedLaborField : savedLaborRowsTotal,
-            overhead_cost: estRes.data.overhead_cost || 0,
-            tax_rate: estRes.data.tax_rate ?? 12,
-            discount: estRes.data.discount || 0,
-            notes: estRes.data.notes || "",
-          });
-          return;
-        }
-
-        let design = {};
-        try {
-          design =
-            typeof bpRes.data.design_data === "string"
-              ? JSON.parse(bpRes.data.design_data || "{}")
-              : bpRes.data.design_data || {};
-        } catch {
-          design = {};
-        }
-
-        const draftFromState = location.state?.estimateDraft;
-        let draftFromStorage = null;
-        try {
-          draftFromStorage = JSON.parse(
-            localStorage.getItem("wisdom_estimate_draft") || "null",
-          );
-        } catch {
-          draftFromStorage = null;
-        }
-
-        const matchedDraft =
-          [draftFromState, draftFromStorage].find((draft) => {
-            const draftBlueprintId = String(
-              draft?.blueprintId ?? draft?.blueprint_id ?? "",
-            );
-            return draftBlueprintId === String(id);
-          }) || null;
-
-        const draftRows = getDraftRows(matchedDraft);
-
-        const latestBlueprintAutoItems = buildPreferredAutoItems(design);
-
-        if (draftRows.length) {
-          const groupedDraftRows = reconcileEstimateRowsWithBlueprint(
-            draftRows,
-            latestBlueprintAutoItems,
-          );
-
-          const {
-            materialItems: cleanedDraftItems,
-            laborRowsTotal: draftLaborRowsTotal,
-          } = splitEstimationItems(groupedDraftRows);
-
-          setItems(
-            cleanedDraftItems.length ? cleanedDraftItems : [{ ...BLANK_ITEM }],
-          );
-
-          if (draftLaborRowsTotal > 0) {
-            setCosts((prev) => ({
-              ...prev,
-              labor_cost: draftLaborRowsTotal,
-            }));
-          }
-        } else {
-          setItems(
-            latestBlueprintAutoItems.length
-              ? latestBlueprintAutoItems
-              : [{ ...BLANK_ITEM }],
-          );
-        }
-      } catch (err) {
-        console.error(err);
-        toast.error(
-          err?.response?.data?.message || "Failed to load estimation.",
+        if (cancelled) return;
+        const loadedBlueprint = blueprintResponse.data;
+        const loadedDesign = parseBlueprintDesignData(loadedBlueprint);
+        const latestAutoRows = buildPreferredAutoItems(loadedDesign);
+        setBlueprint(loadedBlueprint);
+        setRawMaterials(
+          Array.isArray(materialsResponse.data?.rows)
+            ? materialsResponse.data.rows
+            : [],
         );
+
+        const savedEstimation = estimationResponse.data;
+        if (savedEstimation) {
+          setEstimation(savedEstimation);
+          const loadedItems = reconcileLoadedItems(
+            Array.isArray(savedEstimation.items) ? savedEstimation.items : [],
+            latestAutoRows,
+          );
+          setItems(loadedItems.length ? loadedItems : latestAutoRows);
+          setCosts({
+            labor_cost: Number(savedEstimation.labor_cost || 0),
+            overhead_cost: Number(savedEstimation.overhead_cost || 0),
+            tax_rate: Number(savedEstimation.tax_rate ?? 12),
+            discount: Number(savedEstimation.discount || 0),
+            notes: savedEstimation.notes || "",
+          });
+        } else {
+          const draftCandidates = [];
+          if (location.state?.estimateDraft) draftCandidates.push(location.state.estimateDraft);
+          try {
+            const stored = JSON.parse(localStorage.getItem("wisdom_estimate_draft") || "null");
+            if (stored) draftCandidates.push(stored);
+          } catch {
+            // Ignore malformed local draft.
+          }
+          const matchedDraft = draftCandidates.find(
+            (draft) => String(draft?.blueprintId ?? draft?.blueprint_id ?? "") === String(id),
+          );
+          const draftRows = getDraftRows(matchedDraft);
+          setItems(
+            draftRows.length
+              ? reconcileLoadedItems(draftRows, latestAutoRows)
+              : latestAutoRows,
+          );
+        }
+
+        const orderId = loadedBlueprint?.order_id || loadedBlueprint?.order_context?.order_id;
+        if (orderId) {
+          setDiscussionLoading(true);
+          try {
+            const discussionResponse = await api.get(`/orders/${orderId}/discussion`);
+            if (!cancelled) {
+              setDiscussion(
+                Array.isArray(discussionResponse.data?.discussion)
+                  ? discussionResponse.data.discussion
+                  : [],
+              );
+            }
+          } catch (error) {
+            console.error("Failed to load customer discussion:", error);
+            if (!cancelled) setDiscussion([]);
+          } finally {
+            if (!cancelled) setDiscussionLoading(false);
+          }
+        }
+      } catch (error) {
+        console.error(error);
+        toast.error(error?.response?.data?.message || "Failed to load estimation.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    loadData();
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [id, location.state]);
 
-  const { materialItems, laborRowsTotal } = useMemo(
-    () => splitEstimationItems(items),
-    [items],
-  );
+  const blueprintItems = useMemo(() => items.filter(isBlueprintPartItem), [items]);
+  const inventoryItems = useMemo(() => items.filter(isInventoryItem), [items]);
+  const otherItems = useMemo(() => items.filter(isOtherItem), [items]);
 
-  const materialsSubtotal = materialItems.reduce(
-    (sum, it) => sum + getItemAmount(it),
-    0,
-  );
+  const inventoryPricingMode =
+    estimation?.inventory_pricing_mode === "legacy_billable"
+      ? "legacy_billable"
+      : "tracking_only";
+  const inventoryTrackingOnly = inventoryPricingMode === "tracking_only";
 
-  const laborFieldCost = Number(costs.labor_cost) || 0;
-  const effectiveLaborCost =
-    laborFieldCost > 0 ? laborFieldCost : laborRowsTotal;
-
-  const overheadCost = Number(costs.overhead_cost) || 0;
-  const subtotal = materialsSubtotal + effectiveLaborCost + overheadCost;
-
-  const discountRate = Math.max(0, Math.min(100, Number(costs.discount) || 0));
-
+  const blueprintSubtotal = blueprintItems.reduce((sum, item) => sum + getItemAmount(item), 0);
+  const inventorySubtotal = inventoryItems.reduce((sum, item) => sum + getItemAmount(item), 0);
+  const otherSubtotal = otherItems.reduce((sum, item) => sum + getItemAmount(item), 0);
+  const quoteItemsSubtotal =
+    blueprintSubtotal +
+    otherSubtotal +
+    (inventoryTrackingOnly ? 0 : inventorySubtotal);
+  const laborCost = Number(costs.labor_cost || 0);
+  const logisticsCost = Number(costs.overhead_cost || 0);
+  const subtotal = quoteItemsSubtotal + laborCost + logisticsCost;
+  const discountRate = Math.max(0, Math.min(100, Number(costs.discount || 0)));
   const discountAmount = subtotal * (discountRate / 100);
-  const afterDisc = Math.max(0, subtotal - discountAmount);
+  const afterDiscount = Math.max(0, subtotal - discountAmount);
+  const taxAmount = afterDiscount * (Math.max(0, Number(costs.tax_rate || 0)) / 100);
+  const grandTotal = afterDiscount + taxAmount;
 
-  const taxAmt = afterDisc * ((Number(costs.tax_rate) || 0) / 100);
-  const grandTotal = afterDisc + taxAmt;
+  const status = formatEstimateStatus(estimation?.status);
+  const isApproved = String(estimation?.status || "").toLowerCase() === "approved";
+  const isSent = String(estimation?.status || "").toLowerCase() === "sent";
+  const isReadOnly = isApproved || isSent;
+  const validUntil = new Date(estimation?.updated_at || estimation?.created_at || Date.now());
+  validUntil.setDate(validUntil.getDate() + 30);
 
-  const displayTitle = getBlueprintDisplayTitle(blueprint);
-  const customerDisplay = getCustomerDisplayName(blueprint);
-  const estimateStatus = formatEstimateStatus(est?.status);
-  const isQuoteApproved = isApprovedEstimateStatus(est?.status);
-  const isQuoteSent = isSentEstimateStatus(est?.status);
-  const isReadOnly = isQuoteApproved || isQuoteSent;
-  const preparedBy = "Spiral Wood Services";
-  const validUntil = getValidUntilDate(est?.updated_at || est?.created_at);
-  const canGenerateContract = isQuoteApproved && Boolean(blueprint?.order_id);
-
-  const readOnlyFieldStyle = isReadOnly ? fieldLocked : {};
-  const validationErrors = useMemo(
-    () => getEstimateValidationErrors({ items, costs }),
-    [items, costs],
+  const customerMessages = useMemo(
+    () =>
+      discussion
+        .filter((entry) => String(entry?.sender_role || "").toLowerCase() === "customer")
+        .slice(-6),
+    [discussion],
+  );
+  const discussionAttachments = useMemo(
+    () => discussion.flatMap((entry) => (Array.isArray(entry.attachments) ? entry.attachments : [])),
+    [discussion],
+  );
+  const blueprintReferenceFiles = useMemo(
+    () => collectBlueprintReferenceFiles(parsedDesign),
+    [parsedDesign],
+  );
+  const customizationReferenceFiles = useMemo(
+    () => collectCustomizationReferenceFiles(blueprint?.order_context),
+    [blueprint],
+  );
+  const referenceFiles = useMemo(() => {
+    const seen = new Set();
+    return [
+      ...blueprintReferenceFiles,
+      ...customizationReferenceFiles,
+      ...discussionAttachments,
+    ].filter((file) => {
+      const key = String(file.file_url || file.url || "").trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [blueprintReferenceFiles, customizationReferenceFiles, discussionAttachments]);
+  const customizationEntries = useMemo(
+    () => getCustomizationEntries(blueprint?.order_context),
+    [blueprint],
   );
 
-  const addItem = () => {
-    if (isReadOnly) {
-      toast.error("Approved estimates are locked and can no longer be edited.");
-      return;
-    }
+  const updateItem = (rowKey, field, value) => {
+    if (isReadOnly) return;
+    setItems((current) =>
+      current.map((item) => {
+        if (item._row_key !== rowKey) return item;
+        if (field === "raw_material_id") {
+          const material = rawMaterials.find(
+            (row) => Number(row.id) === Number(value),
+          );
+          return {
+            ...item,
+            raw_material_id: material ? Number(material.id) : null,
+            name: material?.name || "",
+            unit: material?.unit || "pc",
+            unit_cost: 0,
+            source_type: "inventory_material",
+          };
+        }
+        if (field === "name") return { ...item, name: String(value).slice(0, 255) };
+        if (field === "note") return { ...item, note: String(value).slice(0, 500) };
+        return { ...item, [field]: value };
+      }),
+    );
+  };
 
-    setItems((prev) => [
-      ...prev,
+  const removeItem = (rowKey) => {
+    if (isReadOnly) return;
+    setItems((current) => current.filter((item) => item._row_key !== rowKey));
+  };
+
+  const addInventoryItem = () => {
+    if (isReadOnly) return;
+    setItems((current) => [
+      ...current,
       normalizeItem({
-        ...BLANK_ITEM,
-        source_key: `manual:${Date.now()}_${Math.random()
-          .toString(36)
-          .slice(2, 8)}`,
-        source_type: "manual",
+        raw_material_id: null,
+        name: "",
+        quantity: 1,
+        unit: "pc",
+        unit_cost: 0,
+        note: "",
+        source_key: makeLocalKey("inventory"),
+        source_type: "inventory_material",
       }),
     ]);
   };
 
-  const removeItem = (i) => {
+  const addOtherItem = () => {
+    if (isReadOnly) return;
+    setItems((current) => [
+      ...current,
+      normalizeItem({
+        name: "",
+        quantity: 1,
+        unit: "pc",
+        unit_cost: "",
+        note: "",
+        source_key: makeLocalKey("other"),
+        source_type: "other",
+      }),
+    ]);
+  };
+
+  const handleRegenerate = () => {
     if (isReadOnly) {
-      toast.error("Approved estimates are locked and can no longer be edited.");
+      toast.error("Sent or approved estimates cannot be regenerated.");
       return;
     }
-
-    setItems((prev) => prev.filter((_, idx) => idx !== i));
-  };
-
-  const updateItem = (i, key, val) => {
-    if (isReadOnly) return;
-
-    const nextValue =
-      key === "name"
-        ? String(val).slice(0, 120)
-        : key === "note"
-          ? String(val).slice(0, 180)
-          : val;
-
-    setItems((prev) =>
-      prev.map((it, idx) => (idx === i ? { ...it, [key]: nextValue } : it)),
-    );
-  };
-
-  const setCost = (k, v) => {
-    if (isReadOnly) return;
-    setCosts((c) => ({ ...c, [k]: v }));
-  };
-
-  const handleRegenerateFromBlueprint = () => {
-    if (isReadOnly) {
-      toast.error("Approved estimates cannot be regenerated.");
-      return;
-    }
-
     if (!preferredAutoItems.length) {
-      toast.error("No blueprint conversion data available to regenerate.");
+      toast.error("No blueprint design data is available to regenerate.");
       return;
     }
-
-    
+    const shouldReplace = window.confirm(
+      "Regenerate blueprint parts from the latest design? Existing matching prices will be preserved. Inventory materials and other items will not be removed.",
+    );
     if (!shouldReplace) return;
 
-    const { autoItems: existingAutoItems, manualItems } =
-      splitExistingItemsBySource(items);
+    const mergedAuto = mergeAutoRows(preferredAutoItems, blueprintItems, []);
+    setItems([...mergedAuto, ...inventoryItems, ...otherItems]);
+    toast.success("Blueprint parts regenerated. Inventory and other items were preserved.");
+  };
 
-    const mergedAutoItems = mergeAutoItemsWithExistingPrices(
-      preferredAutoItems,
-      existingAutoItems,
-    );
-
-    setItems(
-      removeZeroCostDuplicateRows([
-        ...mergedAutoItems,
-        ...manualItems.filter(isFilledEstimateRow),
-      ]),
-    );
-    toast.success(
-      "Estimation rows regenerated from blueprint. Matching prices and manual rows were preserved.",
-    );
+  const buildPayload = () => {
+    const filledItems = items.filter(isFilledItem).map(serializeItem);
+    return {
+      items: filledItems,
+      labor_cost: laborCost,
+      overhead_cost: logisticsCost,
+      tax_rate: Number(costs.tax_rate || 0),
+      discount: discountRate,
+      notes: normalizeText(costs.notes),
+      inventory_pricing_mode: "tracking_only",
+      material_cost: quoteItemsSubtotal,
+      items_total: quoteItemsSubtotal,
+      subtotal,
+      discount_amount: discountAmount,
+      tax_amount: taxAmount,
+      grand_total: grandTotal,
+    };
   };
 
   const handleSave = async () => {
     if (isReadOnly) {
-      toast.error("Approved estimates are locked and can no longer be saved.");
+      toast.error("Sent or approved estimates are locked.");
       return;
     }
-
-    const reconciledRows = reconcileEstimateRowsWithBlueprint(
-      items,
-      preferredAutoItems,
-    );
-
-    setItems(reconciledRows.length ? reconciledRows : [{ ...BLANK_ITEM }]);
-
-    const saveValidationErrors = getEstimateValidationErrors({
-      items: reconciledRows,
-      costs,
-    });
-
-    if (showFirstValidationError(saveValidationErrors)) {
-      return;
-    }
+    const validationErrors = getValidationErrors({ items, costs });
+    if (showFirstValidationError(validationErrors)) return;
 
     setSaving(true);
     try {
-      const { materialItems: cleanedItems } =
-        splitEstimationItems(reconciledRows);
-
-      const payload = {
-        items: cleanedItems.map(normalizeItem),
-        ...costs,
-        material_cost: materialsSubtotal,
-        items_total: materialsSubtotal,
-        labor_cost: effectiveLaborCost,
-        subtotal,
-        tax_amount: taxAmt,
-        grand_total: grandTotal,
-      };
-
-      const res = await api.post(`/blueprints/${id}/estimation`, payload);
-
-      if (res?.data?.estimation) {
-        setEst(res.data.estimation);
+      const response = await api.post(`/blueprints/${id}/estimation`, buildPayload());
+      const saved = response.data?.estimation;
+      if (saved) {
+        setEstimation(saved);
+        setItems(reconcileLoadedItems(saved.items || [], preferredAutoItems));
+        setCosts((current) => ({
+          ...current,
+          discount: Number(saved.discount ?? current.discount),
+        }));
       }
-
-      setBlueprint((prev) => (prev ? { ...prev, stage: "estimation" } : prev));
-
-      setItems(cleanedItems.length ? cleanedItems : [{ ...BLANK_ITEM }]);
-
-      toast.success(
-        "Estimate saved. You can now send the quotation to the customer for approval.",
-      );
-    } catch (err) {
-      console.error(err);
-      toast.error(err?.response?.data?.message || "Failed to save estimation.");
+      setBlueprint((current) => (current ? { ...current, stage: "estimation" } : current));
+      toast.success("Estimate saved. Review it before sending the quotation.");
+    } catch (error) {
+      console.error(error);
+      toast.error(error?.response?.data?.message || "Failed to save estimation.");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleApproveEstimation = async () => {
-    if (!est?.id) {
-      toast.error("Save the estimate first before approving.");
+  const handleSendQuote = async () => {
+    if (!estimation?.id) {
+      toast.error("Save the estimate first before sending the quotation.");
       return;
     }
-
-    const reconciledRows = reconcileEstimateRowsWithBlueprint(
-      items,
-      preferredAutoItems,
-    );
-
-    setItems(reconciledRows.length ? reconciledRows : [{ ...BLANK_ITEM }]);
-
-    const approvalValidationErrors = getEstimateValidationErrors({
-      items: reconciledRows,
-      costs,
-    });
-
-    if (showFirstValidationError(approvalValidationErrors)) {
-      return;
-    }
-
-    
+    const validationErrors = getValidationErrors({ items, costs });
+    if (showFirstValidationError(validationErrors)) return;
 
     setApproving(true);
     try {
-      const res = await api.patch(`/blueprints/${id}/estimation/approve`);
-
-      setEst((prev) => ({
-        ...(prev || {}),
-        ...(res?.data?.estimation || {}),
+      const response = await api.patch(`/blueprints/${id}/estimation/approve`);
+      setEstimation((current) => ({
+        ...(current || {}),
+        ...(response.data?.estimation || {}),
         status: "sent",
       }));
-
-      setBlueprint((prev) => (prev ? { ...prev, stage: "approval" } : prev));
-
-      toast.success("Quotation sent to customer for approval.");
-    } catch (err) {
-      console.error(err);
-      toast.error(
-        err?.response?.data?.message || "Failed to approve estimation.",
-      );
+      setBlueprint((current) => (current ? { ...current, stage: "approval" } : current));
+      toast.success("Quotation sent to the customer for approval.");
+    } catch (error) {
+      console.error(error);
+      toast.error(error?.response?.data?.message || "Failed to send quotation.");
     } finally {
       setApproving(false);
     }
   };
 
   const handleGenerateContract = () => {
-    if (!est?.id) {
-      toast.error(
-        "Save and approve the estimate first before generating a contract.",
-      );
+    if (!isApproved || !blueprint?.order_id) {
+      toast.error("Only a customer-approved quotation linked to an order can generate a contract.");
       return;
     }
-
-    if (!isApprovedEstimateStatus(est?.status)) {
-      toast.error(
-        "Only customer-approved quotations can proceed to contract generation.",
-      );
-      return;
-    }
-
-    if (!blueprint?.order_id) {
-      toast.error("This blueprint is not linked to an order.");
-      return;
-    }
-
     navigate("/admin/contracts", {
       state: {
         contractDraft: {
@@ -1330,302 +1474,114 @@ export default function EstimationPage() {
   };
 
   const exportPDF = () => {
-    const doc = new jsPDF({
-      orientation: "portrait",
-      unit: "mm",
-      format: "a4",
-    });
-
-    const bp = blueprint || {};
-    const customer = getCustomerDisplayName(bp);
-    const title = getBlueprintDisplayTitle(bp);
-    const preparedDate = new Date().toLocaleDateString("en-PH");
-    const reference = `BP-${String(id).padStart(4, "0")}`;
-
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 14;
-    const usableWidth = pageWidth - margin * 2;
-
-    const darkAccent = [24, 24, 27];
-    const dark = [17, 24, 39];
-    const text = [55, 65, 81];
-    const muted = [107, 114, 128];
-    const border = [218, 223, 230];
-    const soft = [247, 249, 252];
-
     const money = (value) =>
       `PHP ${Number(value || 0).toLocaleString("en-PH", {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })}`;
 
-    doc.setFillColor(...darkAccent);
+    doc.setFillColor(24, 24, 27);
     doc.rect(0, 0, pageWidth, 8, "F");
-
-    doc.setTextColor(...dark);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(18);
     doc.text("Spiral Wood Services", margin, 18);
-
+    doc.setFontSize(16);
+    doc.text("QUOTATION", pageWidth - margin, 18, { align: "right" });
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.setTextColor(...muted);
-    doc.text("8 Sitio Laot, Prenza 1, Marilao, Bulacan", margin, 24);
-    doc.text("spiralwoodservices.com", margin, 28);
+    doc.text(`Blueprint: ${getBlueprintDisplayTitle(blueprint)}`, margin, 28);
+    doc.text(`Customer: ${getCustomerDisplayName(blueprint)}`, margin, 33);
+    doc.text(`Order: ${blueprint?.order_number || "—"}`, margin, 38);
+    doc.text(`Status: ${status}`, pageWidth - margin, 28, { align: "right" });
+    doc.text(`Date: ${new Date().toLocaleDateString("en-PH")}`, pageWidth - margin, 33, { align: "right" });
+    doc.line(margin, 43, pageWidth - margin, 43);
 
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.setTextColor(...darkAccent);
-    doc.text("QUOTATION", pageWidth - margin, 18, { align: "right" });
+    const addSection = (title, sectionRows, startY) => {
+      if (!sectionRows.length) return startY;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text(title.toUpperCase(), margin, startY);
+      autoTable(doc, {
+        startY: startY + 3,
+        margin: { left: margin, right: margin },
+        theme: "grid",
+        head: [["#", "Description", "Unit", "Qty", "Rate", "Amount"]],
+        body: sectionRows.map((item, index) => [
+          index + 1,
+          item.note ? `${item.name}\n${item.note}` : item.name,
+          item.unit,
+          Number(item.quantity || 0),
+          money(item.unit_cost),
+          money(getItemAmount(item)),
+        ]),
+        styles: { font: "helvetica", fontSize: 8.5, cellPadding: 2.5 },
+        headStyles: { fillColor: [24, 24, 27], textColor: [255, 255, 255] },
+        columnStyles: {
+          0: { cellWidth: 9, halign: "center" },
+          1: { cellWidth: 87 },
+          2: { cellWidth: 17, halign: "center" },
+          3: { cellWidth: 16, halign: "center" },
+          4: { cellWidth: 27, halign: "right" },
+          5: { cellWidth: 27, halign: "right" },
+        },
+      });
+      return doc.lastAutoTable.finalY + 8;
+    };
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9.5);
-    doc.setTextColor(...text);
-    doc.text(`Reference No.: ${reference}`, pageWidth - margin, 25, {
-      align: "right",
-    });
-    doc.text(`Date: ${preparedDate}`, pageWidth - margin, 30, {
-      align: "right",
-    });
+    let y = 51;
+    y = addSection("Blueprint Parts / Base Materials", blueprintItems, y);
+    if (!inventoryTrackingOnly) {
+      y = addSection("Inventory Materials", inventoryItems, y);
+    }
+    y = addSection("Other Materials / Additional Work", otherItems, y);
 
-    doc.setDrawColor(...darkAccent);
-    doc.setLineWidth(0.7);
-    doc.line(margin, 34, pageWidth - margin, 34);
+    if (y > 220) {
+      doc.addPage();
+      y = 20;
+    }
 
-    const boxY = 40;
-    const leftBoxW = 98;
-    const rightBoxW = usableWidth - leftBoxW - 6;
-
-    doc.setDrawColor(...border);
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(margin, boxY, leftBoxW, 28, 2, 2, "FD");
-    doc.roundedRect(margin + leftBoxW + 6, boxY, rightBoxW, 28, 2, 2, "FD");
-
-    doc.setFillColor(...soft);
-    doc.roundedRect(margin, boxY, leftBoxW, 9, 2, 2, "F");
-    doc.roundedRect(margin + leftBoxW + 6, boxY, rightBoxW, 9, 2, 2, "F");
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9.5);
-    doc.setTextColor(...dark);
-    doc.text("CLIENT DETAILS", margin + 3, boxY + 6);
-    doc.text("ESTIMATE DETAILS", margin + leftBoxW + 9, boxY + 6);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9.5);
-    doc.setTextColor(...text);
-    doc.text(`Blueprint: ${title}`, margin + 3, boxY + 14);
-    doc.text(`Customer: ${customer}`, margin + 3, boxY + 20);
-    doc.text(`Document: Project Estimate`, margin + 3, boxY + 26);
-
-    const rightInfoX = margin + leftBoxW + 9;
-    doc.text(`Validity: 30 days from quotation date`, rightInfoX, boxY + 14);
-    doc.text(`Status: ${estimateStatus}`, rightInfoX, boxY + 20);
-    doc.text(`Prepared by: ${preparedBy}`, rightInfoX, boxY + 26);
-
-    const tableStartY = 76;
-    const pdfItems = materialItems;
-
-    const bodyRows = pdfItems.length
-      ? pdfItems.map((it, i) => {
-          const qty = Number(it.quantity || 0);
-          const unitCost = Number(it.unit_cost || 0);
-          const amount = qty * unitCost;
-
-          return [
-            i + 1,
-            it.note ? `${it.name || "—"}\n${it.note}` : it.name || "—",
-            it.unit || "pc",
-            qty,
-            money(unitCost),
-            money(amount),
-          ];
-        })
-      : [["1", "No line items", "-", "-", money(0), money(0)]];
+    const summaryRows = [
+      ["Blueprint Parts", money(blueprintSubtotal)],
+      ...(!inventoryTrackingOnly
+        ? [["Inventory Materials", money(inventorySubtotal)]]
+        : []),
+      ["Other Materials / Work", money(otherSubtotal)],
+      ["Labor", money(laborCost)],
+      ["Logistics", money(logisticsCost)],
+      ["Subtotal", money(subtotal)],
+      [`Discount (${discountRate}%)`, `(${money(discountAmount)})`],
+      [`VAT (${Number(costs.tax_rate || 0)}%)`, money(taxAmount)],
+      ["GRAND TOTAL", money(grandTotal)],
+    ];
 
     autoTable(doc, {
-      startY: tableStartY,
-      margin: { left: margin, right: margin },
-      theme: "grid",
-      head: [["#", "Description", "Unit", "Qty", "Rate", "Amount"]],
-      body: bodyRows,
-      styles: {
-        font: "helvetica",
-        fontSize: 9,
-        textColor: dark,
-        lineColor: border,
-        lineWidth: 0.2,
-        cellPadding: 3,
-        valign: "middle",
-      },
-      headStyles: {
-        fillColor: darkAccent,
-        textColor: [255, 255, 255],
-        fontStyle: "bold",
-        halign: "center",
-      },
-      bodyStyles: {
-        fillColor: [255, 255, 255],
-      },
-      alternateRowStyles: {
-        fillColor: soft,
-      },
-      columnStyles: {
-        0: { cellWidth: 10, halign: "center" },
-        1: { cellWidth: 86 },
-        2: { cellWidth: 18, halign: "center" },
-        3: { cellWidth: 16, halign: "center" },
-        4: { cellWidth: 28, halign: "right" },
-        5: { cellWidth: 28, halign: "right" },
-      },
+      startY: y,
+      margin: { left: 105, right: margin },
+      theme: "plain",
+      body: summaryRows,
+      styles: { fontSize: 9, cellPadding: 2.5 },
+      columnStyles: { 0: { fontStyle: "bold" }, 1: { halign: "right" } },
       didParseCell: (data) => {
-        if (data.section === "body" && data.column.index === 1) {
-          data.cell.styles.minCellHeight = 14;
+        if (data.row.index === summaryRows.length - 1) {
+          data.cell.styles.fillColor = [24, 24, 27];
+          data.cell.styles.textColor = [255, 255, 255];
+          data.cell.styles.fontStyle = "bold";
         }
       },
     });
 
-    const sectionTop = doc.lastAutoTable.finalY + 10;
-
-    const notesX = margin;
-    const notesW = 110;
-    const summaryX = margin + notesW + 6;
-    const summaryW = usableWidth - notesW - 6;
-
-    const defaultNotes =
-      "This quotation is subject to final confirmation of specifications, material availability, delivery schedule, and client approval. Any revisions or additional requests may affect the final cost.";
-    const notesText = costs.notes?.trim() ? costs.notes.trim() : defaultNotes;
-    const notesLines = doc.splitTextToSize(notesText, notesW - 8);
-    const notesH = Math.max(46, 16 + notesLines.length * 4.6 + 8);
-
-    doc.setDrawColor(...border);
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(notesX, sectionTop, notesW, notesH, 2, 2, "FD");
-    doc.setFillColor(...soft);
-    doc.roundedRect(notesX, sectionTop, notesW, 10, 2, 2, "F");
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9.5);
-    doc.setTextColor(...dark);
-    doc.text("REMARKS", notesX + 4, sectionTop + 6.5);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8.8);
-    doc.setTextColor(...text);
-    doc.text(notesLines, notesX + 4, sectionTop + 16);
-
-    const summaryRows = [
-      ["Materials Subtotal", money(materialsSubtotal)],
-      ["Labor", money(effectiveLaborCost)],
-      ["Logistics", money(overheadCost)],
-      ["Subtotal", money(subtotal)],
-      [`Discount (${discountRate}%)`, `(${money(discountAmount)})`],
-      [`VAT (${Number(costs.tax_rate) || 0}%)`, money(taxAmt)],
-    ];
-
-    const rowGap = 8;
-    const summaryH = 16 + summaryRows.length * rowGap + 18;
-
-    doc.setDrawColor(...border);
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(summaryX, sectionTop, summaryW, summaryH, 2, 2, "FD");
-    doc.setFillColor(...soft);
-    doc.roundedRect(summaryX, sectionTop, summaryW, 10, 2, 2, "F");
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9.5);
-    doc.setTextColor(...dark);
-    doc.text("SUMMARY", summaryX + 4, sectionTop + 6.5);
-
-    let rowY = sectionTop + 17;
-    summaryRows.forEach(([label, value], idx) => {
-      const isDiscount = idx === 4;
-
+    const notesY = Math.min(doc.lastAutoTable.finalY + 10, 260);
+    if (costs.notes) {
+      doc.setFont("helvetica", "bold");
+      doc.text("Remarks", margin, notesY);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      doc.setTextColor(
-        isDiscount ? 220 : muted[0],
-        isDiscount ? 38 : muted[1],
-        isDiscount ? 38 : muted[2],
-      );
-      doc.text(label, summaryX + 4, rowY);
+      doc.text(doc.splitTextToSize(costs.notes, 175), margin, notesY + 5);
+    }
 
-      doc.setTextColor(
-        isDiscount ? 220 : dark[0],
-        isDiscount ? 38 : dark[1],
-        isDiscount ? 38 : dark[2],
-      );
-      doc.text(value, summaryX + summaryW - 4, rowY, { align: "right" });
-
-      if (idx !== summaryRows.length - 1) {
-        doc.setDrawColor(...border);
-        doc.line(summaryX + 4, rowY + 2.8, summaryX + summaryW - 4, rowY + 2.8);
-      }
-
-      rowY += rowGap;
-    });
-
-    doc.setFillColor(...darkAccent);
-    doc.roundedRect(
-      summaryX,
-      sectionTop + summaryH - 14,
-      summaryW,
-      14,
-      2,
-      2,
-      "F",
-    );
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9.5);
-    doc.setTextColor(255, 255, 255);
-    doc.text("GRAND TOTAL", summaryX + 4, sectionTop + summaryH - 5);
-
-    doc.setFontSize(12);
-    doc.text(
-      money(grandTotal),
-      summaryX + summaryW - 4,
-      sectionTop + summaryH - 5,
-      {
-        align: "right",
-      },
-    );
-
-    let sigY = Math.max(sectionTop + notesH, sectionTop + summaryH) + 24;
-    if (sigY > pageHeight - 40) sigY = pageHeight - 40;
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9.5);
-    doc.setTextColor(...dark);
-    doc.text("Prepared by:", margin, sigY);
-    doc.text("Accepted by:", 112, sigY);
-
-    doc.setDrawColor(...darkAccent);
-    doc.setLineWidth(0.5);
-    doc.line(margin, sigY + 16, 84, sigY + 16);
-    doc.line(112, sigY + 16, pageWidth - margin, sigY + 16);
-
-    doc.setFontSize(8.5);
-    doc.setTextColor(...muted);
-    doc.text("Authorized Representative / Signature / Date", margin, sigY + 22);
-    doc.text("Client Signature / Date", 112, sigY + 22);
-
-    doc.setDrawColor(...border);
-    doc.line(margin, pageHeight - 14, pageWidth - margin, pageHeight - 14);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(...muted);
-    doc.text(
-      `Generated on ${new Date().toLocaleString("en-PH")}`,
-      margin,
-      pageHeight - 8,
-    );
-    doc.text(reference, pageWidth - margin, pageHeight - 8, {
-      align: "right",
-    });
-
-    doc.save(`quotation_${reference}_${Date.now()}.pdf`);
+    doc.save(`quotation_BP-${String(id).padStart(4, "0")}_${Date.now()}.pdf`);
     toast.success("Quotation PDF exported.");
   };
 
@@ -1633,73 +1589,53 @@ export default function EstimationPage() {
   if (!blueprint) return <div style={center}>Blueprint not found.</div>;
 
   return (
-    <div style={{ maxWidth: 1120, margin: "0 auto", paddingBottom: 40 }}>
+    <div style={{ maxWidth: 1180, margin: "0 auto", paddingBottom: 40 }}>
       <div style={pageHeader}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button onClick={() => navigate(-1)} style={btnBack}>
-            ← Back
-          </button>
-
+          <button type="button" onClick={() => navigate(-1)} style={btnBack}>← Back</button>
           <div>
-            <h1 style={pageTitle}>Project Estimate — {displayTitle}</h1>
+            <h1 style={pageTitle}>Project Estimate — {getBlueprintDisplayTitle(blueprint)}</h1>
             <p style={pageSubTitle}>
-              Blueprint #{String(id).padStart(5, "0")} · Customer:{" "}
-              {customerDisplay}
+              Blueprint #{String(id).padStart(5, "0")} · Customer: {getCustomerDisplayName(blueprint)}
+              {blueprint.order_number ? ` · Order: ${blueprint.order_number}` : ""}
             </p>
           </div>
         </div>
 
         <div style={headerActions}>
           <button
-            onClick={handleRegenerateFromBlueprint}
+            type="button"
+            onClick={handleRegenerate}
             disabled={isReadOnly || !preferredAutoItems.length}
-            style={
-              isReadOnly || !preferredAutoItems.length
-                ? { ...btnGhost, ...btnDisabled }
-                : btnGhost
-            }
+            style={isReadOnly || !preferredAutoItems.length ? { ...btnGhost, ...btnDisabled } : btnGhost}
           >
             Regenerate Rows
           </button>
-
-          <button onClick={exportPDF} style={btnGhost}>
-            Export PDF
-          </button>
-
-          {est?.status === "approved" ? (
+          <button type="button" onClick={exportPDF} style={btnGhost}>Export PDF</button>
+          {isApproved ? (
             <button
+              type="button"
               onClick={handleGenerateContract}
-              disabled={!canGenerateContract}
-              style={
-                !canGenerateContract
-                  ? { ...btnPrimary, ...btnDisabled }
-                  : btnPrimary
-              }
+              disabled={!blueprint?.order_id}
+              style={!blueprint?.order_id ? { ...btnPrimary, ...btnDisabled } : btnPrimary}
             >
               Generate Contract
             </button>
           ) : (
             <button
-              onClick={handleApproveEstimation}
-              disabled={!est?.id || approving || isQuoteSent}
-              style={
-                !est?.id || approving || isQuoteSent
-                  ? { ...btnGhost, ...btnDisabled }
-                  : btnPrimary
-              }
+              type="button"
+              onClick={handleSendQuote}
+              disabled={!estimation?.id || approving || isSent}
+              style={!estimation?.id || approving || isSent ? { ...btnGhost, ...btnDisabled } : btnPrimary}
             >
-              {isQuoteSent ? "Quotation Sent" : "Send Quote"}
+              {isSent ? "Quotation Sent" : approving ? "Sending..." : "Send Quote"}
             </button>
           )}
-
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving || isReadOnly}
-            style={
-              saving || isReadOnly
-                ? { ...btnPrimary, ...btnDisabled }
-                : btnPrimary
-            }
+            style={saving || isReadOnly ? { ...btnPrimary, ...btnDisabled } : btnPrimary}
           >
             {saving ? "Saving..." : "Save Estimate"}
           </button>
@@ -1707,493 +1643,216 @@ export default function EstimationPage() {
       </div>
 
       <div style={metaGrid}>
-        <div style={metaCard}>
-          <span style={metaLabel}>Status</span>
-          <span style={metaValue}>{estimateStatus}</span>
-        </div>
-
-        <div style={metaCard}>
-          <span style={metaLabel}>Valid Until</span>
-          <span style={metaValue}>{formatDateDisplay(validUntil)}</span>
-        </div>
-
-        <div style={metaCard}>
-          <span style={metaLabel}>Prepared By</span>
-          <span style={metaValue}>{preparedBy}</span>
-        </div>
+        <div style={metaCard}><span style={metaLabel}>Status</span><span style={metaValue}>{status}</span></div>
+        <div style={metaCard}><span style={metaLabel}>Valid Until</span><span style={metaValue}>{formatDateDisplay(validUntil)}</span></div>
+        <div style={metaCard}><span style={metaLabel}>Prepared By</span><span style={metaValue}>Spiral Wood Services</span></div>
       </div>
 
       {isReadOnly && (
         <div style={lockedBanner}>
-          {isQuoteApproved
-            ? "This quotation is already customer-approved. Editing, row regeneration, and saving are now disabled. You may still export the quotation and generate the contract."
-            : "This quotation has already been sent to the customer. Editing, row regeneration, and saving are temporarily disabled while waiting for the customer decision."}
+          {isApproved
+            ? "This quotation is customer-approved. All estimate sections are locked."
+            : "This quotation was sent to the customer. Editing is locked while waiting for the customer decision."}
         </div>
       )}
 
       <div style={{ ...card, marginBottom: 20 }}>
-        <div style={sectionHeader}>
-          <div>
-            <h3 style={sectionTitle}>Materials</h3>
-            <p style={helperText}>
-              Use this section for billable material groups only. Enter labor
-              and logistics below.
-            </p>
+        <div style={sectionHeaderSmall}>
+          <h3 style={sectionTitle}>Customer Request and Reference Photos</h3>
+          <p style={helperText}>
+            Review the customer request, attachments, and custom design notes before adding extra materials or work.
+          </p>
+        </div>
+        <div style={{ padding: 20 }}>
+          <div style={requestGrid}>
+            <div style={requestInfoCard}>
+              <span style={metaLabel}>Order Request</span>
+              <strong>{blueprint.order_number || "No linked order"}</strong>
+              {blueprint.order_context?.order_notes && (
+                <p style={requestText}>{blueprint.order_context.order_notes}</p>
+              )}
+              {blueprint.order_context?.delivery_request_notes && (
+                <p style={requestText}>
+                  Delivery note: {blueprint.order_context.delivery_request_notes}
+                </p>
+              )}
+              {!blueprint.order_context?.order_notes &&
+                !blueprint.order_context?.delivery_request_notes && (
+                  <p style={mutedText}>No order notes recorded.</p>
+                )}
+            </div>
+            <div style={requestInfoCard}>
+              <span style={metaLabel}>Requested Details</span>
+              {customizationEntries.length ? (
+                <div style={{ display: "grid", gap: 6 }}>
+                  {customizationEntries.map((entry, index) => (
+                    <div key={`${entry.label}-${index}`} style={detailRow}>
+                      <span>{entry.label}</span><strong>{entry.value}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={mutedText}>No structured customization details recorded.</p>
+              )}
+            </div>
           </div>
 
-          <button
-            onClick={addItem}
-            disabled={isReadOnly}
-            style={isReadOnly ? { ...btnAdd, ...btnDisabled } : btnAdd}
-          >
-            Add Row
-          </button>
-        </div>
-
-        <div style={{ overflowX: "auto" }}>
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              fontSize: 13,
-              tableLayout: "fixed",
-              minWidth: 800,
-            }}
-          >
-            <thead>
-              <tr style={{ background: "#fafafa" }}>
-                {MATERIAL_TABLE_COLUMNS.map((col) => (
-                  <th
-                    key={col.label || col.width}
-                    style={{ ...th, width: col.width }}
-                  >
-                    {col.label}
-                  </th>
+          <div style={{ marginTop: 18 }}>
+            <div style={{ ...metaLabel, marginBottom: 8 }}>Latest Customer Messages</div>
+            {discussionLoading ? (
+              <p style={mutedText}>Loading customer discussion...</p>
+            ) : customerMessages.length ? (
+              <div style={messageList}>
+                {customerMessages.map((entry) => (
+                  <div key={entry.id} style={messageCard}>
+                    <div style={{ fontWeight: 700 }}>{entry.message || "Attachment uploaded."}</div>
+                    <div style={{ fontSize: 11, color: "#71717a", marginTop: 5 }}>
+                      {formatDateTime(entry.created_at)}
+                    </div>
+                  </div>
                 ))}
-              </tr>
-            </thead>
+              </div>
+            ) : (
+              <p style={mutedText}>No customer discussion messages recorded.</p>
+            )}
+          </div>
 
-            <tbody>
-              {items.map((item, i) => {
-                const rowTotal =
-                  Number(item.quantity || 0) * Number(item.unit_cost || 0);
-
-                return (
-                  <tr
-                    key={item.source_key || i}
-                    style={{ borderBottom: "1px solid #f4f4f5" }}
-                  >
-                    <td
-                      style={{
-                        ...td,
-                        color: "#71717a",
-                        fontWeight: 800,
-                        width: "5%",
-                      }}
-                    >
-                      {i + 1}
-                    </td>
-
-                    <td style={td}>
-                      <input
-                        value={item.name}
-                        onChange={(e) => updateItem(i, "name", e.target.value)}
-                        style={{
-                          ...cellInput,
-                          ...readOnlyFieldStyle,
-                          width: "100%",
-                          fontWeight: 600,
-                        }}
-                        placeholder="e.g. Carcass Panels"
-                        maxLength={120}
-                        disabled={isReadOnly}
-                      />
-                    </td>
-
-                    <td style={td}>
-                      <select
-                        value={item.unit}
-                        onChange={(e) => updateItem(i, "unit", e.target.value)}
-                        style={{
-                          ...cellInput,
-                          ...readOnlyFieldStyle,
-                          width: "100%",
-                        }}
-                        disabled={isReadOnly}
-                      >
-                        {[
-                          "pc",
-                          "sq.m",
-                          "sheet",
-                          "kg",
-                          "m",
-                          "ft",
-                          "set",
-                          "lot",
-                          "L",
-                        ].map((u) => (
-                          <option key={u}>{u}</option>
-                        ))}
-                      </select>
-                    </td>
-
-                    <td style={td}>
-                      <input
-                        type="number"
-                        min={isAreaUnit(item.unit) ? "0.0001" : "1"}
-                        step={isAreaUnit(item.unit) ? "0.0001" : "1"}
-                        value={item.quantity}
-                        onChange={(e) =>
-                          updateItem(i, "quantity", e.target.value)
-                        }
-                        style={{
-                          ...cellInput,
-                          ...readOnlyFieldStyle,
-                          width: "100%",
-                        }}
-                        disabled={isReadOnly}
-                      />
-                    </td>
-
-                    <td style={td}>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.unit_cost}
-                        onChange={(e) =>
-                          updateItem(i, "unit_cost", e.target.value)
-                        }
-                        style={{
-                          ...cellInput,
-                          ...readOnlyFieldStyle,
-                          width: "100%",
-                        }}
-                        placeholder="0.00"
-                        disabled={isReadOnly}
-                      />
-                    </td>
-
-                    <td
-                      style={{
-                        ...td,
-                        fontWeight: 800,
-                        color: "#0a0a0a",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {formatMoney(rowTotal)}
-                    </td>
-
-                    <td style={td}>
-                      <input
-                        value={item.note}
-                        onChange={(e) => updateItem(i, "note", e.target.value)}
-                        style={{
-                          ...cellInput,
-                          ...readOnlyFieldStyle,
-                          width: "100%",
-                        }}
-                        placeholder="Material, finish, size, inclusions..."
-                        maxLength={180}
-                        disabled={isReadOnly}
-                      />
-                    </td>
-
-                    <td style={{ ...td, textAlign: "center" }}>
-                      {!isReadOnly && items.length > 1 && (
-                        <button
-                          onClick={() => removeItem(i)}
-                          style={btnRemove}
-                          title="Remove row"
-                        >
-                          ✕
-                        </button>
+          <div style={{ marginTop: 18 }}>
+            <div style={{ ...metaLabel, marginBottom: 8 }}>Reference Files</div>
+            {referenceFiles.length ? (
+              <div style={attachmentGrid}>
+                {referenceFiles.map((file) => {
+                  const href = resolveAttachmentUrl(file.file_url || file.url);
+                  return (
+                    <a key={file.id || href} href={href} target="_blank" rel="noreferrer" style={attachmentCard}>
+                      {isImageAttachment(file) ? (
+                        <img src={href} alt={file.file_name || "Reference"} style={attachmentImage} />
+                      ) : (
+                        <div style={filePlaceholder}>FILE</div>
                       )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-
-            <tfoot>
-              <tr
-                style={{
-                  background: "#fafafa",
-                  borderTop: "2px solid #e4e4e7",
-                }}
-              >
-                <td
-                  colSpan={5}
-                  style={{
-                    ...td,
-                    textAlign: "right",
-                    fontWeight: 800,
-                    color: "#18181b",
-                  }}
-                >
-                  Materials Subtotal
-                </td>
-                <td
-                  style={{
-                    ...td,
-                    fontWeight: 800,
-                    color: "#0a0a0a",
-                    fontSize: 15,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {formatMoney(materialsSubtotal)}
-                </td>
-                <td colSpan={2} />
-              </tr>
-            </tfoot>
-          </table>
+                      <div style={attachmentLabel}>{file.file_name || "Reference file"}</div>
+                    </a>
+                  );
+                })}
+              </div>
+            ) : (
+              <p style={mutedText}>No reference files available.</p>
+            )}
+          </div>
         </div>
       </div>
 
-      <div
-        style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 20 }}
-      >
+      <EstimateTable
+        title="Blueprint Parts / Base Materials"
+        helper="Auto-generated from the latest blueprint design. Review the quantity, unit, price, and remarks."
+        section="blueprint"
+        rows={blueprintItems}
+        rawMaterials={rawMaterials}
+        readOnly={isReadOnly}
+        onRemove={removeItem}
+        onUpdate={updateItem}
+        subtotal={blueprintSubtotal}
+      />
+
+      <EstimateTable
+        title="Inventory Materials"
+        helper="Select the exact materials and quantities for internal stock tracking. These rows are not added again to the customer quotation total and do not reserve or deduct stock yet."
+        section="inventory"
+        rows={inventoryItems}
+        rawMaterials={rawMaterials}
+        readOnly={isReadOnly}
+        onAdd={addInventoryItem}
+        onRemove={removeItem}
+        onUpdate={updateItem}
+        subtotal={inventorySubtotal}
+        inventoryTrackingOnly={inventoryTrackingOnly}
+      />
+
+      <EstimateTable
+        title="Other Materials / Additional Work"
+        helper="Add custom design work, customer-requested changes, special materials not tracked in inventory, and other billable items."
+        section="other"
+        rows={otherItems}
+        rawMaterials={rawMaterials}
+        readOnly={isReadOnly}
+        onAdd={addOtherItem}
+        onRemove={removeItem}
+        onUpdate={updateItem}
+        subtotal={otherSubtotal}
+      />
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 20 }}>
         <div style={card}>
           <div style={sectionHeaderSmall}>
-            <div>
-              <h3 style={sectionTitle}>Charges</h3>
-              <p style={helperText}>
-                Enter non-material amounts such as labor, logistics, discount,
-                and VAT.
-              </p>
-            </div>
+            <h3 style={sectionTitle}>Charges</h3>
+            <p style={helperText}>Enter labor, logistics, discount, VAT, and quotation remarks.</p>
           </div>
-
           <div style={{ padding: "20px 24px" }}>
-            {[
-              { key: "labor_cost", label: "Labor Cost (₱)" },
-              { key: "overhead_cost", label: "Logistics Cost (₱)" },
-            ].map(({ key, label }) => (
-              <div key={key} style={{ marginBottom: 16 }}>
-                <label style={labelSm}>{label}</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={costs[key]}
-                  onChange={(e) => setCost(key, e.target.value)}
-                  style={{ ...inputFull, ...readOnlyFieldStyle }}
-                  placeholder="0.00"
-                  disabled={isReadOnly}
-                />
-              </div>
-            ))}
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 16,
-                marginBottom: 16,
-              }}
-            >
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelSm}>Labor Cost (₱)</label>
+              <input type="number" min="0" step="0.01" value={costs.labor_cost} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, labor_cost: event.target.value }))} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }} disabled={isReadOnly} />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={labelSm}>Logistics Cost (₱)</label>
+              <input type="number" min="0" step="0.01" value={costs.overhead_cost} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, overhead_cost: event.target.value }))} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }} disabled={isReadOnly} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
               <div>
                 <label style={labelSm}>Discount (%)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={costs.discount}
-                  onChange={(e) => setCost("discount", e.target.value)}
-                  style={{ ...inputFull, ...readOnlyFieldStyle }}
-                  placeholder="0.00"
-                  disabled={isReadOnly}
-                />
+                <input type="number" min="0" max="100" step="0.01" value={costs.discount} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, discount: event.target.value }))} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }} disabled={isReadOnly} />
               </div>
-
               <div>
                 <label style={labelSm}>VAT (%)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.01"
-                  value={costs.tax_rate}
-                  onChange={(e) => setCost("tax_rate", e.target.value)}
-                  style={{ ...inputFull, ...readOnlyFieldStyle }}
-                  disabled={isReadOnly}
-                />
+                <input type="number" min="0" max="100" step="0.01" value={costs.tax_rate} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, tax_rate: event.target.value }))} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }} disabled={isReadOnly} />
               </div>
             </div>
-
-            <div style={{ marginTop: 16 }}>
+            <div>
               <label style={labelSm}>Remarks</label>
-              <textarea
-                value={costs.notes}
-                onChange={(e) => setCost("notes", e.target.value.slice(0, 500))}
-                rows={4}
-                style={{
-                  ...inputFull,
-                  ...readOnlyFieldStyle,
-                  resize: "vertical",
-                }}
-                placeholder="Terms, delivery notes, payment reminders, inclusions or exclusions..."
-                maxLength={500}
-                disabled={isReadOnly}
-              />
+              <textarea value={costs.notes} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, notes: event.target.value.slice(0, 500) }))} rows={5} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly), resize: "vertical" }} maxLength={500} disabled={isReadOnly} placeholder="Terms, inclusions, exclusions, delivery notes..." />
             </div>
           </div>
         </div>
 
         <div style={{ ...card, alignSelf: "start" }}>
           <div style={sectionHeaderSmall}>
-            <div>
-              <h3 style={sectionTitle}>Summary</h3>
-              <p style={helperText}>
-                Review the final computation before saving or approving the
-                estimate.
-              </p>
-            </div>
+            <h3 style={sectionTitle}>Summary</h3>
+            <p style={helperText}>Review all sections before saving or sending the quotation.</p>
           </div>
-
-          <div style={{ padding: "24px" }}>
+          <div style={{ padding: 24 }}>
             {[
-              {
-                label: "Materials Subtotal",
-                val: materialsSubtotal,
-                color: "#18181b",
-              },
-              {
-                label: "Labor",
-                val: effectiveLaborCost,
-                color: "#18181b",
-              },
-              {
-                label: "Logistics",
-                val: overheadCost,
-                color: "#18181b",
-              },
-            ].map((row) => (
-              <div key={row.label} style={summaryRow}>
-                <span
-                  style={{ color: "#71717a", fontSize: 13, fontWeight: 600 }}
-                >
-                  {row.label}
-                </span>
-                <span
-                  style={{
-                    fontWeight: 700,
-                    color: row.color,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {formatMoney(row.val)}
-                </span>
+              ["Blueprint Parts", blueprintSubtotal],
+              ...(!inventoryTrackingOnly
+                ? [["Inventory Materials", inventorySubtotal]]
+                : []),
+              ["Other Materials / Work", otherSubtotal],
+              ["Labor", laborCost],
+              ["Logistics", logisticsCost],
+            ].map(([label, value]) => (
+              <div key={label} style={summaryRow}>
+                <span style={summaryLabel}>{label}</span>
+                <strong>{formatMoney(value)}</strong>
               </div>
             ))}
-
-            <div style={{ borderTop: "1px solid #e4e4e7", margin: "16px 0" }} />
-
-            <div style={summaryRow}>
-              <span style={{ color: "#18181b", fontSize: 13, fontWeight: 800 }}>
-                Subtotal
-              </span>
-              <span
-                style={{
-                  fontWeight: 800,
-                  whiteSpace: "nowrap",
-                  color: "#0a0a0a",
-                }}
-              >
-                {formatMoney(subtotal)}
-              </span>
-            </div>
-
-            {discountRate > 0 && (
-              <div style={summaryRow}>
-                <span
-                  style={{ color: "#dc2626", fontSize: 13, fontWeight: 700 }}
-                >
-                  Discount ({discountRate}%)
-                </span>
-                <span
-                  style={{
-                    fontWeight: 700,
-                    color: "#dc2626",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  ({formatMoney(discountAmount)})
-                </span>
+            {inventoryTrackingOnly && (
+              <div style={{ ...summaryRow, alignItems: "flex-start" }}>
+                <span style={summaryLabel}>Inventory requirements</span>
+                <strong style={{ textAlign: "right", maxWidth: 190 }}>
+                  {inventoryItems.length
+                    ? `${inventoryItems.length} tracked material${inventoryItems.length === 1 ? "" : "s"} — not charged again`
+                    : "None added"}
+                </strong>
               </div>
             )}
-
-            <div style={summaryRow}>
-              <span style={{ color: "#71717a", fontSize: 13, fontWeight: 600 }}>
-                VAT ({costs.tax_rate}%)
-              </span>
-              <span
-                style={{
-                  fontWeight: 700,
-                  whiteSpace: "nowrap",
-                  color: "#18181b",
-                }}
-              >
-                {formatMoney(taxAmt)}
-              </span>
-            </div>
-
-            <div
-              style={{
-                marginTop: 20,
-                background: "#18181b",
-                borderRadius: 12,
-                padding: "20px 24px",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 12,
-              }}
-            >
-              <span
-                style={{
-                  color: "#a1a1aa",
-                  fontSize: 12,
-                  fontWeight: 800,
-                  letterSpacing: "1px",
-                }}
-              >
-                GRAND TOTAL
-              </span>
-              <span
-                style={{
-                  color: "#ffffff",
-                  fontSize: 28,
-                  fontWeight: 800,
-                  whiteSpace: "nowrap",
-                  letterSpacing: "-0.02em",
-                }}
-              >
-                {formatMoney(grandTotal)}
-              </span>
-            </div>
-
-            {est && (
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: "12px 14px",
-                  background: "#fafafa",
-                  border: "1px solid #e4e4e7",
-                  borderRadius: 10,
-                  fontSize: 12,
-                  color: "#52525b",
-                  fontWeight: 500,
-                  textAlign: "center",
-                }}
-              >
-                Estimation previously saved on{" "}
-                {new Date(est.updated_at || est.created_at).toLocaleDateString(
-                  "en-PH",
-                )}
+            <div style={{ borderTop: "1px solid #e4e4e7", margin: "16px 0" }} />
+            <div style={summaryRow}><strong>Subtotal</strong><strong>{formatMoney(subtotal)}</strong></div>
+            {discountRate > 0 && (
+              <div style={summaryRow}><span style={{ ...summaryLabel, color: "#dc2626" }}>Discount ({discountRate}%)</span><strong style={{ color: "#dc2626" }}>({formatMoney(discountAmount)})</strong></div>
+            )}
+            <div style={summaryRow}><span style={summaryLabel}>VAT ({costs.tax_rate}%)</span><strong>{formatMoney(taxAmount)}</strong></div>
+            <div style={grandTotalBox}><span>GRAND TOTAL</span><strong>{formatMoney(grandTotal)}</strong></div>
+            {estimation && (
+              <div style={savedInfo}>
+                Estimation saved on {formatDateDisplay(estimation.updated_at || estimation.created_at)}
               </div>
             )}
           </div>
@@ -2203,7 +1862,6 @@ export default function EstimationPage() {
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
 const card = {
   background: "#fff",
   borderRadius: 16,
@@ -2211,245 +1869,47 @@ const card = {
   boxShadow: "0 1px 2px rgba(0,0,0,.02)",
   overflow: "hidden",
 };
-
-const center = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  height: 300,
-  color: "#71717a",
-  fontSize: 14,
-  fontWeight: 600,
-};
-
-const pageHeader = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 16,
-  marginBottom: 20,
-  flexWrap: "wrap",
-};
-
-const pageTitle = {
-  fontSize: 24,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  margin: 0,
-  letterSpacing: "-0.02em",
-};
-
-const pageSubTitle = {
-  fontSize: 13,
-  color: "#52525b",
-  margin: "4px 0 0",
-};
-
-const headerActions = {
-  marginLeft: "auto",
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-  alignItems: "center",
-};
-
-const metaGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-  gap: 12,
-  marginBottom: 20,
-};
-
-const metaCard = {
-  background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 12,
-  padding: "16px 20px",
-  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
-  display: "flex",
-  flexDirection: "column",
-  gap: 6,
-};
-
-const metaLabel = {
-  fontSize: 10,
-  fontWeight: 800,
-  color: "#71717a",
-  textTransform: "uppercase",
-  letterSpacing: "1px",
-};
-
-const metaValue = {
-  fontSize: 16,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  letterSpacing: "-0.01em",
-};
-
-const lockedBanner = {
-  marginBottom: 20,
-  padding: "14px 16px",
-  borderRadius: 12,
-  background: "#fafafa",
-  border: "1px solid #e4e4e7",
-  color: "#18181b",
-  fontSize: 13,
-  lineHeight: 1.5,
-  fontWeight: 500,
-};
-
-const sectionHeader = {
-  padding: "20px 24px",
-  borderBottom: "1px solid #e4e4e7",
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 12,
-  background: "#fafafa",
-};
-
-const sectionHeaderSmall = {
-  padding: "16px 24px",
-  borderBottom: "1px solid #e4e4e7",
-  background: "#fafafa",
-};
-
-const sectionTitle = {
-  margin: 0,
-  fontSize: 16,
-  fontWeight: 800,
-  color: "#0a0a0a",
-};
-
-const helperText = {
-  margin: "6px 0 0",
-  fontSize: 12,
-  color: "#71717a",
-  lineHeight: 1.5,
-};
-
-const th = {
-  textAlign: "left",
-  padding: "12px 14px",
-  fontSize: 10,
-  fontWeight: 800,
-  color: "#71717a",
-  textTransform: "uppercase",
-  letterSpacing: "1px",
-  borderBottom: "1px solid #e4e4e7",
-};
-
-const td = {
-  padding: "14px 14px",
-  color: "#18181b",
-  verticalAlign: "middle",
-};
-
-const labelSm = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#18181b",
-  display: "block",
-  marginBottom: 8,
-};
-
-const inputFull = {
-  width: "100%",
-  padding: "10px 14px",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  fontSize: 13,
-  color: "#18181b",
-  boxSizing: "border-box",
-  outline: "none",
-};
-
-const cellInput = {
-  padding: "8px 10px",
-  border: "1px solid #e4e4e7",
-  borderRadius: 6,
-  fontSize: 13,
-  color: "#18181b",
-  outline: "none",
-  boxSizing: "border-box",
-};
-
-const fieldLocked = {
-  background: "#fafafa",
-  color: "#71717a",
-  cursor: "not-allowed",
-};
-
-const summaryRow = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  padding: "10px 0",
-  borderBottom: "1px solid #f4f4f5",
-  gap: 12,
-};
-
-const btnPrimary = {
-  padding: "10px 20px",
-  background: "#18181b",
-  color: "#fff",
-  border: "1px solid #18181b",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
-  transition: "background 0.2s",
-};
-
-const btnGhost = {
-  padding: "10px 16px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
-  transition: "all 0.2s",
-};
-
-const btnBack = {
-  padding: "8px 12px",
-  background: "#ffffff",
-  color: "#52525b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
-  transition: "all 0.2s",
-};
-
-const btnAdd = {
-  padding: "8px 16px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 700,
-  transition: "background 0.2s",
-};
-
-const btnRemove = {
-  padding: "6px 10px",
-  background: "#fef2f2",
-  color: "#991b1b",
-  border: "1px solid #fecaca",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 700,
-  transition: "background 0.2s",
-};
-
-const btnDisabled = {
-  opacity: 0.6,
-  cursor: "not-allowed",
-};
+const center = { display: "flex", alignItems: "center", justifyContent: "center", height: 300, color: "#71717a", fontSize: 14, fontWeight: 600 };
+const pageHeader = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 20, flexWrap: "wrap" };
+const pageTitle = { fontSize: 24, fontWeight: 800, color: "#0a0a0a", margin: 0, letterSpacing: "-0.02em" };
+const pageSubTitle = { fontSize: 13, color: "#52525b", margin: "4px 0 0" };
+const headerActions = { marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" };
+const metaGrid = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginBottom: 20 };
+const metaCard = { background: "#fff", border: "1px solid #e4e4e7", borderRadius: 12, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 6 };
+const metaLabel = { fontSize: 10, fontWeight: 800, color: "#71717a", textTransform: "uppercase", letterSpacing: "1px" };
+const metaValue = { fontSize: 16, fontWeight: 800, color: "#0a0a0a" };
+const lockedBanner = { marginBottom: 20, padding: "14px 16px", borderRadius: 12, background: "#fafafa", border: "1px solid #e4e4e7", color: "#18181b", fontSize: 13, lineHeight: 1.5 };
+const sectionHeader = { padding: "20px 24px", borderBottom: "1px solid #e4e4e7", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, background: "#fafafa" };
+const sectionHeaderSmall = { padding: "16px 24px", borderBottom: "1px solid #e4e4e7", background: "#fafafa" };
+const sectionTitle = { margin: 0, fontSize: 16, fontWeight: 800, color: "#0a0a0a" };
+const helperText = { margin: "6px 0 0", fontSize: 12, color: "#71717a", lineHeight: 1.5 };
+const estimateTableStyle = { width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed", minWidth: 920 };
+const th = { textAlign: "left", padding: "12px 12px", fontSize: 10, fontWeight: 800, color: "#71717a", textTransform: "uppercase", letterSpacing: "1px", borderBottom: "1px solid #e4e4e7" };
+const td = { padding: "12px", color: "#18181b", verticalAlign: "middle" };
+const emptyCell = { ...td, padding: 30, textAlign: "center", color: "#71717a" };
+const cellInput = { padding: "8px 9px", border: "1px solid #e4e4e7", borderRadius: 6, fontSize: 13, color: "#18181b", outline: "none", boxSizing: "border-box" };
+const inputFull = { width: "100%", padding: "10px 14px", border: "1px solid #e4e4e7", borderRadius: 8, fontSize: 13, color: "#18181b", boxSizing: "border-box", outline: "none" };
+const readOnlyFieldStyle = (locked) => locked ? { background: "#fafafa", color: "#71717a", cursor: "not-allowed" } : {};
+const labelSm = { fontSize: 12, fontWeight: 800, color: "#18181b", display: "block", marginBottom: 8 };
+const summaryRow = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f4f4f5", gap: 12 };
+const summaryLabel = { color: "#71717a", fontSize: 13, fontWeight: 600 };
+const grandTotalBox = { marginTop: 20, background: "#18181b", borderRadius: 12, padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, color: "#fff", fontSize: 20 };
+const savedInfo = { marginTop: 16, padding: "12px 14px", background: "#fafafa", border: "1px solid #e4e4e7", borderRadius: 10, fontSize: 12, color: "#52525b", textAlign: "center" };
+const requestGrid = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 };
+const requestInfoCard = { border: "1px solid #e4e4e7", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 8, minHeight: 90 };
+const requestText = { margin: 0, fontSize: 13, lineHeight: 1.55, color: "#3f3f46" };
+const mutedText = { margin: 0, fontSize: 12, color: "#71717a", lineHeight: 1.5 };
+const detailRow = { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, color: "#52525b" };
+const messageList = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 };
+const messageCard = { padding: 12, border: "1px solid #e4e4e7", borderRadius: 10, background: "#fafafa", fontSize: 12, lineHeight: 1.45 };
+const attachmentGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 };
+const attachmentCard = { display: "block", textDecoration: "none", color: "#18181b", border: "1px solid #e4e4e7", borderRadius: 10, overflow: "hidden", background: "#fff" };
+const attachmentImage = { width: "100%", height: 110, objectFit: "cover", display: "block" };
+const filePlaceholder = { height: 110, display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f4f5", fontWeight: 800, color: "#71717a" };
+const attachmentLabel = { padding: "8px 10px", fontSize: 11, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const btnPrimary = { padding: "10px 20px", background: "#18181b", color: "#fff", border: "1px solid #18181b", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 };
+const btnGhost = { padding: "10px 16px", background: "#f4f4f5", color: "#18181b", border: "1px solid #e4e4e7", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 };
+const btnBack = { padding: "8px 12px", background: "#fff", color: "#52525b", border: "1px solid #e4e4e7", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 };
+const btnAdd = { padding: "8px 16px", background: "#f4f4f5", color: "#18181b", border: "1px solid #e4e4e7", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 700 };
+const btnRemove = { padding: "6px 10px", background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 };
+const btnDisabled = { opacity: 0.6, cursor: "not-allowed" };

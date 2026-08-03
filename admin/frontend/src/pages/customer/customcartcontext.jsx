@@ -39,11 +39,11 @@ export function CustomCartProvider({ children }) {
   };
 
   const clearCustomCart = () => {
-    setCartState((prev) =>
-      (Array.isArray(prev) ? prev : []).filter(
-        (item) => item.cart_type !== "blueprint",
-      ),
-    );
+    const customKeys = (Array.isArray(customCart) ? customCart : [])
+      .map((item) => item?.key)
+      .filter(Boolean);
+
+    removeMany(customKeys);
 
     try {
       sessionStorage.removeItem("cust_custom_cart");

@@ -8,6 +8,7 @@ import useAuthStore from "../../store/authStore";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import "./customizepage.css";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
+import { saveCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
 
 // 👉 ADDED: Peso formatter for prices
 const formatPeso = (value) =>
@@ -1213,7 +1214,7 @@ export default function CustomizePage() {
     });
   };
 
-  const handleAdd = (product, draft = {}) => {
+  const handleAdd = async (product, draft = {}) => {
     if (!requireCustomerLogin(product)) return;
     const profile = resolveSavedTemplateProfile(product || {});
     const bounds = draft?.bounds || {};
@@ -1275,12 +1276,21 @@ export default function CustomizePage() {
       referencePhotos,
     });
 
-    const lightweightReferencePhotos = referencePhotos.map((photo) => ({
-      id: photo.id,
-      name: photo.name,
-      type: photo.type,
-      size: photo.size,
-    }));
+    let lightweightReferencePhotos = [];
+
+    try {
+      lightweightReferencePhotos = await saveCustomReferencePhotos(
+        stableCustomKey,
+        referencePhotos,
+      );
+    } catch (error) {
+      console.error("Failed to preserve custom reference photos:", error);
+      setToastMessage(
+        "Reference photos could not be saved. Please try adding the item again.",
+      );
+      setIsHiding(false);
+      return;
+    }
 
     addToCustomCart({
       key: stableCustomKey,

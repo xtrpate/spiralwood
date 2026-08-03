@@ -12,8 +12,13 @@ const STOCK_COLORS = {
 export default function RawMaterialsPage() {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
-  const [filters, setFilters] = useState({ search: "", status: "", page: 1 });
-  const [modal, setModal] = useState(null); // null | { mode: 'add'|'edit', data: {} }
+  const [filters, setFilters] = useState({
+    search: "",
+    status: "",
+    archive_status: "active",
+    page: 1,
+  });
+  const [modal, setModal] = useState(null);
   const [saving, setSaving] = useState(false);
   const [suppliers, setSuppliers] = useState([]);
 
@@ -21,8 +26,8 @@ export default function RawMaterialsPage() {
     const { data } = await api.get("/inventory/raw", {
       params: { ...filters, limit: 20 },
     });
-    setItems(data.rows);
-    setTotal(data.total);
+    setItems(data.rows || []);
+    setTotal(Number(data.total || 0));
   }, [filters]);
 
   useEffect(() => {
@@ -30,7 +35,7 @@ export default function RawMaterialsPage() {
   }, [load]);
 
   useEffect(() => {
-    api.get("/suppliers").then((r) => setSuppliers(r.data));
+    api.get("/suppliers").then((r) => setSuppliers(r.data || []));
   }, []);
 
   const openAdd = () =>
@@ -45,6 +50,7 @@ export default function RawMaterialsPage() {
         supplier_id: "",
       },
     });
+
   const openEdit = (item) => setModal({ mode: "edit", data: { ...item } });
 
   const handleSave = async (e) => {
@@ -61,65 +67,129 @@ export default function RawMaterialsPage() {
       setModal(null);
       load();
     } catch (error) {
-      // Toast na yung message dito ay ginagawa na ng global interceptor
-      // sa api.js — hindi na natin uulitin dito. Ang catch lang ay para
-      // pigilan yung "Uncaught runtime errors" crash at panatilihing
-      // bukas ang modal.
+      // The global API interceptor shows the server message.
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Delete this raw material?")) return;
+  const handleArchive = async (item) => {
+    if (
+      !window.confirm(
+        `Archive "${item.name}"? It will be hidden from active inventory and new material selectors, but its history will remain.`,
+      )
+    ) {
+      return;
+    }
+
     try {
-      await api.delete(`/inventory/raw/${id}`);
-      toast.success("Deleted.");
+      await api.patch(`/inventory/raw/${item.id}/archive`);
+      toast.success("Raw material archived.");
       load();
     } catch (error) {
-      // Parehong dahilan — global interceptor na ang nag-a-toast.
+      // The global API interceptor shows the server message.
     }
   };
 
-  const setField = (k, v) =>
-    setModal((m) => ({ ...m, data: { ...m.data, [k]: v } }));
+  const handleRestore = async (item) => {
+    if (!window.confirm(`Restore "${item.name}" to active inventory?`)) return;
+
+    try {
+      await api.patch(`/inventory/raw/${item.id}/restore`);
+      toast.success("Raw material restored.");
+      load();
+    } catch (error) {
+      // The global API interceptor shows the server message.
+    }
+  };
+
+  const handleDelete = async (item) => {
+    if (
+      !window.confirm(
+        `Permanently delete "${item.name}"? This is only allowed when it has no linked or historical records.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await api.delete(`/inventory/raw/${item.id}`);
+      toast.success("Raw material permanently deleted.");
+      load();
+    } catch (error) {
+      // The global API interceptor shows the server message.
+    }
+  };
+
+  const setField = (key, value) =>
+    setModal((current) => ({
+      ...current,
+      data: { ...current.data, [key]: value },
+    }));
 
   return (
     <div>
       <div style={header}>
-        <h1 style={title}>Raw Materials Inventory</h1>
+        <div>
+          <h1 style={title}>Raw Materials Inventory</h1>
+          <div style={subtitle}>
+            Active materials appear in product recipes and blueprint estimation selectors.
+          </div>
+        </div>
         <button onClick={openAdd} style={btnPrimary}>
           + Add Material
         </button>
       </div>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+      <div style={filterRow}>
         <input
           placeholder="Search..."
           value={filters.search}
           onChange={(e) =>
-            setFilters((f) => ({ ...f, search: e.target.value, page: 1 }))
+            setFilters((current) => ({
+              ...current,
+              search: e.target.value,
+              page: 1,
+            }))
           }
           style={inputSm}
         />
         <select
           value={filters.status}
           onChange={(e) =>
-            setFilters((f) => ({ ...f, status: e.target.value, page: 1 }))
+            setFilters((current) => ({
+              ...current,
+              status: e.target.value,
+              page: 1,
+            }))
           }
           style={inputSm}
         >
-          <option value="">All Status</option>
+          <option value="">All Stock Status</option>
           <option value="in_stock">In Stock</option>
           <option value="low_stock">Low Stock</option>
           <option value="out_of_stock">Out of Stock</option>
         </select>
+        <select
+          value={filters.archive_status}
+          onChange={(e) =>
+            setFilters((current) => ({
+              ...current,
+              archive_status: e.target.value,
+              page: 1,
+            }))
+          }
+          style={inputSm}
+        >
+          <option value="active">Active</option>
+          <option value="archived">Archived</option>
+          <option value="all">All Records</option>
+        </select>
+        <span style={resultCount}>{total} record{total === 1 ? "" : "s"}</span>
       </div>
 
       <div style={tableCard}>
-        <table
-          style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
-        >
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "#fafafa" }}>
               {[
@@ -130,90 +200,110 @@ export default function RawMaterialsPage() {
                 "Reorder Pt",
                 "Unit Cost",
                 "Total Value",
-                "Status",
+                "Stock Status",
+                "Record",
                 "Actions",
-              ].map((h) => (
-                <th key={h} style={th}>
-                  {h}
+              ].map((heading) => (
+                <th key={heading} style={th}>
+                  {heading}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => {
-              const [bg, color, border] = STOCK_COLORS[item.stock_status] || [
-                "#f4f4f5",
-                "#18181b",
-                "#e4e4e7",
-              ];
-              return (
-                <tr key={item.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                  <td style={td}>
-                    <strong style={{ color: "#0a0a0a" }}>{item.name}</strong>
-                  </td>
-                  <td style={{ ...td, color: "#52525b" }}>
-                    {item.supplier_name || "—"}
-                  </td>
-                  <td style={{ ...td, color: "#71717a" }}>{item.unit}</td>
-                  <td style={{ ...td, fontWeight: 700 }}>{item.quantity}</td>
-                  <td style={{ ...td, color: "#52525b" }}>
-                    {item.reorder_point}
-                  </td>
-                  <td style={td}>₱ {Number(item.unit_cost).toFixed(2)}</td>
-                  <td style={{ ...td, fontWeight: 600 }}>
-                    ₱ {(item.quantity * item.unit_cost).toFixed(2)}
-                  </td>
-                  <td style={td}>
-                    <span
-                      style={{
-                        background: bg,
-                        color,
-                        border: `1px solid ${border}`,
-                        padding: "2px 10px",
-                        borderRadius: 12,
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {item.stock_status?.replace("_", " ")}
-                    </span>
-                  </td>
-                  <td style={td}>
-                    <button onClick={() => openEdit(item)} style={btnEdit}>
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      style={{
-                        ...btnEdit,
-                        background: "#fef2f2",
-                        color: "#991b1b",
-                        border: "1px solid #fecaca",
-                        marginLeft: 6,
-                      }}
-                    >
-                      Del
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
+            {items.length === 0 ? (
+              <tr>
+                <td colSpan={10} style={emptyCell}>
+                  No raw materials found for the selected filters.
+                </td>
+              </tr>
+            ) : (
+              items.map((item) => {
+                const [bg, color, border] = STOCK_COLORS[item.stock_status] || [
+                  "#f4f4f5",
+                  "#18181b",
+                  "#e4e4e7",
+                ];
+                const isActive = Number(item.is_active) === 1;
+                const hasReferences = Number(item.has_references) === 1;
+
+                return (
+                  <tr key={item.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
+                    <td style={td}>
+                      <strong style={{ color: isActive ? "#0a0a0a" : "#71717a" }}>
+                        {item.name}
+                      </strong>
+                    </td>
+                    <td style={{ ...td, color: "#52525b" }}>
+                      {item.supplier_name || "—"}
+                    </td>
+                    <td style={{ ...td, color: "#71717a" }}>{item.unit}</td>
+                    <td style={{ ...td, fontWeight: 700 }}>{item.quantity}</td>
+                    <td style={{ ...td, color: "#52525b" }}>{item.reorder_point}</td>
+                    <td style={td}>₱ {Number(item.unit_cost).toFixed(2)}</td>
+                    <td style={{ ...td, fontWeight: 600 }}>
+                      ₱ {(Number(item.quantity) * Number(item.unit_cost)).toFixed(2)}
+                    </td>
+                    <td style={td}>
+                      <span
+                        style={{
+                          background: bg,
+                          color,
+                          border: `1px solid ${border}`,
+                          padding: "2px 10px",
+                          borderRadius: 12,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.stock_status?.replaceAll("_", " ")}
+                      </span>
+                    </td>
+                    <td style={td}>
+                      <span style={isActive ? activeBadge : archivedBadge}>
+                        {isActive ? "active" : "archived"}
+                      </span>
+                    </td>
+                    <td style={{ ...td, whiteSpace: "nowrap" }}>
+                      {isActive ? (
+                        <>
+                          <button onClick={() => openEdit(item)} style={btnEdit}>
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleArchive(item)}
+                            style={{ ...btnEdit, ...btnArchive, marginLeft: 6 }}
+                          >
+                            Archive
+                          </button>
+                          {!hasReferences && (
+                            <button
+                              onClick={() => handleDelete(item)}
+                              style={{ ...btnEdit, ...btnDelete, marginLeft: 6 }}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <button onClick={() => handleRestore(item)} style={btnRestore}>
+                          Restore
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
 
-      {/* Modal */}
       {modal && (
         <div style={overlay}>
           <div style={modalBox}>
-            <h3
-              style={{
-                margin: "0 0 20px",
-                fontSize: 18,
-                fontWeight: 800,
-                color: "#0a0a0a",
-              }}
-            >
+            <h3 style={modalTitle}>
               {modal.mode === "add" ? "Add Raw Material" : "Edit Raw Material"}
             </h3>
             <form onSubmit={handleSave}>
@@ -223,13 +313,13 @@ export default function RawMaterialsPage() {
                 ["Quantity", "quantity", "number"],
                 ["Reorder Point", "reorder_point", "number"],
                 ["Unit Cost (₱)", "unit_cost", "number"],
-              ].map(([label, key, type, req]) => (
+              ].map(([label, key, type, required]) => (
                 <div key={key} style={{ marginBottom: 12 }}>
                   <label style={labelSm}>{label}</label>
                   <input
                     type={type || "text"}
-                    required={req}
-                    // 👉 Assign step="0.01" for cost, but step="1" for integers
+                    required={required}
+                    min={type === "number" ? "0" : undefined}
                     step={
                       type === "number"
                         ? key === "unit_cost"
@@ -237,16 +327,15 @@ export default function RawMaterialsPage() {
                           : "1"
                         : undefined
                     }
-                    // 👉 Prevent typing "." or "e" for strictly integer fields
                     onKeyDown={(e) => {
                       if (
                         (key === "quantity" || key === "reorder_point") &&
-                        (e.key === "." || e.key === "e")
+                        (e.key === "." || e.key.toLowerCase() === "e" || e.key === "-")
                       ) {
                         e.preventDefault();
                       }
                     }}
-                    value={modal.data[key] || ""}
+                    value={modal.data[key] ?? ""}
                     onChange={(e) => setField(key, e.target.value)}
                     style={inputFull}
                   />
@@ -260,26 +349,15 @@ export default function RawMaterialsPage() {
                   style={inputFull}
                 >
                   <option value="">None</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.name}
                     </option>
                   ))}
                 </select>
               </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  justifyContent: "flex-end",
-                  marginTop: 24,
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setModal(null)}
-                  style={btnGhost}
-                >
+              <div style={modalActions}>
+                <button type="button" onClick={() => setModal(null)} style={btnGhost}>
                   Cancel
                 </button>
                 <button type="submit" disabled={saving} style={btnPrimary}>
@@ -294,7 +372,6 @@ export default function RawMaterialsPage() {
   );
 }
 
-// ─── Reusable styles ──────────────────────────────────────────────────────────
 const header = {
   display: "flex",
   justifyContent: "space-between",
@@ -308,12 +385,21 @@ const title = {
   margin: 0,
   letterSpacing: "-0.02em",
 };
+const subtitle = { marginTop: 5, fontSize: 12, color: "#71717a" };
+const filterRow = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  marginBottom: 16,
+  flexWrap: "wrap",
+};
+const resultCount = { marginLeft: "auto", fontSize: 12, color: "#71717a" };
 const tableCard = {
   background: "#fff",
   borderRadius: 12,
   border: "1px solid #e4e4e7",
   boxShadow: "0 1px 2px rgba(0,0,0,.02)",
-  overflow: "hidden",
+  overflowX: "auto",
 };
 const th = {
   textAlign: "left",
@@ -323,12 +409,14 @@ const th = {
   color: "#71717a",
   textTransform: "uppercase",
   letterSpacing: 1,
+  whiteSpace: "nowrap",
 };
 const td = {
   padding: "14px 16px",
   color: "#18181b",
   verticalAlign: "middle",
 };
+const emptyCell = { ...td, textAlign: "center", color: "#71717a", padding: 32 };
 const inputSm = {
   padding: "8px 12px",
   border: "1px solid #e4e4e7",
@@ -358,39 +446,58 @@ const labelSm = {
 const btnPrimary = {
   padding: "9px 18px",
   background: "#18181b",
-  color: "#ffffff",
-  border: "none",
-  borderRadius: 6,
-  cursor: "pointer",
+  color: "#fff",
+  border: "1px solid #18181b",
+  borderRadius: 7,
   fontSize: 13,
   fontWeight: 600,
-  transition: "background 0.2s",
-};
-const btnGhost = {
-  padding: "9px 18px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 6,
   cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 600,
-  transition: "background 0.2s",
 };
 const btnEdit = {
-  padding: "5px 14px",
+  padding: "6px 12px",
   background: "#f4f4f5",
   color: "#18181b",
   border: "1px solid #e4e4e7",
   borderRadius: 6,
-  cursor: "pointer",
   fontSize: 12,
-  fontWeight: 600,
+  cursor: "pointer",
+};
+const btnArchive = {
+  background: "#fff7ed",
+  color: "#9a3412",
+  border: "1px solid #fed7aa",
+};
+const btnDelete = {
+  background: "#fef2f2",
+  color: "#991b1b",
+  border: "1px solid #fecaca",
+};
+const btnRestore = {
+  ...btnEdit,
+  background: "#ecfdf5",
+  color: "#166534",
+  border: "1px solid #bbf7d0",
+};
+const activeBadge = {
+  display: "inline-block",
+  padding: "2px 9px",
+  borderRadius: 12,
+  background: "#ecfdf5",
+  color: "#166534",
+  border: "1px solid #bbf7d0",
+  fontSize: 11,
+  fontWeight: 700,
+};
+const archivedBadge = {
+  ...activeBadge,
+  background: "#f4f4f5",
+  color: "#52525b",
+  border: "1px solid #d4d4d8",
 };
 const overlay = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,.6)",
+  background: "rgba(0,0,0,.55)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -398,11 +505,29 @@ const overlay = {
 };
 const modalBox = {
   background: "#fff",
-  borderRadius: 16,
-  padding: 32,
-  width: 460,
-  maxHeight: "85vh",
-  overflowY: "auto",
+  borderRadius: 14,
+  width: 380,
+  padding: 28,
+  boxShadow: "0 20px 60px rgba(0,0,0,.25)",
+};
+const modalTitle = {
+  margin: "0 0 20px",
+  fontSize: 18,
+  fontWeight: 800,
+  color: "#0a0a0a",
+};
+const modalActions = {
+  display: "flex",
+  gap: 10,
+  justifyContent: "flex-end",
+  marginTop: 24,
+};
+const btnGhost = {
+  padding: "9px 16px",
+  background: "#fff",
+  color: "#18181b",
   border: "1px solid #e4e4e7",
-  boxShadow: "0 20px 60px rgba(0,0,0,.15)",
+  borderRadius: 7,
+  fontSize: 13,
+  cursor: "pointer",
 };

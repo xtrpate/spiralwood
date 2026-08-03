@@ -39,34 +39,183 @@ function sortJsonValue(value) {
 function normalizeJsonForComparison(value, fallback) {
   return JSON.stringify(sortJsonValue(safeJsonParse(value, fallback)));
 }
+const ESTIMATION_ITEM_SOURCE_TYPES = new Set([
+  "component",
+  "cutlist",
+  "blueprint_part",
+  "inventory_material",
+  "other",
+  "manual",
+]);
+
+function createValidationError(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+}
+
 function normalizeEstimationItems(items = []) {
   return (Array.isArray(items) ? items : [])
     .map((item, index) => {
       const quantity = Number(item.quantity) || 1;
       const unitCost = Number(item.unit_cost) || 0;
+      const rawMaterialId = item.raw_material_id
+        ? Number(item.raw_material_id)
+        : null;
+      const requestedSourceType = String(
+        item.source_type || item.sourceType || "",
+      )
+        .trim()
+        .toLowerCase();
+      const sourceType = ESTIMATION_ITEM_SOURCE_TYPES.has(requestedSourceType)
+        ? requestedSourceType
+        : rawMaterialId
+          ? "inventory_material"
+          : requestedSourceType || "other";
+      const normalizedUnitCost =
+        sourceType === "inventory_material" ? 0 : unitCost;
       const subtotal =
-        item.subtotal != null
-          ? Number(item.subtotal) || 0
-          : quantity * unitCost;
+        sourceType === "inventory_material"
+          ? 0
+          : item.subtotal != null
+            ? Number(item.subtotal) || 0
+            : quantity * normalizedUnitCost;
 
       return {
         id: item.id || index + 1,
         component_id: item.component_id ? Number(item.component_id) : null,
-        raw_material_id: item.raw_material_id
-          ? Number(item.raw_material_id)
-          : null,
-        name: item.name || item.description || "",
-        description: item.description || item.name || "",
+        raw_material_id: rawMaterialId,
+        name: String(item.name || item.description || "").trim(),
+        description: String(item.description || item.name || "").trim(),
         quantity,
-        unit: item.unit || "pc",
-        unit_cost: unitCost,
-        note: item.note || "",
-        source_key: item.source_key || item.sourceKey || "",
-        source_type: item.source_type || item.sourceType || "",
+        unit: String(item.unit || "pc").trim() || "pc",
+        unit_cost: normalizedUnitCost,
+        note: String(item.note || "").trim(),
+        source_key: String(item.source_key || item.sourceKey || "").trim(),
+        source_type: sourceType,
         subtotal,
       };
     })
     .filter((item) => item.name.trim() !== "");
+}
+
+function validateEstimationItems(items = []) {
+  if (!Array.isArray(items)) {
+    throw createValidationError("Estimation items must be an array.");
+  }
+
+  if (!items.length) {
+    throw createValidationError("Add at least one estimate item before saving.");
+  }
+
+  if (items.length > 250) {
+    throw createValidationError("An estimate cannot contain more than 250 items.");
+  }
+
+  const seenInventoryMaterialIds = new Set();
+
+  items.forEach((rawItem, index) => {
+    const rowLabel = `Item ${index + 1}`;
+    const name = String(rawItem?.name || rawItem?.description || "").trim();
+    const note = String(rawItem?.note || "").trim();
+    const unit = String(rawItem?.unit || "pc").trim();
+    const quantity = Number(rawItem?.quantity);
+    const unitCost = Number(rawItem?.unit_cost);
+    const rawMaterialId = rawItem?.raw_material_id
+      ? Number(rawItem.raw_material_id)
+      : null;
+    const requestedSourceType = String(
+      rawItem?.source_type || rawItem?.sourceType || "",
+    )
+      .trim()
+      .toLowerCase();
+    const sourceType = ESTIMATION_ITEM_SOURCE_TYPES.has(requestedSourceType)
+      ? requestedSourceType
+      : rawMaterialId
+        ? "inventory_material"
+        : requestedSourceType || "other";
+
+    if (!name) {
+      throw createValidationError(`${rowLabel}: Description is required.`);
+    }
+
+    if (name.length > 255) {
+      throw createValidationError(
+        `${rowLabel}: Description must not exceed 255 characters.`,
+      );
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1000000) {
+      throw createValidationError(
+        `${rowLabel}: Quantity must be greater than 0 and within the allowed range.`,
+      );
+    }
+
+    if (
+      sourceType !== "inventory_material" &&
+      (!Number.isFinite(unitCost) || unitCost <= 0 || unitCost > 100000000)
+    ) {
+      throw createValidationError(
+        `${rowLabel}: Rate must be greater than 0 and within the allowed range.`,
+      );
+    }
+
+    if (
+      sourceType === "inventory_material" &&
+      (!Number.isFinite(unitCost) || unitCost < 0 || unitCost > 100000000)
+    ) {
+      throw createValidationError(
+        `${rowLabel}: Inventory tracking cost cannot be negative.`,
+      );
+    }
+
+    if (!unit || unit.length > 30) {
+      throw createValidationError(
+        `${rowLabel}: Unit is required and must not exceed 30 characters.`,
+      );
+    }
+
+    if (note.length > 500) {
+      throw createValidationError(
+        `${rowLabel}: Remarks must not exceed 500 characters.`,
+      );
+    }
+
+    if (requestedSourceType && !ESTIMATION_ITEM_SOURCE_TYPES.has(requestedSourceType)) {
+      throw createValidationError(`${rowLabel}: Invalid estimate item type.`);
+    }
+
+    if (rawMaterialId !== null) {
+      if (!Number.isInteger(rawMaterialId) || rawMaterialId <= 0) {
+        throw createValidationError(`${rowLabel}: Invalid raw material selection.`);
+      }
+
+      if (sourceType === "inventory_material") {
+        if (seenInventoryMaterialIds.has(rawMaterialId)) {
+          throw createValidationError(
+            `${rowLabel}: The same inventory material cannot be added twice.`,
+          );
+        }
+        seenInventoryMaterialIds.add(rawMaterialId);
+      }
+    }
+
+    if (sourceType === "inventory_material" && rawMaterialId === null) {
+      throw createValidationError(
+        `${rowLabel}: Select an inventory material before saving.`,
+      );
+    }
+
+    if (sourceType === "other" && rawMaterialId !== null) {
+      throw createValidationError(
+        `${rowLabel}: Other/additional work cannot be linked to inventory.`,
+      );
+    }
+  });
+}
+
+function getItemSubtotal(item = {}) {
+  return (Number(item.quantity) || 0) * (Number(item.unit_cost) || 0);
 }
 
 function groupDraftItems(items = []) {
@@ -101,6 +250,10 @@ function groupDraftItems(items = []) {
         unit: raw.unit || "pc",
         unit_cost: unitCost,
         note: String(raw.note || "").trim(),
+        source_key: String(raw.source_key || raw.sourceKey || "").trim(),
+        source_type: String(raw.source_type || raw.sourceType || "blueprint_part")
+          .trim()
+          .toLowerCase(),
         subtotal: Number((quantity * unitCost).toFixed(2)),
       });
       continue;
@@ -156,20 +309,31 @@ function computeEstimationTotals({
   overhead_cost = 0,
   tax_rate = 12,
   discount = 0,
+  inventory_pricing_mode = "tracking_only",
 }) {
-  const material_cost = items.reduce(
-    (sum, item) =>
-      sum + (Number(item.quantity) || 0) * (Number(item.unit_cost) || 0),
-    0,
-  );
+  const inventoryTrackingOnly =
+    String(inventory_pricing_mode || "tracking_only").toLowerCase() !==
+    "legacy_billable";
+  const material_cost = items.reduce((sum, item) => {
+    if (
+      inventoryTrackingOnly &&
+      String(item?.source_type || "")
+        .trim()
+        .toLowerCase() === "inventory_material"
+    ) {
+      return sum;
+    }
+    return sum + (Number(item.quantity) || 0) * (Number(item.unit_cost) || 0);
+  }, 0);
 
   const laborCost = Number(labor_cost) || 0;
   const overheadCost = Number(overhead_cost) || 0;
-  const discountAmt = Number(discount) || 0;
-  const taxRate = Number(tax_rate) || 0;
+  const discountRate = Math.max(0, Math.min(100, Number(discount) || 0));
+  const taxRate = Math.max(0, Math.min(100, Number(tax_rate) || 0));
 
   const subtotal = material_cost + laborCost + overheadCost;
-  const afterDiscount = subtotal - discountAmt;
+  const discount_amount = subtotal * (discountRate / 100);
+  const afterDiscount = Math.max(0, subtotal - discount_amount);
   const tax_amount = afterDiscount * (taxRate / 100);
   const grand_total = afterDiscount + tax_amount;
 
@@ -179,7 +343,9 @@ function computeEstimationTotals({
     labor_cost: laborCost,
     overhead_cost: overheadCost,
     tax_rate: taxRate,
-    discount: discountAmt,
+    discount: discountRate,
+    discount_rate: discountRate,
+    discount_amount,
     subtotal,
     tax_amount,
     grand_total,
@@ -275,6 +441,8 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
           unit: row.unit || "pc",
           unit_cost: unitCost,
           note: "Auto-generated from bill of materials",
+          source_key: `bom:${row.raw_material_id}`,
+          source_type: "blueprint_part",
           subtotal: quantity * unitCost,
         };
       });
@@ -321,6 +489,8 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
           unit: "unit",
           unit_cost: Number(product.production_cost) || 0,
           note: "Auto-generated from product production cost fallback",
+          source_key: `product:${resolvedProductId || product.id}`,
+          source_type: "blueprint_part",
           subtotal: orderQty * (Number(product.production_cost) || 0),
         },
       ];
@@ -376,6 +546,8 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
         unit: row.unit || "pc",
         unit_cost: unitCost,
         note: "Auto-generated from blueprint component raw material mapping",
+        source_key: `component-material:${row.raw_material_id}`,
+        source_type: "component",
         subtotal: quantity * unitCost,
       };
     });
@@ -452,6 +624,10 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
           unit: matchedMaterial?.unit || (isAreaUnit ? "sq.m" : "pc"),
           unit_cost: Number(matchedMaterial?.unit_cost || 0),
           note,
+          source_key:
+            row?.id ||
+            `cutrow:${index}:${row?.partFamily || ""}:${row?.partRole || ""}`,
+          source_type: "cutlist",
           subtotal: quantity * Number(matchedMaterial?.unit_cost || 0),
         };
       }),
@@ -523,6 +699,8 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
           unit: matchedMaterial?.unit || "pc",
           unit_cost: Number(matchedMaterial?.unit_cost || 0),
           note,
+          source_key: row?.id || `component:${index}:${row?.type || row?.name || "item"}`,
+          source_type: "component",
           subtotal: quantity * Number(matchedMaterial?.unit_cost || 0),
         };
       }),
@@ -961,10 +1139,64 @@ exports.getOne = async (req, res) => {
       [parseInt(req.params.id)],
     );
 
+    const [linkedOrderRows] = await pool.query(
+      `SELECT
+          o.id AS order_id,
+          o.order_number,
+          o.customer_id,
+          o.status AS order_status,
+          o.payment_status,
+          o.notes AS order_notes,
+          o.delivery_request_notes,
+          oi.id AS order_item_id,
+          oi.product_name,
+          oi.quantity AS order_quantity,
+          oi.customization_json
+       FROM orders o
+       LEFT JOIN order_items oi ON oi.order_id = o.id
+       WHERE o.blueprint_id = ?
+       ORDER BY o.id ASC, oi.id ASC`,
+      [parseInt(req.params.id)],
+    );
+
+    const linkedOrderIds = [
+      ...new Set(
+        linkedOrderRows
+          .map((row) => Number(row.order_id) || null)
+          .filter(Boolean),
+      ),
+    ];
+
+    const orderContext =
+      linkedOrderIds.length === 1 && linkedOrderRows.length
+        ? {
+            order_id: linkedOrderRows[0].order_id,
+            order_number: linkedOrderRows[0].order_number,
+            customer_id: linkedOrderRows[0].customer_id,
+            order_status: linkedOrderRows[0].order_status,
+            payment_status: linkedOrderRows[0].payment_status,
+            order_notes: linkedOrderRows[0].order_notes || null,
+            delivery_request_notes:
+              linkedOrderRows[0].delivery_request_notes || null,
+            items: linkedOrderRows.map((row) => ({
+              order_item_id: row.order_item_id || null,
+              product_name: row.product_name || null,
+              quantity: Number(row.order_quantity || 0) || 0,
+              customization:
+                safeJsonParse(row.customization_json, {}) || {},
+            })),
+          }
+        : null;
+
     const normalizedDesignData = mergeDesignData(bp.design_data, bp, bp.title);
 
     res.json({
       ...bp,
+      order_id: orderContext?.order_id || null,
+      order_number: orderContext?.order_number || null,
+      order_context: orderContext,
+      order_context_warning:
+        linkedOrderIds.length > 1 ? "MULTIPLE_LINKED_ORDERS" : null,
       design_data: normalizedDesignData,
       components,
       revision_history: revisions,
@@ -1469,6 +1701,7 @@ exports.getEstimation = async (req, res) => {
             items: autoDraft.items || [],
             material_cost: autoDraft.material_cost || 0,
             items_total: autoDraft.items_total || 0,
+            inventory_pricing_mode: "tracking_only",
             labor_cost: autoDraft.labor_cost || 0,
             overhead_cost: autoDraft.overhead_cost || 0,
             tax_rate: autoDraft.tax_rate ?? 12,
@@ -1505,6 +1738,7 @@ exports.getEstimation = async (req, res) => {
         items: autoDraft.items || [],
         material_cost: autoDraft.material_cost || 0,
         items_total: autoDraft.items_total || 0,
+        inventory_pricing_mode: "tracking_only",
         labor_cost: autoDraft.labor_cost || 0,
         overhead_cost: autoDraft.overhead_cost || 0,
         tax_rate: autoDraft.tax_rate ?? 12,
@@ -1532,6 +1766,8 @@ exports.getEstimation = async (req, res) => {
     const meta = safeJsonParse(est.estimation_data, {});
     const dbItems = itemRows.map((row) => ({
       id: row.id,
+      component_id: row.component_id || null,
+      raw_material_id: row.raw_material_id || null,
       name: row.description || "",
       description: row.description || "",
       quantity: Number(row.quantity) || 1,
@@ -1539,7 +1775,7 @@ exports.getEstimation = async (req, res) => {
       unit_cost: Number(row.unit_cost) || 0,
       note: "",
       source_key: "",
-      source_type: "",
+      source_type: row.raw_material_id ? "inventory_material" : "other",
       subtotal:
         row.subtotal != null
           ? Number(row.subtotal) || 0
@@ -1549,39 +1785,59 @@ exports.getEstimation = async (req, res) => {
     const normalizedItems = normalizeEstimationItems(
       Array.isArray(meta.items) && meta.items.length ? meta.items : dbItems,
     );
-
-    const computed = computeEstimationTotals({
-      items: normalizedItems,
-      labor_cost: meta.labor_cost ?? est.labor_cost ?? 0,
-      overhead_cost: meta.overhead_cost ?? 0,
-      tax_rate: meta.tax_rate ?? 12,
-      discount: est.discount ?? meta.discount ?? 0,
-    });
+    const inventory_pricing_mode =
+      String(meta.inventory_pricing_mode || "").toLowerCase() ===
+      "tracking_only"
+        ? "tracking_only"
+        : String(est.status || "").toLowerCase() === "draft"
+          ? "tracking_only"
+          : "legacy_billable";
 
     const materialCostRaw = Number(est.material_cost);
     const laborCostRaw = Number(est.labor_cost);
     const taxRaw = Number(est.tax);
     const grandTotalRaw = Number(est.grand_total);
-    const discountRaw = Number(est.discount);
+    const storedDiscountAmountRaw = Number(est.discount);
+
+    const normalizedMaterialCost = computeEstimationTotals({
+      items: normalizedItems,
+      inventory_pricing_mode,
+    }).material_cost;
 
     const material_cost = Number.isFinite(materialCostRaw)
       ? materialCostRaw
-      : computed.material_cost;
-
+      : normalizedMaterialCost;
     const labor_cost = Number.isFinite(laborCostRaw)
       ? laborCostRaw
-      : computed.labor_cost;
-
+      : Number(meta.labor_cost || 0);
     const overhead_cost = Number(meta.overhead_cost) || 0;
     const tax_rate = Number(meta.tax_rate ?? 12);
-    const discount = Number.isFinite(discountRaw)
-      ? discountRaw
-      : computed.discount;
-
     const subtotal = material_cost + labor_cost + overhead_cost;
 
-    const tax_amount = Number.isFinite(taxRaw) ? taxRaw : computed.tax_amount;
+    const storedDiscountAmount = Number.isFinite(storedDiscountAmountRaw)
+      ? storedDiscountAmountRaw
+      : 0;
+    const usesPercentageDiscount =
+      String(meta.discount_mode || "").toLowerCase() === "percentage";
+    const discount = usesPercentageDiscount
+      ? Number(meta.discount_rate ?? meta.discount ?? 0) || 0
+      : subtotal > 0
+        ? Number(((storedDiscountAmount / subtotal) * 100).toFixed(4))
+        : 0;
 
+    const computed = computeEstimationTotals({
+      items: normalizedItems,
+      labor_cost,
+      overhead_cost,
+      tax_rate,
+      discount,
+      inventory_pricing_mode,
+    });
+
+    const discount_amount = usesPercentageDiscount
+      ? Number(meta.discount_amount ?? computed.discount_amount) || 0
+      : storedDiscountAmount;
+    const tax_amount = Number.isFinite(taxRaw) ? taxRaw : computed.tax_amount;
     const grand_total = Number.isFinite(grandTotalRaw)
       ? grandTotalRaw
       : computed.grand_total;
@@ -1591,10 +1847,12 @@ exports.getEstimation = async (req, res) => {
       items: normalizedItems,
       material_cost,
       items_total: material_cost,
+      inventory_pricing_mode,
       labor_cost,
       overhead_cost,
       tax_rate,
       discount,
+      discount_amount,
       notes: meta.notes || "",
       subtotal,
       tax_amount,
@@ -1815,14 +2073,96 @@ exports.saveEstimation = async (req, res) => {
       notes = "",
     } = req.body;
 
-    const normalizedItems = normalizeEstimationItems(items);
+    validateEstimationItems(items);
+
+    const laborCostInput = Number(labor_cost);
+    const overheadCostInput = Number(overhead_cost);
+    const taxRateInput = Number(tax_rate);
+    const discountInput = Number(discount);
+    const notesInput = String(notes || "").trim();
+
+    if (!Number.isFinite(laborCostInput) || laborCostInput < 0) {
+      throw createValidationError("Labor cost cannot be negative.");
+    }
+    if (!Number.isFinite(overheadCostInput) || overheadCostInput < 0) {
+      throw createValidationError("Logistics cost cannot be negative.");
+    }
+    if (
+      !Number.isFinite(taxRateInput) ||
+      taxRateInput < 0 ||
+      taxRateInput > 100
+    ) {
+      throw createValidationError("VAT must be between 0% and 100%.");
+    }
+    if (
+      !Number.isFinite(discountInput) ||
+      discountInput < 0 ||
+      discountInput > 100
+    ) {
+      throw createValidationError("Discount must be between 0% and 100%.");
+    }
+    if (notesInput.length > 500) {
+      throw createValidationError("Remarks must not exceed 500 characters.");
+    }
+
+    let normalizedItems = normalizeEstimationItems(items);
+
+    const rawMaterialIds = [
+      ...new Set(
+        normalizedItems
+          .map((item) => Number(item.raw_material_id) || null)
+          .filter(Boolean),
+      ),
+    ];
+
+    if (rawMaterialIds.length) {
+      const placeholders = rawMaterialIds.map(() => "?").join(",");
+      const [rawMaterialRows] = await conn.query(
+        `SELECT id, name, unit, quantity, unit_cost, stock_status
+         FROM raw_materials
+         WHERE id IN (${placeholders})`,
+        rawMaterialIds,
+      );
+
+      if (rawMaterialRows.length !== rawMaterialIds.length) {
+        throw createValidationError(
+          "One or more selected inventory materials no longer exist. Refresh and try again.",
+        );
+      }
+
+      const rawMaterialMap = new Map(
+        rawMaterialRows.map((row) => [Number(row.id), row]),
+      );
+
+      normalizedItems = normalizedItems.map((item) => {
+        if (!item.raw_material_id) return item;
+
+        const material = rawMaterialMap.get(Number(item.raw_material_id));
+        if (!material) return item;
+
+        if (item.source_type !== "inventory_material") {
+          return item;
+        }
+
+        return {
+          ...item,
+          name: String(material.name || item.name).trim(),
+          description: String(material.name || item.description).trim(),
+          unit: String(material.unit || item.unit || "pc").trim() || "pc",
+          unit_cost: 0,
+          subtotal: 0,
+          source_type: "inventory_material",
+        };
+      });
+    }
 
     const totals = computeEstimationTotals({
       items: normalizedItems,
-      labor_cost,
-      overhead_cost,
-      tax_rate,
-      discount,
+      labor_cost: laborCostInput,
+      overhead_cost: overheadCostInput,
+      tax_rate: taxRateInput,
+      discount: discountInput,
+      inventory_pricing_mode: "tracking_only",
     });
 
     // Version calculation uses the lifecycle-valid estimation only — a
@@ -1838,8 +2178,12 @@ exports.saveEstimation = async (req, res) => {
       labor_cost: totals.labor_cost,
       overhead_cost: totals.overhead_cost,
       tax_rate: totals.tax_rate,
-      discount: totals.discount,
-      notes,
+      discount_mode: "percentage",
+      discount: totals.discount_rate,
+      discount_rate: totals.discount_rate,
+      discount_amount: totals.discount_amount,
+      notes: notesInput,
+      inventory_pricing_mode: "tracking_only",
       material_cost: totals.material_cost,
       items_total: totals.items_total,
       subtotal: totals.subtotal,
@@ -1857,7 +2201,7 @@ exports.saveEstimation = async (req, res) => {
         totals.material_cost,
         totals.labor_cost,
         totals.tax_amount,
-        totals.discount,
+        totals.discount_amount,
         totals.grand_total,
         estimation_data,
       ],
@@ -1907,7 +2251,7 @@ exports.saveEstimation = async (req, res) => {
         [
           totals.subtotal,
           totals.tax_amount,
-          totals.discount,
+          totals.discount_amount,
           totals.grand_total,
           Number((totals.grand_total * 0.3).toFixed(2)),
           order.id,
@@ -1948,11 +2292,13 @@ exports.saveEstimation = async (req, res) => {
         items: normalizedItems,
         material_cost: totals.material_cost,
         items_total: totals.items_total,
+        inventory_pricing_mode: "tracking_only",
         labor_cost: totals.labor_cost,
         overhead_cost: totals.overhead_cost,
         tax_rate: totals.tax_rate,
-        discount: totals.discount,
-        notes,
+        discount: totals.discount_rate,
+        discount_amount: totals.discount_amount,
+        notes: notesInput,
         subtotal: totals.subtotal,
         tax_amount: totals.tax_amount,
         grand_total: totals.grand_total,
