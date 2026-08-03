@@ -24,8 +24,9 @@ const getRawMaterialReferenceCounts = async (connection, materialId) => {
        (SELECT COUNT(*) FROM bill_of_materials WHERE raw_material_id = ?) AS bill_of_materials_count,
        (SELECT COUNT(*) FROM stock_movements WHERE material_id = ?) AS stock_movements_count,
        (SELECT COUNT(*) FROM estimation_items WHERE raw_material_id = ?) AS estimation_items_count,
-       (SELECT COUNT(*) FROM blueprint_components WHERE raw_material_id = ?) AS blueprint_components_count`,
-    [materialId, materialId, materialId, materialId],
+       (SELECT COUNT(*) FROM blueprint_components WHERE raw_material_id = ?) AS blueprint_components_count,
+       (SELECT COUNT(*) FROM blueprint_material_reservations WHERE material_id = ?) AS blueprint_material_reservations_count`,
+    [materialId, materialId, materialId, materialId, materialId],
   );
 
   const normalized = {
@@ -33,6 +34,9 @@ const getRawMaterialReferenceCounts = async (connection, materialId) => {
     stock_movements_count: Number(counts?.stock_movements_count || 0),
     estimation_items_count: Number(counts?.estimation_items_count || 0),
     blueprint_components_count: Number(counts?.blueprint_components_count || 0),
+    blueprint_material_reservations_count: Number(
+      counts?.blueprint_material_reservations_count || 0,
+    ),
   };
 
   return {
@@ -41,7 +45,8 @@ const getRawMaterialReferenceCounts = async (connection, materialId) => {
       normalized.bill_of_materials_count +
       normalized.stock_movements_count +
       normalized.estimation_items_count +
-      normalized.blueprint_components_count,
+      normalized.blueprint_components_count +
+      normalized.blueprint_material_reservations_count,
   };
 };
 

@@ -36,6 +36,9 @@ const {
   centsToAmount,
 } = require("../utils/paymentAmounts");
 const { resolveLifecycleByOrder } = require("./blueprintLifecycleService");
+const {
+  ensureBlueprintMaterialReservations,
+} = require("./blueprintMaterialReservationService");
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 
@@ -227,6 +230,17 @@ async function ensureReceiptForVerifiedPayment(
     );
   }
 
+  // BPI-3 material reservation is attached to every verified blueprint
+  // payment flow through this centralized receipt service. Below 30%, the
+  // reservation service performs no write. At or above 30%, it creates
+  // reserved/pending_stock rows idempotently inside this same transaction.
+  // A real stock shortage never rolls back the payment; it is persisted as
+  // pending_stock. Only an integrity/database failure throws.
+  const materialReservation = await ensureBlueprintMaterialReservations(conn, {
+    orderId: orderIdNum,
+    actorUserId: issuedByNum,
+  });
+
   // ── 5: idempotency check — an existing receipt for this exact payment
   // transaction always wins; never insert a second one. A LOCKING
   // (FOR UPDATE) read is required here, not an ordinary consistent read:
@@ -253,7 +267,7 @@ async function ensureReceiptForVerifiedPayment(
 
   if (existingRows.length > 0) {
     const validated = validateExistingReceiptRow(existingRows[0], orderIdNum);
-    if (validated) return validated;
+    if (validated) return { ...validated, materialReservation };
   }
 
   // ── Payment-label classification — server-locked totals only ─────────
@@ -362,7 +376,7 @@ async function ensureReceiptForVerifiedPayment(
       );
       if (retryRows.length > 0) {
         const validated = validateExistingReceiptRow(retryRows[0], orderIdNum);
-        if (validated) return validated;
+        if (validated) return { ...validated, materialReservation };
       }
       throw err;
     }
@@ -377,6 +391,7 @@ async function ensureReceiptForVerifiedPayment(
     amountPaid: centsToAmount(amountPaidCents),
     totalPaidAfter: centsToAmount(totalPaidAfterCents),
     remainingBalanceAfter: centsToAmount(remainingBalanceAfterCents),
+    materialReservation,
     isNew: true,
   };
 }
