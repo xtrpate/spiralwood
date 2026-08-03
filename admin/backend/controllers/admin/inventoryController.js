@@ -643,6 +643,8 @@ exports.getStockMovements = async (req, res) => {
   try {
     const {
       type,
+      source,
+      search,
       from,
       to,
       product_id,
@@ -650,14 +652,62 @@ exports.getStockMovements = async (req, res) => {
       page = 1,
       limit = 30,
     } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const pageNumber = Math.max(1, parseInt(page, 10) || 1);
+    const limitNumber = Math.min(200, Math.max(1, parseInt(limit, 10) || 30));
+    const offset = (pageNumber - 1) * limitNumber;
     const where = ["1=1"];
     const params = [];
 
+    const movementSourceSql = `CASE
+      WHEN bmr.id IS NOT NULL THEN 'blueprint_production'
+      WHEN sm.material_id IS NOT NULL
+        AND sm.product_id IS NOT NULL
+        AND sm.type = 'out' THEN 'build_production'
+      WHEN sm.material_id IS NULL
+        AND sm.product_id IS NOT NULL
+        AND sm.type = 'in' THEN 'product_production'
+      WHEN sm.order_id IS NOT NULL THEN 'order_fulfillment'
+      ELSE 'manual'
+    END`;
+
+    const movementJoins = `
+      LEFT JOIN users u ON u.id = sm.created_by
+      LEFT JOIN raw_materials rm ON rm.id = sm.material_id
+      LEFT JOIN products p ON p.id = sm.product_id
+      LEFT JOIN suppliers s ON s.id = sm.supplier_id
+      LEFT JOIN orders o ON o.id = sm.order_id
+      LEFT JOIN users customer ON customer.id = o.customer_id
+      LEFT JOIN blueprint_material_reservations bmr
+        ON sm.reference = CONCAT('BLUEPRINT-RESERVATION-', bmr.id)
+       AND bmr.order_id = sm.order_id
+       AND bmr.material_id = sm.material_id`;
+
     if (type) {
+      const normalizedType = String(type).trim().toLowerCase();
+      if (!["in", "out", "adjustment", "return"].includes(normalizedType)) {
+        return res.status(400).json({ message: "Invalid stock movement type filter." });
+      }
       where.push("sm.type = ?");
-      params.push(type);
+      params.push(normalizedType);
     }
+
+    if (source) {
+      const normalizedSource = String(source).trim().toLowerCase();
+      const allowedSources = new Set([
+        "blueprint_production",
+        "build_production",
+        "product_production",
+        "order_fulfillment",
+        "manual",
+      ]);
+      if (!allowedSources.has(normalizedSource)) {
+        return res.status(400).json({ message: "Invalid stock movement source filter." });
+      }
+      where.push(`(${movementSourceSql}) = ?`);
+      params.push(normalizedSource);
+    }
+
     if (product_id) {
       where.push("sm.product_id = ?");
       params.push(product_id);
@@ -666,32 +716,96 @@ exports.getStockMovements = async (req, res) => {
       where.push("sm.material_id = ?");
       params.push(material_id);
     }
-    if (from && to) {
-      where.push("DATE(sm.created_at) BETWEEN ? AND ?");
-      params.push(from, to);
+    if (from) {
+      where.push("DATE(sm.created_at) >= ?");
+      params.push(from);
+    }
+    if (to) {
+      where.push("DATE(sm.created_at) <= ?");
+      params.push(to);
+    }
+    if (search && String(search).trim()) {
+      const pattern = `%${String(search).trim()}%`;
+      where.push(`(
+        rm.name LIKE ?
+        OR p.name LIKE ?
+        OR o.order_number LIKE ?
+        OR customer.name LIKE ?
+        OR o.walkin_customer_name LIKE ?
+        OR sm.reference LIKE ?
+        OR sm.notes LIKE ?
+      )`);
+      params.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern);
     }
 
+    const whereSql = where.join(" AND ");
+
     const [rows] = await pool.query(
-      `SELECT sm.*, u.name AS created_by_name,
-              rm.name AS material_name, p.name AS product_name,
-              s.name AS supplier_name
+      `SELECT
+          sm.*,
+          u.name AS created_by_name,
+          rm.name AS material_name,
+          rm.unit AS material_unit,
+          p.name AS product_name,
+          s.name AS supplier_name,
+          o.order_number,
+          o.order_type,
+          o.status AS order_status,
+          o.payment_status,
+          COALESCE(customer.name, o.walkin_customer_name) AS customer_name,
+          bmr.id AS reservation_id,
+          bmr.blueprint_id AS reservation_blueprint_id,
+          bmr.estimation_id AS reservation_estimation_id,
+          bmr.status AS reservation_status,
+          bmr.reserved_at,
+          bmr.consumed_at,
+          ${movementSourceSql} AS movement_source
        FROM stock_movements sm
-       LEFT JOIN users u         ON u.id  = sm.created_by
-       LEFT JOIN raw_materials rm ON rm.id = sm.material_id
-       LEFT JOIN products p       ON p.id  = sm.product_id
-       LEFT JOIN suppliers s      ON s.id  = sm.supplier_id
-       WHERE ${where.join(" AND ")}
-       ORDER BY sm.created_at DESC
+       ${movementJoins}
+       WHERE ${whereSql}
+       ORDER BY sm.created_at DESC, sm.id DESC
        LIMIT ? OFFSET ?`,
-      [...params, parseInt(limit), parseInt(offset)],
+      [...params, limitNumber, offset],
     );
 
-    const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) AS total FROM stock_movements sm WHERE ${where.join(" AND ")}`,
+    const [[summary]] = await pool.query(
+      `SELECT
+          COUNT(*) AS record_count,
+          SUM(CASE WHEN sm.type = 'in' THEN 1 ELSE 0 END) AS in_count,
+          SUM(CASE WHEN sm.type = 'out' THEN 1 ELSE 0 END) AS out_count,
+          SUM(CASE WHEN sm.type = 'adjustment' THEN 1 ELSE 0 END) AS adjustment_count,
+          SUM(CASE WHEN sm.type = 'return' THEN 1 ELSE 0 END) AS return_count,
+          SUM(CASE WHEN (${movementSourceSql}) = 'blueprint_production' THEN 1 ELSE 0 END) AS blueprint_production_count,
+          SUM(CASE WHEN (${movementSourceSql}) IN ('build_production', 'product_production') THEN 1 ELSE 0 END) AS build_production_count,
+          SUM(CASE WHEN (${movementSourceSql}) = 'order_fulfillment' THEN 1 ELSE 0 END) AS order_fulfillment_count,
+          SUM(CASE WHEN (${movementSourceSql}) = 'manual' THEN 1 ELSE 0 END) AS manual_count
+       FROM stock_movements sm
+       ${movementJoins}
+       WHERE ${whereSql}`,
       params,
     );
 
-    res.json({ rows, total });
+    res.json({
+      rows,
+      total: Number(summary?.record_count || 0),
+      page: pageNumber,
+      limit: limitNumber,
+      summary: {
+        record_count: Number(summary?.record_count || 0),
+        in_count: Number(summary?.in_count || 0),
+        out_count: Number(summary?.out_count || 0),
+        adjustment_count: Number(summary?.adjustment_count || 0),
+        return_count: Number(summary?.return_count || 0),
+        blueprint_production_count: Number(
+          summary?.blueprint_production_count || 0,
+        ),
+        build_production_count: Number(summary?.build_production_count || 0),
+        order_fulfillment_count: Number(
+          summary?.order_fulfillment_count || 0,
+        ),
+        manual_count: Number(summary?.manual_count || 0),
+      },
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
