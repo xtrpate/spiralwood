@@ -729,7 +729,9 @@ const getInventoryAvailability = (item = {}, material = null) => {
     };
   }
 
-  const availableValue = Number(material.quantity);
+  const availableValue = Number(
+    material.available_quantity ?? material.quantity,
+  );
   const requiredValue = Number(item.quantity);
   const reorderValue = Number(material.reorder_point);
   const available = Number.isFinite(availableValue) ? Math.max(0, availableValue) : 0;
@@ -867,7 +869,7 @@ function EstimateTable({
               <th style={{ ...th, width: isInventory ? "30%" : "28%" }}>
                 {isInventory ? "Inventory Material" : "Description"}
               </th>
-              {isInventory && <th style={{ ...th, width: "13%" }}>Stock</th>}
+              {isInventory && <th style={{ ...th, width: "13%" }}>Available</th>}
               <th style={{ ...th, width: "10%" }}>Unit</th>
               <th style={{ ...th, width: "10%" }}>Qty</th>
               {isInventory && <th style={{ ...th, width: "18%" }}>Availability</th>}
@@ -897,6 +899,18 @@ function EstimateTable({
                   ? getInventoryAvailability(item, selectedMaterial)
                   : null;
                 const availabilityColors = getAvailabilityColors(availability?.state);
+                const selectedOnHandQuantity = selectedMaterial
+                  ? selectedMaterial.on_hand_quantity ?? selectedMaterial.quantity
+                  : 0;
+                const selectedReservedQuantity = selectedMaterial
+                  ? selectedMaterial.reserved_quantity ?? 0
+                  : 0;
+                const selectedAvailableQuantity = selectedMaterial
+                  ? selectedMaterial.available_quantity ?? selectedMaterial.quantity
+                  : 0;
+                const selectedPendingNeedQuantity = selectedMaterial
+                  ? selectedMaterial.pending_need_quantity ?? 0
+                  : 0;
                 return (
                   <tr key={item._row_key} style={{ borderBottom: "1px solid #f4f4f5" }}>
                     <td style={{ ...td, color: "#71717a", fontWeight: 800 }}>
@@ -934,12 +948,17 @@ function EstimateTable({
                       <td style={td}>
                         <div style={{ fontWeight: 700, whiteSpace: "nowrap" }}>
                           {selectedMaterial
-                            ? `${formatInventoryQuantity(selectedMaterial.quantity)} ${selectedMaterial.unit || ""}`
+                            ? `${formatInventoryQuantity(selectedAvailableQuantity)} ${selectedMaterial.unit || ""}`
                             : "—"}
                         </div>
                         {selectedMaterial && (
                           <div style={{ fontSize: 10, color: "#71717a", marginTop: 3 }}>
-                            Available now · {String(selectedMaterial.stock_status || "").replace(/_/g, " ")}
+                            On hand {formatInventoryQuantity(selectedOnHandQuantity)} · Reserved {formatInventoryQuantity(selectedReservedQuantity)}
+                          </div>
+                        )}
+                        {selectedMaterial && Number(selectedPendingNeedQuantity) > 0 && (
+                          <div style={{ fontSize: 10, color: "#991b1b", marginTop: 3 }}>
+                            Pending need {formatInventoryQuantity(selectedPendingNeedQuantity)} {selectedMaterial.unit || ""}
                           </div>
                         )}
                       </td>
@@ -1756,7 +1775,7 @@ export default function EstimationPage() {
 
       <EstimateTable
         title="Inventory Materials"
-        helper="Select the exact materials and quantities for internal stock tracking. These rows are not added again to the customer quotation total and do not reserve or deduct stock yet."
+        helper="Select the exact materials and quantities for internal stock tracking. Availability excludes stock already reserved for paid blueprint orders. These rows do not reserve or deduct stock yet."
         section="inventory"
         rows={inventoryItems}
         rawMaterials={rawMaterials}

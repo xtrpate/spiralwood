@@ -73,13 +73,29 @@ exports.getRawMaterials = async (req, res) => {
     const offset = (pageNumber - 1) * limitNumber;
     const where = ["1=1"];
     const params = [];
+    const reservationSummaryJoin = `
+      LEFT JOIN (
+        SELECT
+          material_id,
+          SUM(CASE WHEN status = 'reserved' THEN quantity ELSE 0 END) AS reserved_quantity,
+          SUM(CASE WHEN status = 'pending_stock' THEN quantity ELSE 0 END) AS pending_need_quantity
+        FROM blueprint_material_reservations
+        GROUP BY material_id
+      ) bmr_summary ON bmr_summary.material_id = rm.id`;
+    const availableQuantitySql =
+      "GREATEST(COALESCE(rm.quantity, 0) - COALESCE(bmr_summary.reserved_quantity, 0), 0)";
+    const availabilityStatusSql = `CASE
+      WHEN ${availableQuantitySql} <= 0 THEN 'out_of_stock'
+      WHEN ${availableQuantitySql} <= COALESCE(rm.reorder_point, 0) THEN 'low_stock'
+      ELSE 'in_stock'
+    END`;
 
     if (search) {
       where.push("(rm.name LIKE ?)");
       params.push(`%${search}%`);
     }
     if (status) {
-      where.push("rm.stock_status = ?");
+      where.push(`${availabilityStatusSql} = ?`);
       params.push(status);
     }
     if (supplier_id) {
@@ -100,6 +116,11 @@ exports.getRawMaterials = async (req, res) => {
 
     const [rows] = await pool.query(
       `SELECT rm.*, s.name AS supplier_name, c.name AS category_name,
+              COALESCE(rm.quantity, 0) AS on_hand_quantity,
+              COALESCE(bmr_summary.reserved_quantity, 0) AS reserved_quantity,
+              ${availableQuantitySql} AS available_quantity,
+              COALESCE(bmr_summary.pending_need_quantity, 0) AS pending_need_quantity,
+              ${availabilityStatusSql} AS availability_status,
               CASE
                 WHEN EXISTS (
                   SELECT 1 FROM bill_of_materials bom
@@ -114,9 +135,14 @@ exports.getRawMaterials = async (req, res) => {
                   SELECT 1 FROM blueprint_components bc
                   WHERE bc.raw_material_id = rm.id LIMIT 1
                 )
+                OR EXISTS (
+                  SELECT 1 FROM blueprint_material_reservations bmr
+                  WHERE bmr.material_id = rm.id LIMIT 1
+                )
                 THEN 1 ELSE 0
               END AS has_references
        FROM raw_materials rm
+       ${reservationSummaryJoin}
        LEFT JOIN suppliers s  ON s.id  = rm.supplier_id
        LEFT JOIN categories c ON c.id  = rm.category_id
        WHERE ${where.join(" AND ")}
@@ -126,7 +152,10 @@ exports.getRawMaterials = async (req, res) => {
     );
 
     const [[{ total }]] = await pool.query(
-      `SELECT COUNT(*) AS total FROM raw_materials rm WHERE ${where.join(" AND ")}`,
+      `SELECT COUNT(*) AS total
+       FROM raw_materials rm
+       ${reservationSummaryJoin}
+       WHERE ${where.join(" AND ")}`,
       params,
     );
 

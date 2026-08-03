@@ -9,6 +9,14 @@ const STOCK_COLORS = {
   out_of_stock: ["#fef2f2", "#991b1b", "#fecaca"],
 };
 
+const formatQuantity = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "0";
+  return number.toLocaleString("en-PH", {
+    maximumFractionDigits: 4,
+  });
+};
+
 export default function RawMaterialsPage() {
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -133,7 +141,8 @@ export default function RawMaterialsPage() {
         <div>
           <h1 style={title}>Raw Materials Inventory</h1>
           <div style={subtitle}>
-            Active materials appear in product recipes and blueprint estimation selectors.
+            On hand is physical stock. Reserved stock is allocated to paid blueprint orders,
+            while available stock can still be assigned to new work.
           </div>
         </div>
         <button onClick={openAdd} style={btnPrimary}>
@@ -196,7 +205,10 @@ export default function RawMaterialsPage() {
                 "Name",
                 "Supplier",
                 "Unit",
-                "Qty",
+                "On Hand",
+                "Reserved",
+                "Available",
+                "Pending Need",
                 "Reorder Pt",
                 "Unit Cost",
                 "Total Value",
@@ -213,13 +225,15 @@ export default function RawMaterialsPage() {
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={10} style={emptyCell}>
+                <td colSpan={13} style={emptyCell}>
                   No raw materials found for the selected filters.
                 </td>
               </tr>
             ) : (
               items.map((item) => {
-                const [bg, color, border] = STOCK_COLORS[item.stock_status] || [
+                const availabilityStatus =
+                  item.availability_status || item.stock_status;
+                const [bg, color, border] = STOCK_COLORS[availabilityStatus] || [
                   "#f4f4f5",
                   "#18181b",
                   "#e4e4e7",
@@ -238,7 +252,18 @@ export default function RawMaterialsPage() {
                       {item.supplier_name || "—"}
                     </td>
                     <td style={{ ...td, color: "#71717a" }}>{item.unit}</td>
-                    <td style={{ ...td, fontWeight: 700 }}>{item.quantity}</td>
+                    <td style={{ ...td, fontWeight: 700 }}>
+                      {formatQuantity(item.on_hand_quantity ?? item.quantity)}
+                    </td>
+                    <td style={{ ...td, fontWeight: 700 }}>
+                      {formatQuantity(item.reserved_quantity)}
+                    </td>
+                    <td style={{ ...td, fontWeight: 800 }}>
+                      {formatQuantity(item.available_quantity ?? item.quantity)}
+                    </td>
+                    <td style={{ ...td, color: "#991b1b", fontWeight: 700 }}>
+                      {formatQuantity(item.pending_need_quantity)}
+                    </td>
                     <td style={{ ...td, color: "#52525b" }}>{item.reorder_point}</td>
                     <td style={td}>₱ {Number(item.unit_cost).toFixed(2)}</td>
                     <td style={{ ...td, fontWeight: 600 }}>
@@ -257,7 +282,7 @@ export default function RawMaterialsPage() {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {item.stock_status?.replaceAll("_", " ")}
+                        {availabilityStatus?.replaceAll("_", " ")}
                       </span>
                     </td>
                     <td style={td}>
