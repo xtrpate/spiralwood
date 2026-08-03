@@ -425,6 +425,7 @@ export default function OrderDetailPage() {
 
   const [statusModal, setStatusModal] = useState(false);
   const [newStatus, setNewStatus] = useState("");
+  const [statusModalMode, setStatusModalMode] = useState("general");
   // Guards against double-submit: without this, a fast double-click (or a
   // slow network) can fire handleStatusUpdate twice concurrently — the
   // first call succeeds, then the second arrives after the status has
@@ -578,6 +579,7 @@ export default function OrderDetailPage() {
       await api.patch(`/orders/${id}/status`, { status: newStatus });
       toast.success(`Status updated to "${titleCase(newStatus)}".`);
       setStatusModal(false);
+      setStatusModalMode("general");
       load();
     } catch (err) {
       toast.error(
@@ -611,8 +613,8 @@ export default function OrderDetailPage() {
     }
   };
 
-  
-  
+
+
 
   const verifyPayment = async (paymentId, action) => {
     if (paymentReviewLockRef.current) return;
@@ -788,7 +790,7 @@ export default function OrderDetailPage() {
 
     let payload = {};
 
-    
+
 
     if (action === "reject") {
       const reason = window.prompt("Enter rejection reason:");
@@ -1234,6 +1236,14 @@ export default function OrderDetailPage() {
     );
   });
 
+  const isCancelOnlyModal = statusModalMode === "cancel";
+  const statusModalStatuses = isCancelOnlyModal
+    ? allowedNextStatuses.filter(
+        (status) => normalize(status) === "cancelled",
+      )
+    : allowedNextStatuses;
+  const hasVerifiedCustomerPayment = verifiedPaymentTotal > 0;
+
   const shouldShowMissingDeliverySection =
     requiresDeliveryReceiptForCompletion &&
     !order?.delivery &&
@@ -1468,7 +1478,7 @@ export default function OrderDetailPage() {
                   </button>
                 </>
               )}
-            
+
             {isBlueprintOrder &&
               normalizedOrderStatus === "confirmed" &&
               blueprintId &&
@@ -1495,26 +1505,40 @@ export default function OrderDetailPage() {
               )}
 
             {needsContractFirst && (
-              <button
-                onClick={() =>
-                  navigate("/admin/contracts", {
-                    state: {
-                      contractDraft: {
-                        blueprint_id: String(blueprintId),
-                        order_id: String(order.id),
+              <>
+                <button
+                  onClick={() =>
+                    navigate("/admin/contracts", {
+                      state: {
+                        contractDraft: {
+                          blueprint_id: String(blueprintId),
+                          order_id: String(order.id),
+                        },
                       },
-                    },
-                  })
-                }
-                style={btnPrimary}
-              >
-                Generate Contract
-              </button>
+                    })
+                  }
+                  style={btnPrimary}
+                >
+                  Generate Contract
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatusModalMode("cancel");
+                    setNewStatus("cancelled");
+                    setStatusModal(true);
+                  }}
+                  style={btnDecline}
+                >
+                  Cancel Order
+                </button>
+              </>
             )}
 
             {shouldShowStatusButton && (
               <button
                 onClick={() => {
+                  setStatusModalMode("general");
                   setNewStatus(selectableNextStatuses[0] || currentOrderStatus);
                   setStatusModal(true);
                 }}
@@ -1838,7 +1862,7 @@ export default function OrderDetailPage() {
                         : "Approve for Estimation"}
                     </button>
 
-                    
+
 
                     <button
                       onClick={() => handleCustomRequestAction("reject")}
@@ -2893,12 +2917,36 @@ export default function OrderDetailPage() {
           <div style={modalBox}>
             <div style={modalHeader}>
               <div>
-                <h3 style={modalTitle}>Update Order Status</h3>
+                <h3 style={modalTitle}>
+                  {isCancelOnlyModal ? "Cancel Order" : "Update Order Status"}
+                </h3>
                 <p style={modalSubtitle}>
-                  Choose the next valid status for this order.
+                  {isCancelOnlyModal
+                    ? "Review the non-refundable cancellation notice before continuing."
+                    : "Choose the next valid status for this order."}
                 </p>
               </div>
             </div>
+
+            {normalize(newStatus) === "cancelled" && (
+              <div style={alertWarning}>
+                {hasVerifiedCustomerPayment ? (
+                  <>
+                    This order has a verified customer payment of{" "}
+                    <strong>{formatMoney(verifiedPaymentTotal)}</strong>.{" "}
+                    Cancelling will not refund, reverse, or remove that payment.
+                    The payment record will remain, while only unused blueprint
+                    material reservations will be released.
+                  </>
+                ) : (
+                  <>
+                    Cancelling will close this order and release any unused
+                    blueprint material reservations. No refund transaction will
+                    be created.
+                  </>
+                )}
+              </div>
+            )}
 
             {hasBlueprintTasks && !allBlueprintTasksCompleted && (
               <div style={alertWarning}>
@@ -2954,13 +3002,13 @@ export default function OrderDetailPage() {
               value={newStatus}
               onChange={(e) => setNewStatus(e.target.value)}
               style={{ ...inputFull, marginBottom: 20 }}
-              disabled={updatingStatus}
+              disabled={updatingStatus || isCancelOnlyModal}
             >
-              {!allowedNextStatuses.length && (
+              {!statusModalStatuses.length && (
                 <option value="">No further status available</option>
               )}
 
-              {allowedNextStatuses.map((status) => {
+              {statusModalStatuses.map((status) => {
                 const normalizedStatus = normalize(status);
 
                 const blockedByIncompleteTasks =
@@ -3031,22 +3079,29 @@ export default function OrderDetailPage() {
 
             <div style={modalActions}>
               <button
-                onClick={() => setStatusModal(false)}
+                onClick={() => {
+                  setStatusModal(false);
+                  setStatusModalMode("general");
+                }}
                 style={btnGhost}
                 disabled={updatingStatus}
               >
-                Cancel
+                {isCancelOnlyModal ? "Keep Order" : "Cancel"}
               </button>
               <button
                 onClick={handleStatusUpdate}
-                style={btnPrimary}
+                style={isCancelOnlyModal ? btnDecline : btnPrimary}
                 disabled={
-                  !allowedNextStatuses.length ||
+                  !statusModalStatuses.length ||
                   !newStatus ||
                   updatingStatus
                 }
               >
-                {updatingStatus ? "Updating…" : "Update Status"}
+                {updatingStatus
+                  ? "Updating…"
+                  : isCancelOnlyModal
+                    ? "Confirm Cancellation"
+                    : "Update Status"}
               </button>
             </div>
           </div>

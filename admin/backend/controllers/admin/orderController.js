@@ -17,6 +17,10 @@ const {
   BlueprintMaterialConsumptionError,
 } = require("../../services/blueprintMaterialConsumptionService");
 const {
+  releaseBlueprintMaterialsForCancellation,
+  BlueprintMaterialReleaseError,
+} = require("../../services/blueprintMaterialReleaseService");
+const {
   createNotification,
   createNotificationSafe,
 } = require("../../utils/notificationHelper");
@@ -939,6 +943,9 @@ exports.updateStatus = async (req, res) => {
 
   try {
     const nextStatus = normalize(req.body?.status);
+    const cancellationReason = String(
+      req.body?.reason || req.body?.cancellation_reason || "",
+    ).trim();
     const valid = [
       "pending",
       "confirmed",
@@ -1282,12 +1289,24 @@ exports.updateStatus = async (req, res) => {
     }
 
     let materialConsumptionResult = null;
+    let materialReleaseResult = null;
 
     if (isBlueprintOrder && nextStatus === "production") {
       materialConsumptionResult =
         await consumeBlueprintMaterialsForProduction(conn, {
           orderId: parseInt(req.params.id),
           actorUserId: req.user.id,
+        });
+    }
+
+    if (isBlueprintOrder && nextStatus === "cancelled") {
+      materialReleaseResult =
+        await releaseBlueprintMaterialsForCancellation(conn, {
+          orderId: parseInt(req.params.id),
+          actorUserId: req.user.id,
+          releaseReason:
+            cancellationReason ||
+            `Order cancelled by admin from ${currentStatus}.`,
         });
     }
 
@@ -1309,9 +1328,10 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
-    // Standard (non-blueprint) orders deduct stock at creation time —
-    // restore it here now that the cancellation is confirmed.
-    if (nextStatus === "cancelled") {
+    // Standard (non-blueprint) orders deduct product stock at creation time,
+    // so cancellation restores that product stock. Blueprint orders use
+    // reservation release above and must never run the standard restock path.
+    if (nextStatus === "cancelled" && !isBlueprintOrder) {
       await restoreStandardOrderStock(conn, parseInt(req.params.id));
     }
 
@@ -1356,6 +1376,15 @@ exports.updateStatus = async (req, res) => {
                 materialConsumptionResult.consumed_count || 0,
             }
           : {}),
+        ...(materialReleaseResult
+          ? {
+              material_release_reason: materialReleaseResult.reason,
+              released_material_reservation_ids:
+                materialReleaseResult.reservation_ids || [],
+              materials_released:
+                materialReleaseResult.released_count || 0,
+            }
+          : {}),
       },
     };
     res.json({
@@ -1363,11 +1392,22 @@ exports.updateStatus = async (req, res) => {
       ...(materialConsumptionResult
         ? { material_consumption: materialConsumptionResult }
         : {}),
+      ...(materialReleaseResult
+        ? { material_release: materialReleaseResult }
+        : {}),
     });
   } catch (err) {
     await conn.rollback();
 
     if (err instanceof BlueprintMaterialConsumptionError) {
+      return res.status(err.statusCode || 409).json({
+        message: err.message,
+        integrity_reason: err.code,
+        ...(err.details ? { details: err.details } : {}),
+      });
+    }
+
+    if (err instanceof BlueprintMaterialReleaseError) {
       return res.status(err.statusCode || 409).json({
         message: err.message,
         integrity_reason: err.code,
