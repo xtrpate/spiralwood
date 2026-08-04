@@ -252,7 +252,7 @@ export default function TasksPage() {
     return () => {
       cancelled = true;
     };
-  }, [assignmentOrderIdParam, isAdmin, me?.id]); 
+  }, [assignmentOrderIdParam, isAdmin, me?.id]);
 
   const handleProductionAssign = async (e) => {
     e.preventDefault();
