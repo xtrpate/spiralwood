@@ -185,7 +185,8 @@ exports.getAssignableUsers = async (req, res) => {
       SELECT
         id,
         name,
-        role
+        role,
+        staff_type
       FROM users
       WHERE role IN ('admin', 'staff')
       ORDER BY

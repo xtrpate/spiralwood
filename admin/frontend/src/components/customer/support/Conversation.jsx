@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { SendHorizontal } from "lucide-react";
 
 export default function Conversation({
   ticket,
@@ -8,7 +9,7 @@ export default function Conversation({
 }) {
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
-
+  const textareaRef = useRef(null);
   if (!ticket) {
     return (
       <div className="support-conversation-empty">
@@ -29,6 +30,9 @@ export default function Conversation({
       await onReply(reply);
 
       setReply("");
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "24px";
+      }
     } finally {
       setSending(false);
     }
@@ -40,7 +44,10 @@ export default function Conversation({
         <div>
           <h2>{ticket.subject}</h2>
 
-          <p>{ticket.category.replaceAll("_", " ")}</p>
+          <p>
+            {ticket.category.replaceAll("_", " ")} •{" "}
+            <strong>{ticket.status.replaceAll("_", " ")}</strong>
+          </p>
         </div>
 
         {ticket.status !== "closed" && (
@@ -53,7 +60,7 @@ export default function Conversation({
       <div className="support-message-list">
         {messages.length === 0 && (
           <div className="support-no-messages">
-            <div className="conversation-empty-icon">💬</div>
+            <div className="support-conversation-empty-icon">💬</div>
 
             <h3>No Messages Yet</h3>
 
@@ -63,38 +70,110 @@ export default function Conversation({
           </div>
         )}
 
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`support-message ${
-              msg.sender_type === "customer" ? "customer" : "staff"
-            }`}
-          >
-            <div className="support-message-author">
-              {msg.sender_type === "customer" ? "You" : "Support Team"}
-            </div>
+        {messages.map((msg) => {
+          const isCustomer = msg.sender_type === "customer";
 
-            <div className="support-message-body">{msg.message}</div>
+          const initials = (msg.sender_name || (isCustomer ? "You" : "Support"))
+            .split(" ")
+            .map((part) => part[0])
+            .join("")
+            .substring(0, 2)
+            .toUpperCase();
 
-            <div className="support-message-time">
-              {new Date(msg.created_at).toLocaleString()}
+          return (
+            <div
+              key={msg.id}
+              className={`support-conversation-row ${isCustomer ? "customer" : "support"}`}
+            >
+              {isCustomer ? (
+                <>
+                  <div className="support-conversation-msg-header customer">
+                    <div className="support-conversation-header-info">
+                      <div className="support-conversation-name">You</div>
+
+                      <div className="support-conversation-role">Customer</div>
+
+                      <div className="support-conversation-time">
+                        {new Date(msg.created_at).toLocaleString()}
+                      </div>
+                    </div>
+
+                    <div className="support-conversation-avatar">
+                      {initials}
+                    </div>
+                  </div>
+
+                  <div className="support-conversation-bubble customer">
+                    {msg.message}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="support-conversation-msg-header support">
+                    <div className="support-conversation-avatar">
+                      {initials}
+                    </div>
+
+                    <div className="support-conversation-meta">
+                      <div className="support-conversation-name">
+                        Support Team
+                      </div>
+
+                      <div className="support-conversation-role">Support</div>
+
+                      <div className="support-conversation-time">
+                        {new Date(msg.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="support-conversation-bubble support">
+                    {msg.message}
+                  </div>
+                </>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {ticket.status !== "closed" && (
         <form className="support-reply-form" onSubmit={handleSubmit}>
-          <textarea
-            rows={4}
-            placeholder="Write your reply..."
-            value={reply}
-            onChange={(e) => setReply(e.target.value)}
-          />
+          <div className="support-reply-box">
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              placeholder="Type your message..."
+              value={reply}
+              maxLength={1000}
+              onChange={(e) => {
+                setReply(e.target.value);
 
-          <button type="submit" disabled={sending}>
-            {sending ? "Sending..." : "Send Reply"}
-          </button>
+                e.target.style.height = "0px";
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+
+                  handleSubmit(e);
+                }
+              }}
+              disabled={sending}
+            />
+
+            <button
+              type="submit"
+              className="support-reply-send-btn"
+              disabled={sending || !reply.trim()}
+            >
+              {sending ? "..." : <SendHorizontal size={18} />}
+            </button>
+          </div>
+
+          <div className="support-reply-footer">
+            <span>{reply.length}/1000</span>
+          </div>
         </form>
       )}
     </div>

@@ -62,11 +62,17 @@ export default function AssignDropdown({ ticket, onAssigned }) {
       >
         <option value="">-- Select User --</option>
 
-        {users.map((user) => (
-          <option key={user.id} value={user.id}>
-            {user.name} ({user.role})
-          </option>
-        ))}
+        {users
+          .filter(
+            (user) =>
+              String(user.role || "").toLowerCase() === "staff" &&
+              String(user.staff_type || "").toLowerCase() === "cashier",
+          )
+          .map((user) => (
+            <option key={user.id} value={user.id}>
+              {user.name} ({user.role})
+            </option>
+          ))}
       </select>
 
       <button onClick={handleAssign} disabled={!selectedUser || loading}>
