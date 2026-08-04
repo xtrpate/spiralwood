@@ -7,10 +7,12 @@ import FilterBar from "../../components/support/FilterBar";
 import TicketList from "../../components/support/TicketList";
 import TicketDetails from "../../components/support/TicketDetails";
 import SummaryCard from "../../components/support/SummaryCard";
+import TicketConversation from "../../components/support/TicketConversation";
 
 export default function SupportPage() {
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
+  const [activeTab, setActiveTab] = useState("details");
 
   const [messages, setMessages] = useState([]);
 
@@ -63,6 +65,7 @@ export default function SupportPage() {
       console.log("Ticket API Response:", data.messages);
 
       setSelectedTicket(data.ticket);
+      setActiveTab("details");
 
       setMessages(data.messages || []);
     } catch (err) {
@@ -176,13 +179,27 @@ export default function SupportPage() {
           onClearFilters={clearFilters}
         />
 
-        <TicketDetails
-          ticket={selectedTicket}
-          messages={messages}
-          onAssigned={refreshSelectedTicket}
-          onReplySent={refreshSelectedTicket}
-          onUpdated={refreshSelectedTicket}
-        />
+        <div className="support-right-panel">
+          {activeTab === "details" && (
+            <TicketDetails
+              ticket={selectedTicket}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              onAssigned={refreshSelectedTicket}
+              onUpdated={refreshSelectedTicket}
+            />
+          )}
+
+          {activeTab === "conversation" && (
+            <TicketConversation
+              ticket={selectedTicket}
+              messages={messages}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              onReplySent={refreshSelectedTicket}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

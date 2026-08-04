@@ -10,10 +10,11 @@ import TicketCard from "../../components/customer/support/TicketCard";
 import NewTicketForm from "../../components/customer/support/NewTicketForm";
 import Conversation from "../../components/customer/support/Conversation";
 
-const SummaryCard = ({ label, value }) => (
+const SummaryCard = ({ label, value, subtitle }) => (
   <div className="support-summary-card">
     <div className="support-summary-label">{label}</div>
     <div className="support-summary-value">{value}</div>
+    <div className="support-summary-subtitle">{subtitle}</div>
   </div>
 );
 
@@ -122,13 +123,29 @@ export default function SupportPage() {
         </section>
 
         <section className="support-summary-grid">
-          <SummaryCard label="Open" value={stats.open} />
+          <SummaryCard
+            label="Open"
+            value={stats.open}
+            subtitle="Currently Active"
+          />
 
-          <SummaryCard label="Awaiting" value={stats.awaiting} />
+          <SummaryCard
+            label="Awaiting"
+            value={stats.awaiting}
+            subtitle="Waiting for You"
+          />
 
-          <SummaryCard label="Resolved" value={stats.resolved} />
+          <SummaryCard
+            label="Resolved"
+            value={stats.resolved}
+            subtitle="Completed"
+          />
 
-          <SummaryCard label="Total Tickets" value={stats.total} />
+          <SummaryCard
+            label="Total Tickets"
+            value={stats.total}
+            subtitle="All Requests"
+          />
         </section>
 
         {showForm && (
