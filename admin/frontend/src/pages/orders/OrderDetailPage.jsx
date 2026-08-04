@@ -458,22 +458,12 @@ export default function OrderDetailPage() {
   const [activeTab, setActiveTab] = useState("overview");
   const canUseDiscussion = normalize(order?.order_type) === "blueprint";
 
-  const [assignModal, setAssignModal] = useState(false);
-  const [assignableStaff, setAssignableStaff] = useState([]);
-  const [loadingAssignable, setLoadingAssignable] = useState(false);
-  const [assigning, setAssigning] = useState(false);
   const [reassignModal, setReassignModal] = useState(false);
   const [reassignableStaff, setReassignableStaff] = useState([]);
   const [loadingReassignable, setLoadingReassignable] = useState(false);
   const [reassigning, setReassigning] = useState(false);
   const [reassignStaffId, setReassignStaffId] = useState("");
   const [updatingTaskId, setUpdatingTaskId] = useState(null);
-  const [assignmentBlueprintId, setAssignmentBlueprintId] = useState(null);
-  const [assignForm, setAssignForm] = useState({
-    staff_id: "",
-    due_date: "",
-    note: "",
-  });
 
   const load = async () => {
     setLoading(true);
@@ -817,7 +807,7 @@ export default function OrderDetailPage() {
     }
   };
 
-  const openAssignModal = async () => {
+  const openAssignModal = () => {
     if (!blueprintId) {
       toast.error("This order is not linked to a blueprint.");
       return;
@@ -837,72 +827,10 @@ export default function OrderDetailPage() {
       return;
     }
 
-    setLoadingAssignable(true);
-    try {
-      const { data } = await api.get(`/orders/${id}/assignable-staff`);
-      setAssignableStaff(Array.isArray(data?.staff) ? data.staff : []);
-      setAssignmentBlueprintId(data?.blueprint_id || blueprintId);
-      setAssignForm({
-        staff_id: "",
-        due_date: "",
-        note: "",
-      });
-      setAssignModal(true);
-    } catch (err) {
-      toast.error(
-        err?.response?.data?.message || "Failed to load assignable staff.",
-      );
-    } finally {
-      setLoadingAssignable(false);
-    }
-  };
-
-  const handleAssignStaff = async () => {
-    if (hasBlueprintTasks) {
-      toast.error(
-        "This production order already has a primary indoor staff assignment.",
-      );
-      return;
-    }
-
-    if (!assignForm.staff_id) {
-      toast.error("Please select a staff member.");
-      return;
-    }
-
-    if (!assignForm.due_date) {
-      toast.error("Due date is required.");
-      return;
-    }
-
-    const parsedDueDate = new Date(assignForm.due_date);
-    if (Number.isNaN(parsedDueDate.getTime())) {
-      toast.error("Due date is invalid.");
-      return;
-    }
-
-    if (parsedDueDate.getTime() < Date.now() - 60000) {
-      toast.error("Due date cannot be in the past.");
-      return;
-    }
-
-    setAssigning(true);
-    try {
-      const payload = {
-        staff_id: Number(assignForm.staff_id),
-        due_date: `${assignForm.due_date.replace("T", " ")}:00`,
-        note: assignForm.note.trim(),
-      };
-
-      await api.patch(`/orders/${id}/assign-staff`, payload);
-      toast.success("Primary indoor staff assigned successfully.");
-      setAssignModal(false);
-      load();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to assign staff.");
-    } finally {
-      setAssigning(false);
-    }
+    const params = new URLSearchParams({
+      assign_order_id: String(order?.id || id),
+    });
+    navigate(`/admin/tasks?${params.toString()}`);
   };
 
   const openReassignModal = async () => {
@@ -2028,23 +1956,6 @@ export default function OrderDetailPage() {
 
               {blueprintId &&
                 normalizedOrderStatus === "confirmed" &&
-                (!hasEstimation ||
-                  estimationRejectedByCustomer ||
-                  estimationStatus === "draft") && (
-                  <div style={{ marginTop: 12 }}>
-                    <button
-                      onClick={() =>
-                        navigate(`/admin/blueprints/${blueprintId}/estimation`)
-                      }
-                      style={btnPrimary}
-                    >
-                      {hasEstimation ? "Revise Estimate" : "Create Estimate"}
-                    </button>
-                  </div>
-                )}
-
-              {blueprintId &&
-                normalizedOrderStatus === "confirmed" &&
                 estimationSentToCustomer && (
                   <div style={{ marginTop: 12 }}>
                     <span style={mutedBadge}>
@@ -2728,20 +2639,15 @@ export default function OrderDetailPage() {
                 <div style={{ marginTop: 12 }}>
                   <button
                     onClick={openAssignModal}
-                    disabled={!blueprintId || loadingAssignable}
+                    disabled={!blueprintId}
                     style={{
                       ...btnPrimary,
-                      opacity: !blueprintId || loadingAssignable ? 0.75 : 1,
-                      cursor:
-                        !blueprintId || loadingAssignable
-                          ? "not-allowed"
-                          : "pointer",
+                      opacity: !blueprintId ? 0.75 : 1,
+                      cursor: !blueprintId ? "not-allowed" : "pointer",
                     }}
-                    title="Assign primary indoor staff"
+                    title="Open Task Assignments and assign production staff"
                   >
-                    {loadingAssignable
-                      ? "Loading Staff..."
-                      : "Assign Indoor Staff"}
+                    Assign Indoor Staff
                   </button>
                 </div>
               )}
@@ -3102,122 +3008,6 @@ export default function OrderDetailPage() {
                   : isCancelOnlyModal
                     ? "Confirm Cancellation"
                     : "Update Status"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {assignModal && (
-        <div style={overlay}>
-          <div style={{ ...modalBox, width: 540 }}>
-            <div style={modalHeader}>
-              <div>
-                <h3 style={modalTitle}>
-                  Assign Indoor Staff to Production Order
-                </h3>
-                <p style={modalSubtitle}>
-                  Order #{String(order.id).padStart(5, "0")}
-                  {assignmentBlueprintId
-                    ? ` • Blueprint BP-${String(assignmentBlueprintId).padStart(5, "0")}`
-                    : ""}
-                </p>
-              </div>
-            </div>
-
-            <div style={formGrid}>
-              <div>
-                <label style={labelSm}>Primary Indoor Staff</label>
-                <select
-                  value={assignForm.staff_id}
-                  onChange={(e) =>
-                    setAssignForm((prev) => ({
-                      ...prev,
-                      staff_id: e.target.value,
-                    }))
-                  }
-                  style={inputFull}
-                >
-                  <option value="">— Select Staff —</option>
-                  {assignableStaff.map((staff) => (
-                    <option key={staff.id} value={staff.id}>
-                      {staff.name} — {staff.active_task_count} active production
-                      order
-                      {Number(staff.active_task_count) === 1 ? "" : "s"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={labelSm}>Production Workflow</label>
-                <div
-                  style={{
-                    ...inputFull,
-                    background: "#fafafa",
-                    color: "#52525b",
-                    lineHeight: 1.6,
-                    minHeight: "auto",
-                  }}
-                >
-                  This indoor staff will handle the full production workflow:
-                  <br />
-                  • Cutting Machine
-                  <br />
-                  • Edge Banding
-                  <br />
-                  • Horizontal Drilling
-                  <br />
-                  • Retouching
-                  <br />• Packing
-                </div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 16 }}>
-              <label style={labelSm}>Due Date</label>
-              <input
-                type="datetime-local"
-                value={assignForm.due_date}
-                onChange={(e) =>
-                  setAssignForm((prev) => ({
-                    ...prev,
-                    due_date: e.target.value,
-                  }))
-                }
-                style={inputFull}
-              />
-            </div>
-
-            <div style={{ marginTop: 16 }}>
-              <label style={labelSm}>Assignment Note (optional)</label>
-              <textarea
-                rows={4}
-                value={assignForm.note}
-                onChange={(e) =>
-                  setAssignForm((prev) => ({ ...prev, note: e.target.value }))
-                }
-                style={{ ...inputFull, resize: "vertical", paddingTop: 10 }}
-                placeholder="Add instructions or production notes..."
-              />
-            </div>
-
-            {assignableStaff.length === 0 && (
-              <div style={{ ...alertWarning, marginTop: 16 }}>
-                No active staff available for assignment.
-              </div>
-            )}
-
-            <div style={modalActions}>
-              <button onClick={() => setAssignModal(false)} style={btnGhost}>
-                Cancel
-              </button>
-              <button
-                onClick={handleAssignStaff}
-                disabled={assigning || assignableStaff.length === 0}
-                style={btnPrimary}
-              >
-                {assigning ? "Assigning..." : "Assign Indoor Staff"}
               </button>
             </div>
           </div>
