@@ -501,12 +501,7 @@ export default function BlueprintDesign() {
   const [publishing, setPublishing] = useState(false);
   const [publishForm, setPublishForm] = useState({
     name: blueprint?.title || "",
-    description: "Custom 3D designed product.",
-    category_id: "2",
-    type: "blueprint",
-    online_price: 0,
-    production_cost: "0",
-    stock: "999",
+    description: "Custom blueprint product.",
   });
 
   // ── Undo / Redo history ──────────────────────────────────────────────────
@@ -6763,7 +6758,12 @@ export default function BlueprintDesign() {
           generatedThumbnailUrl || blueprint?.thumbnail_url || null,
         is_template: Number(blueprint?.is_template) ? 1 : 0,
         is_gallery: Number(blueprint?.is_gallery) ? 1 : 0,
-        base_price: Number(publishForm?.online_price) || 0,
+        base_price: Math.max(
+          0,
+          Math.round(
+            Number(estimatedPrice !== null ? estimatedPrice : designTotal || 0),
+          ),
+        ),
         title: publishForm?.name || blueprint?.title || "",
         description: publishForm?.description || blueprint?.description || "",
       });
@@ -6782,22 +6782,34 @@ export default function BlueprintDesign() {
 
   const handlePublishProduct = async (e) => {
     e.preventDefault();
-    if (!publishForm.name || !publishForm.online_price) {
-      toast.error("Name and Price are required.");
+
+    const productName = String(publishForm.name || "").trim();
+    if (!productName) {
+      toast.error("Product name is required.");
       return;
     }
+
+    const automaticPrice = Math.max(
+      0,
+      Math.round(
+        Number(estimatedPrice !== null ? estimatedPrice : designTotal || 0),
+      ),
+    );
+
     await saveDesign();
     setPublishing(true);
+
     try {
-      // We are forcing every single variable into the EXACT format your database demands
       const payload = {
         barcode: `BP-${Date.now()}`,
-        name: String(publishForm.name).trim(),
-        description: String(publishForm.description || "Custom 3D Product"),
-        category_id: Number(publishForm.category_id),
+        name: productName,
+        description: String(
+          publishForm.description || "Custom blueprint product",
+        ).trim(),
+        category_id: 2,
         type: "blueprint",
-        online_price: Number(publishForm.online_price),
-        walkin_price: Number(publishForm.online_price),
+        online_price: automaticPrice,
+        walkin_price: automaticPrice,
         production_cost: 0,
         stock: 999,
         stock_status: "in_stock",
@@ -6810,29 +6822,37 @@ export default function BlueprintDesign() {
         design_data: JSON.stringify({ components }),
       };
 
-      console.log("🚀 Sending Payload to Server:", payload);
+      await api.post("/products", payload);
+      await api.put(`/blueprints/${id}`, {
+        title: productName,
+        description: payload.description,
+        is_template: 1,
+        is_gallery: 1,
+        base_price: automaticPrice,
+      });
 
-      const response = await api.post("/products", payload);
+      setBlueprint((prev) =>
+        prev
+          ? {
+              ...prev,
+              title: productName,
+              description: payload.description,
+              is_template: 1,
+              is_gallery: 1,
+              base_price: automaticPrice,
+            }
+          : prev,
+      );
 
-      console.log("✅ Server Success Response:", response.data);
-
-      // 👇 HERE IS YOUR SUCCESS MESSAGE BOX 👇
-      alert("🎉 Successfully published to Catalog!");
-      toast.success("Successfully published to Catalog!");
-
+      toast.success("Blueprint published to the customer customize gallery.");
       setPublishModal(false);
     } catch (err) {
-      console.error("❌ FULL PUBLISH ERROR:", err);
-
-      // Extract the EXACT error message from the backend
-      const errorMsg =
-        err?.response?.data?.message || err.message || "Unknown Server Error";
-
-      // 👇 HERE IS YOUR FAILURE MESSAGE BOX 👇
-      alert(
-        `🚨 PUBLISH FAILED!\n\nReason: ${errorMsg}\n\nCheck your VS Code Backend Terminal for more details.`,
+      console.error("Publish blueprint error:", err);
+      toast.error(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to publish blueprint.",
       );
-      toast.error(`Failed: ${errorMsg}`);
     } finally {
       setPublishing(false);
     }
@@ -6847,7 +6867,17 @@ export default function BlueprintDesign() {
       return;
     try {
       await api.patch(`/products/blueprint/${id}/unpublish`);
-      toast.success("Blueprint product unpublished successfully.");
+      await api.put(`/blueprints/${id}`, {
+        is_template: 0,
+        is_gallery: 0,
+        base_price: 0,
+      });
+      setBlueprint((prev) =>
+        prev
+          ? { ...prev, is_template: 0, is_gallery: 0, base_price: 0 }
+          : prev,
+      );
+      toast.success("Blueprint removed from the customer customize gallery.");
     } catch (err) {
       console.error("Unpublish Error:", err);
       toast.error(
@@ -7258,302 +7288,410 @@ export default function BlueprintDesign() {
       <div
         style={{
           background: "#ffffff",
-          padding: "12px 20px",
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          flexWrap: "wrap",
-          borderBottom: "1px solid #e4e4e7",
+          borderBottom: "1px solid #dfe3e8",
+          boxShadow: "0 2px 10px rgba(15, 23, 42, 0.05)",
+          position: "relative",
+          zIndex: 20,
         }}
       >
-        <button
-          onClick={() => navigate("/admin/blueprints")}
-          style={{
-            ...S.toolBtn,
-            background: "#f4f4f5",
-            color: "#18181b",
-            border: "1px solid #e4e4e7",
-          }}
-        >
-          ← Back
-        </button>
-
-        <span
-          style={{
-            fontWeight: 800,
-            fontSize: 16,
-            color: "#0a0a0a",
-            letterSpacing: "-0.01em",
-          }}
-        >
-          {blueprint?.title || "Blueprint Design"}
-        </span>
-
-        {blueprint && (
-          <span
-            style={{
-              fontSize: 10,
-              background: "#f4f4f5",
-              padding: "4px 10px",
-              borderRadius: 20,
-              color: "#18181b",
-              border: "1px solid #e4e4e7",
-              fontWeight: 800,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}
-          >
-            Stage: {blueprint.stage}
-          </span>
-        )}
-
-        {activeChairBuild?.label && (
-          <span
-            style={{
-              ...S.smallPill,
-              background: "#f4f4f5",
-              color: "#18181b",
-              border: "1px solid #e4e4e7",
-            }}
-          >
-            Active Chair Build: {activeChairBuild.label}
-          </span>
-        )}
-
         <div
           style={{
+            minHeight: 58,
+            padding: "10px 18px",
             display: "flex",
-            gap: 4,
-            marginLeft: 16,
-            background: "#f4f4f5",
-            borderRadius: 8,
-            padding: 4,
-            border: "1px solid #e4e4e7",
-          }}
-        >
-          {VIEWS.map((v) => (
-            <button
-              key={v.key}
-              onClick={() => setView(v.key)}
-              style={{
-                ...S.toolBtn,
-                background: view === v.key ? "#18181b" : "transparent",
-                color: view === v.key ? "#ffffff" : "#71717a",
-                fontWeight: view === v.key ? 700 : 600,
-                padding: "6px 14px",
-                border: "none",
-              }}
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 4,
-            background: "#f4f4f5",
-            borderRadius: 8,
-            padding: 4,
-            border: "1px solid #e4e4e7",
-          }}
-        >
-          <span
-            style={{
-              ...S.toolBtn,
-              background: "#18181b",
-              color: "#ffffff",
-              fontWeight: 700,
-              padding: "6px 12px",
-              cursor: "default",
-              border: "none",
-            }}
-          >
-            MM
-          </span>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 4,
-            background: "#f4f4f5",
-            borderRadius: 8,
-            padding: 4,
-            border: "1px solid #e4e4e7",
-          }}
-        >
-          {["reference", "editable"].map((mode) => (
-            <button
-              key={mode}
-              onClick={() => {
-                if (mode === "reference") switchToReferenceMode();
-                else switchToEditableMode();
-              }}
-              style={{
-                ...S.toolBtn,
-                background: editorMode === mode ? "#18181b" : "transparent",
-                color: editorMode === mode ? "#ffffff" : "#71717a",
-                fontWeight: editorMode === mode ? 700 : 600,
-                padding: "6px 12px",
-                border: "none",
-              }}
-            >
-              {mode === "reference" ? "Reference Mode" : "Editable Mode"}
-            </button>
-          ))}
-        </div>
-
-        <div
-          style={{
-            marginLeft: "auto",
-            display: "flex",
-            gap: 8,
+            alignItems: "center",
+            gap: 14,
             flexWrap: "wrap",
+            borderBottom: "1px solid #edf0f3",
           }}
         >
-          {view !== "3d" && (
-            <button
-              onClick={() => setShowGrid((g) => !g)}
+          <button
+            onClick={() => navigate("/admin/blueprints")}
+            style={{
+              ...S.toolBtn,
+              background: "#ffffff",
+              color: "#18181b",
+              border: "1px solid #d7dce2",
+              padding: "8px 12px",
+            }}
+          >
+            ← Back
+          </button>
+
+          <div style={{ minWidth: 180 }}>
+            <div
               style={{
-                ...S.toolBtn,
-                background: "#f4f4f5",
-                color: "#18181b",
-                border: "1px solid #e4e4e7",
+                fontWeight: 800,
+                fontSize: 16,
+                color: "#0a0a0a",
+                letterSpacing: "-0.01em",
+                lineHeight: 1.25,
               }}
             >
-              {showGrid ? "⊞ Hide Grid" : "⊞ Grid"}
-            </button>
-          )}
+              {blueprint?.title || "Blueprint Design"}
+            </div>
+            <div
+              style={{
+                marginTop: 2,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: "#71717a",
+              }}
+            >
+              {blueprint ? `Stage: ${blueprint.stage}` : "Design workspace"}
+            </div>
+          </div>
 
-          <button
-            onClick={handleUndo}
-            title="Undo (Ctrl+Z)"
-            disabled={!historyRef.current?.length}
+          <div
             style={{
-              ...S.toolBtn,
-              background: "#f4f4f5",
-              color: "#18181b",
-              border: "1px solid #e4e4e7",
-              opacity: !historyRef.current?.length ? 0.4 : 1,
+              display: "flex",
+              gap: 3,
+              marginLeft: 8,
+              padding: 3,
+              border: "1px solid #dfe3e8",
+              background: "#f7f8fa",
+              borderRadius: 8,
+              overflowX: "auto",
+              maxWidth: "100%",
             }}
           >
-            ↩ Undo
-          </button>
+            {VIEWS.map((v) => (
+              <button
+                key={v.key}
+                onClick={() => setView(v.key)}
+                style={{
+                  ...S.toolBtn,
+                  background: view === v.key ? "#111827" : "transparent",
+                  color: view === v.key ? "#ffffff" : "#52525b",
+                  fontWeight: view === v.key ? 800 : 600,
+                  padding: "7px 13px",
+                  border: "none",
+                  boxShadow:
+                    view === v.key ? "0 2px 6px rgba(15,23,42,.18)" : "none",
+                }}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
 
-          <button
-            onClick={handleRedo}
-            title="Redo (Ctrl+Y)"
-            disabled={!futureRef.current?.length}
+          <div
             style={{
-              ...S.toolBtn,
-              background: "#f4f4f5",
-              color: "#18181b",
-              border: "1px solid #e4e4e7",
-              opacity: !futureRef.current?.length ? 0.4 : 1,
+              marginLeft: "auto",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              flexWrap: "wrap",
             }}
           >
-            ↪ Redo
-          </button>
+            <span
+              style={{
+                minHeight: 34,
+                padding: "0 12px",
+                display: "inline-flex",
+                alignItems: "center",
+                border: "1px solid #dfe3e8",
+                background: "#f7f8fa",
+                color: "#18181b",
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "0.08em",
+                borderRadius: 7,
+              }}
+            >
+              MM
+            </span>
 
-          <button
-            onClick={() => navigate(`/admin/blueprints/${id}/import`)}
+            {activeChairBuild?.label && (
+              <span
+                style={{
+                  ...S.smallPill,
+                  background: "#eef6ff",
+                  color: "#1e3a5f",
+                  border: "1px solid #cfe2f7",
+                }}
+              >
+                Active build: {activeChairBuild.label}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            minHeight: 62,
+            padding: "10px 18px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            background: "#fbfcfd",
+          }}
+        >
+          <div
             style={{
-              ...S.toolBtn,
-              background: "#f4f4f5",
-              color: "#18181b",
-              border: "1px solid #e4e4e7",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+              minWidth: 0,
             }}
           >
-            📥 Import
-          </button>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                paddingRight: 12,
+                borderRight: "1px solid #e1e5ea",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 9,
+                  fontWeight: 800,
+                  letterSpacing: "0.12em",
+                  color: "#8a9099",
+                }}
+              >
+                MODE
+              </span>
 
-          <button
-            onClick={() => openExportSheets(false)}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 3,
+                  padding: 3,
+                  border: "1px solid #dfe3e8",
+                  background: "#ffffff",
+                  borderRadius: 8,
+                }}
+              >
+                {["reference", "editable"].map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => {
+                      if (mode === "reference") switchToReferenceMode();
+                      else switchToEditableMode();
+                    }}
+                    style={{
+                      ...S.toolBtn,
+                      background:
+                        editorMode === mode ? "#111827" : "transparent",
+                      color: editorMode === mode ? "#ffffff" : "#52525b",
+                      fontWeight: editorMode === mode ? 800 : 600,
+                      padding: "7px 12px",
+                      border: "none",
+                    }}
+                  >
+                    {mode === "reference" ? "Reference" : "Editable"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                paddingRight: 12,
+                borderRight: "1px solid #e1e5ea",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 9,
+                  fontWeight: 800,
+                  letterSpacing: "0.12em",
+                  color: "#8a9099",
+                }}
+              >
+                EDIT
+              </span>
+
+              {view !== "3d" && (
+                <button
+                  onClick={() => setShowGrid((g) => !g)}
+                  style={{
+                    ...S.toolBtn,
+                    background: "#ffffff",
+                    color: "#18181b",
+                    border: "1px solid #dfe3e8",
+                  }}
+                >
+                  {showGrid ? "Hide Grid" : "Show Grid"}
+                </button>
+              )}
+
+              <button
+                onClick={handleUndo}
+                title="Undo (Ctrl+Z)"
+                disabled={!historyRef.current?.length}
+                style={{
+                  ...S.toolBtn,
+                  background: "#ffffff",
+                  color: "#18181b",
+                  border: "1px solid #dfe3e8",
+                  opacity: !historyRef.current?.length ? 0.4 : 1,
+                }}
+              >
+                ↩ Undo
+              </button>
+
+              <button
+                onClick={handleRedo}
+                title="Redo (Ctrl+Y)"
+                disabled={!futureRef.current?.length}
+                style={{
+                  ...S.toolBtn,
+                  background: "#ffffff",
+                  color: "#18181b",
+                  border: "1px solid #dfe3e8",
+                  opacity: !futureRef.current?.length ? 0.4 : 1,
+                }}
+              >
+                ↪ Redo
+              </button>
+            </div>
+          </div>
+
+          <div
             style={{
-              ...S.toolBtn,
-              background: "#f4f4f5",
-              color: "#18181b",
-              border: "1px solid #e4e4e7",
+              marginLeft: "auto",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
             }}
           >
-            📄 Export Sheets
-          </button>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                paddingRight: 12,
+                borderRight: "1px solid #e1e5ea",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 9,
+                  fontWeight: 800,
+                  letterSpacing: "0.12em",
+                  color: "#8a9099",
+                }}
+              >
+                OUTPUT
+              </span>
 
-          <button
-            onClick={() => openExportSheets(true)}
-            style={{
-              ...S.toolBtn,
-              background: "#f4f4f5",
-              color: "#18181b",
-              border: "1px solid #e4e4e7",
-            }}
-          >
-            🖨 Print Sheets
-          </button>
+              <button
+                onClick={() => openExportSheets(false)}
+                style={{
+                  ...S.toolBtn,
+                  background: "#ffffff",
+                  color: "#18181b",
+                  border: "1px solid #dfe3e8",
+                }}
+              >
+                Export Sheets
+              </button>
 
-          <button
-            onClick={saveDesign}
-            disabled={saving}
-            style={{
-              ...S.toolBtn,
-              background: "#18181b",
-              color: "#ffffff",
-              border: "1px solid #18181b",
-            }}
-          >
-            {saving ? "Saving…" : "💾 Save"}
-          </button>
+              <button
+                onClick={() => openExportSheets(true)}
+                style={{
+                  ...S.toolBtn,
+                  background: "#ffffff",
+                  color: "#18181b",
+                  border: "1px solid #dfe3e8",
+                }}
+              >
+                Print Sheets
+              </button>
+            </div>
 
-          <button
-            onClick={() => {
-              const rawPrice =
-                estimatedPrice !== null ? estimatedPrice : designTotal || 0;
-              const roundedPrice = Math.round(rawPrice);
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 9,
+                  fontWeight: 800,
+                  letterSpacing: "0.12em",
+                  color: "#8a9099",
+                }}
+              >
+                ACTIONS
+              </span>
 
-              setPublishForm((prev) => ({
-                ...prev,
-                name: blueprint?.title || "",
-                description:
-                  blueprint?.description || "Custom 3D designed product.",
-                online_price: roundedPrice,
-              }));
-              setPublishModal(true);
-            }}
-            style={{
-              ...S.toolBtn,
-              background: "#18181b",
-              color: "#ffffff",
-              border: "1px solid #18181b",
-            }}
-          >
-            🛒 Publish Product
-          </button>
+              <button
+                onClick={saveDesign}
+                disabled={saving}
+                style={{
+                  ...S.toolBtn,
+                  minWidth: 72,
+                  background: "#111827",
+                  color: "#ffffff",
+                  border: "1px solid #111827",
+                  boxShadow: "0 2px 6px rgba(15,23,42,.16)",
+                }}
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
 
-          <button
-            onClick={handleUnpublishProduct}
-            style={{
-              ...S.toolBtn,
-              background: "#fef2f2",
-              color: "#991b1b",
-              border: "1px solid #fecaca",
-            }}
-          >
-            🚫 Unpublish
-          </button>
+              <button
+                onClick={() => navigate(`/admin/blueprints/${id}/estimation`)}
+                style={{
+                  ...S.toolBtn,
+                  background: "#111827",
+                  color: "#ffffff",
+                  border: "1px solid #111827",
+                }}
+              >
+                Estimate
+              </button>
 
-          <button
-            onClick={() => navigate(`/admin/blueprints/${id}/estimation`)}
-            style={{
-              ...S.toolBtn,
-              background: "#f4f4f5",
-              color: "#18181b",
-              border: "1px solid #e4e4e7",
-            }}
-          >
-            💰 Estimate
-          </button>
+              <button
+                onClick={() => {
+                  setPublishForm((prev) => ({
+                    ...prev,
+                    name: blueprint?.title || "",
+                    description:
+                      blueprint?.description || "Custom blueprint product.",
+                  }));
+                  setPublishModal(true);
+                }}
+                style={{
+                  ...S.toolBtn,
+                  background: "#ffffff",
+                  color: "#18181b",
+                  border: "1px solid #bfc5cd",
+                }}
+              >
+                Publish to Gallery
+              </button>
+
+              <button
+                onClick={handleUnpublishProduct}
+                style={{
+                  ...S.toolBtn,
+                  background: "#fffafa",
+                  color: "#991b1b",
+                  border: "1px solid #fecaca",
+                }}
+              >
+                Unpublish
+              </button>
+            </div>
+          </div>
         </div>
       </div>
       {view === "3d" ? (
@@ -8920,60 +9058,86 @@ export default function BlueprintDesign() {
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.6)",
+            background: "rgba(2, 6, 23, 0.72)",
             zIndex: 9999,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !publishing) {
+              setPublishModal(false);
+            }
           }}
         >
           <div
             style={{
-              background: "#fff",
-              width: 400,
-              padding: 32,
-              borderRadius: 16,
-              boxShadow: "0 20px 40px rgba(0,0,0,0.15)",
-              border: "1px solid #e4e4e7",
+              background: "#ffffff",
+              width: "min(520px, 100%)",
+              borderRadius: 12,
+              boxShadow: "0 24px 70px rgba(2, 6, 23, 0.28)",
+              border: "1px solid #dfe3e8",
+              overflow: "hidden",
             }}
           >
-            <h2
+            <div
               style={{
-                marginTop: 0,
-                color: "#0a0a0a",
-                fontWeight: 800,
-                fontSize: 20,
-                letterSpacing: "-0.01em",
+                padding: "24px 26px 18px",
+                borderBottom: "1px solid #edf0f3",
               }}
             >
-              Publish Product
-            </h2>
-            <p
-              style={{
-                fontSize: 13,
-                color: "#52525b",
-                marginBottom: 24,
-                lineHeight: 1.5,
-              }}
-            >
-              This will create a new buyable product in your store and attach
-              this 3D model to it.
-            </p>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  color: "#64748b",
+                  marginBottom: 7,
+                }}
+              >
+                Customer catalog
+              </div>
+              <h2
+                style={{
+                  margin: 0,
+                  color: "#0f172a",
+                  fontWeight: 800,
+                  fontSize: 22,
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                Publish Blueprint
+              </h2>
+              <p
+                style={{
+                  fontSize: 13,
+                  color: "#64748b",
+                  margin: "8px 0 0",
+                  lineHeight: 1.6,
+                }}
+              >
+                Make this completed design available in the customer Customize
+                Gallery. Pricing will be handled through project estimation and
+                will not be shown to customers as a base price.
+              </p>
+            </div>
 
-            <form onSubmit={handlePublishProduct}>
-              <div style={{ marginBottom: 16 }}>
+            <form onSubmit={handlePublishProduct} style={{ padding: 26 }}>
+              <div style={{ marginBottom: 18 }}>
                 <label
                   style={{
                     display: "block",
                     fontSize: 11,
                     fontWeight: 800,
-                    marginBottom: 6,
-                    color: "#18181b",
+                    marginBottom: 7,
+                    color: "#334155",
                     textTransform: "uppercase",
-                    letterSpacing: "1px",
+                    letterSpacing: "0.09em",
                   }}
                 >
-                  Product Name / Title
+                  Display title
                 </label>
                 <input
                   required
@@ -8981,37 +9145,38 @@ export default function BlueprintDesign() {
                   onChange={(e) =>
                     setPublishForm({ ...publishForm, name: e.target.value })
                   }
+                  placeholder="Enter customer-facing blueprint title"
                   style={{
                     width: "100%",
-                    padding: "10px 14px",
-                    border: "1px solid #e4e4e7",
+                    minHeight: 46,
+                    padding: "0 14px",
+                    border: "1px solid #cfd6df",
                     borderRadius: 8,
                     boxSizing: "border-box",
                     outline: "none",
                     fontSize: 13,
-                    color: "#18181b",
+                    color: "#0f172a",
                   }}
                 />
               </div>
 
-              {/* 👉 FIX: Added the Description Box here! */}
-              <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 18 }}>
                 <label
                   style={{
                     display: "block",
                     fontSize: 11,
                     fontWeight: 800,
-                    marginBottom: 6,
-                    color: "#18181b",
+                    marginBottom: 7,
+                    color: "#334155",
                     textTransform: "uppercase",
-                    letterSpacing: "1px",
+                    letterSpacing: "0.09em",
                   }}
                 >
-                  Description
+                  Customer description
                 </label>
                 <textarea
                   required
-                  rows={3}
+                  rows={4}
                   value={publishForm.description}
                   onChange={(e) =>
                     setPublishForm({
@@ -9019,110 +9184,77 @@ export default function BlueprintDesign() {
                       description: e.target.value,
                     })
                   }
+                  placeholder="Describe the furniture design and its intended use"
                   style={{
                     width: "100%",
-                    padding: "10px 14px",
-                    border: "1px solid #e4e4e7",
+                    padding: "12px 14px",
+                    border: "1px solid #cfd6df",
                     borderRadius: 8,
                     boxSizing: "border-box",
                     outline: "none",
                     fontSize: 13,
-                    color: "#18181b",
+                    lineHeight: 1.6,
+                    color: "#0f172a",
                     resize: "vertical",
                   }}
                 />
               </div>
 
-              {/* 👉 FIX: Price is now at the bottom of Title and Description */}
-              <div style={{ marginBottom: 16 }}>
-                <label
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
+                  marginBottom: 24,
+                }}
+              >
+                <div
                   style={{
-                    display: "block",
-                    fontSize: 11,
-                    fontWeight: 800,
-                    marginBottom: 6,
-                    color: "#18181b",
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                  }}
-                >
-                  Base Price (₱)
-                </label>
-                <input
-                  type="number"
-                  required
-                  value={publishForm.online_price}
-                  onChange={(e) =>
-                    setPublishForm({
-                      ...publishForm,
-                      online_price: e.target.value,
-                    })
-                  }
-                  style={{
-                    width: "100%",
-                    padding: "10px 14px",
-                    border: "1px solid #e4e4e7",
+                    padding: "12px 14px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
                     borderRadius: 8,
-                    boxSizing: "border-box",
-                    outline: "none",
-                    fontSize: 13,
-                    color: "#18181b",
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: 32 }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: 11,
-                    fontWeight: 800,
-                    marginBottom: 6,
-                    color: "#18181b",
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
                   }}
                 >
-                  Category
-                </label>
-                <select
-                  value={publishForm.category_id}
-                  onChange={(e) =>
-                    setPublishForm({
-                      ...publishForm,
-                      category_id: e.target.value,
-                    })
-                  }
+                  <div style={{ fontSize: 10, color: "#64748b", fontWeight: 800 }}>
+                    CATALOG TYPE
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 700 }}>
+                    Custom Blueprint
+                  </div>
+                </div>
+                <div
                   style={{
-                    width: "100%",
-                    padding: "10px 14px",
-                    border: "1px solid #e4e4e7",
+                    padding: "12px 14px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
                     borderRadius: 8,
-                    boxSizing: "border-box",
-                    outline: "none",
-                    fontSize: 13,
-                    color: "#18181b",
-                    background: "#fff",
                   }}
                 >
-                  {/* 👉 FIX: Removed Standard Furniture */}
-                  <option value="2">Blueprints & Custom</option>
-                </select>
+                  <div style={{ fontSize: 10, color: "#64748b", fontWeight: 800 }}>
+                    CUSTOMER PRICE
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 700 }}>
+                    Quotation after estimation
+                  </div>
+                </div>
               </div>
 
               <div
-                style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}
+                style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}
               >
                 <button
                   type="button"
                   onClick={() => setPublishModal(false)}
+                  disabled={publishing}
                   style={{
-                    padding: "10px 16px",
-                    background: "#f4f4f5",
-                    border: "1px solid #e4e4e7",
-                    color: "#18181b",
+                    minHeight: 42,
+                    padding: "0 16px",
+                    background: "#ffffff",
+                    border: "1px solid #cfd6df",
+                    color: "#0f172a",
                     borderRadius: 8,
-                    cursor: "pointer",
+                    cursor: publishing ? "not-allowed" : "pointer",
                     fontSize: 13,
                     fontWeight: 700,
                   }}
@@ -9133,18 +9265,19 @@ export default function BlueprintDesign() {
                   type="submit"
                   disabled={publishing}
                   style={{
-                    padding: "10px 20px",
-                    background: "#18181b",
+                    minHeight: 42,
+                    padding: "0 20px",
+                    background: "#111827",
                     color: "#ffffff",
-                    border: "1px solid #18181b",
+                    border: "1px solid #111827",
                     borderRadius: 8,
-                    cursor: "pointer",
-                    fontWeight: 700,
+                    cursor: publishing ? "not-allowed" : "pointer",
+                    fontWeight: 800,
                     fontSize: 13,
-                    opacity: publishing ? 0.6 : 1,
+                    opacity: publishing ? 0.65 : 1,
                   }}
                 >
-                  {publishing ? "Publishing..." : "Publish Product"}
+                  {publishing ? "Publishing…" : "Publish to Gallery"}
                 </button>
               </div>
             </form>

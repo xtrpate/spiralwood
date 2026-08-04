@@ -69,12 +69,12 @@ const VIEWER_UI = {
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-    background: "rgba(9,14,25,.9)",
-    border: "1px solid rgba(148,163,184,.14)",
-    borderRadius: 14,
+    background: "rgba(7, 14, 26, 0.96)",
+    border: "1px solid rgba(112, 140, 176, 0.24)",
+    borderRadius: 10,
     padding: 12,
     backdropFilter: "blur(8px)",
-    boxShadow: "0 10px 30px rgba(0,0,0,.25)",
+    boxShadow: "0 18px 42px rgba(0,0,0,.30)",
     boxSizing: "border-box",
     zIndex: 9,
   },
@@ -91,18 +91,18 @@ const VIEWER_UI = {
     position: "absolute",
     top: 14,
     right: 14,
-    width: 320,
+    width: 352,
     maxWidth: "calc(100% - 28px)",
     maxHeight: "calc(100% - 28px)",
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-    background: "rgba(9,14,25,.9)",
-    border: "1px solid rgba(148,163,184,.14)",
-    borderRadius: 14,
+    background: "rgba(7, 14, 26, 0.96)",
+    border: "1px solid rgba(112, 140, 176, 0.24)",
+    borderRadius: 10,
     padding: 12,
     backdropFilter: "blur(8px)",
-    boxShadow: "0 10px 30px rgba(0,0,0,.25)",
+    boxShadow: "0 18px 42px rgba(0,0,0,.30)",
     boxSizing: "border-box",
     zIndex: 9,
   },
@@ -115,15 +115,15 @@ const VIEWER_UI = {
     position: "sticky",
     top: 0,
     zIndex: 2,
-    background: "rgba(9,14,25,.9)",
+    background: "rgba(7, 14, 26, 0.96)",
     paddingBottom: 2,
   },
 
   inspectorTabBtn: {
     height: 36,
     padding: "0 10px",
-    borderRadius: 10,
-    border: "1px solid rgba(71,85,105,.72)",
+    borderRadius: 7,
+    border: "1px solid rgba(89, 112, 143, 0.72)",
     background: "rgba(11,20,36,.92)",
     color: "#b7c5da",
     cursor: "pointer",
@@ -547,6 +547,7 @@ function VisualLibraryCard({
     return (
       <button
         type="button"
+        title={`${tooltip.title} · ${tooltip.material} · ${tooltip.dims}`}
         onPointerDown={onPointerDown}
         onDragStart={(e) => e.preventDefault()}
         onMouseEnter={() => setHovered(true)}
@@ -573,7 +574,7 @@ function VisualLibraryCard({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "122px minmax(0, 1fr)",
+            gridTemplateColumns: "104px minmax(0, 1fr)",
             alignItems: "stretch",
             gap: 10,
             width: "100%",
@@ -649,7 +650,7 @@ function VisualLibraryCard({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              paddingRight: 8,
+              paddingRight: 4,
             }}
           >
             <div
@@ -662,7 +663,11 @@ function VisualLibraryCard({
                 letterSpacing: ".01em",
                 textAlign: "left",
                 overflow: "hidden",
-                wordBreak: "break-word",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                wordBreak: "normal",
+                overflowWrap: "anywhere",
               }}
             >
               {tooltip.title}
@@ -719,6 +724,7 @@ function VisualLibraryCard({
   return (
     <button
       type="button"
+      title={`${tooltip.title} · ${tooltip.material} · ${tooltip.dims}`}
       onPointerDown={onPointerDown}
       onDragStart={(e) => e.preventDefault()}
       onMouseEnter={() => setHovered(true)}
@@ -1010,8 +1016,8 @@ function Floating3DPalette({
       <div
         style={{
           ...VIEWER_UI.sideDockPanel,
-          width: 262,
-          padding: 8,
+          width: 310,
+          padding: 10,
           borderRadius: 14,
           opacity: isOpen ? 1 : 0,
           transform: isOpen ? "translateX(0)" : "translateX(-18px)",
@@ -1024,7 +1030,7 @@ function Floating3DPalette({
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={S.floatingTitle}>Furniture Library</div>
               <div style={S.librarySubtleText}>
-                Click-hold to spawn, then drag to place
+                Click and hold an item, then drag it into the workspace.
               </div>
             </div>
 
@@ -1440,6 +1446,46 @@ function Floating3DInspector({
     height: 36,
   };
 
+  const inspectorSectionStyle = {
+    marginBottom: 12,
+    padding: 10,
+    border: "1px solid rgba(71,85,105,.62)",
+    borderRadius: 8,
+    background: "rgba(11,20,36,.72)",
+    boxSizing: "border-box",
+  };
+
+  const inspectorSectionTitleStyle = {
+    marginBottom: 8,
+    fontSize: 9,
+    fontWeight: 800,
+    letterSpacing: "0.12em",
+    textTransform: "uppercase",
+    color: "#8fa4c0",
+  };
+
+  const inspectorFieldGridStyle = {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 8,
+  };
+
+  const inspectorUnitInputWrapStyle = {
+    position: "relative",
+    minWidth: 0,
+  };
+
+  const inspectorUnitSuffixStyle = {
+    position: "absolute",
+    right: 8,
+    top: "50%",
+    transform: "translateY(-50%)",
+    color: "#64748b",
+    fontSize: 9,
+    fontWeight: 700,
+    pointerEvents: "none",
+  };
+
   return (
     <div style={VIEWER_UI.inspectorDockedPanel}>
       <div style={VIEWER_UI.inspectorTabsRow}>
@@ -1471,55 +1517,175 @@ function Floating3DInspector({
           renderSmartBuild
         ) : selectedComp ? (
           <>
-            <div style={S.floatingTitle}>Selected Object</div>
+            <div
+              style={{
+                ...inspectorSectionStyle,
+                padding: 12,
+                background:
+                  "linear-gradient(180deg, rgba(17,31,53,.92) 0%, rgba(11,20,36,.92) 100%)",
+                borderColor: "rgba(89,112,143,.72)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      color: "#f3f7ff",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      lineHeight: 1.35,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={selectedComp.label}
+                  >
+                    {selectedComp.label || "Selected Object"}
+                  </div>
 
-            <div style={infoCardStyle}>
-              <div>
-                <b>
-                  {selectedComp.partCode
-                    ? `${selectedComp.partCode} — ${selectedComp.label}`
-                    : selectedComp.label}
-                </b>
+                  <div
+                    style={{
+                      marginTop: 3,
+                      color: "#91a4bf",
+                      fontSize: 10,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {selectedComp.material || "No material assigned"}
+                  </div>
+                </div>
+
+                <span
+                  style={{
+                    flexShrink: 0,
+                    minHeight: 22,
+                    padding: "0 8px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    border: "1px solid rgba(96,165,250,.34)",
+                    borderRadius: 999,
+                    background: "rgba(37,99,235,.14)",
+                    color: "#bfdbfe",
+                    fontSize: 9,
+                    fontWeight: 800,
+                    letterSpacing: ".04em",
+                  }}
+                >
+                  {editorMode !== "editable" || isLocked(selectedComp)
+                    ? "LOCKED"
+                    : "EDITABLE"}
+                </span>
               </div>
-              <div>
-                {formatDims(
-                  selectedComp.width,
-                  selectedComp.height,
-                  selectedComp.depth,
-                  unit,
-                )}
+
+              {selectedComp.partCode ? (
+                <div
+                  style={{
+                    marginTop: 8,
+                    paddingTop: 8,
+                    borderTop: "1px solid rgba(71,85,105,.52)",
+                    color: "#93a8c4",
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: ".08em",
+                  }}
+                >
+                  TECHNICAL ID · {selectedComp.partCode}
+                </div>
+              ) : null}
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr",
+                  gap: 4,
+                  marginTop: 9,
+                  color: "#c8d5e8",
+                  fontSize: 10,
+                  lineHeight: 1.5,
+                }}
+              >
+                <div>
+                  Size ·{" "}
+                  {formatDims(
+                    selectedComp.width,
+                    selectedComp.height,
+                    selectedComp.depth,
+                    unit,
+                  )}
+                </div>
+                <div>
+                  Position · X {formatDim(selectedComp.x, unit)} · Y{" "}
+                  {formatDim(selectedComp.y, unit)} · Z{" "}
+                  {formatDim(selectedComp.z, unit)}
+                </div>
+                <div>Rotation · {selectedComp.rotationY || 0}°</div>
               </div>
-              <div>
-                X {formatDim(selectedComp.x, unit)} · Y{" "}
-                {formatDim(selectedComp.y, unit)} · Z{" "}
-                {formatDim(selectedComp.z, unit)}
-              </div>
-              <div>Rot Y: {selectedComp.rotationY || 0}°</div>
-              <div>{selectedComp.material || "—"}</div>
             </div>
 
-            {[
-              ["Width", "width"],
-              ["Height", "height"],
-              ["Depth", "depth"],
-              ["X", "x"],
-              ["Y", "y"],
-              ["Z", "z"],
-            ].map(([label, key]) => (
-              <div key={key} style={{ marginBottom: 6 }}>
-                <label style={S.floatingLabel}>
-                  {label} ({unitLabel})
-                </label>
-                <input
-                  type="number"
-                  step={unit === "inch" ? "0.01" : "1"}
-                  value={mmToDisplay(selectedComp[key] ?? 0, unit)}
-                  disabled={editorMode !== "editable" || isLocked(selectedComp)}
-                  onChange={handleNumericChange(key)}
-                  style={inputStyle}
-                />
+            <div style={inspectorSectionStyle}>
+              <div style={inspectorSectionTitleStyle}>Dimensions</div>
+              <div style={inspectorFieldGridStyle}>
+                {[
+                  ["Width", "width"],
+                  ["Height", "height"],
+                  ["Depth", "depth"],
+                ].map(([label, key]) => (
+                  <div key={key} style={{ minWidth: 0 }}>
+                    <label style={S.floatingLabel}>{label}</label>
+                    <div style={inspectorUnitInputWrapStyle}>
+                      <input
+                        type="number"
+                        step={unit === "inch" ? "0.01" : "1"}
+                        value={mmToDisplay(selectedComp[key] ?? 0, unit)}
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
+                        onChange={handleNumericChange(key)}
+                        style={{ ...inputStyle, paddingRight: 30 }}
+                      />
+                      <span style={inspectorUnitSuffixStyle}>{unitLabel}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+
+            <div style={inspectorSectionStyle}>
+              <div style={inspectorSectionTitleStyle}>Position</div>
+              <div style={inspectorFieldGridStyle}>
+                {[
+                  ["X", "x"],
+                  ["Y", "y"],
+                  ["Z", "z"],
+                ].map(([label, key]) => (
+                  <div key={key} style={{ minWidth: 0 }}>
+                    <label style={S.floatingLabel}>{label}</label>
+                    <div style={inspectorUnitInputWrapStyle}>
+                      <input
+                        type="number"
+                        step={unit === "inch" ? "0.01" : "1"}
+                        value={mmToDisplay(selectedComp[key] ?? 0, unit)}
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
+                        onChange={handleNumericChange(key)}
+                        style={{ ...inputStyle, paddingRight: 30 }}
+                      />
+                      <span style={inspectorUnitSuffixStyle}>{unitLabel}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={inspectorSectionTitleStyle}>Geometry</div>
 
             <div style={{ marginBottom: 6 }}>
               <label style={S.floatingLabel}>
@@ -1951,6 +2117,8 @@ function Floating3DInspector({
               </div>
             )}
 
+            <div style={inspectorSectionTitleStyle}>Identity & Rotation</div>
+
             <div style={{ marginBottom: 6 }}>
               <label style={S.floatingLabel}>Rotation Y (°)</label>
               <input
@@ -1977,6 +2145,8 @@ function Floating3DInspector({
                 style={inputStyle}
               />
             </div>
+
+            <div style={inspectorSectionTitleStyle}>Material & Finish</div>
 
             <div style={{ marginBottom: 6 }}>
               <label style={S.floatingLabel}>Fill Color</label>

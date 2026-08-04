@@ -14,14 +14,9 @@ const STAGE_COLORS = {
   archived: ["#f4f4f5", "#71717a", "#e4e4e7"],
 };
 
-const TABS = ["my", "imports", "gallery", "archive"];
+const TABS = ["my", "archive"];
 const ALLOWED_IMPORT_EXTENSIONS = ["pdf", "png", "jpg", "jpeg", "svg"];
 const MAX_IMPORT_FILE_SIZE_MB = 15;
-
-const CREATE_MODES = [
-  { value: "scratch", label: "Scratch Design" },
-  { value: "reference", label: "Reference Import" },
-];
 
 const DEFAULT_CREATE_FORM = {
   title: "",
@@ -378,11 +373,6 @@ export default function BlueprintsPage() {
       toast.success("Blueprint created.");
       closeCreateModal();
 
-      if (createForm.startMode === "reference") {
-        navigate(`/admin/blueprints/${newId}/import`);
-        return;
-      }
-
       navigate(`/admin/blueprints/${newId}/design`);
     } catch (err) {
       toast.error(
@@ -421,9 +411,6 @@ export default function BlueprintsPage() {
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => setImportModal(true)} style={btnGhost}>
-            📂 Import File
-          </button>
           <button onClick={() => setCreateModal(true)} style={btnPrimary}>
             + New Blueprint
           </button>
@@ -460,13 +447,7 @@ export default function BlueprintsPage() {
               transition: "all 0.2s ease",
             }}
           >
-            {t === "my"
-              ? "My Blueprints"
-              : t === "imports"
-                ? "Device Imports"
-                : t === "gallery"
-                  ? "Blueprint Gallery"
-                  : "Archive"}
+            {t === "my" ? "My Blueprints" : "Archive"}
           </button>
         ))}
 
@@ -1043,126 +1024,24 @@ export default function BlueprintsPage() {
                 />
               </div>
 
-              <div style={{ marginBottom: 20 }}>
-                <label style={labelSm}>Start Mode *</label>
-                <select
-                  value={createForm.startMode}
-                  onChange={(e) =>
-                    updateCreateForm("startMode", e.target.value)
-                  }
-                  style={inputFull}
-                >
-                  {CREATE_MODES.map((mode) => (
-                    <option key={mode.value} value={mode.value}>
-                      {mode.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div
-                style={{
-                  marginBottom: 20,
-                  padding: "16px",
-                  borderRadius: 12,
-                  background: "#fafafa",
-                  border: "1px solid #e4e4e7",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 800,
-                    color: "#0a0a0a",
-                    marginBottom: 12,
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                  }}
-                >
-                  Publish Options
-                </div>
-
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "#18181b",
-                    marginBottom: 12,
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!createForm.is_template}
-                    onChange={(e) =>
-                      updateCreateForm("is_template", e.target.checked)
-                    }
-                    style={{ accentColor: "#18181b", width: 16, height: 16 }}
-                  />
-                  Mark as Admin Template
-                </label>
-
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: "#18181b",
-                    cursor: "pointer",
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!createForm.is_gallery}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setCreateForm((prev) => ({
-                        ...prev,
-                        is_gallery: checked,
-                        is_template: checked ? true : prev.is_template,
-                      }));
-                    }}
-                    style={{ accentColor: "#18181b", width: 16, height: 16 }}
-                  />
-                  Show in Customer Customize Gallery
-                </label>
-
-                <div
-                  style={{
-                    marginTop: 12,
-                    fontSize: 12,
-                    color: "#71717a",
-                    lineHeight: 1.5,
-                  }}
-                >
-                  Customer gallery items are automatically treated as templates.
-                </div>
-              </div>
-
               <div
                 style={{
                   marginBottom: 24,
-                  padding: "12px 16px",
-                  borderRadius: 8,
-                  background: "#f4f4f5",
+                  padding: "14px 16px",
+                  borderRadius: 10,
+                  background: "#f7f7f8",
                   border: "1px solid #e4e4e7",
                   fontSize: 13,
-                  color: "#18181b",
+                  color: "#3f3f46",
                   lineHeight: 1.6,
                 }}
               >
-                <div style={{ marginBottom: 4 }}>
-                  <strong style={{ fontWeight: 800 }}>Unit:</strong> MM only
+                <div style={{ fontWeight: 800, color: "#18181b", marginBottom: 4 }}>
+                  Blank editable workspace · MM units
                 </div>
-                <div style={{ color: "#52525b" }}>
-                  {createForm.startMode === "reference"
-                    ? "After create, this will open the reference import page."
-                    : "After create, this will open the editor. Furniture type and dimensions will come from the actual design."}
+                <div>
+                  The blueprint will open directly in the design editor. Publish it
+                  to the customer customize gallery only after the design is complete.
                 </div>
               </div>
 
