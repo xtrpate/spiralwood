@@ -35,25 +35,35 @@ export default function StaticPagesPage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [showPrev, setShowPrev] = useState(false);
 
   const load = async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const { data } = await api.get("/website/pages");
       const map = {};
-      data.forEach((p) => {
+      (Array.isArray(data) ? data : []).forEach((p) => {
         map[p.slug] = p;
       });
       setPages(map);
-      // Load first tab
-      const first = map["about_us"];
-      if (first)
-        setForm({
-          title: first.title,
-          content: first.content,
-          is_visible: !!first.is_visible,
-        });
+
+      const first = map.about_us;
+      setForm(
+        first
+          ? {
+              title: first.title || "",
+              content: first.content || "",
+              is_visible: !!first.is_visible,
+            }
+          : { title: "", content: "", is_visible: true },
+      );
+    } catch (error) {
+      const message =
+        error.response?.data?.message || "Unable to load page content.";
+      setLoadError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -88,9 +98,15 @@ export default function StaticPagesPage() {
     try {
       await api.put(`/website/pages/${active}`, form);
       toast.success(`${PAGE_META[active]?.label} page saved.`);
-      // Update local cache
-      setPages((p) => ({ ...p, [active]: { ...p[active], ...form } }));
+      setPages((p) => ({
+        ...p,
+        [active]: { ...p[active], slug: active, ...form },
+      }));
       setDirty(false);
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message || "Unable to save page content.",
+      );
     } finally {
       setSaving(false);
     }
@@ -99,6 +115,17 @@ export default function StaticPagesPage() {
   const meta = PAGE_META[active];
 
   if (loading) return <div style={center}>Loading pages...</div>;
+
+  if (loadError) {
+    return (
+      <div style={{ ...center, flexDirection: "column", gap: 12 }}>
+        <div style={{ color: "#991b1b" }}>{loadError}</div>
+        <button onClick={load} style={btnPrimary}>
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div>

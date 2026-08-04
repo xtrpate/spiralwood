@@ -110,19 +110,40 @@ export default function WebsiteSettingsPage() {
   const [preview, setPreview] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [activeTab, setActiveTab] = useState("display");
 
   useEffect(() => {
-    api
-      .get("/website/settings")
-      .then(({ data }) => {
+    let cancelled = false;
+
+    const loadSettings = async () => {
+      try {
+        setLoadError("");
+        const { data } = await api.get("/website/settings");
+        if (cancelled) return;
+
         // Flatten grouped object → flat key:value
         const flat = {};
-        Object.values(data).forEach((group) => Object.assign(flat, group));
+        Object.values(data || {}).forEach((group) => {
+          if (group && typeof group === "object") Object.assign(flat, group);
+        });
         setSettings(flat);
-        if (flat.site_logo) setPreview(buildAssetUrl(flat.site_logo));
-      })
-      .finally(() => setLoading(false));
+        setPreview(flat.site_logo ? buildAssetUrl(flat.site_logo) : "");
+      } catch (error) {
+        if (cancelled) return;
+        const message =
+          error.response?.data?.message || "Unable to load website settings.";
+        setLoadError(message);
+        toast.error(message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadSettings();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const set = (key, val) => {
@@ -146,12 +167,34 @@ export default function WebsiteSettingsPage() {
       toast.success("Settings saved.");
       setDirty({});
       setLogoFile(null);
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message || "Unable to save website settings.",
+      );
     } finally {
       setSaving(false);
     }
   };
 
   if (loading) return <div style={center}>Loading settings...</div>;
+
+  if (loadError) {
+    return (
+      <div style={{ ...card, padding: 24 }}>
+        <h2 style={{ margin: 0, fontSize: 20 }}>Unable to load Site Settings</h2>
+        <p style={{ margin: "8px 0 0", color: "#71717a", fontSize: 13 }}>
+          {loadError}
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          style={{ ...btnPrimary, marginTop: 16 }}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
 
   // Keys that belong to this tab's group
   const tabKeys = Object.entries(KEY_META).filter(([key]) => {

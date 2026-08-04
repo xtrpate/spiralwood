@@ -462,7 +462,7 @@ router.put(
   "/website/settings",
   adminOnly,
   upload.uploadSiteLogo,
-  logAction("update_website_settings", "website_settings"),
+  logAction("update_website_settings", "website_content"),
   website.updateSettings,
 );
 
@@ -491,7 +491,7 @@ router.get("/website/pages/:slug", adminOnly, website.getPage);
 router.put(
   "/website/pages/:slug",
   adminOnly,
-  logAction("update_page", "static_pages"),
+  logAction("update_page", "website_content"),
   website.updatePage,
 );
 

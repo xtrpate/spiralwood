@@ -55,9 +55,16 @@ const KNOWN_PAGE_SLUGS = ["about_us", "contact", "faq"];
 // ── SETTINGS ─────────────────────────────────────────────────────────────────
 exports.getSettings = async (req, res) => {
   try {
-    // ── FIXED: Added empty array [] ──
+    // website_settings was merged into website_content. Settings are now
+    // stored as content_type='setting', keyed by content_key/content.
     const [rows] = await pool.query(
-      "SELECT setting_key, value, group_name FROM website_settings ORDER BY group_name, setting_key",
+      `SELECT
+         content_key AS setting_key,
+         content AS value,
+         group_name
+       FROM website_content
+       WHERE content_type = 'setting'
+       ORDER BY group_name, content_key`,
       [],
     );
     const grouped = rows.reduce((acc, r) => {
@@ -76,13 +83,21 @@ exports.updateSettings = async (req, res) => {
     await conn.beginTransaction();
 
     const [[existingLogo]] = await conn.query(
-      "SELECT value FROM website_settings WHERE setting_key = ? LIMIT 1",
+      `SELECT content AS value
+       FROM website_content
+       WHERE content_type = 'setting' AND content_key = ?
+       LIMIT 1`,
       ["site_logo"],
     );
     const hasLogoBefore = Boolean(existingLogo?.value);
 
     const [existingRows] = await conn.query(
-      "SELECT setting_key, value, group_name FROM website_settings",
+      `SELECT
+         content_key AS setting_key,
+         content AS value,
+         group_name
+       FROM website_content
+       WHERE content_type = 'setting'`,
     );
     const existingMap = new Map(
       existingRows.map((r) => [r.setting_key, { value: r.value, group_name: r.group_name }]),
@@ -95,7 +110,7 @@ exports.updateSettings = async (req, res) => {
 
       const existing = existingMap.get(key);
 
-      // Normalize to strings before comparing — website_settings.value is
+      // Normalize to strings before comparing — website_content.content is
       // TEXT, but a direct JSON request could send a number or boolean,
       // which would otherwise falsely register as "changed" every time.
       const nextValue =
@@ -110,12 +125,13 @@ exports.updateSettings = async (req, res) => {
       if (!valueChanged && !groupChanged) continue; // genuine no-op, skip
 
       await conn.query(
-        `INSERT INTO website_settings
-           (setting_key, value, group_name, updated_by)
+        `INSERT INTO website_content
+           (content_key, content_type, content, group_name, is_visible, updated_by)
          VALUES
-           (?, ?, ?, ?)
+           (?, 'setting', ?, ?, 1, ?)
          ON DUPLICATE KEY UPDATE
-           value = VALUES(value),
+           content_type = 'setting',
+           content = VALUES(content),
            group_name = VALUES(group_name),
            updated_by = VALUES(updated_by)`,
         [key, nextValue, groupName, parseInt(req.user.id)],
@@ -125,13 +141,24 @@ exports.updateSettings = async (req, res) => {
     if (req.file) {
       const logoUrl = `/uploads/settings/${req.file.filename}`;
       await conn.query(
-        "UPDATE website_settings SET value = ?, updated_by = ? WHERE setting_key = ?",
-        [logoUrl, parseInt(req.user.id), "site_logo"],
+        `INSERT INTO website_content
+           (content_key, content_type, content, group_name, is_visible, updated_by)
+         VALUES
+           ('site_logo', 'setting', ?, 'display', 1, ?)
+         ON DUPLICATE KEY UPDATE
+           content_type = 'setting',
+           content = VALUES(content),
+           group_name = 'display',
+           updated_by = VALUES(updated_by)`,
+        [logoUrl, parseInt(req.user.id)],
       );
     }
 
     const [[updatedLogo]] = await conn.query(
-      "SELECT value FROM website_settings WHERE setting_key = ? LIMIT 1",
+      `SELECT content AS value
+       FROM website_content
+       WHERE content_type = 'setting' AND content_key = ?
+       LIMIT 1`,
       ["site_logo"],
     );
     const hasLogoAfter = Boolean(updatedLogo?.value);
@@ -278,12 +305,24 @@ exports.deleteFaq = async (req, res) => {
 };
 
 // ── STATIC PAGES ─────────────────────────────────────────────────────────────
+// static_pages was merged into website_content. Static page rows are stored
+// with content_type='page' and use content_key as the page slug.
 exports.getPages = async (req, res) => {
   try {
-    // ── FIXED: Added empty array [] ──
     const [rows] = await pool.query(
-      "SELECT * FROM static_pages ORDER BY slug",
-      [],
+      `SELECT
+         id,
+         content_key AS slug,
+         title,
+         content,
+         is_visible,
+         updated_by,
+         updated_at
+       FROM website_content
+       WHERE content_type = 'page'
+         AND content_key IN (?, ?, ?)
+       ORDER BY FIELD(content_key, ?, ?, ?)`,
+      [...KNOWN_PAGE_SLUGS, ...KNOWN_PAGE_SLUGS],
     );
     res.json(rows);
   } catch (err) {
@@ -293,10 +332,26 @@ exports.getPages = async (req, res) => {
 
 exports.getPage = async (req, res) => {
   try {
+    const slug = req.params.slug;
+    if (!KNOWN_PAGE_SLUGS.includes(slug)) {
+      return res.status(404).json({ message: "Page not found." });
+    }
+
     const [[page]] = await pool.query(
-      "SELECT * FROM static_pages WHERE slug = ?",
-      [req.params.slug],
+      `SELECT
+         id,
+         content_key AS slug,
+         title,
+         content,
+         is_visible,
+         updated_by,
+         updated_at
+       FROM website_content
+       WHERE content_type = 'page' AND content_key = ?
+       LIMIT 1`,
+      [slug],
     );
+
     if (!page) return res.status(404).json({ message: "Page not found." });
     res.json(page);
   } catch (err) {
@@ -306,58 +361,73 @@ exports.getPage = async (req, res) => {
 
 exports.updatePage = async (req, res) => {
   try {
-    const { title, content, is_visible } = req.body;
     const slug = req.params.slug;
-
     if (!KNOWN_PAGE_SLUGS.includes(slug)) {
       return res.status(404).json({ message: "Page not found." });
     }
 
+    const nextTitle =
+      req.body.title === null || req.body.title === undefined
+        ? ""
+        : String(req.body.title);
+    const nextContent =
+      req.body.content === null || req.body.content === undefined
+        ? ""
+        : String(req.body.content);
+    const submittedVisible = req.body.is_visible;
+    const nextVisible =
+      submittedVisible === true ||
+      submittedVisible === 1 ||
+      submittedVisible === "1" ||
+      submittedVisible === "true"
+        ? 1
+        : 0;
+
     const [[oldPage]] = await pool.query(
-      "SELECT id, title, content, is_visible FROM static_pages WHERE slug = ?",
+      `SELECT id, title, content, is_visible
+       FROM website_content
+       WHERE content_type = 'page' AND content_key = ?
+       LIMIT 1`,
       [slug],
     );
 
     const isNew = !oldPage;
-    const titleChanged = isNew || oldPage.title !== title;
-    const contentChanged = isNew || oldPage.content !== content;
-
-    // Normalize is_visible explicitly — Boolean("false") is true, so a
-    // naive Boolean() coercion of a submitted string would misreport an
-    // intended "hide this page" as no change (or as a change when there
-    // isn't one).
-    const nextVisible =
-      is_visible === true ||
-      is_visible === 1 ||
-      is_visible === "1" ||
-      is_visible === "true"
-        ? 1
-        : 0;
+    const titleChanged = isNew || String(oldPage.title ?? "") !== nextTitle;
+    const contentChanged =
+      isNew || String(oldPage.content ?? "") !== nextContent;
     const visibilityChanged =
       isNew || Number(oldPage.is_visible) !== nextVisible;
 
     if (!isNew && !titleChanged && !contentChanged && !visibilityChanged) {
-      // Genuine no-op resubmission — nothing changed, skip the write
-      // and the audit record entirely.
       return res.json({ message: "Page updated." });
     }
 
     const [upsertResult] = await pool.query(
-      `INSERT INTO static_pages
-         (slug, title, content, is_visible, updated_by)
+      `INSERT INTO website_content
+         (content_key, content_type, title, content, group_name, is_visible, updated_by)
        VALUES
-         (?, ?, ?, ?, ?)
+         (?, 'page', ?, ?, NULL, ?, ?)
        ON DUPLICATE KEY UPDATE
+         content_type = 'page',
          title = VALUES(title),
          content = VALUES(content),
+         group_name = NULL,
          is_visible = VALUES(is_visible),
          updated_by = VALUES(updated_by)`,
-      [slug, title, content, nextVisible, parseInt(req.user.id)],
+      [
+        slug,
+        nextTitle,
+        nextContent,
+        nextVisible,
+        parseInt(req.user.id),
+      ],
     );
 
     req.auditRecord = {
       id: oldPage?.id || upsertResult.insertId || null,
-      old: { is_visible: isNew ? null : Boolean(oldPage.is_visible) },
+      old: {
+        is_visible: isNew ? null : Boolean(oldPage.is_visible),
+      },
       new: {
         page_slug: slug,
         title_changed: titleChanged,
