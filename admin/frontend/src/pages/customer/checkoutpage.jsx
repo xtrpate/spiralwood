@@ -17,12 +17,6 @@ const PAYMENT_METHODS = [
     desc: "Pay when the order is delivered.",
   },
   {
-    value: "cop",
-    icon: "🏪",
-    label: "Cash on Pick-up",
-    desc: "Pay when the order is picked up.",
-  },
-  {
     value: "paymongo",
     icon: "💳",
     label: "Pay Online",

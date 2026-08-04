@@ -1,40 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle, Receipt, MapPin } from "lucide-react";
-import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
-import L from "leaflet";
+import { CheckCircle, Receipt } from "lucide-react";
+import LocationPicker from "../../components/LocationPicker";
 import "./ProcessOrder.css";
-
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
-  iconUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
-  shadowUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-});
-
-function MapInvalidator() {
-  const map = useMapEvents({});
-  useEffect(() => {
-    setTimeout(() => {
-      map.invalidateSize();
-    }, 100);
-  }, [map]);
-  return null;
-}
-
-function LocationPicker({ position, setPosition }) {
-  useMapEvents({
-    click(e) {
-      setPosition([e.latlng.lat, e.latlng.lng]);
-    },
-  });
-
-  return position === null ? null : <Marker position={position} />;
-}
 
 const isValidPHPhone = (value) => {
   const digits = String(value || "").replace(/\D/g, "");
@@ -120,7 +89,6 @@ export default function ProcessOrder() {
     notes: "",
   });
 
-  const [mapPosition, setMapPosition] = useState(null); // Default center around Marilao/Bulacan
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(null);
   const [error, setError] = useState("");
@@ -142,14 +110,37 @@ export default function ProcessOrder() {
     }
   }, []);
 
-  const handleMapClick = (coords) => {
-    setMapPosition(coords);
+  const handleDeliveryAddressChange = (text) => {
     setForm((prev) => ({
       ...prev,
-      delivery_lat: coords[0],
-      delivery_lng: coords[1],
+      delivery_address: text,
     }));
   };
+
+  const handleDeliveryPinChange = (next) => {
+    setForm((prev) => ({
+      ...prev,
+      delivery_lat: Number.isFinite(next?.lat) ? next.lat : null,
+      delivery_lng: Number.isFinite(next?.lng) ? next.lng : null,
+    }));
+  };
+
+  const hasValidDeliveryPin =
+    form.delivery_lat !== null &&
+    form.delivery_lng !== null &&
+    Number.isFinite(Number(form.delivery_lat)) &&
+    Number.isFinite(Number(form.delivery_lng)) &&
+    Number(form.delivery_lat) >= -90 &&
+    Number(form.delivery_lat) <= 90 &&
+    Number(form.delivery_lng) >= -180 &&
+    Number(form.delivery_lng) <= 180;
+
+  const deliveryPin = hasValidDeliveryPin
+    ? {
+        lat: Number(form.delivery_lat),
+        lng: Number(form.delivery_lng),
+      }
+    : null;
 
   const subtotal = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0);
 
@@ -188,7 +179,9 @@ export default function ProcessOrder() {
 
   const deliveryIsValid =
     !form.need_delivery ||
-    (form.delivery_address.trim() && form.delivery_requested_date);
+    (form.delivery_address.trim() &&
+      hasValidDeliveryPin &&
+      form.delivery_requested_date);
 
   const baseFormIsValid =
     cart.length > 0 &&
@@ -259,6 +252,8 @@ export default function ProcessOrder() {
     if (form.need_delivery) {
       if (!form.delivery_address.trim())
         return setError("Delivery address is required.");
+      if (!hasValidDeliveryPin)
+        return setError("Pin the exact delivery location on the map.");
       if (!form.delivery_requested_date)
         return setError("Preferred delivery date and time is required.");
     }
@@ -321,6 +316,8 @@ export default function ProcessOrder() {
     if (!discountIsValid) return "Invalid discount amount.";
     if (form.need_delivery && !form.delivery_address.trim())
       return "Delivery address is required.";
+    if (form.need_delivery && !hasValidDeliveryPin)
+      return "Pin the exact delivery location on the map.";
     if (form.need_delivery && !form.delivery_requested_date)
       return "Preferred delivery date and time is required.";
     return null;
@@ -1230,97 +1227,34 @@ export default function ProcessOrder() {
                       marginTop: 8,
                     }}
                   >
-                    <div
-                      style={{
-                        gridColumn: "1 / -1",
-                        display: "flex",
-                        gap: "12px",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div style={{ flex: 2, minWidth: "200px" }}>
-                        <label style={labelStyle}>Delivery Address *</label>
-                        <input
-                          type="text"
-                          placeholder="Full delivery address"
-                          value={form.delivery_address}
-                          onChange={(e) =>
-                            setForm({
-                              ...form,
-                              delivery_address: e.target.value,
-                            })
-                          }
-                          required={form.need_delivery}
-                          style={inputStyle}
-                        />
-                      </div>
-                      <div style={{ flex: 1, minWidth: "120px" }}>
-                        <label style={labelStyle}>Delivery Fee (₱)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="e.g. 150"
-                          value={form.delivery_fee}
-                          onChange={(e) =>
-                            setForm({ ...form, delivery_fee: e.target.value })
-                          }
-                          style={inputStyle}
-                        />
-                      </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <LocationPicker
+                        label="Delivery Address & Exact Location *"
+                        addressValue={form.delivery_address}
+                        onAddressChange={handleDeliveryAddressChange}
+                        value={deliveryPin}
+                        onChange={handleDeliveryPinChange}
+                        height={260}
+                        showCurrentLocation={false}
+                      />
                     </div>
 
-                    {/* 👉 Map selector added here */}
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <label style={labelStyle}>
-                        <MapPin
-                          size={14}
-                          style={{
-                            display: "inline",
-                            marginRight: 4,
-                            verticalAlign: "middle",
-                          }}
-                        />
-                        Pin Exact Location on Map (Optional)
-                      </label>
-                      <div
-                        style={{
-                          height: 260,
-                          borderRadius: 10,
-                          overflow: "hidden",
-                          border: "1px solid #e4e4e7",
-                          marginTop: 6,
-                        }}
-                      >
-                        <MapContainer
-                          center={[14.7887, 120.9472]}
-                          zoom={13}
-                          style={{ height: "100%", width: "100%" }}
-                        >
-                          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                          <MapInvalidator />
-                          <LocationPicker
-                            position={mapPosition}
-                            setPosition={handleMapClick}
-                          />
-                        </MapContainer>
-                      </div>
-                      {form.delivery_lat && (
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "#059669",
-                            marginTop: 4,
-                            fontWeight: 700,
-                          }}
-                        >
-                          ✓ Location pinned: {form.delivery_lat.toFixed(5)},{" "}
-                          {form.delivery_lng.toFixed(5)}
-                        </div>
-                      )}
+                    <div>
+                      <label style={labelStyle}>Delivery Fee (₱)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="e.g. 150"
+                        value={form.delivery_fee}
+                        onChange={(e) =>
+                          setForm({ ...form, delivery_fee: e.target.value })
+                        }
+                        style={inputStyle}
+                      />
                     </div>
 
-                    <div style={{ gridColumn: "1 / -1" }}>
+                    <div>
                       <label style={labelStyle}>Preferred Date & Time *</label>
                       <input
                         type="datetime-local"

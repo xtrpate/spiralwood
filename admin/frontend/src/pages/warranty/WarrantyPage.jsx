@@ -28,6 +28,12 @@ const STATUS_META = {
     bg: "#fef2f2",
     border: "#fecaca",
   },
+  cancelled: {
+    label: "Cancelled",
+    tone: "#52525b",
+    bg: "#f4f4f5",
+    border: "#d4d4d8",
+  },
 };
 
 const formatDateTime = (value) => {
@@ -133,6 +139,7 @@ export default function WarrantyPage() {
       { label: "Approved", value: getStatusCount(rows, "approved") },
       { label: "Fulfilled", value: getStatusCount(rows, "fulfilled") },
       { label: "Rejected", value: getStatusCount(rows, "rejected") },
+      { label: "Cancelled", value: getStatusCount(rows, "cancelled") },
     ],
     [rows],
   );
@@ -229,6 +236,7 @@ export default function WarrantyPage() {
             <option value="approved">Approved</option>
             <option value="fulfilled">Fulfilled</option>
             <option value="rejected">Rejected</option>
+            <option value="cancelled">Cancelled</option>
           </select>
 
           <button
@@ -352,6 +360,10 @@ export default function WarrantyPage() {
                             ? `Fulfilled ${formatDateTime(row.fulfilled_at)}`
                             : row.status === "rejected"
                               ? "Rejected by admin"
+                              : row.status === "cancelled"
+                                ? row.updated_at
+                                  ? `Cancelled by customer ${formatDateTime(row.updated_at)}`
+                                  : "Cancelled by customer"
                               : "Awaiting admin action"}
                         </div>
                       </td>

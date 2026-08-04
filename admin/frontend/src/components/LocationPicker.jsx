@@ -138,6 +138,8 @@ function TileFallbackLayer({ onTileError, useFallback }) {
  * @param {string} [label="Address"] - set to "" to hide the label (parent
  *   supplying its own heading)
  * @param {number} [height=380] - map height in px
+ * @param {boolean} [showCurrentLocation=true] - whether to show the
+ *   current-location shortcut button
  */
 export default function LocationPicker({
   addressValue,
@@ -146,6 +148,7 @@ export default function LocationPicker({
   onChange,
   label = "Address",
   height = 380,
+  showCurrentLocation = true,
 }) {
   const hasPin = Boolean(
     value && Number.isFinite(value.lat) && Number.isFinite(value.lng),
@@ -362,25 +365,29 @@ export default function LocationPicker({
               fontSize: 13,
             }}
           />
-          <button
-            type="button"
-            onClick={handleUseCurrentLocation}
-            disabled={locStatus === "loading"}
-            style={{
-              flex: "1 1 auto",
-              padding: "8px 12px",
-              border: "1px solid #d4d4d4",
-              borderRadius: 8,
-              background: "#fff",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: locStatus === "loading" ? "default" : "pointer",
-              whiteSpace: "nowrap",
-              minHeight: 40,
-            }}
-          >
-            {locStatus === "loading" ? "Locating..." : "Use My Current Location"}
-          </button>
+          {showCurrentLocation && (
+            <button
+              type="button"
+              onClick={handleUseCurrentLocation}
+              disabled={locStatus === "loading"}
+              style={{
+                flex: "1 1 auto",
+                padding: "8px 12px",
+                border: "1px solid #d4d4d4",
+                borderRadius: 8,
+                background: "#fff",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: locStatus === "loading" ? "default" : "pointer",
+                whiteSpace: "nowrap",
+                minHeight: 40,
+              }}
+            >
+              {locStatus === "loading"
+                ? "Locating..."
+                : "Use My Current Location"}
+            </button>
+          )}
         </div>
 
         {/* Suggestions float over the map instead of pushing it down —

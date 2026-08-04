@@ -45,7 +45,7 @@ exports.getClaims = async (req, res) => {
       LEFT JOIN users fulfiller
         ON fulfiller.id = w.fulfilled_by
       ORDER BY
-        FIELD(w.status, 'pending', 'approved', 'fulfilled', 'rejected'),
+        FIELD(w.status, 'pending', 'approved', 'fulfilled', 'rejected', 'cancelled'),
         w.created_at DESC
       `,
       [],

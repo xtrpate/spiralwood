@@ -7648,18 +7648,6 @@ export default function BlueprintDesign() {
               </button>
 
               <button
-                onClick={() => navigate(`/admin/blueprints/${id}/estimation`)}
-                style={{
-                  ...S.toolBtn,
-                  background: "#111827",
-                  color: "#ffffff",
-                  border: "1px solid #111827",
-                }}
-              >
-                Estimate
-              </button>
-
-              <button
                 onClick={() => {
                   setPublishForm((prev) => ({
                     ...prev,

@@ -4,6 +4,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const { authenticate, requireCustomer } = require("../middleware/auth");
+const { logAction } = require("../middleware/auditLog");
 const warrantyController = require("../controllers/customer/customer.warranty");
 const { verifyFileSignature } = require("../utils/verifyFileSignature");
 
@@ -80,6 +81,14 @@ router.post(
   requireCustomer,
   upload,
   warrantyController.submitClaim,
+);
+
+router.patch(
+  "/:id/cancel",
+  authenticate,
+  requireCustomer,
+  logAction("cancel_warranty_claim", "warranties"),
+  warrantyController.cancelClaim,
 );
 
 module.exports = router;
