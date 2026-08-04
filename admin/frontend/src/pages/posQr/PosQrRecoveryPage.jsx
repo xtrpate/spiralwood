@@ -11,6 +11,31 @@ const STATUS_OPTIONS = [
 
 const LIMIT_OPTIONS = [25, 50, 100];
 
+const UNPAID_CANCEL_REASONS = [
+  {
+    value: "customer_abandoned_checkout",
+    label: "Customer abandoned the checkout",
+  },
+  {
+    value: "cashier_cancelled_checkout",
+    label: "Cashier cancelled the checkout",
+  },
+  {
+    value: "duplicate_abandoned_attempt",
+    label: "Duplicate or abandoned attempt",
+  },
+  { value: "other", label: "Other approved reason" },
+];
+
+const EMPTY_UNPAID_CANCEL = {
+  open: false,
+  attemptId: null,
+  reasonCode: "customer_abandoned_checkout",
+  reservedItems: [],
+  expiresAt: null,
+  error: "",
+};
+
 const RELEASE_REASONS = [
   {
     value: "dashboard_no_session_found",
@@ -121,6 +146,12 @@ const formatCurrency = (value) => {
     currency: "PHP",
     minimumFractionDigits: 2,
   }).format(parsed);
+};
+
+const hasReachedExpiry = (value) => {
+  if (!value) return false;
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime()) && date.getTime() <= Date.now();
 };
 
 const formatDateTime = (value) => {
@@ -336,6 +367,7 @@ export default function PosQrRecoveryPage() {
 
   const [manualRelease, setManualRelease] = useState(EMPTY_MANUAL_RELEASE);
   const [tokenSecondsRemaining, setTokenSecondsRemaining] = useState(0);
+  const [unpaidCancel, setUnpaidCancel] = useState(EMPTY_UNPAID_CANCEL);
 
   const isAttemptBusy = useCallback(
     (attemptId) => Boolean(busyAttemptIds[attemptId]),
@@ -374,6 +406,10 @@ export default function PosQrRecoveryPage() {
   const closeManualRelease = useCallback(() => {
     setManualRelease(EMPTY_MANUAL_RELEASE);
     setTokenSecondsRemaining(0);
+  }, []);
+
+  const closeUnpaidCancel = useCallback(() => {
+    setUnpaidCancel(EMPTY_UNPAID_CANCEL);
   }, []);
 
   const loadAttempts = useCallback(
@@ -616,6 +652,84 @@ export default function PosQrRecoveryPage() {
     }
   };
 
+  const openUnpaidCancel = async (attemptId) => {
+    if (isAttemptBusy(attemptId) || !recoveryActionsEnabled) return;
+
+    setAttemptBusy(attemptId, true);
+    try {
+      const outcome = await fetchAttemptDetail(attemptId);
+      if (
+        outcome.kind !== "found" ||
+        outcome.attempt?.status !== "awaiting_payment" ||
+        !outcome.attempt?.session_attached
+      ) {
+        toast.error("This attempt is no longer eligible for cancellation.");
+        return;
+      }
+
+      setUnpaidCancel({
+        open: true,
+        attemptId,
+        reasonCode: "customer_abandoned_checkout",
+        reservedItems: Array.isArray(outcome.attempt.reserved_items)
+          ? outcome.attempt.reserved_items
+          : [],
+        expiresAt: outcome.attempt.expires_at || null,
+        error: "",
+      });
+    } finally {
+      setAttemptBusy(attemptId, false);
+    }
+  };
+
+  const handleCancelUnpaidAttempt = async () => {
+    const attemptId = unpaidCancel.attemptId;
+    if (
+      !attemptId ||
+      !unpaidCancel.reasonCode ||
+      isAttemptBusy(attemptId) ||
+      !recoveryActionsEnabled
+    ) {
+      return;
+    }
+
+    setUnpaidCancel((current) => ({ ...current, error: "" }));
+    setAttemptBusy(attemptId, true);
+    try {
+      const response = await api.post(
+        `/pos/qr-payments/attempts/${attemptId}/cancel-unpaid`,
+        { reason_code: unpaidCancel.reasonCode },
+      );
+      const payload = response.data || {};
+
+      if (payload.order_id || payload.receipt_id || payload.payment_transaction_id) {
+        setCompletionResult(payload);
+      }
+
+      closeUnpaidCancel();
+      removeAttemptLocally(attemptId);
+      await loadAttempts({ silent: true });
+      toast.success(
+        payload.message || "Unpaid attempt cancelled and stock restored.",
+      );
+    } catch (error) {
+      const status = error.response?.status;
+      const message =
+        error.response?.data?.message ||
+        "Unable to cancel the unpaid payment attempt.";
+
+      setUnpaidCancel((current) => ({ ...current, error: message }));
+
+      if (status === 403) setRecoveryActionsEnabled(false);
+      if (status === 404 || status === 409) {
+        const outcome = await reconcileAttempt(attemptId);
+        if (outcome.kind === "not_found") closeUnpaidCancel();
+      }
+    } finally {
+      setAttemptBusy(attemptId, false);
+    }
+  };
+
   const openManualRelease = async (attemptId) => {
     if (isAttemptBusy(attemptId) || !recoveryActionsEnabled) return;
 
@@ -816,8 +930,8 @@ export default function PosQrRecoveryPage() {
               }}
             >
               Review unresolved POS QR payments. Attach only an existing PayMongo
-              Checkout Session, verify an attached payment, or safely release a
-              provider-unknown reservation after confirmation.
+              Checkout Session, verify an attached payment, safely release a
+              provider-unknown reservation, or cancel an expired unpaid attempt.
             </p>
           </div>
           <button
@@ -850,7 +964,8 @@ export default function PosQrRecoveryPage() {
           role="status"
         >
           Recovery actions are disabled. You can still inspect unresolved attempts,
-          but Attach Session, Verify Payment, and Manual Release are unavailable.
+          but Attach Session, Verify Payment, Cancel & Release Stock, and Manual
+          Release are unavailable.
         </div>
       )}
 
@@ -941,6 +1056,10 @@ export default function PosQrRecoveryPage() {
                 const busy = isAttemptBusy(attempt.id);
                 const attachValue = attachSessionIds[attempt.id] || "";
                 const isSelected = selectedAttemptId === attempt.id;
+                const unpaidCancellationReady =
+                  attempt.status === "awaiting_payment" &&
+                  attempt.session_attached &&
+                  hasReachedExpiry(attempt.expires_at);
 
                 return (
                   <React.Fragment key={attempt.id}>
@@ -1023,20 +1142,49 @@ export default function PosQrRecoveryPage() {
 
                           {attempt.status === "awaiting_payment" &&
                             attempt.session_attached && (
-                              <button
-                                type="button"
-                                onClick={() => handleVerifyPayment(attempt.id)}
-                                disabled={busy || !recoveryActionsEnabled}
-                                style={{
-                                  ...pageStyles.button,
-                                  background: "#18181b",
-                                  color: "#ffffff",
-                                  opacity:
-                                    busy || !recoveryActionsEnabled ? 0.5 : 1,
-                                }}
-                              >
-                                {busy ? "Working…" : "Verify Payment"}
-                              </button>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleVerifyPayment(attempt.id)}
+                                  disabled={busy || !recoveryActionsEnabled}
+                                  style={{
+                                    ...pageStyles.button,
+                                    background: "#18181b",
+                                    color: "#ffffff",
+                                    opacity:
+                                      busy || !recoveryActionsEnabled ? 0.5 : 1,
+                                  }}
+                                >
+                                  {busy ? "Working…" : "Verify Payment"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openUnpaidCancel(attempt.id)}
+                                  disabled={
+                                    busy ||
+                                    !recoveryActionsEnabled ||
+                                    !unpaidCancellationReady
+                                  }
+                                  title={
+                                    unpaidCancellationReady
+                                      ? "Re-check PayMongo, expire the unpaid session, and restore reserved stock."
+                                      : `Available after ${formatDateTime(attempt.expires_at)}.`
+                                  }
+                                  style={{
+                                    ...pageStyles.button,
+                                    background: "#fee2e2",
+                                    color: "#991b1b",
+                                    opacity:
+                                      busy ||
+                                      !recoveryActionsEnabled ||
+                                      !unpaidCancellationReady
+                                        ? 0.5
+                                        : 1,
+                                  }}
+                                >
+                                  Cancel & Release Stock
+                                </button>
+                              </>
                             )}
                         </div>
                       </td>
@@ -1280,6 +1428,199 @@ export default function PosQrRecoveryPage() {
             </div>
           )}
         </section>
+      )}
+
+      {unpaidCancel.open && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="unpaid-cancel-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,0.62)",
+            padding: 18,
+          }}
+        >
+          <div
+            style={{
+              width: "min(620px, 96vw)",
+              maxHeight: "92vh",
+              overflowY: "auto",
+              background: "#ffffff",
+              borderRadius: 15,
+              boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
+              padding: 20,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: 12,
+              }}
+            >
+              <div>
+                <h2 id="unpaid-cancel-title" style={{ margin: 0, fontSize: 19 }}>
+                  Cancel Attempt & Release Stock — Attempt #{unpaidCancel.attemptId}
+                </h2>
+                <p
+                  style={{
+                    margin: "7px 0 0",
+                    color: "#71717a",
+                    fontSize: 12,
+                    lineHeight: 1.55,
+                  }}
+                >
+                  The system will re-check PayMongo. A pending Checkout Session
+                  will be expired first, and stock will be restored only after
+                  PayMongo confirms that no payment was completed.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeUnpaidCancel}
+                disabled={isAttemptBusy(unpaidCancel.attemptId)}
+                aria-label="Close unpaid cancellation modal"
+                style={{
+                  ...pageStyles.button,
+                  background: "#f4f4f5",
+                  color: "#18181b",
+                  padding: "6px 9px",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div
+              style={{
+                marginTop: 16,
+                padding: 12,
+                border: "1px solid #fecaca",
+                borderRadius: 9,
+                background: "#fef2f2",
+                color: "#991b1b",
+                fontSize: 12,
+                lineHeight: 1.55,
+              }}
+            >
+              If payment completed during this process, the system will finalize
+              the paid order instead of releasing stock.
+            </div>
+
+            <div style={{ marginTop: 17 }}>
+              <h3 style={{ fontSize: 13, margin: "0 0 8px" }}>
+                Reserved stock to restore
+              </h3>
+              <ReservedItemsTable items={unpaidCancel.reservedItems} />
+            </div>
+
+            <div
+              style={{
+                marginTop: 12,
+                fontSize: 12,
+                color: "#52525b",
+              }}
+            >
+              Attempt expiry: {formatDateTime(unpaidCancel.expiresAt)}
+            </div>
+
+            <label style={{ display: "block", marginTop: 17 }}>
+              <span style={pageStyles.label}>Cancellation reason</span>
+              <select
+                value={unpaidCancel.reasonCode}
+                onChange={(event) =>
+                  setUnpaidCancel((current) => ({
+                    ...current,
+                    reasonCode: event.target.value,
+                    error: "",
+                  }))
+                }
+                disabled={
+                  isAttemptBusy(unpaidCancel.attemptId) ||
+                  !recoveryActionsEnabled
+                }
+                style={pageStyles.input}
+              >
+                <option value="">Select one approved reason</option>
+                {UNPAID_CANCEL_REASONS.map((reason) => (
+                  <option key={reason.value} value={reason.value}>
+                    {reason.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {unpaidCancel.error && (
+              <div
+                style={{
+                  marginTop: 13,
+                  padding: 11,
+                  borderRadius: 8,
+                  background: "#fff7ed",
+                  color: "#9a3412",
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                }}
+              >
+                {unpaidCancel.error}
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 9,
+                marginTop: 20,
+                flexWrap: "wrap",
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeUnpaidCancel}
+                disabled={isAttemptBusy(unpaidCancel.attemptId)}
+                style={{
+                  ...pageStyles.button,
+                  background: "#e4e4e7",
+                  color: "#18181b",
+                }}
+              >
+                Keep Pending
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelUnpaidAttempt}
+                disabled={
+                  !unpaidCancel.reasonCode ||
+                  isAttemptBusy(unpaidCancel.attemptId) ||
+                  !recoveryActionsEnabled
+                }
+                style={{
+                  ...pageStyles.button,
+                  background: "#b91c1c",
+                  color: "#ffffff",
+                  opacity:
+                    !unpaidCancel.reasonCode ||
+                    isAttemptBusy(unpaidCancel.attemptId) ||
+                    !recoveryActionsEnabled
+                      ? 0.45
+                      : 1,
+                }}
+              >
+                {isAttemptBusy(unpaidCancel.attemptId)
+                  ? "Checking PayMongo…"
+                  : "Cancel Attempt & Release Stock"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {manualRelease.open && (

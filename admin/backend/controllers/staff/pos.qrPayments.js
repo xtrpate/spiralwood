@@ -17,6 +17,7 @@ const crypto = require("crypto");
 const db = require("../../config/db");
 const {
   createCheckoutSession,
+  expireCheckoutSession,
   retrieveCheckoutSession,
 } = require("../../services/paymongoService");
 const {
@@ -28,7 +29,9 @@ const {
   confirmManualRelease,
   loadManualReleaseSummary,
   loadProviderUnknownAttemptForRecovery,
+  markExpireRequested,
   parseAndValidateSnapshot,
+  releaseExpiredAttempt,
 } = require("../../services/posQrLifecycleService");
 const {
   signRecoveryToken,
@@ -48,6 +51,15 @@ const {
 
 const DEFAULT_TTL_MINUTES = 15;
 const MAX_TOKEN_LENGTH = 64;
+
+// Admin cancellation reasons for an attached, unpaid checkout. These are
+// intentionally fixed codes only: no free-text note is accepted or stored.
+const ALLOWED_UNPAID_CANCEL_REASON_CODES = new Set([
+  "customer_abandoned_checkout",
+  "cashier_cancelled_checkout",
+  "duplicate_abandoned_attempt",
+  "other",
+]);
 
 // DECIMAL(10,2) ceiling, expressed in integer centavos (99,999,999.99).
 // Narrower than MAX_DECIMAL_12_2_CENTS (imported above, used for
@@ -2744,3 +2756,308 @@ exports.recoveryVerifyAttempt = async (req, res) => {
     return res.status(500).json({ message: "Server error." });
   }
 };
+
+/* ══════════════════════════════════════════════════════════════════════
+   ADMIN RECOVERY — CANCEL ATTACHED UNPAID ATTEMPT
+   POST /api/pos/qr-payments/attempts/:id/cancel-unpaid
+
+   Safe release rules:
+   - admin-only and recovery-gated at the route and controller layers;
+   - requires an attached awaiting_payment attempt with no finalized links;
+   - re-reads PayMongo immediately before any stock release;
+   - a still-pending Checkout Session is expired first, then re-read;
+   - stock is released only after PayMongo confirms expired_unpaid;
+   - a payment that completed during the race is finalized instead;
+   - local TTL must already be reached (enforced by releaseExpiredAttempt).
+══════════════════════════════════════════════════════════════════════ */
+exports.cancelUnpaidAttempt = async (req, res) => {
+  if (!isPosQrRecoveryEnabled()) {
+    return res
+      .status(403)
+      .json({ message: "Recovery actions are not enabled." });
+  }
+  if (!isRecoveryProviderCallSafe()) {
+    return res.status(403).json({
+      message: "Unpaid payment cancellation is not available at this terminal.",
+    });
+  }
+
+  const attemptId = parseStrictPositiveInt(req.params.id);
+  if (!attemptId) {
+    return res
+      .status(400)
+      .json({ message: "A valid payment attempt id is required." });
+  }
+
+  const reasonCode = req.body?.reason_code;
+  if (
+    typeof reasonCode !== "string" ||
+    !ALLOWED_UNPAID_CANCEL_REASON_CODES.has(reasonCode)
+  ) {
+    return res.status(400).json({ message: "A valid reason_code is required." });
+  }
+
+  const providerErrorResponse = (err, fallbackMessage) => {
+    const providerStatus = err?.response?.status;
+    if (typeof providerStatus === "number") {
+      return res.status(502).json({
+        message:
+          providerStatus === 404
+            ? "The PayMongo Checkout Session could not be found. Stock was not released."
+            : fallbackMessage,
+      });
+    }
+    return res.status(502).json({
+      message:
+        "Payment provider is temporarily unavailable. Stock was not released.",
+    });
+  };
+
+  const finalizeInsteadOfCancel = async (analysis) => {
+    const finalized = await finalizePaidAttempt({
+      attemptId,
+      matchedPayment: analysis.payment,
+      actorUserId: req.user.id,
+      requireOwner: false,
+    });
+
+    if (finalized.freshCommit) {
+      req.auditRecord = {
+        id: attemptId,
+        old: { status: "awaiting_payment" },
+        new: {
+          status: "consumed",
+          resolution: "payment_completed_before_cancellation",
+          order_id: finalized.payload?.order_id || null,
+          payment_transaction_id:
+            finalized.payload?.payment_transaction_id || null,
+          receipt_id: finalized.payload?.receipt_id || null,
+          admin_user_id: req.user.id,
+        },
+      };
+    }
+
+    if (finalized.httpStatus !== 200) {
+      return res.status(finalized.httpStatus).json(finalized.payload);
+    }
+
+    return res.status(200).json({
+      ...finalized.payload,
+      cancellation_blocked: true,
+      message:
+        "Payment was completed before cancellation. The paid order was finalized instead.",
+    });
+  };
+
+  try {
+    const [[attemptRow]] = await db.query(
+      `SELECT * FROM pos_qr_payment_attempts WHERE id = ?`,
+      [attemptId],
+    );
+
+    if (!attemptRow) {
+      return res.status(404).json({ message: "Payment attempt not found." });
+    }
+    if (attemptRow.status !== "awaiting_payment") {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: attemptRow.status,
+        message: "This payment attempt is no longer awaiting cancellation.",
+      });
+    }
+    if (
+      attemptRow.order_id ||
+      attemptRow.payment_transaction_id ||
+      attemptRow.provider_payment_id
+    ) {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: attemptRow.status,
+        message: "This payment attempt already has finalized payment records.",
+      });
+    }
+    if (!isNonEmptyString(attemptRow.provider_session_id)) {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: attemptRow.status,
+        message: "This attempt has no attached Checkout Session to verify.",
+      });
+    }
+
+    const expectedTotalCents = getSnapshotTotalCents(
+      attemptRow.checkout_snapshot,
+    );
+    if (!expectedTotalCents) {
+      console.error(
+        "[pos.qrPayments cancelUnpaidAttempt] invalid checkout_snapshot",
+        { attemptId: attemptRow.id },
+      );
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    const analyzeCurrentSession = async () => {
+      const session = await retrieveCheckoutSession(
+        attemptRow.provider_session_id,
+        { timeoutMs: 15000 },
+      );
+      return analyzeCheckoutSession({
+        session,
+        expectedSessionId: attemptRow.provider_session_id,
+        expectedTotalCents,
+      });
+    };
+
+    let analysis;
+    let expireRequestMarked =
+      attemptRow.failure_code === "cleanup_expire_requested";
+    try {
+      analysis = await analyzeCurrentSession();
+    } catch (err) {
+      return providerErrorResponse(
+        err,
+        "Unable to verify payment status with PayMongo. Stock was not released.",
+      );
+    }
+
+    if (analysis.kind === "paid") {
+      return finalizeInsteadOfCancel(analysis);
+    }
+
+    if (analysis.kind === "pending") {
+      try {
+        await expireCheckoutSession(attemptRow.provider_session_id, {
+          timeoutMs: 15000,
+        });
+      } catch (err) {
+        return providerErrorResponse(
+          err,
+          "Unable to expire the PayMongo Checkout Session. Stock was not released.",
+        );
+      }
+
+      const marked = await markExpireRequested({
+        attemptId,
+        providerSessionId: attemptRow.provider_session_id,
+      });
+      if (!marked) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          message:
+            "This payment attempt changed while cancellation was being processed. Refresh and review it again.",
+        });
+      }
+      expireRequestMarked = true;
+
+      try {
+        analysis = await analyzeCurrentSession();
+      } catch (err) {
+        return providerErrorResponse(
+          err,
+          "The Checkout Session expiration was requested, but PayMongo could not yet confirm it. Stock was not released.",
+        );
+      }
+
+      if (analysis.kind === "paid") {
+        return finalizeInsteadOfCancel(analysis);
+      }
+
+      if (analysis.kind === "pending") {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: "expiration_requested",
+          message:
+            "Checkout Session expiration was requested. Wait a moment, then retry Cancel & Release Stock.",
+        });
+      }
+    }
+
+    if (analysis.kind !== "expired_unpaid") {
+      return res.status(409).json({
+        attempt_id: attemptId,
+        status: "manual_review",
+        message:
+          "PayMongo did not confirm an expired unpaid session. Stock was not released.",
+      });
+    }
+
+    // The session was already expired when first read, or was just expired
+    // above. Mark the expected lifecycle guard before the exact-once stock
+    // release transaction.
+    if (!expireRequestMarked) {
+      const marked = await markExpireRequested({
+        attemptId,
+        providerSessionId: attemptRow.provider_session_id,
+      });
+      if (!marked) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          message:
+            "This payment attempt changed while cancellation was being processed. Refresh and review it again.",
+        });
+      }
+    }
+
+    const released = await releaseExpiredAttempt({
+      attemptId,
+      allowedStatuses: ["awaiting_payment"],
+      expectedProviderSessionId: attemptRow.provider_session_id,
+    });
+
+    if (!released.changed) {
+      if (released.reason === "not_found") {
+        return res.status(404).json({ message: "Payment attempt not found." });
+      }
+      if (released.reason === "not_expired") {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: "awaiting_payment",
+          message:
+            "The 15-minute reservation period has not ended yet. Try again after the attempt expiry time.",
+        });
+      }
+      if (
+        released.reason === "status_changed" ||
+        released.reason === "linked_records_present" ||
+        released.reason === "provider_session_changed" ||
+        released.reason === "provider_expiry_not_confirmed" ||
+        released.reason === "no_active_reservations" ||
+        released.reason === "snapshot_mismatch"
+      ) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: released.status || null,
+          message:
+            "This payment attempt is no longer eligible for cancellation and stock release.",
+        });
+      }
+      console.error("[pos.qrPayments cancelUnpaidAttempt] release failed", {
+        attemptId,
+        reason: released.reason,
+      });
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    req.auditRecord = {
+      id: attemptId,
+      old: { status: "awaiting_payment" },
+      new: {
+        status: "expired",
+        reason_code: reasonCode,
+        provider_status: "expired_unpaid",
+        reservations_released: released.releasedCount,
+        admin_user_id: req.user.id,
+      },
+    };
+
+    return res.status(200).json({
+      attempt_id: attemptId,
+      status: "expired",
+      reservations_released: released.releasedCount,
+      message: "Unpaid attempt cancelled and reserved stock restored.",
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments cancelUnpaidAttempt]", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+

@@ -154,4 +154,17 @@ router.post(
   posQrPaymentsController.recoveryVerifyAttempt,
 );
 
+/* Safe cancellation for an attached awaiting_payment attempt. The
+   controller re-verifies PayMongo, expires a still-pending Checkout
+   Session, and releases stock only after expired_unpaid is confirmed. */
+router.post(
+  "/attempts/:id/cancel-unpaid",
+  recoveryAccess,
+  logAction(
+    "admin_resolve_unpaid_pos_qr_attempt",
+    "pos_qr_payment_attempts",
+  ),
+  posQrPaymentsController.cancelUnpaidAttempt,
+);
+
 module.exports = router;
