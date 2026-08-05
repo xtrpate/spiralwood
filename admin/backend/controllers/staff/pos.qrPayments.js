@@ -247,6 +247,20 @@ const buildSafeCheckoutSummary = (snapshot) => ({
   notes: snapshot.notes,
 });
 
+// Cashier resume only needs immutable line items and totals to rebuild the
+// locked Order Summary. Keep customer phone, address, and notes out of the
+// browser session state because they are not needed for this display fix.
+const buildCashierResumeCheckoutSummary = (snapshot) => {
+  const summary = buildSafeCheckoutSummary(snapshot);
+  return {
+    items: summary.items,
+    subtotal: summary.subtotal,
+    discount: summary.discount,
+    delivery_fee: summary.delivery_fee,
+    total: summary.total,
+  };
+};
+
 /* ── Normalization helpers — request INTENT only, never prices. These
    feed request_hash and must never change based on live DB values. ── */
 const normalizeText = (value) => String(value ?? "").trim().replace(/\s+/g, " ");
@@ -1600,6 +1614,7 @@ exports.resumeAttempt = async (req, res) => {
       });
     }
 
+    const checkoutSummary = buildCashierResumeCheckoutSummary(snapshot);
     const sessionAttached = isNonEmptyString(attempt.provider_session_id);
     const checkoutUrl =
       attempt.status === "awaiting_payment" &&
@@ -1618,6 +1633,7 @@ exports.resumeAttempt = async (req, res) => {
         total: snapshot.total,
         total_cents: snapshot.total_cents,
         item_count: snapshot.items.length,
+        checkout_summary: checkoutSummary,
         message:
           "The payment provider result is unresolved. Ask an administrator to review this attempt.",
       });
@@ -1634,6 +1650,7 @@ exports.resumeAttempt = async (req, res) => {
         total: snapshot.total,
         total_cents: snapshot.total_cents,
         item_count: snapshot.items.length,
+        checkout_summary: checkoutSummary,
         message: checkoutUrl
           ? "Existing online payment session restored."
           : "Payment session exists but its checkout link is unavailable.",
@@ -1650,6 +1667,7 @@ exports.resumeAttempt = async (req, res) => {
       total: snapshot.total,
       total_cents: snapshot.total_cents,
       item_count: snapshot.items.length,
+      checkout_summary: checkoutSummary,
       message: "Payment session is still being prepared.",
     });
   } catch (err) {
