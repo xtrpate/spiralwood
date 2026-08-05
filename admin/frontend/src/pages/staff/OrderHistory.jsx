@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
 import { Search, Calendar, FileText, Printer } from "lucide-react";
+import { formatPHDateTime } from "../../utils/dateTime";
 
 const getStatusStyle = (status) => {
   const s = String(status || "").toLowerCase();
@@ -225,7 +226,7 @@ export default function OrderHistory() {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {new Date(order.created_at).toLocaleString("en-PH", {
+                        {formatPHDateTime(order.created_at, {
                           month: "short",
                           day: "numeric",
                           year: "numeric",

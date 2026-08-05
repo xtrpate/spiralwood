@@ -515,6 +515,9 @@ const respondByStatus = (res, attempt) => {
     attempt_id: attempt.id,
     checkout_token: attempt.checkout_token,
     status: attempt.status,
+    created_at: attempt.created_at || null,
+    updated_at: attempt.updated_at || null,
+    expires_at: attempt.expires_at || null,
   };
 
   switch (attempt.status) {

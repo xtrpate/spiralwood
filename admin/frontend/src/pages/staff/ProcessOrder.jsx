@@ -3,6 +3,7 @@ import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle, Receipt } from "lucide-react";
 import LocationPicker from "../../components/LocationPicker";
+import PosCheckoutQr from "../../components/PosCheckoutQr";
 import "./ProcessOrder.css";
 
 const isValidPHPhone = (value) => {
@@ -469,6 +470,8 @@ export default function ProcessOrder() {
       checkout_url: existingDraft?.checkout_url || null,
       state: existingDraft?.state || "creating_attempt",
       created_at: existingDraft?.created_at || new Date().toISOString(),
+      updated_at: existingDraft?.updated_at || null,
+      expires_at: existingDraft?.expires_at || null,
       cart_fingerprint:
         existingDraft?.cart_fingerprint || buildCartFingerprint(cart),
     };
@@ -488,6 +491,8 @@ export default function ProcessOrder() {
         checkout_url: data.checkout_url || draft.checkout_url || null,
         state: data.status || "awaiting_payment",
         created_at: draft.created_at,
+        updated_at: data.updated_at || draft.updated_at || null,
+        expires_at: data.expires_at || draft.expires_at || null,
         cart_fingerprint: draft.cart_fingerprint,
       };
 
@@ -495,7 +500,7 @@ export default function ProcessOrder() {
       setQrNoticeTone(nextAttempt.checkout_url ? "success" : "info");
       setQrNotice(
         nextAttempt.checkout_url
-          ? "Online payment session is ready. Open PayMongo Checkout to continue."
+          ? "Online payment session is ready. Ask the customer to scan the QR code or open PayMongo Checkout."
           : data.message || "Payment session is still being prepared.",
       );
     } catch (err) {
@@ -1416,9 +1421,9 @@ export default function ProcessOrder() {
                     Online Payment Pending
                   </div>
                   <p className="pos-qr-pending-copy">
-                    The item stock is reserved for this payment attempt. Open
-                    PayMongo Checkout, complete the payment, then verify it
-                    here.
+                    The item stock is reserved for this payment attempt. Ask
+                    the customer to scan the QR code below, or open PayMongo
+                    Checkout as a fallback.
                   </p>
                   <div className="pos-qr-pending-amount">
                     ₱
@@ -1426,6 +1431,23 @@ export default function ProcessOrder() {
                       minimumFractionDigits: 2,
                     })}
                   </div>
+                  {qrAttempt.checkout_url && (
+                    <PosCheckoutQr
+                      checkoutUrl={qrAttempt.checkout_url}
+                      expiresAt={qrAttempt.expires_at}
+                      createdAt={qrAttempt.created_at}
+                      pollingDisabled={
+                        qrCreating ||
+                        qrVerifying ||
+                        qrReconciling ||
+                        qrNeedsManualReview
+                      }
+                      onPoll={() =>
+                        verifyOnlineAttempt(qrAttempt, { silent: true })
+                      }
+                    />
+                  )}
+
                   {!qrCartMatchesCurrent && hasServerCheckout && (
                     <div className="pos-qr-notice pos-qr-notice-info">
                       {cart.length === 0

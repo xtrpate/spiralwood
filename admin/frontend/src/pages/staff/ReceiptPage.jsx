@@ -3,6 +3,7 @@ import api, { buildAssetUrl } from "../../services/api";
 import { useParams, useNavigate } from "react-router-dom";
 import { Printer, ArrowLeft } from "lucide-react";
 import "./ReceiptPage.css";
+import { formatPHDateTime } from "../../utils/dateTime";
 
 export default function ReceiptPage() {
   const { id } = useParams();
@@ -201,8 +202,15 @@ export default function ReceiptPage() {
               <span>Date:</span>
               <span>
                 {receiptDate
-                  ? new Date(receiptDate).toLocaleString("en-PH")
-                  : "—"}
+                  ? formatPHDateTime(receiptDate, {
+                      year: "numeric",
+                      month: "numeric",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })
+                  : "\u2014"}
               </span>
             </div>
             <div className="meta-row">

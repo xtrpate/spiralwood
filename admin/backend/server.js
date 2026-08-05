@@ -1,5 +1,8 @@
 require("dotenv").config();
 
+// Use Philippine Standard Time for Node-generated business dates and labels.
+process.env.TZ = process.env.TZ || "Asia/Manila";
+
 const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
