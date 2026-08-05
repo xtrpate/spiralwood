@@ -64,6 +64,8 @@ import ResetPasswordPage from "./pages/customer/resetpasswordpage";
 import PendingApprovalPage from "./pages/customer/pendingapprovalpage";
 import TermsPage from "./pages/customer/TermsPage";
 import PrivacyPolicyPage from "./pages/customer/PrivacyPolicyPage";
+import SupportPage from "./pages/customer/supportpage";
+import AdminSupportPage from "./pages/support/SupportPage";
 
 import POSLayout from "./pages/staff/POSLayout.jsx";
 import POSDashboard from "./pages/staff/Dashboard";
@@ -82,6 +84,7 @@ import POSInventoryLookup from "./pages/staff/InventoryLookup";
 import POSOrderHistory from "./pages/staff/OrderHistory";
 import RiderDashboard from "./pages/staff/RiderDashboard";
 import RiderHistory from "./pages/staff/RiderHistory";
+import StaffSupportPage from "./pages/staff/SupportPage";
 
 window.addEventListener("error", (e) => {
   if (
@@ -339,6 +342,15 @@ export default function App() {
                   />
 
                   <Route
+                    path="support"
+                    element={
+                      <RequireAuth roles={["customer"]}>
+                        <SupportPage />
+                      </RequireAuth>
+                    }
+                  />
+
+                  <Route
                     path="profilesettings"
                     element={
                       <RequireAuth roles={["customer"]}>
@@ -422,6 +434,7 @@ export default function App() {
                   element={<PosQrRecoveryPage />}
                 />
                 <Route path="warranty" element={<WarrantyPage />} />
+                <Route path="support" element={<AdminSupportPage />} />
 
                 <Route
                   path="customers"
@@ -574,6 +587,15 @@ export default function App() {
                   element={
                     <RequireStaffType allowedTypes={["cashier"]}>
                       <POSOrderHistory />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="support"
+                  element={
+                    <RequireStaffType allowedTypes={["cashier"]}>
+                      <StaffSupportPage />
                     </RequireStaffType>
                   }
                 />

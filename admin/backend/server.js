@@ -111,6 +111,7 @@ app.use(
   require("./routes/customer.appointments"),
 );
 app.use("/api/customer/warranty", require("./routes/customer.warranty"));
+app.use("/api/customer/support", require("./routes/customer.support"));
 app.use("/api/customer/custom-orders", customerCustomOrdersRoutes);
 app.use(
   "/api/customer/notifications",
@@ -132,6 +133,7 @@ app.use("/api/pos", require("./routes/pos.fulfillment"));
 app.use("/api/pos", require("./routes/pos.schedule"));
 app.use("/api/pos", require("./routes/pos.receipts"));
 app.use("/api/tasks", require("./routes/pos.tasks"));
+app.use("/api/pos/support", require("./routes/pos.support"));
 
 app.get("/health", async (req, res) => {
   try {

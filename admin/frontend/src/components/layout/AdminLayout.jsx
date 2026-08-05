@@ -105,6 +105,13 @@ const NAV_ITEMS = [
     icon: "🛡️",
     roles: ["admin", "staff"],
   },
+  {
+    label: "Support",
+    path: "/admin/support",
+    icon: "💬",
+    roles: ["admin", "staff"],
+  },
+
   { section: "Management" },
   {
     label: "Customers",

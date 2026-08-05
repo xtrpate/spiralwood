@@ -78,7 +78,10 @@ const S = {
 // role/staff_type — never based on which role happened to receive the
 // notification. This lets the same notification "shape" route correctly
 // no matter which admin/staff account is viewing it.
-function resolveNotificationRoute(n, { isAdmin, isIndoorStaff, isDeliveryRider }) {
+function resolveNotificationRoute(
+  n,
+  { isAdmin, isCashier, isIndoorStaff, isDeliveryRider },
+) {
   const targetType = n?.target_type || null;
   const targetId = n?.target_id ?? null;
   const targetOrderId = n?.target_order_id ?? null;
@@ -88,6 +91,7 @@ function resolveNotificationRoute(n, { isAdmin, isIndoorStaff, isDeliveryRider }
   // Fall back to the safest role-appropriate list/dashboard page.
   const safeFallback = () => {
     if (isAdmin) return "/admin/dashboard";
+    if (isCashier) return "/staff/support";
     if (isDeliveryRider) return "/staff/rider-dashboard";
     if (isIndoorStaff) return "/staff/dashboard";
     return "/admin/dashboard";
@@ -118,14 +122,28 @@ function resolveNotificationRoute(n, { isAdmin, isIndoorStaff, isDeliveryRider }
 
     case "delivery":
       if (isAdmin) return `/admin/delivery?focus_delivery_id=${targetId}`;
-      if (isDeliveryRider) return `/staff/deliveries?focus_delivery_id=${targetId}`;
+      if (isDeliveryRider)
+        return `/staff/deliveries?focus_delivery_id=${targetId}`;
       return safeFallback();
 
     case "appointment":
       // No active notification creation point produces this today —
       // wired for forward compatibility only.
-      if (isAdmin) return `/admin/appointments?focus_appointment_id=${targetId}`;
-      if (isIndoorStaff) return `/staff/appointment?focus_appointment_id=${targetId}`;
+      if (isAdmin)
+        return `/admin/appointments?focus_appointment_id=${targetId}`;
+      if (isIndoorStaff)
+        return `/staff/appointment?focus_appointment_id=${targetId}`;
+      return safeFallback();
+
+    case "support_ticket":
+      if (isAdmin) {
+        return `/admin/support?ticket=${targetId}`;
+      }
+
+      if (isCashier) {
+        return `/staff/support?ticket=${targetId}`;
+      }
+
       return safeFallback();
 
     default:
@@ -139,6 +157,7 @@ export default function NotificationBell({ compact = false }) {
 
   const isAdmin = user?.role === "admin";
   const isIndoorStaff = user?.role === "staff" && user?.staff_type === "indoor";
+  const isCashier = user?.role === "staff" && user?.staff_type === "cashier";
   const isDeliveryRider =
     user?.role === "staff" && user?.staff_type === "delivery_rider";
 
@@ -185,26 +204,29 @@ export default function NotificationBell({ compact = false }) {
 
   // Guarded so the same notification is never PATCHed twice concurrently
   // (prevents duplicate requests / HTTP 429 from rapid clicks).
-  const markOneRead = useCallback(async (id) => {
-    if (markingInFlightRef.current.has(id)) return;
-    const alreadyRead = notifications.find((n) => n.id === id)?.is_read;
-    if (alreadyRead) return;
+  const markOneRead = useCallback(
+    async (id) => {
+      if (markingInFlightRef.current.has(id)) return;
+      const alreadyRead = notifications.find((n) => n.id === id)?.is_read;
+      if (alreadyRead) return;
 
-    markingInFlightRef.current.add(id);
-    try {
-      await api.patch(`/tasks/notifications/${id}/read`);
-      if (isMountedRef.current) {
-        setNotifications((p) =>
-          p.map((n) => (n.id === id ? { ...n, is_read: 1 } : n)),
-        );
+      markingInFlightRef.current.add(id);
+      try {
+        await api.patch(`/tasks/notifications/${id}/read`);
+        if (isMountedRef.current) {
+          setNotifications((p) =>
+            p.map((n) => (n.id === id ? { ...n, is_read: 1 } : n)),
+          );
+        }
+      } catch {
+        // Best-effort — a failed mark-as-read must never block navigation
+        // or surface an error to the user.
+      } finally {
+        markingInFlightRef.current.delete(id);
       }
-    } catch {
-      // Best-effort — a failed mark-as-read must never block navigation
-      // or surface an error to the user.
-    } finally {
-      markingInFlightRef.current.delete(id);
-    }
-  }, [notifications]);
+    },
+    [notifications],
+  );
 
   const handleNotificationClick = async (n) => {
     // First click on an unread notification only marks it as read.

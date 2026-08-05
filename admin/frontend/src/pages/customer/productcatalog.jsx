@@ -198,7 +198,7 @@ export default function ProductCatalog() {
           const current = Number(prev || priceMin || nextMin);
           return String(clampNumber(current, nextMin, nextMax));
         }
-        return String(nextMin);
+        return "";
       });
 
       setTempPriceMax((prev) => {
@@ -207,7 +207,7 @@ export default function ProductCatalog() {
           const current = Number(prev || priceMax || nextMax);
           return String(clampNumber(current, nextMin, nextMax));
         }
-        return String(nextMax);
+        return "";
       });
     } catch (err) {
       console.error(err);
@@ -330,13 +330,8 @@ export default function ProductCatalog() {
     setPriceMax("");
     setSortBy("name_asc");
 
-    if (priceBounds.max > 0) {
-      setTempPriceMin(String(priceBounds.min));
-      setTempPriceMax(String(priceBounds.max));
-    } else {
-      setTempPriceMin("");
-      setTempPriceMax("");
-    }
+    setTempPriceMin("");
+    setTempPriceMax("");
 
     navigate(location.pathname, { replace: true });
   };
@@ -374,8 +369,8 @@ export default function ProductCatalog() {
     if (!priceBounds.max) return;
     setPriceMin("");
     setPriceMax("");
-    setTempPriceMin(String(priceBounds.min));
-    setTempPriceMax(String(priceBounds.max));
+    setTempPriceMin("");
+    setTempPriceMax("");
   };
 
   const hasActiveFilters =
@@ -497,88 +492,17 @@ export default function ProductCatalog() {
           </div>
 
           <div className="filter-section">
-            <div className="sidebar-title sidebar-subtitle">Availability</div>
-
-            <div className="filter-options">
-              {[
-                { val: "all", label: "All" },
-                { val: "in_stock", label: "In Stock" },
-                { val: "low_stock", label: "Low Stock" },
-                { val: "out_of_stock", label: "Out of Stock" },
-              ].map((opt) => (
-                <button
-                  type="button"
-                  key={opt.val}
-                  className={`filter-option ${
-                    stockFilter === opt.val ? "active" : ""
-                  }`}
-                  onClick={() => setStockFilter(opt.val)}
-                >
-                  <span>{opt.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="filter-section">
             <div className="sidebar-title sidebar-subtitle">
               Filter by Price
             </div>
 
             <div className="price-slider-shell">
-              <div className="price-slider-label">
-                Price: {formatPeso(normalizedMin)} — {formatPeso(normalizedMax)}
-              </div>
-
-              <div className="price-slider-wrap">
-                <div className="price-slider-track" />
-                <div
-                  className="price-slider-progress"
-                  style={{
-                    left: `${minPercent}%`,
-                    right: `${100 - maxPercent}%`,
-                  }}
-                />
-
-                <input
-                  type="range"
-                  min={sliderMin}
-                  max={safeSliderMax}
-                  value={normalizedMin}
-                  onChange={(e) => {
-                    const nextValue = Math.min(
-                      Number(e.target.value),
-                      Number(tempPriceMax || safeSliderMax),
-                    );
-                    setTempPriceMin(String(nextValue));
-                  }}
-                  className="price-range-input"
-                  disabled={!sliderMax}
-                />
-
-                <input
-                  type="range"
-                  min={sliderMin}
-                  max={safeSliderMax}
-                  value={normalizedMax}
-                  onChange={(e) => {
-                    const nextValue = Math.max(
-                      Number(e.target.value),
-                      Number(tempPriceMin || sliderMin),
-                    );
-                    setTempPriceMax(String(nextValue));
-                  }}
-                  className="price-range-input"
-                  disabled={!sliderMax}
-                />
-              </div>
-
               <div className="price-inputs">
                 <input
                   type="number"
                   min={sliderMin}
                   max={safeSliderMax}
-                  placeholder="Min"
+                  placeholder="MIN"
                   value={tempPriceMin}
                   onChange={(e) => setTempPriceMin(e.target.value)}
                 />
@@ -587,7 +511,7 @@ export default function ProductCatalog() {
                   type="number"
                   min={sliderMin}
                   max={safeSliderMax}
-                  placeholder="Max"
+                  placeholder="MAX"
                   value={tempPriceMax}
                   onChange={(e) => setTempPriceMax(e.target.value)}
                 />
