@@ -74,6 +74,20 @@ const MAX_DECIMAL_10_2_CENTS = 9999999999;
 // retries, then a sanitized 503.
 const MAX_LOCK_RETRY_ATTEMPTS = 3;
 
+// A cashier may have only one unresolved POS QR attempt at a time. The
+// authenticated user's row is locked before this set is checked, which
+// serializes create-attempt requests from multiple tabs without requiring a
+// schema change or relying on browser-local state.
+const ACTIVE_CASHIER_ATTEMPT_STATUSES = [
+  "reserved",
+  "creating_session",
+  "awaiting_payment",
+  "provider_unknown",
+];
+const ACTIVE_CASHIER_ATTEMPT_STATUS_SQL = ACTIVE_CASHIER_ATTEMPT_STATUSES
+  .map((status) => `'${status}'`)
+  .join(",");
+
 const getTtlMinutes = () => {
   const parsed = parseInt(process.env.POS_QR_TTL_MINUTES, 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_TTL_MINUTES;
@@ -963,6 +977,21 @@ const runTransactionA = async (req, res, ctx) => {
     conn = await db.getConnection();
     await conn.beginTransaction();
 
+    /* ── cashier-scoped serialization lock.
+       Every create-attempt request for the same authenticated cashier locks
+       the same users row before inspecting idempotency keys, unresolved
+       attempts, products, or stock. Two browser tabs therefore cannot both
+       pass the unresolved-attempt check and reserve stock. ── */
+    const [cashierRows] = await conn.query(
+      `SELECT id FROM users WHERE id = ? FOR UPDATE`,
+      [req.user.id],
+    );
+
+    if (!cashierRows[0]) {
+      await conn.rollback();
+      return res.status(401).json({ message: "Authenticated user was not found." });
+    }
+
     /* ── steps 1-2: idempotency lookup + conflict rules (trimmed tokens
        used for both lookups). ── */
     const [tokenRows] = await conn.query(
@@ -1006,6 +1035,52 @@ const runTransactionA = async (req, res, ctx) => {
       conn.release();
       conn = null;
       return await handleExistingAttemptState(req, res, existing);
+    }
+
+    /* ── cashier-wide unresolved-attempt guard.
+       Token/idempotency retries were handled above. This second lookup blocks
+       a different token/key pair from another tab. An identical request is
+       safely attached to the already active attempt; a different request is
+       rejected before any product row is locked or any stock is decremented.
+
+       ORDER BY id ASC keeps the lock order deterministic. More than one row
+       means historical duplicate state already exists and must be resolved by
+       cleanup/admin recovery; this request never creates a third attempt. ── */
+    const [activeAttemptRows] = await conn.query(
+      `SELECT *
+       FROM pos_qr_payment_attempts
+       WHERE cashier_id = ?
+         AND status IN (${ACTIVE_CASHIER_ATTEMPT_STATUS_SQL})
+       ORDER BY id ASC
+       FOR UPDATE`,
+      [req.user.id],
+    );
+
+    if (activeAttemptRows.length > 1) {
+      await conn.rollback();
+      return res.status(409).json({
+        status: "multiple_active_attempts",
+        message:
+          "Multiple active online payment attempts were found. Ask an administrator to resolve them before starting another payment.",
+      });
+    }
+
+    const activeAttempt = activeAttemptRows[0] || null;
+
+    if (activeAttempt) {
+      if (activeAttempt.request_hash === requestHash) {
+        await conn.commit();
+        conn.release();
+        conn = null;
+        return await handleExistingAttemptState(req, res, activeAttempt);
+      }
+
+      await conn.rollback();
+      return res.status(409).json({
+        status: "active_attempt_exists",
+        message:
+          "Another online payment attempt is already active for this cashier. Resolve it before starting a different checkout.",
+      });
     }
 
     /* ── steps 3-4: deterministic lock order. ── */
