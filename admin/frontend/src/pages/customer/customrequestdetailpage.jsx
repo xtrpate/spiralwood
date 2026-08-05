@@ -534,6 +534,15 @@ export default function CustomRequestDetailPage() {
 
   const latestEstimation = requestData?.latest_estimation || null;
 
+  const additionalDeliveryFee = Math.max(
+    0,
+    Number(
+      latestEstimation?.additional_delivery_fee ??
+        requestData?.oversized_delivery_quote?.additional_delivery_fee ??
+        0,
+    ) || 0,
+  );
+
   // Backend quotation-state fields — source of truth for whether a
   // quotation is safe to display/act on. Never inferred from
   // latestEstimation.status alone, since a lifecycle-blocked order
@@ -1101,6 +1110,12 @@ export default function CustomRequestDetailPage() {
                         <DetailValue label="Logistics">
                           {formatMoney(latestEstimation.overhead_cost || 0)}
                         </DetailValue>
+
+                        {additionalDeliveryFee > 0 ? (
+                          <DetailValue label="Additional Delivery Fee">
+                            {formatMoney(additionalDeliveryFee)}
+                          </DetailValue>
+                        ) : null}
 
                         <DetailValue label="Discount">
                           {formatMoney(latestEstimation.discount || 0)}

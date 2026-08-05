@@ -307,6 +307,7 @@ function computeEstimationTotals({
   items = [],
   labor_cost = 0,
   overhead_cost = 0,
+  additional_delivery_fee = 0,
   tax_rate = 12,
   discount = 0,
   inventory_pricing_mode = "tracking_only",
@@ -328,10 +329,18 @@ function computeEstimationTotals({
 
   const laborCost = Number(labor_cost) || 0;
   const overheadCost = Number(overhead_cost) || 0;
+  const additionalDeliveryFee = Math.max(
+    0,
+    Number(additional_delivery_fee) || 0,
+  );
   const discountRate = Math.max(0, Math.min(100, Number(discount) || 0));
   const taxRate = Math.max(0, Math.min(100, Number(tax_rate) || 0));
 
-  const subtotal = material_cost + laborCost + overheadCost;
+  const subtotal =
+    material_cost +
+    laborCost +
+    overheadCost +
+    additionalDeliveryFee;
   const discount_amount = subtotal * (discountRate / 100);
   const afterDiscount = Math.max(0, subtotal - discount_amount);
   const tax_amount = afterDiscount * (taxRate / 100);
@@ -342,6 +351,7 @@ function computeEstimationTotals({
     items_total: material_cost,
     labor_cost: laborCost,
     overhead_cost: overheadCost,
+    additional_delivery_fee: additionalDeliveryFee,
     tax_rate: taxRate,
     discount: discountRate,
     discount_rate: discountRate,
@@ -1704,6 +1714,8 @@ exports.getEstimation = async (req, res) => {
             inventory_pricing_mode: "tracking_only",
             labor_cost: autoDraft.labor_cost || 0,
             overhead_cost: autoDraft.overhead_cost || 0,
+            additional_delivery_fee:
+              autoDraft.additional_delivery_fee || 0,
             tax_rate: autoDraft.tax_rate ?? 12,
             discount: autoDraft.discount || 0,
             notes: autoDraft.notes || "",
@@ -1741,6 +1753,8 @@ exports.getEstimation = async (req, res) => {
         inventory_pricing_mode: "tracking_only",
         labor_cost: autoDraft.labor_cost || 0,
         overhead_cost: autoDraft.overhead_cost || 0,
+        additional_delivery_fee:
+          autoDraft.additional_delivery_fee || 0,
         tax_rate: autoDraft.tax_rate ?? 12,
         discount: autoDraft.discount || 0,
         notes: autoDraft.notes || "",
@@ -1811,8 +1825,16 @@ exports.getEstimation = async (req, res) => {
       ? laborCostRaw
       : Number(meta.labor_cost || 0);
     const overhead_cost = Number(meta.overhead_cost) || 0;
+    const additional_delivery_fee = Math.max(
+      0,
+      Number(meta.additional_delivery_fee) || 0,
+    );
     const tax_rate = Number(meta.tax_rate ?? 12);
-    const subtotal = material_cost + labor_cost + overhead_cost;
+    const subtotal =
+      material_cost +
+      labor_cost +
+      overhead_cost +
+      additional_delivery_fee;
 
     const storedDiscountAmount = Number.isFinite(storedDiscountAmountRaw)
       ? storedDiscountAmountRaw
@@ -1829,6 +1851,7 @@ exports.getEstimation = async (req, res) => {
       items: normalizedItems,
       labor_cost,
       overhead_cost,
+      additional_delivery_fee,
       tax_rate,
       discount,
       inventory_pricing_mode,
@@ -1850,6 +1873,7 @@ exports.getEstimation = async (req, res) => {
       inventory_pricing_mode,
       labor_cost,
       overhead_cost,
+      additional_delivery_fee,
       tax_rate,
       discount,
       discount_amount,
@@ -2156,10 +2180,55 @@ exports.saveEstimation = async (req, res) => {
       });
     }
 
+    const existingEstimationMeta =
+      safeJsonParse(
+        lifecycle.estimation?.estimation_data,
+        {},
+      ) || {};
+
+    const existingDeliveryDecision = String(
+      existingEstimationMeta.oversized_delivery_decision || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    const preservedAdditionalDeliveryFee =
+      existingDeliveryDecision === "fee_required"
+        ? Math.max(
+            0,
+            Number(
+              existingEstimationMeta.additional_delivery_fee,
+            ) || 0,
+          )
+        : 0;
+
+    const preservedDeliveryMeta = {};
+
+    [
+      "oversized_delivery_decision",
+      "oversized_delivery_reason",
+      "oversized_truck_type",
+      "oversized_delivery_decided_by",
+      "oversized_delivery_decided_at",
+      "delivery_requirement",
+    ].forEach((key) => {
+      if (
+        Object.prototype.hasOwnProperty.call(
+          existingEstimationMeta,
+          key,
+        )
+      ) {
+        preservedDeliveryMeta[key] =
+          existingEstimationMeta[key];
+      }
+    });
+
     const totals = computeEstimationTotals({
       items: normalizedItems,
       labor_cost: laborCostInput,
       overhead_cost: overheadCostInput,
+      additional_delivery_fee:
+        preservedAdditionalDeliveryFee,
       tax_rate: taxRateInput,
       discount: discountInput,
       inventory_pricing_mode: "tracking_only",
@@ -2174,9 +2243,12 @@ exports.saveEstimation = async (req, res) => {
       : 1;
 
     const estimation_data = JSON.stringify({
+      ...preservedDeliveryMeta,
       items: normalizedItems,
       labor_cost: totals.labor_cost,
       overhead_cost: totals.overhead_cost,
+      additional_delivery_fee:
+        totals.additional_delivery_fee,
       tax_rate: totals.tax_rate,
       discount_mode: "percentage",
       discount: totals.discount_rate,
@@ -2295,6 +2367,8 @@ exports.saveEstimation = async (req, res) => {
         inventory_pricing_mode: "tracking_only",
         labor_cost: totals.labor_cost,
         overhead_cost: totals.overhead_cost,
+        additional_delivery_fee:
+          totals.additional_delivery_fee,
         tax_rate: totals.tax_rate,
         discount: totals.discount_rate,
         discount_amount: totals.discount_amount,

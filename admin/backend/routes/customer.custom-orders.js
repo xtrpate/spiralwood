@@ -12,6 +12,9 @@ const { authenticate, requireCustomer } = require("../middleware/auth");
 const { logAction } = require("../middleware/auditLog");
 const customOrderController = require("../controllers/customer/customer.customorders");
 const customerReceiptsController = require("../controllers/customer/customer.receipts");
+const customerDeliveryAssessmentController = require(
+  "../controllers/customer/customer.deliveryAssessment",
+);
 
 /* ──────────────────────────────────────────────────────────
    Upload dirs
@@ -224,6 +227,13 @@ router.get(
   authenticate,
   requireCustomer,
   customOrderController.getCustomOrders,
+);
+
+router.get(
+  "/:id/delivery-assessment",
+  authenticate,
+  requireCustomer,
+  customerDeliveryAssessmentController.getOrderDeliveryAssessment,
 );
 
 router.get(
