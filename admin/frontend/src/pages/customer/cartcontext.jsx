@@ -8,6 +8,7 @@ import {
 } from "react";
 import api from "../../services/api";
 import useAuthStore from "../../store/authStore";
+import { deleteCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
 
 const CartContext = createContext(null);
 
@@ -288,7 +289,12 @@ export function CartProvider({ children }) {
 
   const removeItem = (key) => {
     const cleanKey = String(key || "").trim();
+    if (!cleanKey) return;
+
     setCart((prev) => prev.filter((item) => item.key !== cleanKey));
+    deleteCustomReferencePhotos([cleanKey]).catch((error) =>
+      console.error("Failed to remove stored reference photos:", error),
+    );
   };
 
   const removeMany = (keys = []) => {
@@ -301,10 +307,22 @@ export function CartProvider({ children }) {
     if (!keySet.size) return;
 
     setCart((prev) => prev.filter((item) => !keySet.has(item.key)));
+    deleteCustomReferencePhotos([...keySet]).catch((error) =>
+      console.error("Failed to remove stored reference photos:", error),
+    );
   };
 
   const clearCart = (syncToCloud = true) => {
     setMiniCartOpen(false);
+
+    const customKeys = (Array.isArray(cart) ? cart : [])
+      .filter((item) => item?.cart_type === "blueprint")
+      .map((item) => item?.key)
+      .filter(Boolean);
+
+    deleteCustomReferencePhotos(customKeys).catch((error) =>
+      console.error("Failed to clear stored reference photos:", error),
+    );
 
     // 👉 NEW: If we are not syncing to the cloud (logout), tell the background effect to ignore the upcoming empty cart!
     if (!syncToCloud) {

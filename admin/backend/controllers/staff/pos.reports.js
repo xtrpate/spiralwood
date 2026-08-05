@@ -1,199 +1,276 @@
 // controllers/staff/pos.reports.js
+// Cashier reporting is collection-based: verified payments are sales.
 const db = require("../../config/db");
 
-const buildDateFilter = (period, from, to) => {
-  const clauses = [];
-  const params = [];
+const normalize = (value) => String(value || "").trim().toLowerCase();
+const VALID_PERIODS = new Set(["daily", "weekly", "monthly", "yearly"]);
 
-  if (from && to) {
-    clauses.push("DATE(o.created_at) BETWEEN ? AND ?");
-    params.push(from, to);
-    return { clauses, params };
+const buildSourceFilter = (rawSource, alias = "o") => {
+  const source = normalize(rawSource || "all");
+  if (!source || source === "all") return { sql: "1=1", params: [] };
+  if (source === "online") return { sql: `${alias}.type = 'online'`, params: [] };
+  if (source === "walk_in" || source === "walkin") {
+    return { sql: `${alias}.type = 'walkin'`, params: [] };
+  }
+  const error = new Error("Invalid order source filter.");
+  error.statusCode = 400;
+  throw error;
+};
+
+const buildDateFilter = ({ period, from, to }, expression) => {
+  const start = String(from || "").trim();
+  const end = String(to || "").trim();
+
+  if (start || end) {
+    const clauses = [];
+    const params = [];
+    if (start) {
+      clauses.push(`DATE(${expression}) >= ?`);
+      params.push(start);
+    }
+    if (end) {
+      clauses.push(`DATE(${expression}) <= ?`);
+      params.push(end);
+    }
+    return { sql: clauses.join(" AND "), params };
   }
 
-  switch (period) {
+  const normalizedPeriod = VALID_PERIODS.has(normalize(period))
+    ? normalize(period)
+    : "daily";
+
+  if (normalizedPeriod === "weekly") {
+    return {
+      sql: `YEARWEEK(${expression}, 1) = YEARWEEK(CURDATE(), 1)`,
+      params: [],
+    };
+  }
+  if (normalizedPeriod === "monthly") {
+    return {
+      sql: `YEAR(${expression}) = YEAR(CURDATE()) AND MONTH(${expression}) = MONTH(CURDATE())`,
+      params: [],
+    };
+  }
+  if (normalizedPeriod === "yearly") {
+    return { sql: `YEAR(${expression}) = YEAR(CURDATE())`, params: [] };
+  }
+  return { sql: `DATE(${expression}) = CURDATE()`, params: [] };
+};
+
+const buildPeriodExpression = (period, expression) => {
+  switch (normalize(period)) {
     case "weekly":
-      clauses.push("YEARWEEK(o.created_at, 1) = YEARWEEK(CURDATE(), 1)");
-      break;
+      return `DATE_SUB(DATE(${expression}), INTERVAL WEEKDAY(${expression}) DAY)`;
     case "monthly":
-      clauses.push("YEAR(o.created_at) = YEAR(CURDATE())");
-      clauses.push("MONTH(o.created_at) = MONTH(CURDATE())");
-      break;
+      return `DATE_FORMAT(${expression}, '%Y-%m-01')`;
     case "yearly":
-      clauses.push("YEAR(o.created_at) = YEAR(CURDATE())");
-      break;
+      return `DATE_FORMAT(${expression}, '%Y-01-01')`;
     case "daily":
     default:
-      clauses.push("DATE(o.created_at) = CURDATE()");
-      break;
+      return `DATE(${expression})`;
   }
-
-  return { clauses, params };
 };
+
+const lifetimeCollectedSql = `COALESCE((
+  SELECT SUM(pt_life.amount)
+  FROM payment_transactions pt_life
+  WHERE pt_life.order_id = o.id
+    AND LOWER(pt_life.status) = 'verified'
+), 0)`;
+
+const estimatedProfitSql = `COALESCE((
+  SELECT SUM(
+    COALESCE(
+      oi.profit_margin,
+      COALESCE(oi.unit_price, 0) - COALESCE(oi.production_cost, 0),
+      0
+    ) * COALESCE(oi.quantity, 0)
+  )
+  FROM order_items oi
+  WHERE oi.order_id = o.id
+), 0)`;
 
 exports.getReports = async (req, res) => {
   try {
-    const { period = "daily", from, to, source = "all" } = req.query;
+    const { period = "daily" } = req.query;
+    const source = buildSourceFilter(req.query.source, "o");
+    const orderDate = buildDateFilter(req.query, "o.created_at");
+    const paymentDateExpression = "COALESCE(pt.verified_at, pt.created_at)";
+    const paymentDate = buildDateFilter(req.query, paymentDateExpression);
 
-    const where = ["o.status NOT IN ('cancelled')"];
-    const params = [];
+    const orderWhereSql = [
+      "o.status <> 'cancelled'",
+      source.sql,
+      orderDate.sql,
+    ].join(" AND ");
+    const orderParams = [...source.params, ...orderDate.params];
 
-    const dateFilter = buildDateFilter(period, from, to);
-    where.push(...dateFilter.clauses);
-    params.push(...dateFilter.params);
+    const paymentWhereSql = [
+      "LOWER(pt.status) = 'verified'",
+      source.sql,
+      paymentDate.sql,
+    ].join(" AND ");
+    const paymentParams = [...source.params, ...paymentDate.params];
 
-    if (source === "online") {
-      where.push("o.type = 'online'");
-    } else if (source === "walk_in") {
-      where.push("o.type = 'walkin'");
-    }
-
-    const whereSql = `WHERE ${where.join(" AND ")}`;
-
-    let periodExpr = "DATE(o.created_at)";
-    if (period === "weekly") periodExpr = "YEARWEEK(o.created_at, 1)";
-    if (period === "monthly") periodExpr = "DATE_FORMAT(o.created_at, '%Y-%m')";
-    if (period === "yearly") periodExpr = "YEAR(o.created_at)";
-
-    // ── FIXED: Switched to .query ──
-    const [totalsRows] = await db.query(
-      `
-      SELECT
-        COUNT(*) AS total_orders,
-        COALESCE(SUM(o.total), 0) AS grand_total,
-        COALESCE(SUM(o.discount), 0) AS total_discount,
-        COALESCE(SUM(p.estimated_profit), 0) AS estimated_profit
-      FROM orders o
-      LEFT JOIN (
-        SELECT
-          order_id,
-          COALESCE(SUM(profit_margin * quantity), 0) AS estimated_profit
-        FROM order_items
-        GROUP BY order_id
-      ) p ON p.order_id = o.id
-      ${whereSql}
-      `,
-      params,
+    const [[orderTotals]] = await db.query(
+      `SELECT
+         COUNT(*) AS total_orders,
+         COALESCE(SUM(order_rows.total_amount), 0) AS gross_order_value,
+         COALESCE(SUM(order_rows.discount), 0) AS total_discount,
+         COALESCE(SUM(order_rows.estimated_profit), 0) AS estimated_profit,
+         COALESCE(SUM(order_rows.outstanding_balance), 0) AS outstanding_balance
+       FROM (
+         SELECT
+           o.id,
+           COALESCE(o.total, 0) AS total_amount,
+           COALESCE(o.discount, 0) AS discount,
+           ${estimatedProfitSql} AS estimated_profit,
+           GREATEST(COALESCE(o.total, 0) - ${lifetimeCollectedSql}, 0) AS outstanding_balance
+         FROM orders o
+         WHERE ${orderWhereSql}
+       ) order_rows`,
+      orderParams,
     );
 
-    // ── FIXED: Switched to .query ──
+    const [[collectionTotals]] = await db.query(
+      `SELECT
+         COUNT(*) AS collection_count,
+         COALESCE(SUM(pt.amount), 0) AS actual_collected
+       FROM payment_transactions pt
+       INNER JOIN orders o ON o.id = pt.order_id
+       WHERE ${paymentWhereSql}`,
+      paymentParams,
+    );
+
+    const periodExpression = buildPeriodExpression(period, paymentDateExpression);
     const [summaryRows] = await db.query(
-      `
-      SELECT
-        ${periodExpr} AS period_label,
-        COUNT(*) AS order_count,
-        COALESCE(SUM(o.total), 0) AS total_sales
-      FROM orders o
-      ${whereSql}
-      GROUP BY ${periodExpr}
-      ORDER BY period_label ASC
-      `,
-      params,
+      `SELECT
+         ${periodExpression} AS period_label,
+         COUNT(*) AS transaction_count,
+         COALESCE(SUM(pt.amount), 0) AS total_sales
+       FROM payment_transactions pt
+       INNER JOIN orders o ON o.id = pt.order_id
+       WHERE ${paymentWhereSql}
+       GROUP BY ${periodExpression}
+       ORDER BY period_label ASC`,
+      paymentParams,
     );
 
-    // ── FIXED: Switched to .query ──
     const [paymentRows] = await db.query(
-      `
-      SELECT
-        o.payment_method,
-        COUNT(*) AS count,
-        COALESCE(SUM(o.total), 0) AS total_amount
-      FROM orders o
-      ${whereSql}
-      GROUP BY o.payment_method
-      ORDER BY count DESC
-      `,
-      params,
+      `SELECT
+         LOWER(pt.payment_method) AS payment_method,
+         COUNT(*) AS count,
+         COALESCE(SUM(pt.amount), 0) AS total_amount
+       FROM payment_transactions pt
+       INNER JOIN orders o ON o.id = pt.order_id
+       WHERE ${paymentWhereSql}
+       GROUP BY LOWER(pt.payment_method)
+       ORDER BY total_amount DESC, count DESC`,
+      paymentParams,
     );
 
-    // ── FIXED: Switched to .query ──
+    // Product figures remain order pipeline figures and are explicitly
+    // labelled Gross Order Value in the UI; partial blueprint collections
+    // are never allocated artificially across individual products.
     const [productRows] = await db.query(
-      `
-      SELECT
-        oi.product_name,
-        SUM(oi.quantity) AS qty,
-        COALESCE(SUM(oi.subtotal), 0) AS revenue
-      FROM order_items oi
-      JOIN orders o ON o.id = oi.order_id
-      ${whereSql}
-      GROUP BY oi.product_name
-      ORDER BY qty DESC
-      LIMIT 5
-      `,
-      params,
+      `SELECT
+         oi.product_name,
+         SUM(COALESCE(oi.quantity, 0)) AS qty,
+         COALESCE(SUM(
+           COALESCE(oi.subtotal, COALESCE(oi.unit_price, 0) * COALESCE(oi.quantity, 0))
+         ), 0) AS gross_order_value,
+         COALESCE(SUM(
+           COALESCE(
+             oi.profit_margin,
+             COALESCE(oi.unit_price, 0) - COALESCE(oi.production_cost, 0),
+             0
+           ) * COALESCE(oi.quantity, 0)
+         ), 0) AS estimated_profit
+       FROM order_items oi
+       INNER JOIN orders o ON o.id = oi.order_id
+       WHERE ${orderWhereSql}
+       GROUP BY oi.product_name
+       ORDER BY gross_order_value DESC, qty DESC
+       LIMIT 20`,
+      orderParams,
     );
 
-    // ── FIXED: Switched to .query ──
     const [transactionRows] = await db.query(
-      `
-      SELECT
-        o.id AS order_id,
-        o.created_at,
-        o.order_number,
-        r.receipt_number,
-        COALESCE(c.name, o.walkin_customer_name, 'Walk-in Customer') AS customer_name,
-        COALESCE(c.phone, o.walkin_customer_phone, 'No phone') AS customer_phone,
-        o.payment_method,
-        o.subtotal,
-        o.discount,
-        o.total,
-        COALESCE(r.cash_received, NULL) AS cash_received,
-        COALESCE(r.change_amount, NULL) AS change_amount,
-        o.type,
-        COALESCE(p.estimated_profit, 0) AS estimated_profit,
-        d.status AS delivery_status,
-        a.status AS appointment_status,
-        cashier.name AS processed_by
-      FROM orders o
-      LEFT JOIN receipts r ON r.order_id = o.id
-      LEFT JOIN users c ON o.customer_id = c.id
-      LEFT JOIN users cashier ON cashier.id = r.issued_by
-      LEFT JOIN (
-        SELECT d1.order_id, d1.status
-        FROM deliveries d1
-        INNER JOIN (
-          SELECT order_id, MAX(id) AS latest_id
-          FROM deliveries
-          GROUP BY order_id
-        ) dx ON dx.latest_id = d1.id
-      ) d ON d.order_id = o.id
-      LEFT JOIN (
-        SELECT a1.order_id, a1.status
-        FROM appointments a1
-        INNER JOIN (
-          SELECT order_id, MAX(id) AS latest_id
-          FROM appointments
-          GROUP BY order_id
-        ) ax ON ax.latest_id = a1.id
-      ) a ON a.order_id = o.id
-      LEFT JOIN (
-        SELECT
-          order_id,
-          COALESCE(SUM(profit_margin * quantity), 0) AS estimated_profit
-        FROM order_items
-        GROUP BY order_id
-      ) p ON p.order_id = o.id
-      ${whereSql}
-      ORDER BY o.created_at DESC
-      LIMIT 100
-      `,
-      params,
+      `SELECT
+         pt.id AS payment_transaction_id,
+         pt.order_id,
+         pt.amount,
+         pt.payment_method,
+         COALESCE(pt.verified_at, pt.created_at) AS payment_date,
+         pt.notes,
+         o.order_number,
+         o.order_type,
+         o.type,
+         o.status AS order_status,
+         o.payment_status,
+         COALESCE(o.total, 0) AS order_total,
+         ${lifetimeCollectedSql} AS lifetime_collected,
+         GREATEST(COALESCE(o.total, 0) - ${lifetimeCollectedSql}, 0) AS remaining_balance,
+         COALESCE(customer.name, o.walkin_customer_name, 'Walk-in Customer') AS customer_name,
+         COALESCE(customer.phone, o.walkin_customer_phone, 'No phone') AS customer_phone,
+         CASE
+           WHEN LOWER(pt.payment_method) = 'paymongo' THEN 'PayMongo / Online Payment'
+           WHEN verifier.name IS NOT NULL THEN verifier.name
+           ELSE 'System'
+         END AS processed_by,
+         receipt.receipt_id,
+         receipt.receipt_number,
+         receipt.payment_label
+       FROM payment_transactions pt
+       INNER JOIN orders o ON o.id = pt.order_id
+       LEFT JOIN users customer ON customer.id = o.customer_id
+       LEFT JOIN users verifier ON verifier.id = pt.verified_by
+       LEFT JOIN (
+         SELECT
+           payment_transaction_id,
+           MAX(id) AS receipt_id,
+           MAX(receipt_number) AS receipt_number,
+           MAX(payment_label) AS payment_label
+         FROM receipts
+         WHERE payment_transaction_id IS NOT NULL
+         GROUP BY payment_transaction_id
+       ) receipt ON receipt.payment_transaction_id = pt.id
+       WHERE ${paymentWhereSql}
+       ORDER BY COALESCE(pt.verified_at, pt.created_at) DESC, pt.id DESC
+       LIMIT 200`,
+      paymentParams,
     );
+
+    const totals = {
+      total_orders: Number(orderTotals?.total_orders || 0),
+      gross_order_value: Number(orderTotals?.gross_order_value || 0),
+      actual_collected: Number(collectionTotals?.actual_collected || 0),
+      // Compatibility alias: grand_total now correctly represents actual
+      // verified collections, not all non-cancelled order totals.
+      grand_total: Number(collectionTotals?.actual_collected || 0),
+      outstanding_balance: Number(orderTotals?.outstanding_balance || 0),
+      total_discount: Number(orderTotals?.total_discount || 0),
+      estimated_profit: Number(orderTotals?.estimated_profit || 0),
+      collection_count: Number(collectionTotals?.collection_count || 0),
+    };
 
     res.json({
-      totals: totalsRows[0] || {
-        total_orders: 0,
-        grand_total: 0,
-        total_discount: 0,
-        estimated_profit: 0,
-      },
+      totals,
       summary: summaryRows,
       payment_breakdown: paymentRows,
       top_products: productRows,
       transactions: transactionRows,
     });
   } catch (err) {
-    console.error("\n❌ [POS Reports Error]:", err);
-    res.status(500).json({ message: "Server error generating reports" });
+    const statusCode = Number(err.statusCode) || 500;
+    if (statusCode >= 500) {
+      console.error("\n❌ [POS Reports Error]:", err);
+    }
+    res.status(statusCode).json({
+      message:
+        statusCode === 400
+          ? err.message
+          : "Server error generating reports",
+    });
   }
 };

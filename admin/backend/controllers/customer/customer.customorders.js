@@ -92,7 +92,7 @@ const toSafeReferencePhotos = (value) => {
   if (!Array.isArray(value)) return [];
 
   return value
-    .slice(0, 4)
+    .slice(0, 5)
     .map((item) => ({
       name: String(item?.name || "").trim(),
       type: String(item?.type || "")
@@ -181,8 +181,126 @@ const saveBase64ReferencePhoto = async (fileLike = {}) => {
     file_url: `/uploads/custom-request-assets/${filename}`,
     file_name: slugifyFilename(fileLike?.name || filename),
     mime_type: mimeType,
-    file_size: Number(fileLike?.size || 0) || null,
+    file_size: Number(fileLike?.size || 0) || fileBuffer.length || null,
+    absolute_path: absolutePath,
   };
+};
+
+const saveUploadedReferencePhoto = async (file = {}) => {
+  const originalName = String(file?.originalname || "reference-photo").trim();
+  const ext = path.extname(originalName).toLowerCase();
+  const mimeType = String(file?.mimetype || "").trim().toLowerCase();
+  const buffer = file?.buffer;
+
+  if (
+    !Buffer.isBuffer(buffer) ||
+    ![".jpg", ".jpeg", ".png", ".webp"].includes(ext) ||
+    !["image/jpeg", "image/png", "image/webp"].includes(mimeType) ||
+    !verifyBufferSignature(buffer, ext)
+  ) {
+    throw new ReferencePhotoValidationError(
+      "One of the uploaded reference photos is invalid.",
+    );
+  }
+
+  const filename = `custom_ref_${Date.now()}_${Math.random()
+    .toString(36)
+    .slice(2, 10)}${ext === ".jpeg" ? ".jpg" : ext}`;
+  const absolutePath = path.join(customRequestAssetsDir, filename);
+
+  await fs.promises.writeFile(absolutePath, buffer, { flag: "wx" });
+
+  return {
+    file_url: `/uploads/custom-request-assets/${filename}`,
+    file_name: slugifyFilename(originalName),
+    mime_type: mimeType,
+    file_size: Number(file?.size || buffer.length || 0) || null,
+    absolute_path: absolutePath,
+  };
+};
+
+const cleanupSavedReferenceFiles = async (filePaths = []) => {
+  await Promise.all(
+    (Array.isArray(filePaths) ? filePaths : [])
+      .filter(Boolean)
+      .map((filePath) =>
+        fs.promises.unlink(filePath).catch((error) => {
+          if (error?.code !== "ENOENT") {
+            console.error(
+              "[customer.customorders] Failed to remove orphaned reference photo:",
+              error,
+            );
+          }
+        }),
+      ),
+  );
+};
+
+const parseCreateOrderBody = (req) => {
+  if (typeof req?.body?.payload !== "string") {
+    return req?.body || {};
+  }
+
+  try {
+    const parsed = JSON.parse(req.body.payload);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Payload must be an object.");
+    }
+    return parsed;
+  } catch {
+    throw new ReferencePhotoValidationError(
+      "The custom request payload is invalid.",
+    );
+  }
+};
+
+const groupUploadedReferencePhotos = (req, itemCount) => {
+  const files = Array.isArray(req?.files) ? req.files : [];
+  if (!files.length) return new Map();
+
+  let manifest;
+  try {
+    manifest = JSON.parse(
+      String(req?.body?.reference_photo_manifest || "[]"),
+    );
+  } catch {
+    throw new ReferencePhotoValidationError(
+      "The reference photo manifest is invalid.",
+    );
+  }
+
+  if (!Array.isArray(manifest) || manifest.length !== files.length) {
+    throw new ReferencePhotoValidationError(
+      "Reference photo metadata does not match the uploaded files.",
+    );
+  }
+
+  const grouped = new Map();
+
+  manifest.forEach((entry, fileIndex) => {
+    const itemIndex = Number(entry?.item_index);
+    if (
+      !Number.isInteger(itemIndex) ||
+      itemIndex < 0 ||
+      itemIndex >= itemCount
+    ) {
+      throw new ReferencePhotoValidationError(
+        "A reference photo is linked to an invalid custom item.",
+      );
+    }
+
+    const current = grouped.get(itemIndex) || [];
+    if (current.length >= 5) {
+      throw new ReferencePhotoValidationError(
+        "A custom item can contain up to 5 reference photos only.",
+      );
+    }
+
+    current.push(files[fileIndex]);
+    grouped.set(itemIndex, current);
+  });
+
+  return grouped;
 };
 
 const sanitizeEditorSnapshotForStorage = (snapshot = null) => {
@@ -442,6 +560,24 @@ const normalizeCustomOrderItem = (row = {}) => {
 
 /* ── Submit Custom Order / Request ── */
 exports.createCustomOrder = async (req, res) => {
+  let requestBody;
+  let uploadedReferencePhotosByItem;
+
+  try {
+    requestBody = parseCreateOrderBody(req);
+    uploadedReferencePhotosByItem = groupUploadedReferencePhotos(
+      req,
+      Array.isArray(requestBody?.items) ? requestBody.items.length : 0,
+    );
+  } catch (error) {
+    if (error instanceof ReferencePhotoValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    console.error("[customer.customorders PARSE CREATE ORDER]", error);
+    return res.status(500).json({ message: "Server error." });
+  }
+
   const {
     items,
     name,
@@ -450,7 +586,7 @@ exports.createCustomOrder = async (req, res) => {
     delivery_lat,
     delivery_lng,
     notes,
-  } = req.body;
+  } = requestBody;
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: "No items in custom order." });
@@ -502,7 +638,10 @@ exports.createCustomOrder = async (req, res) => {
   }
 
   const cleanedItems = items
-    .map((item) => ({
+    .map((item, sourceIndex) => ({
+      source_index: sourceIndex,
+      uploaded_reference_photos:
+        uploadedReferencePhotosByItem.get(sourceIndex) || [],
       product_id: toPositiveInt(item.product_id, 0) || null,
       blueprint_id: toPositiveInt(item.blueprint_id, 0) || null,
       product_name: String(
@@ -561,6 +700,9 @@ exports.createCustomOrder = async (req, res) => {
   const primaryBlueprintId = blueprintIds[0];
 
   let conn;
+  let committed = false;
+  const savedReferenceFilePaths = [];
+
   try {
     conn = await db.getConnection();
     await conn.beginTransaction();
@@ -663,9 +805,16 @@ exports.createCustomOrder = async (req, res) => {
       const orderItemId = itemResult.insertId;
 
       let linkedMessageId = null;
+      const legacyReferencePhotos = Array.isArray(item.reference_photos)
+        ? item.reference_photos
+        : [];
+      const uploadedReferencePhotos = Array.isArray(
+        item.uploaded_reference_photos,
+      )
+        ? item.uploaded_reference_photos
+        : [];
       const hasReferencePhotos =
-        Array.isArray(item.reference_photos) &&
-        item.reference_photos.length > 0;
+        legacyReferencePhotos.length > 0 || uploadedReferencePhotos.length > 0;
 
       if (item.initial_message || hasReferencePhotos) {
         linkedMessageId = await insertCustomOrderMessage(conn, {
@@ -677,19 +826,28 @@ exports.createCustomOrder = async (req, res) => {
         });
       }
 
-      for (const photo of item.reference_photos || []) {
-        let saved;
-        try {
-          saved = await saveBase64ReferencePhoto(photo);
-        } catch (photoErr) {
-          if (photoErr instanceof ReferencePhotoValidationError) {
-            await conn.rollback();
-            return res.status(400).json({ message: photoErr.message });
-          }
-          throw photoErr;
-        }
-
+      for (const photo of legacyReferencePhotos) {
+        const saved = await saveBase64ReferencePhoto(photo);
         if (!saved) continue;
+
+        savedReferenceFilePaths.push(saved.absolute_path);
+
+        await insertCustomOrderAttachment(conn, {
+          orderId: order_id,
+          orderItemId,
+          messageId: linkedMessageId,
+          uploadedBy: req.user.id,
+          fileUrl: saved.file_url,
+          fileName: saved.file_name,
+          mimeType: saved.mime_type,
+          fileSize: saved.file_size,
+          attachmentType: "reference_photo",
+        });
+      }
+
+      for (const photo of uploadedReferencePhotos) {
+        const saved = await saveUploadedReferencePhoto(photo);
+        savedReferenceFilePaths.push(saved.absolute_path);
 
         await insertCustomOrderAttachment(conn, {
           orderId: order_id,
@@ -706,6 +864,7 @@ exports.createCustomOrder = async (req, res) => {
     }
 
     await conn.commit();
+    committed = true;
 
     return res.status(201).json({
       message: "Custom request submitted successfully.",
@@ -714,10 +873,18 @@ exports.createCustomOrder = async (req, res) => {
       detail_url: `/custom-requests/${order_id}`,
     });
   } catch (err) {
-    if (conn) {
+    if (conn && !committed) {
       try {
         await conn.rollback();
       } catch {}
+    }
+
+    if (!committed) {
+      await cleanupSavedReferenceFiles(savedReferenceFilePaths);
+    }
+
+    if (err instanceof ReferencePhotoValidationError) {
+      return res.status(400).json({ message: err.message });
     }
 
     console.error("[customer.customorders POST]", err);
@@ -1267,12 +1434,25 @@ const normalizeLifecycleEstimation = async (conn, estimation) => {
     [estimation.id],
   );
 
+  const storedItems = Array.isArray(estimationData.items)
+    ? estimationData.items
+    : [];
+  const inventoryPricingMode =
+    normalize(estimationData.inventory_pricing_mode) === "tracking_only"
+      ? "tracking_only"
+      : "legacy_billable";
+  const customerItemRows = itemRows.filter((row, index) => {
+    if (inventoryPricingMode !== "tracking_only") return true;
+    return normalize(storedItems[index]?.source_type) !== "inventory_material";
+  });
+
   return {
     id: estimation.id,
     blueprint_id: estimation.blueprint_id,
     version: estimation.version,
     status: normalize(estimation.status),
     material_cost: Number(estimation.material_cost || 0),
+    inventory_pricing_mode: inventoryPricingMode,
     labor_cost: Number(estimation.labor_cost || 0),
     overhead_cost: Number(estimationData.overhead_cost || 0),
     tax: Number(estimation.tax || 0),
@@ -1289,7 +1469,7 @@ const normalizeLifecycleEstimation = async (conn, estimation) => {
     approved_at: estimation.approved_at || null,
     created_at: estimation.created_at || null,
     updated_at: estimation.updated_at || null,
-    items: itemRows.map((row) => ({
+    items: customerItemRows.map((row) => ({
       id: row.id,
       component_id: row.component_id || null,
       raw_material_id: row.raw_material_id || null,

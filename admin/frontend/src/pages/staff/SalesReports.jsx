@@ -1,112 +1,95 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../../services/api";
 import {
-  BarChart,
   Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
 } from "recharts";
 import { Printer } from "lucide-react";
 
-// Sleek grayscale palette for the Pie Chart
 const PIE_COLORS = [
   "#18181b",
   "#3f3f46",
   "#71717a",
   "#a1a1aa",
   "#d4d4d8",
-  "#f4f4f5",
+  "#e4e4e7",
 ];
 
-const formatPeriodLabel = (value, periodType = "daily") => {
-  if (!value) return "—";
+const money = (value) =>
+  `₱${Number(value || 0).toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
-  if (periodType === "weekly") {
-    const text = String(value);
+const humanize = (value) =>
+  String(value || "—")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 
-    if (/^\d{6}$/.test(text)) {
-      const year = text.slice(0, 4);
-      const week = text.slice(4);
-      return `${year} - Week ${week}`;
-    }
-  }
-
-  const date = new Date(value);
-  if (!Number.isNaN(date.getTime())) {
-    if (periodType === "daily") {
-      return date.toLocaleDateString("en-PH", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    }
-
-    if (periodType === "weekly") {
-      return `Week of ${date.toLocaleDateString("en-PH", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })}`;
-    }
-
-    if (periodType === "monthly") {
-      return date.toLocaleDateString("en-PH", {
-        year: "numeric",
-        month: "long",
-      });
-    }
-  }
-
-  return String(value);
+const paymentMethodLabel = (value) => {
+  const method = String(value || "").toLowerCase();
+  if (method === "paymongo") return "PayMongo / Online";
+  if (method === "gcash") return "GCash";
+  if (method === "bank_transfer") return "Bank Transfer";
+  if (method === "cod") return "COD";
+  if (method === "cop") return "COP";
+  return humanize(method);
 };
 
 const formatDateTime = (value) => {
   if (!value) return "—";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
+  if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleString("en-PH", {
     year: "numeric",
     month: "short",
-    day: "numeric",
-    hour: "numeric",
+    day: "2-digit",
+    hour: "2-digit",
     minute: "2-digit",
   });
 };
 
-const getBadgeStyle = (status) => {
-  const s = String(status || "").toLowerCase();
-  if (["failed", "cancelled"].includes(s))
-    return {
-      background: "#fef2f2",
-      color: "#991b1b",
-      border: "1px solid #fecaca",
-    };
-  if (["delivered", "done", "confirmed"].includes(s))
-    return {
-      background: "#0a0a0a",
-      color: "#ffffff",
-      border: "1px solid #0a0a0a",
-    };
-  if (["cash", "gcash", "bank_transfer", "cod", "cop"].includes(s))
-    return {
-      background: "#f4f4f5",
-      color: "#18181b",
-      border: "1px solid #e4e4e7",
-    };
+const formatPeriodLabel = (value, period) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
 
-  return {
-    background: "#ffffff",
-    color: "#52525b",
-    border: "1px solid #d4d4d8",
-  };
+  if (period === "yearly") return String(date.getFullYear());
+  if (period === "monthly") {
+    return date.toLocaleDateString("en-PH", {
+      year: "numeric",
+      month: "short",
+    });
+  }
+  if (period === "weekly") {
+    return `Week of ${date.toLocaleDateString("en-PH", {
+      month: "short",
+      day: "numeric",
+    })}`;
+  }
+  return date.toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+  });
 };
+
+function MetricCard({ label, value, note }) {
+  return (
+    <div style={metricCard}>
+      <div style={metricLabel}>{label}</div>
+      <div style={metricValue}>{value}</div>
+      {note ? <div style={metricNote}>{note}</div> : null}
+    </div>
+  );
+}
 
 export default function SalesReports() {
   const [data, setData] = useState(null);
@@ -122,16 +105,17 @@ export default function SalesReports() {
   const fetchReport = useCallback(async () => {
     setLoading(true);
     setError("");
-
     try {
-      const params = new URLSearchParams(filters).toString();
-      const res = await api.get(`/pos/reports?${params}`);
-      setData(res.data);
+      const params = { ...filters };
+      if (!filters.from || !filters.to) {
+        delete params.from;
+        delete params.to;
+      }
+      const response = await api.get("/pos/reports", { params });
+      setData(response.data);
     } catch (err) {
       setData(null);
-      setError(
-        err.response?.data?.message || "Failed to load POS sales report.",
-      );
+      setError(err.response?.data?.message || "Failed to load POS sales report.");
     } finally {
       setLoading(false);
     }
@@ -141,119 +125,66 @@ export default function SalesReports() {
     fetchReport();
   }, [fetchReport]);
 
-  const money = (value) =>
-    `₱${Number(value || 0).toLocaleString("en-PH", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
+  const totals = data?.totals || {};
+  const transactions = data?.transactions || [];
+  const paymentBreakdown = data?.payment_breakdown || [];
+  const products = data?.top_products || [];
 
-  const humanize = (value) =>
-    value
-      ? value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-      : "—";
-
-  const PAYMENT_METHOD_LABELS = { gcash: "GCash" };
-  const humanizePaymentMethod = (value) =>
-    PAYMENT_METHOD_LABELS[String(value || "").toLowerCase()] || humanize(value);
-
-  const summaryData = (data?.summary || []).map((item) => ({
-    ...item,
-    formatted_period: formatPeriodLabel(
-      item.period_label || item.period,
-      filters.period,
-    ),
-  }));
+  const chartData = useMemo(
+    () =>
+      (data?.summary || []).map((row) => ({
+        ...row,
+        formatted_period: formatPeriodLabel(row.period_label, filters.period),
+      })),
+    [data?.summary, filters.period],
+  );
 
   return (
-    <div style={{ fontFamily: "'Inter', sans-serif", paddingBottom: 40 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 24,
-          flexWrap: "wrap",
-          gap: 16,
-        }}
-      >
+    <div style={{ paddingBottom: 40 }}>
+      <div style={headerRow}>
         <div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 24,
-              fontWeight: 800,
-              color: "#0a0a0a",
-              letterSpacing: "-0.02em",
-            }}
-          >
-            POS Sales Reports
-          </h1>
-          <p
-            style={{
-              margin: "6px 0 0",
-              fontSize: 13,
-              color: "#52525b",
-              lineHeight: 1.5,
-            }}
-          >
-            View and filter your complete transaction history
+          <h1 style={pageTitle}>POS Sales & Collections</h1>
+          <p style={pageSubtitle}>
+            Actual Sales include verified payment transactions only.
           </p>
         </div>
-        <button
-          style={btnGhost}
-          onClick={() => window.print()}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "#e4e4e7")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "#f4f4f5")}
-        >
+        <button style={buttonGhost} onClick={() => window.print()}>
           <Printer size={16} /> Print Report
         </button>
       </div>
 
-      <div style={{ ...cardStyle, marginBottom: 24, padding: "20px 24px" }}>
-        <div
-          style={{
-            display: "flex",
-            gap: 16,
-            alignItems: "flex-end",
-            flexWrap: "wrap",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-              minWidth: 150,
-            }}
-          >
-            <label style={labelStyle}>Order Source</label>
+      <div style={noticeBox}>
+        Blueprint 30% payments and remaining-balance payments appear as separate verified collections. COD/COP collections appear only after payment verification, not when the unpaid order is created.
+      </div>
+
+      <div style={filterCard}>
+        <div style={filterGrid}>
+          <FilterField label="Order Source">
             <select
-              style={inputStyle}
+              style={input}
               value={filters.source}
-              onChange={(e) =>
-                setFilters({ ...filters, source: e.target.value })
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  source: event.target.value,
+                }))
               }
             >
               <option value="all">All Sources</option>
-              <option value="online">Online (Website)</option>
-              <option value="walk_in">Walk-in (POS)</option>
+              <option value="online">Online / Website</option>
+              <option value="walk_in">Walk-in / POS</option>
             </select>
-          </div>
+          </FilterField>
 
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-              minWidth: 150,
-            }}
-          >
-            <label style={labelStyle}>Period</label>
+          <FilterField label="Period">
             <select
-              style={inputStyle}
+              style={input}
               value={filters.period}
-              onChange={(e) =>
-                setFilters({ ...filters, period: e.target.value })
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  period: event.target.value,
+                }))
               }
             >
               <option value="daily">Daily</option>
@@ -261,760 +192,284 @@ export default function SalesReports() {
               <option value="monthly">Monthly</option>
               <option value="yearly">Yearly</option>
             </select>
-          </div>
+          </FilterField>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <label style={labelStyle}>From Date</label>
+          <FilterField label="From Date">
             <input
-              style={inputStyle}
+              style={input}
               type="date"
               value={filters.from}
-              onChange={(e) => setFilters({ ...filters, from: e.target.value })}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  from: event.target.value,
+                }))
+              }
             />
-          </div>
+          </FilterField>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <label style={labelStyle}>To Date</label>
+          <FilterField label="To Date">
             <input
-              style={inputStyle}
+              style={input}
               type="date"
               value={filters.to}
-              onChange={(e) => setFilters({ ...filters, to: e.target.value })}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  to: event.target.value,
+                }))
+              }
             />
-          </div>
+          </FilterField>
 
           <button
-            style={{ ...btnPrimary, height: 42 }}
+            style={buttonPrimary}
             onClick={fetchReport}
-            disabled={loading}
+            disabled={loading || Boolean(filters.from && filters.to && filters.from > filters.to)}
           >
             {loading ? "Loading..." : "Generate Report"}
           </button>
         </div>
       </div>
 
-      {loading && (
-        <div
-          style={{
-            ...cardStyle,
-            textAlign: "center",
-            padding: 40,
-            color: "#71717a",
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        >
-          Loading report...
-        </div>
-      )}
+      {error ? <div style={errorBox}>{error}</div> : null}
+      {loading ? <div style={loadingBox}>Loading report...</div> : null}
 
-      {!loading && error && (
-        <div
-          style={{
-            marginBottom: 20,
-            padding: "14px 16px",
-            color: "#991b1b",
-            background: "#fef2f2",
-            border: "1px solid #fecaca",
-            borderRadius: 12,
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {!loading && data && (
+      {!loading && data ? (
         <>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: 16,
-              marginBottom: 24,
-            }}
-          >
-            <div style={statCardStyle}>
-              <div style={iconWrapperStyle}>🧾</div>
-              <div>
-                <div style={statValueStyle}>{data.totals.total_orders}</div>
-                <div style={statLabelStyle}>Total Orders</div>
-              </div>
-            </div>
-
-            <div style={statCardStyle}>
-              <div
-                style={{
-                  ...iconWrapperStyle,
-                  background: "#18181b",
-                  color: "#fff",
-                }}
-              >
-                💰
-              </div>
-              <div>
-                <div style={statValueStyle}>
-                  {money(data.totals.grand_total)}
-                </div>
-                <div style={statLabelStyle}>Grand Total</div>
-              </div>
-            </div>
-
-            <div style={statCardStyle}>
-              <div
-                style={{
-                  ...iconWrapperStyle,
-                  background: "#fef2f2",
-                  color: "#dc2626",
-                }}
-              >
-                🏷️
-              </div>
-              <div>
-                <div style={{ ...statValueStyle, color: "#dc2626" }}>
-                  {money(data.totals.total_discount)}
-                </div>
-                <div style={statLabelStyle}>Total Discounts</div>
-              </div>
-            </div>
-
-            <div style={statCardStyle}>
-              <div style={iconWrapperStyle}>📈</div>
-              <div>
-                <div style={statValueStyle}>
-                  {money(data.totals.estimated_profit)}
-                </div>
-                <div style={statLabelStyle}>Estimated Profit</div>
-              </div>
-            </div>
+          <div style={metricGrid}>
+            <MetricCard
+              label="Gross Order Value"
+              value={money(totals.gross_order_value)}
+              note="Non-cancelled orders created in the selected order period"
+            />
+            <MetricCard
+              label="Actual Collected"
+              value={money(totals.actual_collected)}
+              note={`${totals.collection_count || 0} verified collection(s)`}
+            />
+            <MetricCard
+              label="Outstanding"
+              value={money(totals.outstanding_balance)}
+              note="Remaining balance of non-cancelled orders in the selected order period"
+            />
+            <MetricCard label="Non-cancelled Orders" value={totals.total_orders || 0} />
+            <MetricCard
+              label="Estimated Order Profit"
+              value={money(totals.estimated_profit)}
+              note="Estimate only, not realized accounting profit"
+            />
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "2fr 1fr",
-              gap: 20,
-              marginBottom: 24,
-            }}
-          >
-            <div style={{ ...cardStyle, padding: "24px" }}>
-              <h3 style={sectionTitleStyle}>Sales by Period</h3>
-              <ResponsiveContainer width="100%" height={260}>
-                <BarChart
-                  data={summaryData}
-                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke="#e4e4e7"
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey="formatted_period"
-                    tick={{ fontSize: 11, fill: "#71717a" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: "#71717a" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    formatter={(v) => [money(v), "Sales"]}
-                    contentStyle={{
-                      background: "#18181b",
-                      border: "none",
-                      borderRadius: 8,
-                      color: "#fff",
-                      fontSize: 12,
-                      fontWeight: 600,
-                    }}
-                    itemStyle={{ color: "#fff" }}
-                  />
-                  <Bar
-                    dataKey="total_sales"
-                    fill="#18181b"
-                    radius={[4, 4, 0, 0]}
-                    barSize={40}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+          <div style={chartGrid}>
+            <section style={card}>
+              <SectionHeader
+                title="Actual Collections by Period"
+                subtitle="Grouped by payment verification date"
+              />
+              <div style={{ padding: 18 }}>
+                {chartData.length === 0 ? (
+                  <div style={emptyChart}>No verified collections for this period.</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
+                      <XAxis dataKey="formatted_period" tick={{ fontSize: 11, fill: "#71717a" }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: "#71717a" }} axisLine={false} tickLine={false} />
+                      <Tooltip
+                        formatter={(value) => [money(value), "Verified Collections"]}
+                        contentStyle={tooltipStyle}
+                        itemStyle={{ color: "#fff" }}
+                      />
+                      <Bar dataKey="total_sales" fill="#18181b" radius={[4, 4, 0, 0]} barSize={42} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </section>
 
-            <div style={{ ...cardStyle, padding: "24px" }}>
-              <h3 style={sectionTitleStyle}>Payment Methods</h3>
-              {data.payment_breakdown.length === 0 ? (
-                <div
-                  style={{
-                    height: 260,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#71717a",
-                    fontSize: 13,
-                    fontWeight: 500,
-                  }}
-                >
-                  No payment data available.
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={260}>
-                  <PieChart>
-                    <Pie
-                      data={data.payment_breakdown}
-                      dataKey="count"
-                      nameKey="payment_method"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={85}
-                      label={({ payment_method }) =>
-                        humanizePaymentMethod(payment_method)
-                      }
-                      labelLine={{ stroke: "#a1a1aa" }}
-                    >
-                      {data.payment_breakdown.map((_, i) => (
-                        <Cell
-                          key={i}
-                          fill={PIE_COLORS[i % PIE_COLORS.length]}
-                          stroke="#ffffff"
-                          strokeWidth={2}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value, _name, item) => [
-                        `${value} transactions`,
-                        humanizePaymentMethod(item?.payload?.payment_method),
-                      ]}
-                      contentStyle={{
-                        background: "#18181b",
-                        border: "none",
-                        borderRadius: 8,
-                        color: "#fff",
-                        fontSize: 12,
-                        fontWeight: 600,
-                      }}
-                      itemStyle={{ color: "#fff" }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </div>
+            <section style={card}>
+              <SectionHeader title="Verified Collections by Method" />
+              <div style={{ padding: 18 }}>
+                {paymentBreakdown.length === 0 ? (
+                  <div style={emptyChart}>No verified payment data.</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <PieChart>
+                      <Pie
+                        data={paymentBreakdown}
+                        dataKey="total_amount"
+                        nameKey="payment_method"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={84}
+                        label={({ payment_method }) => paymentMethodLabel(payment_method)}
+                      >
+                        {paymentBreakdown.map((row, index) => (
+                          <Cell key={`${row.payment_method}-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} stroke="#fff" strokeWidth={2} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value, _name, item) => [
+                          money(value),
+                          paymentMethodLabel(item?.payload?.payment_method),
+                        ]}
+                        contentStyle={tooltipStyle}
+                        itemStyle={{ color: "#fff" }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                )}
+                {paymentBreakdown.map((row) => (
+                  <div key={row.payment_method} style={methodRow}>
+                    <div>
+                      <strong>{paymentMethodLabel(row.payment_method)}</strong>
+                      <div style={methodMeta}>{row.count} transaction(s)</div>
+                    </div>
+                    <strong>{money(row.total_amount)}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1.5fr",
-              gap: 20,
-              marginBottom: 24,
-            }}
-          >
-            <div style={{ ...cardStyle, padding: 0 }}>
-              <div
-                style={{
-                  padding: "20px 24px",
-                  borderBottom: "1px solid #f4f4f5",
-                  background: "#fafafa",
-                }}
-              >
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: 15,
-                    fontWeight: 800,
-                    color: "#0a0a0a",
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                  }}
-                >
-                  Top Products
-                </h3>
-              </div>
-              <div style={{ overflowX: "auto" }}>
-                <table style={tableStyle}>
-                  <thead>
-                    <tr style={thRowStyle}>
-                      <th style={thStyle}>#</th>
-                      <th style={thStyle}>Product</th>
-                      <th style={thStyle}>Qty</th>
-                      <th style={thStyle}>Revenue</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.top_products.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          style={{
-                            textAlign: "center",
-                            color: "#71717a",
-                            padding: 30,
-                            fontSize: 13,
-                            fontWeight: 500,
-                          }}
-                        >
-                          No product data found.
-                        </td>
-                      </tr>
-                    ) : (
-                      data.top_products.map((p, i) => (
-                        <tr key={i} style={trStyle}>
-                          <td
-                            style={{
-                              ...tdStyle,
-                              color: "#71717a",
-                              fontWeight: 700,
-                            }}
-                          >
-                            {i + 1}
-                          </td>
-                          <td style={{ ...tdStyle, fontWeight: 600 }}>
-                            {p.product_name}
-                          </td>
-                          <td style={tdStyle}>{p.qty}</td>
-                          <td
-                            style={{
-                              ...tdStyle,
-                              fontWeight: 700,
-                              color: "#0a0a0a",
-                            }}
-                          >
-                            {money(p.revenue)}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div style={{ ...cardStyle, padding: 0 }}>
-              <div
-                style={{
-                  padding: "20px 24px",
-                  borderBottom: "1px solid #f4f4f5",
-                  background: "#fafafa",
-                }}
-              >
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: 15,
-                    fontWeight: 800,
-                    color: "#0a0a0a",
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                  }}
-                >
-                  Period Summary
-                </h3>
-              </div>
-              <div style={{ maxHeight: 400, overflowY: "auto" }}>
-                <table style={tableStyle}>
-                  <thead style={{ position: "sticky", top: 0, zIndex: 1 }}>
-                    <tr style={thRowStyle}>
-                      <th style={thStyle}>Period</th>
-                      <th style={thStyle}>Orders</th>
-                      <th style={thStyle}>Sales</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.summary.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={3}
-                          style={{
-                            textAlign: "center",
-                            color: "#71717a",
-                            padding: 30,
-                            fontSize: 13,
-                            fontWeight: 500,
-                          }}
-                        >
-                          No summary data found.
-                        </td>
-                      </tr>
-                    ) : (
-                      summaryData.map((s, i) => (
-                        <tr key={i} style={trStyle}>
-                          <td style={{ ...tdStyle, fontWeight: 600 }}>
-                            {s.formatted_period}
-                          </td>
-                          <td style={tdStyle}>{s.order_count}</td>
-                          <td
-                            style={{
-                              ...tdStyle,
-                              fontWeight: 700,
-                              color: "#0a0a0a",
-                            }}
-                          >
-                            {money(s.total_sales)}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ ...cardStyle, padding: 0 }}>
-            <div
-              style={{
-                padding: "20px 24px",
-                borderBottom: "1px solid #f4f4f5",
-                background: "#fafafa",
-              }}
-            >
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: 15,
-                  fontWeight: 800,
-                  color: "#0a0a0a",
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                }}
-              >
-                Transaction History
-              </h3>
-            </div>
-
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ ...tableStyle, minWidth: 1200 }}>
+          <section style={card}>
+            <SectionHeader
+              title="Verified Collection Transactions"
+              subtitle="Each row is one verified payment. Blueprint down payment and remaining balance are separate rows."
+            />
+            <div style={tableScroll}>
+              <table style={table}>
                 <thead>
-                  <tr style={thRowStyle}>
-                    <th style={thStyle}>Date</th>
-                    <th style={thStyle}>Order #</th>
-                    <th style={thStyle}>Receipt #</th>
-                    <th style={thStyle}>Customer</th>
-                    <th style={thStyle}>Payment</th>
-                    <th style={thStyle}>Subtotal</th>
-                    <th style={thStyle}>Discount</th>
-                    <th style={thStyle}>Total</th>
-                    <th style={thStyle}>Cash Received</th>
-                    <th style={thStyle}>Change</th>
-                    <th style={thStyle}>Profit</th>
-                    <th style={thStyle}>Delivery</th>
-                    <th style={thStyle}>Appointment</th>
-                    <th style={thStyle}>Cashier</th>
+                  <tr>
+                    {["Payment Date", "Receipt", "Order", "Customer", "Source / Type", "Method", "Amount", "Order Total", "Lifetime Collected", "Remaining", "Payment Status", "Processed By"].map((label) => (
+                      <th key={label} style={th}>{label}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {!data.transactions || data.transactions.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={14}
-                        style={{
-                          textAlign: "center",
-                          color: "#71717a",
-                          padding: 40,
-                          fontSize: 13,
-                          fontWeight: 500,
-                        }}
-                      >
-                        No transactions found for the selected filters.
-                      </td>
-                    </tr>
+                  {transactions.length === 0 ? (
+                    <EmptyRow colSpan={12} text="No verified collection transactions for this period." />
                   ) : (
-                    data.transactions.map((t) => {
-                      const deliveryStyle = getBadgeStyle(t.delivery_status);
-                      const appointmentStyle = getBadgeStyle(
-                        t.appointment_status,
-                      );
-                      const paymentStyle = getBadgeStyle(t.payment_method);
-
-                      return (
-                        <tr key={t.order_id} style={trStyle}>
-                          <td
-                            style={{
-                              ...tdStyle,
-                              whiteSpace: "nowrap",
-                              fontSize: 12,
-                              color: "#52525b",
-                            }}
-                          >
-                            {formatDateTime(t.created_at)}
-                          </td>
-                          <td
-                            style={{
-                              ...tdStyle,
-                              fontWeight: 800,
-                              color: "#0a0a0a",
-                            }}
-                          >
-                            {t.order_number}
-                          </td>
-                          <td style={tdStyle}>{t.receipt_number || "—"}</td>
-                          <td style={tdStyle}>
-                            <div style={{ fontWeight: 600, color: "#18181b" }}>
-                              {t.customer_name || "Walk-in Customer"}
-                            </div>
-                            <div
-                              style={{
-                                fontSize: 11,
-                                color: "#71717a",
-                                marginTop: 2,
-                              }}
-                            >
-                              {t.customer_phone || "No phone"}
-                            </div>
-                          </td>
-                          <td style={tdStyle}>
-                            <span
-                              style={{
-                                ...paymentStyle,
-                                padding: "4px 10px",
-                                borderRadius: 999,
-                                fontSize: 10,
-                                fontWeight: 700,
-                                textTransform: "uppercase",
-                                letterSpacing: "0.5px",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {humanizePaymentMethod(t.payment_method)}
-                            </span>
-                          </td>
-                          <td style={tdStyle}>{money(t.subtotal)}</td>
-                          <td
-                            style={{
-                              ...tdStyle,
-                              color: "#dc2626",
-                              fontWeight: 600,
-                            }}
-                          >
-                            {parseFloat(t.discount || 0) > 0
-                              ? `-${money(t.discount)}`
-                              : money(0)}
-                          </td>
-                          <td
-                            style={{
-                              ...tdStyle,
-                              fontWeight: 800,
-                              color: "#0a0a0a",
-                            }}
-                          >
-                            {money(t.total)}
-                          </td>
-                          <td style={tdStyle}>
-                            {t.payment_method === "cash"
-                              ? money(t.cash_received)
-                              : "—"}
-                          </td>
-                          <td style={tdStyle}>
-                            {t.payment_method === "cash"
-                              ? money(t.change_amount)
-                              : "—"}
-                          </td>
-                          <td
-                            style={{
-                              ...tdStyle,
-                              fontWeight: 600,
-                              color: "#059669",
-                            }}
-                          >
-                            {money(t.estimated_profit)}
-                          </td>
-                          <td style={tdStyle}>
-                            {t.delivery_status ? (
-                              <span
-                                style={{
-                                  ...deliveryStyle,
-                                  padding: "4px 10px",
-                                  borderRadius: 999,
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  textTransform: "uppercase",
-                                  letterSpacing: "0.5px",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {humanize(t.delivery_status)}
-                              </span>
-                            ) : (
-                              <span style={{ color: "#a1a1aa" }}>—</span>
-                            )}
-                          </td>
-                          <td style={tdStyle}>
-                            {t.appointment_status ? (
-                              <span
-                                style={{
-                                  ...appointmentStyle,
-                                  padding: "4px 10px",
-                                  borderRadius: 999,
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  textTransform: "uppercase",
-                                  letterSpacing: "0.5px",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {humanize(t.appointment_status)}
-                              </span>
-                            ) : (
-                              <span style={{ color: "#a1a1aa" }}>—</span>
-                            )}
-                          </td>
-                          <td style={tdStyle}>{t.processed_by || "—"}</td>
-                        </tr>
-                      );
-                    })
+                    transactions.map((row) => (
+                      <tr key={row.payment_transaction_id} style={tr}>
+                        <td style={td}>{formatDateTime(row.payment_date)}</td>
+                        <td style={td}>{row.receipt_number || "—"}</td>
+                        <td style={{ ...td, fontWeight: 800 }}>{row.order_number || `#${row.order_id}`}</td>
+                        <td style={td}>
+                          <div style={{ fontWeight: 700 }}>{row.customer_name || "—"}</div>
+                          <div style={mutedText}>{row.customer_phone || ""}</div>
+                        </td>
+                        <td style={td}>{humanize(row.type)} · {humanize(row.order_type)}</td>
+                        <td style={td}>{paymentMethodLabel(row.payment_method)}</td>
+                        <td style={{ ...td, fontWeight: 900 }}>{money(row.amount)}</td>
+                        <td style={td}>{money(row.order_total)}</td>
+                        <td style={td}>{money(row.lifetime_collected)}</td>
+                        <td style={td}>{money(row.remaining_balance)}</td>
+                        <td style={td}>{humanize(row.payment_status)}</td>
+                        <td style={td}>{row.processed_by || "System"}</td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
+
+          <section style={card}>
+            <SectionHeader
+              title="Gross Order Product Breakdown"
+              subtitle="Order pipeline value. Partial blueprint payments are not allocated artificially across products."
+            />
+            <div style={tableScroll}>
+              <table style={table}>
+                <thead>
+                  <tr>
+                    {["Product", "Units", "Gross Order Value", "Estimated Profit"].map((label) => (
+                      <th key={label} style={th}>{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.length === 0 ? (
+                    <EmptyRow colSpan={4} text="No product order data for this period." />
+                  ) : (
+                    products.map((row, index) => (
+                      <tr key={`${row.product_name}-${index}`} style={tr}>
+                        <td style={{ ...td, fontWeight: 700 }}>{row.product_name || "—"}</td>
+                        <td style={td}>{Number(row.qty || 0).toLocaleString("en-PH")}</td>
+                        <td style={td}>{money(row.gross_order_value)}</td>
+                        <td style={td}>{money(row.estimated_profit)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </>
-      )}
+      ) : null}
     </div>
   );
 }
 
-// ── Reusable Styles ──────────────────────────────────────────
+function FilterField({ label, children }) {
+  return (
+    <label style={fieldWrap}>
+      <span style={fieldLabel}>{label}</span>
+      {children}
+    </label>
+  );
+}
 
-const cardStyle = {
-  background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 16,
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-};
+function SectionHeader({ title, subtitle }) {
+  return (
+    <div style={sectionHeader}>
+      <h3 style={sectionTitle}>{title}</h3>
+      {subtitle ? <p style={sectionSubtitle}>{subtitle}</p> : null}
+    </div>
+  );
+}
 
-const labelStyle = {
-  display: "block",
-  fontSize: 11,
-  fontWeight: 800,
-  color: "#18181b",
-  textTransform: "uppercase",
-  letterSpacing: "1px",
-};
+function EmptyRow({ colSpan, text }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} style={emptyCell}>{text}</td>
+    </tr>
+  );
+}
 
-const inputStyle = {
-  padding: "10px 14px",
-  borderRadius: 8,
-  border: "1px solid #e4e4e7",
-  fontSize: 13,
-  color: "#18181b",
-  outline: "none",
-  background: "#ffffff",
-  boxSizing: "border-box",
-  transition: "border-color 0.2s",
-};
-
-const btnPrimary = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 8,
-  padding: "10px 20px",
-  background: "#18181b",
-  color: "#fff",
-  border: "1px solid #18181b",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
-  transition: "background 0.2s",
-};
-
-const btnGhost = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 8,
-  padding: "10px 16px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
-  transition: "background 0.2s",
-};
-
-const statCardStyle = {
-  background: "#fff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 16,
-  padding: "20px 24px",
-  display: "flex",
-  alignItems: "center",
-  gap: 16,
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-};
-
-const iconWrapperStyle = {
-  width: 44,
-  height: 44,
-  borderRadius: 12,
-  background: "#f4f4f5",
-  color: "#18181b",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 20,
-};
-
-const statValueStyle = {
-  fontSize: 24,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  letterSpacing: "-0.02em",
-  lineHeight: 1,
-};
-
-const statLabelStyle = {
-  fontSize: 10,
-  fontWeight: 800,
-  color: "#71717a",
-  textTransform: "uppercase",
-  letterSpacing: "1px",
-  marginTop: 6,
-};
-
-const sectionTitleStyle = {
-  margin: "0 0 20px",
-  fontSize: 18,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  letterSpacing: "-0.01em",
-};
-
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: 13,
-  textAlign: "left",
-};
-
-const thRowStyle = {
-  background: "#fafafa",
-  borderBottom: "1px solid #e4e4e7",
-};
-
-const thStyle = {
-  padding: "14px 16px",
-  fontSize: 10,
-  fontWeight: 800,
-  color: "#71717a",
-  textTransform: "uppercase",
-  letterSpacing: "1px",
-};
-
-const trStyle = {
-  borderBottom: "1px solid #f4f4f5",
-  background: "#ffffff",
-  transition: "background 0.2s",
-};
-
-const tdStyle = {
-  padding: "16px",
-  color: "#18181b",
-  verticalAlign: "middle",
-};
+const pageTitle = { margin: 0, fontSize: 25, fontWeight: 900, color: "#0a0a0a" };
+const pageSubtitle = { margin: "6px 0 0", fontSize: 13, color: "#71717a" };
+const headerRow = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 16 };
+const buttonGhost = { display: "inline-flex", alignItems: "center", gap: 7, border: "1px solid #d4d4d8", background: "#fff", color: "#18181b", padding: "9px 13px", borderRadius: 8, fontWeight: 800, cursor: "pointer" };
+const noticeBox = { padding: "12px 14px", marginBottom: 18, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1e3a8a", borderRadius: 10, fontSize: 12, lineHeight: 1.55 };
+const filterCard = { background: "#fff", border: "1px solid #e4e4e7", borderRadius: 12, padding: 18, marginBottom: 18 };
+const filterGrid = { display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" };
+const fieldWrap = { display: "flex", flexDirection: "column", gap: 6, minWidth: 145 };
+const fieldLabel = { fontSize: 11, color: "#52525b", fontWeight: 800, textTransform: "uppercase", letterSpacing: ".03em" };
+const input = { border: "1px solid #d4d4d8", background: "#fff", borderRadius: 8, padding: "9px 10px", fontSize: 12, minHeight: 38 };
+const buttonPrimary = { border: "1px solid #18181b", background: "#18181b", color: "#fff", padding: "10px 14px", borderRadius: 8, fontWeight: 800, cursor: "pointer", minHeight: 38 };
+const errorBox = { padding: 14, borderRadius: 10, color: "#991b1b", background: "#fef2f2", border: "1px solid #fecaca", marginBottom: 16 };
+const loadingBox = { padding: 38, textAlign: "center", color: "#71717a", border: "1px solid #e4e4e7", borderRadius: 12, background: "#fff" };
+const metricGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginBottom: 18 };
+const metricCard = { background: "#fff", border: "1px solid #e4e4e7", borderRadius: 12, padding: 16 };
+const metricLabel = { fontSize: 10, fontWeight: 800, color: "#71717a", textTransform: "uppercase", letterSpacing: ".04em" };
+const metricValue = { fontSize: 22, fontWeight: 900, color: "#0a0a0a", marginTop: 7 };
+const metricNote = { fontSize: 10, color: "#71717a", lineHeight: 1.45, marginTop: 6 };
+const chartGrid = { display: "grid", gridTemplateColumns: "minmax(420px, 1.4fr) minmax(320px, .9fr)", gap: 18, marginBottom: 18 };
+const card = { background: "#fff", border: "1px solid #e4e4e7", borderRadius: 12, overflow: "hidden", marginBottom: 18 };
+const sectionHeader = { padding: "16px 18px", borderBottom: "1px solid #e4e4e7", background: "#fafafa" };
+const sectionTitle = { margin: 0, fontSize: 15, fontWeight: 900, color: "#18181b" };
+const sectionSubtitle = { margin: "4px 0 0", fontSize: 11, color: "#71717a" };
+const emptyChart = { height: 260, display: "flex", alignItems: "center", justifyContent: "center", color: "#71717a", fontSize: 12 };
+const tooltipStyle = { background: "#18181b", border: "none", borderRadius: 8, color: "#fff", fontSize: 12 };
+const methodRow = { display: "flex", justifyContent: "space-between", gap: 12, padding: "10px 0", borderTop: "1px solid #f4f4f5" };
+const methodMeta = { marginTop: 3, fontSize: 10, color: "#71717a" };
+const tableScroll = { overflowX: "auto" };
+const table = { width: "100%", borderCollapse: "collapse", fontSize: 12 };
+const th = { textAlign: "left", padding: "10px 12px", background: "#fafafa", borderBottom: "1px solid #e4e4e7", color: "#52525b", fontSize: 10, textTransform: "uppercase", letterSpacing: ".03em", whiteSpace: "nowrap" };
+const tr = { borderBottom: "1px solid #f4f4f5" };
+const td = { padding: "11px 12px", verticalAlign: "top", color: "#3f3f46", whiteSpace: "nowrap" };
+const mutedText = { marginTop: 3, fontSize: 10, color: "#71717a" };
+const emptyCell = { padding: 32, textAlign: "center", color: "#71717a" };

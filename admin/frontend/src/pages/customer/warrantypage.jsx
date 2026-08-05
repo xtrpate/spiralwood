@@ -23,6 +23,7 @@ const StatusBadge = ({ status }) => {
     rejected: { cls: "wbadge-rejected", label: "Rejected" },
     fulfilled: { cls: "wbadge-resolved", label: "Fulfilled" },
     resolved: { cls: "wbadge-resolved", label: "Resolved" },
+    cancelled: { cls: "wbadge-cancelled", label: "Cancelled" },
   };
 
   const { cls, label } = map[normalized] || {
@@ -117,6 +118,9 @@ export default function WarrantyPage() {
   const [claims, setClaims] = useState([]);
   const [loadingClaims, setLoadingClaims] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelError, setCancelError] = useState("");
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -151,6 +155,10 @@ export default function WarrantyPage() {
   const visibleOrders = useMemo(() => {
     const claimedOrderIds = new Set(
       claims
+        .filter(
+          (claim) =>
+            String(claim.status || "").trim().toLowerCase() !== "cancelled",
+        )
         .map((claim) => String(claim.order_id || "").trim())
         .filter(Boolean),
     );
@@ -274,6 +282,37 @@ export default function WarrantyPage() {
     setShowForm(false);
 
     await Promise.all([fetchClaims(), fetchOrders()]);
+  };
+
+  const openCancelModal = (claim) => {
+    setCancelError("");
+    setCancelTarget(claim);
+  };
+
+  const closeCancelModal = () => {
+    if (cancelBusy) return;
+    setCancelError("");
+    setCancelTarget(null);
+  };
+
+  const handleCancelClaim = async () => {
+    if (!cancelTarget?.id || cancelBusy) return;
+
+    setCancelBusy(true);
+    setCancelError("");
+
+    try {
+      await api.patch(`/customer/warranty/${cancelTarget.id}/cancel`);
+      await Promise.all([fetchClaims(), fetchOrders()]);
+      setCancelTarget(null);
+    } catch (err) {
+      setCancelError(
+        err?.response?.data?.message ||
+          "Unable to cancel this warranty claim. Please try again.",
+      );
+    } finally {
+      setCancelBusy(false);
+    }
   };
 
   return (
@@ -776,7 +815,11 @@ export default function WarrantyPage() {
                 ) : (
                   <div className="wclaims-list">
                     {claims.map((claim) => (
-                      <ClaimCard key={claim.id} claim={claim} />
+                      <ClaimCard
+                        key={claim.id}
+                        claim={claim}
+                        onCancel={openCancelModal}
+                      />
                     ))}
                   </div>
                 )}
@@ -785,13 +828,85 @@ export default function WarrantyPage() {
           </>
         )}
       </div>
+
+      {cancelTarget && (
+        <div
+          className="warranty-cancel-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeCancelModal();
+          }}
+        >
+          <div
+            className="warranty-cancel-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="warranty-cancel-title"
+          >
+            <div className="warranty-cancel-modal-head">
+              <div>
+                <div className="warranty-cancel-eyebrow">Warranty Claim</div>
+                <h2 id="warranty-cancel-title">Cancel this claim?</h2>
+              </div>
+
+              <button
+                type="button"
+                className="warranty-cancel-close"
+                onClick={closeCancelModal}
+                disabled={cancelBusy}
+                aria-label="Close cancellation dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="warranty-cancel-modal-body">
+              <p>
+                Cancel this warranty claim? The claim will remain in your
+                history, but it will no longer be reviewed.
+              </p>
+
+              <div className="warranty-cancel-warning">
+                You may submit a new claim for the same eligible order after
+                cancellation, as long as its warranty is still valid.
+              </div>
+
+              {cancelError && (
+                <div className="warranty-cancel-error">{cancelError}</div>
+              )}
+            </div>
+
+            <div className="warranty-cancel-actions">
+              <button
+                type="button"
+                className="warranty-cancel-keep-btn"
+                onClick={closeCancelModal}
+                disabled={cancelBusy}
+              >
+                Keep Claim
+              </button>
+              <button
+                type="button"
+                className="warranty-cancel-confirm-btn"
+                onClick={handleCancelClaim}
+                disabled={cancelBusy}
+              >
+                {cancelBusy ? "Cancelling…" : "Cancel Claim"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function ClaimCard({ claim }) {
+function ClaimCard({ claim, onCancel }) {
   const [open, setOpen] = useState(false);
-  const isRejected = String(claim.status || "").toLowerCase() === "rejected";
+  const normalizedStatus = String(claim.status || "").toLowerCase();
+  const isRejected = normalizedStatus === "rejected";
+  const isPending = normalizedStatus === "pending";
+  const isCancelled = normalizedStatus === "cancelled";
 
   return (
     <div className={`wclaim-card ${open ? "open" : ""}`}>
@@ -879,6 +994,24 @@ function ClaimCard({ claim }) {
           {claim.fulfilled_at && (
             <div className="wclaim-footer-note">
               Fulfilled on {formatDate(claim.fulfilled_at)}
+            </div>
+          )}
+
+          {isCancelled && (
+            <div className="wclaim-footer-note">
+              Cancelled on {formatDate(claim.updated_at)}
+            </div>
+          )}
+
+          {isPending && (
+            <div className="wclaim-actions">
+              <button
+                type="button"
+                className="wclaim-cancel-btn"
+                onClick={() => onCancel(claim)}
+              >
+                Cancel Claim
+              </button>
             </div>
           )}
         </div>

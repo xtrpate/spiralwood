@@ -11,12 +11,6 @@ const formatCustomerNotificationDate = (value) => {
   return d.toLocaleString("en-PH");
 };
 
-// See components/NotificationBell.jsx for the full rationale of this
-// window-based double click/tap detection (native onDoubleClick is not
-// used because it does not behave consistently across desktop mouse,
-// Chrome responsive/device mode, and mobile double-tap).
-const DOUBLE_CLICK_WINDOW_MS = 280;
-
 // This bell only ever renders for a logged-in customer, so the
 // destination only needs to branch on target_type, not on role.
 function resolveCustomerNotificationRoute(n) {
@@ -51,8 +45,6 @@ export default function CustomerNotificationBell() {
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
-  const pendingTimerRef = useRef(null);
-  const pendingIdRef = useRef(null);
   const markingInFlightRef = useRef(new Set());
   const isMountedRef = useRef(true);
 
@@ -60,10 +52,6 @@ export default function CustomerNotificationBell() {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      if (pendingTimerRef.current) {
-        clearTimeout(pendingTimerRef.current);
-        pendingTimerRef.current = null;
-      }
     };
   }, []);
 
@@ -118,42 +106,17 @@ export default function CustomerNotificationBell() {
     [notifications],
   );
 
-  const clearPendingTimer = () => {
-    if (pendingTimerRef.current) {
-      clearTimeout(pendingTimerRef.current);
-      pendingTimerRef.current = null;
-    }
-  };
-
-  const handleNotificationClick = (n) => {
-    // Second click/tap on the SAME notification within the window.
-    if (pendingIdRef.current === n.id) {
-      clearPendingTimer();
-      pendingIdRef.current = null;
-      markOneRead(n.id);
-      setOpen(false);
-      navigate(resolveCustomerNotificationRoute(n));
+  const handleNotificationClick = async (n) => {
+    // First click on an unread notification only marks it as read.
+    if (!n.is_read) {
+      await markOneRead(n.id);
       return;
     }
 
-    // A different notification was tapped while one was still pending —
-    // let the previous one resolve as a plain single click, then start
-    // tracking the new one. Never navigate using the stale notification.
-    if (pendingIdRef.current != null) {
-      clearPendingTimer();
-      const previousId = pendingIdRef.current;
-      pendingIdRef.current = null;
-      markOneRead(previousId);
-    }
-
-    pendingIdRef.current = n.id;
-    pendingTimerRef.current = setTimeout(() => {
-      if (pendingIdRef.current === n.id) {
-        pendingIdRef.current = null;
-      }
-      pendingTimerRef.current = null;
-      markOneRead(n.id);
-    }, DOUBLE_CLICK_WINDOW_MS);
+    // A notification that is already read opens its exact destination
+    // with one click. Legacy notifications still fall back to My Orders.
+    setOpen(false);
+    navigate(resolveCustomerNotificationRoute(n));
   };
 
   return (

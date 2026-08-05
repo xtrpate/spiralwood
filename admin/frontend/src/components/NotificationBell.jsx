@@ -73,16 +73,6 @@ const S = {
   }),
 };
 
-// Double click/tap must be detected explicitly rather than relying on the
-// browser's native onDoubleClick, since that event does not fire reliably
-// across desktop mouse, Chrome responsive/device mode, and mobile
-// double-tap in the same way. A short window (DOUBLE_CLICK_WINDOW_MS) is
-// used instead: the first click starts a timer that performs the
-// single-click behavior (mark as read only); a second click on the same
-// notification within that window cancels the timer and performs the
-// double-click behavior (mark as read once, close the panel, navigate).
-const DOUBLE_CLICK_WINDOW_MS = 280;
-
 // Resolves the exact destination for a notification based on its
 // (target_type, target_id, target_order_id) and the logged-in user's own
 // role/staff_type — never based on which role happened to receive the
@@ -176,12 +166,6 @@ export default function NotificationBell({ compact = false }) {
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
-  // Click-detection state kept in refs (not React state) so a stale
-  // closure inside a pending setTimeout never fires against the wrong
-  // notification and so nothing needs to re-render on every keystroke of
-  // the timer.
-  const pendingTimerRef = useRef(null);
-  const pendingIdRef = useRef(null);
   const markingInFlightRef = useRef(new Set());
   const isMountedRef = useRef(true);
 
@@ -189,10 +173,6 @@ export default function NotificationBell({ compact = false }) {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      if (pendingTimerRef.current) {
-        clearTimeout(pendingTimerRef.current);
-        pendingTimerRef.current = null;
-      }
     };
   }, []);
 
@@ -248,52 +228,23 @@ export default function NotificationBell({ compact = false }) {
     [notifications],
   );
 
-  const clearPendingTimer = () => {
-    if (pendingTimerRef.current) {
-      clearTimeout(pendingTimerRef.current);
-      pendingTimerRef.current = null;
-    }
-  };
-
-  const handleNotificationClick = (n) => {
-    // Second click on the SAME notification within the window: this is
-    // the double-click/tap. Cancel the pending single-click timer, mark
-    // read once, close the panel, and navigate.
-    if (pendingIdRef.current === n.id) {
-      clearPendingTimer();
-      pendingIdRef.current = null;
-      markOneRead(n.id);
-      setOpen(false);
-      const dest = resolveNotificationRoute(n, {
-        isAdmin,
-        isCashier,
-        isIndoorStaff,
-        isDeliveryRider,
-      });
-      navigate(dest);
+  const handleNotificationClick = async (n) => {
+    // First click on an unread notification only marks it as read.
+    if (!n.is_read) {
+      await markOneRead(n.id);
       return;
     }
 
-    // A different notification was clicked while one was still pending:
-    // let the previous one resolve as a normal single click (mark read
-    // only) right away, then start tracking the new one. Never navigate
-    // using the stale/previous notification.
-    if (pendingIdRef.current != null) {
-      clearPendingTimer();
-      const previousId = pendingIdRef.current;
-      pendingIdRef.current = null;
-      markOneRead(previousId);
-    }
-
-    pendingIdRef.current = n.id;
-    pendingTimerRef.current = setTimeout(() => {
-      // Timer fired without a second click: single-click behavior only.
-      if (pendingIdRef.current === n.id) {
-        pendingIdRef.current = null;
-      }
-      pendingTimerRef.current = null;
-      markOneRead(n.id);
-    }, DOUBLE_CLICK_WINDOW_MS);
+    // Once the notification is already read, one click opens its exact
+    // related record. Legacy notifications still use the safe role-based
+    // fallback defined by resolveNotificationRoute.
+    setOpen(false);
+    const dest = resolveNotificationRoute(n, {
+      isAdmin,
+      isIndoorStaff,
+      isDeliveryRider,
+    });
+    navigate(dest);
   };
 
   return (

@@ -202,6 +202,18 @@ router.put(
   logAction("update_raw_material", "raw_materials"),
   inventory.updateRawMaterial,
 );
+router.patch(
+  "/inventory/raw/:id/archive",
+  adminOnly,
+  logAction("archive_raw_material", "raw_materials"),
+  inventory.archiveRawMaterial,
+);
+router.patch(
+  "/inventory/raw/:id/restore",
+  adminOnly,
+  logAction("restore_raw_material", "raw_materials"),
+  inventory.restoreRawMaterial,
+);
 router.delete(
   "/inventory/raw/:id",
   adminOnly,
@@ -482,7 +494,7 @@ router.put(
   "/website/settings",
   adminOnly,
   upload.uploadSiteLogo,
-  logAction("update_website_settings", "website_settings"),
+  logAction("update_website_settings", "website_content"),
   website.updateSettings,
 );
 
@@ -511,7 +523,7 @@ router.get("/website/pages/:slug", adminOnly, website.getPage);
 router.put(
   "/website/pages/:slug",
   adminOnly,
-  logAction("update_page", "static_pages"),
+  logAction("update_page", "website_content"),
   website.updatePage,
 );
 

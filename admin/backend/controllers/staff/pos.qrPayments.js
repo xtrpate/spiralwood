@@ -1,11 +1,9 @@
 // controllers/staff/pos.qrPayments.js
 //
-// PHASE 3B — Cashier ready-to-ship POS "Online Payment QR" backend
-// foundation. This file creates and manages a payment ATTEMPT
-// (pos_qr_payment_attempts + pos_qr_stock_reservations) — it never
-// creates an orders/order_items/payment_transactions/receipts row.
-// Final order/payment/receipt creation is a later, separate,
-// verified-payment phase and is intentionally NOT implemented here.
+// Cashier ready-to-ship POS Online Payment controller. Attempt creation
+// and stock reservation remain here; strict provider analysis, exact-once
+// finalization, and Phase 3D-C cleanup lifecycle rules are centralized in
+// services/posQrLifecycleService.js and services/posQrCleanupService.js.
 //
 // TEST-KEY-ONLY: Phase 3B is deliberately restricted to a PayMongo TEST
 // secret key (sk_test_...). isPosQrTestSafeConfigured() is the single
@@ -19,10 +17,26 @@ const crypto = require("crypto");
 const db = require("../../config/db");
 const {
   createCheckoutSession,
+  expireCheckoutSession,
   retrieveCheckoutSession,
 } = require("../../services/paymongoService");
-const { createPosSaleReceipt } = require("../../services/receiptService");
-const { generateWalkInOrderNumber } = require("../../utils/posOrderNumber");
+const {
+  analyzeCheckoutSession,
+  finalizePaidAttempt,
+  getSnapshotTotalCents,
+  ALLOWED_RECOVERY_REASON_CODES,
+  attachVerifiedProviderSession,
+  confirmManualRelease,
+  loadManualReleaseSummary,
+  loadProviderUnknownAttemptForRecovery,
+  markExpireRequested,
+  parseAndValidateSnapshot,
+  releaseExpiredAttempt,
+} = require("../../services/posQrLifecycleService");
+const {
+  signRecoveryToken,
+  verifyRecoveryToken,
+} = require("../../utils/posQrRecoveryToken");
 const {
   parseDecimalToCentsStrict,
   centsToDecimalString,
@@ -37,6 +51,15 @@ const {
 
 const DEFAULT_TTL_MINUTES = 15;
 const MAX_TOKEN_LENGTH = 64;
+
+// Admin cancellation reasons for an attached, unpaid checkout. These are
+// intentionally fixed codes only: no free-text note is accepted or stored.
+const ALLOWED_UNPAID_CANCEL_REASON_CODES = new Set([
+  "customer_abandoned_checkout",
+  "cashier_cancelled_checkout",
+  "duplicate_abandoned_attempt",
+  "other",
+]);
 
 // DECIMAL(10,2) ceiling, expressed in integer centavos (99,999,999.99).
 // Narrower than MAX_DECIMAL_12_2_CENTS (imported above, used for
@@ -91,6 +114,138 @@ const isPosQrTestSafeConfigured = () => {
 };
 
 exports.isPosQrTestSafeConfigured = isPosQrTestSafeConfigured;
+
+/* ── PHASE 3D-D3 — RECOVERY FEATURE GATE ─────────────────────────────
+   Deliberately INDEPENDENT of POS_QR_ENABLED: normal QR checkout may be
+   intentionally paused (e.g. a terminal-level rollout pause) while
+   attempts that became provider_unknown before the pause still need
+   admin recovery. Coupling the two gates would make recovery
+   impossible exactly when it is most likely to be needed.
+   Fail-closed: missing, or anything other than the exact string
+   "true", disables both recovery endpoints. ── */
+const isPosQrRecoveryEnabled = () =>
+  process.env.POS_QR_RECOVERY_ENABLED === "true";
+exports.isPosQrRecoveryEnabled = isPosQrRecoveryEnabled;
+
+// attach-session additionally makes a real PayMongo call (a read-only
+// retrieval, never a session creation), so it keeps its own defensive
+// test-key-only check — independent of isPosQrTestSafeConfigured()
+// above, which also requires POS_QR_ENABLED and a configured
+// FRONTEND_URL, neither of which is relevant here.
+const isRecoveryProviderCallSafe = () => {
+  const secretKey = process.env.PAYMONGO_SECRET_KEY;
+  return (
+    typeof secretKey === "string" &&
+    secretKey.length > 0 &&
+    secretKey.startsWith("sk_test_")
+  );
+};
+
+// Conservative PayMongo Checkout Session id shape check. This is a
+// format guard only (rejects obviously malformed input before any
+// network call) — the real verification is the retrieveCheckoutSession
+// round trip plus the ownership/amount checks in attachProviderSession.
+const MAX_PROVIDER_SESSION_ID_LENGTH = 100;
+const PROVIDER_SESSION_ID_PATTERN = /^cs_[A-Za-z0-9]{8,80}$/;
+const isValidProviderSessionIdFormat = (value) =>
+  typeof value === "string" &&
+  value.trim().length > 0 &&
+  value.trim().length <= MAX_PROVIDER_SESSION_ID_LENGTH &&
+  PROVIDER_SESSION_ID_PATTERN.test(value.trim());
+
+// FAIL-CLOSED allowlist for attach-session (and recovery-verify). Only
+// these three analyzeCheckoutSession() outcomes may ever be acted on;
+// any other value — including "malformed", "payment_mismatch",
+// "ambiguous_payment", or any kind this codebase does not yet know
+// about — must leave the attempt exactly as it was, with no database
+// write. Deliberately a positive allowlist rather than a negative
+// exclusion list, so a future new analysis kind defaults to safe
+// rejection instead of silently falling through.
+const ATTACH_ALLOWED_ANALYSIS_KINDS = new Set(["paid", "pending", "expired_unpaid"]);
+
+// Phase 3D-E read-only recovery list validation. The read endpoints are
+// intentionally available even when recovery actions are disabled, but
+// they only expose unresolved statuses and a sanitized checkout summary.
+const RECOVERY_READ_STATUSES = new Set([
+  "provider_unknown",
+  "awaiting_payment",
+]);
+const DEFAULT_RECOVERY_LIST_LIMIT = 50;
+const MAX_RECOVERY_LIST_LIMIT = 100;
+
+const parseRecoveryStatusFilter = (value) => {
+  if (value === undefined) return { ok: true, value: null };
+  if (typeof value !== "string" || !RECOVERY_READ_STATUSES.has(value)) {
+    return { ok: false, value: null };
+  }
+  return { ok: true, value };
+};
+
+const parseRecoveryListLimit = (value) => {
+  if (value === undefined) return DEFAULT_RECOVERY_LIST_LIMIT;
+  if (typeof value !== "string" || !/^[1-9]\d{0,2}$/.test(value)) {
+    return null;
+  }
+  const parsed = Number(value);
+  return parsed <= MAX_RECOVERY_LIST_LIMIT ? parsed : null;
+};
+
+const toSafePositiveIntOrNull = (value) => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const buildRecoveryListAttempt = (row) => {
+  const snapshot = parseAndValidateSnapshot(row.checkout_snapshot);
+  return {
+    id: toSafePositiveIntOrNull(row.id),
+    status: row.status,
+    provider: row.provider,
+    cashier: {
+      id: toSafePositiveIntOrNull(row.cashier_id),
+      name:
+        typeof row.cashier_name === "string" && row.cashier_name.trim()
+          ? row.cashier_name
+          : null,
+    },
+    customer_name: snapshot ? snapshot.customer_name : null,
+    item_count: snapshot ? snapshot.items.length : null,
+    total: snapshot ? snapshot.total : null,
+    total_cents: snapshot ? snapshot.total_cents : null,
+    session_attached: Boolean(Number(row.session_attached)),
+    snapshot_valid: Boolean(snapshot),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    expires_at: row.expires_at,
+  };
+};
+
+const buildSafeCheckoutSummary = (snapshot) => ({
+  customer_name: snapshot.customer_name,
+  customer_phone: snapshot.customer_phone,
+  items: snapshot.items.map((item) => ({
+    product_id: item.product_id,
+    product_name: item.product_name,
+    quantity: item.quantity,
+    unit_price: item.unit_price,
+    subtotal: item.subtotal,
+  })),
+  subtotal: snapshot.subtotal,
+  discount: snapshot.discount,
+  delivery_fee: snapshot.delivery_fee,
+  total: snapshot.total,
+  total_cents: snapshot.total_cents,
+  delivery: snapshot.delivery
+    ? {
+        address: snapshot.delivery.address,
+        lat: snapshot.delivery.lat,
+        lng: snapshot.delivery.lng,
+        requested_date: snapshot.delivery.requested_date,
+        notes: snapshot.delivery.notes,
+      }
+    : null,
+  notes: snapshot.notes,
+});
 
 /* ── Normalization helpers — request INTENT only, never prices. These
    feed request_hash and must never change based on live DB values. ── */
@@ -615,6 +770,8 @@ const claimAndCreateSession = async (req, res, attemptId) => {
         pos_qr_attempt_id: attemptRow.id,
         checkout_token: attemptRow.checkout_token,
       },
+      idempotencyKey: attemptRow.idempotency_key,
+      timeoutMs: 15000,
     });
   } catch (err) {
     const classification = classifyProviderError(err);
@@ -1283,6 +1440,224 @@ exports.createAttempt = async (req, res) => {
   }
 };
 
+/* ══════════════════════════════════════════════════════════════
+   PHASE 3D-F1 — CASHIER RESUME / LOCAL-STATE RECONCILIATION
+   POST /api/pos/qr-payments/attempts/resume
+
+   Read-only and deliberately NOT behind POS_QR_ENABLED. A cashier must
+   still be able to reconcile or safely clear stale browser state even
+   when new QR payments are paused. The checkout token is accepted only
+   in the request body, is matched together with the authenticated
+   cashier id, and is never echoed in the response.
+══════════════════════════════════════════════════════════════ */
+exports.resumeAttempt = async (req, res) => {
+  const rawCheckoutToken = req.body?.checkout_token;
+  if (typeof rawCheckoutToken !== "string") {
+    return res.status(400).json({
+      message: "A valid checkout_token is required.",
+    });
+  }
+
+  const checkoutToken = rawCheckoutToken.trim();
+  if (checkoutToken.length === 0 || checkoutToken.length > MAX_TOKEN_LENGTH) {
+    return res.status(400).json({
+      message: "A valid checkout_token is required.",
+    });
+  }
+
+  try {
+    const [[attempt]] = await db.query(
+      `SELECT
+         attempt.id,
+         attempt.status,
+         attempt.provider_session_id,
+         attempt.checkout_url,
+         attempt.order_id,
+         attempt.payment_transaction_id,
+         attempt.checkout_snapshot,
+         attempt.created_at,
+         attempt.updated_at,
+         attempt.expires_at,
+         order_row.order_number,
+         order_row.status AS order_status,
+         order_row.total AS order_total,
+         payment_row.id AS linked_payment_transaction_id,
+         receipt_row.id AS receipt_id,
+         receipt_row.receipt_number
+       FROM pos_qr_payment_attempts AS attempt
+       LEFT JOIN orders AS order_row
+         ON order_row.id = attempt.order_id
+       LEFT JOIN payment_transactions AS payment_row
+         ON payment_row.id = attempt.payment_transaction_id
+        AND payment_row.order_id = attempt.order_id
+       LEFT JOIN receipts AS receipt_row
+         ON receipt_row.payment_transaction_id = attempt.payment_transaction_id
+        AND receipt_row.order_id = attempt.order_id
+       WHERE attempt.checkout_token = ?
+         AND attempt.cashier_id = ?
+       LIMIT 1`,
+      [checkoutToken, req.user.id],
+    );
+
+    // Same response for a nonexistent token and a token owned by another
+    // cashier. This prevents cross-cashier token probing.
+    if (!attempt) {
+      return res.status(404).json({
+        resume_state: "not_found",
+        can_clear_local_state: true,
+        message: "No payment attempt was found for this checkout.",
+      });
+    }
+
+    const attemptId = toSafePositiveIntOrNull(attempt.id);
+    const base = {
+      attempt_id: attemptId,
+      status: attempt.status,
+      created_at: attempt.created_at,
+      updated_at: attempt.updated_at,
+      expires_at: attempt.expires_at,
+    };
+
+    if (["failed", "expired", "cancelled"].includes(attempt.status)) {
+      return res.status(200).json({
+        ...base,
+        resume_state: "terminal",
+        can_clear_local_state: true,
+        message: "This online payment attempt is no longer active.",
+      });
+    }
+
+    if (attempt.status === "consumed") {
+      const orderId = toSafePositiveIntOrNull(attempt.order_id);
+      const paymentTransactionId = toSafePositiveIntOrNull(
+        attempt.payment_transaction_id,
+      );
+      const linkedPaymentTransactionId = toSafePositiveIntOrNull(
+        attempt.linked_payment_transaction_id,
+      );
+      const receiptId = toSafePositiveIntOrNull(attempt.receipt_id);
+
+      if (
+        !attemptId ||
+        !orderId ||
+        !paymentTransactionId ||
+        paymentTransactionId !== linkedPaymentTransactionId ||
+        !receiptId ||
+        typeof attempt.order_number !== "string" ||
+        !attempt.order_number.trim() ||
+        typeof attempt.receipt_number !== "string" ||
+        !attempt.receipt_number.trim()
+      ) {
+        return res.status(409).json({
+          ...base,
+          resume_state: "manual_review",
+          can_clear_local_state: false,
+          message:
+            "Completed payment records could not be safely loaded. Contact an administrator.",
+        });
+      }
+
+      return res.status(200).json({
+        ...base,
+        resume_state: "consumed",
+        can_clear_local_state: true,
+        result: {
+          attempt_id: attemptId,
+          status: "consumed",
+          order_id: orderId,
+          order_number: attempt.order_number,
+          order_status: attempt.order_status,
+          payment_transaction_id: paymentTransactionId,
+          receipt_id: receiptId,
+          receipt_number: attempt.receipt_number,
+          total: attempt.order_total,
+          payment_status: "paid",
+        },
+        message: "Payment was already completed.",
+      });
+    }
+
+    if (
+      !["reserved", "creating_session", "awaiting_payment", "provider_unknown"].includes(
+        attempt.status,
+      )
+    ) {
+      return res.status(409).json({
+        ...base,
+        resume_state: "manual_review",
+        can_clear_local_state: false,
+        message: "This payment attempt could not be safely resumed.",
+      });
+    }
+
+    const snapshot = parseAndValidateSnapshot(attempt.checkout_snapshot);
+    if (!snapshot) {
+      return res.status(409).json({
+        ...base,
+        resume_state: "manual_review",
+        can_clear_local_state: false,
+        message: "Payment attempt details could not be safely loaded.",
+      });
+    }
+
+    const sessionAttached = isNonEmptyString(attempt.provider_session_id);
+    const checkoutUrl =
+      attempt.status === "awaiting_payment" &&
+      isNonEmptyString(attempt.checkout_url)
+        ? attempt.checkout_url
+        : null;
+
+    if (attempt.status === "provider_unknown") {
+      return res.status(200).json({
+        ...base,
+        resume_state: "admin_recovery_required",
+        can_clear_local_state: false,
+        requires_admin_recovery: true,
+        session_attached: sessionAttached,
+        checkout_url: null,
+        total: snapshot.total,
+        total_cents: snapshot.total_cents,
+        item_count: snapshot.items.length,
+        message:
+          "The payment provider result is unresolved. Ask an administrator to review this attempt.",
+      });
+    }
+
+    if (attempt.status === "awaiting_payment") {
+      return res.status(200).json({
+        ...base,
+        resume_state: "awaiting_payment",
+        can_clear_local_state: false,
+        requires_admin_recovery: false,
+        session_attached: sessionAttached,
+        checkout_url: checkoutUrl,
+        total: snapshot.total,
+        total_cents: snapshot.total_cents,
+        item_count: snapshot.items.length,
+        message: checkoutUrl
+          ? "Existing online payment session restored."
+          : "Payment session exists but its checkout link is unavailable.",
+      });
+    }
+
+    return res.status(200).json({
+      ...base,
+      resume_state: "preparing_payment",
+      can_clear_local_state: false,
+      requires_admin_recovery: false,
+      session_attached: sessionAttached,
+      checkout_url: null,
+      total: snapshot.total,
+      total_cents: snapshot.total_cents,
+      item_count: snapshot.items.length,
+      message: "Payment session is still being prepared.",
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments resumeAttempt]", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
 /* ══════════════════════════════════════════════════════════════════════
    PHASE 3D-A — VERIFY PAYMENT ATTEMPT
    POST /api/pos/qr-payments/attempts/:id/verify
@@ -1300,787 +1675,9 @@ exports.createAttempt = async (req, res) => {
    FOR-UPDATE-guarded transaction.
 ══════════════════════════════════════════════════════════════════════ */
 
-// Reasonable sanity bounds for a PayMongo `paid_at` Unix-seconds
-// timestamp — rejects clearly malformed/garbage values (e.g. millisecond
-// timestamps, negative numbers, far-future strings) without hardcoding a
-// single "current time" cutoff that would break as real time advances.
-const MIN_REASONABLE_EPOCH_SECONDS = 946684800; // 2000-01-01T00:00:00Z
-const MAX_REASONABLE_EPOCH_SECONDS = 4102444800; // 2100-01-01T00:00:00Z
-
-// Converts a PayMongo `payments[].attributes.paid_at` value into a JS
-// Date, for use as a direct query parameter (mysql2 formats a Date
-// object for a DATETIME column using the pool's configured timezone —
-// see config/db.js — the same convention already used elsewhere in this
-// codebase, e.g. controllers/customer/customer.profile.js's `expires`
-// value).
-//
-// SAFETY CORRECTION (Phase 3D-A final pass): STRICT integer Unix-seconds
-// only. A provider payment record is either exactly what PayMongo's
-// documented shape says (a whole-number seconds timestamp) or it is
-// treated as malformed — never silently reinterpreted. This function
-// deliberately does NOT accept:
-//   - ISO-8601 / any other string representation (a string paid_at is a
-//     shape the provider never legitimately sends for this field; a
-//     lenient string fallback would let a malformed/spoofed payload be
-//     silently coerced into "looks valid")
-//   - fractional/rounded values (e.g. 1732531200.5) — Math.round() used
-//     to previously mask this; a non-integer timestamp is now rejected
-//     outright rather than quietly snapped to the nearest second
-// Returns null for anything that isn't a genuine whole-number Unix
-// timestamp within a sane range — callers must treat null as "this
-// candidate payment fails validation," never as "treat as now."
-const paymongoTimestampToDate = (value) => {
-  if (
-    typeof value !== "number" ||
-    !Number.isInteger(value) ||
-    value < MIN_REASONABLE_EPOCH_SECONDS ||
-    value > MAX_REASONABLE_EPOCH_SECONDS
-  ) {
-    return null;
-  }
-
-  const date = new Date(value * 1000);
-  return Number.isNaN(date.getTime()) ? null : date;
-};
-
-// Strict decimal-string shape check for values already produced by
-// centsToDecimalString and persisted inside checkout_snapshot — exactly
-// two decimal places, non-negative (this snapshot never stores a
-// negative amount).
-const DECIMAL_2DP_PATTERN = /^\d+\.\d{2}$/;
-
-// Strictly parses and validates an attempt's checkout_snapshot JSON
-// before it is ever used to create DB rows. Returns null for ANY
-// malformed shape — the caller treats null as a sanitized server error
-// and rolls back rather than guessing at a "close enough" reconstruction.
-// This re-validates independently of the pre-transaction preview parse
-// in exports.verifyAttempt below, using the FOR-UPDATE-locked row's own
-// checkout_snapshot value (the two are expected to be byte-identical,
-// since checkout_snapshot is written once at attempt creation and never
-// updated afterwards — this is defense-in-depth, not a compensating
-// control for a real mutation path).
-const parseAndValidateSnapshot = (rawSnapshot) => {
-  let parsed;
-  try {
-    parsed = JSON.parse(rawSnapshot);
-  } catch {
-    return null;
-  }
-  if (!parsed || typeof parsed !== "object") return null;
-
-  const {
-    customer_name,
-    customer_phone,
-    items,
-    subtotal,
-    discount,
-    delivery_fee,
-    total,
-    total_cents,
-    delivery,
-    notes,
-  } = parsed;
-
-  if (typeof customer_name !== "string" || customer_name.trim().length === 0) {
-    return null;
-  }
-  // SAFETY CORRECTION defense-in-depth: orders.walkin_customer_name is
-  // VARCHAR(150). createAttempt already rejects an over-length name
-  // before Transaction A ever runs; this is an independent re-check of
-  // the persisted checkout_snapshot value itself.
-  if (customer_name.length > 150) return null;
-  if (
-    typeof customer_phone !== "string" ||
-    customer_phone.trim().length === 0
-  ) {
-    return null;
-  }
-  if (!Array.isArray(items) || items.length === 0) return null;
-  if (!Number.isSafeInteger(total_cents) || total_cents <= 0) return null;
-
-  if (typeof subtotal !== "string" || !DECIMAL_2DP_PATTERN.test(subtotal)) {
-    return null;
-  }
-  if (typeof discount !== "string" || !DECIMAL_2DP_PATTERN.test(discount)) {
-    return null;
-  }
-  if (
-    typeof delivery_fee !== "string" ||
-    !DECIMAL_2DP_PATTERN.test(delivery_fee)
-  ) {
-    return null;
-  }
-  if (typeof total !== "string" || !DECIMAL_2DP_PATTERN.test(total)) {
-    return null;
-  }
-
-  // Internal consistency: the persisted decimal strings must agree with
-  // total_cents and with each other, in integer-cents arithmetic only.
-  const subtotalCents = parseDecimalToCentsStrict(subtotal);
-  const discountCents = parseDecimalToCentsStrict(discount);
-  const deliveryFeeCents = parseDecimalToCentsStrict(delivery_fee);
-  const totalCentsFromDecimal = parseDecimalToCentsStrict(total);
-
-  if (
-    subtotalCents === null ||
-    discountCents === null ||
-    deliveryFeeCents === null ||
-    totalCentsFromDecimal === null
-  ) {
-    return null;
-  }
-  // SAFETY CORRECTION defense-in-depth: orders.discount and
-  // orders.delivery_fee are DECIMAL(10,2) columns — narrower than
-  // MAX_DECIMAL_12_2_CENTS, which parseDecimalToCentsStrict already
-  // enforces for every value above (subtotalCents/discountCents/
-  // deliveryFeeCents/totalCentsFromDecimal). orders.subtotal and
-  // orders.total remain DECIMAL(12,2) and keep their existing
-  // MAX_DECIMAL_12_2_CENTS-based checks unchanged, below.
-  if (discountCents > MAX_DECIMAL_10_2_CENTS) return null;
-  if (deliveryFeeCents > MAX_DECIMAL_10_2_CENTS) return null;
-  if (totalCentsFromDecimal !== total_cents) return null;
-  if (
-    !Number.isSafeInteger(subtotalCents - discountCents + deliveryFeeCents)
-  ) {
-    return null;
-  }
-  if (
-    Math.max(subtotalCents - discountCents + deliveryFeeCents, 0) !==
-    total_cents
-  ) {
-    return null;
-  }
-
-  /* ── SAFETY CORRECTION: duplicate product_id guard. A Set proves every
-     snapshot product appears EXACTLY once — this is checked independently
-     of (and in addition to) the later reservation-count comparison, so a
-     duplicate can never slip through by coincidentally matching a
-     reservation row count. ── */
-  const seenProductIds = new Set();
-
-  /* ── SAFETY CORRECTION: item financial consistency, in integer cents
-     only. Every line's unit_price * quantity must equal its own
-     subtotal, and — after the loop — the sum of every line's subtotal
-     must equal the top-level snapshot.subtotal (subtotalCents, already
-     parsed above). Any inconsistency rejects the whole snapshot BEFORE
-     any order row is ever created. ── */
-  let lineSubtotalCentsSum = 0;
-
-  const normalizedItems = [];
-  for (const item of items) {
-    const productId = parseStrictPositiveInt(item?.product_id);
-    const quantity = parseStrictPositiveInt(item?.quantity);
-    if (!productId || !quantity) return null;
-
-    if (seenProductIds.has(productId)) return null; // duplicate product_id
-    seenProductIds.add(productId);
-
-    if (
-      typeof item.product_name !== "string" ||
-      item.product_name.trim().length === 0
-    ) {
-      return null;
-    }
-    if (
-      typeof item.unit_price !== "string" ||
-      !DECIMAL_2DP_PATTERN.test(item.unit_price)
-    ) {
-      return null;
-    }
-    if (
-      typeof item.production_cost !== "string" ||
-      !DECIMAL_2DP_PATTERN.test(item.production_cost)
-    ) {
-      return null;
-    }
-    if (
-      typeof item.subtotal !== "string" ||
-      !DECIMAL_2DP_PATTERN.test(item.subtotal)
-    ) {
-      return null;
-    }
-
-    // parseDecimalToCentsStrict already enforces the DECIMAL(12,2)
-    // ceiling (MAX_DECIMAL_12_2_CENTS) and rejects negative/malformed
-    // values — this satisfies "within DB limits" for all three fields.
-    const unitPriceCents = parseDecimalToCentsStrict(item.unit_price);
-    const productionCostCents = parseDecimalToCentsStrict(
-      item.production_cost,
-    );
-    const itemSubtotalCents = parseDecimalToCentsStrict(item.subtotal);
-
-    if (
-      unitPriceCents === null ||
-      productionCostCents === null ||
-      itemSubtotalCents === null
-    ) {
-      return null;
-    }
-    // SAFETY CORRECTION defense-in-depth: products.walkin_price /
-    // products.production_cost / order_items.subtotal are all
-    // DECIMAL(10,2) columns — narrower than MAX_DECIMAL_12_2_CENTS,
-    // which parseDecimalToCentsStrict already enforced above for each
-    // of these three values.
-    if (
-      unitPriceCents > MAX_DECIMAL_10_2_CENTS ||
-      productionCostCents > MAX_DECIMAL_10_2_CENTS ||
-      itemSubtotalCents > MAX_DECIMAL_10_2_CENTS
-    ) {
-      return null;
-    }
-
-    const computedLineCents = unitPriceCents * quantity;
-    if (!Number.isSafeInteger(computedLineCents)) return null;
-    if (computedLineCents !== itemSubtotalCents) return null;
-
-    lineSubtotalCentsSum += computedLineCents;
-    if (!Number.isSafeInteger(lineSubtotalCentsSum)) return null;
-
-    normalizedItems.push({
-      product_id: productId,
-      product_name: item.product_name,
-      quantity,
-      unit_price: item.unit_price,
-      production_cost: item.production_cost,
-      subtotal: item.subtotal,
-    });
-  }
-
-  // Sum of every validated line subtotal must equal the top-level
-  // snapshot subtotal (subtotalCents was already parsed and validated
-  // above from the `subtotal` field).
-  if (lineSubtotalCentsSum !== subtotalCents) return null;
-
-  let normalizedDelivery = null;
-  if (delivery !== null && delivery !== undefined) {
-    if (typeof delivery !== "object") return null;
-    if (
-      typeof delivery.address !== "string" ||
-      delivery.address.trim().length === 0
-    ) {
-      return null;
-    }
-    normalizedDelivery = {
-      address: delivery.address,
-      lat: typeof delivery.lat === "number" ? delivery.lat : null,
-      lng: typeof delivery.lng === "number" ? delivery.lng : null,
-      requested_date:
-        typeof delivery.requested_date === "string"
-          ? delivery.requested_date
-          : "",
-      notes: typeof delivery.notes === "string" ? delivery.notes : "",
-    };
-  }
-
-  return {
-    customer_name,
-    customer_phone,
-    items: normalizedItems,
-    subtotal,
-    discount,
-    delivery_fee,
-    total,
-    total_cents,
-    delivery: normalizedDelivery,
-    notes: typeof notes === "string" ? notes : "",
-  };
-};
-
-/* ── Loads the response payload for an attempt that is ALREADY
-   'consumed' — used both for the normal idempotent-replay branch inside
-   the finalization transaction, and for the ER_DUP_ENTRY recovery path.
-   Returns null if order_id/payment_transaction_id are missing, or if the
-   linked order/payment_transaction/receipt rows cannot all be found —
-   the caller treats null as a sanitized server error and NEVER creates a
-   second order as a recovery step.
-
-   SAFETY CORRECTION: this now requires full CROSS-LINKAGE, not just
-   independent existence —
-     payment_transactions.id       = attempt.payment_transaction_id
-     payment_transactions.order_id = attempt.order_id
-     receipts.payment_transaction_id = attempt.payment_transaction_id
-     receipts.order_id               = attempt.order_id
-   A payment_transactions/receipts row that exists but points at a
-   DIFFERENT order (e.g. from a corrupted or hand-edited row) fails
-   loadFinalizedPayload rather than being silently accepted as "close
-   enough." ── */
-const loadFinalizedPayload = async (conn, attempt) => {
-  if (!attempt.order_id || !attempt.payment_transaction_id) return null;
-
-  const [[order]] = await conn.query(
-    `SELECT id, order_number, status, total FROM orders WHERE id = ?`,
-    [attempt.order_id],
-  );
-  if (!order || Number(order.id) !== Number(attempt.order_id)) return null;
-
-  const [[paymentTx]] = await conn.query(
-    `SELECT id, order_id FROM payment_transactions WHERE id = ?`,
-    [attempt.payment_transaction_id],
-  );
-  if (
-    !paymentTx ||
-    Number(paymentTx.id) !== Number(attempt.payment_transaction_id) ||
-    Number(paymentTx.order_id) !== Number(attempt.order_id)
-  ) {
-    return null;
-  }
-
-  const [[receipt]] = await conn.query(
-    `SELECT id, receipt_number, payment_transaction_id, order_id
-     FROM receipts
-     WHERE payment_transaction_id = ?`,
-    [attempt.payment_transaction_id],
-  );
-  if (
-    !receipt ||
-    Number(receipt.payment_transaction_id) !==
-      Number(attempt.payment_transaction_id) ||
-    Number(receipt.order_id) !== Number(attempt.order_id)
-  ) {
-    return null;
-  }
-
-  return {
-    attempt_id: attempt.id,
-    status: "consumed",
-    order_id: order.id,
-    order_number: order.order_number,
-    order_status: order.status,
-    payment_transaction_id: paymentTx.id,
-    receipt_id: receipt.id,
-    receipt_number: receipt.receipt_number,
-    total: order.total,
-    payment_status: "paid",
-  };
-};
-
-/* ── FINALIZATION TRANSACTION. Called either with a matchedPayment
-   (fresh finalization path — attempt is expected to be
-   'awaiting_payment') or with matchedPayment = null (idempotent-replay
-   path — attempt is expected to be already 'consumed'). Every branch
-   that can fail after conn.beginTransaction() rolls back before
-   responding; req.auditRecord is set ONLY on the single fresh-commit
-   success branch, never on a replay, so a repeated verify call never
-   writes a second misleading "order_created" audit row. ── */
-const runFinalizationTransaction = async (req, res, attemptId, matchedPayment) => {
-  let conn;
-  try {
-    conn = await db.getConnection();
-    await conn.beginTransaction();
-
-    /* ── step 1: lock the attempt row. ── */
-    const [[attempt]] = await conn.query(
-      `SELECT * FROM pos_qr_payment_attempts WHERE id = ? FOR UPDATE`,
-      [attemptId],
-    );
-
-    if (!attempt) {
-      await conn.rollback();
-      return res.status(404).json({ message: "Payment attempt not found." });
-    }
-
-    /* ── step 2: recheck ownership. ── */
-    if (Number(attempt.cashier_id) !== Number(req.user.id)) {
-      await conn.rollback();
-      return res.status(403).json({
-        message: "This payment attempt does not belong to you.",
-      });
-    }
-
-    /* ── step 3: idempotent replay — attempt already consumed. ── */
-    if (attempt.status === "consumed") {
-      const payload = await loadFinalizedPayload(conn, attempt);
-      if (!payload) {
-        await conn.rollback();
-        console.error(
-          "[pos.qrPayments verifyAttempt] consumed attempt missing linked records",
-          { attemptId: attempt.id },
-        );
-        return res.status(500).json({ message: "Server error." });
-      }
-      await conn.commit();
-      conn.release();
-      conn = null;
-      return res.status(200).json(payload);
-    }
-
-    /* ── step 4: otherwise require status === awaiting_payment. ── */
-    if (attempt.status !== "awaiting_payment") {
-      await conn.rollback();
-      return res.status(409).json({
-        attempt_id: attempt.id,
-        status: attempt.status,
-        message: "This payment attempt is not awaiting verification.",
-      });
-    }
-
-    if (!matchedPayment) {
-      // Should never happen — exports.verifyAttempt only calls this
-      // function with matchedPayment === null when it already read
-      // status === 'consumed' pre-transaction. A status flip to
-      // 'awaiting_payment' with a null matchedPayment indicates an
-      // internal caller error, not a client-triggerable state.
-      await conn.rollback();
-      console.error(
-        "[pos.qrPayments verifyAttempt] internal error: awaiting_payment with no matchedPayment",
-        { attemptId: attempt.id },
-      );
-      return res.status(500).json({ message: "Server error." });
-    }
-
-    /* ── step 5: revalidate provider_session_id against the locked row. ── */
-    if (attempt.provider_session_id !== matchedPayment.sessionId) {
-      await conn.rollback();
-      return res.status(502).json({
-        message: "Payment provider session could not be verified.",
-      });
-    }
-
-    /* ── step 6: lock active reservations, ordered by product_id. ── */
-    const [reservations] = await conn.query(
-      `SELECT id, product_id, quantity FROM pos_qr_stock_reservations
-       WHERE payment_attempt_id = ? AND status = 'active'
-       ORDER BY product_id ASC
-       FOR UPDATE`,
-      [attempt.id],
-    );
-
-    if (reservations.length === 0) {
-      await conn.rollback();
-      console.error(
-        "[pos.qrPayments verifyAttempt] no active reservations for awaiting_payment attempt",
-        { attemptId: attempt.id },
-      );
-      return res.status(500).json({ message: "Server error." });
-    }
-
-    /* ── step 7: parse and strictly validate checkout_snapshot. ── */
-    const snapshot = parseAndValidateSnapshot(attempt.checkout_snapshot);
-    if (!snapshot) {
-      await conn.rollback();
-      console.error(
-        "[pos.qrPayments verifyAttempt] invalid checkout_snapshot",
-        { attemptId: attempt.id },
-      );
-      return res.status(500).json({ message: "Server error." });
-    }
-
-    /* ── step 8: exact one-to-one equality between snapshot items and
-       active reservations — same product IDs, same quantities, no
-       missing or extra rows.
-       SAFETY CORRECTION: compare raw ARRAY LENGTHS (not Map sizes, which
-       silently collapse duplicate keys) after sorting both collections by
-       product_id, then compare each pair directly index-by-index.
-       parseAndValidateSnapshot already rejects a snapshot with a
-       duplicate product_id, and the DB's UNIQUE (payment_attempt_id,
-       product_id) constraint on pos_qr_stock_reservations makes a
-       duplicate reservation row structurally impossible — this
-       length+sorted-pairwise comparison is the explicit, defense-in-depth
-       proof that both sides genuinely contain the same single-appearance
-       set, rather than relying on either of those guarantees alone. ── */
-    const sortedReservations = [...reservations].sort(
-      (a, b) => a.product_id - b.product_id,
-    );
-    const sortedSnapshotItems = [...snapshot.items].sort(
-      (a, b) => a.product_id - b.product_id,
-    );
-
-    let reservationsMatchSnapshot =
-      sortedReservations.length === sortedSnapshotItems.length;
-    if (reservationsMatchSnapshot) {
-      for (let i = 0; i < sortedReservations.length; i += 1) {
-        if (
-          sortedReservations[i].product_id !== sortedSnapshotItems[i].product_id ||
-          sortedReservations[i].quantity !== sortedSnapshotItems[i].quantity
-        ) {
-          reservationsMatchSnapshot = false;
-          break;
-        }
-      }
-    }
-
-    if (!reservationsMatchSnapshot) {
-      await conn.rollback();
-      console.error(
-        "[pos.qrPayments verifyAttempt] reservation/snapshot mismatch",
-        { attemptId: attempt.id },
-      );
-      return res.status(500).json({ message: "Server error." });
-    }
-
-    /* ── defensive re-check: matched payment amount vs snapshot total. ── */
-    if (matchedPayment.amount !== snapshot.total_cents) {
-      await conn.rollback();
-      return res.status(502).json({
-        message: "Payment amount could not be verified.",
-      });
-    }
-
-    /* ── step 9: NO products.stock decrement here — already reserved. ── */
-
-    /* ── step 10: create the walk-in standard order from the immutable
-       snapshot. ── */
-    const orderNumber = await generateWalkInOrderNumber(conn);
-    const hasDelivery = Boolean(
-      snapshot.delivery && String(snapshot.delivery.address || "").trim(),
-    );
-    const orderStatus = hasDelivery ? "confirmed" : "completed";
-    // SAFETY CORRECTION: checkout_snapshot.delivery.requested_date was
-    // already normalized to the MySQL-compatible "YYYY-MM-DD HH:mm:ss"
-    // shape by resolveDeliveryRequestedDate/normalizeDeliveryRequestedDate
-    // at attempt-creation time (see createAttempt/runTransactionA above)
-    // — used consistently here with no further transformation.
-    const requestedDeliveryDateForInsert = snapshot.delivery?.requested_date || null;
-
-    const [orderResult] = await conn.query(
-      `
-      INSERT INTO orders
-        (order_number, walkin_customer_name, walkin_customer_phone, type, order_type,
-         status, payment_method, payment_status, subtotal, tax, discount, delivery_fee, total,
-         notes, delivery_address, delivery_lat, delivery_lng, requested_delivery_date, delivery_request_notes)
-      VALUES (?, ?, ?, 'walkin', 'standard', ?, 'paymongo', 'paid', ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      [
-        orderNumber,
-        snapshot.customer_name || "Walk-in Customer",
-        snapshot.customer_phone || null,
-        orderStatus,
-        snapshot.subtotal,
-        snapshot.discount,
-        snapshot.delivery_fee,
-        snapshot.total,
-        snapshot.notes || null,
-        snapshot.delivery?.address || null,
-        snapshot.delivery?.lat ?? null,
-        snapshot.delivery?.lng ?? null,
-        requestedDeliveryDateForInsert,
-        snapshot.delivery?.notes || null,
-      ],
-    );
-
-    if (!orderResult.insertId) {
-      await conn.rollback();
-      return res.status(500).json({ message: "Server error." });
-    }
-    const orderId = orderResult.insertId;
-
-    /* ── step 11: order_items + step 12: stock_movements (audit only,
-       no stock column touched). ── */
-    for (const item of snapshot.items) {
-      const [itemResult] = await conn.query(
-        `
-        INSERT INTO order_items
-          (order_id, product_id, product_name, quantity, unit_price, production_cost)
-        VALUES (?, ?, ?, ?, ?, ?)
-        `,
-        [
-          orderId,
-          item.product_id,
-          item.product_name,
-          item.quantity,
-          item.unit_price,
-          item.production_cost,
-        ],
-      );
-
-      if (!itemResult.insertId) {
-        await conn.rollback();
-        return res.status(500).json({ message: "Server error." });
-      }
-
-      await conn.query(
-        `
-        INSERT INTO stock_movements
-          (product_id, type, quantity, order_id, order_item_id, notes, created_by)
-        VALUES (?, 'out', ?, ?, ?, 'POS QR payment sale (stock already reserved at attempt creation)', ?)
-        `,
-        [
-          item.product_id,
-          item.quantity,
-          orderId,
-          itemResult.insertId,
-          req.user.id,
-        ],
-      );
-    }
-
-    /* ── step 13: one verified payment_transactions row. ── */
-    const [paymentResult] = await conn.query(
-      `
-      INSERT INTO payment_transactions
-        (order_id, amount, payment_method, status, verified_by, verified_at, notes)
-      VALUES (?, ?, 'paymongo', 'verified', ?, NOW(), ?)
-      `,
-      [
-        orderId,
-        snapshot.total,
-        req.user.id,
-        "Verified via PayMongo POS QR payment attempt.",
-      ],
-    );
-
-    if (!paymentResult.insertId) {
-      await conn.rollback();
-      return res.status(500).json({ message: "Server error." });
-    }
-    const paymentTransactionId = paymentResult.insertId;
-
-    /* ── step 14: one POS receipt via receiptService. ── */
-    const receiptNumber = `OR-${Date.now()}`;
-    const itemsSnapshotJson = JSON.stringify(
-      snapshot.items.map((item) => ({
-        product_id: item.product_id,
-        product_name: item.product_name,
-        unit_price: item.unit_price,
-        production_cost: item.production_cost,
-        quantity: item.quantity,
-      })),
-    );
-
-    const receiptResult = await createPosSaleReceipt(conn, {
-      orderId,
-      paymentTransactionId,
-      receiptNumber,
-      issuedTo: snapshot.customer_name || "Walk-in Customer",
-      issuedBy: req.user.id,
-      totalAmount: snapshot.total,
-      cashReceived: null,
-      changeAmount: null,
-      itemsSnapshot: itemsSnapshotJson,
-      paymentMethodSnapshot: "paymongo",
-    });
-
-    /* ── step 15: mark active reservations consumed. ── */
-    const [reservationUpdateResult] = await conn.query(
-      `
-      UPDATE pos_qr_stock_reservations
-      SET status = 'consumed', consumed_at = NOW()
-      WHERE payment_attempt_id = ? AND status = 'active'
-      `,
-      [attempt.id],
-    );
-
-    if (reservationUpdateResult.affectedRows !== reservations.length) {
-      await conn.rollback();
-      return res.status(500).json({ message: "Server error." });
-    }
-
-    /* ── step 16: update the attempt itself. ── */
-    const [attemptUpdateResult] = await conn.query(
-      `
-      UPDATE pos_qr_payment_attempts
-      SET status = 'consumed',
-          provider_payment_id = ?,
-          verified_amount = ?,
-          verified_currency = ?,
-          paid_at = ?,
-          order_id = ?,
-          payment_transaction_id = ?
-      WHERE id = ? AND status = 'awaiting_payment'
-      `,
-      [
-        matchedPayment.id,
-        centsToDecimalString(matchedPayment.amount),
-        matchedPayment.currency,
-        matchedPayment.paidAtDate,
-        orderId,
-        paymentTransactionId,
-        attempt.id,
-      ],
-    );
-
-    /* ── step 17: validate affectedRows. ── */
-    if (attemptUpdateResult.affectedRows !== 1) {
-      await conn.rollback();
-      return res.status(500).json({ message: "Server error." });
-    }
-
-    /* ── step 18: commit. ── */
-    await conn.commit();
-    conn.release();
-    conn = null;
-
-    req.auditRecord = {
-      id: orderId,
-      old: null,
-      new: {
-        order_created: true,
-        payment_verified: true,
-        payment_method: "paymongo",
-        payment_attempt_id: attempt.id,
-        payment_transaction_id: paymentTransactionId,
-        receipt_id: receiptResult.receiptId,
-      },
-    };
-
-    return res.status(200).json({
-      attempt_id: attempt.id,
-      status: "consumed",
-      order_id: orderId,
-      order_number: orderNumber,
-      order_status: orderStatus,
-      payment_transaction_id: paymentTransactionId,
-      receipt_id: receiptResult.receiptId,
-      receipt_number: receiptResult.receiptNumber,
-      total: snapshot.total,
-      payment_status: "paid",
-    });
-  } catch (err) {
-    if (conn) {
-      try {
-        await conn.rollback();
-      } catch {}
-    }
-
-    /* ── Rare ER_DUP_ENTRY collision (e.g. two verify calls racing past
-       the FOR UPDATE lock boundary on retry). Reread the attempt on the
-       pool (outside any transaction) — if it is now consumed, return the
-       existing finalized result idempotently; otherwise a sanitized
-       retryable error. Never creates a second order as recovery. ── */
-    if (err && err.code === "ER_DUP_ENTRY") {
-      try {
-        const [[reread]] = await db.query(
-          `SELECT * FROM pos_qr_payment_attempts WHERE id = ?`,
-          [attemptId],
-        );
-
-        if (reread && reread.status === "consumed") {
-          const replayConn = await db.getConnection();
-          try {
-            await replayConn.beginTransaction();
-            const payload = await loadFinalizedPayload(replayConn, reread);
-            if (payload) {
-              await replayConn.commit();
-              return res.status(200).json(payload);
-            }
-            await replayConn.rollback();
-          } catch {
-            try {
-              await replayConn.rollback();
-            } catch {}
-          } finally {
-            replayConn.release();
-          }
-        }
-      } catch (rereadErr) {
-        console.error(
-          "[pos.qrPayments verifyAttempt] ER_DUP_ENTRY reread failed",
-          rereadErr,
-        );
-      }
-
-      return res.status(503).json({
-        message: "The system is busy. Please try again in a moment.",
-      });
-    }
-
-    console.error("[pos.qrPayments verifyAttempt]", err);
-    return res.status(500).json({ message: "Server error." });
-  } finally {
-    if (conn) conn.release();
-  }
-};
-
+// Phase 3D-C centralizes strict provider-response analysis and exact-once
+// order finalization in services/posQrLifecycleService.js. The controller
+// keeps only HTTP authentication/ownership and response shaping.
 exports.verifyAttempt = async (req, res) => {
   if (!isPosQrTestSafeConfigured()) {
     return res.status(503).json({
@@ -2090,236 +1687,1377 @@ exports.verifyAttempt = async (req, res) => {
 
   const attemptId = parseStrictPositiveInt(req.params.id);
   if (!attemptId) {
-    return res.status(400).json({ message: "A valid payment attempt id is required." });
+    return res
+      .status(400)
+      .json({ message: "A valid payment attempt id is required." });
   }
 
-  /* ── Ownership + status routing read — plain SELECT, no lock, no open
-     transaction. Authoritative re-checks happen inside
-     runFinalizationTransaction under FOR UPDATE. ── */
-  const [[attemptRow]] = await db.query(
-    `SELECT * FROM pos_qr_payment_attempts WHERE id = ?`,
-    [attemptId],
-  );
-
-  if (!attemptRow) {
-    return res.status(404).json({ message: "Payment attempt not found." });
-  }
-
-  if (Number(attemptRow.cashier_id) !== Number(req.user.id)) {
-    return res.status(403).json({
-      message: "This payment attempt does not belong to you.",
-    });
-  }
-
-  /* ── Already consumed — skip the provider call entirely and go
-     straight to the idempotent-replay branch of the finalization
-     transaction. ── */
-  if (attemptRow.status === "consumed") {
-    return await runFinalizationTransaction(req, res, attemptId, null);
-  }
-
-  if (attemptRow.status !== "awaiting_payment") {
-    return res.status(409).json({
-      attempt_id: attemptRow.id,
-      status: attemptRow.status,
-      message: "This payment attempt is not awaiting verification.",
-    });
-  }
-
-  if (!isNonEmptyString(attemptRow.provider_session_id)) {
-    console.error(
-      "[pos.qrPayments verifyAttempt] awaiting_payment attempt missing provider_session_id",
-      { attemptId: attemptRow.id },
-    );
-    return res.status(500).json({ message: "Server error." });
-  }
-
-  /* ── Pre-transaction snapshot preview — only to read total_cents for
-     the amount-matching comparison below. Re-validated in full, from the
-     FOR-UPDATE-locked row, inside runFinalizationTransaction. ── */
-  let snapshotPreview;
   try {
-    snapshotPreview = JSON.parse(attemptRow.checkout_snapshot);
-  } catch {
-    console.error(
-      "[pos.qrPayments verifyAttempt] unparsable checkout_snapshot",
-      { attemptId: attemptRow.id },
+    const [[attemptRow]] = await db.query(
+      `SELECT * FROM pos_qr_payment_attempts WHERE id = ?`,
+      [attemptId],
     );
-    return res.status(500).json({ message: "Server error." });
-  }
-  if (
-    !snapshotPreview ||
-    typeof snapshotPreview !== "object" ||
-    !Number.isSafeInteger(snapshotPreview.total_cents) ||
-    snapshotPreview.total_cents <= 0
-  ) {
-    console.error(
-      "[pos.qrPayments verifyAttempt] invalid total_cents in checkout_snapshot",
-      { attemptId: attemptRow.id },
-    );
-    return res.status(500).json({ message: "Server error." });
-  }
 
-  /* ── Retrieve the Checkout Session — ZERO open transaction, ZERO held
-     row locks. Any failure here (network error, timeout, reset,
-     malformed response, or 5xx) returns a sanitized 502/503 WITHOUT
-     touching the database: the attempt stays 'awaiting_payment' and
-     reservations stay active. ── */
-  let session;
-  try {
-    session = await retrieveCheckoutSession(attemptRow.provider_session_id);
-  } catch (err) {
-    const status = err?.response?.status;
-    if (typeof status === "number") {
-      // The provider responded, but with an error — treat as a
-      // sanitized upstream failure. Never echoes the raw provider body.
-      return res.status(502).json({
-        message:
-          "Unable to verify payment status with the provider right now. Please try again.",
+    if (!attemptRow) {
+      return res.status(404).json({ message: "Payment attempt not found." });
+    }
+
+    if (Number(attemptRow.cashier_id) !== Number(req.user.id)) {
+      return res.status(403).json({
+        message: "This payment attempt does not belong to you.",
       });
     }
-    // No response at all — network error, timeout, connection reset.
-    return res.status(503).json({
-      message: "Payment provider is temporarily unavailable. Please try again shortly.",
-    });
-  }
 
-  if (
-    !session ||
-    typeof session !== "object" ||
-    !isNonEmptyString(session.id) ||
-    typeof session.attributes !== "object" ||
-    session.attributes === null
-  ) {
-    return res.status(502).json({
-      message: "The payment provider returned an incomplete response.",
-    });
-  }
-
-  /* ── PAYMENT MATCHING step 1: session.id must equal the stored
-     provider_session_id. ── */
-  if (session.id !== attemptRow.provider_session_id) {
-    return res.status(502).json({
-      message: "Payment provider session could not be verified.",
-    });
-  }
-
-  /* ── steps 2-5: read payments[]. SAFETY CORRECTION: a missing or
-     non-array `payments` field is itself a malformed provider response —
-     it must NEVER be silently coerced into an empty array (which would
-     incorrectly fall through to "pending"). Treated exactly like the
-     other malformed-response cases above: sanitized 502, attempt stays
-     'awaiting_payment', reservations stay active, zero DB writes. ── */
-  if (!Array.isArray(session.attributes.payments)) {
-    return res.status(502).json({
-      message: "The payment provider returned an incomplete response.",
-    });
-  }
-  const paymentsRaw = session.attributes.payments;
-
-  /* ── Validate every status==='paid' entry against ALL required fields
-     as a single unit. Two distinct outcomes are tracked separately:
-       - sawPaidEntry: at least one entry had status === 'paid'
-       - malformedPaidEntry: at least one status==='paid' entry failed
-         required-field validation
-     A non-'paid' entry is simply not a candidate and is safely ignored —
-     that is not "silently skipping a paid entry," it is correctly
-     ignoring an irrelevant one. A malformed 'paid' entry is NEVER
-     silently skipped: it forces a manual-review response regardless of
-     whether another, perfectly valid, matching entry also exists
-     alongside it. ── */
-  let sawPaidEntry = false;
-  let malformedPaidEntry = false;
-  const candidates = [];
-
-  for (const payment of paymentsRaw) {
-    const attrs = payment?.attributes;
-    if (!attrs || attrs.status !== "paid") continue;
-
-    sawPaidEntry = true;
-
-    const paymentId = payment?.id;
-    const amount = attrs.amount;
-    const currency = attrs.currency;
-
-    const idValid = isNonEmptyString(paymentId);
-    const amountValid = Number.isSafeInteger(amount) && amount > 0;
-    // Required field, not a post-hoc filter: this app only ever creates
-    // PHP-denominated checkout sessions, so a 'paid' entry whose currency
-    // is anything other than exactly "PHP" is not a legitimate
-    // amount-mismatch candidate — it is malformed provider data that
-    // must escalate to manual review rather than be silently treated as
-    // "just doesn't match."
-    const currencyValid = currency === "PHP";
-    const paidAtDate = paymongoTimestampToDate(attrs.paid_at);
-
-    if (!idValid || !amountValid || !currencyValid || !paidAtDate) {
-      malformedPaidEntry = true;
-      continue;
+    if (attemptRow.status === "consumed") {
+      const replay = await finalizePaidAttempt({
+        attemptId,
+        matchedPayment: null,
+        actorUserId: req.user.id,
+        requireOwner: true,
+      });
+      return res.status(replay.httpStatus).json(replay.payload);
     }
 
-    candidates.push({
-      id: paymentId,
-      amount,
-      currency,
-      paidAtDate,
-      sessionId: session.id,
+    if (attemptRow.status !== "awaiting_payment") {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: attemptRow.status,
+        message: "This payment attempt is not awaiting verification.",
+      });
+    }
+
+    if (!isNonEmptyString(attemptRow.provider_session_id)) {
+      console.error(
+        "[pos.qrPayments verifyAttempt] awaiting_payment attempt missing provider_session_id",
+        { attemptId: attemptRow.id },
+      );
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    const expectedTotalCents = getSnapshotTotalCents(
+      attemptRow.checkout_snapshot,
+    );
+    if (!expectedTotalCents) {
+      console.error(
+        "[pos.qrPayments verifyAttempt] invalid checkout_snapshot",
+        { attemptId: attemptRow.id },
+      );
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    let session;
+    try {
+      session = await retrieveCheckoutSession(attemptRow.provider_session_id, {
+        timeoutMs: 15000,
+      });
+    } catch (err) {
+      if (typeof err?.response?.status === "number") {
+        return res.status(502).json({
+          message:
+            "Unable to verify payment status with the provider right now. Please try again.",
+        });
+      }
+      return res.status(503).json({
+        message:
+          "Payment provider is temporarily unavailable. Please try again shortly.",
+      });
+    }
+
+    const analysis = analyzeCheckoutSession({
+      session,
+      expectedSessionId: attemptRow.provider_session_id,
+      expectedTotalCents,
     });
-  }
 
-  /* ── Case B: at least one paid entry has a malformed required field —
-     sanitized manual-review error. Never finalize, never return pending,
-     regardless of whether a valid matching candidate also exists. ── */
-  if (malformedPaidEntry) {
-    return res.status(502).json({
-      attempt_id: attemptRow.id,
-      status: "provider_response_malformed",
-      message:
-        "A completed payment record from the provider could not be fully verified. Manual review required.",
+    if (analysis.kind === "pending") {
+      return res.status(200).json({
+        attempt_id: attemptRow.id,
+        status: "pending",
+        message: "Payment has not been completed yet.",
+      });
+    }
+
+    if (analysis.kind === "expired_unpaid") {
+      return res.status(200).json({
+        attempt_id: attemptRow.id,
+        status: "pending",
+        message:
+          "The provider session has expired and is awaiting safe stock release.",
+      });
+    }
+
+    if (analysis.kind === "malformed") {
+      return res.status(502).json({
+        attempt_id: attemptRow.id,
+        status: "provider_response_malformed",
+        message:
+          "A provider response could not be fully verified. Manual review required.",
+      });
+    }
+
+    if (analysis.kind === "payment_mismatch") {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: "payment_mismatch",
+        message: "A payment was found but its amount did not match this order.",
+      });
+    }
+
+    if (analysis.kind === "ambiguous_payment") {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: "ambiguous_payment",
+        message:
+          "Multiple differing payments were found for this session. Manual review required.",
+      });
+    }
+
+    if (analysis.kind !== "paid") {
+      return res.status(502).json({
+        message: "Payment provider session could not be verified.",
+      });
+    }
+
+    const finalized = await finalizePaidAttempt({
+      attemptId,
+      matchedPayment: analysis.payment,
+      actorUserId: req.user.id,
+      requireOwner: true,
     });
+
+    if (finalized.freshCommit && finalized.auditRecord) {
+      req.auditRecord = finalized.auditRecord;
+    }
+
+    return res.status(finalized.httpStatus).json(finalized.payload);
+  } catch (err) {
+    console.error("[pos.qrPayments verifyAttempt]", err);
+    return res.status(500).json({ message: "Server error." });
   }
-
-  /* ── Case A: payments is a valid array with no status='paid' entries
-     at all — status pending, change nothing. ── */
-  if (!sawPaidEntry) {
-    return res.status(200).json({
-      attempt_id: attemptRow.id,
-      status: "pending",
-      message: "Payment has not been completed yet.",
-    });
-  }
-
-  /* ── Every 'paid' entry was well-formed at this point (malformedPaidEntry
-     is false and sawPaidEntry is true), so candidates.length >= 1.
-     Currency is already forced to exactly "PHP" above; only amount needs
-     to be checked against this order's total here. ── */
-  const matching = candidates.filter(
-    (c) => c.amount === snapshotPreview.total_cents,
-  );
-
-  /* ── step 7: paid entries exist but none match this order's amount. ── */
-  if (matching.length === 0) {
-    return res.status(409).json({
-      attempt_id: attemptRow.id,
-      status: "payment_mismatch",
-      message:
-        "A payment was found but its amount did not match this order.",
-    });
-  }
-
-  /* ── step 8: more than one different matching paid payment ID. ── */
-  const distinctIds = [...new Set(matching.map((m) => m.id))];
-  if (distinctIds.length > 1) {
-    return res.status(409).json({
-      attempt_id: attemptRow.id,
-      status: "ambiguous_payment",
-      message:
-        "Multiple differing payments were found for this session. Manual review required.",
-    });
-  }
-
-  /* ── step 9: exactly one matching paid payment may proceed. ── */
-  const matchedPayment = matching[0];
-
-  return await runFinalizationTransaction(req, res, attemptId, matchedPayment);
 };
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE 3D-E — ADMIN RECOVERY READ MODEL
+
+   These endpoints are deliberately NOT guarded by
+   requirePosQrRecoveryEnabled. An admin must still be able to inspect
+   unresolved attempts while mutating recovery actions are paused. They
+   expose only an explicit, sanitized allowlist of fields; the raw
+   checkout snapshot and all provider/token/hash/idempotency fields stay
+   server-side.
+══════════════════════════════════════════════════════════════════════ */
+exports.listRecoveryAttempts = async (req, res) => {
+  const statusFilter = parseRecoveryStatusFilter(req.query.status);
+  if (!statusFilter.ok) {
+    return res.status(400).json({
+      message:
+        "status must be either provider_unknown or awaiting_payment.",
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  }
+
+  const limit = parseRecoveryListLimit(req.query.limit);
+  if (limit === null) {
+    return res.status(400).json({
+      message: `limit must be a whole number from 1 to ${MAX_RECOVERY_LIST_LIMIT}.`,
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  }
+
+  try {
+    const params = [];
+    let statusSql =
+      "attempt.status IN ('provider_unknown', 'awaiting_payment')";
+    if (statusFilter.value) {
+      statusSql += " AND attempt.status = ?";
+      params.push(statusFilter.value);
+    }
+    params.push(limit);
+
+    const [rows] = await db.query(
+      `SELECT
+         attempt.id,
+         attempt.status,
+         attempt.provider,
+         attempt.cashier_id,
+         cashier.name AS cashier_name,
+         CASE
+           WHEN attempt.provider_session_id IS NOT NULL
+             AND attempt.provider_session_id <> ''
+           THEN 1 ELSE 0
+         END AS session_attached,
+         attempt.checkout_snapshot,
+         attempt.created_at,
+         attempt.updated_at,
+         attempt.expires_at
+       FROM pos_qr_payment_attempts AS attempt
+       LEFT JOIN users AS cashier ON cashier.id = attempt.cashier_id
+       WHERE ${statusSql}
+       ORDER BY attempt.updated_at DESC, attempt.id DESC
+       LIMIT ?`,
+      params,
+    );
+
+    const attempts = rows.map(buildRecoveryListAttempt);
+    return res.status(200).json({
+      attempts,
+      count: attempts.length,
+      limit,
+      status: statusFilter.value,
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments listRecoveryAttempts]", err);
+    return res.status(500).json({
+      message: "Server error.",
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  }
+};
+
+exports.getRecoveryAttempt = async (req, res) => {
+  const attemptId = parseStrictPositiveInt(req.params.id);
+  if (!attemptId) {
+    return res.status(400).json({
+      message: "A valid payment attempt id is required.",
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  }
+
+  try {
+    const [[attempt]] = await db.query(
+      `SELECT
+         attempt.id,
+         attempt.status,
+         attempt.provider,
+         attempt.cashier_id,
+         cashier.name AS cashier_name,
+         CASE
+           WHEN attempt.provider_session_id IS NOT NULL
+             AND attempt.provider_session_id <> ''
+           THEN 1 ELSE 0
+         END AS session_attached,
+         attempt.checkout_snapshot,
+         attempt.created_at,
+         attempt.updated_at,
+         attempt.expires_at
+       FROM pos_qr_payment_attempts AS attempt
+       LEFT JOIN users AS cashier ON cashier.id = attempt.cashier_id
+       WHERE attempt.id = ?
+         AND attempt.status IN ('provider_unknown', 'awaiting_payment')`,
+      [attemptId],
+    );
+
+    // Deliberately the same 404 for a missing row and an attempt that has
+    // already moved out of the unresolved recovery statuses.
+    if (!attempt) {
+      return res.status(404).json({
+        message: "Unresolved payment attempt not found.",
+        recovery_actions_enabled: isPosQrRecoveryEnabled(),
+      });
+    }
+
+    const snapshot = parseAndValidateSnapshot(attempt.checkout_snapshot);
+    if (!snapshot) {
+      return res.status(409).json({
+        attempt_id: attemptId,
+        status: attempt.status,
+        message: "Payment attempt details could not be safely loaded.",
+        recovery_actions_enabled: isPosQrRecoveryEnabled(),
+      });
+    }
+
+    const [reservationRows] = await db.query(
+      `SELECT
+         reservation.product_id,
+         product.name AS product_name,
+         reservation.quantity
+       FROM pos_qr_stock_reservations AS reservation
+       LEFT JOIN products AS product ON product.id = reservation.product_id
+       WHERE reservation.payment_attempt_id = ?
+         AND reservation.status = 'active'
+       ORDER BY reservation.product_id ASC`,
+      [attemptId],
+    );
+
+    return res.status(200).json({
+      attempt: {
+        id: toSafePositiveIntOrNull(attempt.id),
+        status: attempt.status,
+        provider: attempt.provider,
+        cashier: {
+          id: toSafePositiveIntOrNull(attempt.cashier_id),
+          name:
+            typeof attempt.cashier_name === "string" &&
+            attempt.cashier_name.trim()
+              ? attempt.cashier_name
+              : null,
+        },
+        session_attached: Boolean(Number(attempt.session_attached)),
+        checkout_summary: buildSafeCheckoutSummary(snapshot),
+        reserved_items: reservationRows.map((row) => ({
+          product_id: toSafePositiveIntOrNull(row.product_id),
+          product_name:
+            typeof row.product_name === "string" && row.product_name.trim()
+              ? row.product_name
+              : null,
+          quantity: toSafePositiveIntOrNull(row.quantity),
+        })),
+        created_at: attempt.created_at,
+        updated_at: attempt.updated_at,
+        expires_at: attempt.expires_at,
+      },
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments getRecoveryAttempt]", err);
+    return res.status(500).json({
+      message: "Server error.",
+      recovery_actions_enabled: isPosQrRecoveryEnabled(),
+    });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE 3D-D3 — ADMIN RECOVERY: ATTACH-SESSION
+   POST /api/pos/qr-payments/attempts/:id/attach-session
+
+   Route-level requirePosQrRecoveryEnabled + authenticate +
+   authorize("admin") already ran before this controller (see
+   routes/pos.qrPayments.js). isPosQrRecoveryEnabled() /
+   isRecoveryProviderCallSafe() below are defensive second-layer checks
+   only, matching the exact pattern already used for
+   isPosQrTestSafeConfigured() above.
+
+   NEVER calls createCheckoutSession. Phase 3D-D1's sandbox test
+   confirmed PayMongo does not deduplicate Checkout Session creation on
+   Idempotency-Key reuse (repeated calls returned different session
+   ids), so this endpoint only ever RETRIEVES a session id an admin
+   found manually in the PayMongo Dashboard — it never creates one.
+   provider_payment_id is never accepted as an alternative input; this
+   codebase's PayMongo wrapper has no verified method to resolve a
+   payment id back to its parent checkout session.
+══════════════════════════════════════════════════════════════════════ */
+exports.attachProviderSession = async (req, res) => {
+  if (!isPosQrRecoveryEnabled()) {
+    return res
+      .status(403)
+      .json({ message: "Recovery actions are not enabled." });
+  }
+  if (!isRecoveryProviderCallSafe()) {
+    return res.status(403).json({
+      message: "Recovery session attachment is not available at this terminal.",
+    });
+  }
+
+  const attemptId = parseStrictPositiveInt(req.params.id);
+  if (!attemptId) {
+    return res
+      .status(400)
+      .json({ message: "A valid payment attempt id is required." });
+  }
+
+  if (isNonEmptyString(req.body?.provider_payment_id)) {
+    return res.status(400).json({
+      message:
+        "A provider payment id cannot be used to attach a session. Locate the related Checkout Session id in the PayMongo Dashboard instead.",
+    });
+  }
+
+  const rawSessionId = req.body?.provider_session_id;
+  if (!isValidProviderSessionIdFormat(rawSessionId)) {
+    return res.status(400).json({
+      message: "A valid PayMongo Checkout Session id is required.",
+    });
+  }
+  const providerSessionId = rawSessionId.trim();
+
+  try {
+    // Transaction A — read-only guard check, no write, no provider call.
+    // Now also returns attemptVersion + snapshotHash: these are the
+    // "before" fingerprint that Transaction B re-verifies against the
+    // live row, so a snapshot mutated during the provider round trip
+    // (however unlikely, since checkout_snapshot is otherwise
+    // immutable) is caught explicitly rather than silently attached
+    // against stale data (TOCTOU protection).
+    const claimCheck = await loadProviderUnknownAttemptForRecovery(attemptId);
+    if (!claimCheck.ok) {
+      if (claimCheck.reason === "not_found") {
+        return res.status(404).json({ message: "Payment attempt not found." });
+      }
+      if (
+        claimCheck.reason === "wrong_status" ||
+        claimCheck.reason === "linked_records_present"
+      ) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: claimCheck.status || null,
+          message: "This payment attempt is not eligible for session attachment.",
+        });
+      }
+      console.error(
+        "[pos.qrPayments attachProviderSession] claim check failed",
+        { attemptId, reason: claimCheck.reason },
+      );
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    const { attempt, attemptVersion, snapshotHash } = claimCheck;
+
+    // Provider call — outside any transaction/lock.
+    let session;
+    try {
+      session = await retrieveCheckoutSession(providerSessionId, {
+        timeoutMs: 15000,
+      });
+    } catch (err) {
+      const providerStatus = err?.response?.status;
+      if (providerStatus === 404) {
+        return res.status(404).json({
+          message: "No Checkout Session was found for this id.",
+        });
+      }
+      if (typeof providerStatus === "number") {
+        return res.status(502).json({
+          message: "Unable to retrieve this session from the payment provider.",
+        });
+      }
+      return res.status(502).json({
+        message:
+          "Payment provider is temporarily unavailable. Please try again shortly.",
+      });
+    }
+
+    // Ownership check — both sides normalized to strings, since PayMongo
+    // metadata values and this attempt's own numeric id can otherwise
+    // differ only in JS type.
+    const metadata = session?.attributes?.metadata;
+    const metadataAttemptId =
+      metadata && typeof metadata === "object"
+        ? metadata.pos_qr_attempt_id
+        : undefined;
+    const metadataCheckoutToken =
+      metadata && typeof metadata === "object"
+        ? metadata.checkout_token
+        : undefined;
+
+    if (
+      String(metadataAttemptId ?? "") !== String(attempt.id) ||
+      String(metadataCheckoutToken ?? "") !== String(attempt.checkout_token)
+    ) {
+      return res.status(409).json({
+        attempt_id: attempt.id,
+        status: "provider_unknown",
+        message: "This session does not belong to this payment attempt.",
+      });
+    }
+
+    // STRICT single-line-item validation. The original
+    // createCheckoutSession integration always creates exactly one PHP
+    // line item with quantity 1 and amount === snapshot.total_cents —
+    // this now requires that EXACT shape, with no quantity default and
+    // no summation across multiple items. Anything else is rejected
+    // before any write, regardless of paid/pending/expired outcome.
+    const expectedTotalCents = getSnapshotTotalCents(attempt.checkout_snapshot);
+    const lineItems = session?.attributes?.line_items;
+    const soleItem =
+      Array.isArray(lineItems) && lineItems.length === 1 ? lineItems[0] : null;
+
+    const lineItemValid =
+      soleItem !== null &&
+      expectedTotalCents !== null &&
+      Number.isSafeInteger(expectedTotalCents) &&
+      soleItem.currency === "PHP" &&
+      Number.isSafeInteger(soleItem.amount) &&
+      soleItem.amount > 0 &&
+      soleItem.quantity === 1 &&
+      soleItem.amount === expectedTotalCents;
+
+    if (!lineItemValid) {
+      return res.status(409).json({
+        attempt_id: attempt.id,
+        status: "provider_unknown",
+        message: "This session's line items do not match this payment attempt.",
+      });
+    }
+
+    const analysis = analyzeCheckoutSession({
+      session,
+      expectedSessionId: providerSessionId,
+      expectedTotalCents,
+    });
+
+    // FAIL-CLOSED allowlist — only these three kinds may ever proceed to
+    // Transaction B. Any other value, including a kind this codebase
+    // does not yet know about, stays provider_unknown with no write.
+    if (!ATTACH_ALLOWED_ANALYSIS_KINDS.has(analysis.kind)) {
+      return res.status(409).json({
+        attempt_id: attempt.id,
+        status: "provider_unknown",
+        message:
+          "This session could not be fully verified. Manual review required.",
+      });
+    }
+
+    // Transaction B — TOCTOU-checked attach + transition ONLY. Re-checks
+    // the snapshot hash/version, then status, fresh under FOR UPDATE;
+    // never assumes Transaction A's earlier read is still valid.
+    const checkoutUrl = isNonEmptyString(session?.attributes?.checkout_url)
+      ? session.attributes.checkout_url
+      : null;
+
+    const attached = await attachVerifiedProviderSession({
+      attemptId: attempt.id,
+      providerSessionId,
+      checkoutUrl,
+      expectedAttemptVersion: attemptVersion,
+      expectedSnapshotHash: snapshotHash,
+    });
+
+    if (!attached.changed) {
+      if (attached.reason === "session_already_linked_elsewhere") {
+        return res.status(409).json({
+          attempt_id: attempt.id,
+          message:
+            "This session is already linked to a different payment attempt.",
+        });
+      }
+      if (
+        attached.reason === "stale_attempt_version" ||
+        attached.reason === "stale_snapshot_hash"
+      ) {
+        return res.status(409).json({
+          attempt_id: attempt.id,
+          message:
+            "This payment attempt changed while the session was being verified. Please try again.",
+        });
+      }
+      if (
+        attached.reason === "status_changed" ||
+        attached.reason === "linked_records_present" ||
+        attached.reason === "not_found"
+      ) {
+        return res.status(409).json({
+          attempt_id: attempt.id,
+          status: attached.status || null,
+          message: "This payment attempt is no longer eligible for session attachment.",
+        });
+      }
+      console.error("[pos.qrPayments attachProviderSession] attach failed", {
+        attemptId: attempt.id,
+        reason: attached.reason,
+      });
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    // Attach committed durably. From here, a failure in the optional
+    // paid-finalization step below does NOT revert anything (see the
+    // finalization_pending branch further down).
+    if (analysis.kind !== "paid") {
+      const outcome = analysis.kind === "expired_unpaid" ? "expired_unpaid" : "awaiting_payment";
+      req.auditRecord = {
+        id: attempt.id,
+        old: { status: "provider_unknown" },
+        new: {
+          status: "awaiting_payment",
+          provider_session_attached: true,
+          checkout_url_stored: Boolean(checkoutUrl),
+          outcome,
+          admin_user_id: req.user.id,
+        },
+      };
+      return res.status(202).json({
+        attempt_id: attempt.id,
+        status: "awaiting_payment",
+        session_attached: true,
+        message:
+          analysis.kind === "pending"
+            ? "Session attached. Payment is still pending."
+            : "Session attached. This session appears expired; automatic cleanup will confirm and release it.",
+      });
+    }
+
+    const finalized = await finalizePaidAttempt({
+      attemptId: attempt.id,
+      matchedPayment: analysis.payment,
+      actorUserId: req.user.id,
+      requireOwner: false,
+    });
+
+    if (finalized.httpStatus === 200) {
+      if (finalized.freshCommit === true) {
+        // This request itself created the order/payment/receipt.
+        req.auditRecord = {
+          id: attempt.id,
+          old: { status: "provider_unknown" },
+          new: {
+            status: "consumed",
+            provider_session_attached: true,
+            checkout_url_stored: Boolean(checkoutUrl),
+            outcome: "paid",
+            order_created: true,
+            payment_verified: true,
+            order_id: finalized.payload?.order_id ?? null,
+            payment_transaction_id: finalized.payload?.payment_transaction_id ?? null,
+            receipt_id: finalized.payload?.receipt_id ?? null,
+            admin_user_id: req.user.id,
+          },
+        };
+        return res.status(200).json(finalized.payload);
+      }
+
+      // freshCommit === false — a concurrent verification (e.g. the
+      // cashier's own /verify call, or recovery-verify) already
+      // finalized this attempt between our Transaction B commit and
+      // this finalizePaidAttempt call. Database-safe (finalizePaidAttempt
+      // itself guarantees exactly-once order/payment/receipt creation),
+      // but this request did NOT create anything — the audit record
+      // must not claim it did. Still returns the same finalized payload
+      // idempotently, and no separate verification/finalization audit
+      // is written for this replay.
+      req.auditRecord = {
+        id: attempt.id,
+        old: { status: "provider_unknown" },
+        new: {
+          status: "consumed",
+          provider_session_attached: true,
+          checkout_url_stored: Boolean(checkoutUrl),
+          outcome: "already_consumed",
+          order_created: false,
+          payment_verified: true,
+          admin_user_id: req.user.id,
+        },
+      };
+      return res.status(200).json(finalized.payload);
+    }
+
+    // Attach already committed durably; finalization did not complete
+    // this time. Nothing is reverted — the attempt remains a normal,
+    // safely-retryable awaiting_payment attempt with its reservation
+    // still active. finalizePaidAttempt's own guards make it safe to
+    // retry via the admin recovery-verify endpoint or the cleanup
+    // lifecycle.
+    console.error(
+      "[pos.qrPayments attachProviderSession] finalize-after-attach did not complete",
+      { attemptId: attempt.id, httpStatus: finalized.httpStatus },
+    );
+    req.auditRecord = {
+      id: attempt.id,
+      old: { status: "provider_unknown" },
+      new: {
+        status: "awaiting_payment",
+        provider_session_attached: true,
+        checkout_url_stored: Boolean(checkoutUrl),
+        outcome: "awaiting_payment",
+        admin_user_id: req.user.id,
+      },
+    };
+    return res.status(202).json({
+      attempt_id: attempt.id,
+      status: "awaiting_payment",
+      session_attached: true,
+      finalization_pending: true,
+      message:
+        "Session attached and verified as paid, but finalization did not complete yet. It can be retried through the admin recovery-verify endpoint (POST /api/pos/qr-payments/attempts/:id/recovery-verify).",
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments attachProviderSession]", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE 3D-D3 — ADMIN RECOVERY: MANUAL RELEASE (REQUEST)
+   POST /api/pos/qr-payments/attempts/:id/manual-release/request
+
+   Performs NO database write. Reads current state, computes a stable
+   attempt_version and checkout_snapshot hash, and signs a short-lived
+   token binding this exact admin/attempt/state/reason to a confirmation
+   the admin must submit separately via /manual-release/confirm. Only
+   the allowlisted reason_code is accepted — there is deliberately no
+   free-text "note" field on either /request or /confirm, to avoid any
+   presence-flag inconsistency between the two steps.
+══════════════════════════════════════════════════════════════════════ */
+exports.requestManualRelease = async (req, res) => {
+  if (!isPosQrRecoveryEnabled()) {
+    return res
+      .status(403)
+      .json({ message: "Recovery actions are not enabled." });
+  }
+
+  const attemptId = parseStrictPositiveInt(req.params.id);
+  if (!attemptId) {
+    return res
+      .status(400)
+      .json({ message: "A valid payment attempt id is required." });
+  }
+
+  const reasonCode = req.body?.reason_code;
+  if (
+    typeof reasonCode !== "string" ||
+    !ALLOWED_RECOVERY_REASON_CODES.has(reasonCode)
+  ) {
+    return res.status(400).json({ message: "A valid reason_code is required." });
+  }
+
+  try {
+    const summary = await loadManualReleaseSummary(attemptId);
+    if (!summary.ok) {
+      if (summary.reason === "not_found") {
+        return res.status(404).json({ message: "Payment attempt not found." });
+      }
+      if (
+        summary.reason === "wrong_status" ||
+        summary.reason === "linked_records_present" ||
+        summary.reason === "no_active_reservations" ||
+        summary.reason === "snapshot_mismatch" ||
+        summary.reason === "invalid_snapshot"
+      ) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: summary.status || null,
+          message: "This payment attempt is not eligible for manual release.",
+        });
+      }
+      console.error("[pos.qrPayments requestManualRelease] summary failed", {
+        attemptId,
+        reason: summary.reason,
+      });
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    const signed = signRecoveryToken({
+      attemptId: summary.attempt.id,
+      adminUserId: req.user.id,
+      attemptVersion: summary.attemptVersion,
+      snapshotHash: summary.snapshotHash,
+      reasonCode,
+    });
+    if (!signed) {
+      console.error(
+        "[pos.qrPayments requestManualRelease] recovery token secret unavailable",
+      );
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    return res.status(200).json({
+      attempt_id: summary.attempt.id,
+      status: "provider_unknown",
+      reason_code: reasonCode,
+      reserved_items: summary.reservations.map((row) => ({
+        product_id: row.product_id,
+        quantity: row.quantity,
+      })),
+      confirmation_token: signed.token,
+      expires_at: signed.payload.expires_at,
+      message:
+        "Review the reserved items above, then submit this token to /manual-release/confirm to release them.",
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments requestManualRelease]", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE 3D-D3 — ADMIN RECOVERY: MANUAL RELEASE (CONFIRM)
+   POST /api/pos/qr-payments/attempts/:id/manual-release/confirm
+══════════════════════════════════════════════════════════════════════ */
+exports.confirmManualRelease = async (req, res) => {
+  if (!isPosQrRecoveryEnabled()) {
+    return res
+      .status(403)
+      .json({ message: "Recovery actions are not enabled." });
+  }
+
+  const attemptId = parseStrictPositiveInt(req.params.id);
+  if (!attemptId) {
+    return res
+      .status(400)
+      .json({ message: "A valid payment attempt id is required." });
+  }
+
+  const reasonCode = req.body?.reason_code;
+  if (
+    typeof reasonCode !== "string" ||
+    !ALLOWED_RECOVERY_REASON_CODES.has(reasonCode)
+  ) {
+    return res.status(400).json({ message: "A valid reason_code is required." });
+  }
+
+  const rawToken = req.body?.confirmation_token;
+  if (!isNonEmptyString(rawToken)) {
+    return res.status(400).json({ message: "A confirmation_token is required." });
+  }
+
+  const verified = verifyRecoveryToken(rawToken.trim());
+  if (!verified.ok) {
+    if (verified.reason === "recovery_token_secret_unavailable") {
+      return res.status(500).json({ message: "Server error." });
+    }
+    if (verified.reason === "expired") {
+      return res.status(409).json({
+        message:
+          "This confirmation token has expired. Please request a new one.",
+      });
+    }
+    // "malformed" / "invalid_signature" / "wrong_purpose" — a tampered
+    // or forged token stays 403, distinct from a merely time-expired
+    // one (409).
+    return res
+      .status(403)
+      .json({ message: "This confirmation token is invalid." });
+  }
+
+  const token = verified.payload;
+  if (Number(token.attempt_id) !== Number(attemptId)) {
+    return res.status(409).json({
+      message: "This confirmation token does not match this payment attempt.",
+    });
+  }
+  if (Number(token.admin_user_id) !== Number(req.user.id)) {
+    return res
+      .status(403)
+      .json({ message: "This confirmation token belongs to a different admin." });
+  }
+  if (token.reason_code !== reasonCode) {
+    return res
+      .status(409)
+      .json({ message: "The reason_code does not match the confirmation token." });
+  }
+
+  try {
+    const released = await confirmManualRelease({
+      attemptId,
+      expectedAttemptVersion: token.attempt_version,
+      expectedSnapshotHash: token.snapshot_hash,
+      adminUserId: req.user.id,
+      reasonCode,
+    });
+
+    if (!released.changed) {
+      if (released.reason === "not_found") {
+        return res.status(404).json({ message: "Payment attempt not found." });
+      }
+      if (
+        released.reason === "stale_token_version" ||
+        released.reason === "stale_token_snapshot"
+      ) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          message:
+            "This payment attempt changed since the confirmation token was issued. Please request a new confirmation.",
+        });
+      }
+      if (
+        released.reason === "status_changed" ||
+        released.reason === "linked_records_present" ||
+        released.reason === "no_active_reservations" ||
+        released.reason === "snapshot_mismatch"
+      ) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: released.status || null,
+          message: "This payment attempt is no longer eligible for manual release.",
+        });
+      }
+      console.error("[pos.qrPayments confirmManualRelease] release failed", {
+        attemptId,
+        reason: released.reason,
+      });
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    req.auditRecord = {
+      id: attemptId,
+      old: { status: "provider_unknown" },
+      new: {
+        status: "cancelled",
+        reason_code: reasonCode,
+        reservations_released: released.reservationsReleased,
+        admin_user_id: req.user.id,
+      },
+    };
+
+    return res.status(200).json({
+      attempt_id: attemptId,
+      status: "cancelled",
+      reservations_released: released.reservationsReleased,
+      message: "Reservation released and stock restored.",
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments confirmManualRelease]", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   PHASE 3D-D3 (correction) — ADMIN RECOVERY: VERIFY
+   POST /api/pos/qr-payments/attempts/:id/recovery-verify
+
+   The existing /attempts/:id/verify cannot be relied on for recovery
+   because it (a) requires POS_QR_ENABLED, which recovery must work
+   without, and (b) requires the authenticated user to own the attempt
+   (attempt.cashier_id), which an admin performing recovery on someone
+   else's stuck attempt will not satisfy. This endpoint is the
+   admin-only, ownership-free equivalent, gated independently by
+   requirePosQrRecoveryEnabled instead.
+
+   NEVER calls createCheckoutSession — only ever RETRIEVES the session
+   id already stored on the attempt (from the original attempt or from
+   a prior attach-session). Reuses the exact same
+   analyzeCheckoutSession/finalizePaidAttempt primitives as the
+   cashier-facing verify endpoint and Phase 3D-C's cleanup lifecycle —
+   no new finalize/analysis logic is introduced here.
+══════════════════════════════════════════════════════════════════════ */
+exports.recoveryVerifyAttempt = async (req, res) => {
+  if (!isPosQrRecoveryEnabled()) {
+    return res
+      .status(403)
+      .json({ message: "Recovery actions are not enabled." });
+  }
+  if (!isRecoveryProviderCallSafe()) {
+    return res.status(403).json({
+      message: "Recovery verification is not available at this terminal.",
+    });
+  }
+
+  const attemptId = parseStrictPositiveInt(req.params.id);
+  if (!attemptId) {
+    return res
+      .status(400)
+      .json({ message: "A valid payment attempt id is required." });
+  }
+
+  try {
+    const [[attemptRow]] = await db.query(
+      `SELECT * FROM pos_qr_payment_attempts WHERE id = ?`,
+      [attemptId],
+    );
+
+    if (!attemptRow) {
+      return res.status(404).json({ message: "Payment attempt not found." });
+    }
+
+    // Idempotent replay for an already-consumed attempt — no provider
+    // call, no audit (freshCommit is always false on this path).
+    if (attemptRow.status === "consumed") {
+      const replay = await finalizePaidAttempt({
+        attemptId,
+        matchedPayment: null,
+        actorUserId: req.user.id,
+        requireOwner: false,
+      });
+      return res.status(replay.httpStatus).json(replay.payload);
+    }
+
+    if (attemptRow.status !== "awaiting_payment") {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: attemptRow.status,
+        message: "This payment attempt is not awaiting verification.",
+      });
+    }
+
+    if (!isNonEmptyString(attemptRow.provider_session_id)) {
+      console.error(
+        "[pos.qrPayments recoveryVerifyAttempt] awaiting_payment attempt missing provider_session_id",
+        { attemptId: attemptRow.id },
+      );
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    const expectedTotalCents = getSnapshotTotalCents(
+      attemptRow.checkout_snapshot,
+    );
+    if (!expectedTotalCents) {
+      console.error(
+        "[pos.qrPayments recoveryVerifyAttempt] invalid checkout_snapshot",
+        { attemptId: attemptRow.id },
+      );
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    let session;
+    try {
+      session = await retrieveCheckoutSession(attemptRow.provider_session_id, {
+        timeoutMs: 15000,
+      });
+    } catch (err) {
+      const providerStatus = err?.response?.status;
+      if (providerStatus === 404) {
+        return res.status(404).json({
+          message: "No Checkout Session was found for this payment attempt.",
+        });
+      }
+      if (typeof providerStatus === "number") {
+        return res.status(502).json({
+          message:
+            "Unable to verify payment status with the provider right now. Please try again.",
+        });
+      }
+      return res.status(502).json({
+        message:
+          "Payment provider is temporarily unavailable. Please try again shortly.",
+      });
+    }
+
+    const analysis = analyzeCheckoutSession({
+      session,
+      expectedSessionId: attemptRow.provider_session_id,
+      expectedTotalCents,
+    });
+
+    if (analysis.kind === "pending") {
+      return res.status(200).json({
+        attempt_id: attemptRow.id,
+        status: "pending",
+        message: "Payment has not been completed yet.",
+      });
+    }
+
+    if (analysis.kind === "expired_unpaid") {
+      return res.status(200).json({
+        attempt_id: attemptRow.id,
+        status: "pending",
+        message:
+          "The provider session has expired and is awaiting safe stock release.",
+      });
+    }
+
+    // FAIL-CLOSED allowlist — same as attach-session. Only "paid" can
+    // reach the finalize call below; malformed/payment_mismatch/
+    // ambiguous_payment/any unknown kind stays untouched, no write.
+    if (!ATTACH_ALLOWED_ANALYSIS_KINDS.has(analysis.kind)) {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: "manual_review",
+        message:
+          "A provider response could not be fully verified. Manual review required.",
+      });
+    }
+
+    const finalized = await finalizePaidAttempt({
+      attemptId,
+      matchedPayment: analysis.payment,
+      actorUserId: req.user.id,
+      requireOwner: false,
+    });
+
+    // Audit ONLY on a fresh finalization — never on a pending result,
+    // and never on an idempotent consumed replay (handled earlier).
+    if (finalized.freshCommit && finalized.auditRecord) {
+      req.auditRecord = finalized.auditRecord;
+    }
+
+    return res.status(finalized.httpStatus).json(finalized.payload);
+  } catch (err) {
+    console.error("[pos.qrPayments recoveryVerifyAttempt]", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════════
+   ADMIN RECOVERY — CANCEL ATTACHED UNPAID ATTEMPT
+   POST /api/pos/qr-payments/attempts/:id/cancel-unpaid
+
+   Safe release rules:
+   - admin-only and recovery-gated at the route and controller layers;
+   - requires an attached awaiting_payment attempt with no finalized links;
+   - re-reads PayMongo immediately before any stock release;
+   - a still-pending Checkout Session is expired first, then re-read;
+   - stock is released only after PayMongo confirms expired_unpaid;
+   - a payment that completed during the race is finalized instead;
+   - local TTL must already be reached (enforced by releaseExpiredAttempt).
+══════════════════════════════════════════════════════════════════════ */
+exports.cancelUnpaidAttempt = async (req, res) => {
+  if (!isPosQrRecoveryEnabled()) {
+    return res
+      .status(403)
+      .json({ message: "Recovery actions are not enabled." });
+  }
+  if (!isRecoveryProviderCallSafe()) {
+    return res.status(403).json({
+      message: "Unpaid payment cancellation is not available at this terminal.",
+    });
+  }
+
+  const attemptId = parseStrictPositiveInt(req.params.id);
+  if (!attemptId) {
+    return res
+      .status(400)
+      .json({ message: "A valid payment attempt id is required." });
+  }
+
+  const reasonCode = req.body?.reason_code;
+  if (
+    typeof reasonCode !== "string" ||
+    !ALLOWED_UNPAID_CANCEL_REASON_CODES.has(reasonCode)
+  ) {
+    return res.status(400).json({ message: "A valid reason_code is required." });
+  }
+
+  const providerErrorResponse = (err, fallbackMessage) => {
+    const providerStatus = err?.response?.status;
+    if (typeof providerStatus === "number") {
+      return res.status(502).json({
+        message:
+          providerStatus === 404
+            ? "The PayMongo Checkout Session could not be found. Stock was not released."
+            : fallbackMessage,
+      });
+    }
+    return res.status(502).json({
+      message:
+        "Payment provider is temporarily unavailable. Stock was not released.",
+    });
+  };
+
+  const finalizeInsteadOfCancel = async (analysis) => {
+    const finalized = await finalizePaidAttempt({
+      attemptId,
+      matchedPayment: analysis.payment,
+      actorUserId: req.user.id,
+      requireOwner: false,
+    });
+
+    if (finalized.freshCommit) {
+      req.auditRecord = {
+        id: attemptId,
+        old: { status: "awaiting_payment" },
+        new: {
+          status: "consumed",
+          resolution: "payment_completed_before_cancellation",
+          order_id: finalized.payload?.order_id || null,
+          payment_transaction_id:
+            finalized.payload?.payment_transaction_id || null,
+          receipt_id: finalized.payload?.receipt_id || null,
+          admin_user_id: req.user.id,
+        },
+      };
+    }
+
+    if (finalized.httpStatus !== 200) {
+      return res.status(finalized.httpStatus).json(finalized.payload);
+    }
+
+    return res.status(200).json({
+      ...finalized.payload,
+      cancellation_blocked: true,
+      message:
+        "Payment was completed before cancellation. The paid order was finalized instead.",
+    });
+  };
+
+  try {
+    const [[attemptRow]] = await db.query(
+      `SELECT * FROM pos_qr_payment_attempts WHERE id = ?`,
+      [attemptId],
+    );
+
+    if (!attemptRow) {
+      return res.status(404).json({ message: "Payment attempt not found." });
+    }
+    if (attemptRow.status !== "awaiting_payment") {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: attemptRow.status,
+        message: "This payment attempt is no longer awaiting cancellation.",
+      });
+    }
+    if (
+      attemptRow.order_id ||
+      attemptRow.payment_transaction_id ||
+      attemptRow.provider_payment_id
+    ) {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: attemptRow.status,
+        message: "This payment attempt already has finalized payment records.",
+      });
+    }
+    if (!isNonEmptyString(attemptRow.provider_session_id)) {
+      return res.status(409).json({
+        attempt_id: attemptRow.id,
+        status: attemptRow.status,
+        message: "This attempt has no attached Checkout Session to verify.",
+      });
+    }
+
+    const expectedTotalCents = getSnapshotTotalCents(
+      attemptRow.checkout_snapshot,
+    );
+    if (!expectedTotalCents) {
+      console.error(
+        "[pos.qrPayments cancelUnpaidAttempt] invalid checkout_snapshot",
+        { attemptId: attemptRow.id },
+      );
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    const analyzeCurrentSession = async () => {
+      const session = await retrieveCheckoutSession(
+        attemptRow.provider_session_id,
+        { timeoutMs: 15000 },
+      );
+      return analyzeCheckoutSession({
+        session,
+        expectedSessionId: attemptRow.provider_session_id,
+        expectedTotalCents,
+      });
+    };
+
+    let analysis;
+    let expireRequestMarked =
+      attemptRow.failure_code === "cleanup_expire_requested";
+    try {
+      analysis = await analyzeCurrentSession();
+    } catch (err) {
+      return providerErrorResponse(
+        err,
+        "Unable to verify payment status with PayMongo. Stock was not released.",
+      );
+    }
+
+    if (analysis.kind === "paid") {
+      return finalizeInsteadOfCancel(analysis);
+    }
+
+    if (analysis.kind === "pending") {
+      try {
+        await expireCheckoutSession(attemptRow.provider_session_id, {
+          timeoutMs: 15000,
+        });
+      } catch (err) {
+        return providerErrorResponse(
+          err,
+          "Unable to expire the PayMongo Checkout Session. Stock was not released.",
+        );
+      }
+
+      const marked = await markExpireRequested({
+        attemptId,
+        providerSessionId: attemptRow.provider_session_id,
+      });
+      if (!marked) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          message:
+            "This payment attempt changed while cancellation was being processed. Refresh and review it again.",
+        });
+      }
+      expireRequestMarked = true;
+
+      try {
+        analysis = await analyzeCurrentSession();
+      } catch (err) {
+        return providerErrorResponse(
+          err,
+          "The Checkout Session expiration was requested, but PayMongo could not yet confirm it. Stock was not released.",
+        );
+      }
+
+      if (analysis.kind === "paid") {
+        return finalizeInsteadOfCancel(analysis);
+      }
+
+      if (analysis.kind === "pending") {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: "expiration_requested",
+          message:
+            "Checkout Session expiration was requested. Wait a moment, then retry Cancel & Release Stock.",
+        });
+      }
+    }
+
+    if (analysis.kind !== "expired_unpaid") {
+      return res.status(409).json({
+        attempt_id: attemptId,
+        status: "manual_review",
+        message:
+          "PayMongo did not confirm an expired unpaid session. Stock was not released.",
+      });
+    }
+
+    // The session was already expired when first read, or was just expired
+    // above. Mark the expected lifecycle guard before the exact-once stock
+    // release transaction.
+    if (!expireRequestMarked) {
+      const marked = await markExpireRequested({
+        attemptId,
+        providerSessionId: attemptRow.provider_session_id,
+      });
+      if (!marked) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          message:
+            "This payment attempt changed while cancellation was being processed. Refresh and review it again.",
+        });
+      }
+    }
+
+    const released = await releaseExpiredAttempt({
+      attemptId,
+      allowedStatuses: ["awaiting_payment"],
+      expectedProviderSessionId: attemptRow.provider_session_id,
+    });
+
+    if (!released.changed) {
+      if (released.reason === "not_found") {
+        return res.status(404).json({ message: "Payment attempt not found." });
+      }
+      if (released.reason === "not_expired") {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: "awaiting_payment",
+          message:
+            "The 15-minute reservation period has not ended yet. Try again after the attempt expiry time.",
+        });
+      }
+      if (
+        released.reason === "status_changed" ||
+        released.reason === "linked_records_present" ||
+        released.reason === "provider_session_changed" ||
+        released.reason === "provider_expiry_not_confirmed" ||
+        released.reason === "no_active_reservations" ||
+        released.reason === "snapshot_mismatch"
+      ) {
+        return res.status(409).json({
+          attempt_id: attemptId,
+          status: released.status || null,
+          message:
+            "This payment attempt is no longer eligible for cancellation and stock release.",
+        });
+      }
+      console.error("[pos.qrPayments cancelUnpaidAttempt] release failed", {
+        attemptId,
+        reason: released.reason,
+      });
+      return res.status(500).json({ message: "Server error." });
+    }
+
+    req.auditRecord = {
+      id: attemptId,
+      old: { status: "awaiting_payment" },
+      new: {
+        status: "expired",
+        reason_code: reasonCode,
+        provider_status: "expired_unpaid",
+        reservations_released: released.releasedCount,
+        admin_user_id: req.user.id,
+      },
+    };
+
+    return res.status(200).json({
+      attempt_id: attemptId,
+      status: "expired",
+      reservations_released: released.releasedCount,
+      message: "Unpaid attempt cancelled and reserved stock restored.",
+    });
+  } catch (err) {
+    console.error("[pos.qrPayments cancelUnpaidAttempt]", err);
+    return res.status(500).json({ message: "Server error." });
+  }
+};
+

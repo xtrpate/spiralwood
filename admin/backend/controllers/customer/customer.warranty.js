@@ -46,6 +46,7 @@ const getEligibleOrders = async (req, res) => {
   LEFT JOIN warranties w
       ON w.order_id = o.id
      AND w.customer_id = o.customer_id
+     AND w.status <> 'cancelled'
   WHERE o.customer_id = ?
     AND o.status = 'completed'
     AND o.payment_status = 'paid'
@@ -112,7 +113,8 @@ const getClaims = async (req, res) => {
         w.warranty_expiry,
         w.replacement_receipt,
         w.fulfilled_at,
-        w.created_at
+        w.created_at,
+        w.updated_at
       FROM warranties w
       LEFT JOIN orders o
         ON o.id = w.order_id
@@ -139,6 +141,7 @@ const getClaims = async (req, res) => {
         warranty_expiry: row.warranty_expiry,
         fulfilled_at: row.fulfilled_at,
         created_at: row.created_at,
+        updated_at: row.updated_at,
       };
     });
 
@@ -251,6 +254,7 @@ const submitClaim = async (req, res) => {
       SELECT id, status
       FROM warranties
       WHERE customer_id = ? AND order_id = ?
+        AND status <> 'cancelled'
       LIMIT 1
       `,
       [req.user.id, linkedOrder.id],
@@ -290,8 +294,88 @@ const submitClaim = async (req, res) => {
   }
 };
 
+/* ── Cancel My Pending Warranty Claim ────────────────────────────────────── */
+const cancelClaim = async (req, res) => {
+  const id = Number(req.params.id);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({
+      message: "Valid warranty claim ID is required.",
+    });
+  }
+
+  try {
+    const [[claim]] = await db.query(
+      `
+      SELECT id, customer_id, status
+      FROM warranties
+      WHERE id = ?
+        AND customer_id = ?
+      LIMIT 1
+      `,
+      [id, req.user.id],
+    );
+
+    if (!claim) {
+      return res.status(404).json({
+        message: "Warranty claim not found.",
+      });
+    }
+
+    const currentStatus = String(claim.status || "").trim().toLowerCase();
+
+    if (currentStatus !== "pending") {
+      return res.status(400).json({
+        message: "Only pending warranty claims can be cancelled.",
+      });
+    }
+
+    const [result] = await db.query(
+      `
+      UPDATE warranties
+      SET
+        status = 'cancelled',
+        updated_at = NOW()
+      WHERE id = ?
+        AND customer_id = ?
+        AND status = 'pending'
+      `,
+      [id, req.user.id],
+    );
+
+    if (!result.affectedRows) {
+      return res.status(409).json({
+        message:
+          "This warranty claim can no longer be cancelled. Refresh the page and try again.",
+      });
+    }
+
+    req.auditRecord = {
+      id: claim.id,
+      old: {
+        status: "pending",
+      },
+      new: {
+        status: "cancelled",
+        cancelled_by_customer_id: Number(req.user.id),
+      },
+    };
+
+    return res.json({
+      message: "Warranty claim cancelled successfully.",
+    });
+  } catch (err) {
+    console.error("[customer.warranty cancel]", err);
+    return res.status(500).json({
+      message: "Server error.",
+      error: err.message,
+    });
+  }
+};
+
 module.exports = {
   getEligibleOrders,
   getClaims,
   submitClaim,
+  cancelClaim,
 };

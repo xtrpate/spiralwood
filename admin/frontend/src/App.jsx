@@ -38,6 +38,7 @@ import FaqsPage from "./pages/website/FaqsPage";
 import StaticPagesPage from "./pages/website/StaticPagesPage";
 import BackupPage from "./pages/backup/BackupPage";
 import AuditLogsPage from "./pages/audit/AuditLogsPage";
+import PosQrRecoveryPage from "./pages/posQr/PosQrRecoveryPage";
 
 import { CartProvider } from "./pages/customer/cartcontext";
 import { CustomCartProvider } from "./pages/customer/customcartcontext";
@@ -70,6 +71,7 @@ import POSLayout from "./pages/staff/POSLayout.jsx";
 import POSDashboard from "./pages/staff/Dashboard";
 import POSProductSearch from "./pages/staff/ProductSearch";
 import POSProcessOrder from "./pages/staff/ProcessOrder";
+import QrPaymentReturn from "./pages/staff/QrPaymentReturn";
 import POSDeliveryScheduling from "./pages/staff/DeliveryScheduling";
 import POSDeliveryManagement from "./pages/staff/DeliveryManagement";
 import POSAppointmentScheduling from "./pages/staff/AppointmentScheduling";
@@ -427,6 +429,10 @@ export default function App() {
                 />
 
                 <Route path="sales" element={<SalesReportPage />} />
+                <Route
+                  path="pos-qr-recovery"
+                  element={<PosQrRecoveryPage />}
+                />
                 <Route path="warranty" element={<WarrantyPage />} />
                 <Route path="support" element={<AdminSupportPage />} />
 
@@ -563,6 +569,15 @@ export default function App() {
                   element={
                     <RequireStaffType allowedTypes={["cashier"]}>
                       <POSProcessOrder />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="pos/qr-payments/:id"
+                  element={
+                    <RequireStaffType allowedTypes={["cashier"]}>
+                      <QrPaymentReturn />
                     </RequireStaffType>
                   }
                 />

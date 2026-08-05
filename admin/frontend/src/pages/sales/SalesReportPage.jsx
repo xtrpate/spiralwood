@@ -1,13 +1,12 @@
-// src/pages/sales/SalesReportPage.jsx – Sales Reports (POS / Online / Combined)
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../../services/api";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
 const TABS = [
-  { key: "walkin", label: "🏪 POS / Walk-in Report" },
-  { key: "online", label: "🌐 Online Sales Report" },
-  { key: "", label: "📊 Combined Report" },
+  { key: "walkin", label: "POS / Walk-in" },
+  { key: "online", label: "Online" },
+  { key: "", label: "Combined" },
 ];
 
 const PERIODS = [
@@ -18,926 +17,465 @@ const PERIODS = [
   { value: "custom", label: "Custom Range" },
 ];
 
-const STATUS_STYLE = {
-  pending: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
-  confirmed: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
-  contract_released: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
-  production: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
-  shipping: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
-  delivered: { bg: "#18181b", color: "#ffffff", border: "#18181b" },
-  completed: { bg: "#0a0a0a", color: "#ffffff", border: "#0a0a0a" },
-  cancelled: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
-};
-
-const formatStatusLabel = (value) =>
-  String(value || "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-
-const formatChannelLabel = (value) =>
-  String(value || "").toLowerCase() === "online" ? "Online" : "Walk-in";
-
-const formatMoney = (value) =>
-  `₱ ${Number(value || 0).toLocaleString("en-PH", {
+const money = (value) =>
+  `₱${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 
+const quantity = (value) =>
+  Number(value || 0).toLocaleString("en-PH", { maximumFractionDigits: 4 });
+
+const humanize = (value) =>
+  String(value || "—")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const paymentMethodLabel = (value) => {
+  const method = String(value || "").toLowerCase();
+  if (method === "paymongo") return "PayMongo / Online";
+  if (method === "gcash") return "GCash";
+  if (method === "bank_transfer") return "Bank Transfer";
+  if (method === "cod") return "COD";
+  if (method === "cop") return "COP";
+  return humanize(method);
+};
+
+const dateTime = (value) => {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const badgeStyle = (value) => {
+  const normalized = String(value || "").toLowerCase();
+  if (["paid", "completed", "delivered", "verified"].includes(normalized)) {
+    return { background: "#18181b", color: "#fff", border: "#18181b" };
+  }
+  if (["cancelled", "rejected", "failed"].includes(normalized)) {
+    return { background: "#fef2f2", color: "#991b1b", border: "#fecaca" };
+  }
+  return { background: "#f4f4f5", color: "#3f3f46", border: "#d4d4d8" };
+};
+
+function Badge({ value }) {
+  const style = badgeStyle(value);
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "3px 9px",
+        borderRadius: 999,
+        fontSize: 10,
+        fontWeight: 800,
+        textTransform: "capitalize",
+        background: style.background,
+        color: style.color,
+        border: `1px solid ${style.border}`,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {humanize(value)}
+    </span>
+  );
+}
+
+function SummaryCard({ label, value, note }) {
+  return (
+    <div style={summaryCard}>
+      <div style={summaryLabel}>{label}</div>
+      <div style={summaryValue}>{value}</div>
+      {note ? <div style={summaryNote}>{note}</div> : null}
+    </div>
+  );
+}
+
 export default function SalesReportPage() {
-  const [tab, setTab] = useState(""); // '' = combined
+  const [tab, setTab] = useState("");
   const [period, setPeriod] = useState("monthly");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const load = useCallback(async () => {
+    if (period === "custom" && (!from || !to || from > to)) return;
+
     setLoading(true);
+    setError("");
     try {
       const params = { channel: tab };
-
-      if (period === "custom" && from && to) {
+      if (period === "custom") {
         params.from = from;
         params.to = to;
-      } else if (period !== "custom") {
+      } else {
         params.period = period;
       }
-
-      const { data: res } = await api.get("/sales/report", { params });
-      setData(res);
+      const response = await api.get("/sales/report", { params });
+      setData(response.data);
+    } catch (err) {
+      setData(null);
+      setError(err.response?.data?.message || "Failed to load the sales report.");
     } finally {
       setLoading(false);
     }
-  }, [tab, period, from, to]);
+  }, [from, period, tab, to]);
 
   useEffect(() => {
-    if (period === "custom") return;
-    load();
+    if (period !== "custom") load();
   }, [load, period]);
 
-  const handleApplyCustomRange = () => {
-    if (!from || !to) return;
-    if (from > to) return;
-    load();
-  };
+  const summary = data?.summary || {};
+  const collections = data?.collections || [];
+  const orders = data?.orders || [];
+  const paymentMethods = data?.payment_methods || [];
+  const products = data?.products || [];
+
+  const selectedPeriodLabel = useMemo(() => {
+    if (period === "custom") return `${from || "—"} to ${to || "—"}`;
+    return PERIODS.find((item) => item.value === period)?.label || period;
+  }, [from, period, to]);
 
   const exportPDF = () => {
     if (!data) return;
-
     const doc = new jsPDF({ orientation: "landscape" });
-    const tabLabel =
-      TABS.find((t) => t.key === tab)?.label || "Combined Report";
-    const cleanTabLabel = tabLabel.replace(/[🏪🌐📊]/g, "").trim();
-    const dateStr =
-      period === "custom"
-        ? `${from} to ${to}`
-        : PERIODS.find((p) => p.value === period)?.label || "";
+    const reportLabel = TABS.find((item) => item.key === tab)?.label || "Combined";
 
     doc.setFontSize(16).setFont("helvetica", "bold");
     doc.text("Spiral Wood Services", 148, 14, { align: "center" });
-
-    doc.setFontSize(11).setFont("helvetica", "normal");
-    doc.text("8 Sitio Laot, Prenza 1, Marilao, Bulacan", 148, 20, {
+    doc.setFontSize(12);
+    doc.text(`Sales & Collections Report — ${reportLabel}`, 148, 22, {
       align: "center",
     });
+    doc.setFontSize(9).setFont("helvetica", "normal");
+    doc.text(`Period: ${selectedPeriodLabel}`, 14, 31);
+    doc.text(`Generated: ${new Date().toLocaleString("en-PH")}`, 190, 31);
 
-    doc.setFontSize(13).setFont("helvetica", "bold");
-    doc.text(`SALES REPORT — ${cleanTabLabel}`, 148, 28, {
-      align: "center",
-    });
-
-    doc.setFontSize(10).setFont("helvetica", "normal");
-    doc.text(
-      `Period: ${dateStr}    |    Generated: ${new Date().toLocaleString("en-PH")}`,
-      148,
-      34,
-      { align: "center" },
-    );
-
-    const s = data.summary || {};
-    doc.setFontSize(10).setFont("helvetica", "bold");
-    doc.text(`Total Orders: ${s.total_orders || 0}`, 14, 44);
-    doc.text(`Total Revenue: ${formatMoney(s.total_revenue)}`, 60, 44);
-    doc.text(`Total Profit: ${formatMoney(s.total_profit)}`, 120, 44);
-    doc.text(`Avg Order Value: ${formatMoney(s.avg_order_value)}`, 190, 44);
+    doc.setFontSize(9).setFont("helvetica", "bold");
+    doc.text(`Gross Order Value: ${money(summary.gross_order_value)}`, 14, 40);
+    doc.text(`Actual Collected: ${money(summary.actual_collected)}`, 75, 40);
+    doc.text(`Outstanding: ${money(summary.outstanding_balance)}`, 135, 40);
+    doc.text(`Estimated Order Profit: ${money(summary.total_profit)}`, 195, 40);
 
     autoTable(doc, {
-      startY: 50,
-      head: [
-        [
-          "Order ID",
-          "Customer",
-          "Phone",
-          "Channel",
-          "Payment",
-          "Amount (₱)",
-          "Profit (₱)",
-          "Status",
-          "Delivery",
-          "Date",
-        ],
-      ],
-      body: (data.orders || []).map((o) => [
-        `#${String(o.id).padStart(5, "0")}`,
-        o.customer_name || "—",
-        o.customer_phone || "—",
-        formatChannelLabel(o.channel),
-        o.payment_method?.replace(/_/g, " ") || "—",
-        Number(o.total_amount || 0).toFixed(2),
-        Number(o.total_profit || 0).toFixed(2),
-        formatStatusLabel(o.status),
-        o.delivery_status || "—",
-        new Date(o.created_at).toLocaleDateString("en-PH"),
+      startY: 47,
+      head: [["Payment Date", "Receipt", "Order", "Customer", "Type", "Method", "Amount", "Status"]],
+      body: collections.map((row) => [
+        dateTime(row.payment_date),
+        row.receipt_number || "—",
+        row.order_number || `#${row.order_id}`,
+        row.customer_name || "—",
+        humanize(row.order_type),
+        paymentMethodLabel(row.payment_method),
+        Number(row.amount || 0).toFixed(2),
+        humanize(row.order_status),
       ]),
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [24, 24, 27] } /* 👉 Dark gray/black header */,
-      alternateRowStyles: { fillColor: [244, 244, 245] },
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [24, 24, 27] },
     });
 
-    if (data.products?.length) {
-      autoTable(doc, {
-        startY: doc.lastAutoTable.finalY + 10,
-        head: [["Product", "Units Sold", "Revenue (₱)", "Profit (₱)"]],
-        body: data.products
-          .slice(0, 20)
-          .map((p) => [
-            p.product_name,
-            p.units_sold,
-            Number(p.revenue || 0).toFixed(2),
-            Number(p.profit || 0).toFixed(2),
-          ]),
-        styles: { fontSize: 8 },
-        headStyles: {
-          fillColor: [39, 39, 42],
-        } /* 👉 Lighter gray/black header */,
-        tableWidth: 120,
-        margin: { left: 14 },
-      });
-    }
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 10,
+      head: [["Order", "Customer", "Order Total", "Collected in Period", "Lifetime Collected", "Remaining", "Payment"]],
+      body: orders.map((row) => [
+        row.order_number || `#${row.id}`,
+        row.customer_name || "—",
+        Number(row.total_amount || 0).toFixed(2),
+        Number(row.collected_this_period || 0).toFixed(2),
+        Number(row.lifetime_collected || 0).toFixed(2),
+        Number(row.remaining_balance || 0).toFixed(2),
+        humanize(row.payment_status),
+      ]),
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [39, 39, 42] },
+    });
 
-    const finalY = doc.lastAutoTable.finalY + 20;
-    doc.setFontSize(10).setFont("helvetica", "normal");
-    doc.text("Prepared by:", 14, finalY);
-    doc.text("___________________________", 14, finalY + 16);
-    doc.text("Authorized Signatory / Owner", 14, finalY + 22);
-
-    doc.save(
-      `wisdom_sales_report_${tab || "combined"}_${dateStr.replace(/\s+/g, "_")}.pdf`,
-    );
+    doc.save(`wisdom_sales_collections_${tab || "combined"}.pdf`);
   };
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const s = data?.summary;
 
   return (
-    <div id="print-area">
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 20,
-        }}
-      >
-        <h1 style={pageTitle}>Sales Reports</h1>
-
+    <div id="print-area" style={{ paddingBottom: 40 }}>
+      <div style={headerRow}>
+        <div>
+          <h1 style={pageTitle}>Sales & Collections</h1>
+          <p style={pageSubtitle}>
+            Actual Sales use verified payment transactions. Gross Order Value remains separate.
+          </p>
+        </div>
         <div className="no-print" style={{ display: "flex", gap: 8 }}>
-          <button onClick={exportPDF} style={btnGhost}>
-            📄 Export PDF
+          <button onClick={exportPDF} style={buttonGhost} disabled={!data}>
+            Export PDF
           </button>
-          <button onClick={handlePrint} style={btnGhost}>
-            🖨️ Print
+          <button onClick={() => window.print()} style={buttonGhost}>
+            Print
           </button>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div
-        className="no-print"
-        style={{
-          display: "flex",
-          gap: 4,
-          borderBottom: "2px solid #e4e4e7",
-          marginBottom: 20,
-        }}
-      >
-        {TABS.map((t) => (
+      <div style={noticeBox}>
+        Blueprint down payments count only the verified amount collected. Remaining balances are added only when verified. Cancelled orders keep verified, non-refunded collections in this report.
+      </div>
+
+      <div className="no-print" style={tabBar}>
+        {TABS.map((item) => (
           <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            style={{
-              padding: "10px 20px",
-              border: "none",
-              background: "none",
-              cursor: "pointer",
-              fontWeight: 800,
-              fontSize: 13,
-              letterSpacing: "0.02em",
-              color: tab === t.key ? "#18181b" : "#71717a",
-              borderBottom:
-                tab === t.key ? "2px solid #18181b" : "2px solid transparent",
-              marginBottom: -2,
-              transition: "all 0.2s ease",
-            }}
+            key={item.key}
+            onClick={() => setTab(item.key)}
+            style={{ ...tabButton, ...(tab === item.key ? tabButtonActive : {}) }}
           >
-            {t.label}
+            {item.label}
           </button>
         ))}
       </div>
 
-      {/* Filters */}
-      <div
-        className="no-print"
-        style={{
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          marginBottom: 24,
-          alignItems: "center",
-        }}
-      >
-        {PERIODS.map((p) => (
+      <div className="no-print" style={filterBar}>
+        {PERIODS.map((item) => (
           <button
-            key={p.value}
-            onClick={() => setPeriod(p.value)}
-            style={{
-              padding: "8px 18px",
-              border: "1px solid",
-              borderRadius: 20,
-              cursor: "pointer",
-              fontSize: 12,
-              fontWeight: 700,
-              background: period === p.value ? "#18181b" : "#ffffff",
-              color: period === p.value ? "#ffffff" : "#52525b",
-              borderColor: period === p.value ? "#18181b" : "#d4d4d8",
-              transition: "all 0.2s ease",
-            }}
+            key={item.value}
+            onClick={() => setPeriod(item.value)}
+            style={{ ...pillButton, ...(period === item.value ? pillButtonActive : {}) }}
           >
-            {p.label}
+            {item.label}
           </button>
         ))}
-
-        {period === "custom" && (
+        {period === "custom" ? (
           <>
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              style={inputSm}
-            />
-            <span style={{ color: "#71717a", fontSize: 13, fontWeight: 600 }}>
-              to
-            </span>
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              style={inputSm}
-            />
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} style={input} />
+            <span style={{ color: "#71717a", fontSize: 12 }}>to</span>
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} style={input} />
             <button
-              onClick={handleApplyCustomRange}
-              style={btnPrimary}
-              disabled={!from || !to || from > to}
+              onClick={load}
+              style={buttonPrimary}
+              disabled={!from || !to || from > to || loading}
             >
               Apply
             </button>
-
-            {from && to && from > to && (
-              <span style={{ color: "#dc2626", fontSize: 12, fontWeight: 700 }}>
-                End date must be later than or equal to the start date.
-              </span>
-            )}
           </>
-        )}
+        ) : null}
       </div>
 
-      {/* KPI Summary */}
-      {s && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              tab === "" ? "repeat(3, 1fr)" : "repeat(4, 1fr)",
-            gap: 20,
-            marginBottom: 32,
-          }}
-        >
-          <KpiCard
-            label="Total Orders"
-            value={s.total_orders}
-            color="#18181b"
-            icon="🛒"
-          />
-          <KpiCard
-            label="Total Revenue"
-            value={formatMoney(s.total_revenue)}
-            color="#18181b"
-            icon="💰"
-          />
-          <KpiCard
-            label="Total Profit"
-            value={formatMoney(s.total_profit)}
-            color="#059669"
-            icon="📈"
-          />
-          <KpiCard
-            label="Avg Order Value"
-            value={formatMoney(s.avg_order_value)}
-            color="#18181b"
-            icon="🧾"
-          />
+      {error ? <div style={errorBox}>{error}</div> : null}
+      {loading ? <div style={emptyState}>Loading report...</div> : null}
 
-          {tab === "" && (
-            <>
-              <KpiCard
-                label="Online Orders"
-                value={s.online_count}
-                color="#18181b"
-                icon="🌐"
-              />
-              <KpiCard
-                label="Walk-in Orders"
-                value={s.walkin_count}
-                color="#18181b"
-                icon="🏪"
-              />
-            </>
-          )}
-        </div>
-      )}
-
-      {loading ? (
-        <div style={center}>Loading report...</div>
-      ) : !data ? null : (
+      {!loading && data ? (
         <>
-          {/* Orders Table */}
-          <div style={{ ...card, marginBottom: 20 }}>
-            <div
-              style={{
-                padding: "20px",
-                borderBottom: "1px solid #e4e4e7",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <h3 style={sectionTitle}>
-                {tab === "walkin"
-                  ? "POS Transactions"
-                  : tab === "online"
-                    ? "Online Orders"
-                    : "All Transactions"}
-              </h3>
-              <span style={{ fontSize: 12, color: "#71717a", fontWeight: 700 }}>
-                {data.orders.length} records
-              </span>
-            </div>
-
-            <div style={{ overflowX: "auto" }}>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: 13,
-                }}
-              >
-                <thead>
-                  <tr style={{ background: "#fafafa" }}>
-                    {[
-                      "Order ID",
-                      "Customer",
-                      "Channel",
-                      "Payment",
-                      "Amount",
-                      "Profit",
-                      "Status",
-                      "Delivery",
-                      "Receipt",
-                      "Date",
-                    ].map((h) => (
-                      <th key={h} style={th}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {data.orders.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={10}
-                        style={{
-                          textAlign: "center",
-                          padding: 40,
-                          color: "#71717a",
-                          fontWeight: 600,
-                          fontSize: 13,
-                        }}
-                      >
-                        No records for this period.
-                      </td>
-                    </tr>
-                  ) : (
-                    data.orders.map((o) => {
-                      const statusKey = String(o.status || "").toLowerCase();
-                      const ss = STATUS_STYLE[statusKey] || {
-                        bg: "#f4f4f5",
-                        color: "#52525b",
-                        border: "#d4d4d8",
-                      };
-
-                      return (
-                        <tr
-                          key={o.id}
-                          style={{ borderBottom: "1px solid #f4f4f5" }}
-                        >
-                          <td style={td}>
-                            <span style={{ fontWeight: 800, color: "#0a0a0a" }}>
-                              #{String(o.id).padStart(5, "0")}
-                            </span>
-                          </td>
-
-                          <td style={td}>
-                            <div style={{ fontWeight: 600, color: "#18181b" }}>
-                              {o.customer_name}
-                            </div>
-                            <div
-                              style={{
-                                fontSize: 11,
-                                color: "#71717a",
-                                marginTop: 2,
-                              }}
-                            >
-                              {o.customer_phone || ""}
-                            </div>
-                          </td>
-
-                          <td style={td}>
-                            <span
-                              style={{
-                                background:
-                                  String(o.channel || "").toLowerCase() ===
-                                  "online"
-                                    ? "#f4f4f5"
-                                    : "#ffffff",
-                                color:
-                                  String(o.channel || "").toLowerCase() ===
-                                  "online"
-                                    ? "#18181b"
-                                    : "#52525b",
-                                border:
-                                  String(o.channel || "").toLowerCase() ===
-                                  "online"
-                                    ? "1px solid #e4e4e7"
-                                    : "1px solid #d4d4d8",
-                                padding: "2px 10px",
-                                borderRadius: 12,
-                                fontSize: 11,
-                                fontWeight: 700,
-                              }}
-                            >
-                              {formatChannelLabel(o.channel)}
-                            </span>
-                          </td>
-
-                          <td
-                            style={{
-                              ...td,
-                              fontSize: 12,
-                              color: "#52525b",
-                              fontWeight: 500,
-                            }}
-                          >
-                            {o.payment_method?.replace(/_/g, " ") || "—"}
-                          </td>
-
-                          <td
-                            style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}
-                          >
-                            {formatMoney(o.total_amount)}
-                          </td>
-
-                          <td
-                            style={{ ...td, color: "#059669", fontWeight: 700 }}
-                          >
-                            {formatMoney(o.total_profit)}
-                          </td>
-
-                          <td style={td}>
-                            <span
-                              style={{
-                                background: ss.bg,
-                                color: ss.color,
-                                border: `1px solid ${ss.border}`,
-                                padding: "2px 10px",
-                                borderRadius: 12,
-                                fontSize: 11,
-                                fontWeight: 700,
-                              }}
-                            >
-                              {formatStatusLabel(o.status)}
-                            </span>
-                          </td>
-
-                          <td style={td}>
-                            {o.delivery_status ? (
-                              <span
-                                style={{
-                                  fontSize: 12,
-                                  color: "#52525b",
-                                  fontWeight: 500,
-                                }}
-                              >
-                                {o.delivery_status}
-                              </span>
-                            ) : (
-                              <span style={{ color: "#a1a1aa" }}>—</span>
-                            )}
-                          </td>
-
-                          <td style={td}>
-                            {o.receipt_number ? (
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  color: "#0a0a0a",
-                                  fontWeight: 700,
-                                }}
-                              >
-                                {o.receipt_number}
-                              </span>
-                            ) : (
-                              <span style={{ color: "#a1a1aa" }}>—</span>
-                            )}
-                          </td>
-
-                          <td
-                            style={{
-                              ...td,
-                              fontSize: 12,
-                              color: "#71717a",
-                              fontWeight: 500,
-                            }}
-                          >
-                            {new Date(o.created_at).toLocaleDateString("en-PH")}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-
-                {data.orders.length > 0 && (
-                  <tfoot>
-                    <tr
-                      style={{
-                        background: "#fafafa",
-                        borderTop: "2px solid #e4e4e7",
-                      }}
-                    >
-                      <td
-                        colSpan={4}
-                        style={{
-                          ...td,
-                          fontWeight: 800,
-                          textAlign: "right",
-                          color: "#0a0a0a",
-                        }}
-                      >
-                        TOTALS
-                      </td>
-                      <td style={{ ...td, fontWeight: 800, color: "#0a0a0a" }}>
-                        {formatMoney(s.total_revenue)}
-                      </td>
-                      <td style={{ ...td, fontWeight: 800, color: "#059669" }}>
-                        {formatMoney(s.total_profit)}
-                      </td>
-                      <td colSpan={4} />
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
+          <div style={summaryGrid}>
+            <SummaryCard
+              label="Gross Order Value"
+              value={money(summary.gross_order_value)}
+              note="Non-cancelled orders created in the selected period"
+            />
+            <SummaryCard
+              label="Actual Collected"
+              value={money(summary.actual_collected)}
+              note={`${summary.collection_count || 0} verified payment transaction(s)`}
+            />
+            <SummaryCard
+              label="Outstanding"
+              value={money(summary.outstanding_balance)}
+              note="Unpaid balance of non-cancelled orders in the selected order period"
+            />
+            <SummaryCard
+              label="Estimated Order Profit"
+              value={money(summary.total_profit)}
+              note="Estimate only; not realized accounting profit"
+            />
+            <SummaryCard label="Non-cancelled Orders" value={summary.total_orders || 0} />
+            <SummaryCard label="Average Order Value" value={money(summary.avg_order_value)} />
           </div>
 
-          {/* Top Products Breakdown */}
-          {data.products?.length > 0 && (
-            <div style={card}>
-              <div
-                style={{
-                  padding: "20px",
-                  borderBottom: "1px solid #e4e4e7",
-                }}
-              >
-                <h3 style={sectionTitle}>Product Sales Breakdown</h3>
-              </div>
-
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: 13,
-                }}
-              >
+          <section style={card}>
+            <SectionHeader
+              title="Verified Collection Transactions"
+              subtitle={`${collections.length} record(s) based on payment verification date`}
+            />
+            <div style={tableScroll}>
+              <table style={table}>
                 <thead>
-                  <tr style={{ background: "#fafafa" }}>
-                    {[
-                      "#",
-                      "Product Name",
-                      "Units Sold",
-                      "Revenue (₱)",
-                      "Profit (₱)",
-                      "Revenue Share",
-                    ].map((h) => (
-                      <th key={h} style={th}>
-                        {h}
-                      </th>
+                  <tr>
+                    {["Payment Date", "Receipt", "Order", "Customer", "Order Type", "Method", "Amount", "Processed By", "Order Status"].map((label) => (
+                      <th key={label} style={th}>{label}</th>
                     ))}
                   </tr>
                 </thead>
-
                 <tbody>
-                  {data.products.map((p, i) => {
-                    const share =
-                      Number(s.total_revenue) > 0
-                        ? (
-                            (Number(p.revenue || 0) / Number(s.total_revenue)) *
-                            100
-                          ).toFixed(1)
-                        : "0.0";
-
-                    return (
-                      <tr key={i} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                        <td
-                          style={{
-                            ...td,
-                            color: "#a1a1aa",
-                            fontWeight: 700,
-                            width: 32,
-                          }}
-                        >
-                          {i + 1}
-                        </td>
-
-                        <td
-                          style={{ ...td, fontWeight: 600, color: "#18181b" }}
-                        >
-                          {p.product_name}
-                        </td>
-
-                        <td style={{ ...td, fontWeight: 600 }}>
-                          {p.units_sold}
-                        </td>
-
-                        <td
-                          style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}
-                        >
-                          {formatMoney(p.revenue)}
-                        </td>
-
-                        <td
-                          style={{ ...td, color: "#059669", fontWeight: 700 }}
-                        >
-                          {formatMoney(p.profit)}
-                        </td>
-
-                        <td style={td}>
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 12,
-                            }}
-                          >
-                            <div
-                              style={{
-                                flex: 1,
-                                background: "#f4f4f5",
-                                borderRadius: 4,
-                                height: 8,
-                                overflow: "hidden",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  width: `${share}%`,
-                                  background: "#18181b",
-                                  height: "100%",
-                                  borderRadius: 4,
-                                }}
-                              />
-                            </div>
-                            <span
-                              style={{
-                                fontSize: 12,
-                                color: "#52525b",
-                                fontWeight: 600,
-                                width: 36,
-                              }}
-                            >
-                              {share}%
-                            </span>
-                          </div>
-                        </td>
+                  {collections.length === 0 ? (
+                    <EmptyRow colSpan={9} text="No verified collections for this period." />
+                  ) : (
+                    collections.map((row) => (
+                      <tr key={row.payment_transaction_id} style={tr}>
+                        <td style={td}>{dateTime(row.payment_date)}</td>
+                        <td style={td}>{row.receipt_number || "—"}</td>
+                        <td style={{ ...td, fontWeight: 800 }}>{row.order_number || `#${row.order_id}`}</td>
+                        <td style={td}>{row.customer_name || "—"}</td>
+                        <td style={td}>{humanize(row.order_type)}</td>
+                        <td style={td}>{paymentMethodLabel(row.payment_method)}</td>
+                        <td style={{ ...td, fontWeight: 800 }}>{money(row.amount)}</td>
+                        <td style={td}>{row.processed_by || "System"}</td>
+                        <td style={td}><Badge value={row.order_status} /></td>
                       </tr>
-                    );
-                  })}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
-          )}
+          </section>
+
+          <section style={card}>
+            <SectionHeader
+              title="Order Value & Collection Status"
+              subtitle="Shows non-cancelled orders in the order period and orders with verified collections in the payment period"
+            />
+            <div style={tableScroll}>
+              <table style={table}>
+                <thead>
+                  <tr>
+                    {["Order", "Customer", "Channel / Type", "Order Total", "Collected This Period", "Lifetime Collected", "Remaining", "Methods", "Payment", "Order Status", "Receipts"].map((label) => (
+                      <th key={label} style={th}>{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.length === 0 ? (
+                    <EmptyRow colSpan={11} text="No matching orders or collections." />
+                  ) : (
+                    orders.map((row) => (
+                      <tr key={row.id} style={tr}>
+                        <td style={{ ...td, fontWeight: 800 }}>{row.order_number || `#${row.id}`}</td>
+                        <td style={td}>{row.customer_name || "—"}</td>
+                        <td style={td}>{humanize(row.channel)} · {humanize(row.order_type)}</td>
+                        <td style={td}>{money(row.total_amount)}</td>
+                        <td style={{ ...td, fontWeight: 800 }}>{money(row.collected_this_period)}</td>
+                        <td style={td}>{money(row.lifetime_collected)}</td>
+                        <td style={td}>{money(row.remaining_balance)}</td>
+                        <td style={td}>{row.collected_payment_methods ? row.collected_payment_methods.split(", ").map(paymentMethodLabel).join(", ") : "—"}</td>
+                        <td style={td}><Badge value={row.payment_status} /></td>
+                        <td style={td}><Badge value={row.status} /></td>
+                        <td style={{ ...td, textAlign: "center" }}>{row.receipt_count || 0}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <div style={twoColumnGrid}>
+            <section style={card}>
+              <SectionHeader title="Verified Collections by Payment Method" />
+              <div style={{ padding: 18 }}>
+                {paymentMethods.length === 0 ? (
+                  <div style={smallEmpty}>No verified payment methods for this period.</div>
+                ) : (
+                  paymentMethods.map((row) => (
+                    <div key={row.payment_method} style={breakdownRow}>
+                      <div>
+                        <div style={{ fontWeight: 800 }}>{paymentMethodLabel(row.payment_method)}</div>
+                        <div style={breakdownMeta}>{row.transaction_count} transaction(s)</div>
+                      </div>
+                      <div style={{ fontWeight: 900 }}>{money(row.total_amount)}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section style={card}>
+              <SectionHeader title="Gross Order Product Breakdown" subtitle="Order pipeline value, not partial-payment allocation" />
+              <div style={tableScroll}>
+                <table style={table}>
+                  <thead>
+                    <tr>
+                      {[
+                        "Product",
+                        "Units",
+                        "Gross Order Value",
+                        "Estimated Profit",
+                      ].map((label) => <th key={label} style={th}>{label}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {products.length === 0 ? (
+                      <EmptyRow colSpan={4} text="No product order data for this period." />
+                    ) : (
+                      products.map((row, index) => (
+                        <tr key={`${row.product_name}-${index}`} style={tr}>
+                          <td style={{ ...td, fontWeight: 700 }}>{row.product_name || "—"}</td>
+                          <td style={td}>{quantity(row.units_sold)}</td>
+                          <td style={td}>{money(row.gross_order_value)}</td>
+                          <td style={td}>{money(row.estimated_profit)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
         </>
-      )}
-
-      <style>{`
-        @media print {
-          @page {
-            size: landscape;
-            margin: 12mm;
-          }
-
-          body * {
-            visibility: hidden !important;
-          }
-
-          #print-area,
-          #print-area * {
-            visibility: visible !important;
-          }
-
-          #print-area {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            background: #fff;
-          }
-
-          .no-print {
-            display: none !important;
-          }
-
-          button {
-            display: none !important;
-          }
-        }
-      `}</style>
+      ) : null}
     </div>
   );
 }
 
-function KpiCard({ label, value, color, icon }) {
+function SectionHeader({ title, subtitle }) {
   return (
-    <div
-      style={{
-        background: "#fff",
-        borderRadius: 12,
-        padding: "24px 20px",
-        border: "1px solid #e4e4e7",
-        borderLeft: `5px solid ${color}`,
-        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-        }}
-      >
-        <div>
-          <p
-            style={{
-              fontSize: 10,
-              color: "#71717a",
-              margin: 0,
-              textTransform: "uppercase",
-              letterSpacing: "1px",
-              fontWeight: 800,
-            }}
-          >
-            {label}
-          </p>
-          <p
-            style={{
-              fontSize: 26,
-              fontWeight: 800,
-              color: "#0a0a0a",
-              margin: "6px 0 0",
-              letterSpacing: "-0.02em",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-            title={String(value)}
-          >
-            {value}
-          </p>
-        </div>
-        <div
-          style={{
-            fontSize: 24,
-            background: "#f4f4f5",
-            width: 48,
-            height: 48,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 12,
-            flexShrink: 0,
-          }}
-        >
-          {icon}
-        </div>
+    <div style={sectionHeader}>
+      <div>
+        <h3 style={sectionTitle}>{title}</h3>
+        {subtitle ? <p style={sectionSubtitle}>{subtitle}</p> : null}
       </div>
     </div>
   );
 }
 
-const pageTitle = {
-  fontSize: 24,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  margin: 0,
-  letterSpacing: "-0.02em",
-};
+function EmptyRow({ colSpan, text }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} style={emptyCell}>{text}</td>
+    </tr>
+  );
+}
 
-const sectionTitle = {
-  fontSize: 18,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  margin: 0,
-  letterSpacing: "-0.01em",
-};
-
-const card = {
-  background: "#fff",
-  borderRadius: 16,
-  border: "1px solid #e4e4e7",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-  overflow: "hidden",
-};
-
-const th = {
-  textAlign: "left",
-  padding: "14px 16px",
-  fontSize: 10,
-  fontWeight: 800,
-  color: "#71717a",
-  textTransform: "uppercase",
-  letterSpacing: "1px",
-};
-
-const td = {
-  padding: "14px 16px",
-  color: "#18181b",
-  verticalAlign: "middle",
-};
-
-const center = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  height: 200,
-  color: "#71717a",
-  fontSize: 14,
-  fontWeight: 600,
-};
-
-const inputSm = {
-  padding: "8px 14px",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  fontSize: 13,
-  color: "#18181b",
-  outline: "none",
-};
-
-const btnPrimary = {
-  padding: "9px 20px",
-  background: "#18181b",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
-  transition: "background 0.2s",
-};
-
-const btnGhost = {
-  padding: "9px 16px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
-  transition: "background 0.2s",
-};
+const pageTitle = { margin: 0, fontSize: 26, fontWeight: 900, color: "#0a0a0a" };
+const pageSubtitle = { margin: "6px 0 0", color: "#71717a", fontSize: 13 };
+const headerRow = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 16, flexWrap: "wrap" };
+const noticeBox = { padding: "12px 14px", border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1e3a8a", borderRadius: 10, fontSize: 12, lineHeight: 1.55, marginBottom: 18 };
+const tabBar = { display: "flex", gap: 4, borderBottom: "1px solid #d4d4d8", marginBottom: 16, flexWrap: "wrap" };
+const tabButton = { border: "none", background: "transparent", padding: "10px 16px", cursor: "pointer", color: "#71717a", fontWeight: 800, borderBottom: "2px solid transparent" };
+const tabButtonActive = { color: "#18181b", borderBottomColor: "#18181b" };
+const filterBar = { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 20 };
+const pillButton = { border: "1px solid #d4d4d8", background: "#fff", color: "#52525b", padding: "7px 13px", borderRadius: 999, cursor: "pointer", fontWeight: 700, fontSize: 12 };
+const pillButtonActive = { background: "#18181b", color: "#fff", borderColor: "#18181b" };
+const input = { border: "1px solid #d4d4d8", borderRadius: 8, padding: "8px 10px", fontSize: 12 };
+const buttonPrimary = { border: "1px solid #18181b", background: "#18181b", color: "#fff", padding: "8px 14px", borderRadius: 8, fontWeight: 800, cursor: "pointer" };
+const buttonGhost = { border: "1px solid #d4d4d8", background: "#fff", color: "#18181b", padding: "8px 12px", borderRadius: 8, fontWeight: 800, cursor: "pointer" };
+const errorBox = { padding: 14, borderRadius: 10, color: "#991b1b", background: "#fef2f2", border: "1px solid #fecaca", marginBottom: 16, fontSize: 13 };
+const emptyState = { padding: 40, textAlign: "center", color: "#71717a", border: "1px solid #e4e4e7", borderRadius: 12, background: "#fff" };
+const summaryGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginBottom: 18 };
+const summaryCard = { background: "#fff", border: "1px solid #e4e4e7", borderRadius: 12, padding: 16 };
+const summaryLabel = { fontSize: 11, fontWeight: 800, color: "#71717a", textTransform: "uppercase", letterSpacing: ".04em" };
+const summaryValue = { fontSize: 22, fontWeight: 900, color: "#0a0a0a", marginTop: 7 };
+const summaryNote = { fontSize: 10, color: "#71717a", lineHeight: 1.45, marginTop: 6 };
+const card = { background: "#fff", border: "1px solid #e4e4e7", borderRadius: 12, overflow: "hidden", marginBottom: 18 };
+const sectionHeader = { padding: "16px 18px", borderBottom: "1px solid #e4e4e7", background: "#fafafa" };
+const sectionTitle = { margin: 0, fontSize: 15, fontWeight: 900, color: "#18181b" };
+const sectionSubtitle = { margin: "4px 0 0", fontSize: 11, color: "#71717a" };
+const tableScroll = { overflowX: "auto" };
+const table = { width: "100%", borderCollapse: "collapse", fontSize: 12 };
+const th = { textAlign: "left", padding: "10px 12px", background: "#fafafa", borderBottom: "1px solid #e4e4e7", color: "#52525b", fontSize: 10, textTransform: "uppercase", letterSpacing: ".03em", whiteSpace: "nowrap" };
+const tr = { borderBottom: "1px solid #f4f4f5" };
+const td = { padding: "11px 12px", verticalAlign: "top", color: "#3f3f46", whiteSpace: "nowrap" };
+const emptyCell = { padding: 32, textAlign: "center", color: "#71717a" };
+const twoColumnGrid = { display: "grid", gridTemplateColumns: "minmax(280px, .75fr) minmax(420px, 1.25fr)", gap: 18 };
+const breakdownRow = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid #f4f4f5", gap: 12 };
+const breakdownMeta = { marginTop: 3, fontSize: 10, color: "#71717a" };
+const smallEmpty = { color: "#71717a", fontSize: 12, padding: 12, textAlign: "center" };

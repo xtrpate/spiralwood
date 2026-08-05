@@ -94,6 +94,12 @@ const NAV_ITEMS = [
     roles: ["admin", "staff"],
   },
   {
+    label: "POS QR Recovery",
+    path: "/admin/pos-qr-recovery",
+    icon: "💳",
+    roles: ["admin"],
+  },
+  {
     label: "Warranty",
     path: "/admin/warranty",
     icon: "🛡️",

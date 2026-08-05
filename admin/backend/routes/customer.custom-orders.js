@@ -3,7 +3,10 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const { verifyFileSignature } = require("../utils/verifyFileSignature");
+const {
+  verifyFileSignature,
+  verifyBufferSignature,
+} = require("../utils/verifyFileSignature");
 
 const { authenticate, requireCustomer } = require("../middleware/auth");
 const { logAction } = require("../middleware/auditLog");
@@ -112,6 +115,97 @@ const assetUpload = (req, res, next) => {
     next();
   });
 };
+/* ──────────────────────────────────────────────────────────
+   Initial custom-request reference photo upload
+   - memory storage: files are written only after order validation starts
+   - maximum 5 photos per custom item, 25 photos per request
+────────────────────────────────────────────────────────── */
+const REFERENCE_PHOTO_EXTENSIONS = new Set([
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+]);
+
+const REFERENCE_PHOTO_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+const referencePhotoUploadRaw = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 25,
+  },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    const mimeType = String(file.mimetype || "").trim().toLowerCase();
+
+    if (
+      REFERENCE_PHOTO_EXTENSIONS.has(ext) &&
+      REFERENCE_PHOTO_MIME_TYPES.has(mimeType)
+    ) {
+      cb(null, true);
+      return;
+    }
+
+    const error = new Error(
+      "Reference photos must be JPG, JPEG, PNG, or WEBP images.",
+    );
+    error.status = 400;
+    cb(error);
+  },
+});
+
+const referencePhotoUpload = (req, res, next) => {
+  referencePhotoUploadRaw.array("reference_photos", 25)(
+    req,
+    res,
+    (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === "LIMIT_FILE_SIZE") {
+            return res.status(400).json({
+              message: "Each reference photo must be 5MB or smaller.",
+            });
+          }
+
+          if (err.code === "LIMIT_FILE_COUNT") {
+            return res.status(400).json({
+              message: "Too many reference photos were uploaded.",
+            });
+          }
+        }
+
+        return next(err);
+      }
+
+      for (const file of req.files || []) {
+        const ext = path.extname(file.originalname || "").toLowerCase();
+        const mimeType = String(file.mimetype || "").trim().toLowerCase();
+
+        const extensionMatchesMime =
+          ([".jpg", ".jpeg"].includes(ext) && mimeType === "image/jpeg") ||
+          (ext === ".png" && mimeType === "image/png") ||
+          (ext === ".webp" && mimeType === "image/webp");
+
+        if (
+          !extensionMatchesMime ||
+          !verifyBufferSignature(file.buffer, ext)
+        ) {
+          return res.status(400).json({
+            message:
+              "One of the reference photos does not match its file extension. Upload rejected.",
+          });
+        }
+      }
+
+      next();
+    },
+  );
+};
 
 /* ══════════════════════════════════════════════════════════════
    CUSTOMER CUSTOM ORDERS ROUTES
@@ -121,6 +215,7 @@ router.post(
   "/",
   authenticate,
   requireCustomer,
+  referencePhotoUpload,
   customOrderController.createCustomOrder,
 );
 

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useCustomCart } from "./customcartcontext";
 import { buildAssetUrl } from "../../services/api";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
+import { getCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
 
 const resolveImage = (value) => {
   const raw = String(value || "").trim();
@@ -160,6 +161,49 @@ export default function CustomCartPage() {
 
   const [previewItem, setPreviewItem] = useState(null);
   const [selectedKeys, setSelectedKeys] = useState([]);
+  const [referencePhotoPreviews, setReferencePhotoPreviews] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const objectUrls = [];
+
+    const loadPreviews = async () => {
+      const entries = await Promise.all(
+        (Array.isArray(customCart) ? customCart : []).map(async (item) => {
+          try {
+            const storedPhotos = await getCustomReferencePhotos(item?.key);
+            const previews = storedPhotos
+              .filter((photo) => photo?.blob instanceof Blob)
+              .map((photo) => {
+                const dataUrl = URL.createObjectURL(photo.blob);
+                objectUrls.push(dataUrl);
+                return { ...photo, data_url: dataUrl };
+              });
+            return [item?.key, previews];
+          } catch (error) {
+            console.error("Failed to load reference photo previews:", error);
+            return [item?.key, []];
+          }
+        }),
+      );
+
+      if (cancelled) {
+        objectUrls.forEach((url) => URL.revokeObjectURL(url));
+        return;
+      }
+
+      setReferencePhotoPreviews(
+        Object.fromEntries(entries.filter(([key]) => key)),
+      );
+    };
+
+    loadPreviews();
+
+    return () => {
+      cancelled = true;
+      objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [customCart]);
 
   useEffect(() => {
     const validKeys = new Set((customCart || []).map((item) => item.key));
@@ -627,37 +671,36 @@ export default function CustomCartPage() {
                     </div>
                   ) : null}
 
-                  {Array.isArray(item.reference_photos) &&
-                    item.reference_photos.length ? (
-                      <div style={{ marginTop: "12px" }}>
-                        <strong>Reference Photos:</strong>
+                  {(referencePhotoPreviews[item.key] || []).length ? (
+                    <div style={{ marginTop: "12px" }}>
+                      <strong>Reference Photos:</strong>
 
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: "8px",
-                            flexWrap: "wrap",
-                            marginTop: "8px",
-                          }}
-                        >
-                          {item.reference_photos.map((photo) => (
-                            <img
-                              key={photo.id}
-                              src={photo.data_url}
-                              alt={photo.name || "Reference"}
-                              style={{
-                                width: 72,
-                                height: 72,
-                                objectFit: "cover",
-                                borderRadius: 10,
-                                border: "1px solid #e5e7eb",
-                                background: "#f8fafc",
-                              }}
-                            />
-                          ))}
-                        </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                          marginTop: "8px",
+                        }}
+                      >
+                        {referencePhotoPreviews[item.key].map((photo) => (
+                          <img
+                            key={photo.id}
+                            src={photo.data_url}
+                            alt={photo.name || "Reference"}
+                            style={{
+                              width: 72,
+                              height: 72,
+                              objectFit: "cover",
+                              borderRadius: 10,
+                              border: "1px solid #e5e7eb",
+                              background: "#f8fafc",
+                            }}
+                          />
+                        ))}
                       </div>
-                    ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );

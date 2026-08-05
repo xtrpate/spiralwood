@@ -64,6 +64,12 @@ const BLANK = {
   blueprint_id: "",
 };
 
+const PRODUCTION_ASSIGN_BLANK = {
+  staff_id: "",
+  due_date: "",
+  note: "",
+};
+
 export default function TasksPage() {
   const { user: me } = useAuthStore();
   const isAdmin = me?.role === "admin";
@@ -82,6 +88,18 @@ export default function TasksPage() {
   const [search, setSearch] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const [focusedTaskId, setFocusedTaskId] = useState(null);
+  const [productionAssignModal, setProductionAssignModal] = useState(false);
+  const [productionOrderPickerOpen, setProductionOrderPickerOpen] = useState(false);
+  const [productionOrderSelection, setProductionOrderSelection] = useState("");
+  const [productionOrderId, setProductionOrderId] = useState(null);
+  const [productionBlueprintId, setProductionBlueprintId] = useState(null);
+  const [productionAssignableStaff, setProductionAssignableStaff] = useState([]);
+  const [productionAssignLoading, setProductionAssignLoading] = useState(false);
+  const [productionAssigning, setProductionAssigning] = useState(false);
+  const [productionAssignForm, setProductionAssignForm] = useState(
+    PRODUCTION_ASSIGN_BLANK,
+  );
+  const assignmentOrderIdParam = searchParams.get("assign_order_id");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -143,8 +161,164 @@ export default function TasksPage() {
     setModal("view");
   };
 
-  // Notification double-click focus support: reads ?focus_task_id= set
-  // by NotificationBell navigation, clears any filter that would hide
+  const openProductionOrderPicker = () => {
+    setProductionOrderSelection("");
+    setProductionOrderPickerOpen(true);
+  };
+
+  const closeProductionOrderPicker = () => {
+    setProductionOrderPickerOpen(false);
+    setProductionOrderSelection("");
+  };
+
+  const startProductionAssignment = () => {
+    const orderId = Number(productionOrderSelection);
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      toast.error("Please select a blueprint production order.");
+      return;
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.set("assign_order_id", String(orderId));
+    setSearchParams(next);
+    closeProductionOrderPicker();
+  };
+
+  const clearProductionAssignmentParam = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("assign_order_id");
+    setSearchParams(next, { replace: true });
+  };
+
+  const closeProductionAssignModal = () => {
+    setProductionAssignModal(false);
+    setProductionOrderId(null);
+    setProductionBlueprintId(null);
+    setProductionAssignableStaff([]);
+    setProductionAssignForm(PRODUCTION_ASSIGN_BLANK);
+    clearProductionAssignmentParam();
+  };
+
+  useEffect(() => {
+    if (!assignmentOrderIdParam || !me) return;
+
+    if (!isAdmin) {
+      toast.error("Only administrators can assign production staff.");
+      clearProductionAssignmentParam();
+      return;
+    }
+
+    const orderId = Number(assignmentOrderIdParam);
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      toast.error("Invalid production order assignment request.");
+      clearProductionAssignmentParam();
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadProductionAssignment = async () => {
+      setProductionAssignModal(true);
+      setProductionAssignLoading(true);
+      setProductionOrderId(orderId);
+      setProductionBlueprintId(null);
+      setProductionAssignableStaff([]);
+      setProductionAssignForm(PRODUCTION_ASSIGN_BLANK);
+
+      try {
+        const { data } = await api.get(`/orders/${orderId}/assignable-staff`);
+        if (cancelled) return;
+
+        setProductionBlueprintId(data?.blueprint_id || null);
+        setProductionAssignableStaff(
+          Array.isArray(data?.staff) ? data.staff : [],
+        );
+      } catch (err) {
+        if (cancelled) return;
+        toast.error(
+          err?.response?.data?.message ||
+            "Failed to load staff for this production order.",
+        );
+        setProductionAssignModal(false);
+        setProductionOrderId(null);
+        clearProductionAssignmentParam();
+      } finally {
+        if (!cancelled) setProductionAssignLoading(false);
+      }
+    };
+
+    loadProductionAssignment();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assignmentOrderIdParam, isAdmin, me?.id]);
+
+  const handleProductionAssign = async (e) => {
+    e.preventDefault();
+
+    if (!productionOrderId) {
+      toast.error("Production order is missing.");
+      return;
+    }
+
+    if (!productionAssignForm.staff_id) {
+      toast.error("Please select an indoor staff member.");
+      return;
+    }
+
+    if (!productionAssignForm.due_date) {
+      toast.error("Due date is required.");
+      return;
+    }
+
+    const parsedDueDate = new Date(productionAssignForm.due_date);
+    if (Number.isNaN(parsedDueDate.getTime())) {
+      toast.error("Due date is invalid.");
+      return;
+    }
+
+    if (parsedDueDate.getTime() < Date.now() - 60000) {
+      toast.error("Due date cannot be in the past.");
+      return;
+    }
+
+    setProductionAssigning(true);
+    try {
+      const payload = {
+        staff_id: Number(productionAssignForm.staff_id),
+        due_date: `${productionAssignForm.due_date.replace("T", " ")}:00`,
+        note: productionAssignForm.note.trim(),
+      };
+
+      const { data } = await api.patch(
+        `/orders/${productionOrderId}/assign-staff`,
+        payload,
+      );
+
+      toast.success(
+        data?.message || "Indoor staff assigned to production successfully.",
+      );
+
+      const matchedOrder = orders.find(
+        (item) => Number(item.id) === Number(productionOrderId),
+      );
+      setFilterStatus("all");
+      setFilterRole("all");
+      setSearch(matchedOrder?.order_number || "");
+      closeProductionAssignModal();
+      await load();
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Failed to assign production staff.",
+      );
+    } finally {
+      setProductionAssigning(false);
+    }
+  };
+
+  // Notification navigation focus support: reads ?focus_task_id= set
+  // by NotificationBell, clears any filter that would hide
   // the record, scrolls it into view, highlights it briefly, and opens
   // its existing view modal. Fails safely (no crash, one-time toast) if
   // the task no longer exists — never guesses a record from anything
@@ -260,6 +434,23 @@ export default function TasksPage() {
 
   const isOverdue = (t) =>
     t.due_date && t.status !== "completed" && new Date(t.due_date) < new Date();
+
+  const eligibleProductionOrders = orders.filter((item) => {
+    const normalizedStatus = String(item?.status || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "_");
+    return ["contract_released", "production"].includes(normalizedStatus);
+  });
+
+  const productionAssignmentOrder = orders.find(
+    (item) => Number(item.id) === Number(productionOrderId),
+  );
+  const productionAssignmentOrderLabel = productionAssignmentOrder?.order_number
+    ? `#${productionAssignmentOrder.order_number}`
+    : productionOrderId
+      ? `#${String(productionOrderId).padStart(5, "0")}`
+      : "—";
 
   // ── Styles ──────────────────────────────────────────────────────────────────
   const S = {
@@ -444,6 +635,15 @@ export default function TasksPage() {
               : "Your assigned tasks and their current status."}
           </p>
         </div>
+        {isAdmin && (
+          <button
+            type="button"
+            style={{ ...S.btn, ...S.btnPrim }}
+            onClick={openProductionOrderPicker}
+          >
+            + Assign Production Staff
+          </button>
+        )}
       </div>
 
       {/* ── Stats ──────────────────────────────────────────────────────────── */}
@@ -529,7 +729,7 @@ export default function TasksPage() {
           }}
         >
           {isAdmin
-            ? 'No tasks yet. Click "+ Assign Task" to get started.'
+            ? 'No tasks yet. Click "+ Assign Production Staff" to get started.'
             : "No tasks assigned to you."}
         </div>
       ) : (
@@ -710,6 +910,285 @@ export default function TasksPage() {
             </div>
           );
         })
+      )}
+
+      {/* ── Production Order Picker ───────────────────────────────────────── */}
+      {productionOrderPickerOpen && (
+        <div style={S.overlay} onClick={closeProductionOrderPicker}>
+          <div
+            style={{ ...S.modal, maxWidth: 560 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ marginBottom: 22 }}>
+              <div style={S.mTitle}>Assign Production Staff</div>
+              <div
+                style={{
+                  color: "#52525b",
+                  fontSize: 13,
+                  lineHeight: 1.6,
+                  marginTop: -14,
+                }}
+              >
+                Select a blueprint order that is ready for production staff
+                assignment.
+              </div>
+            </div>
+
+            <div style={S.mRow}>
+              <label style={S.label}>Blueprint Production Order *</label>
+              <select
+                style={S.mInput}
+                value={productionOrderSelection}
+                onChange={(e) => setProductionOrderSelection(e.target.value)}
+              >
+                <option value="">Select an eligible order…</option>
+                {eligibleProductionOrders.map((order) => (
+                  <option key={order.id} value={order.id}>
+                    {order.order_number
+                      ? `#${order.order_number}`
+                      : `Order #${String(order.id).padStart(5, "0")}`}
+                    {order.status ? ` — ${String(order.status).replace(/_/g, " ")}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {eligibleProductionOrders.length === 0 && (
+              <div
+                style={{
+                  padding: "12px 14px",
+                  marginBottom: 18,
+                  border: "1px solid #e4e4e7",
+                  background: "#fafafa",
+                  color: "#52525b",
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                }}
+              >
+                No blueprint orders are currently in Contract Released or
+                Production status.
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 12,
+                marginTop: 22,
+              }}
+            >
+              <button
+                type="button"
+                style={{ ...S.btn, ...S.btnGray }}
+                onClick={closeProductionOrderPicker}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                style={{ ...S.btn, ...S.btnPrim }}
+                onClick={startProductionAssignment}
+                disabled={eligibleProductionOrders.length === 0}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Blueprint Production Assignment Modal ─────────────────────────── */}
+      {productionAssignModal && (
+        <div style={S.overlay}>
+          <div
+            style={{ ...S.modal, maxWidth: 620 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ marginBottom: 22 }}>
+              <div style={S.mTitle}>Assign Indoor Staff to Production Order</div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  marginTop: -14,
+                  color: "#52525b",
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                <span>Order {productionAssignmentOrderLabel}</span>
+                {productionBlueprintId && (
+                  <>
+                    <span>•</span>
+                    <span>
+                      Blueprint BP-{String(productionBlueprintId).padStart(5, "0")}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {productionAssignLoading ? (
+              <div
+                style={{
+                  padding: "34px 16px",
+                  textAlign: "center",
+                  color: "#71717a",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                Loading available indoor staff…
+              </div>
+            ) : (
+              <form onSubmit={handleProductionAssign}>
+                <div style={S.half}>
+                  <div style={S.mRow}>
+                    <label style={S.label}>Primary Indoor Staff *</label>
+                    <select
+                      style={S.mInput}
+                      value={productionAssignForm.staff_id}
+                      required
+                      onChange={(e) =>
+                        setProductionAssignForm((current) => ({
+                          ...current,
+                          staff_id: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Select indoor staff…</option>
+                      {productionAssignableStaff.map((person) => (
+                        <option key={person.id} value={person.id}>
+                          {person.name} — {person.active_task_count} active production
+                          {Number(person.active_task_count) === 1 ? "" : "s"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={S.mRow}>
+                    <label style={S.label}>Due Date & Time *</label>
+                    <input
+                      type="datetime-local"
+                      style={S.mInput}
+                      value={productionAssignForm.due_date}
+                      required
+                      onChange={(e) =>
+                        setProductionAssignForm((current) => ({
+                          ...current,
+                          due_date: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    border: "1px solid #e4e4e7",
+                    borderRadius: 8,
+                    background: "#fafafa",
+                    padding: "14px 16px",
+                    marginBottom: 18,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: "#18181b",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      marginBottom: 8,
+                    }}
+                  >
+                    Production workflow packet
+                  </div>
+                  <div style={{ fontSize: 13, color: "#52525b", lineHeight: 1.7 }}>
+                    The selected indoor staff will receive five linked tasks:
+                    Cutting Machine, Edge Banding, Horizontal Drilling, Retouching,
+                    and Packing.
+                  </div>
+                </div>
+
+                <div style={S.mRow}>
+                  <label style={S.label}>Assignment Note (optional)</label>
+                  <textarea
+                    style={{ ...S.mInput, minHeight: 96, resize: "vertical" }}
+                    value={productionAssignForm.note}
+                    placeholder="Add production instructions or notes…"
+                    onChange={(e) =>
+                      setProductionAssignForm((current) => ({
+                        ...current,
+                        note: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+
+                {productionAssignableStaff.length === 0 && (
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      marginBottom: 18,
+                      border: "1px solid #fecaca",
+                      background: "#fef2f2",
+                      color: "#991b1b",
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    No active indoor staff are currently available for assignment.
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginTop: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <button
+                    type="button"
+                    style={{ ...S.btn, ...S.btnGray }}
+                    onClick={() => navigate(`/admin/orders/${productionOrderId}`)}
+                  >
+                    Open Order
+                  </button>
+                  <div style={{ display: "flex", gap: 12 }}>
+                    <button
+                      type="button"
+                      style={{ ...S.btn, ...S.btnGray }}
+                      onClick={closeProductionAssignModal}
+                      disabled={productionAssigning}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      style={{ ...S.btn, ...S.btnPrim }}
+                      disabled={
+                        productionAssigning ||
+                        productionAssignableStaff.length === 0
+                      }
+                    >
+                      {productionAssigning
+                        ? "Assigning…"
+                        : "Assign Indoor Staff"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── Create / Edit Modal ─────────────────────────────────────────────── */}

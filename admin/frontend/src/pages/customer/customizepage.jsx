@@ -8,13 +8,7 @@ import useAuthStore from "../../store/authStore";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import "./customizepage.css";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
-
-// 👉 ADDED: Peso formatter for prices
-const formatPeso = (value) =>
-  `₱${Number(value || 0).toLocaleString("en-PH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+import { saveCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
 
 const FALLBACK_WOOD_TYPES = [
   "Oak",
@@ -1041,20 +1035,6 @@ function ProductCard({ product, onView, onCustomize }) {
           {formatMm(dimensions.depth_mm)}
         </div>
 
-        {/* 👉 ADDED: Display the base price here! */}
-        <div
-          style={{
-            marginTop: 12,
-            fontSize: 16,
-            fontWeight: 800,
-            color: "#0a0a0a",
-          }}
-        >
-          {Number(product.base_price) > 0
-            ? formatPeso(product.base_price)
-            : "Price to be quoted"}
-        </div>
-
         <div className="cust-card-actions">
           <button
             type="button"
@@ -1213,7 +1193,7 @@ export default function CustomizePage() {
     });
   };
 
-  const handleAdd = (product, draft = {}) => {
+  const handleAdd = async (product, draft = {}) => {
     if (!requireCustomerLogin(product)) return;
     const profile = resolveSavedTemplateProfile(product || {});
     const bounds = draft?.bounds || {};
@@ -1275,12 +1255,21 @@ export default function CustomizePage() {
       referencePhotos,
     });
 
-    const lightweightReferencePhotos = referencePhotos.map((photo) => ({
-      id: photo.id,
-      name: photo.name,
-      type: photo.type,
-      size: photo.size,
-    }));
+    let lightweightReferencePhotos = [];
+
+    try {
+      lightweightReferencePhotos = await saveCustomReferencePhotos(
+        stableCustomKey,
+        referencePhotos,
+      );
+    } catch (error) {
+      console.error("Failed to preserve custom reference photos:", error);
+      setToastMessage(
+        "Reference photos could not be saved. Please try adding the item again.",
+      );
+      setIsHiding(false);
+      return;
+    }
 
     addToCustomCart({
       key: stableCustomKey,
@@ -1293,8 +1282,8 @@ export default function CustomizePage() {
       item_type: "custom",
       quantity: Math.max(1, Number(draft?.quantity || 1)),
 
-      // 👉 ADDED: Attach the base price to the cart payload instead of 0!
-      unit_price: Number(product.base_price || 0),
+      // Custom blueprint pricing is finalized through estimation.
+      unit_price: 0,
 
       wood_type: woodType,
       finish_color: finishColor,

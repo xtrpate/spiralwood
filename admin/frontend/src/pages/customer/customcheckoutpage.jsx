@@ -7,6 +7,7 @@ import api from "../../services/api";
 import "./customizepage.css";
 import useAuthStore from "../../store/authStore";
 import LocationPicker from "../../components/LocationPicker";
+import { getCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
 
 // Strict parsing prevents blank strings, whitespace, booleans, arrays,
 // and objects from being coerced into a fake numeric coordinate such as 0.
@@ -309,15 +310,71 @@ export default function CustomCheckoutPage() {
     setLoading(true);
 
     try {
-      const res = await api.post("/customer/custom-orders", {
-        items: checkoutItems,
-        name: form.name,
-        phone: form.phone,
-        delivery_address: String(form.delivery_address || "").trim(),
-        delivery_lat: validDeliveryPin.lat,
-        delivery_lng: validDeliveryPin.lng,
-        notes: form.notes,
-      });
+      const formData = new FormData();
+      const referencePhotoManifest = [];
+
+      for (let itemIndex = 0; itemIndex < checkoutItems.length; itemIndex += 1) {
+        const item = checkoutItems[itemIndex];
+        const expectedPhotoCount = Array.isArray(item?.reference_photos)
+          ? item.reference_photos.length
+          : Number(item?.customization_snapshot?.reference_photo_count || 0);
+
+        const storedPhotos = await getCustomReferencePhotos(item?.key);
+
+        if (
+          expectedPhotoCount > 0 &&
+          storedPhotos.length !== expectedPhotoCount
+        ) {
+          throw new Error(
+            `Reference photos for "${item?.product_name || "this custom item"}" are missing on this device. Remove the item, add it again, and re-upload the photos before checkout.`,
+          );
+        }
+
+        if (storedPhotos.length > 5) {
+          throw new Error(
+            "A custom item can contain up to 5 reference photos only.",
+          );
+        }
+
+        storedPhotos.forEach((photo) => {
+          const blob = photo?.blob;
+          if (!(blob instanceof Blob)) {
+            throw new Error(
+              `A reference photo for "${item?.product_name || "this custom item"}" could not be read. Please add the item again.`,
+            );
+          }
+
+          const fileName =
+            String(photo?.name || "reference-photo").trim() ||
+            "reference-photo";
+
+          formData.append("reference_photos", blob, fileName);
+          referencePhotoManifest.push({
+            item_index: itemIndex,
+            photo_id: String(photo?.id || "").trim() || null,
+            file_name: fileName,
+          });
+        });
+      }
+
+      formData.append(
+        "payload",
+        JSON.stringify({
+          items: checkoutItems,
+          name: form.name,
+          phone: form.phone,
+          delivery_address: String(form.delivery_address || "").trim(),
+          delivery_lat: validDeliveryPin.lat,
+          delivery_lng: validDeliveryPin.lng,
+          notes: form.notes,
+        }),
+      );
+      formData.append(
+        "reference_photo_manifest",
+        JSON.stringify(referencePhotoManifest),
+      );
+
+      const res = await api.post("/customer/custom-orders", formData);
 
       const submittedKeys = checkoutItems
         .map((item) => item.key)
@@ -337,6 +394,7 @@ export default function CustomCheckoutPage() {
       setError(
         err.response?.data?.message ||
           err.response?.data?.error ||
+          err.message ||
           "Failed to submit custom request. Please try again.",
       );
     } finally {

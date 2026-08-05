@@ -1,43 +1,69 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle, Receipt, MapPin } from "lucide-react";
-import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
-import L from "leaflet";
-
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
-  iconUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
-  shadowUrl:
-    "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
-});
-
-function MapInvalidator() {
-  const map = useMapEvents({});
-  useEffect(() => {
-    setTimeout(() => {
-      map.invalidateSize();
-    }, 100);
-  }, [map]);
-  return null;
-}
-
-function LocationPicker({ position, setPosition }) {
-  useMapEvents({
-    click(e) {
-      setPosition([e.latlng.lat, e.latlng.lng]);
-    },
-  });
-
-  return position === null ? null : <Marker position={position} />;
-}
+import { CheckCircle, Receipt } from "lucide-react";
+import LocationPicker from "../../components/LocationPicker";
+import "./ProcessOrder.css";
 
 const isValidPHPhone = (value) => {
   const digits = String(value || "").replace(/\D/g, "");
   return digits.length === 11 && digits.startsWith("09");
+};
+
+const POS_QR_ENABLED =
+  process.env.REACT_APP_POS_QR_ENABLED === "true";
+const POS_QR_STORAGE_KEY = "pos_qr_attempt";
+
+const safeParseJson = (value, fallback = null) => {
+  try {
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const readStoredCart = () => {
+  const parsed = safeParseJson(sessionStorage.getItem("pos_cart"), []);
+  return Array.isArray(parsed) ? parsed : [];
+};
+
+const buildCartFingerprint = (items) =>
+  JSON.stringify(
+    (Array.isArray(items) ? items : [])
+      .map((item) => ({
+        product_id: Number(item?.product_id),
+        quantity: Number(item?.quantity),
+      }))
+      .filter(
+        (item) =>
+          Number.isSafeInteger(item.product_id) &&
+          item.product_id > 0 &&
+          Number.isSafeInteger(item.quantity) &&
+          item.quantity > 0,
+      )
+      .sort((a, b) => a.product_id - b.product_id),
+  );
+
+const createClientToken = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID().replace(/-/g, "");
+  }
+
+  return `${Date.now().toString(36)}${Math.random()
+    .toString(36)
+    .slice(2, 18)}`.slice(0, 48);
+};
+
+const deriveIdempotencyKey = (checkoutToken) =>
+  `idem_${checkoutToken}`.slice(0, 64);
+
+const readStoredQrAttempt = () => {
+  const parsed = safeParseJson(
+    sessionStorage.getItem(POS_QR_STORAGE_KEY),
+    null,
+  );
+
+  return parsed && typeof parsed === "object" ? parsed : null;
 };
 
 export default function ProcessOrder() {
@@ -63,24 +89,58 @@ export default function ProcessOrder() {
     notes: "",
   });
 
-  const [mapPosition, setMapPosition] = useState(null); // Default center around Marilao/Bulacan
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(null);
   const [error, setError] = useState("");
+  const [qrAttempt, setQrAttempt] = useState(() => readStoredQrAttempt());
+  const [qrCreating, setQrCreating] = useState(false);
+  const [qrVerifying, setQrVerifying] = useState(false);
+  const [qrReconciling, setQrReconciling] = useState(false);
+  const [qrNotice, setQrNotice] = useState("");
+  const [qrNoticeTone, setQrNoticeTone] = useState("info");
+  const resumeStartedRef = useRef(false);
+  const checkoutTokenRef = useRef(qrAttempt?.checkout_token || "");
+  const effectivePaymentMethod = qrAttempt ? "online" : form.payment_method;
 
   useEffect(() => {
     const saved = sessionStorage.getItem("pos_cart");
-    if (saved) setCart(JSON.parse(saved));
+    if (saved) {
+      const parsed = safeParseJson(saved, []);
+      if (Array.isArray(parsed)) setCart(parsed);
+    }
   }, []);
 
-  const handleMapClick = (coords) => {
-    setMapPosition(coords);
+  const handleDeliveryAddressChange = (text) => {
     setForm((prev) => ({
       ...prev,
-      delivery_lat: coords[0],
-      delivery_lng: coords[1],
+      delivery_address: text,
     }));
   };
+
+  const handleDeliveryPinChange = (next) => {
+    setForm((prev) => ({
+      ...prev,
+      delivery_lat: Number.isFinite(next?.lat) ? next.lat : null,
+      delivery_lng: Number.isFinite(next?.lng) ? next.lng : null,
+    }));
+  };
+
+  const hasValidDeliveryPin =
+    form.delivery_lat !== null &&
+    form.delivery_lng !== null &&
+    Number.isFinite(Number(form.delivery_lat)) &&
+    Number.isFinite(Number(form.delivery_lng)) &&
+    Number(form.delivery_lat) >= -90 &&
+    Number(form.delivery_lat) <= 90 &&
+    Number(form.delivery_lng) >= -180 &&
+    Number(form.delivery_lng) <= 180;
+
+  const deliveryPin = hasValidDeliveryPin
+    ? {
+        lat: Number(form.delivery_lat),
+        lng: Number(form.delivery_lng),
+      }
+    : null;
 
   const subtotal = cart.reduce((s, i) => s + i.unit_price * i.quantity, 0);
 
@@ -100,7 +160,9 @@ export default function ProcessOrder() {
 
   const cashReceived = parseFloat(form.cash_received) || 0;
   const change =
-    form.payment_method === "cash" ? Math.max(cashReceived - total, 0) : 0;
+    effectivePaymentMethod === "cash"
+      ? Math.max(cashReceived - total, 0)
+      : 0;
 
   const normalizedPhone = String(form.customer_phone || "").replace(/\D/g, "");
   const phoneIsRequired = form.need_delivery;
@@ -112,25 +174,59 @@ export default function ProcessOrder() {
       : discountInput >= 0 && discountInput <= subtotal;
 
   const cashIsValid =
-    form.payment_method !== "cash" ||
+    effectivePaymentMethod !== "cash" ||
     (!Number.isNaN(parseFloat(form.cash_received)) && cashReceived >= total);
 
   const deliveryIsValid =
     !form.need_delivery ||
-    (form.delivery_address.trim() && form.delivery_requested_date);
+    (form.delivery_address.trim() &&
+      hasValidDeliveryPin &&
+      form.delivery_requested_date);
 
-  const canSubmit =
+  const baseFormIsValid =
     cart.length > 0 &&
     !loading &&
     !!form.customer_name.trim() &&
     discountIsValid &&
     phoneIsValid &&
     (!phoneIsRequired || normalizedPhone.length === 11) &&
-    cashIsValid &&
     deliveryIsValid;
+
+  const canSubmit = baseFormIsValid && cashIsValid;
+
+  const canSubmitOnline =
+    POS_QR_ENABLED &&
+    form.payment_method === "online" &&
+    baseFormIsValid &&
+    !qrCreating &&
+    !qrVerifying &&
+    !qrReconciling &&
+    !qrAttempt;
+
+  const currentCartFingerprint = buildCartFingerprint(cart);
+  const qrCartMatchesCurrent =
+    !qrAttempt?.cart_fingerprint ||
+    qrAttempt.cart_fingerprint === currentCartFingerprint;
+  const qrNeedsManualReview = [
+    "manual_review",
+    "admin_recovery_required",
+    "payment_mismatch",
+    "access_error",
+  ].includes(qrAttempt?.state);
+  const qrDisplayTotal = Number.isFinite(Number(qrAttempt?.server_total))
+    ? Number(qrAttempt.server_total)
+    : total;
+  const qrCanVerify =
+    POS_QR_ENABLED &&
+    Number.isSafeInteger(Number(qrAttempt?.attempt_id)) &&
+    Number(qrAttempt?.attempt_id) > 0 &&
+    ["awaiting_payment", "pending", "provider_error", "returning"].includes(
+      qrAttempt?.state,
+    );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (form.payment_method !== "cash") return;
     setError("");
 
     if (cart.length === 0) return setError("Cart is empty.");
@@ -156,6 +252,8 @@ export default function ProcessOrder() {
     if (form.need_delivery) {
       if (!form.delivery_address.trim())
         return setError("Delivery address is required.");
+      if (!hasValidDeliveryPin)
+        return setError("Pin the exact delivery location on the map.");
       if (!form.delivery_requested_date)
         return setError("Preferred delivery date and time is required.");
     }
@@ -194,6 +292,481 @@ export default function ProcessOrder() {
       setLoading(false);
     }
   };
+
+  const persistQrAttempt = (attempt) => {
+    if (!attempt) {
+      sessionStorage.removeItem(POS_QR_STORAGE_KEY);
+      setQrAttempt(null);
+      return;
+    }
+
+    sessionStorage.setItem(POS_QR_STORAGE_KEY, JSON.stringify(attempt));
+    setQrAttempt(attempt);
+  };
+
+  const getOnlineValidationError = () => {
+    if (cart.length === 0) return "Cart is empty.";
+    if (!form.customer_name.trim()) return "Customer name is required.";
+    if (form.customer_name.trim().length > 150)
+      return "Customer name cannot exceed 150 characters.";
+    if (phoneIsRequired && !normalizedPhone)
+      return "Phone number is required for delivery.";
+    if (normalizedPhone && !isValidPHPhone(normalizedPhone))
+      return "Enter a valid 11-digit PH mobile number starting with 09.";
+    if (!discountIsValid) return "Invalid discount amount.";
+    if (form.need_delivery && !form.delivery_address.trim())
+      return "Delivery address is required.";
+    if (form.need_delivery && !hasValidDeliveryPin)
+      return "Pin the exact delivery location on the map.";
+    if (form.need_delivery && !form.delivery_requested_date)
+      return "Preferred delivery date and time is required.";
+    return null;
+  };
+
+  const buildOnlinePayload = (checkoutToken) => ({
+    checkout_token: checkoutToken,
+    idempotency_key: deriveIdempotencyKey(checkoutToken),
+    customer_name: form.customer_name.trim(),
+    customer_phone: normalizedPhone,
+    items: cart.map((item) => ({
+      product_id: Number(item.product_id),
+      quantity: Number(item.quantity),
+    })),
+    discount: Number(discountAmount.toFixed(2)),
+    delivery_fee: form.need_delivery
+      ? Number(deliveryFeeAmt.toFixed(2))
+      : 0,
+    delivery: form.need_delivery
+      ? {
+          address: form.delivery_address.trim(),
+          lat: form.delivery_lat,
+          lng: form.delivery_lng,
+          requested_date: form.delivery_requested_date,
+          notes: form.delivery_notes.trim(),
+        }
+      : null,
+    notes: form.notes,
+  });
+
+  const handleCreateOnlinePayment = async () => {
+    setError("");
+    setQrNotice("");
+
+    if (!POS_QR_ENABLED) {
+      setError("Online Payment is not enabled on this terminal.");
+      return;
+    }
+
+    const validationError = getOnlineValidationError();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    const existingDraft = readStoredQrAttempt();
+    const currentFingerprint = buildCartFingerprint(cart);
+    if (
+      existingDraft?.cart_fingerprint &&
+      existingDraft.cart_fingerprint !== currentFingerprint
+    ) {
+      setQrNoticeTone("error");
+      setQrNotice(
+        "The current cart differs from the cart reserved for this payment attempt. Verify the existing attempt instead of creating another one.",
+      );
+      return;
+    }
+
+    const checkoutToken =
+      existingDraft?.checkout_token ||
+      checkoutTokenRef.current ||
+      createClientToken();
+    checkoutTokenRef.current = checkoutToken;
+
+    const draft = {
+      attempt_id: existingDraft?.attempt_id || null,
+      checkout_token: checkoutToken,
+      checkout_url: existingDraft?.checkout_url || null,
+      state: existingDraft?.state || "creating_attempt",
+      created_at: existingDraft?.created_at || new Date().toISOString(),
+      cart_fingerprint:
+        existingDraft?.cart_fingerprint || buildCartFingerprint(cart),
+    };
+
+    persistQrAttempt(draft);
+    setQrCreating(true);
+
+    try {
+      const response = await api.post(
+        "/pos/qr-payments/attempts",
+        buildOnlinePayload(checkoutToken),
+      );
+      const data = response.data || {};
+      const nextAttempt = {
+        attempt_id: data.attempt_id || draft.attempt_id,
+        checkout_token: data.checkout_token || checkoutToken,
+        checkout_url: data.checkout_url || draft.checkout_url || null,
+        state: data.status || "awaiting_payment",
+        created_at: draft.created_at,
+        cart_fingerprint: draft.cart_fingerprint,
+      };
+
+      persistQrAttempt(nextAttempt);
+      setQrNoticeTone(nextAttempt.checkout_url ? "success" : "info");
+      setQrNotice(
+        nextAttempt.checkout_url
+          ? "Online payment session is ready. Open PayMongo Checkout to continue."
+          : data.message || "Payment session is still being prepared.",
+      );
+    } catch (err) {
+      const statusCode = err.response?.status;
+      const data = err.response?.data || {};
+      const terminalStatuses = ["failed", "expired", "cancelled"];
+
+      if (terminalStatuses.includes(data.status)) {
+        persistQrAttempt(null);
+        checkoutTokenRef.current = "";
+        setError(
+          data.message ||
+            "This online payment attempt is no longer active. Please create a new attempt.",
+        );
+      } else if (
+        statusCode === 400 ||
+        statusCode === 401 ||
+        statusCode === 403 ||
+        statusCode === 422 ||
+        (statusCode === 503 && !data.attempt_id)
+      ) {
+        persistQrAttempt(null);
+        checkoutTokenRef.current = "";
+        setError(
+          data.message ||
+            "Unable to start Online Payment with the current details.",
+        );
+      } else if (data.attempt_id) {
+        persistQrAttempt({
+          ...draft,
+          attempt_id: data.attempt_id,
+          state: data.status || draft.state,
+        });
+      } else {
+        persistQrAttempt({
+          ...draft,
+          state: "reconcile_required",
+        });
+      }
+
+      setQrNoticeTone("error");
+      setQrNotice(
+        data.message ||
+          "Payment setup could not be confirmed. Check the saved payment status before trying again.",
+      );
+    } finally {
+      setQrCreating(false);
+    }
+  };
+
+  const verifyOnlineAttempt = async (attempt, { silent = false } = {}) => {
+    const activeAttempt = attempt || readStoredQrAttempt();
+    const attemptId = Number(activeAttempt?.attempt_id);
+
+    if (!Number.isSafeInteger(attemptId) || attemptId <= 0) {
+      if (!silent) {
+        setQrNoticeTone("error");
+        setQrNotice("No valid online payment attempt is available to verify.");
+      }
+      return;
+    }
+
+    setQrVerifying(true);
+    if (!silent) {
+      setQrNoticeTone("info");
+      setQrNotice("Checking the payment status...");
+    }
+
+    try {
+      const response = await api.post(
+        `/pos/qr-payments/attempts/${attemptId}/verify`,
+        {},
+      );
+      const data = response.data || {};
+
+      if (data.status === "pending") {
+        const nextAttempt = { ...activeAttempt, state: "pending" };
+        persistQrAttempt(nextAttempt);
+        setQrNoticeTone("info");
+        setQrNotice(
+          data.message || "Payment has not been confirmed yet.",
+        );
+        return;
+      }
+
+      if (data.status === "consumed") {
+        const currentCart = readStoredCart();
+        const currentFingerprint = buildCartFingerprint(currentCart);
+        const cartMatchesAttempt =
+          Boolean(activeAttempt.cart_fingerprint) &&
+          activeAttempt.cart_fingerprint === currentFingerprint;
+
+        if (cartMatchesAttempt) {
+          sessionStorage.removeItem("pos_cart");
+          setCart([]);
+        }
+
+        persistQrAttempt(null);
+        checkoutTokenRef.current = "";
+        setQrNotice("");
+        setSuccess({ ...data, cart_preserved: !cartMatchesAttempt });
+        return;
+      }
+
+      setQrNoticeTone("error");
+      setQrNotice(data.message || "Unexpected payment verification response.");
+    } catch (err) {
+      const statusCode = err.response?.status;
+      const data = err.response?.data || {};
+      const responseStatus = String(data.status || "").toLowerCase();
+      const terminalStatuses = ["failed", "expired", "cancelled"];
+
+      if (terminalStatuses.includes(responseStatus) || statusCode === 404) {
+        persistQrAttempt(null);
+        checkoutTokenRef.current = "";
+        setQrNotice("");
+        setError(
+          data.message ||
+            "This online payment attempt is no longer available. You may create a new attempt.",
+        );
+        return;
+      }
+
+      let state = activeAttempt.state || "awaiting_payment";
+      let message = data.message || "Unable to verify payment right now.";
+      let tone = "error";
+
+      if (responseStatus === "payment_mismatch") {
+        state = "payment_mismatch";
+        message =
+          data.message ||
+          "A payment was found, but its amount did not match this order.";
+      } else if (responseStatus === "ambiguous_payment") {
+        state = "manual_review";
+        message =
+          data.message ||
+          "Multiple payments were found. Manual review is required.";
+      } else if (responseStatus === "provider_response_malformed") {
+        state = "provider_error";
+        message =
+          data.message ||
+          "The payment provider response could not be verified. Please retry later.";
+      } else if (statusCode === 502 || statusCode === 503) {
+        state = "provider_error";
+        message =
+          data.message ||
+          "Payment verification is temporarily unavailable. Please retry.";
+      } else if (statusCode === 403) {
+        state = "access_error";
+        message =
+          data.message ||
+          "This payment attempt cannot be verified by the current cashier.";
+      } else if (statusCode === 409 && responseStatus) {
+        state = responseStatus;
+      }
+
+      persistQrAttempt({ ...activeAttempt, state });
+      setQrNoticeTone(tone);
+      setQrNotice(message);
+    } finally {
+      setQrVerifying(false);
+    }
+  };
+
+  const handleOpenCheckout = () => {
+    if (!qrAttempt?.checkout_url) {
+      setQrNoticeTone("error");
+      setQrNotice("The PayMongo checkout link is not available yet.");
+      return;
+    }
+
+    window.location.assign(qrAttempt.checkout_url);
+  };
+
+  const reconcileQrAttempt = async (
+    attempt,
+    { silent = false, verifyAfterResume = false } = {},
+  ) => {
+    const activeAttempt = attempt || readStoredQrAttempt();
+    const checkoutToken =
+      typeof activeAttempt?.checkout_token === "string"
+        ? activeAttempt.checkout_token.trim()
+        : "";
+
+    if (!checkoutToken) {
+      persistQrAttempt(null);
+      checkoutTokenRef.current = "";
+      setQrNotice("");
+      setError(
+        "The saved online payment state was invalid and has been cleared. You may start again.",
+      );
+      return null;
+    }
+
+    setQrReconciling(true);
+    if (!silent) {
+      setQrNoticeTone("info");
+      setQrNotice("Checking the saved online payment status...");
+    }
+
+    try {
+      const response = await api.post("/pos/qr-payments/attempts/resume", {
+        checkout_token: checkoutToken,
+      });
+      const data = response.data || {};
+
+      if (data.resume_state === "consumed" && data.result) {
+        const currentCart = readStoredCart();
+        const currentFingerprint = buildCartFingerprint(currentCart);
+        const cartMatchesAttempt =
+          Boolean(activeAttempt.cart_fingerprint) &&
+          activeAttempt.cart_fingerprint === currentFingerprint;
+
+        if (cartMatchesAttempt) {
+          sessionStorage.removeItem("pos_cart");
+          setCart([]);
+        }
+
+        persistQrAttempt(null);
+        checkoutTokenRef.current = "";
+        setQrNotice("");
+        setSuccess({
+          ...data.result,
+          cart_preserved: !cartMatchesAttempt,
+        });
+        return null;
+      }
+
+      if (
+        data.can_clear_local_state === true &&
+        ["terminal", "not_found"].includes(data.resume_state)
+      ) {
+        persistQrAttempt(null);
+        checkoutTokenRef.current = "";
+        setQrNotice("");
+        setError(
+          data.message ||
+            "The saved online payment attempt is no longer active. You may start again.",
+        );
+        return null;
+      }
+
+      const nextState =
+        data.resume_state === "admin_recovery_required"
+          ? "admin_recovery_required"
+          : data.resume_state === "manual_review"
+            ? "manual_review"
+            : data.resume_state === "awaiting_payment"
+              ? "awaiting_payment"
+              : data.resume_state === "preparing_payment"
+                ? "preparing_payment"
+                : activeAttempt.state || "reconcile_required";
+
+      const nextAttempt = {
+        ...activeAttempt,
+        attempt_id: data.attempt_id || activeAttempt.attempt_id || null,
+        checkout_url: data.checkout_url || null,
+        state: nextState,
+        server_total:
+          data.total !== undefined && data.total !== null
+            ? data.total
+            : activeAttempt.server_total,
+        server_item_count:
+          data.item_count !== undefined && data.item_count !== null
+            ? data.item_count
+            : activeAttempt.server_item_count,
+        requires_admin_recovery: Boolean(data.requires_admin_recovery),
+        created_at: data.created_at || activeAttempt.created_at,
+        updated_at: data.updated_at || activeAttempt.updated_at,
+        expires_at: data.expires_at || activeAttempt.expires_at,
+      };
+
+      persistQrAttempt(nextAttempt);
+      setQrNoticeTone(
+        ["manual_review", "admin_recovery_required"].includes(nextState)
+          ? "error"
+          : "info",
+      );
+      setQrNotice(
+        data.message || "The saved online payment attempt was restored.",
+      );
+
+      if (
+        verifyAfterResume &&
+        POS_QR_ENABLED &&
+        nextState === "awaiting_payment" &&
+        nextAttempt.attempt_id
+      ) {
+        await verifyOnlineAttempt(nextAttempt, { silent: true });
+      }
+
+      return nextAttempt;
+    } catch (err) {
+      const statusCode = err.response?.status;
+      const data = err.response?.data || {};
+
+      if (
+        statusCode === 400 ||
+        statusCode === 404 ||
+        data.can_clear_local_state === true
+      ) {
+        persistQrAttempt(null);
+        checkoutTokenRef.current = "";
+        setQrNotice("");
+        setError(
+          data.message ||
+            "No server payment attempt matched the saved browser state. The stale state was cleared.",
+        );
+        return null;
+      }
+
+      if (statusCode === 409 && data.resume_state === "manual_review") {
+        const reviewAttempt = {
+          ...activeAttempt,
+          attempt_id: data.attempt_id || activeAttempt.attempt_id || null,
+          checkout_url: null,
+          state: "manual_review",
+          created_at: data.created_at || activeAttempt.created_at,
+          updated_at: data.updated_at || activeAttempt.updated_at,
+          expires_at: data.expires_at || activeAttempt.expires_at,
+        };
+        persistQrAttempt(reviewAttempt);
+        setQrNoticeTone("error");
+        setQrNotice(
+          data.message ||
+            "This payment attempt needs administrator review before it can continue.",
+        );
+        return reviewAttempt;
+      }
+
+      setQrNoticeTone("error");
+      setQrNotice(
+        data.message ||
+          "Unable to check the saved payment right now. The current state was kept safely; please retry.",
+      );
+      return activeAttempt;
+    } finally {
+      setQrReconciling(false);
+    }
+  };
+
+  useEffect(() => {
+    const storedAttempt = readStoredQrAttempt();
+    if (!storedAttempt || resumeStartedRef.current) return;
+
+    resumeStartedRef.current = true;
+    reconcileQrAttempt(storedAttempt, {
+      silent: true,
+      verifyAfterResume: storedAttempt.state === "returning",
+    });
+
+  }, []);
 
   if (success) {
     return (
@@ -238,6 +811,19 @@ export default function ProcessOrder() {
               {success.receipt_number}
             </strong>
           </p>
+
+          {success.cart_preserved && (
+            <p
+              style={{
+                color: "#92400e",
+                margin: "10px 0 0",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              A newer cart was detected and was not cleared.
+            </p>
+          )}
 
           {success.delivery && (
             <p style={{ color: "#52525b", marginBottom: 6, fontSize: 14 }}>
@@ -320,6 +906,9 @@ export default function ProcessOrder() {
               onClick={() => {
                 setSuccess(null);
                 setCart([]);
+                persistQrAttempt(null);
+                checkoutTokenRef.current = "";
+                setQrNotice("");
                 setForm({
                   customer_name: "",
                   customer_phone: "",
@@ -348,7 +937,7 @@ export default function ProcessOrder() {
     );
   }
 
-  if (cart.length === 0) {
+  if (cart.length === 0 && !qrAttempt) {
     return (
       <div style={{ fontFamily: "'Inter', sans-serif" }}>
         <div style={pageHeader}>
@@ -385,14 +974,7 @@ export default function ProcessOrder() {
         </p>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 380px",
-          gap: 24,
-          alignItems: "start",
-        }}
-      >
+      <div className="pos-order-grid">
         <div style={{ ...cardStyle, padding: 32 }}>
           <h3
             style={{
@@ -403,10 +985,21 @@ export default function ProcessOrder() {
               letterSpacing: "-0.01em",
             }}
           >
-            Customer, Payment & Delivery
+            {qrAttempt
+              ? qrReconciling
+                ? "Restoring Online Payment"
+                : qrNeedsManualReview
+                  ? "Online Payment Needs Review"
+                  : "Online Payment Pending"
+              : "Customer, Payment & Delivery"}
           </h3>
 
           <form onSubmit={handleSubmit}>
+            {!qrAttempt && (
+            <fieldset
+              disabled={Boolean(qrAttempt)}
+              className="pos-order-fieldset"
+            >
             <div style={formField}>
               <label style={labelStyle}>Customer Name *</label>
               <input
@@ -463,11 +1056,26 @@ export default function ProcessOrder() {
             <div style={formField}>
               <label style={labelStyle}>Payment Method *</label>
               <select
-                value={form.payment_method}
-                disabled
-                style={{ ...inputStyle, background: "#f4f4f5", color: "#52525b" }}
+                value={effectivePaymentMethod}
+                disabled={Boolean(qrAttempt) || !POS_QR_ENABLED}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    payment_method: e.target.value,
+                    cash_received:
+                      e.target.value === "cash" ? form.cash_received : "",
+                  })
+                }
+                style={{
+                  ...inputStyle,
+                  background: POS_QR_ENABLED ? "#ffffff" : "#f4f4f5",
+                  color: "#52525b",
+                }}
               >
                 <option value="cash">Cash</option>
+                {POS_QR_ENABLED && (
+                  <option value="online">Online Payment</option>
+                )}
               </select>
               <div
                 style={{
@@ -476,8 +1084,9 @@ export default function ProcessOrder() {
                   marginTop: 6,
                 }}
               >
-                Only cash is currently available at the cashier. Online
-                payment (QR Ph) is coming soon.
+                {POS_QR_ENABLED
+                  ? "Choose Cash or Online Payment through PayMongo."
+                  : "Only cash is currently available at the cashier. Online Payment is coming soon."}
               </div>
             </div>
 
@@ -525,7 +1134,7 @@ export default function ProcessOrder() {
               </div>
             </div>
 
-            {form.payment_method === "cash" && (
+            {effectivePaymentMethod === "cash" && (
               <div style={formField}>
                 <label style={labelStyle}>Cash Received (₱) *</label>
                 <input
@@ -618,97 +1227,34 @@ export default function ProcessOrder() {
                       marginTop: 8,
                     }}
                   >
-                    <div
-                      style={{
-                        gridColumn: "1 / -1",
-                        display: "flex",
-                        gap: "12px",
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div style={{ flex: 2, minWidth: "200px" }}>
-                        <label style={labelStyle}>Delivery Address *</label>
-                        <input
-                          type="text"
-                          placeholder="Full delivery address"
-                          value={form.delivery_address}
-                          onChange={(e) =>
-                            setForm({
-                              ...form,
-                              delivery_address: e.target.value,
-                            })
-                          }
-                          required={form.need_delivery}
-                          style={inputStyle}
-                        />
-                      </div>
-                      <div style={{ flex: 1, minWidth: "120px" }}>
-                        <label style={labelStyle}>Delivery Fee (₱)</label>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="e.g. 150"
-                          value={form.delivery_fee}
-                          onChange={(e) =>
-                            setForm({ ...form, delivery_fee: e.target.value })
-                          }
-                          style={inputStyle}
-                        />
-                      </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <LocationPicker
+                        label="Delivery Address & Exact Location *"
+                        addressValue={form.delivery_address}
+                        onAddressChange={handleDeliveryAddressChange}
+                        value={deliveryPin}
+                        onChange={handleDeliveryPinChange}
+                        height={260}
+                        showCurrentLocation={false}
+                      />
                     </div>
 
-                    {/* 👉 Map selector added here */}
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <label style={labelStyle}>
-                        <MapPin
-                          size={14}
-                          style={{
-                            display: "inline",
-                            marginRight: 4,
-                            verticalAlign: "middle",
-                          }}
-                        />
-                        Pin Exact Location on Map (Optional)
-                      </label>
-                      <div
-                        style={{
-                          height: 260,
-                          borderRadius: 10,
-                          overflow: "hidden",
-                          border: "1px solid #e4e4e7",
-                          marginTop: 6,
-                        }}
-                      >
-                        <MapContainer
-                          center={[14.7887, 120.9472]}
-                          zoom={13}
-                          style={{ height: "100%", width: "100%" }}
-                        >
-                          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                          <MapInvalidator />
-                          <LocationPicker
-                            position={mapPosition}
-                            setPosition={handleMapClick}
-                          />
-                        </MapContainer>
-                      </div>
-                      {form.delivery_lat && (
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "#059669",
-                            marginTop: 4,
-                            fontWeight: 700,
-                          }}
-                        >
-                          ✓ Location pinned: {form.delivery_lat.toFixed(5)},{" "}
-                          {form.delivery_lng.toFixed(5)}
-                        </div>
-                      )}
+                    <div>
+                      <label style={labelStyle}>Delivery Fee (₱)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="e.g. 150"
+                        value={form.delivery_fee}
+                        onChange={(e) =>
+                          setForm({ ...form, delivery_fee: e.target.value })
+                        }
+                        style={inputStyle}
+                      />
                     </div>
 
-                    <div style={{ gridColumn: "1 / -1" }}>
+                    <div>
                       <label style={labelStyle}>Preferred Date & Time *</label>
                       <input
                         type="datetime-local"
@@ -758,6 +1304,9 @@ export default function ProcessOrder() {
               />
             </div>
 
+            </fieldset>
+            )}
+
             {error && (
               <div
                 style={{
@@ -775,36 +1324,151 @@ export default function ProcessOrder() {
               </div>
             )}
 
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                marginTop: 32,
-                justifyContent: "space-between",
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                type="button"
-                style={btnSecondary}
-                onClick={() => navigate("/staff/products")}
+            {qrAttempt && (
+              <div className="pos-qr-pending-panel">
+                <div>
+                  <div className="pos-qr-pending-title">
+                    Online Payment Pending
+                  </div>
+                  <p className="pos-qr-pending-copy">
+                    The item stock is reserved for this payment attempt. Open
+                    PayMongo Checkout, complete the payment, then verify it
+                    here.
+                  </p>
+                  {qrCartMatchesCurrent ? (
+                    <div className="pos-qr-pending-amount">
+                      ₱
+                      {qrDisplayTotal.toLocaleString("en-PH", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </div>
+                  ) : (
+                    <div className="pos-qr-notice pos-qr-notice-error">
+                      The current cart differs from the cart reserved for this
+                      payment attempt. The existing PayMongo checkout remains
+                      authoritative, and this newer cart will not be cleared.
+                    </div>
+                  )}
+                </div>
+
+                {qrNotice && (
+                  <div
+                    className={`pos-qr-notice pos-qr-notice-${qrNoticeTone}`}
+                  >
+                    {qrNotice}
+                  </div>
+                )}
+
+                <div className="pos-qr-actions">
+                  {qrAttempt.checkout_url ? (
+                    <button
+                      type="button"
+                      style={btnPrimary}
+                      onClick={handleOpenCheckout}
+                      disabled={qrCreating || qrVerifying || qrReconciling}
+                    >
+                      Open PayMongo Checkout
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      style={btnPrimary}
+                      onClick={() => reconcileQrAttempt(qrAttempt)}
+                      disabled={qrCreating || qrVerifying || qrReconciling}
+                    >
+                      {qrReconciling
+                        ? "Checking Payment..."
+                        : "Check Payment Status"}
+                    </button>
+                  )}
+
+                  {(qrCanVerify || qrNeedsManualReview) && (
+                    <button
+                      type="button"
+                      style={btnSecondary}
+                      onClick={() => verifyOnlineAttempt(qrAttempt)}
+                      disabled={
+                        qrCreating ||
+                        qrVerifying ||
+                        qrReconciling ||
+                        qrNeedsManualReview
+                      }
+                    >
+                      {qrNeedsManualReview
+                        ? "Admin Review Required"
+                        : qrVerifying
+                          ? "Verifying..."
+                          : "Verify Payment"}
+                    </button>
+                  )}
+                </div>
+
+                <p className="pos-qr-lock-note">
+                  Order details are locked while this payment attempt is
+                  active. Do not create another payment or change the reserved
+                  cart until this attempt is resolved.
+                </p>
+              </div>
+            )}
+
+            {!qrAttempt && (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  marginTop: 32,
+                  justifyContent: "space-between",
+                  flexWrap: "wrap",
+                }}
               >
-                ← Back to Catalog
-              </button>
-              <button
-                type="submit"
-                style={
-                  canSubmit
-                    ? btnPrimary
-                    : { ...btnPrimary, opacity: 0.5, cursor: "not-allowed" }
-                }
-                disabled={!canSubmit}
-              >
-                {loading
-                  ? "Processing..."
-                  : "✓ Confirm Order & Process Payment"}
-              </button>
-            </div>
+                <button
+                  type="button"
+                  style={btnSecondary}
+                  onClick={() => navigate("/staff/products")}
+                >
+                  ← Back to Catalog
+                </button>
+
+                {form.payment_method === "online" ? (
+                  <button
+                    type="button"
+                    style={
+                      canSubmitOnline
+                        ? btnPrimary
+                        : {
+                            ...btnPrimary,
+                            opacity: 0.5,
+                            cursor: "not-allowed",
+                          }
+                    }
+                    disabled={!canSubmitOnline}
+                    onClick={handleCreateOnlinePayment}
+                  >
+                    {qrCreating
+                      ? "Preparing Payment..."
+                      : "Create Online Payment"}
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    style={
+                      canSubmit
+                        ? btnPrimary
+                        : {
+                            ...btnPrimary,
+                            opacity: 0.5,
+                            cursor: "not-allowed",
+                          }
+                    }
+                    disabled={!canSubmit}
+                  >
+                    {loading
+                      ? "Processing..."
+                      : "✓ Confirm Order & Process Payment"}
+                  </button>
+                )}
+              </div>
+            )}
           </form>
         </div>
 
@@ -944,7 +1608,7 @@ export default function ProcessOrder() {
               </span>
             </div>
 
-            {form.payment_method === "cash" && (
+            {effectivePaymentMethod === "cash" ? (
               <>
                 <div
                   style={{
@@ -979,6 +1643,42 @@ export default function ProcessOrder() {
                     {Math.abs(cashReceived - total).toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
                     })}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  style={{
+                    ...summaryRowStyle,
+                    marginTop: 16,
+                    color: "#52525b",
+                  }}
+                >
+                  <span>Payment Method</span>
+                  <span style={{ fontWeight: 700, color: "#18181b" }}>
+                    Online Payment
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    fontSize: 13,
+                    marginTop: 8,
+                    color: "#b45309",
+                    fontWeight: 700,
+                  }}
+                >
+                  <span>Status</span>
+                  <span>
+                    {qrAttempt
+                      ? qrNeedsManualReview
+                        ? "Needs Review"
+                        : qrReconciling
+                          ? "Restoring"
+                          : "Payment Pending"
+                      : "Ready"}
                   </span>
                 </div>
               </>
