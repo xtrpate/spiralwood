@@ -1,4 +1,5 @@
 import Conversation from "./Conversation";
+import ReplyBox from "./ReplyBox";
 
 export default function TicketConversation({
   ticket,
@@ -54,7 +55,7 @@ export default function TicketConversation({
       </div>
 
       <div className="conversation-card-footer">
-        <ReplyComponent ticket={ticket} onReplySent={onReplySent} />
+        <ReplyBox ticket={ticket} onReplySent={onReplySent} />
       </div>
     </div>
   );

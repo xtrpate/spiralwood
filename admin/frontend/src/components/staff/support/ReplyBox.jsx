@@ -39,8 +39,14 @@ export default function ReplyBox({ ticket, onReplySent }) {
   };
 
   return (
-    <div className="reply-box">
-      <div className="reply-composer">
+    <form
+      className="support-reply-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        handleSubmit();
+      }}
+    >
+      <div className="support-reply-box">
         <textarea
           ref={textareaRef}
           maxLength={1000}
@@ -49,7 +55,7 @@ export default function ReplyBox({ ticket, onReplySent }) {
           onChange={(e) => {
             setMessage(e.target.value);
 
-            e.target.style.height = "auto";
+            e.target.style.height = "0px";
             e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
           }}
           onKeyDown={(e) => {
@@ -62,19 +68,19 @@ export default function ReplyBox({ ticket, onReplySent }) {
         />
 
         <button
-          className="reply-send-btn"
-          onClick={handleSubmit}
+          type="submit"
+          className="support-reply-send-btn"
           disabled={sending || !message.trim()}
         >
           <SendHorizontal size={18} />
         </button>
       </div>
 
-      <span
-        className={`reply-counter ${message.length > 900 ? "warning" : ""}`}
-      >
-        {message.length}/1000
-      </span>
-    </div>
+      <div className="support-reply-footer">
+        <span className={message.length > 900 ? "warning" : ""}>
+          {message.length}/1000
+        </span>
+      </div>
+    </form>
   );
 }
