@@ -38,6 +38,11 @@ import {
   restoreCameraView as restoreCameraSnapshot,
 } from "./cameraControls";
 import { configureTransformMode } from "./transformGizmo";
+import {
+  bindBlueprintViewerEvents,
+  resizeViewerToMount,
+  startBlueprintViewerRenderLoop,
+} from "./viewerLifecycle";
 
 const GRID_SIZE = 20;
 const ROTATION_SNAP_DEGREES = 15;
@@ -1631,14 +1636,6 @@ function ThreeDViewer({
       canvas.focus();
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("blur", clearKeys);
-
-    canvas.addEventListener("mouseenter", handleCanvasEnter);
-    canvas.addEventListener("mouseleave", handleCanvasLeave);
-    canvas.addEventListener("click", handleCanvasClick);
-
     const setMouseFromEvent = (event) => {
       const rect = renderer.domElement.getBoundingClientRect();
       mouseRef.current.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -2162,12 +2159,13 @@ function ThreeDViewer({
     };
 
     const onResize = () => {
-      const newW = mount.clientWidth || 1000;
-      const newH = mount.clientHeight || 700;
-      renderer.setSize(newW, newH);
-      camera.aspect = newW / newH;
-      camera.updateProjectionMatrix();
-      restoreCameraView(cameraViewRef.current);
+      resizeViewerToMount({
+        mount,
+        renderer,
+        camera,
+        restoreCameraView,
+        cameraView: cameraViewRef.current,
+      });
     };
 
     const preventContextMenu = (e) => e.preventDefault();
@@ -2176,65 +2174,47 @@ function ThreeDViewer({
       if (!transform.dragging) storeCameraView();
     };
 
-    transform.addEventListener("dragging-changed", onDraggingChanged);
-    transform.addEventListener("objectChange", onTransformObjectChange);
-    orbit.addEventListener("change", onOrbitChange);
+    const removeViewerEvents = bindBlueprintViewerEvents({
+      windowTarget: window,
+      canvas,
+      rendererElement: renderer.domElement,
+      transform,
+      orbit,
+      handlers: {
+        onDraggingChanged,
+        onTransformObjectChange,
+        onOrbitChange,
+        onPointerDown,
+        onPointerMove,
+        onPointerUp,
+        onPointerCancel,
+        onDoubleClick,
+        onContextMenu: preventContextMenu,
+        onResize,
+        onKeyDown: handleKeyDown,
+        onKeyUp: handleKeyUp,
+        onWindowBlur: clearKeys,
+        onCanvasEnter: handleCanvasEnter,
+        onCanvasLeave: handleCanvasLeave,
+        onCanvasClick: handleCanvasClick,
+      },
+    });
 
-    renderer.domElement.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("pointermove", onPointerMove); // NEW
-    window.addEventListener("pointerup", onPointerUp); // NEW
-    window.addEventListener("mouseup", onPointerUp); // NEW
-    window.addEventListener("pointercancel", onPointerCancel); // NEW
-
-    renderer.domElement.addEventListener("dblclick", onDoubleClick);
-    renderer.domElement.addEventListener("contextmenu", preventContextMenu);
-    window.addEventListener("resize", onResize);
-
-    let animId;
-    lastFrameRef.current = performance.now();
-
-    const animate = () => {
-      animId = requestAnimationFrame(animate);
-
-      const now = performance.now();
-      const delta = Math.min((now - lastFrameRef.current) / 1000, 0.05);
-      lastFrameRef.current = now;
-
-      updateKeyboardCamera(delta);
-
-      orbit.update();
-      renderer.render(scene, camera);
-    };
-    animate();
+    const stopRenderLoop = startBlueprintViewerRenderLoop({
+      renderer,
+      scene,
+      camera,
+      orbit,
+      onFrame: updateKeyboardCamera,
+      lastFrameRef,
+    });
 
     return () => {
-      cancelAnimationFrame(animId);
+      stopRenderLoop();
 
       if (restoreRafRef.current) cancelAnimationFrame(restoreRafRef.current);
 
-      transform.removeEventListener("dragging-changed", onDraggingChanged);
-      transform.removeEventListener("objectChange", onTransformObjectChange);
-      orbit.removeEventListener("change", onOrbitChange);
-
-      renderer.domElement.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("pointermove", onPointerMove); // NEW
-      window.removeEventListener("pointerup", onPointerUp); // NEW
-      window.removeEventListener("mouseup", onPointerUp); // NEW
-      window.removeEventListener("pointercancel", onPointerCancel); // NEW
-
-      renderer.domElement.removeEventListener("dblclick", onDoubleClick);
-      renderer.domElement.removeEventListener(
-        "contextmenu",
-        preventContextMenu,
-      );
-
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("blur", clearKeys);
-
-      canvas.removeEventListener("mouseenter", handleCanvasEnter);
-      canvas.removeEventListener("mouseleave", handleCanvasLeave);
-      canvas.removeEventListener("click", handleCanvasClick);
+      removeViewerEvents();
 
       transform.detach();
       transform.dispose();
