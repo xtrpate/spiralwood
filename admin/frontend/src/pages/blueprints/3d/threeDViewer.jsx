@@ -26,7 +26,6 @@ import { PropertiesPanel } from "./components/PropertiesPanel";
 import { FurnitureToolsPanel } from "./components/FurnitureToolsPanel";
 import { TransformToolbar } from "./components/TransformToolbar";
 import {
-  clearObject3DChildren,
   createBlueprintSceneFoundation,
   disposeObject3DResources,
 } from "./sceneSetup";
@@ -38,6 +37,11 @@ import {
   restoreCameraView as restoreCameraSnapshot,
 } from "./cameraControls";
 import { configureTransformMode } from "./transformGizmo";
+import {
+  clearViewerSelectionOutlines,
+  rebuildViewerObjects,
+  syncViewerSelectionOutlines,
+} from "./viewerObjectSync";
 import {
   bindBlueprintViewerEvents,
   resizeViewerToMount,
@@ -1469,49 +1473,16 @@ function ThreeDViewer({
   }, [preserveCameraView, attachSelectedRaw]);
 
   const clearSelectionOutlines = useCallback(() => {
-    const outlineGroup = selectionOutlineGroupRef.current;
-    if (!outlineGroup) return;
-
-    while (outlineGroup.children.length) {
-      const child = outlineGroup.children[0];
-      outlineGroup.remove(child);
-
-      child.traverse?.((obj) => {
-        obj.geometry?.dispose?.();
-        if (Array.isArray(obj.material)) {
-          obj.material.forEach((mat) => mat?.dispose?.());
-        } else {
-          obj.material?.dispose?.();
-        }
-      });
-    }
+    clearViewerSelectionOutlines(selectionOutlineGroupRef.current);
   }, []);
 
   const syncSelectionOutlines = useCallback(() => {
-    const outlineGroup = selectionOutlineGroupRef.current;
-    const rootGroup = rootGroupRef.current;
-    if (!outlineGroup || !rootGroup) return;
-
-    clearSelectionOutlines();
-
-    const activeIds = new Set(getActiveSelectionIds());
-    if (!activeIds.size) return;
-
-    activeIds.forEach((id) => {
-      const entry = entryMapRef.current.get(id);
-      if (!entry?.obj) return;
-
-      const helper = new THREE.BoxHelper(entry.obj, 0x38bdf8);
-      helper.material.depthTest = false;
-      helper.material.transparent = true;
-      helper.material.opacity = 0.55;
-      helper.material.toneMapped = false;
-      helper.renderOrder = 999;
-
-      outlineGroup.add(helper);
-      helper.updateMatrixWorld(true);
+    syncViewerSelectionOutlines({
+      outlineGroup: selectionOutlineGroupRef.current,
+      entryMap: entryMapRef.current,
+      activeIds: getActiveSelectionIds(),
     });
-  }, [clearSelectionOutlines, getActiveSelectionIds]);
+  }, [getActiveSelectionIds]);
 
   const rebuildObjects = useCallback(() => {
     console.log("3D rebuild components:", components);
@@ -1520,41 +1491,19 @@ function ThreeDViewer({
     if (!rootGroup) return;
 
     const savedView = captureCameraView() || cameraViewRef.current;
-
-    clearObject3DChildren(rootGroup);
-
-    entryMapRef.current = new Map();
-    selectableMeshesRef.current = [];
-
-    const activeSelectedIds = new Set(selectedIdsRef.current || []);
-    const currentSelectedId = selectedIdRef.current;
-    const currentEdit3DId = edit3DIdRef.current;
-
-    components.forEach((raw) => {
-      const comp = normalizeComponent(raw);
-      const selected =
-        currentSelectedId === comp.id || activeSelectedIds.has(comp.id);
-      const editing = currentEdit3DId === comp.id;
-
-      const obj = createFurnitureObject(
-        comp,
-        selected,
-        editing,
-        selectableMeshesRef.current,
-      );
-
-      const pos = worldFromComp(comp);
-
-      obj.position.set(pos.x, pos.y, pos.z);
-      obj.rotation.x = THREE.MathUtils.degToRad(comp.rotationX || 0);
-      obj.rotation.y = THREE.MathUtils.degToRad(comp.rotationY || 0);
-      obj.rotation.z = THREE.MathUtils.degToRad(comp.rotationZ || 0);
-      obj.scale.set(1, 1, 1);
-      obj.userData.id = comp.id;
-
-      rootGroup.add(obj);
-      entryMapRef.current.set(comp.id, { obj, comp });
+    const { entryMap, selectableMeshes } = rebuildViewerObjects({
+      rootGroup,
+      components,
+      normalizeComponent,
+      createFurnitureObject,
+      worldFromComponent: worldFromComp,
+      selectedIds: selectedIdsRef.current || [],
+      selectedId: selectedIdRef.current,
+      edit3DId: edit3DIdRef.current,
     });
+
+    entryMapRef.current = entryMap;
+    selectableMeshesRef.current = selectableMeshes;
 
     attachSelectedRaw();
     syncSelectionOutlines();
