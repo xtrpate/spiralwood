@@ -1,4 +1,4 @@
-// data/smartAssemblyResize.js — Safe, exact-input smart resizing for furniture assemblies
+// data/smartAssemblyResize.js — Safe, exact-input resizing for furniture assemblies
 import { normalizeDimensionMm, roundToPrecision } from "./utils";
 
 const MIN_COMPONENT_DIMENSION_MM = 1;
@@ -314,7 +314,7 @@ function analyzeSmartWidthResizeAssembly(items = []) {
     return {
       supported: false,
       reason:
-        "Smart width resize currently supports Dining Table assemblies only.",
+        "Width resize currently supports Dining Table assemblies only.",
       assemblyIds: normalizedItems.map((item) => item.id),
     };
   }
@@ -330,7 +330,7 @@ function analyzeSmartWidthResizeAssembly(items = []) {
     return {
       supported: false,
       reason:
-        "Return the table assembly to 0° rotation before using Smart Width Resize.",
+        "Return the table assembly to 0° rotation before using Width Resize.",
       assemblyIds: normalizedItems.map((item) => item.id),
     };
   }

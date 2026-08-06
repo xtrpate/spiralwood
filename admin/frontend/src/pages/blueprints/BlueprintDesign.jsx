@@ -77,6 +77,29 @@ import {
   useReferenceImage,
 } from "./data/initHelpers";
 import {
+  DEFAULT_IMPORT_DIMENSIONS,
+  DEFAULT_IMPORT_TEMPLATE_TYPE,
+  REFERENCE_TRACE_VIEWS,
+  TRACE_TYPE_LABELS,
+  TRACE_TYPE_OPTIONS,
+  createEmptyReferenceCalibrationByView,
+  createEmptyTraceObjectsByView,
+  flattenTraceObjectsByView,
+  isLikelyChairReference,
+  normalizeProjectionView,
+  normalizeReferenceCalibration,
+  normalizeReferenceCalibrationByView,
+  normalizeTraceObject,
+  normalizeTraceObjects,
+  normalizeTraceObjectsByView,
+  normalizeTraceView,
+  resolveImportTemplateType,
+  sanitizeImportDimensions,
+  sanitizeReferenceFile,
+  sanitizeReferenceFiles,
+} from "./data/referenceTraceUtils";
+import { createObjectId, deepClone, openBlueprintWindow } from "./data/editorUtils";
+import {
   analyzeSmartWidthResizeAssembly,
   buildSmartWidthResizePlan,
 } from "./data/smartAssemblyResize";
@@ -130,8 +153,6 @@ const WORLD_W = 8000;
 const WORLD_H = 5000;
 const WORLD_D = 8000;
 
-const DEFAULT_IMPORT_TEMPLATE_TYPE = "template_closet_wardrobe";
-const DEFAULT_IMPORT_DIMENSIONS = { w: 2400, h: 2400, d: 600 };
 const CREATE_TEMPLATE_TYPE_MAP = {
   cabinet: "template_closet_wardrobe",
   table: "template_dining_table",
@@ -139,327 +160,6 @@ const CREATE_TEMPLATE_TYPE_MAP = {
   chair: "template_dining_chair",
   coffee_table: "template_coffee_table",
 };
-
-const TRACE_TYPE_OPTIONS = [
-  { value: "drawer", label: "Drawer Section" },
-  { value: "door", label: "Door Section" },
-  { value: "body", label: "Body Only" },
-];
-
-const TRACE_TYPE_LABELS = {
-  drawer: "Drawer Section",
-  door: "Door Section",
-  body: "Body Only",
-};
-
-const REFERENCE_TRACE_VIEWS = ["front", "back", "left", "right", "top"];
-
-function createEmptyReferenceCalibrationByView() {
-  return REFERENCE_TRACE_VIEWS.reduce((acc, viewKey) => {
-    acc[viewKey] = normalizeReferenceCalibration();
-    return acc;
-  }, {});
-}
-
-function createEmptyTraceObjectsByView() {
-  return REFERENCE_TRACE_VIEWS.reduce((acc, viewKey) => {
-    acc[viewKey] = [];
-    return acc;
-  }, {});
-}
-
-function normalizeReferenceCalibrationByView(value = {}) {
-  const next = createEmptyReferenceCalibrationByView();
-
-  const hasViewMap =
-    value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    REFERENCE_TRACE_VIEWS.some((viewKey) => value?.[viewKey]);
-
-  if (hasViewMap) {
-    REFERENCE_TRACE_VIEWS.forEach((viewKey) => {
-      next[viewKey] = normalizeReferenceCalibration(value?.[viewKey]);
-    });
-    return next;
-  }
-
-  next.front = normalizeReferenceCalibration(value);
-  return next;
-}
-
-function normalizeTraceObjectsByView(value = {}) {
-  const next = createEmptyTraceObjectsByView();
-
-  if (Array.isArray(value)) {
-    value.forEach((item) => {
-      const viewKey = normalizeTraceView(
-        item?.view || item?.traceView || item?.projectionView || "front",
-      );
-      next[viewKey].push(normalizeTraceObject(item, viewKey));
-    });
-    return next;
-  }
-
-  REFERENCE_TRACE_VIEWS.forEach((viewKey) => {
-    next[viewKey] = normalizeTraceObjects(value?.[viewKey], viewKey);
-  });
-
-  return next;
-}
-
-function flattenTraceObjectsByView(value = {}) {
-  return REFERENCE_TRACE_VIEWS.flatMap((viewKey) =>
-    normalizeTraceObjects(value?.[viewKey], viewKey),
-  );
-}
-
-function normalizeReferenceCalibration(value = {}) {
-  const rawPoints = Array.isArray(value?.points)
-    ? value.points.slice(0, 2)
-    : [];
-
-  const points = rawPoints
-    .map((point) => ({
-      x: Number(point?.x) || 0,
-      y: Number(point?.y) || 0,
-    }))
-    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
-
-  const realDistanceMm = Math.max(0, Number(value?.realDistanceMm) || 0);
-  const pixelsPerMm = Math.max(0, Number(value?.pixelsPerMm) || 0);
-
-  return {
-    points,
-    realDistanceMm,
-    pixelsPerMm,
-    isCalibrated:
-      points.length === 2 &&
-      realDistanceMm > 0 &&
-      pixelsPerMm > 0 &&
-      Boolean(value?.isCalibrated),
-  };
-}
-
-function normalizeTraceView(rawView = "front") {
-  const value = String(rawView || "front").toLowerCase();
-
-  if (value === "back") return "back";
-  if (value === "left") return "left";
-  if (value === "right") return "right";
-  if (value === "top") return "top";
-  return "front";
-}
-
-function normalizeProjectionView(rawView = "front") {
-  const value = normalizeTraceView(rawView);
-
-  if (value === "back") return "front";
-  if (value === "right") return "left";
-  return value;
-}
-
-function normalizeTraceObject(obj = {}, fallbackView = "front") {
-  const view = normalizeTraceView(
-    obj?.view || obj?.traceView || obj?.projectionView || fallbackView,
-  );
-
-  const type = ["drawer", "door", "body"].includes(obj?.type)
-    ? obj.type
-    : ["drawer", "door", "body"].includes(obj?.traceType)
-      ? obj.traceType
-      : "door";
-
-  const width = Math.max(GRID_SIZE, snap(Number(obj?.width) || 0));
-  const height = Math.max(GRID_SIZE, snap(Number(obj?.height) || 0));
-
-  return {
-    id: obj?.id || makeId(),
-    type,
-    traceType: type,
-    label: obj?.label || TRACE_TYPE_LABELS[type] || "Trace Object",
-    x: snap(Number(obj?.x) || 0),
-    y: snap(Number(obj?.y) || 0),
-    width,
-    height,
-    view,
-    traceView: view,
-    projectionView: normalizeProjectionView(view),
-  };
-}
-
-function normalizeTraceObjects(list = [], fallbackView = "front") {
-  if (!Array.isArray(list)) return [];
-
-  return list
-    .map((item) => normalizeTraceObject(item, fallbackView))
-    .filter((item) => item.width > 0 && item.height > 0);
-}
-
-function sanitizeReferenceFile(file) {
-  if (!file?.url) return null;
-
-  const type = String(file?.type || file?.file_type || "")
-    .trim()
-    .toLowerCase();
-
-  if (!type) return null;
-
-  return {
-    url: file.url,
-    type,
-    name: file.name || "Reference File",
-    source: file.source || "imported",
-  };
-}
-function isLikelyChairReference({
-  importTemplateType,
-  importDimensions,
-  traceObjectsByView,
-}) {
-  const dims = {
-    w: Number(importDimensions?.w) || 0,
-    h: Number(importDimensions?.h) || 0,
-    d: Number(importDimensions?.d) || 0,
-  };
-
-  const perViewCounts = REFERENCE_TRACE_VIEWS.map(
-    (viewKey) => (traceObjectsByView?.[viewKey] || []).length,
-  );
-
-  const hasSingleOutlinePerView = perViewCounts.every((count) => count === 1);
-
-  const compactChairSized =
-    dims.w > 0 &&
-    dims.h > 0 &&
-    dims.d > 0 &&
-    dims.w <= 1100 &&
-    dims.h <= 1400 &&
-    dims.d <= 1100;
-
-  const explicitChairTemplate = [
-    "chair_template",
-    "template_dining_chair",
-    "template_accent_chair",
-    "template_lounge_chair",
-  ].includes(importTemplateType);
-
-  return (
-    explicitChairTemplate || (compactChairSized && hasSingleOutlinePerView)
-  );
-}
-
-function sanitizeReferenceFiles(files = {}) {
-  return {
-    front: sanitizeReferenceFile(files?.front),
-    back: sanitizeReferenceFile(files?.back),
-    left: sanitizeReferenceFile(files?.left),
-    right: sanitizeReferenceFile(files?.right),
-    top: sanitizeReferenceFile(files?.top),
-  };
-}
-
-function resolveImportTemplateType(savedData = {}, blueprintData = {}) {
-  return (
-    savedData?.importTemplateType ||
-    savedData?.import_type ||
-    blueprintData?.import_template_type ||
-    DEFAULT_IMPORT_TEMPLATE_TYPE
-  );
-}
-
-function sanitizeImportDimensions(
-  source = {},
-  fallback = DEFAULT_IMPORT_DIMENSIONS,
-) {
-  return {
-    w: Math.max(
-      GRID_SIZE,
-      snap(Number(source?.w ?? source?.width ?? fallback.w) || fallback.w),
-    ),
-    h: Math.max(
-      GRID_SIZE,
-      snap(Number(source?.h ?? source?.height ?? fallback.h) || fallback.h),
-    ),
-    d: Math.max(
-      GRID_SIZE,
-      snap(Number(source?.d ?? source?.depth ?? fallback.d) || fallback.d),
-    ),
-  };
-}
-
-const deepClone = (value) => JSON.parse(JSON.stringify(value));
-
-const createObjectId = () =>
-  typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `obj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-function openBlueprintWindow(html, autoPrint = false) {
-  const win = window.open(
-    "about:blank",
-    "_blank",
-    "width=1280,height=900,resizable=yes,scrollbars=yes",
-  );
-
-  if (!win) {
-    toast.error("Popup blocked. I-allow ang popups para sa export/print.");
-    return false;
-  }
-
-  try {
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-  } catch (err) {
-    console.error("openBlueprintWindow write error:", err);
-    toast.error("Failed to prepare export/print window.");
-    try {
-      win.close();
-    } catch {}
-    return false;
-  }
-
-  try {
-    win.opener = null;
-  } catch {}
-
-  const triggerPrint = () => {
-    if (!autoPrint || win.closed) return;
-
-    const run = () => {
-      try {
-        win.focus();
-        setTimeout(() => {
-          try {
-            win.print();
-          } catch (printErr) {
-            console.error("print error:", printErr);
-            toast.error("Failed to open print dialog.");
-          }
-        }, 250);
-      } catch (focusErr) {
-        console.error("focus/print error:", focusErr);
-      }
-    };
-
-    if (win.document.readyState === "complete") {
-      run();
-      return;
-    }
-
-    win.addEventListener(
-      "load",
-      () => {
-        run();
-      },
-      { once: true },
-    );
-  };
-
-  triggerPrint();
-  return true;
-}
 
 export default function BlueprintDesign() {
   const { id } = useParams();
@@ -2072,7 +1772,7 @@ export default function BlueprintDesign() {
       });
 
       if (!plan.supported) {
-        toast.error(plan.reason || "Smart width resize is not available.");
+        toast.error(plan.reason || "Width resize is not available.");
         return plan;
       }
 
