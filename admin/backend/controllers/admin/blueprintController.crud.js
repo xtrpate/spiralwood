@@ -1,0 +1,679 @@
+// controllers/blueprintController.js
+// Route-facing Blueprint handlers. Shared imports, validators, normalizers,
+// and estimation/reference helpers live in blueprintController.helpers.js.
+const {
+  path,
+  pool,
+  resolveLifecycleByBlueprint,
+  resolveLifecycleByOrder,
+  createNotificationSafe,
+  safeJsonParse,
+  sortJsonValue,
+  normalizeJsonForComparison,
+  ESTIMATION_ITEM_SOURCE_TYPES,
+  createValidationError,
+  normalizeEstimationItems,
+  validateEstimationItems,
+  getItemSubtotal,
+  groupDraftItems,
+  findRawMaterialMatch,
+  computeEstimationTotals,
+  buildAutoEstimationDraft,
+  getBlueprintFileMeta,
+  REFERENCE_VIEWS,
+  createEmptyReferenceFiles,
+  normalizeReferenceFilesMap,
+  buildUploadedReferenceFiles,
+  hasAnyReferenceFiles,
+  normalizeReferenceFile,
+  mergeDesignData,
+  normalizeSource,
+  backfillLegacyArchivedDates,
+  deleteBlueprintCascade,
+  purgeExpiredArchivedBlueprints,
+} = require("./blueprintController.helpers");
+
+exports.getAll = async (req, res) => {
+  try {
+    await backfillLegacyArchivedDates();
+    await purgeExpiredArchivedBlueprints();
+
+    const { tab = "my", page = 1, limit = 20, search = "" } = req.query;
+
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 20;
+    const offset = (pageNum - 1) * limitNum;
+
+    const where = [];
+    const params = [];
+
+    if (tab === "my") {
+      where.push("b.creator_id = ? AND b.is_deleted = 0");
+      params.push(parseInt(req.user.id));
+    }
+
+    if (tab === "imports") {
+      where.push("b.source = 'imported' AND b.is_deleted = 0");
+    }
+
+    if (tab === "gallery") {
+      where.push(
+        "(b.is_template = 1 OR b.is_gallery = 1) AND b.is_deleted = 0",
+      );
+    }
+
+    if (tab === "archive") {
+      where.push("b.is_deleted = 1");
+    }
+
+    if (String(search).trim()) {
+      const keyword = `%${String(search).trim()}%`;
+      where.push(`(
+        b.title LIKE ?
+        OR COALESCE(b.description, '') LIKE ?
+        OR COALESCE(u.name, '') LIKE ?
+        OR COALESCE(c.name, '') LIKE ?
+        OR COALESCE(b.file_type, '') LIKE ?
+      )`);
+      params.push(keyword, keyword, keyword, keyword, keyword);
+    }
+
+    const whereSQL = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const baseFrom = `
+      FROM blueprints b
+      JOIN users u ON u.id = b.creator_id
+      LEFT JOIN users c ON c.id = b.client_id
+    `;
+
+    const [rows] = await pool.query(
+      `SELECT b.id, b.title, b.description, b.stage, b.source,
+              b.file_url, b.file_type, b.thumbnail_url,
+              b.is_template, b.is_gallery, b.is_deleted, b.archived_at,
+              b.created_at, b.updated_at,
+              u.name AS creator_name,
+              c.name AS client_name,
+              CASE
+                WHEN b.is_deleted = 1
+                  THEN GREATEST(0, 30 - DATEDIFF(CURDATE(), DATE(COALESCE(b.archived_at, b.updated_at, b.created_at))))
+                ELSE NULL
+              END AS archive_days_left,
+              CASE
+                WHEN b.is_deleted = 1
+                  THEN DATE_ADD(DATE(COALESCE(b.archived_at, b.updated_at, b.created_at)), INTERVAL 30 DAY)
+                ELSE NULL
+              END AS archive_expires_at
+       ${baseFrom}
+       ${whereSQL}
+       ORDER BY
+         CASE
+           WHEN b.is_deleted = 1 THEN COALESCE(b.archived_at, b.updated_at, b.created_at)
+           ELSE b.updated_at
+         END DESC,
+         b.id DESC
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limitNum), parseInt(offset)],
+    );
+
+    const [[{ total }]] = await pool.query(
+      `SELECT COUNT(*) AS total
+       ${baseFrom}
+       ${whereSQL}`,
+      params,
+    );
+
+    res.json({ rows, total });
+  } catch (err) {
+    console.error("getAll blueprints error:", err);
+    res.status(err.statusCode || 500).json({ message: err.message });
+  }
+};
+
+// ── GET /api/blueprints/:id ───────────────────────────────────────────────────
+exports.getOne = async (req, res) => {
+  try {
+    const [[bp]] = await pool.query(
+      `SELECT b.*, u.name AS creator_name, c.name AS client_name,
+              CASE
+                WHEN b.is_deleted = 1
+                  THEN GREATEST(0, 30 - DATEDIFF(CURDATE(), DATE(COALESCE(b.archived_at, b.updated_at, b.created_at))))
+                ELSE NULL
+              END AS archive_days_left,
+              CASE
+                WHEN b.is_deleted = 1
+                  THEN DATE_ADD(DATE(COALESCE(b.archived_at, b.updated_at, b.created_at)), INTERVAL 30 DAY)
+                ELSE NULL
+              END AS archive_expires_at
+       FROM blueprints b
+       JOIN users u ON u.id = b.creator_id
+       LEFT JOIN users c ON c.id = b.client_id
+       WHERE b.id = ?`,
+      [parseInt(req.params.id)],
+    );
+
+    if (!bp) {
+      return res.status(404).json({ message: "Blueprint not found." });
+    }
+
+    const [components] = await pool.query(
+      "SELECT * FROM blueprint_components WHERE blueprint_id = ?",
+      [parseInt(req.params.id)],
+    );
+
+    const [revisions] = await pool.query(
+      `SELECT br.*, u.name AS revised_by_name
+       FROM blueprint_revisions br
+       LEFT JOIN users u ON u.id = br.revised_by
+       WHERE br.blueprint_id = ?
+       ORDER BY br.revision_number DESC`,
+      [parseInt(req.params.id)],
+    );
+
+    const [linkedOrderRows] = await pool.query(
+      `SELECT
+          o.id AS order_id,
+          o.order_number,
+          o.customer_id,
+          o.status AS order_status,
+          o.payment_status,
+          o.notes AS order_notes,
+          o.delivery_request_notes,
+          oi.id AS order_item_id,
+          oi.product_name,
+          oi.quantity AS order_quantity,
+          oi.customization_json
+       FROM orders o
+       LEFT JOIN order_items oi ON oi.order_id = o.id
+       WHERE o.blueprint_id = ?
+       ORDER BY o.id ASC, oi.id ASC`,
+      [parseInt(req.params.id)],
+    );
+
+    const linkedOrderIds = [
+      ...new Set(
+        linkedOrderRows
+          .map((row) => Number(row.order_id) || null)
+          .filter(Boolean),
+      ),
+    ];
+
+    const orderContext =
+      linkedOrderIds.length === 1 && linkedOrderRows.length
+        ? {
+            order_id: linkedOrderRows[0].order_id,
+            order_number: linkedOrderRows[0].order_number,
+            customer_id: linkedOrderRows[0].customer_id,
+            order_status: linkedOrderRows[0].order_status,
+            payment_status: linkedOrderRows[0].payment_status,
+            order_notes: linkedOrderRows[0].order_notes || null,
+            delivery_request_notes:
+              linkedOrderRows[0].delivery_request_notes || null,
+            items: linkedOrderRows.map((row) => ({
+              order_item_id: row.order_item_id || null,
+              product_name: row.product_name || null,
+              quantity: Number(row.order_quantity || 0) || 0,
+              customization:
+                safeJsonParse(row.customization_json, {}) || {},
+            })),
+          }
+        : null;
+
+    const normalizedDesignData = mergeDesignData(bp.design_data, bp, bp.title);
+
+    res.json({
+      ...bp,
+      order_id: orderContext?.order_id || null,
+      order_number: orderContext?.order_number || null,
+      order_context: orderContext,
+      order_context_warning:
+        linkedOrderIds.length > 1 ? "MULTIPLE_LINKED_ORDERS" : null,
+      design_data: normalizedDesignData,
+      components,
+      revision_history: revisions,
+    });
+  } catch (err) {
+    console.error("getOne blueprint error:", err);
+    res.status(err.statusCode || 500).json({ message: err.message });
+  }
+};
+
+// ── POST /api/blueprints ──────────────────────────────────────────────────────
+exports.create = async (req, res) => {
+  try {
+    const {
+      title,
+      description,
+      client_id,
+      is_template,
+      is_gallery,
+      stage,
+      source,
+      thumbnail_url,
+      design_data,
+    } = req.body;
+
+    if (!String(title || "").trim()) {
+      return res.status(400).json({ message: "Blueprint title is required." });
+    }
+
+    const finalTitle = String(title).trim();
+    const uploadedReferenceFiles = buildUploadedReferenceFiles(
+      req.referenceFiles,
+      finalTitle,
+    );
+    const primaryReference = uploadedReferenceFiles.front || null;
+    const fileMeta = getBlueprintFileMeta(req.file);
+    const normalizedSource = normalizeSource(
+      source,
+      !!req.file || hasAnyReferenceFiles(uploadedReferenceFiles),
+    );
+    const finalStage = String(stage || "").trim() || "design";
+    const finalThumbnail =
+      thumbnail_url ||
+      primaryReference?.url ||
+      fileMeta.default_thumbnail_url ||
+      null;
+
+    const finalDesignData = mergeDesignData(
+      design_data,
+      {
+        file_url: primaryReference?.url || fileMeta.file_url,
+        file_type: primaryReference?.type || fileMeta.file_type,
+        reference_files: uploadedReferenceFiles,
+      },
+      finalTitle,
+    );
+
+    const [r] = await pool.query(
+      `INSERT INTO blueprints
+        (title, description, creator_id, client_id, source, stage, file_url, file_type, thumbnail_url, design_data, is_template, is_gallery, is_deleted, archived_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        finalTitle,
+        description || null,
+        parseInt(req.user.id),
+        client_id ? parseInt(client_id) : null,
+        fileMeta.source || normalizedSource,
+        finalStage,
+        fileMeta.file_url,
+        fileMeta.file_type,
+        finalThumbnail,
+        finalDesignData,
+        Number(is_template) ? 1 : 0,
+        Number(is_gallery) ? 1 : 0,
+        0,
+        null,
+      ],
+    );
+
+    req.auditRecord = {
+      id: r.insertId,
+      new: {
+        stage: finalStage,
+        source: fileMeta.source || normalizedSource,
+        is_template: Boolean(Number(is_template)),
+        is_gallery: Boolean(Number(is_gallery)),
+        file_uploaded: Boolean(req.file),
+        reference_files_uploaded: hasAnyReferenceFiles(uploadedReferenceFiles),
+      },
+    };
+
+    res.status(201).json({
+      message: "Blueprint created.",
+      id: r.insertId,
+      blueprint: {
+        id: r.insertId,
+        title: finalTitle,
+        source: fileMeta.source || normalizedSource,
+        stage: finalStage,
+        file_url: primaryReference?.url || fileMeta.file_url,
+        file_type: primaryReference?.type || fileMeta.file_type,
+        thumbnail_url: finalThumbnail,
+        design_data: finalDesignData,
+      },
+    });
+  } catch (err) {
+    console.error("create blueprint error:", err);
+    res.status(err.statusCode || 500).json({ message: err.message });
+  }
+};
+
+// ── PUT /api/blueprints/:id ───────────────────────────────────────────────────
+exports.update = async (req, res) => {
+  try {
+    const [[bp]] = await pool.query("SELECT * FROM blueprints WHERE id = ?", [
+      parseInt(req.params.id),
+    ]);
+
+    if (!bp) {
+      return res.status(404).json({ message: "Blueprint not found." });
+    }
+
+    const locked = safeJsonParse(bp.locked_fields, []);
+    const updates = { ...req.body };
+    const uploadedReferenceFiles = buildUploadedReferenceFiles(
+      req.referenceFiles,
+      bp.title || "",
+    );
+    const hasUploadedReferenceFiles = hasAnyReferenceFiles(
+      uploadedReferenceFiles,
+    );
+    const fileMeta = getBlueprintFileMeta(req.file);
+
+    locked.forEach((field) => delete updates[field]);
+
+    const allowedCols = [
+      "title",
+      "description",
+      "stage",
+      "design_data",
+      "view_3d_data",
+      "locked_fields",
+      "thumbnail_url",
+      "is_template",
+      "is_gallery",
+      "client_id",
+      "source",
+      "file_url",
+      "file_type",
+      "base_price",
+    ];
+
+    const filtered = Object.fromEntries(
+      Object.entries(updates).filter(([key]) => allowedCols.includes(key)),
+    );
+
+    const incomingHasDesignData = Object.prototype.hasOwnProperty.call(
+      filtered,
+      "design_data",
+    );
+
+    if (req.file) {
+      filtered.source = fileMeta.source;
+      filtered.file_url = fileMeta.file_url;
+      filtered.file_type = fileMeta.file_type;
+
+      if (!filtered.thumbnail_url) {
+        filtered.thumbnail_url = fileMeta.default_thumbnail_url;
+      }
+    }
+
+    if (filtered.source) {
+      filtered.source = normalizeSource(
+        filtered.source,
+        !!req.file || hasUploadedReferenceFiles,
+      );
+    }
+
+    if (filtered.title != null && !String(filtered.title).trim()) {
+      return res
+        .status(400)
+        .json({ message: "Blueprint title cannot be empty." });
+    }
+
+    if (filtered.title != null) {
+      filtered.title = String(filtered.title).trim();
+    }
+
+    if (incomingHasDesignData || req.file || hasUploadedReferenceFiles) {
+      filtered.design_data = mergeDesignData(
+        incomingHasDesignData ? filtered.design_data : bp.design_data,
+        {
+          file_url: filtered.file_url || bp.file_url,
+          file_type: filtered.file_type || bp.file_type,
+          reference_files: uploadedReferenceFiles,
+        },
+        filtered.title || bp.title,
+      );
+    }
+
+    if (!Object.keys(filtered).length) {
+      return res.status(400).json({ message: "No updatable fields." });
+    }
+
+    // Compare bp (old row, SELECT * already fetched above) against the
+    // final normalized `filtered` values — a key being present in
+    // `filtered` only means it was submitted/derived, not that its value
+    // actually differs from what's already stored.
+    const BOOLEAN_NUMERIC_FIELDS = ["is_template", "is_gallery"];
+    const NULLABLE_ID_FIELDS = ["client_id"];
+    const JSON_FIELDS = ["design_data", "view_3d_data", "locked_fields"];
+    const normNum = (v) =>
+      v === null || v === undefined || v === "" ? null : Number(v);
+
+    const actualChangedFields = Object.keys(filtered).filter((key) => {
+      const oldVal = bp[key];
+      const newVal = filtered[key];
+      if (BOOLEAN_NUMERIC_FIELDS.includes(key)) {
+        return Boolean(Number(oldVal)) !== Boolean(Number(newVal));
+      }
+      if (NULLABLE_ID_FIELDS.includes(key)) {
+        return normNum(oldVal) !== normNum(newVal);
+      }
+      if (JSON_FIELDS.includes(key)) {
+        const fallback = key === "locked_fields" ? [] : {};
+        return (
+          normalizeJsonForComparison(oldVal, fallback) !==
+          normalizeJsonForComparison(newVal, fallback)
+        );
+      }
+      return String(oldVal ?? "") !== String(newVal ?? "");
+    });
+
+    if (incomingHasDesignData) {
+      const [[{ maxRev }]] = await pool.query(
+        `SELECT COALESCE(MAX(revision_number), 0) AS maxRev
+         FROM blueprint_revisions
+         WHERE blueprint_id = ?`,
+        [parseInt(req.params.id)],
+      );
+
+      await pool.query(
+        `INSERT INTO blueprint_revisions
+          (blueprint_id, revision_number, stage_at_save, revision_data, revised_by)
+         VALUES (?,?,?,?,?)`,
+        [
+          parseInt(req.params.id),
+          maxRev + 1,
+          bp.stage,
+          bp.design_data,
+          parseInt(req.user.id),
+        ],
+      );
+    }
+
+    const sets = Object.keys(filtered)
+      .map((key) => `${key} = ?`)
+      .join(", ");
+
+    await pool.query(
+      `UPDATE blueprints
+       SET ${sets}
+       WHERE id = ?`,
+      [...Object.values(filtered), parseInt(req.params.id)],
+    );
+
+    // A revision row is written whenever incomingHasDesignData is true,
+    // even if the normalized design content turns out equivalent — that
+    // write is real and must be captured even when actualChangedFields
+    // ends up empty. An empty fields_changed array is expected/valid
+    // whenever revision_created is true but no other column changed.
+    const revisionCreated = incomingHasDesignData;
+
+    if (actualChangedFields.length > 0 || revisionCreated) {
+      req.auditRecord = {
+        id: parseInt(req.params.id),
+        new: {
+          fields_changed: actualChangedFields,
+          stage_changed: actualChangedFields.includes("stage"),
+          design_data_changed: actualChangedFields.includes("design_data"),
+          file_uploaded: Boolean(req.file),
+          reference_files_uploaded: hasUploadedReferenceFiles,
+          revision_created: revisionCreated,
+        },
+      };
+    }
+
+    res.json({
+      message: "Blueprint updated.",
+      blueprint: {
+        id: Number(req.params.id),
+        ...filtered,
+      },
+    });
+  } catch (err) {
+    console.error("update blueprint error:", err);
+    res.status(err.statusCode || 500).json({ message: err.message });
+  }
+};
+
+// ── DELETE /api/blueprints/:id (soft delete → archive) ───────────────────────
+exports.archive = async (req, res) => {
+  try {
+    const [[bp]] = await pool.query(
+      `SELECT id, stage, is_deleted
+       FROM blueprints
+       WHERE id = ?
+       LIMIT 1`,
+      [parseInt(req.params.id)],
+    );
+
+    if (!bp) {
+      return res.status(404).json({ message: "Blueprint not found." });
+    }
+
+    const [updateResult] = await pool.query(
+      `UPDATE blueprints
+       SET is_deleted = 1,
+           stage = 'archived',
+           archived_at = NOW()
+       WHERE id = ?`,
+      [parseInt(req.params.id)],
+    );
+
+    if (updateResult.affectedRows > 0) {
+      req.auditRecord = {
+        id: parseInt(req.params.id),
+        old: { stage: bp.stage, archived: Boolean(Number(bp.is_deleted)) },
+        new: { stage: "archived", archived: true },
+      };
+    }
+
+    res.json({ message: "Blueprint archived." });
+  } catch (err) {
+    console.error("archive blueprint error:", err);
+    res.status(err.statusCode || 500).json({ message: err.message });
+  }
+};
+
+// ── PATCH /api/blueprints/:id/restore ────────────────────────────────────────
+exports.restore = async (req, res) => {
+  try {
+    const [[bp]] = await pool.query(
+      `SELECT id, stage, is_deleted, archived_at
+       FROM blueprints
+       WHERE id = ?
+       LIMIT 1`,
+      [parseInt(req.params.id)],
+    );
+
+    if (!bp) {
+      return res.status(404).json({ message: "Blueprint not found." });
+    }
+
+    const wasArchived =
+      Number(bp.is_deleted) === 1 ||
+      bp.archived_at != null ||
+      bp.stage === "archived";
+
+    await pool.query(
+      `UPDATE blueprints
+       SET is_deleted = 0,
+           archived_at = NULL,
+           stage = CASE
+             WHEN stage = 'archived' THEN 'design'
+             ELSE stage
+           END
+       WHERE id = ?`,
+      [parseInt(req.params.id)],
+    );
+
+    if (wasArchived) {
+      const newStage = bp.stage === "archived" ? "design" : bp.stage;
+      req.auditRecord = {
+        id: parseInt(req.params.id),
+        old: { stage: bp.stage, archived: Boolean(Number(bp.is_deleted)) },
+        new: { restored: true, archived: false, stage: newStage },
+      };
+    }
+
+    res.json({ message: "Blueprint restored." });
+  } catch (err) {
+    console.error("restore blueprint error:", err);
+    res.status(err.statusCode || 500).json({ message: err.message });
+  }
+};
+
+// ── DELETE /api/blueprints/:id/permanent ─────────────────────────────────────
+exports.permanentDelete = async (req, res) => {
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [[bp]] = await conn.query(
+      `SELECT id, is_deleted, stage
+       FROM blueprints
+       WHERE id = ?
+       LIMIT 1`,
+      [parseInt(req.params.id)],
+    );
+
+    if (!bp) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Blueprint not found." });
+    }
+
+    if (Number(bp.is_deleted) !== 1) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Only archived blueprints can be permanently deleted.",
+      });
+    }
+
+    const [[linkedOrder]] = await conn.query(
+      `SELECT id
+       FROM orders
+       WHERE blueprint_id = ?
+       LIMIT 1`,
+      [parseInt(req.params.id)],
+    );
+
+    if (linkedOrder) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Cannot permanently delete blueprint linked to an order.",
+      });
+    }
+
+    await deleteBlueprintCascade(conn, [Number(req.params.id)]);
+
+    await conn.commit();
+
+    req.auditRecord = {
+      id: parseInt(req.params.id),
+      old: { archived: true, stage: bp.stage },
+      new: { permanently_deleted: true },
+    };
+
+    res.json({ message: "Blueprint permanently deleted." });
+  } catch (err) {
+    await conn.rollback();
+    console.error("permanentDelete blueprint error:", err);
+    res.status(err.statusCode || 500).json({ message: err.message });
+  } finally {
+    conn.release();
+  }
+};
+
+// ── GET /api/blueprints/:id/estimation ───────────────────────────────────────
