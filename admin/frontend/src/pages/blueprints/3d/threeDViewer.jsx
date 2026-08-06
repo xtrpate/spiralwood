@@ -7,8 +7,6 @@ import React, {
   useMemo,
 } from "react";
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
-import { TransformControls } from "three/examples/jsm/controls/TransformControls";
 import {
   buildFurnitureTemplateParts,
   buildDiningChairParts,
@@ -27,6 +25,11 @@ import { FurnitureLibraryPanel } from "./components/FurnitureLibraryPanel";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { FurnitureToolsPanel } from "./components/FurnitureToolsPanel";
 import { TransformToolbar } from "./components/TransformToolbar";
+import {
+  clearObject3DChildren,
+  createBlueprintSceneFoundation,
+  disposeObject3DResources,
+} from "./sceneSetup";
 
 const GRID_SIZE = 20;
 const ROTATION_SNAP_DEGREES = 15;
@@ -1700,18 +1703,7 @@ function ThreeDViewer({
 
     const savedView = captureCameraView() || cameraViewRef.current;
 
-    while (rootGroup.children.length) {
-      const child = rootGroup.children[0];
-      rootGroup.remove(child);
-      child.traverse?.((obj) => {
-        if (obj.geometry) obj.geometry.dispose?.();
-        if (obj.material) {
-          if (Array.isArray(obj.material))
-            obj.material.forEach((m) => m.dispose?.());
-          else obj.material.dispose?.();
-        }
-      });
-    }
+    clearObject3DChildren(rootGroup);
 
     entryMapRef.current = new Map();
     selectableMeshesRef.current = [];
@@ -1780,196 +1772,28 @@ function ThreeDViewer({
     const w = mount.clientWidth || 1000;
     const h = mount.clientHeight || 700;
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      powerPreference: "high-performance",
+    const {
+      renderer,
+      canvas,
+      scene,
+      camera,
+      orbit,
+      transform,
+      rootGroup,
+      selectionOutlineGroup,
+      previewGroup,
+      floorY: FLOOR_Y,
+    } = createBlueprintSceneFoundation({
+      mount,
+      width: w,
+      height: h,
+      canvasHeight: canvasH,
+      gridSize: GRID_SIZE,
+      rotationSnapDegrees: ROTATION_SNAP_DEGREES,
     });
-    renderer.setSize(w, h);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.45;
-    renderer.setClearColor(0x16263d);
-    mount.innerHTML = "";
-
-    mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
-    renderer.domElement.style.display = "block";
-    renderer.domElement.style.width = "100%";
-    renderer.domElement.style.height = "100%";
-    renderer.domElement.style.outline = "none";
-
-    const canvas = renderer.domElement;
-    canvas.tabIndex = 0;
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x16263d);
     sceneRef.current = scene;
-
-    const camera = new THREE.PerspectiveCamera(38, w / h, 0.5, 12000);
-    camera.position.set(1100, 760, 1100);
-
-    scene.add(new THREE.AmbientLight(0xffffff, 1.15));
-
-    const hemi = new THREE.HemisphereLight(0xf4f8ff, 0x223248, 1.45);
-    scene.add(hemi);
-
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
-    keyLight.position.set(1400, 2200, 1200);
-    keyLight.castShadow = true;
-    keyLight.shadow.mapSize.set(4096, 4096);
-    keyLight.shadow.camera.left = -3200;
-    keyLight.shadow.camera.right = 3200;
-    keyLight.shadow.camera.top = 3200;
-    keyLight.shadow.camera.bottom = -3200;
-    keyLight.shadow.camera.near = 200;
-    keyLight.shadow.camera.far = 7000;
-    keyLight.shadow.bias = 0.00035;
-    keyLight.shadow.normalBias = 0.85;
-    keyLight.shadow.radius = 2;
-    scene.add(keyLight);
-
-    const fillLight = new THREE.DirectionalLight(0xdbeafe, 1.15);
-    fillLight.position.set(-1500, 1000, 1300);
-    scene.add(fillLight);
-
-    const frontLight = new THREE.DirectionalLight(0xffffff, 0.95);
-    frontLight.position.set(0, 900, 1800);
-    scene.add(frontLight);
-
-    const rimLight = new THREE.DirectionalLight(0x93c5fd, 0.6);
-    rimLight.position.set(-1100, 700, -900);
-    scene.add(rimLight);
-
-    const topLight = new THREE.DirectionalLight(0xffffff, 0.65);
-    topLight.position.set(0, 2600, 0);
-    scene.add(topLight);
-
-    const FLOOR_Y = -canvasH / 2;
-
-    // Blueprint base plane
-    const floorBase = new THREE.Mesh(
-      new THREE.PlaneGeometry(6800, 6800),
-      new THREE.MeshStandardMaterial({
-        color: 0x17345a,
-        roughness: 0.97,
-        metalness: 0.0,
-        emissive: 0x0a1422,
-        emissiveIntensity: 0.28,
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1,
-      }),
-    );
-    floorBase.rotation.x = -Math.PI / 2;
-    floorBase.position.y = FLOOR_Y - 1.5;
-    floorBase.receiveShadow = true;
-    floorBase.renderOrder = 0;
-    scene.add(floorBase);
-
-    // Minor blueprint grid
-    const minorGrid = new THREE.GridHelper(6000, 120, 0x5ea3e6, 0x274d78);
-    minorGrid.position.y = FLOOR_Y + 0.35;
-    minorGrid.material.transparent = true;
-    minorGrid.material.opacity = 0.34;
-    minorGrid.material.depthWrite = false;
-    minorGrid.renderOrder = 1;
-    scene.add(minorGrid);
-
-    // Major blueprint grid
-    const majorGrid = new THREE.GridHelper(6000, 24, 0xb9e3ff, 0x6ea8dc);
-    majorGrid.position.y = FLOOR_Y + 0.75;
-    majorGrid.material.transparent = true;
-    majorGrid.material.opacity = 0.72;
-    majorGrid.material.depthWrite = false;
-    majorGrid.renderOrder = 2;
-    scene.add(majorGrid);
-
-    // Axis lines — slightly lifted above the grids
-    const axisMatX = new THREE.LineBasicMaterial({
-      color: 0xef4444,
-      transparent: true,
-      opacity: 0.82,
-      depthWrite: false,
-      toneMapped: false,
-    });
-
-    const axisMatY = new THREE.LineBasicMaterial({
-      color: 0x22c55e,
-      transparent: true,
-      opacity: 0.88,
-      depthWrite: false,
-      toneMapped: false,
-    });
-
-    const axisMatZ = new THREE.LineBasicMaterial({
-      color: 0x3b82f6,
-      transparent: true,
-      opacity: 0.82,
-      depthWrite: false,
-      toneMapped: false,
-    });
-
-    const makeAxis = (a, b, mat, renderOrder = 3) => {
-      const line = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([
-          new THREE.Vector3(...a),
-          new THREE.Vector3(...b),
-        ]),
-        mat,
-      );
-      line.renderOrder = renderOrder;
-      return line;
-    };
-
-    scene.add(
-      makeAxis([-3000, FLOOR_Y + 1.05, 0], [3000, FLOOR_Y + 1.05, 0], axisMatX),
-    );
-
-    scene.add(makeAxis([0, FLOOR_Y, 0], [0, 2800, 0], axisMatY));
-
-    scene.add(
-      makeAxis([0, FLOOR_Y + 1.05, -3000], [0, FLOOR_Y + 1.05, 3000], axisMatZ),
-    );
-
-    const orbit = new OrbitControls(camera, renderer.domElement);
-    orbit.enableDamping = true;
-    orbit.dampingFactor = 0.08;
-    orbit.rotateSpeed = 0.9;
-    orbit.panSpeed = 1;
-    orbit.zoomSpeed = 1.05;
-    orbit.minDistance = 140;
-    orbit.maxDistance = 9500;
-    orbit.maxPolarAngle = Math.PI / 2.02;
-    orbit.target.set(0, 160, 0);
-    orbit.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
-    orbit.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
-    orbit.mouseButtons.RIGHT = THREE.MOUSE.PAN;
-    orbit.update();
-
-    const transform = new TransformControls(camera, renderer.domElement);
-    transform.setSpace("world");
-    transform.setSize(0.86);
-    transform.translationSnap = GRID_SIZE;
-    transform.rotationSnap = THREE.MathUtils.degToRad(
-      ROTATION_SNAP_DEGREES,
-    );
-    scene.add(transform);
-
-    const rootGroup = new THREE.Group();
-    scene.add(rootGroup);
-
-    const selectionOutlineGroup = new THREE.Group();
-    selectionOutlineGroup.name = "selection-outline-group";
-    scene.add(selectionOutlineGroup);
-
-    const previewGroup = new THREE.Group();
-    previewGroup.name = "placement-preview-group";
-    scene.add(previewGroup);
-
     cameraRef.current = camera;
     orbitRef.current = orbit;
     transformRef.current = transform;
@@ -2606,14 +2430,7 @@ function ThreeDViewer({
       rendererRef.current = null;
       sceneRef.current = null;
 
-      rootGroup.traverse((obj) => {
-        if (obj.geometry) obj.geometry.dispose?.();
-        if (obj.material) {
-          if (Array.isArray(obj.material))
-            obj.material.forEach((m) => m.dispose?.());
-          else obj.material.dispose?.();
-        }
-      });
+      disposeObject3DResources(rootGroup);
 
       disposePlacementPreview();
       clearSelectionOutlines();
