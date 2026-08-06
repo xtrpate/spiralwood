@@ -258,13 +258,14 @@ exports.getAvailability = async (req, res) => {
 
     const [rows] = await db.query(
       `
-      SELECT TIME(scheduled_date) AS booked_time
+      SELECT TIME(scheduled_date) AS booked_time, status
       FROM appointments
       WHERE DATE(scheduled_date) = ?
         AND status IN (
           'pending',
           'awaiting_staff_acceptance',
-          'confirmed'
+          'confirmed',
+          'completed'
         )
       `,
       [date],
@@ -273,9 +274,12 @@ exports.getAvailability = async (req, res) => {
     const booked = rows
       .map((r) => {
         const time = r.booked_time;
-        return time ? time.substring(0, 5) : null;
+        return {
+          time: time ? time.substring(0, 5) : null,
+          status: r.status,
+        };
       })
-      .filter(Boolean);
+      .filter((b) => b.time);
 
     return res.json({ booked });
   } catch (err) {

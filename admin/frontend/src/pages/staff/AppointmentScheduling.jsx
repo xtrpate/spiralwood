@@ -1024,21 +1024,169 @@ export default function AppointmentScheduling() {
                       >
                         {(() => {
                           const date = toYMD(day);
-
-                          const booked = (bookedSlots[date] || []).includes(
-                            slot,
+                          const isSunday = day.getDay() === 0;
+                          const slotDateTime = new Date(`${date}T${slot}:00`);
+                          const isPastSlot = slotDateTime < new Date();
+                          const booking = (bookedSlots[date] || []).find(
+                            (b) => b.time === slot || b === slot,
                           );
 
                           if (loadingSlots) {
                             return (
-                              <span
-                                style={{
-                                  color: "#a1a1aa",
-                                  fontSize: 12,
-                                }}
-                              >
+                              <span style={{ color: "#a1a1aa", fontSize: 12 }}>
                                 Loading...
                               </span>
+                            );
+                          }
+
+                          if (isSunday) {
+                            return (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  justifyContent: "center",
+                                  alignItems: "center",
+                                  width: "100%",
+                                  height: "100%",
+                                  borderRadius: 10,
+                                  background: "#fafafa",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    padding: "6px 12px",
+                                    borderRadius: 999,
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    background: "#f4f4f5",
+                                    color: "#a1a1aa",
+                                    border: "1px solid #e4e4e7",
+                                  }}
+                                >
+                                  Unavailable
+                                </div>
+                                <div
+                                  style={{
+                                    marginTop: 6,
+                                    fontSize: 11,
+                                    color: "#a1a1aa",
+                                  }}
+                                >
+                                  Closed
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          if (booking) {
+                            if (booking.status === "completed") {
+                              return (
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    justifyContent: "center",
+                                    alignItems: "center",
+                                    width: "100%",
+                                    height: "100%",
+                                    borderRadius: 10,
+                                    background: "#f4f4f5",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      padding: "6px 12px",
+                                      borderRadius: 999,
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                      background: "#18181b",
+                                      color: "#ffffff",
+                                      border: "1px solid #18181b",
+                                    }}
+                                  >
+                                    Completed
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  justifyContent: "center",
+                                  alignItems: "center",
+                                  width: "100%",
+                                  height: "100%",
+                                  borderRadius: 10,
+                                  background: "#fef2f2",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    padding: "6px 12px",
+                                    borderRadius: 999,
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    background: "#fef2f2",
+                                    color: "#991b1b",
+                                    border: "1px solid #fecaca",
+                                  }}
+                                >
+                                  Booked
+                                </div>
+                                <div
+                                  style={{
+                                    marginTop: 6,
+                                    fontSize: 11,
+                                    color: "#991b1b",
+                                  }}
+                                >
+                                  Occupied
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          if (isPastSlot) {
+                            return (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  justifyContent: "center",
+                                  alignItems: "center",
+                                  width: "100%",
+                                  height: "100%",
+                                  borderRadius: 10,
+                                  background: "#fafafa",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    padding: "6px 12px",
+                                    borderRadius: 999,
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    background: "#f4f4f5",
+                                    color: "#a1a1aa",
+                                    border: "1px solid #e4e4e7",
+                                  }}
+                                >
+                                  Unavailable
+                                </div>
+                                <div
+                                  style={{
+                                    marginTop: 6,
+                                    fontSize: 11,
+                                    color: "#a1a1aa",
+                                  }}
+                                >
+                                  Past
+                                </div>
+                              </div>
                             );
                           }
 
@@ -1052,7 +1200,7 @@ export default function AppointmentScheduling() {
                                 width: "100%",
                                 height: "100%",
                                 borderRadius: 10,
-                                background: booked ? "#fef2f2" : "#f8fffa",
+                                background: "#f8fffa",
                               }}
                             >
                               <div
@@ -1061,25 +1209,12 @@ export default function AppointmentScheduling() {
                                   borderRadius: 999,
                                   fontSize: 12,
                                   fontWeight: 700,
-                                  background: booked ? "#fef2f2" : "#f0fdf4",
-                                  color: booked ? "#991b1b" : "#166534",
-                                  border: booked
-                                    ? "1px solid #fecaca"
-                                    : "1px solid #bbf7d0",
+                                  background: "#f0fdf4",
+                                  color: "#166534",
+                                  border: "1px solid #bbf7d0",
                                 }}
                               >
-                                {booked ? "Booked" : "Available"}
-                                {booked && (
-                                  <div
-                                    style={{
-                                      marginTop: 6,
-                                      fontSize: 11,
-                                      color: "#991b1b",
-                                    }}
-                                  >
-                                    Occupied
-                                  </div>
-                                )}
+                                Available
                               </div>
                             </div>
                           );
