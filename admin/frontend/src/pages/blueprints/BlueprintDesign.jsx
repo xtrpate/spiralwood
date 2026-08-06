@@ -6,17 +6,6 @@ import React, {
   useMemo,
 } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import {
-  Stage,
-  Layer,
-  Rect,
-  Text,
-  Line,
-  Arrow,
-  Group,
-  Circle,
-  Image as KonvaImage,
-} from "react-konva";
 import toast from "react-hot-toast";
 
 // ── Data & Types ──────────────────────────────────────────────────────────────
@@ -100,12 +89,7 @@ import {
 } from "./export/placementHelpers";
 
 // ── 2D Blueprint Rendering ────────────────────────────────────────────────────
-import {
-  DimensionLine,
-  BlueprintTitleBlock,
-  BlueprintPaper,
-  Canvas2D,
-} from "./2d/blueprintComponents";
+import { Canvas2D } from "./2d/blueprintComponents";
 
 // ── Editor UI / Hooks ─────────────────────────────────────────────────────────
 import { BlueprintEditorHeader } from "./components/BlueprintEditorHeader";

@@ -1,350 +1,25 @@
-// 2d/blueprintComponents.jsx — React components for 2D blueprint display
-import React, { useMemo, useRef } from "react";
+// 2d/blueprintComponents.jsx — 2D blueprint canvas composition
+import React from "react";
 import {
   Stage,
   Layer,
   Rect,
   Text,
   Line,
-  Arrow,
   Group,
   Circle,
   Image as KonvaImage,
 } from "react-konva";
-import {
-  getComponentsBounds3D,
-  get2DBounds,
-  getProjectedBox,
-  shouldMirrorView,
-  getMirroredBox,
-} from "../data/componentUtils";
-import {
-  snap,
-  clamp,
-  mmToDisplay,
-  formatDim,
-  getNowStamp,
-  isImageReferenceFile,
-  resolveAssetUrl,
-} from "../data/utils";
-import { useReferenceImage } from "../data/initHelpers";
+import { formatDim } from "../data/utils";
 import { renderBlueprintShape } from "./render2D";
 import {
-  VIEWS,
-  CHAIR_PART_SET,
-  CASEWORK_SET,
-  WOOD_FINISHES,
-} from "../data/furnitureTypes";
-import S from "../styles/blueprintStyles";
-import { getExplodedBox } from "../export/placementHelpers";
-
-const GRID_SIZE = 20;
-const PAPER_MARGIN = 28;
-const TITLE_BLOCK_H = 96;
-const DRAWING_PADDING = 56;
-const MM_PER_INCH = 25.4;
-
-function DimensionLine({
-  x1,
-  y1,
-  x2,
-  y2,
-  offset = 24,
-  text,
-  orientation = "horizontal",
-}) {
-  const dimColor = "#0f172a";
-  const extColor = "#475569";
-
-  if (orientation === "horizontal") {
-    const y = y1 - offset;
-    return (
-      <Group listening={false}>
-        <Line points={[x1, y1, x1, y]} stroke={extColor} strokeWidth={1} />
-        <Line points={[x2, y2, x2, y]} stroke={extColor} strokeWidth={1} />
-        <Arrow
-          points={[x1, y, x2, y]}
-          stroke={dimColor}
-          fill={dimColor}
-          strokeWidth={1}
-          pointerLength={6}
-          pointerWidth={5}
-          pointerAtBeginning
-          pointerAtEnding
-        />
-        <Text
-          x={(x1 + x2) / 2 - 60}
-          y={y - 15}
-          width={120}
-          align="center"
-          text={text}
-          fontSize={10}
-          fill={dimColor}
-        />
-      </Group>
-    );
-  }
-
-  const x = x1 + offset;
-  return (
-    <Group listening={false}>
-      <Line points={[x1, y1, x, y1]} stroke={extColor} strokeWidth={1} />
-      <Line points={[x2, y2, x, y2]} stroke={extColor} strokeWidth={1} />
-      <Arrow
-        points={[x, y1, x, y2]}
-        stroke={dimColor}
-        fill={dimColor}
-        strokeWidth={1}
-        pointerLength={6}
-        pointerWidth={5}
-        pointerAtBeginning
-        pointerAtEnding
-      />
-      <Text
-        x={x + 6}
-        y={(y1 + y2) / 2 - 6}
-        text={text}
-        fontSize={10}
-        fill={dimColor}
-      />
-    </Group>
-  );
-}
-
-function BlueprintTitleBlock({
-  canvasW,
-  canvasH,
-  blueprintTitle,
-  objectLabel,
-  viewLabel,
-  materialText,
-  dimsText,
-  unit,
-  scaleText = "NTS",
-  sheetCode = "A-101",
-}) {
-  const x = PAPER_MARGIN;
-  const y = canvasH - PAPER_MARGIN - TITLE_BLOCK_H;
-  const w = canvasW - PAPER_MARGIN * 2;
-  const h = TITLE_BLOCK_H;
-
-  return (
-    <Group listening={false}>
-      <Rect
-        x={x}
-        y={y}
-        width={w}
-        height={h}
-        stroke="#0f172a"
-        strokeWidth={1.4}
-        fill="#ffffff"
-      />
-      <Line
-        points={[x + w - 390, y, x + w - 390, y + h]}
-        stroke="#0f172a"
-        strokeWidth={1}
-      />
-      <Line
-        points={[x + w - 230, y, x + w - 230, y + h]}
-        stroke="#0f172a"
-        strokeWidth={1}
-      />
-      <Line
-        points={[x + w - 120, y, x + w - 120, y + h]}
-        stroke="#0f172a"
-        strokeWidth={1}
-      />
-      <Line
-        points={[x, y + 32, x + w, y + 32]}
-        stroke="#0f172a"
-        strokeWidth={1}
-      />
-      <Line
-        points={[x + w - 390, y + 54, x + w, y + 54]}
-        stroke="#0f172a"
-        strokeWidth={1}
-      />
-      <Line
-        points={[x + w - 390, y + 76, x + w, y + 76]}
-        stroke="#0f172a"
-        strokeWidth={1}
-      />
-
-      <Text
-        x={x + 10}
-        y={y + 8}
-        text="PROJECT / BLUEPRINT TITLE"
-        fontSize={9}
-        fill="#64748b"
-      />
-      <Text
-        x={x + 10}
-        y={y + 36}
-        text={blueprintTitle || "Blueprint Design"}
-        fontSize={15}
-        fontStyle="bold"
-        fill="#0f172a"
-      />
-      <Text
-        x={x + w - 380}
-        y={y + 8}
-        text="OBJECT"
-        fontSize={9}
-        fill="#64748b"
-      />
-      <Text
-        x={x + w - 380}
-        y={y + 36}
-        text={objectLabel || "No Selection"}
-        fontSize={12}
-        fontStyle="bold"
-        fill="#0f172a"
-      />
-      <Text x={x + w - 220} y={y + 8} text="VIEW" fontSize={9} fill="#64748b" />
-      <Text
-        x={x + w - 220}
-        y={y + 36}
-        text={viewLabel}
-        fontSize={12}
-        fontStyle="bold"
-        fill="#0f172a"
-      />
-      <Text x={x + w - 110} y={y + 8} text="UNIT" fontSize={9} fill="#64748b" />
-      <Text
-        x={x + w - 110}
-        y={y + 36}
-        text={unit.toUpperCase()}
-        fontSize={12}
-        fontStyle="bold"
-        fill="#0f172a"
-      />
-      <Text
-        x={x + w - 380}
-        y={y + 58}
-        text="MATERIAL"
-        fontSize={9}
-        fill="#64748b"
-      />
-      <Text
-        x={x + w - 380}
-        y={y + 80}
-        text={materialText || "—"}
-        fontSize={10}
-        fill="#0f172a"
-      />
-      <Text
-        x={x + w - 220}
-        y={y + 58}
-        text="DIMENSIONS"
-        fontSize={9}
-        fill="#64748b"
-      />
-      <Text
-        x={x + w - 220}
-        y={y + 80}
-        text={dimsText || "—"}
-        fontSize={10}
-        fill="#0f172a"
-      />
-      <Text
-        x={x + w - 110}
-        y={y + 58}
-        text="SCALE"
-        fontSize={9}
-        fill="#64748b"
-      />
-      <Text
-        x={x + w - 110}
-        y={y + 80}
-        text={scaleText}
-        fontSize={10}
-        fill="#0f172a"
-      />
-      <Text x={x + 10} y={y + 58} text="DATE" fontSize={9} fill="#64748b" />
-      <Text
-        x={x + 10}
-        y={y + 80}
-        text={getNowStamp()}
-        fontSize={10}
-        fill="#0f172a"
-      />
-      <Text x={x + 120} y={y + 58} text="SHEET" fontSize={9} fill="#64748b" />
-      <Text
-        x={x + 120}
-        y={y + 80}
-        text={sheetCode}
-        fontSize={10}
-        fill="#0f172a"
-      />
-    </Group>
-  );
-}
-
-function BlueprintPaper({ canvasW, canvasH }) {
-  const refStep = 80;
-  const refs = [];
-
-  for (
-    let x = PAPER_MARGIN + refStep;
-    x < canvasW - PAPER_MARGIN;
-    x += refStep
-  ) {
-    refs.push(
-      <Text
-        key={`top-${x}`}
-        x={x - 4}
-        y={PAPER_MARGIN - 16}
-        text={`${Math.round((x - PAPER_MARGIN) / refStep)}`}
-        fontSize={9}
-        fill="#64748b"
-        listening={false}
-      />,
-    );
-  }
-
-  for (
-    let y = PAPER_MARGIN + refStep;
-    y < canvasH - PAPER_MARGIN - TITLE_BLOCK_H;
-    y += refStep
-  ) {
-    refs.push(
-      <Text
-        key={`left-${y}`}
-        x={PAPER_MARGIN - 18}
-        y={y - 4}
-        text={String.fromCharCode(
-          64 + Math.round((y - PAPER_MARGIN) / refStep),
-        )}
-        fontSize={9}
-        fill="#64748b"
-        listening={false}
-      />,
-    );
-  }
-
-  return (
-    <Group listening={false}>
-      <Rect x={0} y={0} width={canvasW} height={canvasH} fill="#ffffff" />
-      <Rect
-        x={PAPER_MARGIN}
-        y={PAPER_MARGIN}
-        width={canvasW - PAPER_MARGIN * 2}
-        height={canvasH - PAPER_MARGIN * 2}
-        stroke="#0f172a"
-        strokeWidth={1.6}
-      />
-      <Rect
-        x={PAPER_MARGIN + 8}
-        y={PAPER_MARGIN + 8}
-        width={canvasW - PAPER_MARGIN * 2 - 16}
-        height={canvasH - PAPER_MARGIN * 2 - 16}
-        stroke="#94a3b8"
-        strokeWidth={0.8}
-      />
-      {refs}
-    </Group>
-  );
-}
+  DimensionLine,
+  BlueprintTitleBlock,
+  BlueprintPaper,
+  PAPER_MARGIN,
+} from "./blueprintPaperComponents";
+import { useBlueprintCanvasModel } from "./useBlueprintCanvasModel";
+import { useBlueprintTraceInteraction } from "./useBlueprintTraceInteraction";
 
 function Canvas2D({
   selectedComp,
@@ -371,261 +46,50 @@ function Canvas2D({
   setSelectedTraceId,
   newTraceType,
 }) {
-  const drawingArea = {
-    x: PAPER_MARGIN + DRAWING_PADDING,
-    y: PAPER_MARGIN + DRAWING_PADDING,
-    w: canvasW - PAPER_MARGIN * 2 - DRAWING_PADDING * 2,
-    h: canvasH - PAPER_MARGIN * 2 - TITLE_BLOCK_H - DRAWING_PADDING * 1.45,
-  };
-
-  const stageRef = useRef(null);
-  const [draftTrace, setDraftTrace] = React.useState(null);
-  const normalizeProjectionView = (rawView = "front") => {
-    if (rawView === "back") return "front";
-    if (rawView === "right") return "left";
-    if (rawView === "top") return "top";
-    return "front";
-  };
-
-  const activeProjectionView = normalizeProjectionView(view);
-
-  const activeCalibration =
-    referenceCalibration && typeof referenceCalibration === "object"
-      ? referenceCalibration
-      : {
-          points: [],
-          realDistanceMm: 0,
-          pixelsPerMm: 0,
-          isCalibrated: false,
-        };
+  const {
+    drawingArea,
+    activeProjectionView,
+    referenceImage,
+    referenceImageBox,
+    isPdfReference,
+    scaledItems,
+    viewMeta,
+    viewLabel,
+    axisLabels,
+    overallScreenBounds,
+    verticalDimText,
+  } = useBlueprintCanvasModel({
+    selectedComponents,
+    allComponents,
+    selectedBounds3D,
+    view,
+    canvasW,
+    canvasH,
+    referenceFile,
+    unit,
+  });
 
   const visibleTraceObjects = Array.isArray(traceObjects) ? traceObjects : [];
 
-  const getPointerPos = () => {
-    const stage = stageRef.current;
-    if (!stage) return null;
-    const p = stage.getPointerPosition();
-    if (!p) return null;
-    return {
-      x: snap(clamp(p.x, drawingArea.x, drawingArea.x + drawingArea.w)),
-      y: snap(clamp(p.y, drawingArea.y, drawingArea.y + drawingArea.h)),
-    };
-  };
-
-
-  const handleStageMouseDown = () => {
-    if (editorMode !== "reference") return;
-    if (!["front", "back", "left", "right", "top"].includes(view)) return;
-
-    const pos = getPointerPos();
-    if (!pos) return;
-
-    if (traceTool === "select") {
-      setSelectedTraceId?.(null);
-      return;
-    }
-
-    if (traceTool === "calibrate") {
-      const currentPoints = Array.isArray(activeCalibration?.points)
-        ? activeCalibration.points
-        : [];
-
-      const nextPoints = [...currentPoints, pos].slice(-2);
-
-      if (nextPoints.length < 2) {
-        setReferenceCalibration({
-          points: nextPoints,
-          realDistanceMm: Number(activeCalibration?.realDistanceMm || 0),
-          pixelsPerMm: Number(activeCalibration?.pixelsPerMm || 0),
-          isCalibrated: false,
-        });
-        return;
-      }
-
-      const dx = Number(nextPoints[1].x) - Number(nextPoints[0].x);
-      const dy = Number(nextPoints[1].y) - Number(nextPoints[0].y);
-      const pixelDistance = Math.sqrt(dx * dx + dy * dy);
-
-      const input = window.prompt(
-        "Enter real distance in mm for the selected line:",
-        String(Math.round(activeCalibration?.realDistanceMm || 2400)),
-      );
-
-      const realDistanceMm = Number(input);
-
-      if (!realDistanceMm || realDistanceMm <= 0 || !pixelDistance) {
-        window.alert("Invalid measurement.");
-        setReferenceCalibration({
-          points: [],
-          realDistanceMm: 0,
-          pixelsPerMm: 0,
-          isCalibrated: false,
-        });
-        return;
-      }
-
-      const pixelsPerMm = pixelDistance / realDistanceMm;
-
-      setReferenceCalibration({
-        points: nextPoints,
-        realDistanceMm,
-        pixelsPerMm,
-        isCalibrated: pixelsPerMm > 0,
-      });
-
-      return;
-    }
-
-    if (traceTool === "rect") {
-      setSelectedTraceId?.(null);
-
-      const traceType = newTraceType || "door";
-
-      setDraftTrace({
-        id: `trace_${Date.now()}`,
-        x: pos.x,
-        y: pos.y,
-        width: 0,
-        height: 0,
-        type: traceType,
-        traceType,
-        traceView: view,
-        view,
-        projectionView: activeProjectionView,
-      });
-    }
-  };
-
-  const handleStageMouseMove = () => {
-    if (!draftTrace) return;
-    const pos = getPointerPos();
-    if (!pos) return;
-
-    setDraftTrace((prev) =>
-      prev
-        ? {
-            ...prev,
-            width: pos.x - prev.x,
-            height: pos.y - prev.y,
-          }
-        : prev,
-    );
-  };
-
-
-  const handleStageMouseUp = () => {
-    if (!draftTrace) return;
-
-    const normalized = {
-      ...draftTrace,
-      x: Math.min(draftTrace.x, draftTrace.x + draftTrace.width),
-      y: Math.min(draftTrace.y, draftTrace.y + draftTrace.height),
-      width: Math.abs(draftTrace.width),
-      height: Math.abs(draftTrace.height),
-      traceView: draftTrace.traceView || view,
-      projectionView: draftTrace.projectionView || activeProjectionView,
-    };
-
-    if (normalized.width >= 20 && normalized.height >= 20) {
-      setTraceObjects((prev) => [
-        ...(Array.isArray(prev) ? prev : []),
-        normalized,
-      ]);
-    }
-
-    setDraftTrace(null);
-  };
-  const referenceUrl = useMemo(
-    () => resolveAssetUrl(referenceFile?.url || ""),
-    [referenceFile],
-  );
-
-  const referenceImage = useReferenceImage(
-    isImageReferenceFile(referenceFile) ? referenceUrl : "",
-  );
-
-  const previewComponents = useMemo(() => {
-    if (selectedComponents.length) return selectedComponents;
-    if (allComponents.length) return allComponents;
-    return [];
-  }, [selectedComponents, allComponents]);
-
-  const referenceType = String(
-    referenceFile?.type || referenceFile?.file_type || "",
-  ).toLowerCase();
-  const isPdfReference = referenceType === "pdf";
-
-  const referenceImageBox = useMemo(() => {
-    if (!referenceImage) return null;
-
-    const imgW = Number(referenceImage.width) || 1;
-    const imgH = Number(referenceImage.height) || 1;
-    const scale = Math.min(drawingArea.w / imgW, drawingArea.h / imgH);
-
-    const width = imgW * scale;
-    const height = imgH * scale;
-
-    return {
-      x: drawingArea.x + (drawingArea.w - width) / 2,
-      y: drawingArea.y + (drawingArea.h - height) / 2,
-      w: width,
-      h: height,
-    };
-  }, [referenceImage, drawingArea]);
-
-  const rawItems = useMemo(() => {
-    if (!previewComponents.length) return [];
-
-    if (view === "exploded") {
-      return previewComponents.map((comp, index) => ({
-        comp,
-        box: getExplodedBox(comp, previewComponents, index),
-      }));
-    }
-
-    const projected = previewComponents
-      .map((comp) => {
-        const box = getProjectedBox(comp, view);
-        if (!box) return null;
-        return { comp, box };
-      })
-      .filter(Boolean);
-
-    const bounds = get2DBounds(projected);
-
-    return projected.map((item) => ({
-      ...item,
-      box: getMirroredBox(item.box, bounds, view),
-    }));
-  }, [previewComponents, view]);
-
-  const bounds2D = useMemo(() => get2DBounds(rawItems), [rawItems]);
-
-  const scaledItems = useMemo(() => {
-    if (!bounds2D) return [];
-
-    const scale = Math.min(
-      drawingArea.w / Math.max(bounds2D.width, 1),
-      drawingArea.h / Math.max(bounds2D.height, 1),
-      view === "exploded" ? 0.96 : 1.1,
-    );
-
-    const offsetX =
-      drawingArea.x + (drawingArea.w - bounds2D.width * scale) / 2;
-    const offsetY =
-      drawingArea.y + (drawingArea.h - bounds2D.height * scale) / 2;
-
-    return rawItems.map((item) => ({
-      ...item,
-      screenBox: {
-        x: offsetX + (item.box.x - bounds2D.minX) * scale,
-        y: offsetY + (item.box.y - bounds2D.minY) * scale,
-        w: Math.max(8, item.box.w * scale),
-        h: Math.max(8, item.box.h * scale),
-      },
-      scale,
-    }));
-  }, [rawItems, bounds2D, drawingArea, view]);
+  const {
+    stageRef,
+    draftTrace,
+    activeCalibration,
+    handleStageMouseDown,
+    handleStageMouseMove,
+    handleStageMouseUp,
+  } = useBlueprintTraceInteraction({
+    drawingArea,
+    editorMode,
+    view,
+    traceTool,
+    newTraceType,
+    activeProjectionView,
+    referenceCalibration,
+    setReferenceCalibration,
+    setTraceObjects,
+    setSelectedTraceId,
+  });
 
   const gridLines = () => {
     if (!showGrid) return [];
@@ -657,33 +121,6 @@ function Canvas2D({
 
     return lines;
   };
-
-  const viewMeta = VIEWS.find((v) => v.key === view) || VIEWS[0];
-  const viewLabel = viewMeta.label;
-
-  const axisLabels =
-    view === "left" || view === "right"
-      ? ["Z (Depth)", "Y (Height)"]
-      : view === "top"
-        ? ["X (Width)", "Z (Depth)"]
-        : view === "exploded"
-          ? ["Exploded", "Parts"]
-          : ["X (Width)", "Y (Height)"];
-
-  const overallScreenBounds = useMemo(() => {
-    if (!scaledItems.length) return null;
-    return {
-      minX: Math.min(...scaledItems.map((i) => i.screenBox.x)),
-      minY: Math.min(...scaledItems.map((i) => i.screenBox.y)),
-      maxX: Math.max(...scaledItems.map((i) => i.screenBox.x + i.screenBox.w)),
-      maxY: Math.max(...scaledItems.map((i) => i.screenBox.y + i.screenBox.h)),
-    };
-  }, [scaledItems]);
-
-  const verticalDimText =
-    view === "top"
-      ? formatDim(selectedBounds3D?.depth || 0, unit)
-      : formatDim(selectedBounds3D?.height || 0, unit);
 
   return (
     <Stage
@@ -1064,4 +501,9 @@ function Canvas2D({
   );
 }
 
-export { DimensionLine, BlueprintTitleBlock, BlueprintPaper, Canvas2D };
+export {
+  DimensionLine,
+  BlueprintTitleBlock,
+  BlueprintPaper,
+  Canvas2D,
+};
