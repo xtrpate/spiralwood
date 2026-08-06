@@ -1,4 +1,5 @@
 const GRID_SIZE = 20;
+const DIMENSION_PRECISION_MM = 1;
 const MM_PER_INCH = 25.4;
 const REFERENCE_VIEWS = ["front", "back", "left", "right", "top"];
 
@@ -20,8 +21,29 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function snap(v) {
-  return Math.round(v / GRID_SIZE) * GRID_SIZE;
+function roundToPrecision(value, precision = DIMENSION_PRECISION_MM) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+
+  const safePrecision = Number(precision);
+  if (!Number.isFinite(safePrecision) || safePrecision <= 0) {
+    return numeric;
+  }
+
+  const rounded = Math.round(numeric / safePrecision) * safePrecision;
+  const decimalPlaces = String(safePrecision).includes(".")
+    ? String(safePrecision).split(".")[1].length
+    : 0;
+
+  return Number(rounded.toFixed(Math.min(decimalPlaces, 6)));
+}
+
+function snap(v, gridSize = GRID_SIZE) {
+  return roundToPrecision(v, gridSize);
+}
+
+function normalizeDimensionMm(value, minimum = DIMENSION_PRECISION_MM) {
+  return Math.max(minimum, roundToPrecision(value));
 }
 
 function clamp(v, min, max) {
@@ -44,7 +66,9 @@ function mmToDisplay(mm, unit) {
 
 function displayToMm(value, unit) {
   const numeric = Number(value) || 0;
-  return unit === "inch" ? snap(numeric * MM_PER_INCH) : snap(numeric);
+  return roundToPrecision(
+    unit === "inch" ? numeric * MM_PER_INCH : numeric,
+  );
 }
 
 function formatDim(mm, unit) {
@@ -198,6 +222,8 @@ export {
   cloneComponents,
   escapeHtml,
   snap,
+  roundToPrecision,
+  normalizeDimensionMm,
   clamp,
   makeId,
   makeGroupId,

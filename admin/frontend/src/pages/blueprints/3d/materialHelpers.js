@@ -95,7 +95,7 @@ function getMaterialPalette(comp) {
   };
 }
 
-function createMaterial(fill, selected, editing) {
+function createMaterial(fill) {
   return new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(fill || "#d9c2a5"),
     roughness: 0.38,
@@ -107,8 +107,12 @@ function createMaterial(fill, selected, editing) {
     sheenRoughness: 0.42,
     transparent: false,
     opacity: 1,
-    emissive: editing ? new THREE.Color("#60a5fa") : new THREE.Color("#000000"),
-    emissiveIntensity: editing ? 0.18 : selected ? 0.08 : 0,
+
+    // Selection and edit state are already shown by the blue outline and
+    // transform gizmo. Tinting the material here changed brown wood into a
+    // pink/blue shade after the component was rebuilt at drag end.
+    emissive: new THREE.Color("#000000"),
+    emissiveIntensity: 0,
   });
 }
 

@@ -30,6 +30,8 @@ import {
 } from "../data/componentUtils";
 import {
   snap,
+  roundToPrecision,
+  normalizeDimensionMm,
   clamp,
   makeId,
   mmToDisplay,
@@ -40,6 +42,8 @@ import {
 import S from "../styles/blueprintStyles";
 
 const GRID_SIZE = 20;
+const ROTATION_SNAP_DEGREES = 15;
+const MIN_COMPONENT_DIMENSION_MM = 1;
 const FLOOR_OFFSET = 40;
 const MM_PER_INCH = 25.4;
 
@@ -3874,13 +3878,18 @@ function ToolSidebar({
   setTransformMode,
   hasSelection,
   canTransform,
+  canScale,
   isSelectionLocked,
   onToggleLock,
 }) {
   const handleToolClick = (mode) => (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (canTransform) setTransformMode(mode);
+
+    if (!canTransform) return;
+    if (mode === "scale" && !canScale) return;
+
+    setTransformMode(mode);
   };
 
   const handleMouseDown = (e) => {
@@ -3925,15 +3934,21 @@ function ToolSidebar({
       </button>
 
       <button
-        title="Resize / Scale"
+        title={
+          canScale
+            ? "Resize selected part"
+            : "Resize one part at a time. Smart assembly resize is handled separately."
+        }
         onMouseDown={handleMouseDown}
         onPointerDown={handleMouseDown}
         onClick={handleToolClick("scale")}
-        disabled={!canTransform}
+        disabled={!canTransform || !canScale}
         style={{
           ...S.unityToolBtn,
-          ...(transformMode === "scale" ? S.unityToolBtnActive : {}),
-          opacity: canTransform ? 1 : 0.45,
+          ...(transformMode === "scale" && canScale
+            ? S.unityToolBtnActive
+            : {}),
+          opacity: canTransform && canScale ? 1 : 0.45,
         }}
       >
         ⤢
@@ -4097,6 +4112,7 @@ function ThreeDViewer({
   const keysRef = useRef({});
   const moveEnabledRef = useRef(false);
   const lastFrameRef = useRef(performance.now());
+  const isNormalizingScalePreviewRef = useRef(false);
 
   // --- NEW: 3D Selection Box State (Fixed with Ref) ---
   const [selectionRect, setSelectionRect] = useState(null);
@@ -4905,18 +4921,84 @@ function ThreeDViewer({
   );
 
   const compFromWorld = useCallback(
-    (obj, comp) => ({
-      x: snap(obj.position.x - comp.width / 2 + canvasW / 2),
-      y: snap(canvasH / 2 - obj.position.y - comp.height / 2),
-      z: snap(obj.position.z - comp.depth / 2 + canvasD / 2),
-      rotationX: Math.round(THREE.MathUtils.radToDeg(obj.rotation.x) / 15) * 15,
-      rotationY: Math.round(THREE.MathUtils.radToDeg(obj.rotation.y) / 15) * 15,
-      rotationZ: Math.round(THREE.MathUtils.radToDeg(obj.rotation.z) / 15) * 15,
-      width: snap(Math.max(GRID_SIZE, comp.width * obj.scale.x)),
-      height: snap(Math.max(GRID_SIZE, comp.height * obj.scale.y)),
-      depth: snap(Math.max(GRID_SIZE, comp.depth * obj.scale.z)),
-    }),
+    (obj, comp, modeOverride = null) => {
+      const mode = modeOverride || transformModeRef.current || "translate";
+      const isScaleMode = mode === "scale";
+      const isRotateMode = mode === "rotate";
+
+      const width = isScaleMode
+        ? normalizeDimensionMm(
+            Math.abs(comp.width * obj.scale.x),
+            MIN_COMPONENT_DIMENSION_MM,
+          )
+        : normalizeDimensionMm(comp.width, MIN_COMPONENT_DIMENSION_MM);
+      const height = isScaleMode
+        ? normalizeDimensionMm(
+            Math.abs(comp.height * obj.scale.y),
+            MIN_COMPONENT_DIMENSION_MM,
+          )
+        : normalizeDimensionMm(comp.height, MIN_COMPONENT_DIMENSION_MM);
+      const depth = isScaleMode
+        ? normalizeDimensionMm(
+            Math.abs(comp.depth * obj.scale.z),
+            MIN_COMPONENT_DIMENSION_MM,
+          )
+        : normalizeDimensionMm(comp.depth, MIN_COMPONENT_DIMENSION_MM);
+
+      const rawX = obj.position.x - width / 2 + canvasW / 2;
+      const rawY = canvasH / 2 - obj.position.y - height / 2;
+      const rawZ = obj.position.z - depth / 2 + canvasD / 2;
+
+      return {
+        // TransformControls already applies the 20 mm translation snap while
+        // dragging. Persist the resulting top-left coordinates at 1 mm
+        // precision so resize and multi-part rotation do not independently
+        // shift every component when React rebuilds the scene.
+        x: roundToPrecision(rawX),
+        y: roundToPrecision(rawY),
+        z: roundToPrecision(rawZ),
+        rotationX: isRotateMode
+          ? roundToPrecision(THREE.MathUtils.radToDeg(obj.rotation.x), 0.1)
+          : roundToPrecision(comp.rotationX || 0, 0.1),
+        rotationY: isRotateMode
+          ? roundToPrecision(THREE.MathUtils.radToDeg(obj.rotation.y), 0.1)
+          : roundToPrecision(comp.rotationY || 0, 0.1),
+        rotationZ: isRotateMode
+          ? roundToPrecision(THREE.MathUtils.radToDeg(obj.rotation.z), 0.1)
+          : roundToPrecision(comp.rotationZ || 0, 0.1),
+        width,
+        height,
+        depth,
+      };
+    },
     [canvasW, canvasH, canvasD],
+  );
+
+  const normalizeSingleScalePreview = useCallback(
+    (obj, comp) => {
+      if (!obj || !comp) return null;
+
+      const updates = compFromWorld(obj, comp, "scale");
+      const previewComp = {
+        ...comp,
+        ...updates,
+      };
+      const previewWorld = worldFromComp(previewComp);
+
+      // Keep the live mesh on the exact same snapped values that will be
+      // saved on pointer release. This removes the last-moment size jump.
+      obj.position.set(previewWorld.x, previewWorld.y, previewWorld.z);
+      obj.scale.set(
+        updates.width / Math.max(GRID_SIZE, Math.abs(comp.width) || GRID_SIZE),
+        updates.height /
+          Math.max(GRID_SIZE, Math.abs(comp.height) || GRID_SIZE),
+        updates.depth / Math.max(GRID_SIZE, Math.abs(comp.depth) || GRID_SIZE),
+      );
+      obj.updateMatrixWorld(true);
+
+      return updates;
+    },
+    [compFromWorld, worldFromComp],
   );
 
   const clearLiveSelectedComp = useCallback(() => {
@@ -5005,6 +5087,8 @@ function ThreeDViewer({
 
   const canTransformSelection3D =
     editorMode === "editable" && hasActiveSelection3D && !hasLockedSelection3D;
+  const canScaleSelection3D =
+    canTransformSelection3D && activeSelectionIds3D.length === 1;
 
   const toggleLockSelection3D = useCallback(() => {
     if (editorModeRef.current !== "editable") return;
@@ -5131,6 +5215,7 @@ function ThreeDViewer({
 
       multiTransformStateRef.current = {
         ids,
+        mode: transformModeRef.current || "translate",
         startPivotMatrix: pivot.matrixWorld.clone(),
         startPivotInverse: pivot.matrixWorld.clone().invert(),
         items: entries.map(({ id, obj, comp }) => ({
@@ -5151,6 +5236,11 @@ function ThreeDViewer({
     const pivot = selectionPivotRef.current;
 
     if (!state || !pivot) return;
+
+    // Generic multi-object scaling changes leg and panel thickness and cannot
+    // preserve furniture connections. It stays disabled until the dedicated
+    // anchored smart-resize engine is used.
+    if (state.mode === "scale") return;
 
     pivot.updateMatrixWorld(true);
 
@@ -5184,11 +5274,20 @@ function ThreeDViewer({
     const state = multiTransformStateRef.current;
     if (!state?.items?.length) return;
 
+    if (state.mode === "scale") {
+      resetMultiTransformState();
+      onBeforeDragRef.current = null;
+      return;
+    }
+
     const updatesById = {};
 
     state.items.forEach((item) => {
-      updatesById[item.id] = compFromWorld(item.obj, item.comp);
-      item.obj.scale.set(1, 1, 1);
+      updatesById[item.id] = compFromWorld(
+        item.obj,
+        item.comp,
+        state.mode,
+      );
     });
 
     if (onBeforeDragRef.current) {
@@ -5397,6 +5496,12 @@ function ThreeDViewer({
     else if (mode === "scale") transform.setMode("scale");
     else transform.setMode("translate");
 
+    transform.translationSnap = mode === "translate" ? GRID_SIZE : null;
+    transform.rotationSnap =
+      mode === "rotate"
+        ? THREE.MathUtils.degToRad(ROTATION_SNAP_DEGREES)
+        : null;
+
     transform.showX = true;
     transform.showY = true;
     transform.showZ = true;
@@ -5441,6 +5546,12 @@ function ThreeDViewer({
     }
 
     if (entries.length > 1) {
+      if (transformModeRef.current === "scale") {
+        resetMultiTransformState();
+        transform.detach();
+        return;
+      }
+
       const pivot = positionSelectionPivot(entries.map((entry) => entry.id));
       if (pivot) {
         resetMultiTransformState();
@@ -5784,7 +5895,9 @@ function ThreeDViewer({
     transform.setSpace("world");
     transform.setSize(0.86);
     transform.translationSnap = GRID_SIZE;
-    transform.rotationSnap = THREE.MathUtils.degToRad(15);
+    transform.rotationSnap = THREE.MathUtils.degToRad(
+      ROTATION_SNAP_DEGREES,
+    );
     scene.add(transform);
 
     const rootGroup = new THREE.Group();
@@ -5969,15 +6082,22 @@ function ThreeDViewer({
           return;
         }
 
-        const updates = compFromWorld(entry.obj, entry.comp);
+        const updates = compFromWorld(
+          entry.obj,
+          entry.comp,
+          transformModeRef.current,
+        );
 
         if (onBeforeDragRef.current) {
           onPushHistoryRef.current?.(onBeforeDragRef.current);
           onBeforeDragRef.current = null;
         }
 
-        onUpdateCompRef.current(currentId, updates);
-        entry.obj.scale.set(1, 1, 1);
+        onUpdateCompRef.current?.(currentId, updates);
+
+        // Keep the final preview intact until React rebuilds the object from
+        // the committed component data. Resetting the scale here caused a
+        // visible release-time jump and could leave assemblies out of sync.
         clearLiveSelectedComp();
         syncSelectionOutlines();
         storeCameraView();
@@ -5985,7 +6105,7 @@ function ThreeDViewer({
     };
 
     const onTransformObjectChange = () => {
-      if (!transform.dragging) return;
+      if (!transform.dragging || !transform.enabled) return;
 
       if (transform.object === selectionPivotRef.current) {
         previewMultiTransform();
@@ -6007,8 +6127,26 @@ function ThreeDViewer({
       const entry = entryMapRef.current.get(currentId);
       if (!entry?.obj || !entry?.comp) return;
 
+      // Do not rewrite the object's position or scale while TransformControls
+      // is actively dragging. Mutating the controlled object during the same
+      // drag makes TransformControls recalculate from a moving baseline, which
+      // causes the part to drift sideways and compounds the scale. The live
+      // inspector and the release commit both read from the same untouched
+      // transform values instead.
       syncLiveSelectedCompFromObject(currentId, entry.obj, entry.comp);
       syncSelectionOutlines();
+    };
+
+    const restorePointerInteractionControls = () => {
+      transform.enabled = true;
+
+      if (
+        !transform.dragging &&
+        !isSelectingRef.current &&
+        !libraryPlacementDragRef.current.active
+      ) {
+        orbit.enabled = true;
+      }
     };
 
     // --- NEW: Box Selection Event Handlers (Fixed with Ref to prevent infinite loops) ---
@@ -6058,6 +6196,8 @@ function ThreeDViewer({
     };
 
     const onPointerUp = (e) => {
+      restorePointerInteractionControls();
+
       const dragState = libraryPlacementDragRef.current;
 
       if (dragState.active) {
@@ -6147,6 +6287,8 @@ function ThreeDViewer({
     };
 
     const onPointerCancel = () => {
+      restorePointerInteractionControls();
+
       const dragState = libraryPlacementDragRef.current;
       if (!dragState.active) return;
 
@@ -6155,7 +6297,19 @@ function ThreeDViewer({
     };
 
     const onPointerDown = (e) => {
-      if (transform.axis) return;
+      if (transform.axis) {
+        // A drag that begins directly on a gizmo handle is an object
+        // transform. Prevent OrbitControls from interpreting the same left
+        // mouse drag as a camera orbit.
+        orbit.enabled = false;
+        return;
+      }
+
+      // A drag that begins anywhere else belongs to camera navigation or
+      // selection. Temporarily disable TransformControls so orbiting the
+      // camera cannot accidentally move, rotate, or scale the selected
+      // furniture assembly.
+      transform.enabled = false;
 
       const activePendingPlacement = pendingPlacementRef.current;
 
@@ -6441,7 +6595,14 @@ function ThreeDViewer({
     syncSelectionOutlines,
     clearLiveSelectedComp,
     syncLiveSelectedCompFromObject,
+    normalizeSingleScalePreview,
   ]);
+
+  useEffect(() => {
+    if (activeSelectionIds3D.length > 1 && transformMode === "scale") {
+      setTransformMode("translate");
+    }
+  }, [activeSelectionIds3D.length, transformMode, setTransformMode]);
 
   useEffect(() => {
     applyTransformMode();
@@ -6569,6 +6730,7 @@ function ThreeDViewer({
         setTransformMode={setTransformMode}
         hasSelection={hasActiveSelection3D}
         canTransform={canTransformSelection3D}
+        canScale={canScaleSelection3D}
         isSelectionLocked={isSelectionLocked3D}
         onToggleLock={toggleLockSelection3D}
       />

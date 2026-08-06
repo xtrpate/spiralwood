@@ -6,9 +6,15 @@ import {
   CHAIR_PART_SET,
   VIEWS,
 } from "./furnitureTypes";
-import { snap, makeId } from "./utils";
+import {
+  snap,
+  roundToPrecision,
+  normalizeDimensionMm,
+  makeId,
+} from "./utils";
 
 const GRID_SIZE = 20;
+const MIN_COMPONENT_DIMENSION_MM = 1;
 
 const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
@@ -114,15 +120,28 @@ function normalizeComponent(c) {
     blueprintStyle: c.blueprintStyle || "box",
     type: c.type || "custom_component",
     label: c.label || "Component",
-    x: snap(Number(c.x) || 0),
-    y: snap(Number(c.y) || 0),
-    z: snap(Number(c.z) || 0),
-    width: Math.max(GRID_SIZE, snap(Number(c.width) || 120)),
-    height: Math.max(GRID_SIZE, snap(Number(c.height) || 80)),
-    depth: Math.max(GRID_SIZE, snap(Number(c.depth) || 60)),
-    rotationX: Math.round(Number(c.rotationX) || 0),
-    rotationY: Math.round(Number(c.rotationY) || 0),
-    rotationZ: Math.round(Number(c.rotationZ) || 0),
+    // Keep saved component coordinates and sizes at production-level
+    // millimeter precision. Placement and move tools still use the 20 mm
+    // grid explicitly through snap(), but normalization must not force an
+    // 18 mm board or a resize-derived edge back onto that grid.
+    x: roundToPrecision(Number(c.x) || 0),
+    y: roundToPrecision(Number(c.y) || 0),
+    z: roundToPrecision(Number(c.z) || 0),
+    width: normalizeDimensionMm(
+      Number(c.width) || 120,
+      MIN_COMPONENT_DIMENSION_MM,
+    ),
+    height: normalizeDimensionMm(
+      Number(c.height) || 80,
+      MIN_COMPONENT_DIMENSION_MM,
+    ),
+    depth: normalizeDimensionMm(
+      Number(c.depth) || 60,
+      MIN_COMPONENT_DIMENSION_MM,
+    ),
+    rotationX: roundToPrecision(Number(c.rotationX) || 0, 0.1),
+    rotationY: roundToPrecision(Number(c.rotationY) || 0, 0.1),
+    rotationZ: roundToPrecision(Number(c.rotationZ) || 0, 0.1),
     fill: resolvedFill,
     color: explicitColor || resolvedFill,
     material: resolvedMaterial,
