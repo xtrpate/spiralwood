@@ -1250,6 +1250,46 @@ export default function EstimationPage() {
     };
   }, [id, location.state]);
 
+  useEffect(() => {
+    const handleOversizedDeliveryUpdate = (event) => {
+      const detail = event?.detail || {};
+
+      if (
+        String(detail.blueprintId || "") !== String(id)
+      ) {
+        return;
+      }
+
+      const nextEstimation = detail.estimation || {};
+      const nextFee = Number(
+        nextEstimation?.decision?.additional_delivery_fee ??
+          nextEstimation?.additional_delivery_fee ??
+          0,
+      );
+
+      setEstimation((current) => ({
+        ...(current || {}),
+        ...nextEstimation,
+        additional_delivery_fee:
+          Number.isFinite(nextFee) && nextFee > 0
+            ? nextFee
+            : 0,
+      }));
+    };
+
+    window.addEventListener(
+      "wisdom:oversized-delivery-updated",
+      handleOversizedDeliveryUpdate,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "wisdom:oversized-delivery-updated",
+        handleOversizedDeliveryUpdate,
+      );
+    };
+  }, [id]);
+
   const blueprintItems = useMemo(() => items.filter(isBlueprintPartItem), [items]);
   const inventoryItems = useMemo(() => items.filter(isInventoryItem), [items]);
   const otherItems = useMemo(() => items.filter(isOtherItem), [items]);
@@ -1269,7 +1309,15 @@ export default function EstimationPage() {
     (inventoryTrackingOnly ? 0 : inventorySubtotal);
   const laborCost = Number(costs.labor_cost || 0);
   const logisticsCost = Number(costs.overhead_cost || 0);
-  const subtotal = quoteItemsSubtotal + laborCost + logisticsCost;
+  const additionalDeliveryFee = Math.max(
+    0,
+    Number(estimation?.additional_delivery_fee || 0),
+  );
+  const subtotal =
+    quoteItemsSubtotal +
+    laborCost +
+    logisticsCost +
+    additionalDeliveryFee;
   const discountRate = Math.max(0, Math.min(100, Number(costs.discount || 0)));
   const discountAmount = subtotal * (discountRate / 100);
   const afterDiscount = Math.max(0, subtotal - discountAmount);
@@ -1414,6 +1462,7 @@ export default function EstimationPage() {
       inventory_pricing_mode: "tracking_only",
       material_cost: quoteItemsSubtotal,
       items_total: quoteItemsSubtotal,
+      additional_delivery_fee: additionalDeliveryFee,
       subtotal,
       discount_amount: discountAmount,
       tax_amount: taxAmount,
@@ -1570,6 +1619,9 @@ export default function EstimationPage() {
       ["Other Materials / Work", money(otherSubtotal)],
       ["Labor", money(laborCost)],
       ["Logistics", money(logisticsCost)],
+      ...(additionalDeliveryFee > 0
+        ? [["Additional Delivery Fee", money(additionalDeliveryFee)]]
+        : []),
       ["Subtotal", money(subtotal)],
       [`Discount (${discountRate}%)`, `(${money(discountAmount)})`],
       [`VAT (${Number(costs.tax_rate || 0)}%)`, money(taxAmount)],
@@ -1846,6 +1898,9 @@ export default function EstimationPage() {
               ["Other Materials / Work", otherSubtotal],
               ["Labor", laborCost],
               ["Logistics", logisticsCost],
+              ...(additionalDeliveryFee > 0
+                ? [["Additional Delivery Fee", additionalDeliveryFee]]
+                : []),
             ].map(([label, value]) => (
               <div key={label} style={summaryRow}>
                 <span style={summaryLabel}>{label}</span>

@@ -3,6 +3,7 @@ import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle, Receipt } from "lucide-react";
 import LocationPicker from "../../components/LocationPicker";
+import PosCheckoutQr from "../../components/PosCheckoutQr";
 import "./ProcessOrder.css";
 
 const isValidPHPhone = (value) => {
@@ -64,6 +65,74 @@ const readStoredQrAttempt = () => {
   );
 
   return parsed && typeof parsed === "object" ? parsed : null;
+};
+
+const normalizeServerCheckout = (value) => {
+  if (!value || typeof value !== "object" || !Array.isArray(value.items)) {
+    return null;
+  }
+
+  const items = value.items
+    .map((item) => {
+      const productId = Number(item?.product_id);
+      const quantity = Number(item?.quantity);
+      const unitPrice = Number(item?.unit_price);
+      const lineSubtotal = Number(item?.subtotal);
+
+      if (
+        !Number.isSafeInteger(productId) ||
+        productId <= 0 ||
+        !Number.isSafeInteger(quantity) ||
+        quantity <= 0 ||
+        !Number.isFinite(unitPrice) ||
+        unitPrice < 0
+      ) {
+        return null;
+      }
+
+      return {
+        key: `reserved-${productId}`,
+        product_id: productId,
+        product_name:
+          typeof item?.product_name === "string" && item.product_name.trim()
+            ? item.product_name
+            : `Product #${productId}`,
+        quantity,
+        unit_price: unitPrice,
+        subtotal:
+          Number.isFinite(lineSubtotal) && lineSubtotal >= 0
+            ? lineSubtotal
+            : unitPrice * quantity,
+      };
+    })
+    .filter(Boolean);
+
+  const subtotal = Number(value.subtotal);
+  const discount = Number(value.discount);
+  const deliveryFee = Number(value.delivery_fee);
+  const total = Number(value.total);
+
+  if (
+    items.length === 0 ||
+    !Number.isFinite(subtotal) ||
+    subtotal < 0 ||
+    !Number.isFinite(discount) ||
+    discount < 0 ||
+    !Number.isFinite(deliveryFee) ||
+    deliveryFee < 0 ||
+    !Number.isFinite(total) ||
+    total < 0
+  ) {
+    return null;
+  }
+
+  return {
+    items,
+    subtotal,
+    discount,
+    delivery_fee: deliveryFee,
+    total,
+  };
 };
 
 export default function ProcessOrder() {
@@ -213,9 +282,22 @@ export default function ProcessOrder() {
     "payment_mismatch",
     "access_error",
   ].includes(qrAttempt?.state);
-  const qrDisplayTotal = Number.isFinite(Number(qrAttempt?.server_total))
-    ? Number(qrAttempt.server_total)
-    : total;
+  const serverCheckout = normalizeServerCheckout(qrAttempt?.server_checkout);
+  const hasServerCheckout = Boolean(serverCheckout);
+  const displayCart = qrAttempt && serverCheckout ? serverCheckout.items : cart;
+  const displaySubtotal =
+    qrAttempt && serverCheckout ? serverCheckout.subtotal : subtotal;
+  const displayDiscountAmount =
+    qrAttempt && serverCheckout ? serverCheckout.discount : discountAmount;
+  const displayDeliveryFee =
+    qrAttempt && serverCheckout ? serverCheckout.delivery_fee : deliveryFeeAmt;
+  const displayTotal =
+    qrAttempt && serverCheckout ? serverCheckout.total : total;
+  const qrDisplayTotal = hasServerCheckout
+    ? serverCheckout.total
+    : Number.isFinite(Number(qrAttempt?.server_total))
+      ? Number(qrAttempt.server_total)
+      : total;
   const qrCanVerify =
     POS_QR_ENABLED &&
     Number.isSafeInteger(Number(qrAttempt?.attempt_id)) &&
@@ -388,6 +470,8 @@ export default function ProcessOrder() {
       checkout_url: existingDraft?.checkout_url || null,
       state: existingDraft?.state || "creating_attempt",
       created_at: existingDraft?.created_at || new Date().toISOString(),
+      updated_at: existingDraft?.updated_at || null,
+      expires_at: existingDraft?.expires_at || null,
       cart_fingerprint:
         existingDraft?.cart_fingerprint || buildCartFingerprint(cart),
     };
@@ -407,6 +491,8 @@ export default function ProcessOrder() {
         checkout_url: data.checkout_url || draft.checkout_url || null,
         state: data.status || "awaiting_payment",
         created_at: draft.created_at,
+        updated_at: data.updated_at || draft.updated_at || null,
+        expires_at: data.expires_at || draft.expires_at || null,
         cart_fingerprint: draft.cart_fingerprint,
       };
 
@@ -414,7 +500,7 @@ export default function ProcessOrder() {
       setQrNoticeTone(nextAttempt.checkout_url ? "success" : "info");
       setQrNotice(
         nextAttempt.checkout_url
-          ? "Online payment session is ready. Open PayMongo Checkout to continue."
+          ? "Online payment session is ready. Ask the customer to scan the QR code or open PayMongo Checkout."
           : data.message || "Payment session is still being prepared.",
       );
     } catch (err) {
@@ -681,6 +767,10 @@ export default function ProcessOrder() {
           data.item_count !== undefined && data.item_count !== null
             ? data.item_count
             : activeAttempt.server_item_count,
+        server_checkout:
+          data.checkout_summary && typeof data.checkout_summary === "object"
+            ? data.checkout_summary
+            : activeAttempt.server_checkout,
         requires_admin_recovery: Boolean(data.requires_admin_recovery),
         created_at: data.created_at || activeAttempt.created_at,
         updated_at: data.updated_at || activeAttempt.updated_at,
@@ -1331,22 +1421,45 @@ export default function ProcessOrder() {
                     Online Payment Pending
                   </div>
                   <p className="pos-qr-pending-copy">
-                    The item stock is reserved for this payment attempt. Open
-                    PayMongo Checkout, complete the payment, then verify it
-                    here.
+                    The item stock is reserved for this payment attempt. Ask
+                    the customer to scan the QR code below, or open PayMongo
+                    Checkout as a fallback.
                   </p>
-                  {qrCartMatchesCurrent ? (
-                    <div className="pos-qr-pending-amount">
-                      ₱
-                      {qrDisplayTotal.toLocaleString("en-PH", {
-                        minimumFractionDigits: 2,
-                      })}
+                  <div className="pos-qr-pending-amount">
+                    ₱
+                    {qrDisplayTotal.toLocaleString("en-PH", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </div>
+                  {qrAttempt.checkout_url && (
+                    <PosCheckoutQr
+                      checkoutUrl={qrAttempt.checkout_url}
+                      expiresAt={qrAttempt.expires_at}
+                      createdAt={qrAttempt.created_at}
+                      pollingDisabled={
+                        qrCreating ||
+                        qrVerifying ||
+                        qrReconciling ||
+                        qrNeedsManualReview
+                      }
+                      onPoll={() =>
+                        verifyOnlineAttempt(qrAttempt, { silent: true })
+                      }
+                    />
+                  )}
+
+                  {!qrCartMatchesCurrent && hasServerCheckout && (
+                    <div className="pos-qr-notice pos-qr-notice-info">
+                      {cart.length === 0
+                        ? "Reserved order details were restored from the server."
+                        : "Reserved order details were restored from the server. A different local cart was preserved and was not overwritten."}
                     </div>
-                  ) : (
+                  )}
+                  {!qrCartMatchesCurrent && !hasServerCheckout && (
                     <div className="pos-qr-notice pos-qr-notice-error">
                       The current cart differs from the cart reserved for this
                       payment attempt. The existing PayMongo checkout remains
-                      authoritative, and this newer cart will not be cleared.
+                      authoritative, and this local cart will not be cleared.
                     </div>
                   )}
                 </div>
@@ -1496,9 +1609,9 @@ export default function ProcessOrder() {
           </div>
 
           <div style={{ maxHeight: 320, overflowY: "auto", padding: "0 24px" }}>
-            {cart.map((item) => (
+            {displayCart.map((item) => (
               <div
-                key={item.key}
+                key={item.key || `reserved-${item.product_id}`}
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
@@ -1532,12 +1645,15 @@ export default function ProcessOrder() {
                   <div
                     style={{ color: "#71717a", marginTop: 4, fontWeight: 600 }}
                   >
-                    x{item.quantity} @ ₱{item.unit_price.toLocaleString()}
+                    x{item.quantity} @ ₱{Number(item.unit_price).toLocaleString()}
                   </div>
                 </div>
                 <div style={{ fontWeight: 800, color: "#0a0a0a" }}>
                   ₱
-                  {(item.unit_price * item.quantity).toLocaleString("en-PH", {
+                  {(Number.isFinite(Number(item.subtotal))
+                    ? Number(item.subtotal)
+                    : Number(item.unit_price) * Number(item.quantity)
+                  ).toLocaleString("en-PH", {
                     minimumFractionDigits: 2,
                   })}
                 </div>
@@ -1556,33 +1672,36 @@ export default function ProcessOrder() {
               <span>Subtotal</span>
               <span style={{ fontWeight: 600, color: "#18181b" }}>
                 ₱
-                {subtotal.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                {displaySubtotal.toLocaleString("en-PH", {
+                  minimumFractionDigits: 2,
+                })}
               </span>
             </div>
 
-            {discountAmount > 0 && (
+            {displayDiscountAmount > 0 && (
               <div style={{ ...summaryRowStyle, color: "#dc2626" }}>
                 <span>
                   Discount{" "}
-                  {form.discount_type === "percent"
-                    ? `(${discountInput}%)`
-                    : `(Flat)`}
+                  {!serverCheckout &&
+                    (form.discount_type === "percent"
+                      ? `(${discountInput}%)`
+                      : `(Flat)`)}
                 </span>
                 <span style={{ fontWeight: 600 }}>
                   -₱
-                  {discountAmount.toLocaleString("en-PH", {
+                  {displayDiscountAmount.toLocaleString("en-PH", {
                     minimumFractionDigits: 2,
                   })}
                 </span>
               </div>
             )}
 
-            {form.need_delivery && deliveryFeeAmt > 0 && (
+            {displayDeliveryFee > 0 && (
               <div style={summaryRowStyle}>
                 <span>Delivery Fee</span>
                 <span style={{ fontWeight: 600, color: "#18181b" }}>
                   +₱
-                  {deliveryFeeAmt.toLocaleString("en-PH", {
+                  {displayDeliveryFee.toLocaleString("en-PH", {
                     minimumFractionDigits: 2,
                   })}
                 </span>
@@ -1604,7 +1723,10 @@ export default function ProcessOrder() {
             >
               <span>TOTAL</span>
               <span>
-                ₱{total.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                ₱
+                {displayTotal.toLocaleString("en-PH", {
+                  minimumFractionDigits: 2,
+                })}
               </span>
             </div>
 

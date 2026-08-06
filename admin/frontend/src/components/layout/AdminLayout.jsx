@@ -1,10 +1,16 @@
 // src/components/layout/AdminLayout.jsx – Sidebar + topbar shell
-import React, { useState, useEffect } from "react";
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import {
+  Outlet,
+  NavLink,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
 import useAuthStore from "../../store/authStore";
 import toast from "react-hot-toast";
 import { useCart } from "../../pages/customer/cartcontext";
 import NotificationBell from "../NotificationBell";
+import OversizedDeliveryEstimatorPanel from "../OversizedDeliveryEstimatorPanel";
 import "./AdminLayout.css";
 
 const NAV_ITEMS = [
@@ -111,7 +117,6 @@ const NAV_ITEMS = [
     icon: "💬",
     roles: ["admin", "staff"],
   },
-
   { section: "Management" },
   {
     label: "Customers",
@@ -138,28 +143,48 @@ const NAV_ITEMS = [
     icon: "⚙️",
     roles: ["admin"],
   },
-  { label: "FAQs", path: "/admin/website/faqs", icon: "❓", roles: ["admin"] },
+  {
+    label: "FAQs",
+    path: "/admin/website/faqs",
+    icon: "❓",
+    roles: ["admin"],
+  },
   {
     label: "Page Content",
     path: "/admin/website/pages",
     icon: "📄",
     roles: ["admin"],
   },
-  { label: "Backup", path: "/admin/backup", icon: "💾", roles: ["admin"] },
+  {
+    label: "Backup",
+    path: "/admin/backup",
+    icon: "💾",
+    roles: ["admin"],
+  },
 ];
 
 export default function AdminLayout() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpen] = useState(true);
   const { clearCart } = useCart();
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-
-  // Mobile/tablet off-canvas drawer state — independent from the desktop
-  // `open` (collapsed/expanded width) state above. Only relevant below
-  // the 1023px breakpoint defined in AdminLayout.css.
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [deliveryGate, setDeliveryGate] = useState({
+    active: false,
+    readyForQuote: true,
+    message: "",
+  });
+
+  const estimationBlueprintId = useMemo(() => {
+    const match = String(location.pathname || "").match(
+      /^\/admin\/blueprints\/([1-9][0-9]*)\/estimation\/?$/,
+    );
+
+    return match ? Number(match[1]) : null;
+  }, [location.pathname]);
 
   useEffect(() => {
     if (user && user.role === "customer") {
@@ -168,23 +193,52 @@ export default function AdminLayout() {
     }
   }, [user, navigate]);
 
-  // Lock background scroll while the mobile drawer is open. Scoped to this
-  // component only — cleans itself up on close/unmount, and nothing else
-  // in the app currently touches document.body.style.overflow.
   useEffect(() => {
     if (mobileOpen) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
     }
+
     return () => {
       document.body.style.overflow = "";
     };
   }, [mobileOpen]);
 
+  useEffect(() => {
+    setDeliveryGate({
+      active: Boolean(estimationBlueprintId),
+      readyForQuote: !estimationBlueprintId,
+      message: estimationBlueprintId
+        ? "Wait for the oversized-delivery assessment to finish loading."
+        : "",
+    });
+  }, [estimationBlueprintId]);
+
+  const updateDeliveryGate = useCallback((nextGate) => {
+    setDeliveryGate((current) => {
+      const normalized = {
+        active: Boolean(nextGate?.active),
+        readyForQuote: Boolean(nextGate?.readyForQuote),
+        message: String(nextGate?.message || ""),
+      };
+
+      if (
+        current.active === normalized.active &&
+        current.readyForQuote === normalized.readyForQuote &&
+        current.message === normalized.message
+      ) {
+        return current;
+      }
+
+      return normalized;
+    });
+  }, []);
+
   const handleLogout = () => {
     setShowLogoutModal(true);
   };
+
   const confirmLogout = () => {
     setShowLogoutModal(false);
     logout();
@@ -192,8 +246,39 @@ export default function AdminLayout() {
     navigate("/login");
   };
 
+  const handleMainClickCapture = (event) => {
+    if (!estimationBlueprintId || !deliveryGate.active) return;
+
+    const target =
+      event.target instanceof Element
+        ? event.target
+        : null;
+
+    const button = target?.closest("button");
+    if (!button) return;
+
+    const label = String(button.textContent || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+
+    if (!label.includes("send quote")) return;
+    if (deliveryGate.readyForQuote) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    toast.error(
+      deliveryGate.message ||
+        "Complete the oversized-delivery assessment before sending the quotation.",
+    );
+  };
+
   const visibleItems = NAV_ITEMS.filter(
-    (item) => item.section || !item.roles || item.roles.includes(user?.role),
+    (item) =>
+      item.section ||
+      !item.roles ||
+      item.roles.includes(user?.role),
   );
 
   return (
@@ -205,8 +290,6 @@ export default function AdminLayout() {
         fontFamily: "Inter, sans-serif",
       }}
     >
-      {/* Mobile/tablet backdrop — only rendered (and visible via CSS) below
-          the 1023px breakpoint, tapping it closes the drawer. */}
       {mobileOpen && (
         <div
           className="wisdom-sidebar-overlay"
@@ -215,12 +298,13 @@ export default function AdminLayout() {
         />
       )}
 
-      {/* ── Sidebar ──────────────────────────────────────────────────────── */}
       <aside
-        className={`wisdom-sidebar ${mobileOpen ? "mobile-open" : ""}`}
+        className={`wisdom-sidebar ${
+          mobileOpen ? "mobile-open" : ""
+        }`}
         style={{
           width: open ? 240 : 64,
-          background: "#0a0a0a" /* 👉 Pitch black background */,
+          background: "#0a0a0a",
           color: "#e5e7eb",
           transition: "width .2s",
           overflow: "hidden",
@@ -229,25 +313,30 @@ export default function AdminLayout() {
           flexDirection: "column",
         }}
       >
-        {/* Brand */}
         <div
           style={{
             padding: "20px 16px",
-            borderBottom: "1px solid #27272a" /* 👉 Dark gray border */,
+            borderBottom: "1px solid #27272a",
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             gap: 10,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
             <span style={{ fontSize: 22 }}>🪵</span>
             {open && (
               <span
                 style={{
                   fontWeight: 800,
                   fontSize: 16,
-                  color: "#ffffff" /* 👉 Pure white text */,
+                  color: "#ffffff",
                   whiteSpace: "nowrap",
                   letterSpacing: "0.02em",
                 }}
@@ -257,7 +346,6 @@ export default function AdminLayout() {
             )}
           </div>
 
-          {/* Mobile-only close button — hidden on desktop via CSS */}
           <button
             type="button"
             className="wisdom-sidebar-close"
@@ -268,8 +356,13 @@ export default function AdminLayout() {
           </button>
         </div>
 
-        {/* Navigation */}
-        <nav style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+        <nav
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            padding: "8px 0",
+          }}
+        >
           {visibleItems.map((item, i) => {
             if (item.section) {
               return open ? (
@@ -280,8 +373,7 @@ export default function AdminLayout() {
                     fontSize: 10,
                     textTransform: "uppercase",
                     letterSpacing: 1.2,
-                    color:
-                      "#71717a" /* 👉 Neutral mid-gray for section headers */,
+                    color: "#71717a",
                     fontWeight: 700,
                   }}
                 >
@@ -293,10 +385,11 @@ export default function AdminLayout() {
                   style={{
                     borderTop: "1px solid #27272a",
                     margin: "8px 0",
-                  }} /* 👉 Dark gray border */
+                  }}
                 />
               );
             }
+
             return (
               <NavLink
                 key={item.path}
@@ -309,7 +402,9 @@ export default function AdminLayout() {
                   gap: 10,
                   padding: "9px 16px",
                   color: isActive ? "#ffffff" : "#a1a1aa",
-                  background: isActive ? "#27272a" : "transparent",
+                  background: isActive
+                    ? "#27272a"
+                    : "transparent",
                   textDecoration: "none",
                   fontSize: 13,
                   fontWeight: isActive ? 600 : 500,
@@ -320,20 +415,20 @@ export default function AdminLayout() {
                   transition: "all .15s",
                 })}
               >
-                <span style={{ fontSize: 16 }}>{item.icon}</span>
+                <span style={{ fontSize: 16 }}>
+                  {item.icon}
+                </span>
                 {open && item.label}
               </NavLink>
             );
           })}
         </nav>
 
-        {/* Toggle — desktop collapse/expand only, hidden on mobile via CSS */}
         <button
           className="wisdom-sidebar-collapse-toggle"
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => setOpen((current) => !current)}
           style={{
-            background:
-              "#18181b" /* 👉 Slightly lighter black for the button */,
+            background: "#18181b",
             border: "none",
             borderTop: "1px solid #27272a",
             color: "#a1a1aa",
@@ -342,31 +437,32 @@ export default function AdminLayout() {
             textAlign: "center",
             transition: "color 0.2s",
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "#ffffff")}
-          onMouseLeave={(e) => (e.currentTarget.style.color = "#a1a1aa")}
+          onMouseEnter={(event) => {
+            event.currentTarget.style.color = "#ffffff";
+          }}
+          onMouseLeave={(event) => {
+            event.currentTarget.style.color = "#a1a1aa";
+          }}
         >
           {open ? "◀" : "▶"}
         </button>
       </aside>
 
-      {/* ── Main Area ────────────────────────────────────────────────────── */}
       <div
         className="wisdom-admin-main"
         style={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          background:
-            "#f4f4f5" /* 👉 Clean, neutral light gray background instead of baby blue */,
+          background: "#f4f4f5",
           minWidth: 0,
         }}
       >
-        {/* Topbar */}
         <header
           className="wisdom-admin-topbar"
           style={{
             background: "#ffffff",
-            borderBottom: "1px solid #e4e4e7" /* 👉 Neutral border */,
+            borderBottom: "1px solid #e4e4e7",
             padding: "12px 24px",
             display: "flex",
             alignItems: "center",
@@ -374,7 +470,6 @@ export default function AdminLayout() {
             gap: 16,
           }}
         >
-          {/* Mobile-only hamburger — hidden on desktop via CSS */}
           <button
             type="button"
             className="wisdom-hamburger-btn"
@@ -388,14 +483,18 @@ export default function AdminLayout() {
 
           <span
             className="wisdom-admin-user-badge"
-            style={{ fontSize: 13, color: "#52525b", fontWeight: 500 }}
+            style={{
+              fontSize: 13,
+              color: "#52525b",
+              fontWeight: 500,
+            }}
           >
             👤 {user?.name}{" "}
             <span
               style={{
                 fontSize: 11,
-                background: "#f4f4f5" /* 👉 Clean gray badge */,
-                color: "#18181b" /* 👉 Almost black text */,
+                background: "#f4f4f5",
+                color: "#18181b",
                 padding: "3px 10px",
                 borderRadius: 20,
                 fontWeight: 600,
@@ -406,11 +505,11 @@ export default function AdminLayout() {
               {user?.role}
             </span>
           </span>
+
           <button
             onClick={handleLogout}
             style={{
-              background:
-                "#18181b" /* 👉 Sleek black logout button instead of bright red */,
+              background: "#18181b",
               color: "#ffffff",
               border: "none",
               padding: "7px 18px",
@@ -420,18 +519,37 @@ export default function AdminLayout() {
               fontWeight: 600,
               transition: "background 0.2s",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#3f3f46")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "#18181b")}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.background = "#3f3f46";
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.background = "#18181b";
+            }}
           >
             Logout
           </button>
         </header>
 
-        {/* Page Content */}
-        <main style={{ flex: 1, padding: 24, overflowY: "auto" }}>
+        <main
+          style={{
+            flex: 1,
+            padding: 24,
+            overflowY: "auto",
+          }}
+          onClickCapture={handleMainClickCapture}
+        >
+          {estimationBlueprintId && (
+            <OversizedDeliveryEstimatorPanel
+              key={estimationBlueprintId}
+              blueprintId={estimationBlueprintId}
+              onGateChange={updateDeliveryGate}
+            />
+          )}
+
           <Outlet />
         </main>
       </div>
+
       {showLogoutModal && (
         <div
           style={{
@@ -468,6 +586,7 @@ export default function AdminLayout() {
             >
               Sign out
             </h2>
+
             <p
               style={{
                 fontSize: 13,
@@ -476,12 +595,17 @@ export default function AdminLayout() {
                 lineHeight: 1.5,
               }}
             >
-              Are you sure you want to log out of your account? You will need to
-              sign back in to access the admin portal.
+              Are you sure you want to log out of your
+              account? You will need to sign back in to access
+              the admin portal.
             </p>
 
             <div
-              style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}
+              style={{
+                display: "flex",
+                gap: 12,
+                justifyContent: "flex-end",
+              }}
             >
               <button
                 onClick={() => setShowLogoutModal(false)}
@@ -496,15 +620,18 @@ export default function AdminLayout() {
                   fontWeight: 600,
                   transition: "background 0.2s",
                 }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.background = "#27272a")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = "transparent")
-                }
+                onMouseEnter={(event) => {
+                  event.currentTarget.style.background =
+                    "#27272a";
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.background =
+                    "transparent";
+                }}
               >
                 Cancel
               </button>
+
               <button
                 onClick={confirmLogout}
                 style={{
@@ -518,8 +645,12 @@ export default function AdminLayout() {
                   fontSize: 13,
                   transition: "opacity 0.2s",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.8")}
-                onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+                onMouseEnter={(event) => {
+                  event.currentTarget.style.opacity = "0.8";
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.opacity = "1";
+                }}
               >
                 Yes, log out
               </button>

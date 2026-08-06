@@ -23,6 +23,11 @@ const POLICY_SETTING_KEYS = [
   "warranty_period_days",
   "cancellation_fee_pct",
 ];
+const DELIVERY_SETTING_KEYS = [
+  "standard_truck_limit_width_mm",
+  "standard_truck_limit_height_mm",
+  "standard_truck_limit_depth_mm",
+];
 
 // Strict allow-list mapping each known non-logo setting key to its
 // database group_name. Any key not in this map is ignored entirely —
@@ -46,6 +51,9 @@ const SETTING_KEY_GROUPS = {
   checkout_note: "email",
   warranty_period_days: "policy",
   cancellation_fee_pct: "policy",
+  standard_truck_limit_width_mm: "delivery",
+  standard_truck_limit_height_mm: "delivery",
+  standard_truck_limit_depth_mm: "delivery",
 };
 
 // Only these three static pages may be created or updated. Any other
@@ -100,8 +108,44 @@ exports.updateSettings = async (req, res) => {
        WHERE content_type = 'setting'`,
     );
     const existingMap = new Map(
-      existingRows.map((r) => [r.setting_key, { value: r.value, group_name: r.group_name }]),
+      existingRows.map((r) => [
+        r.setting_key,
+        {
+          value: r.value,
+          group_name: r.group_name,
+        },
+      ]),
     );
+
+    const hasDeliveryLimitUpdate = DELIVERY_SETTING_KEYS.some((key) =>
+      Object.prototype.hasOwnProperty.call(req.body, key),
+    );
+
+    if (hasDeliveryLimitUpdate) {
+      const mergedLimits = DELIVERY_SETTING_KEYS.map((key) => {
+        const incoming =
+          Object.prototype.hasOwnProperty.call(req.body, key)
+            ? req.body[key]
+            : existingMap.get(key)?.value;
+
+        return Number(incoming);
+      });
+
+      const hasInvalidLimit = mergedLimits.some(
+        (value) =>
+          !Number.isFinite(value) ||
+          value <= 0 ||
+          value > 20000,
+      );
+
+      if (hasInvalidLimit) {
+        const error = new Error(
+          "Enter valid internal truck width, height, and depth limits in millimeters before saving.",
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+    }
 
     const changedKeys = [];
     for (const [key, value] of Object.entries(req.body)) {
@@ -185,6 +229,9 @@ exports.updateSettings = async (req, res) => {
           policy_settings_changed: changedKeys.some((k) =>
             POLICY_SETTING_KEYS.includes(k),
           ),
+          delivery_settings_changed: changedKeys.some((k) =>
+            DELIVERY_SETTING_KEYS.includes(k),
+          ),
           has_logo: hasLogoAfter,
           logo_uploaded_this_update: Boolean(req.file),
         },
@@ -194,7 +241,7 @@ exports.updateSettings = async (req, res) => {
     res.json({ message: "Settings updated." });
   } catch (err) {
     await conn.rollback();
-    res.status(500).json({ message: err.message });
+    res.status(err.statusCode || 500).json({ message: err.message });
   } finally {
     conn.release();
   }

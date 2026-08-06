@@ -3,11 +3,18 @@ import React, { useEffect, useState } from "react";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 
+const DELIVERY_LIMIT_KEYS = [
+  "standard_truck_limit_width_mm",
+  "standard_truck_limit_height_mm",
+  "standard_truck_limit_depth_mm",
+];
+
 const SECTION_META = {
   display: { label: "🖼️ Display & Branding", icon: "🖼️" },
   payment: { label: "💳 Payment Settings", icon: "💳" },
   email: { label: "📧 Email & Notifications", icon: "📧" },
   policy: { label: "📋 Business Policy", icon: "📋" },
+  delivery: { label: "🚚 Delivery Capacity", icon: "🚚" },
 };
 
 // Human-readable labels for each key
@@ -43,6 +50,7 @@ const KEY_META = {
     type: "text",
     hint: "Shown on the Contact page and receipts.",
   },
+
   // payment
   cod_enabled: {
     label: "Cash on Delivery (COD)",
@@ -79,6 +87,7 @@ const KEY_META = {
     type: "text",
     hint: "Account number shown during bank transfer checkout.",
   },
+
   // email
   email_footer: {
     label: "Email Footer Text",
@@ -90,22 +99,62 @@ const KEY_META = {
     type: "textarea",
     hint: "Message shown to customers during checkout.",
   },
+
   // policy
   warranty_period_days: {
     label: "Warranty Period (days)",
     type: "number",
+    suffix: "days",
+    min: 1,
+    step: 1,
     hint: "Default: 365 days (1 year) from order completion.",
   },
   cancellation_fee_pct: {
     label: "Cancellation Fee (%)",
     type: "number",
+    suffix: "%",
+    min: 0,
+    max: 100,
+    step: 0.01,
     hint: "Percentage fee applied on custom order cancellations after down payment.",
+  },
+
+  // delivery capacity
+  standard_truck_limit_width_mm: {
+    label: "Standard Truck Internal Width",
+    type: "number",
+    suffix: "mm",
+    min: 1,
+    max: 20000,
+    step: 1,
+    hint:
+      "Enter the actual usable internal cargo width. Do not use the truck's exterior width.",
+  },
+  standard_truck_limit_height_mm: {
+    label: "Standard Truck Internal Height",
+    type: "number",
+    suffix: "mm",
+    min: 1,
+    max: 20000,
+    step: 1,
+    hint:
+      "Enter the smaller of the usable internal cargo height or loading-door opening.",
+  },
+  standard_truck_limit_depth_mm: {
+    label: "Standard Truck Internal Length / Depth",
+    type: "number",
+    suffix: "mm",
+    min: 1,
+    max: 20000,
+    step: 1,
+    hint:
+      "Enter the usable cargo length from the loading opening to the front wall.",
   },
 };
 
 export default function WebsiteSettingsPage() {
   const [settings, setSettings] = useState({});
-  const [dirty, setDirty] = useState({}); // only changed keys
+  const [dirty, setDirty] = useState({});
   const [logoFile, setLogoFile] = useState(null);
   const [preview, setPreview] = useState("");
   const [saving, setSaving] = useState(false);
@@ -127,12 +176,15 @@ export default function WebsiteSettingsPage() {
         Object.values(data || {}).forEach((group) => {
           if (group && typeof group === "object") Object.assign(flat, group);
         });
+
         setSettings(flat);
         setPreview(flat.site_logo ? buildAssetUrl(flat.site_logo) : "");
       } catch (error) {
         if (cancelled) return;
+
         const message =
           error.response?.data?.message || "Unable to load website settings.";
+
         setLoadError(message);
         toast.error(message);
       } finally {
@@ -141,29 +193,63 @@ export default function WebsiteSettingsPage() {
     };
 
     loadSettings();
+
     return () => {
       cancelled = true;
     };
   }, []);
 
   const set = (key, val) => {
-    setSettings((s) => ({ ...s, [key]: val }));
-    setDirty((d) => ({ ...d, [key]: val }));
+    setSettings((current) => ({ ...current, [key]: val }));
+    setDirty((current) => ({ ...current, [key]: val }));
+  };
+
+  const validateDeliveryLimits = () => {
+    const deliveryChanged = DELIVERY_LIMIT_KEYS.some((key) =>
+      Object.prototype.hasOwnProperty.call(dirty, key),
+    );
+
+    if (!deliveryChanged) return true;
+
+    const values = DELIVERY_LIMIT_KEYS.map((key) => Number(settings[key]));
+
+    if (
+      values.some(
+        (value) =>
+          !Number.isFinite(value) ||
+          value <= 0 ||
+          value > 20000,
+      )
+    ) {
+      setActiveTab("delivery");
+      toast.error(
+        "Enter valid internal truck width, height, and depth limits in millimeters.",
+      );
+      return false;
+    }
+
+    return true;
   };
 
   const handleSave = async () => {
+    if (!validateDeliveryLimits()) return;
+
     setSaving(true);
+
     try {
       const fd = new FormData();
+
       // Send only changed keys
-      Object.entries(dirty).forEach(([k, v]) => {
-        if (k !== "site_logo") fd.append(k, v);
+      Object.entries(dirty).forEach(([key, value]) => {
+        if (key !== "site_logo") fd.append(key, value);
       });
+
       if (logoFile) fd.append("site_logo", logoFile);
 
       await api.put("/website/settings", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
+
       toast.success("Settings saved.");
       setDirty({});
       setLogoFile(null);
@@ -218,7 +304,9 @@ export default function WebsiteSettingsPage() {
       ],
       email: ["email_footer", "checkout_note"],
       policy: ["warranty_period_days", "cancellation_fee_pct"],
+      delivery: DELIVERY_LIMIT_KEYS,
     }).find(([, keys]) => keys.includes(key));
+
     return group?.[0] === activeTab;
   });
 
@@ -240,10 +328,11 @@ export default function WebsiteSettingsPage() {
         <div>
           <h1 style={pageTitle}>Website Maintenance</h1>
           <p style={{ fontSize: 13, color: "#52525b", margin: "4px 0 0" }}>
-            Configure the customer-facing website settings, payment options, and
-            business policies.
+            Configure the customer-facing website settings, payment options,
+            business policies, and standard delivery-truck capacity.
           </p>
         </div>
+
         <button
           onClick={handleSave}
           disabled={saving || !hasDirty}
@@ -312,6 +401,17 @@ export default function WebsiteSettingsPage() {
         ))}
       </div>
 
+      {activeTab === "delivery" && (
+        <div style={deliveryNotice}>
+          <strong>Use actual usable cargo measurements.</strong>
+          <span>
+            The system compares the customer’s final furniture width, height,
+            and depth against these limits. It does not calculate or guess the
+            final larger-truck fee.
+          </span>
+        </div>
+      )}
+
       {/* ── Settings Form ─────────────────────────────────────────── */}
       <div style={card}>
         {tabKeys.map(([key, meta]) => (
@@ -326,7 +426,10 @@ export default function WebsiteSettingsPage() {
             onLogoChange={(file) => {
               setLogoFile(file);
               setPreview(URL.createObjectURL(file));
-              setDirty((d) => ({ ...d, site_logo: "updated" }));
+              setDirty((current) => ({
+                ...current,
+                site_logo: "updated",
+              }));
             }}
           />
         ))}
@@ -345,7 +448,8 @@ function SettingRow({
   onChange,
   onLogoChange,
 }) {
-  const isTrue = (v) => v === "true" || v === true || v === 1;
+  const isTrue = (input) =>
+    input === "true" || input === true || input === 1;
 
   return (
     <div
@@ -372,6 +476,7 @@ function SettingRow({
           }}
         >
           {meta.label}
+
           {isDirty && (
             <span
               style={{
@@ -386,6 +491,7 @@ function SettingRow({
             </span>
           )}
         </div>
+
         <div
           style={{
             fontSize: 12,
@@ -438,6 +544,7 @@ function SettingRow({
                 }}
               />
             </div>
+
             <span
               style={{
                 fontSize: 13,
@@ -454,7 +561,7 @@ function SettingRow({
           <input
             type="text"
             value={value || ""}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(event) => onChange(event.target.value)}
             style={inputFull}
             placeholder={`Enter ${meta.label.toLowerCase()}...`}
           />
@@ -464,12 +571,22 @@ function SettingRow({
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <input
               type="number"
+              min={meta.min}
+              max={meta.max}
+              step={meta.step}
               value={value || ""}
-              onChange={(e) => onChange(e.target.value)}
-              style={{ ...inputFull, width: 140 }}
+              onChange={(event) => onChange(event.target.value)}
+              style={{ ...inputFull, width: 160 }}
             />
-            <span style={{ fontSize: 12, color: "#71717a", fontWeight: 600 }}>
-              {keyName === "warranty_period_days" ? "days" : "%"}
+
+            <span
+              style={{
+                fontSize: 12,
+                color: "#71717a",
+                fontWeight: 600,
+              }}
+            >
+              {meta.suffix || ""}
             </span>
           </div>
         )}
@@ -477,9 +594,13 @@ function SettingRow({
         {meta.type === "textarea" && (
           <textarea
             value={value || ""}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(event) => onChange(event.target.value)}
             rows={4}
-            style={{ ...inputFull, resize: "vertical", fontFamily: "inherit" }}
+            style={{
+              ...inputFull,
+              resize: "vertical",
+              fontFamily: "inherit",
+            }}
             placeholder={`Enter ${meta.label.toLowerCase()}...`}
           />
         )}
@@ -517,15 +638,19 @@ function SettingRow({
                 🪵
               </div>
             )}
+
             <div>
               <input
                 type="file"
                 accept="image/*"
-                onChange={(e) => {
-                  if (e.target.files[0]) onLogoChange(e.target.files[0]);
+                onChange={(event) => {
+                  if (event.target.files[0]) {
+                    onLogoChange(event.target.files[0]);
+                  }
                 }}
                 style={{ fontSize: 13, color: "#52525b" }}
               />
+
               <p
                 style={{
                   fontSize: 11,
@@ -552,6 +677,7 @@ const pageTitle = {
   margin: 0,
   letterSpacing: "-0.02em",
 };
+
 const card = {
   background: "#fff",
   borderRadius: 16,
@@ -559,6 +685,20 @@ const card = {
   boxShadow: "0 1px 2px rgba(0,0,0,.02)",
   overflow: "hidden",
 };
+
+const deliveryNotice = {
+  display: "grid",
+  gap: 4,
+  marginBottom: 16,
+  padding: "14px 16px",
+  border: "1px solid #d4d4d8",
+  borderRadius: 12,
+  background: "#fafafa",
+  color: "#3f3f46",
+  fontSize: 12,
+  lineHeight: 1.5,
+};
+
 const center = {
   display: "flex",
   alignItems: "center",
@@ -568,6 +708,7 @@ const center = {
   fontSize: 14,
   fontWeight: 600,
 };
+
 const inputFull = {
   width: "100%",
   padding: "10px 14px",
@@ -578,6 +719,7 @@ const inputFull = {
   boxSizing: "border-box",
   outline: "none",
 };
+
 const btnPrimary = {
   padding: "10px 20px",
   background: "#18181b",

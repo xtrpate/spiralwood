@@ -1,5 +1,8 @@
 require("dotenv").config();
 
+// Use Philippine Standard Time for Node-generated business dates and labels.
+process.env.TZ = process.env.TZ || "Asia/Manila";
+
 const express = require("express");
 const helmet = require("helmet");
 const cors = require("cors");
@@ -98,7 +101,15 @@ app.use(
 );
 app.use("/api/public", require("./routes/public"));
 
+app.use(
+  "/api",
+  require("./routes/admin.oversized-delivery-guard"),
+);
 app.use("/api", adminRoutes);
+app.use(
+  "/api/oversized-delivery",
+  require("./routes/admin.oversized-delivery"),
+);
 
 app.use("/api/customer/auth", require("./routes/customer.auth"));
 app.use("/api/customer/products", require("./routes/customer.products"));
@@ -112,6 +123,10 @@ app.use(
 );
 app.use("/api/customer/warranty", require("./routes/customer.warranty"));
 app.use("/api/customer/support", require("./routes/customer.support"));
+app.use(
+  "/api/customer/custom-orders",
+  require("./routes/customer.oversized-delivery-quote"),
+);
 app.use("/api/customer/custom-orders", customerCustomOrdersRoutes);
 app.use(
   "/api/customer/notifications",

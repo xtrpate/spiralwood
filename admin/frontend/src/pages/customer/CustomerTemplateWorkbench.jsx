@@ -51,7 +51,6 @@ const fileToDataUrl = (file) =>
     reader.readAsDataURL(file);
   });
 
-
 const firstText = (...values) => {
   for (const value of values) {
     const text = String(value ?? "").trim();
@@ -118,7 +117,8 @@ export default function CustomerTemplateWorkbench({
     }
 
     const invalidType = incomingFiles.find(
-      (file) => !ALLOWED_REFERENCE_TYPES.has(String(file.type || "").toLowerCase()),
+      (file) =>
+        !ALLOWED_REFERENCE_TYPES.has(String(file.type || "").toLowerCase()),
     );
 
     if (invalidType) {
@@ -157,7 +157,9 @@ export default function CustomerTemplateWorkbench({
   };
 
   const handleRemoveReferencePhoto = (photoId) => {
-    setReferencePhotos((prev) => prev.filter((item) => item.id !== photoId));
+    setReferencePhotos((prev) =>
+      prev.filter((item) => item.id !== photoId),
+    );
   };
 
   const handleApply = (draft = {}) => {
@@ -174,6 +176,13 @@ export default function CustomerTemplateWorkbench({
       ...(sceneData?.metadata || {}),
       ...(draft?.metadata || {}),
     };
+
+    const deliveryRequirement =
+      draft?.delivery_requirement &&
+      typeof draft.delivery_requirement === "object" &&
+      !Array.isArray(draft.delivery_requirement)
+        ? draft.delivery_requirement
+        : null;
 
     const initialMessage = firstText(
       draft?.initial_message,
@@ -288,6 +297,8 @@ export default function CustomerTemplateWorkbench({
 
       components: normalizedComponents,
 
+      delivery_requirement: deliveryRequirement,
+
       customization_snapshot: {
         width: finalDimensions.width_mm,
         height: finalDimensions.height_mm,
@@ -298,6 +309,7 @@ export default function CustomerTemplateWorkbench({
         door_style: doorStyle,
         hardware,
         unit: "mm",
+        delivery_requirement: deliveryRequirement,
       },
 
       editor_snapshot: {
@@ -305,7 +317,9 @@ export default function CustomerTemplateWorkbench({
         components: normalizedComponents,
       },
 
-      reference_photos: Array.isArray(referencePhotos) ? referencePhotos : [],
+      reference_photos: Array.isArray(referencePhotos)
+        ? referencePhotos
+        : [],
 
       metadata: {
         ...mergedMetadata,
@@ -314,6 +328,7 @@ export default function CustomerTemplateWorkbench({
         color,
         door_style: doorStyle,
         hardware,
+        delivery_requirement: deliveryRequirement,
       },
     });
   };

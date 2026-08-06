@@ -7,6 +7,9 @@ import React, {
 } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import api from "../../services/api";
+import OversizedDeliveryWarning from "../../components/OversizedDeliveryWarning";
+import { assessOversizedDelivery } from "../../utils/oversizedDelivery";
 
 import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
@@ -287,6 +290,7 @@ export default function Customer3DViewer({
 
   const [quantity, setQuantity] = useState(1);
   const [comments, setComments] = useState("");
+  const [standardTruckLimits, setStandardTruckLimits] = useState(null);
 
   const [overallDrafts, setOverallDrafts] = useState({
     width: "",
@@ -410,6 +414,41 @@ export default function Customer3DViewer({
       return current;
     return normalizeDimensions(initialDimensions || {});
   }, [components, initialDimensions]);
+
+  useEffect(() => {
+    let active = true;
+
+    api
+      .get("/customer/blueprints/delivery-config")
+      .then((response) => {
+        if (!active) return;
+
+        setStandardTruckLimits(
+          response.data?.configured
+            ? response.data.standard_truck_limits_mm
+            : null,
+        );
+      })
+      .catch((error) => {
+        console.error(
+          "Failed to load standard-truck delivery limits:",
+          error,
+        );
+
+        if (active) {
+          setStandardTruckLimits(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const deliveryAssessment = useMemo(
+    () => assessOversizedDelivery(overallBounds, standardTruckLimits),
+    [overallBounds, standardTruckLimits],
+  );
 
   const selectedGroup = useMemo(() => {
     if (!selectedCompIds.length) return [];
@@ -1211,6 +1250,7 @@ export default function Customer3DViewer({
       worldSize: { width_mm: WORLD_W, height_mm: WORLD_H, depth_mm: WORLD_D },
       components: cloneDeep(components),
       metadata: summarizeMetadata(components),
+      delivery_requirement: deliveryAssessment,
     });
   };
 
@@ -1346,6 +1386,11 @@ export default function Customer3DViewer({
                   </strong>
                 </div>
               </div>
+
+              <OversizedDeliveryWarning
+                assessment={deliveryAssessment}
+                compact
+              />
             </section>
 
             <section
