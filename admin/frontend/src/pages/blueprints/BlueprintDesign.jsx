@@ -17,7 +17,6 @@ import {
   Circle,
   Image as KonvaImage,
 } from "react-konva";
-import api from "../../services/api";
 import toast from "react-hot-toast";
 
 // ── Data & Types ──────────────────────────────────────────────────────────────
@@ -67,33 +66,18 @@ import {
   resolveAssetUrl,
   isImageReferenceFile,
   createEmptyReferenceFiles,
-  getReferenceFilesFromBlueprint,
-  getReferenceFileFromBlueprint,
-  getEditorMode,
 } from "./data/utils";
-import {
-  resolveInitialComponents,
-  useReferenceImage,
-} from "./data/initHelpers";
+import { useReferenceImage } from "./data/initHelpers";
 import {
   DEFAULT_IMPORT_DIMENSIONS,
   DEFAULT_IMPORT_TEMPLATE_TYPE,
-  REFERENCE_TRACE_VIEWS,
   TRACE_TYPE_LABELS,
   TRACE_TYPE_OPTIONS,
   createEmptyReferenceCalibrationByView,
   createEmptyTraceObjectsByView,
-  flattenTraceObjectsByView,
   isLikelyChairReference,
   normalizeProjectionView,
-  normalizeReferenceCalibration,
-  normalizeReferenceCalibrationByView,
-  normalizeTraceObject,
   normalizeTraceObjects,
-  normalizeTraceObjectsByView,
-  normalizeTraceView,
-  resolveImportTemplateType,
-  sanitizeImportDimensions,
 } from "./data/referenceTraceUtils";
 import { createObjectId, deepClone } from "./data/editorUtils";
 import {
@@ -108,7 +92,6 @@ import {
   createDiningChairTemplateComponents,
   buildFurnitureTemplateParts,
   buildDiningChairParts,
-  createImportedFurnitureComponents,
   createImportedDiningChairComponents,
 } from "./data/templateComponents";
 
@@ -132,6 +115,8 @@ import { BlueprintPublishModal } from "./components/BlueprintPublishModal";
 import { useBlueprintHistory } from "./hooks/useBlueprintHistory";
 import { useBlueprintPersistence } from "./hooks/useBlueprintPersistence";
 import { useBlueprintExport } from "./hooks/useBlueprintExport";
+import { useBlueprintLoader } from "./hooks/useBlueprintLoader";
+import { useBlueprintReferenceWorkspace } from "./hooks/useBlueprintReferenceWorkspace";
 import { buildConversionCutListRows } from "./data/conversionCutListUtils";
 
 // ── 3D Viewer ─────────────────────────────────────────────────────────────────
@@ -303,416 +288,57 @@ export default function BlueprintDesign() {
     }
   }, [components, selectedId, selectedIds, edit3DId]);
 
-  useEffect(() => {
-    if (!id || id === "new") {
-      setReferenceFiles(createEmptyReferenceFiles());
-      setReferenceFile(null);
-      setEditorMode("editable");
-      setImportTemplateType(DEFAULT_IMPORT_TEMPLATE_TYPE);
-      setImportDimensions(DEFAULT_IMPORT_DIMENSIONS);
-      setImportComments("");
-
-      setView("front");
-      setComponents([]);
-      setSelectedId(null);
-      setEdit3DId(null);
-      setReferenceCalibrationByView(createEmptyReferenceCalibrationByView());
-      setTraceObjectsByView(createEmptyTraceObjectsByView());
-      setSelectedTraceId(null);
-      return;
-    }
-
-    api
-      .get(`/blueprints/${id}/estimation`)
-      .then((res) => setEstimatedPrice(res.data?.grand_total || null))
-      .catch(() => setEstimatedPrice(null));
-
-    api
-      .get(`/blueprints/${id}`)
-      .then((r) => {
-        setBlueprint(r.data);
-
-        let parsedLockedFields = [];
-        let saved = {};
-
-        try {
-          parsedLockedFields = JSON.parse(r.data.locked_fields || "[]");
-        } catch (err) {
-          console.error("Invalid locked_fields JSON:", err);
-          parsedLockedFields = [];
-        }
-
-        try {
-          saved = JSON.parse(r.data.design_data || "{}");
-        } catch (err) {
-          console.error("Invalid design_data JSON:", err);
-          saved = {};
-        }
-
-        const loadedTemplateType = resolveImportTemplateType(saved, r.data);
-        const loadedImportDimensions = sanitizeImportDimensions(
-          saved.importDimensions ||
-            saved.referenceDimensions ||
-            r.data.import_dimensions ||
-            r.data.reference_dimensions ||
-            DEFAULT_IMPORT_DIMENSIONS,
-          DEFAULT_IMPORT_DIMENSIONS,
-        );
-
-        const loadedReferenceFiles = getReferenceFilesFromBlueprint(
-          saved,
-          r.data,
-        );
-        const refFile = getReferenceFileFromBlueprint(saved, r.data, "front");
-        const resolvedMode = getEditorMode(saved, loadedReferenceFiles);
-
-        let loadedComponents = resolveInitialComponents(
-          {
-            ...saved,
-            importTemplateType: loadedTemplateType,
-            importDimensions: loadedImportDimensions,
-          },
-          refFile,
-          r.data,
-          {
-            w: WORLD_W,
-            h: WORLD_H,
-            d: WORLD_D,
-          },
-        );
-
-        const loadedStartMode =
-          saved.startMode || saved?.blueprintSetup?.startMode || "scratch";
-
-        const loadedFurnitureType =
-          saved.furnitureType ||
-          saved?.blueprintSetup?.furnitureType ||
-          "cabinet";
-
-        if (!loadedComponents.length && loadedStartMode === "template") {
-          const templateType =
-            CREATE_TEMPLATE_TYPE_MAP[loadedFurnitureType] ||
-            DEFAULT_IMPORT_TEMPLATE_TYPE;
-
-          loadedComponents =
-            templateType === "template_dining_chair"
-              ? createImportedDiningChairComponents(
-                  {
-                    importTemplateType: templateType,
-                    importDimensions: loadedImportDimensions,
-                  },
-                  null,
-                  { title: r.data.title || "Chair Template" },
-                  { w: WORLD_W, h: WORLD_H, d: WORLD_D },
-                )
-              : createImportedFurnitureComponents(
-                  {
-                    importTemplateType: templateType,
-                    importDimensions: loadedImportDimensions,
-                  },
-                  null,
-                  {
-                    title: r.data.title || "Furniture Template",
-                    import_template_type: templateType,
-                  },
-                  { w: WORLD_W, h: WORLD_H, d: WORLD_D },
-                );
-        }
-
-        setLockedFields(
-          Array.isArray(parsedLockedFields) ? parsedLockedFields : [],
-        );
-        setComponents(loadedComponents);
-        setSelectedId(loadedComponents[0]?.id || null);
-        setEdit3DId(null);
-        setUnit(saved.unit || "mm");
-        setReferenceFiles(loadedReferenceFiles);
-        setReferenceFile(
-          loadedReferenceFiles?.front ||
-            loadedReferenceFiles?.back ||
-            loadedReferenceFiles?.left ||
-            loadedReferenceFiles?.right ||
-            loadedReferenceFiles?.top ||
-            refFile ||
-            null,
-        );
-        setEditorMode(resolvedMode);
-        setImportTemplateType(loadedTemplateType);
-        setImportDimensions(loadedImportDimensions);
-        setImportComments(saved.importComments || "");
-        const normalizedCalibrationByView = normalizeReferenceCalibrationByView(
-          saved.referenceCalibrationByView ||
-            saved.reference_calibration_by_view ||
-            saved.referenceCalibration,
-        );
-
-        const normalizedTraceObjectsByView = normalizeTraceObjectsByView(
-          saved.traceObjectsByView ||
-            saved.trace_objects_by_view ||
-            saved.traceObjects,
-        );
-
-        setReferenceCalibrationByView(normalizedCalibrationByView);
-        setTraceObjectsByView(normalizedTraceObjectsByView);
-        setSelectedTraceId(null);
-
-        setView("front");
-      })
-      .catch(() => toast.error("Failed to load blueprint."));
-  }, [id]);
+  useBlueprintLoader({
+    id,
+    worldDimensions: { w: WORLD_W, h: WORLD_H, d: WORLD_D },
+    createTemplateTypeMap: CREATE_TEMPLATE_TYPE_MAP,
+    setBlueprint,
+    setComponents,
+    setSelectedId,
+    setEdit3DId,
+    setEstimatedPrice,
+    setLockedFields,
+    setUnit,
+    setReferenceFiles,
+    setReferenceFile,
+    setEditorMode,
+    setImportTemplateType,
+    setImportDimensions,
+    setImportComments,
+    setReferenceCalibrationByView,
+    setTraceObjectsByView,
+    setSelectedTraceId,
+    setView,
+  });
 
   const selectedComp = components.find((c) => c.id === selectedId) || null;
 
-  const activeReferenceView = useMemo(() => {
-    return REFERENCE_TRACE_VIEWS.includes(view) ? view : "front";
-  }, [view]);
-
-  const activeReferenceCalibration = useMemo(() => {
-    return (
-      referenceCalibrationByView?.[activeReferenceView] ||
-      normalizeReferenceCalibration()
-    );
-  }, [referenceCalibrationByView, activeReferenceView]);
-
-  const activeTraceObjects = useMemo(() => {
-    return Array.isArray(traceObjectsByView?.[activeReferenceView])
-      ? traceObjectsByView[activeReferenceView]
-      : [];
-  }, [traceObjectsByView, activeReferenceView]);
-
-  const allTraceObjects = useMemo(() => {
-    return flattenTraceObjectsByView(traceObjectsByView);
-  }, [traceObjectsByView]);
-
-  const setActiveReferenceCalibration = useCallback(
-    (nextValue) => {
-      setReferenceCalibrationByView((prev) => {
-        const current =
-          prev?.[activeReferenceView] || normalizeReferenceCalibration();
-
-        const resolved =
-          typeof nextValue === "function" ? nextValue(current) : nextValue;
-
-        return {
-          ...createEmptyReferenceCalibrationByView(),
-          ...prev,
-          [activeReferenceView]: normalizeReferenceCalibration(resolved),
-        };
-      });
-    },
-    [activeReferenceView],
-  );
-
-  const setActiveTraceObjects = useCallback(
-    (nextValue) => {
-      setTraceObjectsByView((prev) => {
-        const current = Array.isArray(prev?.[activeReferenceView])
-          ? prev[activeReferenceView]
-          : [];
-
-        const resolved =
-          typeof nextValue === "function" ? nextValue(current) : nextValue;
-
-        return {
-          ...createEmptyTraceObjectsByView(),
-          ...prev,
-          [activeReferenceView]: normalizeTraceObjects(
-            resolved,
-            activeReferenceView,
-          ),
-        };
-      });
-    },
-    [activeReferenceView],
-  );
-
-  useEffect(() => {
-    setSelectedTraceId(null);
-  }, [activeReferenceView]);
-
-  const hasAnyReferenceFile = useMemo(() => {
-    return Object.values(referenceFiles || {}).some((file) => file?.url);
-  }, [referenceFiles]);
-
-  const activeReferenceLoaded = useMemo(() => {
-    return Boolean(referenceFiles?.[activeReferenceView]?.url);
-  }, [referenceFiles, activeReferenceView]);
-
-  const totalTraceCount = useMemo(() => {
-    return Array.isArray(allTraceObjects) ? allTraceObjects.length : 0;
-  }, [allTraceObjects]);
-
-  const referenceViewSummaries = useMemo(() => {
-    return REFERENCE_TRACE_VIEWS.map((viewKey) => {
-      const traceCount = Array.isArray(traceObjectsByView?.[viewKey])
-        ? traceObjectsByView[viewKey].length
-        : 0;
-
-      const hasFile = Boolean(referenceFiles?.[viewKey]?.url);
-      const isCalibrated = Boolean(
-        referenceCalibrationByView?.[viewKey]?.isCalibrated,
-      );
-
-      return {
-        key: viewKey,
-        label: viewKey.toUpperCase(),
-        hasFile,
-        traceCount,
-        isCalibrated,
-        hasTrace: traceCount > 0,
-      };
-    });
-  }, [referenceFiles, traceObjectsByView, referenceCalibrationByView]);
-
-  const loadedButUntracedViews = useMemo(() => {
-    return referenceViewSummaries.filter(
-      (item) => item.hasFile && !item.hasTrace,
-    );
-  }, [referenceViewSummaries]);
-
-  const tracedViews = useMemo(() => {
-    return referenceViewSummaries.filter((item) => item.hasTrace);
-  }, [referenceViewSummaries]);
-
-  const tracedWithoutFileViews = useMemo(() => {
-    return referenceViewSummaries.filter(
-      (item) => !item.hasFile && item.hasTrace,
-    );
-  }, [referenceViewSummaries]);
-
-  const usableTraceObjectsByView = useMemo(() => {
-    return REFERENCE_TRACE_VIEWS.reduce((acc, viewKey) => {
-      const rawList = Array.isArray(traceObjectsByView?.[viewKey])
-        ? traceObjectsByView[viewKey]
-        : [];
-
-      acc[viewKey] = normalizeTraceObjects(rawList, viewKey).filter(
-        (obj) => Number(obj?.width) > 5 && Number(obj?.height) > 5,
-      );
-
-      return acc;
-    }, createEmptyTraceObjectsByView());
-  }, [traceObjectsByView]);
-
-  const usableFrontBackTraceCount = useMemo(() => {
-    return (
-      (usableTraceObjectsByView.front?.length || 0) +
-      (usableTraceObjectsByView.back?.length || 0)
-    );
-  }, [usableTraceObjectsByView]);
-
-  const usableSideTraceCount = useMemo(() => {
-    return (
-      (usableTraceObjectsByView.left?.length || 0) +
-      (usableTraceObjectsByView.right?.length || 0)
-    );
-  }, [usableTraceObjectsByView]);
-
-  const usableTopTraceCount = useMemo(() => {
-    return usableTraceObjectsByView.top?.length || 0;
-  }, [usableTraceObjectsByView]);
-
-  const hasUsableFrontOrBackTrace = useMemo(() => {
-    return usableFrontBackTraceCount > 0;
-  }, [usableFrontBackTraceCount]);
-
-  const loadedViewsWithoutUsableTrace = useMemo(() => {
-    return referenceViewSummaries.filter(
-      (item) =>
-        item.hasFile &&
-        (usableTraceObjectsByView?.[item.key]?.length || 0) === 0,
-    );
-  }, [referenceViewSummaries, usableTraceObjectsByView]);
-
-  const optionalLoadedViewsWithoutUsableTrace = useMemo(() => {
-    return loadedViewsWithoutUsableTrace.filter((item) =>
-      ["left", "right", "top"].includes(item.key),
-    );
-  }, [loadedViewsWithoutUsableTrace]);
-
-  const canConvertReference = useMemo(() => {
-    return Boolean(hasAnyReferenceFile && hasUsableFrontOrBackTrace);
-  }, [hasAnyReferenceFile, hasUsableFrontOrBackTrace]);
-
-  const convertReadinessTone = useMemo(() => {
-    if (!hasAnyReferenceFile || !hasUsableFrontOrBackTrace) return "warning";
-    if (
-      optionalLoadedViewsWithoutUsableTrace.length ||
-      tracedWithoutFileViews.length
-    ) {
-      return "partial";
-    }
-    return "ready";
-  }, [
-    hasAnyReferenceFile,
-    hasUsableFrontOrBackTrace,
-    optionalLoadedViewsWithoutUsableTrace,
-    tracedWithoutFileViews,
-  ]);
-
-  const convertRequirementFeedback = useMemo(() => {
-    if (!hasAnyReferenceFile) {
-      return "No reference view uploaded yet.";
-    }
-
-    if (!hasUsableFrontOrBackTrace) {
-      if (!activeReferenceLoaded && !totalTraceCount) {
-        return `No reference file loaded in active ${activeReferenceView.toUpperCase()} view.`;
-      }
-
-      if (usableSideTraceCount || usableTopTraceCount) {
-        return `Front or Back trace is required. Current usable traces: ${[
-          usableSideTraceCount ? "SIDE" : null,
-          usableTopTraceCount ? "TOP" : null,
-        ]
-          .filter(Boolean)
-          .join(" + ")} only.`;
-      }
-
-      if (totalTraceCount) {
-        return "Front or Back trace is required before convert. Current traces are not usable yet.";
-      }
-
-      if (activeReferenceLoaded) {
-        return `No traced cabinet section yet in active ${activeReferenceView.toUpperCase()} view. Front or Back trace is required.`;
-      }
-
-      return "No traced cabinet section yet in FRONT or BACK view.";
-    }
-
-    if (tracedWithoutFileViews.length) {
-      return `Warning: may traces sa ${tracedWithoutFileViews
-        .map((item) => item.label)
-        .join(", ")} pero walang matching reference file.`;
-    }
-
-    if (optionalLoadedViewsWithoutUsableTrace.length) {
-      return `Ready to convert using FRONT/BACK. ${optionalLoadedViewsWithoutUsableTrace
-        .map((item) => item.label)
-        .join(
-          ", ",
-        )} has no usable trace, so the converter will match nearest TOP/SIDE sections first and use fallback depth only when needed.`;
-    }
-
-    return `Ready to convert using ${[
-      usableFrontBackTraceCount ? "FRONT/BACK" : null,
-      usableSideTraceCount ? "SIDE" : null,
-      usableTopTraceCount ? "TOP" : null,
-    ]
-      .filter(Boolean)
-      .join(" + ")} trace data.`;
-  }, [
-    hasAnyReferenceFile,
-    activeReferenceLoaded,
+  const {
     activeReferenceView,
-    hasUsableFrontOrBackTrace,
-    usableSideTraceCount,
-    usableTopTraceCount,
+    activeReferenceCalibration,
+    activeTraceObjects,
+    allTraceObjects,
+    setActiveReferenceCalibration,
+    setActiveTraceObjects,
+    hasAnyReferenceFile,
     totalTraceCount,
+    referenceViewSummaries,
+    loadedButUntracedViews,
     tracedWithoutFileViews,
+    hasUsableFrontOrBackTrace,
     optionalLoadedViewsWithoutUsableTrace,
-    usableFrontBackTraceCount,
-  ]);
+    canConvertReference,
+    convertReadinessTone,
+    convertRequirementFeedback,
+  } = useBlueprintReferenceWorkspace({
+    view,
+    referenceFiles,
+    referenceCalibrationByView,
+    setReferenceCalibrationByView,
+    traceObjectsByView,
+    setTraceObjectsByView,
+    setSelectedTraceId,
+  });
 
   const selectedComponents = useMemo(() => {
     const activeIds = Array.from(new Set((selectedIds || []).filter(Boolean)));
