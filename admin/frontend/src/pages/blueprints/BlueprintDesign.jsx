@@ -38,10 +38,8 @@ import {
 } from "./data/furnitureTypes";
 import {
   normalizeComponent,
-  getComponentsBounds3D,
   get2DBounds,
   getProjectedBox,
-  getSelectionGroup,
   isChairPartType,
   applyWoodFinish,
   isWoodLikeMaterial,
@@ -61,7 +59,6 @@ import {
   cloneComponents,
   mmToDisplay,
   displayToMm,
-  formatDims,
   getNowStamp,
   resolveAssetUrl,
   isImageReferenceFile,
@@ -80,6 +77,7 @@ import {
   normalizeTraceObjects,
 } from "./data/referenceTraceUtils";
 import { createObjectId, deepClone } from "./data/editorUtils";
+import { getSelectionBoundsXYZ } from "./data/selectionUtils";
 import {
   analyzeSmartWidthResizeAssembly,
   buildSmartWidthResizePlan,
@@ -117,6 +115,9 @@ import { useBlueprintPersistence } from "./hooks/useBlueprintPersistence";
 import { useBlueprintExport } from "./hooks/useBlueprintExport";
 import { useBlueprintLoader } from "./hooks/useBlueprintLoader";
 import { useBlueprintReferenceWorkspace } from "./hooks/useBlueprintReferenceWorkspace";
+import { useBlueprintSelectionActions } from "./hooks/useBlueprintSelectionActions";
+import { useBlueprintDuplicateActions } from "./hooks/useBlueprintDuplicateActions";
+import { useBlueprintKeyboardShortcuts } from "./hooks/useBlueprintKeyboardShortcuts";
 import { buildConversionCutListRows } from "./data/conversionCutListUtils";
 
 // ── 3D Viewer ─────────────────────────────────────────────────────────────────
@@ -223,70 +224,37 @@ export default function BlueprintDesign() {
     [lockedFields],
   );
 
-  const removeSelected = useCallback(() => {
-    if (editorMode !== "editable") {
-      toast.error(
-        "Reference mode ito. Walang editable components na puwedeng burahin.",
-      );
-      return;
-    }
-
-    const idsToRemove = new Set(
-      selectedIds.length > 0 ? selectedIds : [selectedId].filter(Boolean),
-    );
-
-    if (!idsToRemove.size) return;
-
-    const hasLocked = components.some(
-      (c) => idsToRemove.has(c.id) && isLocked(c),
-    );
-
-    if (hasLocked) {
-      toast.error("Cannot delete. One or more selected components are locked.");
-      return;
-    }
-
-    pushHistory(components);
-    setComponents((prev) => prev.filter((c) => !idsToRemove.has(c.id)));
-    setSelectedId(null);
-    setSelectedIds([]);
-    setEdit3DId(null);
-
-    toast.success(`Deleted ${idsToRemove.size} object(s).`);
-  }, [editorMode, selectedId, selectedIds, components, isLocked, pushHistory]);
-
-  useEffect(() => {
-    const validIdSet = new Set(components.map((c) => c.id));
-    const filteredSelectedIds = (selectedIds || []).filter((id) =>
-      validIdSet.has(id),
-    );
-
-    if (filteredSelectedIds.length !== (selectedIds || []).length) {
-      setSelectedIds(filteredSelectedIds);
-    }
-
-    if (!components.length) {
-      if (selectedId) setSelectedId(null);
-      if (selectedIds.length) setSelectedIds([]);
-      if (edit3DId) setEdit3DId(null);
-      return;
-    }
-
-    const nextPrimary =
-      selectedId && validIdSet.has(selectedId)
-        ? selectedId
-        : filteredSelectedIds[filteredSelectedIds.length - 1] || null;
-
-    if (selectedId !== nextPrimary) {
-      setSelectedId(nextPrimary);
-    }
-
-    if (!nextPrimary && edit3DId) {
-      setEdit3DId(null);
-    } else if (nextPrimary && (!edit3DId || !validIdSet.has(edit3DId))) {
-      setEdit3DId(nextPrimary);
-    }
-  }, [components, selectedId, selectedIds, edit3DId]);
+  const {
+    selectedComp,
+    selectedComponents,
+    selectedBounds3D,
+    selectedLabel,
+    selectedMaterialText,
+    selectedDimsText,
+    activeSelectionIds3D,
+    activeSelectedComponents3D,
+    hasLockedSmartSelection3D,
+    canUseSmartActions3D,
+    removeSelected,
+    copySelectedObject,
+    pasteCopiedObject,
+    toggleLockSelected,
+  } = useBlueprintSelectionActions({
+    components,
+    setComponents,
+    selectedId,
+    setSelectedId,
+    selectedIds,
+    setSelectedIds,
+    clipboardObject,
+    setClipboardObject,
+    edit3DId,
+    setEdit3DId,
+    editorMode,
+    isLocked,
+    pushHistory,
+    unit,
+  });
 
   useBlueprintLoader({
     id,
@@ -311,7 +279,11 @@ export default function BlueprintDesign() {
     setView,
   });
 
-  const selectedComp = components.find((c) => c.id === selectedId) || null;
+  const hasRealComponents = useMemo(() => {
+    return Array.isArray(components)
+      ? components.some((c) => c.type !== "reference_proxy")
+      : false;
+  }, [components]);
 
   const {
     activeReferenceView,
@@ -340,702 +312,36 @@ export default function BlueprintDesign() {
     setSelectedTraceId,
   });
 
-  const selectedComponents = useMemo(() => {
-    const activeIds = Array.from(new Set((selectedIds || []).filter(Boolean)));
-
-    if (activeIds.length) {
-      const activeSet = new Set(activeIds);
-      return components.filter((c) => activeSet.has(c.id));
-    }
-
-    return getSelectionGroup(components, selectedComp);
-  }, [components, selectedComp, selectedIds]);
-
-  const hasRealComponents = useMemo(() => {
-    return Array.isArray(components)
-      ? components.some((c) => c.type !== "reference_proxy")
-      : false;
-  }, [components]);
-
-  const selectedBounds3D = useMemo(() => {
-    return getComponentsBounds3D(selectedComponents);
-  }, [selectedComponents]);
-
-  const selectedLabel = useMemo(() => {
-    if (!selectedComp) return "";
-    if (selectedIds.length > 1) return `${selectedIds.length} Selected Objects`;
-    return selectedComp.groupLabel || selectedComp.label;
-  }, [selectedComp, selectedIds]);
-
-  const selectedMaterialText = useMemo(() => {
-    if (!selectedComponents.length) return "—";
-    return (
-      [
-        ...new Set(selectedComponents.map((c) => c.material).filter(Boolean)),
-      ].join(", ") || "—"
-    );
-  }, [selectedComponents]);
-
-  const selectedDimsText = useMemo(() => {
-    if (!selectedBounds3D) return "—";
-    return formatDims(
-      selectedBounds3D.width,
-      selectedBounds3D.height,
-      selectedBounds3D.depth,
-      unit,
-    );
-  }, [selectedBounds3D, unit]);
-
-  const getSelectionBoundsXYZ = useCallback((items = []) => {
-    if (!Array.isArray(items) || !items.length) return null;
-
-    const minX = Math.min(...items.map((c) => Number(c.x) || 0));
-    const minY = Math.min(...items.map((c) => Number(c.y) || 0));
-    const minZ = Math.min(...items.map((c) => Number(c.z) || 0));
-
-    const maxX = Math.max(
-      ...items.map((c) => (Number(c.x) || 0) + (Number(c.width) || 0)),
-    );
-    const maxY = Math.max(
-      ...items.map((c) => (Number(c.y) || 0) + (Number(c.height) || 0)),
-    );
-    const maxZ = Math.max(
-      ...items.map((c) => (Number(c.z) || 0) + (Number(c.depth) || 0)),
-    );
-
-    return {
-      minX,
-      minY,
-      minZ,
-      maxX,
-      maxY,
-      maxZ,
-      centerX: (minX + maxX) / 2,
-      centerY: (minY + maxY) / 2,
-      centerZ: (minZ + maxZ) / 2,
-      width: maxX - minX,
-      height: maxY - minY,
-      depth: maxZ - minZ,
-    };
-  }, []);
-
-  const activeSelectionIds3D = useMemo(() => {
-    const ids = Array.from(new Set((selectedIds || []).filter(Boolean)));
-    if (ids.length) return ids;
-    return selectedId ? [selectedId] : [];
-  }, [selectedId, selectedIds]);
-
-  const activeSelectedComponents3D = useMemo(() => {
-    if (!activeSelectionIds3D.length) return [];
-    const activeSet = new Set(activeSelectionIds3D);
-    return components.filter((c) => activeSet.has(c.id));
-  }, [components, activeSelectionIds3D]);
-
-  const hasLockedSmartSelection3D = useMemo(() => {
-    return activeSelectedComponents3D.some((c) => isLocked(c));
-  }, [activeSelectedComponents3D, isLocked]);
-
-  const canUseSmartActions3D =
-    editorMode === "editable" &&
-    activeSelectedComponents3D.length > 0 &&
-    !hasLockedSmartSelection3D;
-
-  // ── Copy / Paste ─────────────────────────────────────────────────────────
-  const copySelectedObject = useCallback(() => {
-    if (!selectedComponents.length) {
-      toast.error("Pumili muna ng object sa 3D view.");
-      return;
-    }
-
-    setClipboardObject(deepClone(selectedComponents));
-
-    toast.success(
-      selectedComponents.length > 1
-        ? `${selectedComponents.length} object(s) copied.`
-        : `${selectedComponents[0]?.label || "Object"} copied.`,
-    );
-  }, [selectedComponents]);
-
-  const pasteCopiedObject = useCallback(() => {
-    if (editorMode !== "editable") {
-      toast.error("Reference mode ito. Lumipat muna sa editable mode.");
-      return;
-    }
-
-    const sourceItems = Array.isArray(clipboardObject)
-      ? clipboardObject
-      : clipboardObject
-        ? [clipboardObject]
-        : [];
-
-    if (!sourceItems.length) {
-      toast.error("Wala pang copied object.");
-      return;
-    }
-
-    const OFFSET = 160;
-    const groupIdMap = new Map();
-
-    const pasted = sourceItems.map((item) => {
-      let nextGroupId = item.groupId || null;
-
-      if (item.groupId) {
-        if (!groupIdMap.has(item.groupId)) {
-          groupIdMap.set(item.groupId, makeGroupId());
-        }
-        nextGroupId = groupIdMap.get(item.groupId);
-      }
-
-      return normalizeComponent({
-        ...deepClone(item),
-        id: createObjectId(),
-        groupId: nextGroupId,
-        x: snap((Number(item.x) || 0) + OFFSET),
-        y: snap(Number(item.y) || 0),
-        z: snap((Number(item.z) || 0) + OFFSET),
-        locked: false,
-      });
-    });
-
-    pushHistory(components);
-    setComponents((prev) => [...prev, ...pasted]);
-    setSelectedIds(pasted.map((item) => item.id));
-    setSelectedId(pasted[0]?.id || null);
-    setEdit3DId(pasted[0]?.id || null);
-
-    toast.success(
-      pasted.length > 1
-        ? `${pasted.length} object(s) pasted.`
-        : `${pasted[0]?.label || "Object"} pasted.`,
-    );
-  }, [editorMode, clipboardObject, components, pushHistory]);
-  // ─────────────────────────────────────────────────────────────────────────
-  const getAssemblyItemsFromComponent = useCallback(
-    (compOrId) => {
-      const comp =
-        typeof compOrId === "string"
-          ? components.find((item) => item.id === compOrId)
-          : compOrId;
-
-      if (!comp) return [];
-
-      const resultMap = new Map();
-      const addItems = (items = []) => {
-        (items || []).forEach((item) => {
-          if (item?.id) resultMap.set(item.id, item);
-        });
-      };
-
-      // First try the shared selection-group helper because it already knows
-      // how the editor treats grouped / linked parts.
-      addItems(getSelectionGroup(components, comp));
-
-      // Strongest assembly link: exact groupId match.
-      if (comp.groupId) {
-        addItems(components.filter((item) => item.groupId === comp.groupId));
-      }
-
-      // Fallback for older / mixed data where one or more parts in the same
-      // assembly were saved without groupId. Only attach loose parts that share
-      // the same label/type metadata as the active grouped assembly.
-      if (comp.groupId && comp.groupLabel) {
-        addItems(
-          components.filter((item) => {
-            if (!item?.id || item.id === comp.id) return false;
-            const sameGroupType = comp.groupType
-              ? item.groupType === comp.groupType
-              : true;
-
-            return (
-              sameGroupType &&
-              item.groupLabel === comp.groupLabel &&
-              (!item.groupId || item.groupId === comp.groupId)
-            );
-          }),
-        );
-      }
-
-      // Last-resort fallback for legacy assemblies that have no groupId at all
-      // but still share the same logical group label/type.
-      if (
-        resultMap.size <= 1 &&
-        !comp.groupId &&
-        comp.groupLabel &&
-        comp.groupType
-      ) {
-        const looseAssemblyItems = components.filter((item) => {
-          if (!item?.id) return false;
-          return (
-            item.groupLabel === comp.groupLabel &&
-            item.groupType === comp.groupType
-          );
-        });
-
-        if (looseAssemblyItems.length > 1 && looseAssemblyItems.length <= 12) {
-          addItems(looseAssemblyItems);
-        }
-      }
-
-      return resultMap.size ? Array.from(resultMap.values()) : [comp];
-    },
-    [components],
-  );
-
-  const getAssemblyIdsFromComponent = useCallback(
-    (compOrId) =>
-      getAssemblyItemsFromComponent(compOrId).map((item) => item.id),
-    [getAssemblyItemsFromComponent],
-  );
-
-  const getGroupAwareSelectionIds = useCallback(
-    ({ preferWholeAssembly = false } = {}) => {
-      const explicitIds = Array.from(
-        new Set((selectedIds || []).filter(Boolean)),
-      );
-      const baseIds = explicitIds.length
-        ? explicitIds
-        : [selectedId].filter(Boolean);
-
-      if (!baseIds.length) return [];
-      if (!preferWholeAssembly) return baseIds;
-
-      const expanded = new Map();
-
-      baseIds.forEach((id) => {
-        getAssemblyItemsFromComponent(id).forEach((item) => {
-          if (item?.id) expanded.set(item.id, item);
-        });
-      });
-
-      return expanded.size ? Array.from(expanded.keys()) : baseIds;
-    },
-    [selectedId, selectedIds, getAssemblyItemsFromComponent],
-  );
-
-  const cloneSelectionWithOffsets = useCallback(
-    (
-      sourceItems,
-      { copies = 1, offsetX = 0, offsetY = 0, offsetZ = 0 } = {},
-    ) => {
-      const clones = [];
-
-      const getCloneAssemblyKey = (item) => {
-        const hasSharedLabelAssembly =
-          item.groupLabel &&
-          sourceItems.filter(
-            (other) =>
-              other.groupLabel === item.groupLabel &&
-              other.groupType === item.groupType,
-          ).length > 1;
-
-        if (hasSharedLabelAssembly) {
-          return `label:${item.groupType || "group"}:${item.groupLabel}`;
-        }
-
-        if (item.groupId) {
-          return `group:${item.groupId}`;
-        }
-
-        return null;
-      };
-
-      for (let copyIndex = 1; copyIndex <= copies; copyIndex += 1) {
-        const groupIdMap = new Map();
-
-        sourceItems.forEach((item) => {
-          const cloneGroupKey = getCloneAssemblyKey(item);
-          let nextGroupId = item.groupId || null;
-
-          if (cloneGroupKey) {
-            if (!groupIdMap.has(cloneGroupKey)) {
-              groupIdMap.set(cloneGroupKey, makeGroupId());
-            }
-            nextGroupId = groupIdMap.get(cloneGroupKey);
-          }
-
-          clones.push(
-            normalizeComponent({
-              ...deepClone(item),
-              id: createObjectId(),
-              groupId: nextGroupId,
-              x: snap((Number(item.x) || 0) + offsetX * copyIndex),
-              y: snap((Number(item.y) || 0) + offsetY * copyIndex),
-              z: snap((Number(item.z) || 0) + offsetZ * copyIndex),
-              locked: false,
-            }),
-          );
-        });
-      }
-
-      return clones;
-    },
-    [],
-  );
-
-  const selectWholeAssembly = useCallback(() => {
-    const primaryId = selectedId || selectedIds[0] || null;
-
-    if (!primaryId) {
-      toast.error("Select one part first.");
-      return;
-    }
-
-    const assemblyItems = getAssemblyItemsFromComponent(primaryId);
-    const assemblyIds = assemblyItems.map((item) => item.id);
-
-    if (assemblyIds.length <= 1) {
-      toast("Selected object is not part of an assembly.");
-      return;
-    }
-
-    setSelectedIds(assemblyIds);
-    setSelectedId(primaryId);
-    setEdit3DId(primaryId);
-
-    toast.success(
-      `Selected whole assembly (${assemblyIds.length} part${assemblyIds.length !== 1 ? "s" : ""}).`,
-    );
-  }, [selectedId, selectedIds, getAssemblyItemsFromComponent]);
-
-  const duplicateWholeAssembly = useCallback(() => {
-    if (editorMode !== "editable") {
-      toast.error("Reference mode ito. Lumipat muna sa editable mode.");
-      return;
-    }
-
-    const sourceIds = getGroupAwareSelectionIds({ preferWholeAssembly: true });
-    if (!sourceIds.length) {
-      toast.error("Select one assembly first.");
-      return;
-    }
-
-    const sourceItems = components.filter((item) =>
-      sourceIds.includes(item.id),
-    );
-    if (!sourceItems.length) return;
-
-    const hasAssembly = sourceItems.length > 1;
-    if (!hasAssembly) {
-      toast("Selected object is not part of an assembly.");
-      return;
-    }
-
-    if (sourceItems.some((item) => isLocked(item))) {
-      toast.error(
-        "Cannot duplicate. One or more selected components are locked.",
-      );
-      return;
-    }
-
-    const duplicated = cloneSelectionWithOffsets(sourceItems, {
-      copies: 1,
-      offsetX: 120,
-      offsetZ: 120,
-    });
-
-    pushHistory(components);
-    setComponents((prev) => [...prev, ...duplicated]);
-    setSelectedIds(duplicated.map((item) => item.id));
-    setSelectedId(duplicated[0]?.id || null);
-    setEdit3DId(duplicated[0]?.id || null);
-
-    toast.success(`Whole assembly duplicated (${duplicated.length} parts).`);
-  }, [
-    editorMode,
-    components,
-    isLocked,
-    pushHistory,
+  const {
+    getAssemblyItemsFromComponent,
     getGroupAwareSelectionIds,
     cloneSelectionWithOffsets,
-  ]);
-
-  const arrayDuplicateSelection = useCallback(
-    (axis, copies = 1, spacing = 0) => {
-      if (editorMode !== "editable") {
-        toast.error("Reference mode ito. Lumipat muna sa editable mode.");
-        return;
-      }
-
-      const sourceIds = getGroupAwareSelectionIds({
-        preferWholeAssembly: true,
-      });
-      if (!sourceIds.length) {
-        toast.error("Select an object or assembly first.");
-        return;
-      }
-
-      const sourceItems = components.filter((item) =>
-        sourceIds.includes(item.id),
-      );
-      if (!sourceItems.length) return;
-
-      if (sourceItems.some((item) => isLocked(item))) {
-        toast.error(
-          "Cannot create array. One or more selected components are locked.",
-        );
-        return;
-      }
-
-      const safeCopies = Math.max(1, Math.min(20, Number(copies) || 0));
-      const safeSpacing = snap(Math.max(0, Number(spacing) || 0));
-      const bounds = getSelectionBoundsXYZ(sourceItems);
-      if (!bounds) return;
-
-      const span =
-        axis === "x"
-          ? Math.max(GRID_SIZE, bounds.width)
-          : axis === "y"
-            ? Math.max(GRID_SIZE, bounds.height)
-            : Math.max(GRID_SIZE, bounds.depth);
-
-      const step = snap(span + safeSpacing);
-      const duplicated = cloneSelectionWithOffsets(sourceItems, {
-        copies: safeCopies,
-        offsetX: axis === "x" ? step : 0,
-        offsetY: axis === "y" ? step : 0,
-        offsetZ: axis === "z" ? step : 0,
-      });
-
-      pushHistory(components);
-      setComponents((prev) => [...prev, ...duplicated]);
-      setSelectedIds(duplicated.map((item) => item.id));
-      setSelectedId(duplicated[0]?.id || null);
-      setEdit3DId(duplicated[0]?.id || null);
-      setTransformMode("translate");
-
-      toast.success(
-        `Array ${axis.toUpperCase()} created: ${safeCopies} copy${safeCopies !== 1 ? "ies" : "y"} (${duplicated.length} objects).`,
-      );
-    },
-    [
-      editorMode,
-      components,
-      isLocked,
-      pushHistory,
-      getGroupAwareSelectionIds,
-      getSelectionBoundsXYZ,
-      cloneSelectionWithOffsets,
-    ],
-  );
-
-  // ── Duplicate selected component(s) ─────────────────────────────────────
-  const duplicateSelected = useCallback(() => {
-    if (editorMode !== "editable") {
-      toast.error("Reference mode ito. Lumipat muna sa editable mode.");
-      return;
-    }
-
-    // Normal duplicate should copy exactly what is currently selected.
-    // Whole assembly duplication has its own dedicated action.
-    const baseSelectionIds = getGroupAwareSelectionIds({
-      preferWholeAssembly: false,
-    });
-
-    if (!baseSelectionIds.length) {
-      toast("No component selected.");
-      return;
-    }
-
-    const selectedSet = new Set(baseSelectionIds);
-    const toDuplicate = components.filter((c) => selectedSet.has(c.id));
-
-    if (!toDuplicate.length) return;
-
-    const hasLockedSelection = toDuplicate.some((c) => isLocked(c));
-    if (hasLockedSelection) {
-      toast.error(
-        "Cannot duplicate. One or more selected components are locked.",
-      );
-      return;
-    }
-
-    const duplicated = cloneSelectionWithOffsets(toDuplicate, {
-      copies: 1,
-      offsetX: 120,
-      offsetZ: 120,
-    });
-
-    pushHistory(components);
-    setComponents((prev) => [...prev, ...duplicated]);
-    setSelectedIds(duplicated.map((item) => item.id));
-    setSelectedId(duplicated[0]?.id || null);
-    setEdit3DId(duplicated[0]?.id || null);
-
-    const duplicatedAssembly = false;
-
-    toast.success(
-      duplicatedAssembly
-        ? `Duplicated assembly (${duplicated.length} parts).`
-        : duplicated.length > 1
-          ? `Duplicated ${duplicated.length} object(s).`
-          : `Duplicated ${duplicated[0]?.label || "object"}.`,
-    );
-  }, [
-    editorMode,
+    selectWholeAssembly,
+    duplicateWholeAssembly,
+    arrayDuplicateSelection,
+    duplicateSelected,
+  } = useBlueprintDuplicateActions({
+    components,
+    setComponents,
+    selectedId,
+    setSelectedId,
     selectedIds,
-    components,
+    setSelectedIds,
+    setEdit3DId,
+    setTransformMode,
+    editorMode,
     isLocked,
     pushHistory,
-    getGroupAwareSelectionIds,
-    cloneSelectionWithOffsets,
-  ]);
+    gridSize: GRID_SIZE,
+  });
 
-  const toggleLockSelected = useCallback(() => {
-    if (editorMode !== "editable") {
-      toast.error("Reference mode ito. Lumipat muna sa editable mode.");
-      return;
-    }
-
-    const targetIds =
-      selectedIds.length > 0 ? selectedIds : [selectedId].filter(Boolean);
-
-    if (!targetIds.length) {
-      toast.error("Pumili muna ng object.");
-      return;
-    }
-
-    const targetSet = new Set(targetIds);
-    const targetComponents = components.filter((c) => targetSet.has(c.id));
-
-    if (!targetComponents.length) return;
-
-    const shouldLock = targetComponents.some((c) => !c.locked);
-
-    pushHistory(components);
-    setComponents((prev) =>
-      prev.map((c) =>
-        targetSet.has(c.id)
-          ? normalizeComponent({
-              ...c,
-              locked: shouldLock,
-            })
-          : c,
-      ),
-    );
-
-    toast.success(
-      shouldLock
-        ? `Locked ${targetIds.length} object(s).`
-        : `Unlocked ${targetIds.length} object(s).`,
-    );
-  }, [editorMode, selectedId, selectedIds, components, pushHistory]);
-
-  const cancelPendingPlacement = useCallback(() => {
-    if (!pendingPlacement) return;
-    setPendingPlacement(null);
-    toast("Placement cancelled.");
-  }, [pendingPlacement]);
-
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      const activeEl = document.activeElement;
-      const tag = activeEl?.tagName?.toLowerCase();
-      const isTyping =
-        activeEl?.isContentEditable ||
-        tag === "input" ||
-        tag === "textarea" ||
-        tag === "select";
-
-      const key = String(e.key || "").toLowerCase();
-      const code = String(e.code || "").toLowerCase();
-      const ctrlOrMeta = e.ctrlKey || e.metaKey;
-
-      if (key === "escape") {
-        if (pendingPlacement) {
-          e.preventDefault();
-          e.stopPropagation();
-          cancelPendingPlacement();
-          return;
-        }
-
-        setSelectedId(null);
-        setSelectedIds([]);
-        setEdit3DId(null);
-        return;
-      }
-
-      if (
-        !isTyping &&
-        ctrlOrMeta &&
-        !e.shiftKey &&
-        (key === "z" || code === "keyz")
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleUndo();
-        return;
-      }
-
-      if (
-        !isTyping &&
-        ctrlOrMeta &&
-        (key === "y" ||
-          code === "keyy" ||
-          ((key === "z" || code === "keyz") && e.shiftKey))
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleRedo();
-        return;
-      }
-
-      if (isTyping) return;
-
-      if (key === "delete" || key === "backspace") {
-        e.preventDefault();
-        e.stopPropagation();
-        removeSelected();
-        return;
-      }
-
-      if (ctrlOrMeta && key === "a") {
-        e.preventDefault();
-        e.stopPropagation();
-        if (components.length > 0) {
-          const allIds = components.map((c) => c.id);
-          setSelectedIds(allIds);
-          setSelectedId(allIds[0] || null);
-          setEdit3DId(allIds[0] || null);
-          toast.success(`All ${components.length} object(s) selected.`);
-        }
-        return;
-      }
-
-      if (ctrlOrMeta && key === "d") {
-        e.preventDefault();
-        e.stopPropagation();
-        duplicateSelected();
-        return;
-      }
-
-      if (ctrlOrMeta && key === "c") {
-        e.preventDefault();
-        e.stopPropagation();
-        copySelectedObject();
-        return;
-      }
-
-      if (ctrlOrMeta && key === "v") {
-        e.preventDefault();
-        e.stopPropagation();
-        pasteCopiedObject();
-        return;
-      }
-
-      if (ctrlOrMeta && key === "l") {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleLockSelected();
-        return;
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [
+  const { cancelPendingPlacement } = useBlueprintKeyboardShortcuts({
     components,
     pendingPlacement,
-    cancelPendingPlacement,
+    setPendingPlacement,
+    setSelectedId,
+    setSelectedIds,
+    setEdit3DId,
     handleUndo,
     handleRedo,
     duplicateSelected,
@@ -1043,8 +349,7 @@ export default function BlueprintDesign() {
     pasteCopiedObject,
     removeSelected,
     toggleLockSelected,
-  ]);
-  // ─────────────────────────────────────────────────────────────────────────
+  });
 
   const getPlacedGenericComponentData = useCallback(
     (typeDef, placed) => {
