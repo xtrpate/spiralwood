@@ -30,6 +30,14 @@ import {
   createBlueprintSceneFoundation,
   disposeObject3DResources,
 } from "./sceneSetup";
+import {
+  captureCameraView as captureCameraSnapshot,
+  centerCameraOnObject,
+  isTypingElement,
+  moveCameraFromKeyboard,
+  restoreCameraView as restoreCameraSnapshot,
+} from "./cameraControls";
+import { configureTransformMode } from "./transformGizmo";
 
 const GRID_SIZE = 20;
 const ROTATION_SNAP_DEGREES = 15;
@@ -184,58 +192,16 @@ function ThreeDViewer({
 
   const [liveSelectedComp, setLiveSelectedComp] = useState(null);
 
-  const isTypingElement = useCallback((el) => {
-    if (!el) return false;
-    const tag = el.tagName;
-    return (
-      tag === "INPUT" ||
-      tag === "TEXTAREA" ||
-      tag === "SELECT" ||
-      el.isContentEditable
-    );
+  const updateKeyboardCamera = useCallback((delta) => {
+    if (!moveEnabledRef.current) return;
+
+    moveCameraFromKeyboard({
+      camera: cameraRef.current,
+      orbit: orbitRef.current,
+      keys: keysRef.current,
+      delta,
+    });
   }, []);
-
-  const updateKeyboardCamera = useCallback(
-    (delta) => {
-      const camera = cameraRef.current;
-      const orbit = orbitRef.current;
-
-      if (!camera || !orbit || !moveEnabledRef.current) return;
-
-      const keys = keysRef.current;
-      const moveDir = new THREE.Vector3();
-      const forward = new THREE.Vector3();
-      const right = new THREE.Vector3();
-      const up = new THREE.Vector3(0, 1, 0);
-
-      camera.getWorldDirection(forward);
-      forward.y = 0;
-
-      if (forward.lengthSq() > 0) {
-        forward.normalize();
-      }
-
-      right.crossVectors(forward, up).normalize();
-
-      if (keys["KeyW"]) moveDir.add(forward);
-      if (keys["KeyS"]) moveDir.sub(forward);
-      if (keys["KeyD"]) moveDir.add(right);
-      if (keys["KeyA"]) moveDir.sub(right);
-      if (keys["KeyE"]) moveDir.y += 1;
-      if (keys["KeyQ"]) moveDir.y -= 1;
-
-      if (moveDir.lengthSq() === 0) return;
-
-      const speed =
-        (keys["ShiftLeft"] || keys["ShiftRight"] ? 2200 : 1100) * delta;
-
-      moveDir.normalize().multiplyScalar(speed);
-
-      camera.position.add(moveDir);
-      orbit.target.add(moveDir);
-    },
-    [cameraRef, orbitRef],
-  );
 
   const clearKeys = useCallback(() => {
     keysRef.current = {};
@@ -1361,18 +1327,10 @@ function ThreeDViewer({
     resetMultiTransformState();
   }, [compFromWorld, resetMultiTransformState]);
 
-  const captureCameraView = useCallback(() => {
-    const camera = cameraRef.current;
-    const orbit = orbitRef.current;
-    if (!camera || !orbit) return null;
-
-    return {
-      position: camera.position.clone(),
-      quaternion: camera.quaternion.clone(),
-      target: orbit.target.clone(),
-      zoom: camera.zoom,
-    };
-  }, []);
+  const captureCameraView = useCallback(
+    () => captureCameraSnapshot(cameraRef.current, orbitRef.current),
+    [],
+  );
 
   const storeCameraView = useCallback(() => {
     const snapshot = captureCameraView();
@@ -1381,16 +1339,7 @@ function ThreeDViewer({
   }, [captureCameraView]);
 
   const restoreCameraView = useCallback((snapshot) => {
-    const camera = cameraRef.current;
-    const orbit = orbitRef.current;
-    if (!camera || !orbit || !snapshot) return;
-
-    camera.position.copy(snapshot.position);
-    camera.quaternion.copy(snapshot.quaternion);
-    camera.zoom = snapshot.zoom ?? camera.zoom;
-    camera.updateProjectionMatrix();
-    orbit.target.copy(snapshot.target);
-    orbit.update();
+    restoreCameraSnapshot(cameraRef.current, orbitRef.current, snapshot);
   }, []);
 
   const preserveCameraView = useCallback(
@@ -1414,162 +1363,26 @@ function ThreeDViewer({
 
   const centerOnObject = useCallback(
     (obj, instant = false) => {
-      const camera = cameraRef.current;
-      const orbit = orbitRef.current;
-      if (!obj || !camera || !orbit) return;
-
-      const box = new THREE.Box3().setFromObject(obj);
-      const center = new THREE.Vector3();
-      const size = new THREE.Vector3();
-      box.getCenter(center);
-      box.getSize(size);
-
-      orbit.target.copy(center);
-
-      if (instant) {
-        const maxSize = Math.max(size.x, size.y, size.z, 120);
-        const fitHeightDistance =
-          maxSize / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)));
-        const fitWidthDistance = fitHeightDistance / camera.aspect;
-        const dist = Math.max(fitHeightDistance, fitWidthDistance) * 1.9;
-
-        camera.position.set(
-          center.x + dist,
-          center.y + dist * 0.65,
-          center.z + dist,
-        );
-        camera.near = 0.5;
-        camera.far = Math.max(12000, dist * 6);
-        camera.updateProjectionMatrix();
-      }
-
-      orbit.update();
-      storeCameraView();
-    },
-    [storeCameraView],
-  );
-
-  const fitCameraToRoot = useCallback(
-    (padding = 1.45) => {
-      const camera = cameraRef.current;
-      const orbit = orbitRef.current;
-      const rootGroup = rootGroupRef.current;
-
-      if (!camera || !orbit || !rootGroup || !rootGroup.children.length) return;
-
-      const bounds = new THREE.Box3().setFromObject(rootGroup);
-      if (bounds.isEmpty()) return;
-
-      const center = new THREE.Vector3();
-      const size = new THREE.Vector3();
-      bounds.getCenter(center);
-      bounds.getSize(size);
-
-      const maxSize = Math.max(size.x, size.y, size.z, 1);
-      const fitHeightDistance =
-        maxSize / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)));
-      const fitWidthDistance = fitHeightDistance / camera.aspect;
-      const distance = Math.max(fitHeightDistance, fitWidthDistance) * padding;
-
-      camera.position.set(
-        center.x + distance,
-        center.y + distance * 0.65,
-        center.z + distance,
-      );
-      camera.near = 0.5;
-      camera.far = Math.max(12000, distance * 6);
-      camera.updateProjectionMatrix();
-
-      orbit.target.copy(center);
-      orbit.minDistance = 140;
-      orbit.maxDistance = Math.max(9000, distance * 5);
-      orbit.update();
-
-      storeCameraView();
-    },
-    [storeCameraView],
-  );
-
-  const applyGizmoLook = useCallback(() => {
-    const transform = transformRef.current;
-    if (!transform) return;
-
-    const forceAxisMaterial = (obj, hex) => {
-      if (!obj.material) return;
-      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-      mats.forEach((m) => {
-        if (m.color) m.color.setHex(hex);
-        m.depthTest = false;
-        m.transparent = true;
-        m.opacity = 1;
-        m.toneMapped = false;
-        m.fog = false;
+      const centered = centerCameraOnObject({
+        camera: cameraRef.current,
+        orbit: orbitRef.current,
+        object: obj,
+        instant,
       });
-    };
 
-    transform.traverse((child) => {
-      const name = child.name || "";
-      const geoType = child.geometry?.type || "";
-
-      const isXAxis = name === "X";
-      const isYAxis = name === "Y";
-      const isZAxis = name === "Z";
-
-      if (
-        name.includes("XY") ||
-        name.includes("YZ") ||
-        name.includes("XZ") ||
-        name === "E" ||
-        name === "XYZ" ||
-        name === "XYZE" ||
-        name.includes("START") ||
-        name.includes("END") ||
-        name.includes("DELTA") ||
-        name.includes("AXIS") ||
-        name.includes("helper") ||
-        geoType === "PlaneGeometry" ||
-        geoType === "BoxGeometry"
-      ) {
-        child.visible = false;
-        return;
-      }
-
-      if (!isXAxis && !isYAxis && !isZAxis) {
-        if (child.type === "Line" || child.type === "Mesh")
-          child.visible = false;
-        return;
-      }
-
-      child.visible = true;
-
-      if (isXAxis) forceAxisMaterial(child, 0xff3b30);
-      if (isYAxis) forceAxisMaterial(child, 0x34c759);
-      if (isZAxis) forceAxisMaterial(child, 0x0a84ff);
-    });
-  }, []);
+      if (centered) storeCameraView();
+    },
+    [storeCameraView],
+  );
 
   const applyTransformModeRaw = useCallback(() => {
-    const transform = transformRef.current;
-    if (!transform) return;
-
-    const mode = transformModeRef.current;
-
-    if (mode === "rotate") transform.setMode("rotate");
-    else if (mode === "scale") transform.setMode("scale");
-    else transform.setMode("translate");
-
-    transform.translationSnap = mode === "translate" ? GRID_SIZE : null;
-    transform.rotationSnap =
-      mode === "rotate"
-        ? THREE.MathUtils.degToRad(ROTATION_SNAP_DEGREES)
-        : null;
-
-    transform.showX = true;
-    transform.showY = true;
-    transform.showZ = true;
-
-    applyGizmoLook();
-  }, [applyGizmoLook]);
+    configureTransformMode({
+      transform: transformRef.current,
+      mode: transformModeRef.current,
+      translationSnap: GRID_SIZE,
+      rotationSnapDegrees: ROTATION_SNAP_DEGREES,
+    });
+  }, []);
 
   const applyTransformMode = useCallback(() => {
     preserveCameraView(() => {
