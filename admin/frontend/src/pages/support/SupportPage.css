@@ -48,7 +48,6 @@
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   padding: 20px;
-  min-height: 200px;
 }
 
 .ticket-details-top {
@@ -154,13 +153,16 @@
 }
 
 .support-status-badge {
-  color: white;
+  color: #ffffff !important;
   padding: 6px 12px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
   text-transform: capitalize;
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
 }
 
 .ticket-meta-grid {
@@ -259,6 +261,7 @@
   border-radius: 18px;
   line-height: 1.7;
   word-break: break-word;
+  white-space: pre-wrap;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
 }
 
@@ -313,85 +316,67 @@
 }
 
 .reply-box textarea {
-  flex: 1;
-
-  height: 26px;
-  min-height: 26px;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 24px;
   max-height: 140px;
-
-  resize: none;
-  overflow-y: auto;
-
   border: none;
   outline: none;
+  resize: none;
   background: transparent;
-
-  padding: 2px 0;
+  color: #111827;
+  font: inherit;
+  line-height: 1.5;
+  text-align: left;
+  padding: 0;
   margin: 0;
-
-  font-size: 15px;
-  line-height: 22px;
-
-  font-family: inherit;
 }
 
 .reply-composer {
   display: flex;
-  align-items: flex-end;
-
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
   gap: 12px;
-
-  padding: 10px 12px;
-
+  width: 100%;
+  min-height: 56px;
   background: #fff;
-
   border: 1px solid #d1d5db;
-  border-radius: 14px;
-
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
+  border-radius: 12px;
+  padding: 8px 8px 8px 16px;
+  transition: border-color 0.2s ease;
 }
 
 .reply-composer:focus-within {
-  border-color: #2563eb;
-
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+  border-color: #111827;
 }
 
 .reply-send-btn {
-  width: 42px;
-  height: 42px;
-
-  flex-shrink: 0;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
 
   display: flex;
   align-items: center;
   justify-content: center;
 
   border: none;
-  border-radius: 50%;
+  border-radius: 10px;
 
   background: #111827;
   color: #fff;
 
   cursor: pointer;
-
-  transition: all 0.2s ease;
+  transition: 0.2s ease;
 }
 
 .reply-send-btn:hover:not(:disabled) {
-  background: #2563eb;
-
-  transform: scale(1.05);
+  background: #000000;
 }
 
 .reply-send-btn:disabled {
-  opacity: 0.45;
-
+  opacity: 0.5;
   cursor: not-allowed;
-
-  transform: none;
 }
 
 .ticket-management {
@@ -899,10 +884,9 @@
 
 .ticket-meta-item strong {
   color: #111827;
-
   font-size: 15px;
-
   font-weight: 700;
+  text-transform: capitalize;
 }
 
 /* ==========================================

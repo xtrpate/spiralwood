@@ -178,7 +178,13 @@ exports.replyToTicket = async (req, res) => {
     await connection.query(
       `
       UPDATE support_tickets
-      SET updated_at = NOW()
+      SET 
+        updated_at = NOW(),
+        status = CASE
+          WHEN status IN ('open', 'assigned', 'awaiting_customer')
+          THEN 'in_progress'
+          ELSE status
+        END
       WHERE id = ?
       `,
       [req.params.id],

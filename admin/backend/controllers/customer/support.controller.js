@@ -353,11 +353,12 @@ const replyToTicket = async (req, res) => {
 
     const ticket = tickets[0];
 
-    if (ticket.status === "resolved" || ticket.status === "closed") {
+    if (ticket.status === "closed") {
       await connection.rollback();
 
       return res.status(400).json({
-        message: "This ticket can no longer receive replies.",
+        message:
+          "This ticket is permanently closed. Please open a new ticket for further assistance.",
       });
     }
 
@@ -376,11 +377,20 @@ const replyToTicket = async (req, res) => {
       [ticketId, req.user.id, message.trim()],
     );
 
-    // Refresh updated_at
+    // Refresh updated_at and reopen if waiting on customer or resolved
     await connection.query(
       `
       UPDATE support_tickets
-      SET updated_at = CURRENT_TIMESTAMP
+      SET 
+        updated_at = CURRENT_TIMESTAMP,
+        status = CASE 
+          WHEN status IN ('resolved', 'awaiting_customer') THEN 'open' 
+          ELSE status 
+        END,
+        resolved_at = CASE 
+          WHEN status = 'resolved' THEN NULL 
+          ELSE resolved_at 
+        END
       WHERE id = ?
       `,
       [ticketId],

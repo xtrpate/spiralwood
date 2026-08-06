@@ -143,7 +143,7 @@ export default function Conversation({
             <textarea
               ref={textareaRef}
               rows={1}
-              placeholder="Type your message..."
+              placeholder="Type your message here"
               value={reply}
               maxLength={1000}
               onChange={(e) => {

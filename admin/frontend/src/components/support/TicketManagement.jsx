@@ -71,12 +71,12 @@ export default function TicketManagement({ ticket, onUpdated }) {
         <option value="urgent">Urgent</option>
       </select>
 
-      <label>Resolution Note</label>
+      <label>Add Note (Optional)</label>
 
       <textarea
         value={resolutionNote}
         onChange={(e) => setResolutionNote(e.target.value)}
-        placeholder="Optional..."
+        placeholder="Type here"
       />
 
       <button onClick={handleSave} disabled={saving}>

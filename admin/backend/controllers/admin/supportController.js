@@ -41,15 +41,8 @@ exports.getTickets = async (req, res) => {
         st.category,
         st.priority,
         st.status,
-        DATE_FORMAT(
-  st.created_at,
-  '%Y-%m-%d %H:%i:%s'
-) AS created_at,
-
-DATE_FORMAT(
-  st.updated_at,
-  '%Y-%m-%d %H:%i:%s'
-) AS updated_at,
+        st.created_at,
+        st.updated_at,
 
         customer.id AS customer_id,
         customer.name AS customer_name,
@@ -142,10 +135,7 @@ exports.getTicket = async (req, res) => {
   stm.message,
   stm.attachment_url,
 
-  DATE_FORMAT(
-    stm.created_at,
-    '%Y-%m-%d %H:%i:%s'
-  ) AS created_at,
+  stm.created_at,
 
   u.name AS sender_name
 
@@ -410,10 +400,10 @@ exports.updateTicketStatus = async (req, res) => {
   assigned_to,
   assigned_by,
 
-  DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
-  DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at,
-  DATE_FORMAT(assigned_at, '%Y-%m-%d %H:%i:%s') AS assigned_at,
-  DATE_FORMAT(resolved_at, '%Y-%m-%d %H:%i:%s') AS resolved_at,
+  created_at,
+  updated_at,
+  assigned_at,
+  resolved_at,
 
   resolution_note
 FROM support_tickets
@@ -511,14 +501,13 @@ exports.replyToTicket = async (req, res) => {
       targetId: ticketId,
     });
 
-    // If we're waiting for the customer,
-    // switch it back to in progress.
+    // Automatically shift to "in progress" when staff actively replies
     await conn.query(
       `
       UPDATE support_tickets
       SET
         status = CASE
-          WHEN status = 'awaiting_customer'
+          WHEN status IN ('open', 'assigned', 'awaiting_customer')
           THEN 'in_progress'
           ELSE status
         END,

@@ -107,7 +107,9 @@ export default function SupportPage() {
   };
 
   const filteredTickets = tickets.filter((ticket) => {
-    const matchesStatus = !filters.status || ticket.status === filters.status;
+    const matchesStatus = filters.status
+      ? ticket.status === filters.status
+      : ticket.status !== "closed";
 
     const matchesCategory =
       !filters.category || ticket.category === filters.category;

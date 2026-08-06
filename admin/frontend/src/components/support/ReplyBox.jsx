@@ -54,7 +54,7 @@ export default function ReplyBox({ ticket, onReplySent }) {
         <textarea
           ref={textareaRef}
           maxLength={1000}
-          placeholder="Type your reply..."
+          placeholder="Type your message here"
           value={message}
           onChange={(e) => {
             setMessage(e.target.value);

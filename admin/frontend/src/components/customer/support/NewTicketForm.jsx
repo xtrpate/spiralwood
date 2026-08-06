@@ -87,7 +87,7 @@ export default function NewTicketForm({ onCreated }) {
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           className="support-input"
-          placeholder="Briefly describe your concern"
+          placeholder="Describe your concern"
         />
       </div>
 
@@ -134,7 +134,7 @@ export default function NewTicketForm({ onCreated }) {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           className="support-input support-textarea"
-          placeholder="Explain your concern..."
+          placeholder="Explain your concern"
         />
       </div>
 

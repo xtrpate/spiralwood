@@ -1,7 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import posSupportService from "../../services/posSupportService";
+
+const SummaryCard = ({ title, value, subtitle }) => (
+  <div className="support-summary-card">
+    <span>{subtitle}</span>
+    <h2>{value}</h2>
+    <p>{title}</p>
+  </div>
+);
 
 import TicketList from "../../components/support/TicketList";
 import TicketDetails from "../../components/staff/support/TicketDetails";
@@ -25,6 +33,18 @@ export default function SupportPage() {
 
   const [loading, setLoading] = useState(true);
   const [searchParams, setSearchParams] = useSearchParams();
+
+  const stats = useMemo(() => {
+    return {
+      active: tickets.filter((t) =>
+        ["open", "assigned", "in_progress"].includes(t.status),
+      ).length,
+      awaiting: tickets.filter((t) => t.status === "awaiting_customer").length,
+      resolved: tickets.filter((t) => ["resolved", "closed"].includes(t.status))
+        .length,
+      total: tickets.length,
+    };
+  }, [tickets]);
 
   useEffect(() => {
     loadTickets();
@@ -77,7 +97,9 @@ export default function SupportPage() {
   };
 
   const filteredTickets = tickets.filter((ticket) => {
-    const matchesStatus = !filters.status || ticket.status === filters.status;
+    const matchesStatus = filters.status
+      ? ticket.status === filters.status
+      : ticket.status !== "closed";
 
     const matchesCategory =
       !filters.category || ticket.category === filters.category;
@@ -95,18 +117,26 @@ export default function SupportPage() {
     return matchesStatus && matchesCategory && matchesPriority && matchesSearch;
   });
 
-  const openTicket = async (ticketId) => {
+  const openTicket = async (ticketId, preserveTab = false) => {
     try {
       const data = await posSupportService.getTicket(ticketId);
 
       setSelectedTicket(data.ticket);
-      setActiveTab("details");
+      if (!preserveTab) {
+        setActiveTab("details");
+      }
       setMessages(data.messages || []);
+
+      // Silently sync the updated ticket data into the sidebar list
+      setTickets((prevTickets) =>
+        prevTickets.map((t) =>
+          t.id === ticketId ? { ...t, ...data.ticket } : t,
+        ),
+      );
     } catch (err) {
       console.error(err);
     }
   };
-
   return (
     <div className="support-page">
       <div className="support-header">
@@ -117,6 +147,29 @@ export default function SupportPage() {
 
           <p>View and respond to support tickets assigned to you.</p>
         </div>
+      </div>
+
+      <div className="support-summary-grid">
+        <SummaryCard
+          title="Action Required"
+          value={stats.active}
+          subtitle="Your Active Queue"
+        />
+        <SummaryCard
+          title="Awaiting Reply"
+          value={stats.awaiting}
+          subtitle="Waiting on Customer"
+        />
+        <SummaryCard
+          title="Resolved"
+          value={stats.resolved}
+          subtitle="Completed Tasks"
+        />
+        <SummaryCard
+          title="Total Assigned"
+          value={stats.total}
+          subtitle="All-Time Tickets"
+        />
       </div>
 
       <FilterBar
@@ -140,7 +193,7 @@ export default function SupportPage() {
             {activeTab === "details" && (
               <TicketDetails
                 ticket={selectedTicket}
-                onUpdated={() => openTicket(selectedTicket.id)}
+                onUpdated={() => openTicket(selectedTicket.id, true)}
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
               />
@@ -152,7 +205,7 @@ export default function SupportPage() {
                 messages={messages}
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
-                onReplySent={() => openTicket(selectedTicket.id)}
+                onReplySent={() => openTicket(selectedTicket.id, true)}
               />
             )}
           </div>
