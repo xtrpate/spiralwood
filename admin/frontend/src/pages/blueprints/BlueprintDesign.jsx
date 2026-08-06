@@ -13,7 +13,6 @@ import {
   COMPONENT_LIBRARY_GROUPS,
   VIEWS,
   EXPORT_VIEWS,
-  FURNITURE_TEMPLATE_SET,
   QUICK_LIBRARY_COMPONENTS,
   CHAIR_PART_SET,
   CASEWORK_SET,
@@ -29,11 +28,9 @@ import {
   normalizeComponent,
   get2DBounds,
   getProjectedBox,
-  isChairPartType,
   applyWoodFinish,
   isWoodLikeMaterial,
   getDefaultFinishId,
-  getNextChairOrigin,
   getChairGroupOrigin,
   shouldMirrorView,
   getMirroredBox,
@@ -77,16 +74,11 @@ import {
   createWardrobeTemplateComponents,
   createCoffeeTableTemplateComponents,
   createDiningChairTemplateComponents,
-  buildFurnitureTemplateParts,
-  buildDiningChairParts,
   createImportedDiningChairComponents,
 } from "./data/templateComponents";
 
 // ── Export / Print ────────────────────────────────────────────────────────────
-import {
-  getChairManualPlacement,
-  getScaledExportItems,
-} from "./export/placementHelpers";
+import { getScaledExportItems } from "./export/placementHelpers";
 
 // ── 2D Blueprint Rendering ────────────────────────────────────────────────────
 import { Canvas2D } from "./2d/blueprintComponents";
@@ -102,6 +94,7 @@ import { useBlueprintReferenceWorkspace } from "./hooks/useBlueprintReferenceWor
 import { useBlueprintSelectionActions } from "./hooks/useBlueprintSelectionActions";
 import { useBlueprintDuplicateActions } from "./hooks/useBlueprintDuplicateActions";
 import { useBlueprintKeyboardShortcuts } from "./hooks/useBlueprintKeyboardShortcuts";
+import { useBlueprintComponentInsertion } from "./hooks/useBlueprintComponentInsertion";
 import { buildConversionCutListRows } from "./data/conversionCutListUtils";
 
 // ── 3D Viewer ─────────────────────────────────────────────────────────────────
@@ -335,194 +328,25 @@ export default function BlueprintDesign() {
     toggleLockSelected,
   });
 
-  const getPlacedGenericComponentData = useCallback(
-    (typeDef, placed) => {
-      const FLOOR = FLOOR_OFFSET;
-      const BASE_MARGIN = 120;
-      const GAP_X = 180;
-      const GAP_Z = 240;
-      const START_X = snap(WORLD_W * 0.36);
-      const START_Z = snap(WORLD_D * 0.28);
-      const floorY = WORLD_H - FLOOR;
-
-      const generic = placed.filter((c) => !c.groupType);
-
-      const layoutPlaced = (() => {
-        let cursorX = START_X;
-        let cursorZ = START_Z;
-        let rowDepth = 0;
-        const rows = [];
-
-        generic.forEach((comp) => {
-          if (cursorX + comp.width > WORLD_W - BASE_MARGIN) {
-            cursorX = START_X;
-            cursorZ += rowDepth + GAP_Z;
-            rowDepth = 0;
-          }
-          rows.push({ x: cursorX, z: cursorZ, comp });
-          cursorX += comp.width + GAP_X;
-          rowDepth = Math.max(rowDepth, comp.depth);
-        });
-
-        return { rows, cursorX, cursorZ, rowDepth };
-      })();
-
-      let x = layoutPlaced.cursorX;
-      let z = layoutPlaced.cursorZ;
-      let rowDepth = layoutPlaced.rowDepth;
-
-      if (x + typeDef.w > WORLD_W - BASE_MARGIN) {
-        x = START_X;
-        z += rowDepth + GAP_Z;
-        rowDepth = 0;
-      }
-
-      const cabinetish = generic.filter((c) =>
-        [
-          "base_cabinet",
-          "upper_cabinet",
-          "kitchen_cabinet",
-          "tv_stand",
-          "sideboard",
-          "wardrobe",
-          "bookshelf",
-          "bookcase",
-          "dresser",
-          "nightstand",
-        ].includes(c.type),
-      );
-      const lastCabinetish = cabinetish[cabinetish.length - 1];
-
-      switch (typeDef.type) {
-        case "upper_cabinet":
-          return {
-            x,
-            y: floorY - typeDef.h - 900,
-            z,
-            width: typeDef.w,
-            height: typeDef.h,
-            depth: typeDef.d,
-            rotationY: 0,
-          };
-
-        case "countertop": {
-          const host = generic
-            .filter((c) =>
-              [
-                "base_cabinet",
-                "kitchen_cabinet",
-                "sideboard",
-                "tv_stand",
-              ].includes(c.type),
-            )
-            .slice(-1)[0];
-          if (host) {
-            return {
-              x: host.x,
-              y: host.y - typeDef.h,
-              z: host.z,
-              width: Math.max(typeDef.w, host.width),
-              height: typeDef.h,
-              depth: Math.max(typeDef.d, host.depth),
-              rotationY: 0,
-            };
-          }
-          return {
-            x,
-            y: floorY - typeDef.h - 900,
-            z,
-            width: typeDef.w,
-            height: typeDef.h,
-            depth: typeDef.d,
-            rotationY: 0,
-          };
-        }
-
-        case "door_single":
-        case "door_double":
-        case "shelf":
-        case "hardware": {
-          const host = lastCabinetish;
-          if (host) {
-            return {
-              x:
-                host.x +
-                snap(
-                  Math.max(
-                    0,
-                    (host.width - Math.min(typeDef.w, host.width)) / 2,
-                  ),
-                ),
-              y:
-                typeDef.type === "shelf"
-                  ? host.y + snap(Math.max(40, host.height * 0.3))
-                  : host.y +
-                    snap(
-                      Math.max(
-                        0,
-                        (host.height - Math.min(typeDef.h, host.height)) / 2,
-                      ),
-                    ),
-              z:
-                typeDef.type === "shelf"
-                  ? host.z + 20
-                  : host.z + Math.max(0, host.depth - typeDef.d),
-              width:
-                typeDef.type === "hardware"
-                  ? typeDef.w
-                  : Math.min(typeDef.w, Math.max(typeDef.w, host.width)),
-              height:
-                typeDef.type === "hardware"
-                  ? typeDef.h
-                  : Math.min(typeDef.h, host.height),
-              depth:
-                typeDef.type === "shelf"
-                  ? Math.min(typeDef.d, host.depth - 20)
-                  : typeDef.d,
-              rotationY: host.rotationY || 0,
-            };
-          }
-          return {
-            x,
-            y: floorY - typeDef.h,
-            z,
-            width: typeDef.w,
-            height: typeDef.h,
-            depth: typeDef.d,
-            rotationY: 0,
-          };
-        }
-
-        default:
-          return {
-            x,
-            y: floorY - typeDef.h,
-            z,
-            width: typeDef.w,
-            height: typeDef.h,
-            depth: typeDef.d,
-            rotationY: 0,
-          };
-      }
-    },
-    [WORLD_H, WORLD_W],
-  );
-
-  const startManualChairBuild = useCallback(() => {
-    const buildCount =
-      [
-        ...new Set(
-          components
-            .filter((c) => c.groupType === "chair")
-            .map((c) => c.groupId),
-        ),
-      ].length + 1;
-    const groupId = makeGroupId();
-    const groupLabel = `Manual Chair ${buildCount}`;
-    setActiveChairBuild({ id: groupId, label: groupLabel });
-    setView("front");
-    toast.success(`Manual build started: ${groupLabel}`);
-  }, [components]);
+  const { addComponent, placePendingComponent } =
+    useBlueprintComponentInsertion({
+      components,
+      setComponents,
+      selectedComp,
+      activeChairBuild,
+      setActiveChairBuild,
+      pendingPlacement,
+      setPendingPlacement,
+      editorMode,
+      view,
+      pushHistory,
+      setSelectedId,
+      setEdit3DId,
+      setSelectedIds,
+      setTransformMode,
+      worldDimensions: { w: WORLD_W, h: WORLD_H, d: WORLD_D },
+      floorOffset: FLOOR_OFFSET,
+    });
 
   const updateComp = useCallback(
     (cid, attrs, options = {}) => {
@@ -4866,321 +4690,6 @@ export default function BlueprintDesign() {
 
     setReferenceFile(nextReference);
   }, [view, referenceFiles]);
-
-  const commitAddComponent = useCallback(
-    (t, worldPlacement = null) => {
-      const defaultFinishId = getDefaultFinishId(t.material);
-      const finishData = defaultFinishId
-        ? applyWoodFinish({}, defaultFinishId)
-        : {};
-
-      const floorY = WORLD_H - FLOOR_OFFSET;
-
-      const getManualPlacement = (width, height, depth) => {
-        if (!worldPlacement) return null;
-
-        return {
-          x: snap(worldPlacement.worldX - width / 2 + WORLD_W / 2),
-          y: snap(floorY - height),
-          z: snap(worldPlacement.worldZ - depth / 2 + WORLD_D / 2),
-          width,
-          height,
-          depth,
-          rotationY: 0,
-        };
-      };
-
-      if (FURNITURE_TEMPLATE_SET.has(t.type)) {
-        const templateOrigin = worldPlacement
-          ? {
-              x: snap(worldPlacement.worldX + WORLD_W / 2),
-              z: snap(worldPlacement.worldZ + WORLD_D / 2),
-            }
-          : getNextAssemblyOrigin(components);
-
-        const { x, z } = templateOrigin;
-
-        const buildCount =
-          [
-            ...new Set(
-              components
-                .filter((c) => c.groupType === "assembly")
-                .map((c) => c.groupId),
-            ),
-          ].length + 1;
-
-        const groupId = makeGroupId();
-        const groupLabel = `${t.label} ${buildCount}`;
-
-        const rawParts = buildFurnitureTemplateParts({
-          templateType: t.type,
-          buildId: groupId,
-          originX: x,
-          originZ: z,
-          canvasH: WORLD_H,
-          groupLabel,
-        });
-
-        const parts = rawParts.map((part) =>
-          normalizeComponent({
-            ...part,
-            templateType: t.type,
-            groupUnitPrice: Number(t.unitPrice) || 0,
-          }),
-        );
-
-        pushHistory(components);
-        setComponents((prev) => [...prev, ...parts]);
-        setSelectedId(parts[0]?.id || null);
-        setEdit3DId(parts[0]?.id || null);
-        setSelectedIds(parts.map((p) => p.id));
-        setTransformMode("translate");
-        toast.success(`${t.label} added.`);
-        return;
-      }
-
-      if (t.type === "chair_template") {
-        const chairOrigin = worldPlacement
-          ? {
-              x: snap(worldPlacement.worldX + WORLD_W / 2),
-              z: snap(worldPlacement.worldZ + WORLD_D / 2),
-            }
-          : getNextChairOrigin(components);
-
-        const { x, z } = chairOrigin;
-
-        const chairCount =
-          [
-            ...new Set(
-              components
-                .filter((c) => c.groupType === "chair")
-                .map((c) => c.groupId),
-            ),
-          ].length + 1;
-
-        const groupId = makeGroupId();
-        const groupLabel = `Dining Chair ${chairCount}`;
-
-        const builtChair = buildDiningChairParts({
-          buildId: groupId,
-          originX: x,
-          originZ: z,
-          canvasH: WORLD_H,
-          groupLabel,
-        });
-
-        const parts = builtChair.parts;
-
-        pushHistory(components);
-        setComponents((prev) => [...prev, ...parts]);
-        setSelectedId(parts[0]?.id || null);
-        setEdit3DId(parts[0]?.id || null);
-        setSelectedIds(parts.map((p) => p.id));
-        setTransformMode("translate");
-        setActiveChairBuild({ id: groupId, label: groupLabel });
-        toast.success("Dining chair template generated.");
-        return;
-      }
-
-      if (isChairPartType(t.type)) {
-        const selectedChairGroup =
-          selectedComp?.groupType === "chair" && selectedComp.groupId
-            ? {
-                id: selectedComp.groupId,
-                label: selectedComp.groupLabel || "Chair Build",
-              }
-            : null;
-
-        const targetBuild =
-          activeChairBuild ||
-          selectedChairGroup ||
-          (() => {
-            const chairCount =
-              [
-                ...new Set(
-                  components
-                    .filter((c) => c.groupType === "chair")
-                    .map((c) => c.groupId),
-                ),
-              ].length + 1;
-            return { id: makeGroupId(), label: `Manual Chair ${chairCount}` };
-          })();
-
-        const groupComponents = components.filter(
-          (c) => c.groupId === targetBuild.id,
-        );
-        const placement = getChairManualPlacement(
-          t,
-          groupComponents,
-          components,
-          WORLD_H,
-        );
-
-        const newComp = normalizeComponent({
-          id: makeId(),
-          groupId: targetBuild.id,
-          groupLabel: targetBuild.label,
-          groupType: "chair",
-          type: t.type,
-          label: placement.label,
-          partCode: placement.partCode,
-          category: t.category,
-          blueprintStyle: "chair_part",
-          x: placement.x,
-          y: placement.y,
-          z: placement.z,
-          width: placement.width,
-          height: placement.height,
-          depth: placement.depth,
-          rotationY: 0,
-          fill: finishData.fill || t.fill,
-          material: finishData.material || t.material,
-          finish: finishData.finish || "",
-          unitPrice: t.unitPrice,
-          qty: 1,
-          locked: false,
-        });
-
-        pushHistory(components);
-        setComponents((prev) => [...prev, newComp]);
-        setSelectedId(newComp.id);
-        setEdit3DId(newComp.id);
-        setSelectedIds([newComp.id]);
-        setTransformMode("translate");
-        setActiveChairBuild(targetBuild);
-        toast.success(`${newComp.label} added.`);
-        return;
-      }
-
-      if (t.type === "dining_chair") {
-        const manualPlacement = getManualPlacement(t.w, t.h, t.d);
-        const placement =
-          manualPlacement || getPlacedGenericComponentData(t, components);
-
-        const newComp = normalizeComponent({
-          id: makeId(),
-          type: t.type,
-          label: t.label,
-          category: t.category,
-          blueprintStyle: t.blueprintStyle,
-          x: placement.x,
-          y: placement.y,
-          z: placement.z,
-          width: t.w,
-          height: t.h,
-          depth: t.d,
-          rotationY: 0,
-          fill: finishData.fill || t.fill,
-          material: finishData.material || t.material,
-          finish: finishData.finish || "",
-          unitPrice: t.unitPrice,
-          qty: 1,
-          locked: false,
-        });
-
-        pushHistory(components);
-        setComponents((prev) => [...prev, newComp]);
-        setSelectedId(newComp.id);
-        setEdit3DId(newComp.id);
-        setSelectedIds([newComp.id]);
-        setTransformMode("translate");
-        toast.success("Dining chair added.");
-        return;
-      }
-
-      const manualPlacement = getManualPlacement(t.w, t.h, t.d);
-      const placement =
-        manualPlacement || getPlacedGenericComponentData(t, components);
-
-      const newComp = normalizeComponent({
-        id: makeId(),
-        type: t.type,
-        label: t.label,
-        category: t.category,
-        blueprintStyle: t.blueprintStyle,
-        x: placement.x,
-        y: placement.y,
-        z: placement.z,
-        width: placement.width || t.w,
-        height: placement.height || t.h,
-        depth: placement.depth || t.d,
-        rotationY: placement.rotationY || 0,
-        fill: finishData.fill || t.fill,
-        material: finishData.material || t.material,
-        finish: finishData.finish || "",
-        unitPrice: t.unitPrice,
-        qty: 1,
-        locked: false,
-      });
-
-      pushHistory(components);
-      setComponents((prev) => [...prev, newComp]);
-      setSelectedId(newComp.id);
-      setEdit3DId(newComp.id);
-      setSelectedIds([newComp.id]);
-      setTransformMode("translate");
-      toast.success("Component added in 3D.");
-    },
-    [
-      components,
-      selectedComp,
-      activeChairBuild,
-      WORLD_H,
-      WORLD_W,
-      WORLD_D,
-      getPlacedGenericComponentData,
-    ],
-  );
-
-  const addComponent = useCallback(
-    (t, options = {}) => {
-      if (!t) return;
-
-      const { source = "click", silent = false } = options;
-
-      if (editorMode !== "editable") {
-        toast.error(
-          'Reference mode ito. Click "Editable Mode" muna bago mag-add ng components.',
-        );
-        return;
-      }
-
-      if (view !== "3d") {
-        toast.error("Sa 3D view lang puwede mag-add ng component.");
-        return;
-      }
-
-      // Chair build parts stay as structured auto-build
-      if (isChairPartType(t.type)) {
-        commitAddComponent(t);
-        return;
-      }
-
-      setPendingPlacement({
-        ...t,
-        placementSource: source,
-      });
-      setTransformMode("translate");
-
-      if (!silent) {
-        toast.success(
-          source === "drag"
-            ? `Dragging ${t.label}. Drop it on the 3D floor to place.`
-            : `Placement mode: ${t.label}. Click the 3D floor to place.`,
-        );
-      }
-    },
-    [editorMode, view, commitAddComponent],
-  );
-
-  const placePendingComponent = useCallback(
-    (worldPlacement) => {
-      if (!pendingPlacement) return;
-      commitAddComponent(pendingPlacement, worldPlacement);
-      setPendingPlacement(null);
-    },
-    [pendingPlacement, commitAddComponent],
-  );
 
   const uniqueMaterials = useMemo(() => {
     return [...new Set(components.map((c) => c.material).filter(Boolean))];
