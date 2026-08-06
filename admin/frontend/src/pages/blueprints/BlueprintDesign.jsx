@@ -77,6 +77,10 @@ import {
   useReferenceImage,
 } from "./data/initHelpers";
 import {
+  analyzeSmartWidthResizeAssembly,
+  buildSmartWidthResizePlan,
+} from "./data/smartAssemblyResize";
+import {
   createDiningTableTemplateComponents,
   createBedTemplateComponents,
   createWardrobeTemplateComponents,
@@ -2010,6 +2014,94 @@ export default function BlueprintDesign() {
       );
     },
     [editorMode, components, pushHistory],
+  );
+
+  const getSmartWidthResizeAssembly3D = useCallback(() => {
+    const primaryId =
+      selectedId || selectedIds?.[0] || activeSelectionIds3D?.[0] || null;
+
+    if (!primaryId) return [];
+    return getAssemblyItemsFromComponent(primaryId)
+      .map((item) => normalizeComponent(item))
+      .filter((item) => item?.id);
+  }, [
+    selectedId,
+    selectedIds,
+    activeSelectionIds3D,
+    getAssemblyItemsFromComponent,
+  ]);
+
+  const smartWidthResizeContext3D = useMemo(() => {
+    const assemblyItems = getSmartWidthResizeAssembly3D();
+    return {
+      ...analyzeSmartWidthResizeAssembly(assemblyItems),
+      hasLockedAssemblyPart: assemblyItems.some((item) => isLocked(item)),
+    };
+  }, [getSmartWidthResizeAssembly3D, isLocked]);
+
+  const previewSmartWidthResize3D = useCallback(
+    (newWidth, anchor = "center") => {
+      return buildSmartWidthResizePlan(getSmartWidthResizeAssembly3D(), {
+        newWidth,
+        anchor,
+      });
+    },
+    [getSmartWidthResizeAssembly3D],
+  );
+
+  const applySmartWidthResize3D = useCallback(
+    (newWidth, anchor = "center") => {
+      if (editorMode !== "editable") {
+        toast.error("Reference mode ito. Lumipat muna sa editable mode.");
+        return null;
+      }
+
+      const assemblyItems = getSmartWidthResizeAssembly3D();
+      const hasLockedAssemblyPart = assemblyItems.some((item) => isLocked(item));
+
+      if (hasLockedAssemblyPart) {
+        toast.error(
+          "Cannot resize. One or more parts in the assembly are locked.",
+        );
+        return null;
+      }
+
+      const plan = buildSmartWidthResizePlan(assemblyItems, {
+        newWidth,
+        anchor,
+      });
+
+      if (!plan.supported) {
+        toast.error(plan.reason || "Smart width resize is not available.");
+        return plan;
+      }
+
+      updateManyComps(plan.changesById);
+
+      const nextPrimaryId = plan.assemblyIds.includes(selectedId)
+        ? selectedId
+        : plan.assemblyIds[0] || null;
+
+      setSelectedIds(plan.assemblyIds);
+      setSelectedId(nextPrimaryId);
+      setEdit3DId(nextPrimaryId);
+      setTransformMode("translate");
+
+      toast.success(
+        `${plan.assemblyLabel} resized from ${Math.round(
+          plan.previousWidth,
+        )} mm to ${Math.round(plan.requestedWidth)} mm.`,
+      );
+
+      return plan;
+    },
+    [
+      editorMode,
+      getSmartWidthResizeAssembly3D,
+      isLocked,
+      updateManyComps,
+      selectedId,
+    ],
   );
 
   const getSmartAxisMeta = useCallback((axis) => {
@@ -7695,6 +7787,9 @@ export default function BlueprintDesign() {
             canUseSmartActions={canUseSmartActions3D}
             smartSelectionCount={activeSelectedComponents3D.length}
             hasLockedSmartSelection={hasLockedSmartSelection3D}
+            smartWidthResizeContext={smartWidthResizeContext3D}
+            onPreviewSmartWidthResize={previewSmartWidthResize3D}
+            onApplySmartWidthResize={applySmartWidthResize3D}
             onAlignSelection={alignSelection3D}
             onFlushSelection={flushSelection3D}
             onMirrorDuplicate={mirrorDuplicateSelection3D}

@@ -158,6 +158,15 @@ function normalizeComponent(c) {
     unitPrice: Number(c.unitPrice) || 0,
     groupUnitPrice: Number(c.groupUnitPrice) || 0,
     templateType: c.templateType || "",
+    ...(c.assemblyRole
+      ? { assemblyRole: String(c.assemblyRole) }
+      : {}),
+    ...(c.resizeRuleX
+      ? { resizeRuleX: String(c.resizeRuleX) }
+      : {}),
+    ...(Number(c.smartResizeVersion) > 0
+      ? { smartResizeVersion: Number(c.smartResizeVersion) }
+      : {}),
     qty: Math.max(1, Number(c.qty) || 1),
     locked: !!c.locked,
     cornerRadius: normalizeCornerRadius(c.cornerRadius),

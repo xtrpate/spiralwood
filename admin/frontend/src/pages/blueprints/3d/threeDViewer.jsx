@@ -2230,6 +2230,9 @@ function SmartActionsPanel({
   canUseSmartActions,
   smartSelectionCount = 0,
   hasLockedSmartSelection = false,
+  smartWidthResizeContext = null,
+  onPreviewSmartWidthResize,
+  onApplySmartWidthResize,
   onAlignSelection,
   onFlushSelection,
   onMirrorDuplicate,
@@ -2280,6 +2283,9 @@ function SmartActionsPanel({
   const [arraySpacing, setArraySpacing] = useState(0);
   const [gapValue, setGapValue] = useState(100);
   const [anchorMode, setAnchorMode] = useState("preserve-first");
+  const [smartResizeWidth, setSmartResizeWidth] = useState("");
+  const [smartResizeAnchor, setSmartResizeAnchor] = useState("center");
+  const [smartResizePreview, setSmartResizePreview] = useState(null);
   const [builderInset, setBuilderInset] = useState(40);
   const [builderDrawerCount, setBuilderDrawerCount] = useState(3);
   const [cabinetWidth, setCabinetWidth] = useState(1200);
@@ -2309,6 +2315,21 @@ function SmartActionsPanel({
     "door",
   ]);
 
+  useEffect(() => {
+    if (!smartWidthResizeContext?.supported) {
+      setSmartResizeWidth("");
+      setSmartResizePreview(null);
+      return;
+    }
+
+    setSmartResizeWidth(String(smartWidthResizeContext.currentWidth || ""));
+    setSmartResizePreview(null);
+  }, [
+    smartWidthResizeContext?.assemblyId,
+    smartWidthResizeContext?.currentWidth,
+    smartWidthResizeContext?.supported,
+  ]);
+
   const canPairActions = canUseSmartActions && smartSelectionCount > 1;
   const canMirror = canUseSmartActions && smartSelectionCount > 0;
   const canAssemblyActions = canUseSmartActions && smartSelectionCount > 0;
@@ -2317,6 +2338,12 @@ function SmartActionsPanel({
   const canBuilderHelpers = canUseSmartActions && smartSelectionCount > 0;
   const canStrictMultiBuilderHelpers =
     canUseSmartActions && smartSelectionCount > 1;
+  const canSmartWidthResize =
+    canUseSmartActions &&
+    Boolean(smartWidthResizeContext?.supported) &&
+    !smartWidthResizeContext?.hasLockedAssemblyPart &&
+    typeof onPreviewSmartWidthResize === "function" &&
+    typeof onApplySmartWidthResize === "function";
   const canQuickCabinetBuilder =
     canBuildCabinetBox && typeof onBuildCabinetBox === "function";
   const canInteriorPresetBuilder =
@@ -2351,6 +2378,28 @@ function SmartActionsPanel({
       e.stopPropagation();
       if (enabled) fn?.(...args);
     };
+
+  const handleSmartResizePreview = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const result = onPreviewSmartWidthResize?.(
+      smartResizeWidth,
+      smartResizeAnchor,
+    );
+    setSmartResizePreview(result || null);
+  };
+
+  const handleSmartResizeApply = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const result = onApplySmartWidthResize?.(
+      smartResizeWidth,
+      smartResizeAnchor,
+    );
+    setSmartResizePreview(result || null);
+  };
 
   const getBtnStyle = (enabled, warn = false) => ({
     ...(warn ? S.smartActionBtnWarn : S.smartActionBtn),
@@ -2399,6 +2448,12 @@ function SmartActionsPanel({
       hint: "Cabinet generator and smart builder helpers.",
     },
     {
+      key: "resize",
+      label: "Resize",
+      hint:
+        "Exact anchored width resize for supported furniture assemblies.",
+    },
+    {
       key: "duplicate",
       label: "Duplicate",
       hint: "Mirror, assembly actions, and repeat / array tools.",
@@ -2424,7 +2479,7 @@ function SmartActionsPanel({
 
   const toolTabsRowStyle = {
     display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
     gap: 6,
     marginBottom: 10,
   };
@@ -2454,7 +2509,7 @@ function SmartActionsPanel({
       onMouseDown={handlePanelPointerDown}
       onPointerDown={handlePanelPointerDown}
     >
-      <div style={S.smartActionsTitle}>Build Tools</div>
+      <div style={S.smartActionsTitle}>Design Tools</div>
       <div style={S.smartActionsSubtle}>{statusText}</div>
 
       <div style={toolTabsRowStyle}>
@@ -2883,6 +2938,192 @@ function SmartActionsPanel({
                 Row Z
               </button>
             </div>
+          </div>
+        </>
+      ) : null}
+
+      {activeToolTab === "resize" ? (
+        <>
+          <div style={sectionCardStyle}>
+            <div style={S.smartActionsSectionLabel}>
+              Smart Assembly Width
+            </div>
+            <div style={sectionHintStyle}>
+              Resize a Dining Table without changing leg, apron, or panel
+              thickness. Select any part of the table assembly first.
+            </div>
+
+            {smartWidthResizeContext?.supported ? (
+              <>
+                <div
+                  style={{
+                    ...S.infoCard,
+                    marginBottom: 10,
+                    padding: "8px 10px",
+                    lineHeight: 1.55,
+                  }}
+                >
+                  <div style={{ fontSize: 11, fontWeight: 800, color: "#e5eefc" }}>
+                    {smartWidthResizeContext.assemblyLabel || "Dining Table"}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#9fb0c7" }}>
+                    Current width: {Math.round(smartWidthResizeContext.currentWidth || 0)} mm
+                    {" · "}
+                    {smartWidthResizeContext.partCount || 0} parts
+                  </div>
+                  <div style={{ fontSize: 10, color: "#9fb0c7" }}>
+                    Minimum safe width: {Math.round(smartWidthResizeContext.minimumWidth || 1)} mm
+                  </div>
+                  {smartWidthResizeContext.warning ? (
+                    <div style={{ fontSize: 10, color: "#fcd34d", marginTop: 4 }}>
+                      {smartWidthResizeContext.warning}
+                    </div>
+                  ) : null}
+                </div>
+
+                <label style={{ ...fieldStyle, display: "block", marginBottom: 10 }}>
+                  <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                    New Width (mm)
+                  </span>
+                  <input
+                    type="number"
+                    min={smartWidthResizeContext.minimumWidth || 1}
+                    step="1"
+                    value={smartResizeWidth}
+                    disabled={!canSmartWidthResize}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onChange={(e) => {
+                      setSmartResizeWidth(e.target.value);
+                      setSmartResizePreview(null);
+                    }}
+                    style={actionInputStyle}
+                  />
+                </label>
+
+                <div style={{ ...S.smartActionsSectionLabel, marginBottom: 6 }}>
+                  Resize From
+                </div>
+                <div style={S.smartActionsGrid}>
+                  {[
+                    ["left", "Left"],
+                    ["center", "Center"],
+                    ["right", "Right"],
+                  ].map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      disabled={!canSmartWidthResize}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!canSmartWidthResize) return;
+                        setSmartResizeAnchor(mode);
+                        setSmartResizePreview(null);
+                      }}
+                      style={{
+                        ...getBtnStyle(canSmartWidthResize),
+                        ...(smartResizeAnchor === mode
+                          ? {
+                              border: "1px solid rgba(96,165,250,.75)",
+                              background:
+                                "linear-gradient(180deg, rgba(37,99,235,.30) 0%, rgba(29,78,216,.22) 100%)",
+                              color: "#eef4ff",
+                            }
+                          : {}),
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: "#9fb0c7",
+                    lineHeight: 1.5,
+                    marginTop: 8,
+                    marginBottom: 10,
+                  }}
+                >
+                  {smartResizeAnchor === "left"
+                    ? "Left edge moves; right edge stays fixed."
+                    : smartResizeAnchor === "right"
+                      ? "Right edge moves; left edge stays fixed."
+                      : "Center stays fixed; both sides resize evenly."}
+                </div>
+
+                <div style={S.smartActionsGrid}>
+                  <button
+                    type="button"
+                    disabled={!canSmartWidthResize}
+                    onClick={handleSmartResizePreview}
+                    style={getBtnStyle(canSmartWidthResize)}
+                  >
+                    Preview Changes
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canSmartWidthResize}
+                    onClick={handleSmartResizeApply}
+                    style={getBtnStyle(canSmartWidthResize)}
+                  >
+                    Apply Resize
+                  </button>
+                </div>
+
+                {smartResizePreview ? (
+                  <div
+                    style={{
+                      ...S.infoCard,
+                      marginTop: 10,
+                      padding: "8px 10px",
+                      lineHeight: 1.55,
+                      borderColor: smartResizePreview.supported
+                        ? "rgba(74,222,128,.45)"
+                        : "rgba(248,113,113,.55)",
+                    }}
+                  >
+                    {smartResizePreview.supported ? (
+                      <>
+                        <div style={{ fontSize: 10, color: "#86efac", fontWeight: 800 }}>
+                          {Math.round(smartResizePreview.previousWidth || 0)} mm → {Math.round(smartResizePreview.requestedWidth || 0)} mm
+                        </div>
+                        <div style={{ fontSize: 10, color: "#cbd5e1" }}>
+                          {smartResizePreview.fixedEdge}
+                        </div>
+                        <div style={{ fontSize: 10, color: "#9fb0c7" }}>
+                          {smartResizePreview.stretchedPartCount || 0} stretched · {smartResizePreview.movedPartCount || 0} repositioned
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 10, color: "#fca5a5" }}>
+                        {smartResizePreview.reason || "Resize preview is unavailable."}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div
+                style={{
+                  ...S.infoCard,
+                  color: "#fcd34d",
+                  fontSize: 10,
+                  lineHeight: 1.55,
+                }}
+              >
+                {smartWidthResizeContext?.reason ||
+                  "Select a Dining Table assembly to use Smart Width Resize."}
+              </div>
+            )}
+
+            {smartWidthResizeContext?.hasLockedAssemblyPart ? (
+              <div style={{ fontSize: 10, color: "#fca5a5", marginTop: 8 }}>
+                Unlock all parts in the assembly before resizing.
+              </div>
+            ) : null}
           </div>
         </>
       ) : null}
@@ -4007,6 +4248,9 @@ function ThreeDViewer({
   canUseSmartActions,
   smartSelectionCount = 0,
   hasLockedSmartSelection = false,
+  smartWidthResizeContext = null,
+  onPreviewSmartWidthResize,
+  onApplySmartWidthResize,
   onAlignSelection,
   onFlushSelection,
   onMirrorDuplicate,
@@ -6691,6 +6935,9 @@ function ThreeDViewer({
             canUseSmartActions={canUseSmartActions}
             smartSelectionCount={smartSelectionCount}
             hasLockedSmartSelection={hasLockedSmartSelection}
+            smartWidthResizeContext={smartWidthResizeContext}
+            onPreviewSmartWidthResize={onPreviewSmartWidthResize}
+            onApplySmartWidthResize={onApplySmartWidthResize}
             onAlignSelection={onAlignSelection}
             onFlushSelection={onFlushSelection}
             onMirrorDuplicate={onMirrorDuplicate}
