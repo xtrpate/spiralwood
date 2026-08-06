@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import toast from "react-hot-toast";
 import api from "../services/api";
 
 const money = (value) =>
@@ -45,6 +44,61 @@ const isSavedDecisionComplete = (payload = null) => {
   );
 };
 
+
+const buildDraftDecision = (form = {}, assessment = null) => {
+  const assessmentStatus = String(assessment?.status || "")
+    .trim()
+    .toLowerCase();
+  const decision = String(form.decision || "")
+    .trim()
+    .toLowerCase();
+  const reason = String(form.reason || "").trim();
+  const truckType = String(form.truck_type || "").trim();
+  const parsedFee = Number(form.additional_delivery_fee);
+  const additionalDeliveryFee =
+    decision === "fee_required" && Number.isFinite(parsedFee)
+      ? Math.max(0, parsedFee)
+      : 0;
+
+  const complete =
+    assessmentStatus === "standard" ||
+    (assessmentStatus === "oversized" &&
+      ["fee_required", "no_additional_fee"].includes(decision) &&
+      Boolean(reason || truckType) &&
+      (decision !== "fee_required" || additionalDeliveryFee > 0));
+
+  return {
+    assessment_status: assessmentStatus,
+    decision,
+    additional_delivery_fee: additionalDeliveryFee,
+    reason,
+    truck_type: truckType,
+    complete,
+  };
+};
+
+const isDraftSameAsSaved = (draft = {}, saved = {}) => {
+  const savedDecision = String(saved.decision || "")
+    .trim()
+    .toLowerCase();
+  const savedFee =
+    savedDecision === "fee_required"
+      ? Math.max(0, Number(saved.additional_delivery_fee || 0))
+      : 0;
+
+  return (
+    String(draft.decision || "").trim().toLowerCase() === savedDecision &&
+    Number(draft.additional_delivery_fee || 0) === savedFee &&
+    String(draft.reason || "").trim() ===
+      String(saved.reason || "").trim() &&
+    String(draft.truck_type || "").trim() ===
+      String(saved.truck_type || "").trim()
+  );
+};
+
+const getDraftStorageKey = (blueprintId) =>
+  `wisdom_oversized_delivery_draft:${blueprintId}`;
+
 export default function OversizedDeliveryEstimatorPanel({
   blueprintId,
   onGateChange,
@@ -57,7 +111,6 @@ export default function OversizedDeliveryEstimatorPanel({
     truck_type: "",
   });
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -99,6 +152,78 @@ export default function OversizedDeliveryEstimatorPanel({
   useEffect(() => {
     load();
   }, [load]);
+
+  const assessment = payload?.assessment || null;
+  const estimation = payload?.estimation || null;
+  const order = payload?.order || null;
+  const assessmentStatus = String(assessment?.status || "").toLowerCase();
+  const estimationStatus = String(estimation?.status || "").toLowerCase();
+  const readOnly = Boolean(estimation?.id && estimationStatus !== "draft");
+  const savedComplete = isSavedDecisionComplete(payload);
+
+  const draftDecision = useMemo(
+    () => buildDraftDecision(form, assessment),
+    [assessment, form],
+  );
+  const draftComplete = Boolean(draftDecision.complete);
+  const draftMatchesSaved = useMemo(
+    () =>
+      Boolean(
+        savedComplete &&
+          isDraftSameAsSaved(
+            draftDecision,
+            estimation?.decision || {},
+          ),
+      ),
+    [draftDecision, estimation, savedComplete],
+  );
+
+  useEffect(() => {
+    if (!blueprintId) return;
+
+    const detail = {
+      blueprintId: String(blueprintId),
+      oversized_delivery: draftDecision,
+    };
+
+    try {
+      window.sessionStorage.setItem(
+        getDraftStorageKey(blueprintId),
+        JSON.stringify(draftDecision),
+      );
+    } catch {
+      // The custom event still keeps the estimation page synchronized.
+    }
+
+    window.dispatchEvent(
+      new CustomEvent("wisdom:oversized-delivery-draft-changed", {
+        detail,
+      }),
+    );
+  }, [blueprintId, draftDecision]);
+
+  useEffect(() => {
+    const handleEstimationSaved = (event) => {
+      if (
+        String(event?.detail?.blueprintId || "") ===
+        String(blueprintId || "")
+      ) {
+        load();
+      }
+    };
+
+    window.addEventListener(
+      "wisdom:estimation-saved",
+      handleEstimationSaved,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "wisdom:estimation-saved",
+        handleEstimationSaved,
+      );
+    };
+  }, [blueprintId, load]);
 
   const gate = useMemo(() => {
     if (!blueprintId) {
@@ -151,21 +276,30 @@ export default function OversizedDeliveryEstimatorPanel({
       };
     }
 
+    if (!draftComplete) {
+      return {
+        active: true,
+        readyForQuote: false,
+        message:
+          "Complete the oversized-delivery decision, then click Save Estimate.",
+      };
+    }
+
     if (!payload?.estimation?.id) {
       return {
         active: true,
         readyForQuote: false,
         message:
-          "Save the estimate draft first, then complete the oversized-delivery decision.",
+          "Click Save Estimate to save the quotation and delivery fee together.",
       };
     }
 
-    if (!isSavedDecisionComplete(payload)) {
+    if (!isSavedDecisionComplete(payload) || !draftMatchesSaved) {
       return {
         active: true,
         readyForQuote: false,
         message:
-          "Complete and save the oversized-delivery fee decision before sending the quotation.",
+          "Save the estimate to apply the oversized-delivery decision before sending the quotation.",
       };
     }
 
@@ -174,7 +308,14 @@ export default function OversizedDeliveryEstimatorPanel({
       readyForQuote: true,
       message: "",
     };
-  }, [blueprintId, error, loading, payload]);
+  }, [
+    blueprintId,
+    draftComplete,
+    draftMatchesSaved,
+    error,
+    loading,
+    payload,
+  ]);
 
   useEffect(() => {
     if (typeof onGateChange === "function") {
@@ -182,120 +323,6 @@ export default function OversizedDeliveryEstimatorPanel({
     }
   }, [gate, onGateChange]);
 
-  const assessment = payload?.assessment || null;
-  const estimation = payload?.estimation || null;
-  const order = payload?.order || null;
-  const assessmentStatus = String(assessment?.status || "").toLowerCase();
-  const estimationStatus = String(estimation?.status || "").toLowerCase();
-  const readOnly = Boolean(estimation?.id && estimationStatus !== "draft");
-  const savedComplete = isSavedDecisionComplete(payload);
-
-  const saveDecision = async () => {
-    if (!estimation?.id) {
-      toast.error(
-        "Save the estimate draft first before recording the delivery decision.",
-      );
-      return;
-    }
-
-    if (readOnly) {
-      toast.error(
-        "The quotation was already sent or finalized and can no longer be changed.",
-      );
-      return;
-    }
-
-    const normalizedDecision = String(form.decision || "")
-      .trim()
-      .toLowerCase();
-    const reason = String(form.reason || "").trim();
-    const truckType = String(form.truck_type || "").trim();
-    const fee = Number(form.additional_delivery_fee);
-
-    if (
-      !["fee_required", "no_additional_fee"].includes(
-        normalizedDecision,
-      )
-    ) {
-      toast.error(
-        "Choose an additional larger-truck fee or No additional fee required.",
-      );
-      return;
-    }
-
-    if (!reason && !truckType) {
-      toast.error(
-        "Enter a reason or truck type for the delivery assessment.",
-      );
-      return;
-    }
-
-    if (
-      normalizedDecision === "fee_required" &&
-      (!Number.isFinite(fee) || fee <= 0)
-    ) {
-      toast.error("Enter an additional delivery fee greater than zero.");
-      return;
-    }
-
-    setSaving(true);
-
-    try {
-      const response = await api.patch(
-        `/oversized-delivery/blueprints/${blueprintId}/decision`,
-        {
-          decision: normalizedDecision,
-          additional_delivery_fee:
-            normalizedDecision === "fee_required" ? fee : 0,
-          reason,
-          truck_type: truckType,
-        },
-      );
-
-      const nextPayload = {
-        ...(payload || {}),
-        order: response.data?.order || order,
-        assessment: response.data?.assessment || assessment,
-        estimation: response.data?.estimation || estimation,
-      };
-
-      setPayload(nextPayload);
-
-      window.dispatchEvent(
-        new CustomEvent("wisdom:oversized-delivery-updated", {
-          detail: {
-            blueprintId: String(blueprintId),
-            estimation: nextPayload?.estimation || null,
-          },
-        }),
-      );
-
-      const nextDecision = nextPayload?.estimation?.decision || {};
-      setForm({
-        decision:
-          String(nextDecision.decision || "").trim() || normalizedDecision,
-        additional_delivery_fee:
-          Number(nextDecision.additional_delivery_fee || 0) > 0
-            ? String(nextDecision.additional_delivery_fee)
-            : "",
-        reason: String(nextDecision.reason || reason),
-        truck_type: String(nextDecision.truck_type || truckType),
-      });
-
-      toast.success(
-        response.data?.message ||
-          "Oversized-delivery decision saved.",
-      );
-    } catch (requestError) {
-      console.error("Failed to save oversized-delivery decision:", requestError);
-      toast.error(
-        requestError?.response?.data?.message ||
-          "Unable to save the oversized-delivery decision.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -330,15 +357,15 @@ export default function OversizedDeliveryEstimatorPanel({
     return (
       <section style={blockedCard}>
         <div style={warningTitle}>
-          ⚠ Delivery Size Assessment Required
+          Delivery Capacity Review Required
         </div>
         <p style={warningText}>
           {assessmentStatus === "not_configured"
-            ? "The standard truck internal width, height, and depth limits are incomplete. Enter the actual measured cargo limits under Website Maintenance → Delivery Capacity."
-            : "The saved blueprint does not contain complete width, height, and depth data. Review and save the furniture dimensions before sending the quotation."}
+            ? "The standard truck capacity is incomplete. Enter the usable internal width, height, and depth under Website Maintenance → Delivery Capacity."
+            : "The blueprint does not contain complete furniture dimensions. Review and save the width, height, and depth before sending the quotation."}
         </p>
         <div style={blockedStatus}>
-          Final quotation sending is blocked until this is resolved.
+          Resolve this requirement before sending the quotation.
         </div>
       </section>
     );
@@ -352,16 +379,26 @@ export default function OversizedDeliveryEstimatorPanel({
     <section style={panelCard}>
       <div style={panelHeader}>
         <div>
-          <div style={warningTitle}>⚠ Oversized Design</div>
+          <div style={warningTitle}>Oversized Delivery Review</div>
           <p style={warningText}>
-            Customer dimensions exceed the configured standard-truck
-            limit. Assess the larger-truck arrangement before sending the
-            final quotation.
+            The furniture exceeds the standard truck capacity. Review the delivery arrangement and confirm any additional fee before sending the quotation.
           </p>
         </div>
 
-        <div style={savedComplete ? savedBadge : pendingBadge}>
-          {savedComplete ? "Decision saved" : "Pending assessment"}
+        <div
+          style={
+            draftMatchesSaved
+              ? savedBadge
+              : draftComplete
+                ? readyBadge
+                : pendingBadge
+          }
+        >
+          {draftMatchesSaved
+            ? "Decision saved"
+            : draftComplete
+              ? "Ready to save"
+              : "Pending assessment"}
         </div>
       </div>
 
@@ -376,7 +413,7 @@ export default function OversizedDeliveryEstimatorPanel({
           </div>
 
           <div style={infoCard}>
-            <span style={infoLabel}>Pinned Location</span>
+            <span style={infoLabel}>Delivery Location</span>
             <strong>
               {Number.isFinite(Number(order?.delivery_lat)) &&
               Number.isFinite(Number(order?.delivery_lng))
@@ -386,25 +423,24 @@ export default function OversizedDeliveryEstimatorPanel({
                 : "No pinned coordinates"}
             </strong>
             <span style={infoValue}>
-              Location and distance remain part of the admin fee
-              assessment.
+              Use the saved location when assessing distance and delivery requirements.
             </span>
           </div>
 
           <div style={infoCard}>
-            <span style={infoLabel}>Standard Truck Limits</span>
+            <span style={infoLabel}>Standard Truck Capacity</span>
             <strong>
               W {mm(assessment?.standard_truck_limits_mm?.width_mm)} · H{" "}
               {mm(assessment?.standard_truck_limits_mm?.height_mm)} · D{" "}
               {mm(assessment?.standard_truck_limits_mm?.depth_mm)}
             </strong>
-            <span style={infoValue}>Configured usable cargo dimensions</span>
+            <span style={infoValue}>Usable internal cargo dimensions</span>
           </div>
         </div>
 
         {Array.isArray(assessment?.items) && assessment.items.length > 0 && (
           <div style={{ marginTop: 16 }}>
-            <div style={subHeading}>Furniture dimensions</div>
+            <div style={subHeading}>Furniture Dimensions</div>
             <div style={itemList}>
               {assessment.items.map((item) => (
                 <div
@@ -426,7 +462,7 @@ export default function OversizedDeliveryEstimatorPanel({
         {Array.isArray(assessment?.exceeded_dimensions) &&
           assessment.exceeded_dimensions.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <div style={subHeading}>Exceeded dimensions</div>
+              <div style={subHeading}>Capacity Exceeded</div>
               <div style={exceededGrid}>
                 {assessment.exceeded_dimensions.map((entry, index) => (
                   <div
@@ -445,14 +481,8 @@ export default function OversizedDeliveryEstimatorPanel({
             </div>
           )}
 
-        {!estimation?.id ? (
-          <div style={draftRequiredBox}>
-            Save the estimation draft first. The delivery decision and
-            additional fee can only be attached to a saved draft.
-          </div>
-        ) : (
-          <div style={formSection}>
-            <div style={subHeading}>Admin delivery decision</div>
+        <div style={formSection}>
+            <div style={subHeading}>Delivery Decision</div>
 
             <div style={fieldGrid}>
               <div style={{ gridColumn: "1 / -1" }}>
@@ -476,9 +506,9 @@ export default function OversizedDeliveryEstimatorPanel({
                     ...(readOnly ? disabledInput : {}),
                   }}
                 >
-                  <option value="pending">Pending admin assessment</option>
+                  <option value="pending">Select a delivery decision</option>
                   <option value="fee_required">
-                    Larger truck — additional fee required
+                    Larger truck required
                   </option>
                   <option value="no_additional_fee">
                     No additional fee required
@@ -488,34 +518,36 @@ export default function OversizedDeliveryEstimatorPanel({
 
               {form.decision === "fee_required" && (
                 <div>
-                  <label style={label}>
-                    Additional Delivery Fee (₱)
-                  </label>
-                  <input
-                    type="number"
-                    min="0.01"
-                    max="1000000"
-                    step="0.01"
-                    value={form.additional_delivery_fee}
-                    onChange={(event) =>
-                      !readOnly &&
-                      setForm((current) => ({
-                        ...current,
-                        additional_delivery_fee: event.target.value,
-                      }))
-                    }
-                    disabled={readOnly}
-                    style={{
-                      ...input,
-                      ...(readOnly ? disabledInput : {}),
-                    }}
-                    placeholder="0.00"
-                  />
+                  <label style={label}>Additional Delivery Fee</label>
+                  <div style={moneyInputWrap}>
+                    <span style={moneyPrefix}>₱</span>
+                    <input
+                      type="number"
+                      min="0.01"
+                      max="1000000"
+                      step="0.01"
+                      value={form.additional_delivery_fee}
+                      onChange={(event) =>
+                        !readOnly &&
+                        setForm((current) => ({
+                          ...current,
+                          additional_delivery_fee: event.target.value,
+                        }))
+                      }
+                      disabled={readOnly}
+                      style={{
+                        ...input,
+                        ...moneyInput,
+                        ...(readOnly ? disabledInput : {}),
+                      }}
+                      placeholder="0.00"
+                    />
+                  </div>
                 </div>
               )}
 
               <div>
-                <label style={label}>Truck Type / Arrangement</label>
+                <label style={label}>Delivery Arrangement</label>
                 <input
                   value={form.truck_type}
                   maxLength={100}
@@ -531,12 +563,12 @@ export default function OversizedDeliveryEstimatorPanel({
                     ...input,
                     ...(readOnly ? disabledInput : {}),
                   }}
-                  placeholder="e.g. 14-ft truck, third-party larger truck"
+                  placeholder="e.g. 14-foot truck or third-party delivery vehicle"
                 />
               </div>
 
               <div style={{ gridColumn: "1 / -1" }}>
-                <label style={label}>Reason / Assessment Note</label>
+                <label style={label}>Assessment Notes</label>
                 <textarea
                   rows={3}
                   maxLength={500}
@@ -554,92 +586,88 @@ export default function OversizedDeliveryEstimatorPanel({
                     resize: "vertical",
                     ...(readOnly ? disabledInput : {}),
                   }}
-                  placeholder="Explain why a larger truck is needed, or why no additional fee is required."
+                  placeholder="Describe the delivery requirement and explain the fee decision."
                 />
               </div>
             </div>
 
             <div style={decisionFooter}>
-              <div style={decisionSummary}>
-                {form.decision === "fee_required"
-                  ? `Quotation delivery addition: ${money(
-                      form.additional_delivery_fee,
-                    )}`
-                  : form.decision === "no_additional_fee"
-                    ? "No additional delivery fee will be added."
-                    : "Additional delivery fee: Pending admin assessment"}
+              <div style={decisionSummaryCard}>
+                <span style={decisionSummaryLabel}>Quotation Impact</span>
+                <strong style={decisionSummary}>
+                  {form.decision === "fee_required"
+                    ? money(form.additional_delivery_fee)
+                    : form.decision === "no_additional_fee"
+                      ? "No additional charge"
+                      : "Pending decision"}
+                </strong>
               </div>
 
-              <button
-                type="button"
-                onClick={saveDecision}
-                disabled={saving || readOnly}
-                style={{
-                  ...saveButton,
-                  ...(saving || readOnly ? disabledButton : {}),
-                }}
-              >
-                {saving ? "Saving..." : "Save Delivery Decision"}
-              </button>
+              <div style={saveTogetherNote}>
+                <strong style={saveTogetherTitle}>Saved with the estimate</strong>
+                <span>
+                  {readOnly
+                    ? "This delivery decision is locked because the quotation has already been sent or finalized."
+                    : estimation?.id
+                      ? "Changes to the delivery decision will be saved when you click Save Estimate."
+                      : "The estimate and delivery decision will be created together when you click Save Estimate."}
+                </span>
+              </div>
             </div>
 
-            {readOnly && (
-              <div style={lockedNote}>
-                The quotation was already sent or finalized. This
-                oversized-delivery decision is locked.
-              </div>
-            )}
           </div>
-        )}
       </div>
     </section>
   );
 }
 
 const panelCard = {
-  maxWidth: 1180,
-  margin: "0 auto 20px",
+  maxWidth: 1240,
+  margin: "0 auto 24px",
   background: "#fff",
-  border: "1px solid #f59e0b",
+  border: "1px solid #e4e4e7",
+  borderTop: "4px solid #d97706",
   borderRadius: 16,
   overflow: "hidden",
-  boxShadow: "0 1px 2px rgba(0,0,0,.03)",
+  boxShadow: "0 10px 30px rgba(24,24,27,.05)",
 };
 
 const panelHeader = {
-  padding: "18px 22px",
+  padding: "20px 24px",
   display: "flex",
   justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 16,
-  background: "#fffbeb",
-  borderBottom: "1px solid #fde68a",
+  alignItems: "center",
+  gap: 18,
+  flexWrap: "wrap",
+  background: "#fff",
+  borderBottom: "1px solid #e4e4e7",
 };
 
 const panelBody = {
-  padding: 22,
+  padding: 24,
+  background: "#fafafa",
 };
 
 const warningTitle = {
-  fontSize: 15,
-  fontWeight: 900,
-  color: "#92400e",
-  letterSpacing: "0.02em",
+  fontSize: 17,
+  fontWeight: 850,
+  color: "#18181b",
+  letterSpacing: "-0.01em",
 };
 
 const warningText = {
   margin: "6px 0 0",
-  fontSize: 12,
+  fontSize: 13,
   lineHeight: 1.55,
-  color: "#78350f",
-  maxWidth: 760,
+  color: "#52525b",
+  maxWidth: 780,
 };
 
 const savedBadge = {
   flexShrink: 0,
-  padding: "7px 11px",
+  padding: "7px 12px",
   borderRadius: 999,
-  background: "#dcfce7",
+  background: "#ecfdf3",
   border: "1px solid #bbf7d0",
   color: "#166534",
   fontSize: 11,
@@ -648,24 +676,33 @@ const savedBadge = {
 
 const pendingBadge = {
   ...savedBadge,
-  background: "#fef3c7",
+  background: "#fffbeb",
   border: "1px solid #fde68a",
   color: "#92400e",
 };
 
+const readyBadge = {
+  ...savedBadge,
+  background: "#eff6ff",
+  border: "1px solid #bfdbfe",
+  color: "#1d4ed8",
+};
+
 const infoGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
   gap: 12,
 };
 
 const infoCard = {
-  padding: 14,
+  padding: "16px 18px",
   border: "1px solid #e4e4e7",
   borderRadius: 12,
-  background: "#fafafa",
+  background: "#fff",
   display: "grid",
-  gap: 6,
+  gap: 7,
+  minHeight: 88,
+  boxShadow: "0 1px 2px rgba(24,24,27,.03)",
 };
 
 const infoLabel = {
@@ -673,7 +710,7 @@ const infoLabel = {
   fontWeight: 800,
   color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "0.08em",
+  letterSpacing: "0.1em",
 };
 
 const infoValue = {
@@ -683,12 +720,12 @@ const infoValue = {
 };
 
 const subHeading = {
-  fontSize: 12,
-  fontWeight: 900,
-  color: "#18181b",
+  fontSize: 11,
+  fontWeight: 850,
+  color: "#52525b",
   textTransform: "uppercase",
-  letterSpacing: "0.06em",
-  marginBottom: 8,
+  letterSpacing: "0.1em",
+  marginBottom: 10,
 };
 
 const itemList = {
@@ -697,44 +734,49 @@ const itemList = {
 };
 
 const itemRow = {
-  padding: "10px 12px",
+  padding: "11px 14px",
   border: "1px solid #e4e4e7",
   borderRadius: 10,
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  gap: 12,
+  flexWrap: "wrap",
+  gap: 10,
   fontSize: 12,
   color: "#52525b",
+  background: "#fff",
 };
 
 const exceededGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
   gap: 10,
 };
 
 const exceededCard = {
-  padding: 12,
-  border: "1px solid #fde68a",
+  padding: "14px 16px",
+  border: "1px solid #fcd34d",
   borderRadius: 10,
   background: "#fffbeb",
   display: "grid",
-  gap: 4,
+  gap: 5,
   fontSize: 11,
   color: "#78350f",
 };
 
 const formSection = {
-  marginTop: 18,
-  paddingTop: 18,
-  borderTop: "1px solid #e4e4e7",
+  marginTop: 20,
+  padding: 20,
+  border: "1px solid #e4e4e7",
+  borderRadius: 14,
+  background: "#fff",
+  boxShadow: "0 1px 2px rgba(24,24,27,.03)",
 };
 
 const fieldGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 14,
+  gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
+  gap: 16,
 };
 
 const label = {
@@ -742,19 +784,39 @@ const label = {
   marginBottom: 7,
   fontSize: 12,
   fontWeight: 800,
-  color: "#18181b",
+  color: "#27272a",
 };
 
 const input = {
   width: "100%",
+  minHeight: 42,
   padding: "10px 12px",
   border: "1px solid #d4d4d8",
-  borderRadius: 8,
+  borderRadius: 9,
   boxSizing: "border-box",
   fontSize: 13,
   color: "#18181b",
   background: "#fff",
   outline: "none",
+};
+
+const moneyInputWrap = {
+  position: "relative",
+};
+
+const moneyPrefix = {
+  position: "absolute",
+  left: 13,
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "#71717a",
+  fontSize: 13,
+  fontWeight: 800,
+  zIndex: 1,
+};
+
+const moneyInput = {
+  paddingLeft: 32,
 };
 
 const disabledInput = {
@@ -764,61 +826,60 @@ const disabledInput = {
 };
 
 const decisionFooter = {
-  marginTop: 16,
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 14,
-  flexWrap: "wrap",
+  marginTop: 18,
+  paddingTop: 18,
+  borderTop: "1px solid #e4e4e7",
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+  gap: 12,
 };
 
-const decisionSummary = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#78350f",
-};
-
-const saveButton = {
-  padding: "10px 16px",
-  border: "1px solid #18181b",
-  borderRadius: 8,
-  background: "#18181b",
-  color: "#fff",
-  fontSize: 12,
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const disabledButton = {
-  opacity: 0.6,
-  cursor: "not-allowed",
-};
-
-const draftRequiredBox = {
-  marginTop: 16,
+const decisionSummaryCard = {
   padding: "12px 14px",
   border: "1px solid #fde68a",
   borderRadius: 10,
   background: "#fffbeb",
-  color: "#92400e",
-  fontSize: 12,
-  fontWeight: 700,
-  lineHeight: 1.5,
+  display: "grid",
+  gap: 4,
 };
 
-const lockedNote = {
-  marginTop: 12,
-  padding: "10px 12px",
-  borderRadius: 8,
-  background: "#f4f4f5",
-  color: "#52525b",
+const decisionSummaryLabel = {
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#92400e",
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+};
+
+const decisionSummary = {
+  fontSize: 14,
+  fontWeight: 850,
+  color: "#78350f",
+};
+
+const saveTogetherNote = {
+  padding: "12px 14px",
+  border: "1px solid #dbeafe",
+  borderRadius: 10,
+  background: "#f8fbff",
+  color: "#334155",
   fontSize: 11,
+  fontWeight: 600,
+  lineHeight: 1.5,
+  display: "grid",
+  gap: 3,
+};
+
+const saveTogetherTitle = {
+  color: "#1e3a8a",
+  fontSize: 11,
+  fontWeight: 850,
 };
 
 const loadingCard = {
-  maxWidth: 1180,
-  margin: "0 auto 20px",
-  padding: "14px 16px",
+  maxWidth: 1240,
+  margin: "0 auto 24px",
+  padding: "16px 18px",
   borderRadius: 12,
   border: "1px solid #e4e4e7",
   background: "#fff",
@@ -847,7 +908,7 @@ const smallText = {
 const retryButton = {
   padding: "8px 12px",
   border: "1px solid #991b1b",
-  borderRadius: 7,
+  borderRadius: 8,
   background: "#fff",
   color: "#991b1b",
   fontSize: 11,
@@ -857,14 +918,18 @@ const retryButton = {
 
 const blockedCard = {
   ...panelCard,
-  padding: 18,
-  border: "1px solid #fca5a5",
-  background: "#fef2f2",
+  padding: 20,
+  border: "1px solid #fecaca",
+  borderTop: "4px solid #dc2626",
+  background: "#fff",
 };
 
 const blockedStatus = {
-  marginTop: 10,
+  marginTop: 12,
+  padding: "10px 12px",
+  borderRadius: 8,
+  background: "#fef2f2",
   fontSize: 12,
-  fontWeight: 900,
+  fontWeight: 850,
   color: "#991b1b",
 };

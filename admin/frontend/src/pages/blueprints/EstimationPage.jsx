@@ -395,7 +395,7 @@ const buildAutoItemsFromComponents = (components = []) =>
         quantity: Number(component.qty) || 1,
         unit: "pc",
         unit_cost: getResolvedUnitPrice(component, components),
-        note: `${finishLabel ? `${finishLabel} / ` : ""}${material} · ${component.width || 0}×${component.height || 0}×${component.depth || 0} mm`,
+        note: `${finishLabel ? `${finishLabel} · ` : ""}${material} · ${component.width || 0}×${component.height || 0}×${component.depth || 0} mm`,
         source_key: `component:${component.id || component.partCode || component.label || ""}`,
         source_type: "component",
       };
@@ -411,7 +411,7 @@ const buildAutoItemsFromCutList = (rows = []) =>
         row?.sampleLabel ||
         [row?.partFamily || "Part", row?.partRole || "Item"]
           .filter(Boolean)
-          .join(" / ");
+          .join(" — ");
       const note = [
         row?.material || "—",
         row?.widthMm && row?.heightMm && row?.depthMm
@@ -812,10 +812,10 @@ function EstimateTable({
   const showInventoryPricing = isInventory && !inventoryTrackingOnly;
   const emptyText =
     section === "blueprint"
-      ? "No blueprint parts available. Use Regenerate Rows after saving the design."
+      ? "No blueprint components are available. Use Refresh Components after saving the design."
       : section === "inventory"
-        ? "No inventory materials added yet."
-        : "No other materials or additional work added yet.";
+        ? "No required inventory materials added yet."
+        : "No additional items added yet.";
   const columnCount = isInventory
     ? showInventoryPricing
       ? 10
@@ -856,7 +856,7 @@ function EstimateTable({
             disabled={readOnly}
             style={readOnly ? { ...btnAdd, ...btnDisabled } : btnAdd}
           >
-            + Add {section === "inventory" ? "Inventory Material" : "Other Item"}
+            + Add {section === "inventory" ? "Required Material" : "Additional Item"}
           </button>
         )}
       </div>
@@ -864,22 +864,22 @@ function EstimateTable({
       <div style={{ overflowX: "auto" }}>
         <table style={estimateTableStyle}>
           <thead>
-            <tr style={{ background: "#fafafa" }}>
-              <th style={{ ...th, width: "5%" }}>#</th>
+            <tr style={tableHeadRow}>
+              <th style={{ ...th, width: "5%" }}>No.</th>
               <th style={{ ...th, width: isInventory ? "30%" : "28%" }}>
                 {isInventory ? "Inventory Material" : "Description"}
               </th>
-              {isInventory && <th style={{ ...th, width: "13%" }}>Available</th>}
+              {isInventory && <th style={{ ...th, width: "13%" }}>Available Stock</th>}
               <th style={{ ...th, width: "10%" }}>Unit</th>
-              <th style={{ ...th, width: "10%" }}>Qty</th>
-              {isInventory && <th style={{ ...th, width: "18%" }}>Availability</th>}
+              <th style={{ ...th, width: "10%" }}>Quantity</th>
+              {isInventory && <th style={{ ...th, width: "18%" }}>Stock Status</th>}
               {(!isInventory || showInventoryPricing) && (
-                <th style={{ ...th, width: "12%" }}>Rate (₱)</th>
+                <th style={{ ...th, width: "12%" }}>Unit Rate</th>
               )}
               {(!isInventory || showInventoryPricing) && (
-                <th style={{ ...th, width: "13%" }}>Amount (₱)</th>
+                <th style={{ ...th, width: "13%" }}>Line Total</th>
               )}
-              <th style={{ ...th, width: isInventory ? "27%" : "20%" }}>Remarks</th>
+              <th style={{ ...th, width: isInventory ? "27%" : "20%" }}>Notes</th>
               <th style={{ ...th, width: "5%" }} />
             </tr>
           </thead>
@@ -1063,7 +1063,7 @@ function EstimateTable({
           </tbody>
           <tfoot>
             {isInventory && inventoryTrackingOnly ? (
-              <tr style={{ background: "#fafafa", borderTop: "2px solid #e4e4e7" }}>
+              <tr style={tableFooterRow}>
                 <td colSpan={columnCount} style={{ ...td, padding: "14px 16px" }}>
                   {shortageChecks.length > 0 ? (
                     <div
@@ -1102,13 +1102,13 @@ function EstimateTable({
                     </div>
                   ) : (
                     <div style={{ color: "#52525b", fontWeight: 700 }}>
-                      Internal stock requirement only — not added again to the customer quotation total.
+                      Internal stock requirement only. These materials are not charged again in the quotation.
                     </div>
                   )}
                 </td>
               </tr>
             ) : (
-              <tr style={{ background: "#fafafa", borderTop: "2px solid #e4e4e7" }}>
+              <tr style={tableFooterRow}>
                 <td
                   colSpan={isInventory ? 6 : 5}
                   style={{ ...td, textAlign: "right", fontWeight: 800 }}
@@ -1128,6 +1128,21 @@ function EstimateTable({
   );
 }
 
+
+const getOversizedDeliveryDraftStorageKey = (blueprintId) =>
+  `wisdom_oversized_delivery_draft:${blueprintId}`;
+
+const readOversizedDeliveryDraft = (blueprintId) => {
+  try {
+    const value = window.sessionStorage.getItem(
+      getOversizedDeliveryDraftStorageKey(blueprintId),
+    );
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
+};
+
 export default function EstimationPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -1135,6 +1150,8 @@ export default function EstimationPage() {
 
   const [blueprint, setBlueprint] = useState(null);
   const [estimation, setEstimation] = useState(null);
+  const [oversizedDeliveryDraft, setOversizedDeliveryDraft] =
+    useState(null);
   const [items, setItems] = useState([]);
   const [rawMaterials, setRawMaterials] = useState([]);
   const [discussion, setDiscussion] = useState([]);
@@ -1251,6 +1268,36 @@ export default function EstimationPage() {
   }, [id, location.state]);
 
   useEffect(() => {
+    setOversizedDeliveryDraft(
+      readOversizedDeliveryDraft(id),
+    );
+
+    const handleDraftChange = (event) => {
+      if (
+        String(event?.detail?.blueprintId || "") !== String(id)
+      ) {
+        return;
+      }
+
+      setOversizedDeliveryDraft(
+        event?.detail?.oversized_delivery || null,
+      );
+    };
+
+    window.addEventListener(
+      "wisdom:oversized-delivery-draft-changed",
+      handleDraftChange,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "wisdom:oversized-delivery-draft-changed",
+        handleDraftChange,
+      );
+    };
+  }, [id]);
+
+  useEffect(() => {
     const handleOversizedDeliveryUpdate = (event) => {
       const detail = event?.detail || {};
 
@@ -1309,9 +1356,20 @@ export default function EstimationPage() {
     (inventoryTrackingOnly ? 0 : inventorySubtotal);
   const laborCost = Number(costs.labor_cost || 0);
   const logisticsCost = Number(costs.overhead_cost || 0);
+  const draftDeliveryDecision = String(
+    oversizedDeliveryDraft?.decision || "",
+  )
+    .trim()
+    .toLowerCase();
   const additionalDeliveryFee = Math.max(
     0,
-    Number(estimation?.additional_delivery_fee || 0),
+    Number(
+      oversizedDeliveryDraft?.assessment_status === "oversized"
+        ? draftDeliveryDecision === "fee_required"
+          ? oversizedDeliveryDraft?.additional_delivery_fee || 0
+          : 0
+        : estimation?.additional_delivery_fee || 0,
+    ),
   );
   const subtotal =
     quoteItemsSubtotal +
@@ -1433,27 +1491,30 @@ export default function EstimationPage() {
 
   const handleRegenerate = () => {
     if (isReadOnly) {
-      toast.error("Sent or approved estimates cannot be regenerated.");
+      toast.error("Sent or approved estimates cannot be refreshed.");
       return;
     }
     if (!preferredAutoItems.length) {
-      toast.error("No blueprint design data is available to regenerate.");
+      toast.error("No blueprint design data is available to refresh.");
       return;
     }
     const shouldReplace = window.confirm(
-      "Regenerate blueprint parts from the latest design? Existing matching prices will be preserved. Inventory materials and other items will not be removed.",
+      "Refresh blueprint components from the latest design? Existing matching prices will be preserved. Required materials and additional items will remain unchanged.",
     );
     if (!shouldReplace) return;
 
     const mergedAuto = mergeAutoRows(preferredAutoItems, blueprintItems, []);
     setItems([...mergedAuto, ...inventoryItems, ...otherItems]);
-    toast.success("Blueprint parts regenerated. Inventory and other items were preserved.");
+    toast.success("Blueprint components refreshed. Required materials and additional items were preserved.");
   };
 
-  const buildPayload = () => {
+  const buildPayload = (
+    deliveryDraft = oversizedDeliveryDraft,
+  ) => {
     const filledItems = items.filter(isFilledItem).map(serializeItem);
     return {
       items: filledItems,
+      oversized_delivery: deliveryDraft,
       labor_cost: laborCost,
       overhead_cost: logisticsCost,
       tax_rate: Number(costs.tax_rate || 0),
@@ -1475,26 +1536,139 @@ export default function EstimationPage() {
       toast.error("Sent or approved estimates are locked.");
       return;
     }
+
     const validationErrors = getValidationErrors({ items, costs });
     if (showFirstValidationError(validationErrors)) return;
 
+    const currentDeliveryDraft =
+      readOversizedDeliveryDraft(id) ||
+      oversizedDeliveryDraft;
+
+    if (
+      currentDeliveryDraft?.assessment_status === "oversized" &&
+      !currentDeliveryDraft?.complete
+    ) {
+      toast.error(
+        "Complete the oversized-delivery decision before saving the estimate.",
+      );
+      return;
+    }
+
+    let estimationSaved = false;
     setSaving(true);
+
     try {
-      const response = await api.post(`/blueprints/${id}/estimation`, buildPayload());
-      const saved = response.data?.estimation;
+      const response = await api.post(
+        `/blueprints/${id}/estimation`,
+        buildPayload(currentDeliveryDraft),
+      );
+
+      let saved = response.data?.estimation || null;
+      estimationSaved = Boolean(
+        saved?.id || response.data?.id,
+      );
+
+      if (
+        currentDeliveryDraft?.assessment_status === "oversized"
+      ) {
+        const deliveryResponse = await api.patch(
+          `/oversized-delivery/blueprints/${id}/decision`,
+          {
+            decision: currentDeliveryDraft.decision,
+            additional_delivery_fee:
+              currentDeliveryDraft.decision === "fee_required"
+                ? Number(
+                    currentDeliveryDraft.additional_delivery_fee ||
+                      0,
+                  )
+                : 0,
+            reason: String(
+              currentDeliveryDraft.reason || "",
+            ).trim(),
+            truck_type: String(
+              currentDeliveryDraft.truck_type || "",
+            ).trim(),
+          },
+        );
+
+        const deliveryEstimation =
+          deliveryResponse.data?.estimation || {};
+        const nextDecision =
+          deliveryEstimation?.decision || {};
+
+        saved = {
+          ...(saved || {}),
+          ...deliveryEstimation,
+          additional_delivery_fee: Number(
+            deliveryEstimation.additional_delivery_fee ??
+              nextDecision.additional_delivery_fee ??
+              0,
+          ),
+          decision: nextDecision,
+        };
+
+        window.dispatchEvent(
+          new CustomEvent(
+            "wisdom:oversized-delivery-updated",
+            {
+              detail: {
+                blueprintId: String(id),
+                estimation: saved,
+              },
+            },
+          ),
+        );
+      }
+
       if (saved) {
         setEstimation(saved);
-        setItems(reconcileLoadedItems(saved.items || [], preferredAutoItems));
+        setItems(
+          reconcileLoadedItems(
+            saved.items || [],
+            preferredAutoItems,
+          ),
+        );
         setCosts((current) => ({
           ...current,
-          discount: Number(saved.discount ?? current.discount),
+          discount: Number(
+            saved.discount ?? current.discount,
+          ),
         }));
       }
-      setBlueprint((current) => (current ? { ...current, stage: "estimation" } : current));
-      toast.success("Estimate saved. Review it before sending the quotation.");
+
+      setBlueprint((current) =>
+        current
+          ? { ...current, stage: "estimation" }
+          : current,
+      );
+
+      window.dispatchEvent(
+        new CustomEvent("wisdom:estimation-saved", {
+          detail: {
+            blueprintId: String(id),
+            estimation: saved,
+          },
+        }),
+      );
+
+      toast.success(
+        currentDeliveryDraft?.assessment_status === "oversized"
+          ? "Estimate and oversized-delivery decision saved."
+          : "Estimate saved. Review it before sending the quotation.",
+      );
     } catch (error) {
       console.error(error);
-      toast.error(error?.response?.data?.message || "Failed to save estimation.");
+
+      const serverMessage =
+        error?.response?.data?.message || "";
+
+      toast.error(
+        estimationSaved
+          ? `The estimate was saved, but the delivery decision failed: ${
+              serverMessage || "Please review the decision and save again."
+            }`
+          : serverMessage || "Failed to save estimation.",
+      );
     } finally {
       setSaving(false);
     }
@@ -1600,11 +1774,11 @@ export default function EstimationPage() {
     };
 
     let y = 51;
-    y = addSection("Blueprint Parts / Base Materials", blueprintItems, y);
+    y = addSection("Blueprint Components", blueprintItems, y);
     if (!inventoryTrackingOnly) {
-      y = addSection("Inventory Materials", inventoryItems, y);
+      y = addSection("Required Inventory Materials", inventoryItems, y);
     }
-    y = addSection("Other Materials / Additional Work", otherItems, y);
+    y = addSection("Additional Items", otherItems, y);
 
     if (y > 220) {
       doc.addPage();
@@ -1612,11 +1786,11 @@ export default function EstimationPage() {
     }
 
     const summaryRows = [
-      ["Blueprint Parts", money(blueprintSubtotal)],
+      ["Blueprint Components", money(blueprintSubtotal)],
       ...(!inventoryTrackingOnly
-        ? [["Inventory Materials", money(inventorySubtotal)]]
+        ? [["Required Inventory Materials", money(inventorySubtotal)]]
         : []),
-      ["Other Materials / Work", money(otherSubtotal)],
+      ["Additional Items", money(otherSubtotal)],
       ["Labor", money(laborCost)],
       ["Logistics", money(logisticsCost)],
       ...(additionalDeliveryFee > 0
@@ -1647,7 +1821,7 @@ export default function EstimationPage() {
     const notesY = Math.min(doc.lastAutoTable.finalY + 10, 260);
     if (costs.notes) {
       doc.setFont("helvetica", "bold");
-      doc.text("Remarks", margin, notesY);
+      doc.text("Quotation Notes", margin, notesY);
       doc.setFont("helvetica", "normal");
       doc.text(doc.splitTextToSize(costs.notes, 175), margin, notesY + 5);
     }
@@ -1660,9 +1834,9 @@ export default function EstimationPage() {
   if (!blueprint) return <div style={center}>Blueprint not found.</div>;
 
   return (
-    <div style={{ maxWidth: 1180, margin: "0 auto", paddingBottom: 40 }}>
+    <div style={pageShell}>
       <div style={pageHeader}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={titleBlock}>
           <button type="button" onClick={() => navigate(-1)} style={btnBack}>← Back</button>
           <div>
             <h1 style={pageTitle}>Project Estimate — {getBlueprintDisplayTitle(blueprint)}</h1>
@@ -1680,7 +1854,7 @@ export default function EstimationPage() {
             disabled={isReadOnly || !preferredAutoItems.length}
             style={isReadOnly || !preferredAutoItems.length ? { ...btnGhost, ...btnDisabled } : btnGhost}
           >
-            Regenerate Rows
+            Refresh Components
           </button>
           <button type="button" onClick={exportPDF} style={btnGhost}>Export PDF</button>
           {isApproved ? (
@@ -1699,7 +1873,7 @@ export default function EstimationPage() {
               disabled={!estimation?.id || approving || isSent}
               style={!estimation?.id || approving || isSent ? { ...btnGhost, ...btnDisabled } : btnPrimary}
             >
-              {isSent ? "Quotation Sent" : approving ? "Sending..." : "Send Quote"}
+              {isSent ? "Quotation Sent" : approving ? "Sending..." : "Send Quotation"}
             </button>
           )}
           <button
@@ -1714,7 +1888,7 @@ export default function EstimationPage() {
       </div>
 
       <div style={metaGrid}>
-        <div style={metaCard}><span style={metaLabel}>Status</span><span style={metaValue}>{status}</span></div>
+        <div style={metaCard}><span style={metaLabel}>Quotation Status</span><span style={statusValue}>{status}</span></div>
         <div style={metaCard}><span style={metaLabel}>Valid Until</span><span style={metaValue}>{formatDateDisplay(validUntil)}</span></div>
         <div style={metaCard}><span style={metaLabel}>Prepared By</span><span style={metaValue}>Spiral Wood Services</span></div>
       </div>
@@ -1729,15 +1903,15 @@ export default function EstimationPage() {
 
       <div style={{ ...card, marginBottom: 20 }}>
         <div style={sectionHeaderSmall}>
-          <h3 style={sectionTitle}>Customer Request and Reference Photos</h3>
+          <h3 style={sectionTitle}>Customer Request</h3>
           <p style={helperText}>
-            Review the customer request, attachments, and custom design notes before adding extra materials or work.
+            Review the order request, design specifications, messages, and reference files before preparing the quotation.
           </p>
         </div>
         <div style={{ padding: 20 }}>
           <div style={requestGrid}>
             <div style={requestInfoCard}>
-              <span style={metaLabel}>Order Request</span>
+              <span style={metaLabel}>Order Overview</span>
               <strong>{blueprint.order_number || "No linked order"}</strong>
               {blueprint.order_context?.order_notes && (
                 <p style={requestText}>{blueprint.order_context.order_notes}</p>
@@ -1753,7 +1927,7 @@ export default function EstimationPage() {
                 )}
             </div>
             <div style={requestInfoCard}>
-              <span style={metaLabel}>Requested Details</span>
+              <span style={metaLabel}>Design Specifications</span>
               {customizationEntries.length ? (
                 <div style={{ display: "grid", gap: 6 }}>
                   {customizationEntries.map((entry, index) => (
@@ -1769,7 +1943,7 @@ export default function EstimationPage() {
           </div>
 
           <div style={{ marginTop: 18 }}>
-            <div style={{ ...metaLabel, marginBottom: 8 }}>Latest Customer Messages</div>
+            <div style={{ ...metaLabel, marginBottom: 8 }}>Customer Messages</div>
             {discussionLoading ? (
               <p style={mutedText}>Loading customer discussion...</p>
             ) : customerMessages.length ? (
@@ -1789,7 +1963,7 @@ export default function EstimationPage() {
           </div>
 
           <div style={{ marginTop: 18 }}>
-            <div style={{ ...metaLabel, marginBottom: 8 }}>Reference Files</div>
+            <div style={{ ...metaLabel, marginBottom: 8 }}>Customer References</div>
             {referenceFiles.length ? (
               <div style={attachmentGrid}>
                 {referenceFiles.map((file) => {
@@ -1814,8 +1988,8 @@ export default function EstimationPage() {
       </div>
 
       <EstimateTable
-        title="Blueprint Parts / Base Materials"
-        helper="Auto-generated from the latest blueprint design. Review the quantity, unit, price, and remarks."
+        title="Blueprint Components"
+        helper="Generated from the latest blueprint design. Confirm each component, quantity, unit rate, and note."
         section="blueprint"
         rows={blueprintItems}
         rawMaterials={rawMaterials}
@@ -1826,8 +2000,8 @@ export default function EstimationPage() {
       />
 
       <EstimateTable
-        title="Inventory Materials"
-        helper="Select the exact materials and quantities for internal stock tracking. Availability excludes stock already reserved for paid blueprint orders. These rows do not reserve or deduct stock yet."
+        title="Required Inventory Materials"
+        helper="Select the materials required for production. Available stock excludes quantities already reserved for paid blueprint orders. Saving this estimate does not reserve or deduct stock."
         section="inventory"
         rows={inventoryItems}
         rawMaterials={rawMaterials}
@@ -1840,8 +2014,8 @@ export default function EstimationPage() {
       />
 
       <EstimateTable
-        title="Other Materials / Additional Work"
-        helper="Add custom design work, customer-requested changes, special materials not tracked in inventory, and other billable items."
+        title="Additional Items"
+        helper="Add billable custom work, special materials, and customer-requested changes that are not included in the blueprint components."
         section="other"
         rows={otherItems}
         rawMaterials={rawMaterials}
@@ -1852,11 +2026,11 @@ export default function EstimationPage() {
         subtotal={otherSubtotal}
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: 20 }}>
+      <div style={chargesGrid}>
         <div style={card}>
           <div style={sectionHeaderSmall}>
-            <h3 style={sectionTitle}>Charges</h3>
-            <p style={helperText}>Enter labor, logistics, discount, VAT, and quotation remarks.</p>
+            <h3 style={sectionTitle}>Quotation Details</h3>
+            <p style={helperText}>Enter the service charges, adjustments, tax, and quotation notes.</p>
           </div>
           <div style={{ padding: "20px 24px" }}>
             <div style={{ marginBottom: 16 }}>
@@ -1867,7 +2041,7 @@ export default function EstimationPage() {
               <label style={labelSm}>Logistics Cost (₱)</label>
               <input type="number" min="0" step="0.01" value={costs.overhead_cost} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, overhead_cost: event.target.value }))} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }} disabled={isReadOnly} />
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+            <div style={dualFieldGrid}>
               <div>
                 <label style={labelSm}>Discount (%)</label>
                 <input type="number" min="0" max="100" step="0.01" value={costs.discount} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, discount: event.target.value }))} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }} disabled={isReadOnly} />
@@ -1878,24 +2052,24 @@ export default function EstimationPage() {
               </div>
             </div>
             <div>
-              <label style={labelSm}>Remarks</label>
-              <textarea value={costs.notes} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, notes: event.target.value.slice(0, 500) }))} rows={5} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly), resize: "vertical" }} maxLength={500} disabled={isReadOnly} placeholder="Terms, inclusions, exclusions, delivery notes..." />
+              <label style={labelSm}>Quotation Notes</label>
+              <textarea value={costs.notes} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, notes: event.target.value.slice(0, 500) }))} rows={5} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly), resize: "vertical" }} maxLength={500} disabled={isReadOnly} placeholder="Add terms, inclusions, exclusions, or delivery notes..." />
             </div>
           </div>
         </div>
 
         <div style={{ ...card, alignSelf: "start" }}>
           <div style={sectionHeaderSmall}>
-            <h3 style={sectionTitle}>Summary</h3>
-            <p style={helperText}>Review all sections before saving or sending the quotation.</p>
+            <h3 style={sectionTitle}>Quotation Summary</h3>
+            <p style={helperText}>Confirm the quotation breakdown before saving or sending it to the customer.</p>
           </div>
           <div style={{ padding: 24 }}>
             {[
-              ["Blueprint Parts", blueprintSubtotal],
+              ["Blueprint Components", blueprintSubtotal],
               ...(!inventoryTrackingOnly
-                ? [["Inventory Materials", inventorySubtotal]]
+                ? [["Required Inventory Materials", inventorySubtotal]]
                 : []),
-              ["Other Materials / Work", otherSubtotal],
+              ["Additional Items", otherSubtotal],
               ["Labor", laborCost],
               ["Logistics", logisticsCost],
               ...(additionalDeliveryFee > 0
@@ -1909,7 +2083,7 @@ export default function EstimationPage() {
             ))}
             {inventoryTrackingOnly && (
               <div style={{ ...summaryRow, alignItems: "flex-start" }}>
-                <span style={summaryLabel}>Inventory requirements</span>
+                <span style={summaryLabel}>Required Inventory</span>
                 <strong style={{ textAlign: "right", maxWidth: 190 }}>
                   {inventoryItems.length
                     ? `${inventoryItems.length} tracked material${inventoryItems.length === 1 ? "" : "s"} — not charged again`
@@ -1923,10 +2097,10 @@ export default function EstimationPage() {
               <div style={summaryRow}><span style={{ ...summaryLabel, color: "#dc2626" }}>Discount ({discountRate}%)</span><strong style={{ color: "#dc2626" }}>({formatMoney(discountAmount)})</strong></div>
             )}
             <div style={summaryRow}><span style={summaryLabel}>VAT ({costs.tax_rate}%)</span><strong>{formatMoney(taxAmount)}</strong></div>
-            <div style={grandTotalBox}><span>GRAND TOTAL</span><strong>{formatMoney(grandTotal)}</strong></div>
+            <div style={grandTotalBox}><span>Total Quotation</span><strong>{formatMoney(grandTotal)}</strong></div>
             {estimation && (
               <div style={savedInfo}>
-                Estimation saved on {formatDateDisplay(estimation.updated_at || estimation.created_at)}
+                Last saved {formatDateDisplay(estimation.updated_at || estimation.created_at)}
               </div>
             )}
           </div>
@@ -1936,54 +2110,474 @@ export default function EstimationPage() {
   );
 }
 
+const pageShell = {
+  maxWidth: 1240,
+  margin: "0 auto",
+  padding: "0 0 48px",
+};
+
 const card = {
   background: "#fff",
   borderRadius: 16,
   border: "1px solid #e4e4e7",
-  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
+  boxShadow: "0 8px 24px rgba(24,24,27,.04)",
   overflow: "hidden",
 };
-const center = { display: "flex", alignItems: "center", justifyContent: "center", height: 300, color: "#71717a", fontSize: 14, fontWeight: 600 };
-const pageHeader = { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 20, flexWrap: "wrap" };
-const pageTitle = { fontSize: 24, fontWeight: 800, color: "#0a0a0a", margin: 0, letterSpacing: "-0.02em" };
-const pageSubTitle = { fontSize: 13, color: "#52525b", margin: "4px 0 0" };
-const headerActions = { marginLeft: "auto", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" };
-const metaGrid = { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12, marginBottom: 20 };
-const metaCard = { background: "#fff", border: "1px solid #e4e4e7", borderRadius: 12, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 6 };
-const metaLabel = { fontSize: 10, fontWeight: 800, color: "#71717a", textTransform: "uppercase", letterSpacing: "1px" };
-const metaValue = { fontSize: 16, fontWeight: 800, color: "#0a0a0a" };
-const lockedBanner = { marginBottom: 20, padding: "14px 16px", borderRadius: 12, background: "#fafafa", border: "1px solid #e4e4e7", color: "#18181b", fontSize: 13, lineHeight: 1.5 };
-const sectionHeader = { padding: "20px 24px", borderBottom: "1px solid #e4e4e7", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, background: "#fafafa" };
-const sectionHeaderSmall = { padding: "16px 24px", borderBottom: "1px solid #e4e4e7", background: "#fafafa" };
-const sectionTitle = { margin: 0, fontSize: 16, fontWeight: 800, color: "#0a0a0a" };
-const helperText = { margin: "6px 0 0", fontSize: 12, color: "#71717a", lineHeight: 1.5 };
-const estimateTableStyle = { width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed", minWidth: 920 };
-const th = { textAlign: "left", padding: "12px 12px", fontSize: 10, fontWeight: 800, color: "#71717a", textTransform: "uppercase", letterSpacing: "1px", borderBottom: "1px solid #e4e4e7" };
-const td = { padding: "12px", color: "#18181b", verticalAlign: "middle" };
-const emptyCell = { ...td, padding: 30, textAlign: "center", color: "#71717a" };
-const cellInput = { padding: "8px 9px", border: "1px solid #e4e4e7", borderRadius: 6, fontSize: 13, color: "#18181b", outline: "none", boxSizing: "border-box" };
-const inputFull = { width: "100%", padding: "10px 14px", border: "1px solid #e4e4e7", borderRadius: 8, fontSize: 13, color: "#18181b", boxSizing: "border-box", outline: "none" };
-const readOnlyFieldStyle = (locked) => locked ? { background: "#fafafa", color: "#71717a", cursor: "not-allowed" } : {};
-const labelSm = { fontSize: 12, fontWeight: 800, color: "#18181b", display: "block", marginBottom: 8 };
-const summaryRow = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #f4f4f5", gap: 12 };
-const summaryLabel = { color: "#71717a", fontSize: 13, fontWeight: 600 };
-const grandTotalBox = { marginTop: 20, background: "#18181b", borderRadius: 12, padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, color: "#fff", fontSize: 20 };
-const savedInfo = { marginTop: 16, padding: "12px 14px", background: "#fafafa", border: "1px solid #e4e4e7", borderRadius: 10, fontSize: 12, color: "#52525b", textAlign: "center" };
-const requestGrid = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 14 };
-const requestInfoCard = { border: "1px solid #e4e4e7", borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 8, minHeight: 90 };
-const requestText = { margin: 0, fontSize: 13, lineHeight: 1.55, color: "#3f3f46" };
-const mutedText = { margin: 0, fontSize: 12, color: "#71717a", lineHeight: 1.5 };
-const detailRow = { display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, color: "#52525b" };
-const messageList = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 };
-const messageCard = { padding: 12, border: "1px solid #e4e4e7", borderRadius: 10, background: "#fafafa", fontSize: 12, lineHeight: 1.45 };
-const attachmentGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 12 };
-const attachmentCard = { display: "block", textDecoration: "none", color: "#18181b", border: "1px solid #e4e4e7", borderRadius: 10, overflow: "hidden", background: "#fff" };
-const attachmentImage = { width: "100%", height: 110, objectFit: "cover", display: "block" };
-const filePlaceholder = { height: 110, display: "flex", alignItems: "center", justifyContent: "center", background: "#f4f4f5", fontWeight: 800, color: "#71717a" };
-const attachmentLabel = { padding: "8px 10px", fontSize: 11, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
-const btnPrimary = { padding: "10px 20px", background: "#18181b", color: "#fff", border: "1px solid #18181b", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 };
-const btnGhost = { padding: "10px 16px", background: "#f4f4f5", color: "#18181b", border: "1px solid #e4e4e7", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 };
-const btnBack = { padding: "8px 12px", background: "#fff", color: "#52525b", border: "1px solid #e4e4e7", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 };
-const btnAdd = { padding: "8px 16px", background: "#f4f4f5", color: "#18181b", border: "1px solid #e4e4e7", borderRadius: 8, cursor: "pointer", fontSize: 12, fontWeight: 700 };
-const btnRemove = { padding: "6px 10px", background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 };
-const btnDisabled = { opacity: 0.6, cursor: "not-allowed" };
+
+const center = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: 300,
+  color: "#71717a",
+  fontSize: 14,
+  fontWeight: 650,
+};
+
+const pageHeader = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 20,
+  marginBottom: 16,
+  padding: "20px 22px",
+  flexWrap: "wrap",
+  background: "#fff",
+  border: "1px solid #e4e4e7",
+  borderRadius: 16,
+  boxShadow: "0 8px 24px rgba(24,24,27,.04)",
+};
+
+const titleBlock = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: 14,
+  minWidth: 280,
+  flex: "1 1 480px",
+};
+
+const pageTitle = {
+  fontSize: 25,
+  fontWeight: 850,
+  color: "#0a0a0a",
+  margin: 0,
+  letterSpacing: "-0.025em",
+  lineHeight: 1.2,
+};
+
+const pageSubTitle = {
+  fontSize: 12,
+  color: "#71717a",
+  margin: "7px 0 0",
+  lineHeight: 1.5,
+};
+
+const headerActions = {
+  marginLeft: "auto",
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 8,
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const metaGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 12,
+  marginBottom: 20,
+};
+
+const metaCard = {
+  background: "#fff",
+  border: "1px solid #e4e4e7",
+  borderRadius: 12,
+  padding: "15px 18px",
+  display: "flex",
+  flexDirection: "column",
+  gap: 7,
+  minHeight: 64,
+  boxShadow: "0 1px 2px rgba(24,24,27,.03)",
+};
+
+const metaLabel = {
+  fontSize: 9,
+  fontWeight: 850,
+  color: "#71717a",
+  textTransform: "uppercase",
+  letterSpacing: "0.12em",
+};
+
+const metaValue = {
+  fontSize: 15,
+  fontWeight: 800,
+  color: "#18181b",
+};
+
+const statusValue = {
+  ...metaValue,
+  display: "inline-flex",
+  alignItems: "center",
+  alignSelf: "flex-start",
+  padding: "5px 9px",
+  borderRadius: 999,
+  background: "#f4f4f5",
+  border: "1px solid #e4e4e7",
+  fontSize: 12,
+};
+
+const lockedBanner = {
+  marginBottom: 20,
+  padding: "13px 16px",
+  borderRadius: 12,
+  background: "#fffbeb",
+  border: "1px solid #fde68a",
+  color: "#78350f",
+  fontSize: 12,
+  fontWeight: 650,
+  lineHeight: 1.5,
+};
+
+const sectionHeader = {
+  padding: "18px 22px",
+  borderBottom: "1px solid #e4e4e7",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: 14,
+  background: "#fff",
+};
+
+const sectionHeaderSmall = {
+  padding: "17px 22px",
+  borderBottom: "1px solid #e4e4e7",
+  background: "#fff",
+};
+
+const sectionTitle = {
+  margin: 0,
+  fontSize: 16,
+  fontWeight: 850,
+  color: "#18181b",
+  letterSpacing: "-0.01em",
+};
+
+const helperText = {
+  margin: "6px 0 0",
+  fontSize: 11,
+  color: "#71717a",
+  lineHeight: 1.55,
+  maxWidth: 760,
+};
+
+const estimateTableStyle = {
+  width: "100%",
+  borderCollapse: "separate",
+  borderSpacing: 0,
+  fontSize: 12,
+  tableLayout: "fixed",
+  minWidth: 1040,
+};
+
+const tableHeadRow = {
+  background: "#f8f8fa",
+};
+
+const tableFooterRow = {
+  background: "#fafafa",
+  borderTop: "2px solid #e4e4e7",
+};
+
+const th = {
+  textAlign: "left",
+  padding: "12px 11px",
+  fontSize: 9,
+  fontWeight: 850,
+  color: "#71717a",
+  textTransform: "uppercase",
+  letterSpacing: "0.11em",
+  borderBottom: "1px solid #e4e4e7",
+  whiteSpace: "nowrap",
+};
+
+const td = {
+  padding: "11px",
+  color: "#27272a",
+  verticalAlign: "middle",
+  background: "#fff",
+};
+
+const emptyCell = {
+  ...td,
+  padding: 34,
+  textAlign: "center",
+  color: "#71717a",
+  background: "#fcfcfd",
+};
+
+const cellInput = {
+  minHeight: 38,
+  padding: "8px 10px",
+  border: "1px solid #d4d4d8",
+  borderRadius: 8,
+  fontSize: 12,
+  color: "#18181b",
+  background: "#fff",
+  outline: "none",
+  boxSizing: "border-box",
+};
+
+const inputFull = {
+  width: "100%",
+  minHeight: 42,
+  padding: "10px 12px",
+  border: "1px solid #d4d4d8",
+  borderRadius: 9,
+  fontSize: 13,
+  color: "#18181b",
+  background: "#fff",
+  boxSizing: "border-box",
+  outline: "none",
+};
+
+const readOnlyFieldStyle = (locked) =>
+  locked
+    ? {
+        background: "#f4f4f5",
+        color: "#71717a",
+        cursor: "not-allowed",
+      }
+    : {};
+
+const labelSm = {
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#27272a",
+  display: "block",
+  marginBottom: 7,
+};
+
+const chargesGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+  gap: 20,
+  alignItems: "start",
+};
+
+const dualFieldGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 14,
+  marginBottom: 16,
+};
+
+const summaryRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  padding: "9px 0",
+  gap: 16,
+};
+
+const summaryLabel = {
+  color: "#71717a",
+  fontSize: 12,
+  fontWeight: 650,
+};
+
+const grandTotalBox = {
+  marginTop: 18,
+  background: "#18181b",
+  borderRadius: 12,
+  padding: "18px 20px",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  color: "#fff",
+  fontSize: 18,
+  fontWeight: 800,
+};
+
+const savedInfo = {
+  marginTop: 14,
+  padding: "10px 12px",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
+  borderRadius: 9,
+  fontSize: 11,
+  color: "#71717a",
+  textAlign: "center",
+};
+
+const requestGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+  gap: 14,
+};
+
+const requestInfoCard = {
+  border: "1px solid #e4e4e7",
+  borderRadius: 12,
+  padding: 16,
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+  minHeight: 96,
+  background: "#fcfcfd",
+};
+
+const requestText = {
+  margin: 0,
+  fontSize: 12,
+  lineHeight: 1.55,
+  color: "#3f3f46",
+};
+
+const mutedText = {
+  margin: 0,
+  fontSize: 11,
+  color: "#71717a",
+  lineHeight: 1.5,
+};
+
+const detailRow = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  flexWrap: "wrap",
+  gap: 10,
+  paddingBottom: 6,
+  borderBottom: "1px solid #f0f0f2",
+  fontSize: 11,
+  color: "#52525b",
+};
+
+const messageList = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: 10,
+};
+
+const messageCard = {
+  padding: 13,
+  border: "1px solid #e4e4e7",
+  borderRadius: 10,
+  background: "#fafafa",
+  fontSize: 12,
+  lineHeight: 1.45,
+};
+
+const attachmentGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+  gap: 12,
+};
+
+const attachmentCard = {
+  display: "block",
+  textDecoration: "none",
+  color: "#18181b",
+  border: "1px solid #e4e4e7",
+  borderRadius: 10,
+  overflow: "hidden",
+  background: "#fff",
+  boxShadow: "0 1px 2px rgba(24,24,27,.03)",
+};
+
+const attachmentImage = {
+  width: "100%",
+  height: 118,
+  objectFit: "cover",
+  display: "block",
+  background: "#f4f4f5",
+};
+
+const filePlaceholder = {
+  height: 118,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#f4f4f5",
+  fontWeight: 850,
+  color: "#71717a",
+};
+
+const attachmentLabel = {
+  padding: "9px 10px",
+  fontSize: 11,
+  fontWeight: 750,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const btnPrimary = {
+  minHeight: 38,
+  padding: "9px 16px",
+  background: "#18181b",
+  color: "#fff",
+  border: "1px solid #18181b",
+  borderRadius: 9,
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 800,
+  whiteSpace: "nowrap",
+};
+
+const btnGhost = {
+  minHeight: 38,
+  padding: "9px 14px",
+  background: "#fff",
+  color: "#27272a",
+  border: "1px solid #d4d4d8",
+  borderRadius: 9,
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 750,
+  whiteSpace: "nowrap",
+};
+
+const btnBack = {
+  minWidth: 72,
+  padding: "8px 11px",
+  background: "#fff",
+  color: "#52525b",
+  border: "1px solid #d4d4d8",
+  borderRadius: 9,
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 750,
+};
+
+const btnAdd = {
+  minHeight: 36,
+  padding: "8px 13px",
+  background: "#18181b",
+  color: "#fff",
+  border: "1px solid #18181b",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 11,
+  fontWeight: 800,
+  whiteSpace: "nowrap",
+};
+
+const btnRemove = {
+  width: 32,
+  height: 32,
+  padding: 0,
+  background: "#fff",
+  color: "#b91c1c",
+  border: "1px solid #fecaca",
+  borderRadius: 8,
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 800,
+};
+
+const btnDisabled = {
+  opacity: 0.5,
+  cursor: "not-allowed",
+};
