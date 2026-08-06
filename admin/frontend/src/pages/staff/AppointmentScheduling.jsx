@@ -561,13 +561,13 @@ export default function AppointmentScheduling() {
 
     try {
       const payload = {
-        order_id: form.order_id || undefined,
-        customer_id: form.customer_id || undefined,
-        assigned_staff_id: form.assigned_staff_id || undefined,
+        order_id: form.order_id || null,
+        customer_id: form.customer_id || null,
+        assigned_staff_id: form.assigned_staff_id || null,
         purpose: form.purpose,
         scheduled_date: form.scheduled_date,
         preferred_date: form.scheduled_date,
-        notes: form.notes.trim() || undefined,
+        notes: form.notes.trim() || null,
       };
 
       await api.post("/pos/appointments", payload);
@@ -1315,7 +1315,10 @@ export default function AppointmentScheduling() {
                         id={`appointment-row-${a.id}`}
                         style={
                           focusedAppointmentId === a.id
-                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            ? {
+                                ...trStyle,
+                                boxShadow: "inset 0 0 0 2px #0a0a0a",
+                              }
                             : trStyle
                         }
                       >
@@ -1414,7 +1417,10 @@ export default function AppointmentScheduling() {
                         id={`appointment-row-${a.id}`}
                         style={
                           focusedAppointmentId === a.id
-                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            ? {
+                                ...trStyle,
+                                boxShadow: "inset 0 0 0 2px #0a0a0a",
+                              }
                             : trStyle
                         }
                       >
@@ -1492,7 +1498,10 @@ export default function AppointmentScheduling() {
                         id={`appointment-row-${a.id}`}
                         style={
                           focusedAppointmentId === a.id
-                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            ? {
+                                ...trStyle,
+                                boxShadow: "inset 0 0 0 2px #0a0a0a",
+                              }
                             : trStyle
                         }
                       >
@@ -1562,7 +1571,10 @@ export default function AppointmentScheduling() {
                         id={`appointment-row-${a.id}`}
                         style={
                           focusedAppointmentId === a.id
-                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            ? {
+                                ...trStyle,
+                                boxShadow: "inset 0 0 0 2px #0a0a0a",
+                              }
                             : trStyle
                         }
                       >
@@ -1617,7 +1629,10 @@ export default function AppointmentScheduling() {
                         id={`appointment-row-${a.id}`}
                         style={
                           focusedAppointmentId === a.id
-                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            ? {
+                                ...trStyle,
+                                boxShadow: "inset 0 0 0 2px #0a0a0a",
+                              }
                             : trStyle
                         }
                       >
@@ -1705,7 +1720,10 @@ export default function AppointmentScheduling() {
                         id={`appointment-row-${a.id}`}
                         style={
                           focusedAppointmentId === a.id
-                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            ? {
+                                ...trStyle,
+                                boxShadow: "inset 0 0 0 2px #0a0a0a",
+                              }
                             : trStyle
                         }
                       >
@@ -1796,7 +1814,10 @@ export default function AppointmentScheduling() {
                         id={`appointment-row-${a.id}`}
                         style={
                           focusedAppointmentId === a.id
-                            ? { ...trStyle, boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                            ? {
+                                ...trStyle,
+                                boxShadow: "inset 0 0 0 2px #0a0a0a",
+                              }
                             : trStyle
                         }
                       >
