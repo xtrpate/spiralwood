@@ -1,7 +1,6 @@
 // BlueprintDesign.jsx — Main component (orchestrates all modules)
 import React, {
   useEffect,
-  useRef,
   useState,
   useCallback,
   useMemo,
@@ -133,6 +132,17 @@ import {
   Canvas2D,
 } from "./2d/blueprintComponents";
 
+// ── Editor UI / Hooks ─────────────────────────────────────────────────────────
+import { BlueprintEditorHeader } from "./components/BlueprintEditorHeader";
+import { BlueprintPublishModal } from "./components/BlueprintPublishModal";
+import { useBlueprintHistory } from "./hooks/useBlueprintHistory";
+import {
+  buildBlueprintThumbnailDataUrl,
+  inferFurnitureTypeFromComponents,
+  mapFurnitureTypeToTemplateType,
+} from "./data/blueprintPublishUtils";
+import { buildConversionCutListRows } from "./data/conversionCutListUtils";
+
 // ── 3D Viewer ─────────────────────────────────────────────────────────────────
 import { ThreeDViewer } from "./3d/threeDViewer";
 
@@ -141,17 +151,7 @@ import S from "./styles/blueprintStyles";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const GRID_SIZE = 20;
-const BOARD = 18;
-const PAPER_MARGIN = 28;
-const TITLE_BLOCK_H = 96;
-const DRAWING_PADDING = 56;
-const MM_PER_INCH = 25.4;
 const FLOOR_OFFSET = 40;
-const EXPORT_PAGE_W = 1200;
-const EXPORT_PAGE_H = 820;
-const WORLD_W = 8000;
-const WORLD_H = 5000;
-const WORLD_D = 8000;
 
 const CREATE_TEMPLATE_TYPE_MAP = {
   cabinet: "template_closet_wardrobe",
@@ -208,10 +208,20 @@ export default function BlueprintDesign() {
     description: "Custom blueprint product.",
   });
 
-  // ── Undo / Redo history ──────────────────────────────────────────────────
-  const historyRef = useRef([]); // past snapshots
-  const futureRef = useRef([]); // redo snapshots
-  const skipHistoryRef = useRef(false); // skip next push (used on undo/redo itself)
+  const {
+    historyRef,
+    futureRef,
+    pushHistory,
+    handleUndo,
+    handleRedo,
+  } = useBlueprintHistory({
+    components,
+    setComponents,
+    setSelectedId,
+    setSelectedIds,
+    setEdit3DId,
+  });
+
   const [referenceCalibrationByView, setReferenceCalibrationByView] = useState(
     createEmptyReferenceCalibrationByView(),
   );
@@ -229,53 +239,6 @@ export default function BlueprintDesign() {
     );
   }, [components]);
   const [newTraceType, setNewTraceType] = useState("door");
-  // Call this before any destructive setComponents to record the current state
-  const pushHistory = useCallback((snapshot) => {
-    if (skipHistoryRef.current) return;
-    historyRef.current = [...historyRef.current.slice(-49), snapshot]; // keep last 50
-    futureRef.current = [];
-  }, []);
-
-  const handleUndo = useCallback(() => {
-    if (!historyRef.current.length) {
-      toast("Nothing to undo.");
-      return;
-    }
-
-    const prev = historyRef.current[historyRef.current.length - 1];
-    historyRef.current = historyRef.current.slice(0, -1);
-    futureRef.current = [components, ...futureRef.current.slice(0, 49)];
-
-    skipHistoryRef.current = true;
-    setComponents(prev);
-    setSelectedId(null);
-    setSelectedIds([]);
-    setEdit3DId(null);
-    skipHistoryRef.current = false;
-
-    toast.success("Undo");
-  }, [components]);
-
-  const handleRedo = useCallback(() => {
-    if (!futureRef.current.length) {
-      toast("Nothing to redo.");
-      return;
-    }
-
-    const next = futureRef.current[0];
-    futureRef.current = futureRef.current.slice(1);
-    historyRef.current = [...historyRef.current, components];
-
-    skipHistoryRef.current = true;
-    setComponents(next);
-    setSelectedId(null);
-    setSelectedIds([]);
-    setEdit3DId(null);
-    skipHistoryRef.current = false;
-
-    toast.success("Redo");
-  }, [components]);
-  // ─────────────────────────────────────────────────────────────────────────
   const isLocked = useCallback(
     (comp) =>
       comp?.locked ||
@@ -6313,116 +6276,6 @@ export default function BlueprintDesign() {
     [pendingPlacement, commitAddComponent],
   );
 
-  const inferFurnitureTypeFromComponents = (items = []) => {
-    const text = items
-      .map(
-        (item) =>
-          `${item?.type || ""} ${item?.label || ""} ${item?.partCode || ""} ${item?.groupType || ""}`,
-      )
-      .join(" ")
-      .toLowerCase();
-
-    if (
-      /(tabletop|apron|rail|stretcher|dining_table|coffee_table|side_table|console_table|desk|table)/.test(
-        text,
-      )
-    ) {
-      return "table";
-    }
-
-    if (/(chair|seat|backrest|back_rest|chair_leg|stool)/.test(text)) {
-      return "chair";
-    }
-
-    if (/(bed|headboard|footboard|mattress)/.test(text)) {
-      return "bed";
-    }
-
-    if (
-      /(cabinet|wardrobe|drawer|shelf|door|panel|carcass|divider|closet|box)/.test(
-        text,
-      )
-    ) {
-      return "cabinet";
-    }
-
-    return "";
-  };
-
-  const mapFurnitureTypeToTemplateType = (furnitureType = "") => {
-    const map = {
-      cabinet: "template_closet_wardrobe",
-      table: "template_dining_table",
-      bed: "template_bed_frame",
-      chair: "template_dining_chair",
-      coffee_table: "template_coffee_table",
-    };
-
-    return map[String(furnitureType || "").toLowerCase()] || "";
-  };
-
-  const buildBlueprintThumbnailDataUrl = (items = [], title = "Blueprint") => {
-    if (!Array.isArray(items) || !items.length) return "";
-
-    const normalized = items
-      .map((item) => ({
-        x: Number(item?.x) || 0,
-        y: Number(item?.y) || 0,
-        width: Math.max(1, Number(item?.width) || 0),
-        height: Math.max(1, Number(item?.height) || 0),
-        label: String(item?.label || item?.type || "").trim(),
-      }))
-      .filter((item) => item.width > 0 && item.height > 0);
-
-    if (!normalized.length) return "";
-
-    const minX = Math.min(...normalized.map((item) => item.x));
-    const minY = Math.min(...normalized.map((item) => item.y));
-    const maxX = Math.max(...normalized.map((item) => item.x + item.width));
-    const maxY = Math.max(...normalized.map((item) => item.y + item.height));
-
-    const sceneWidth = Math.max(1, maxX - minX);
-    const sceneHeight = Math.max(1, maxY - minY);
-
-    const svgWidth = 420;
-    const svgHeight = 280;
-    const pad = 18;
-    const drawWidth = svgWidth - pad * 2;
-    const drawHeight = svgHeight - pad * 2;
-
-    const scale = Math.min(drawWidth / sceneWidth, drawHeight / sceneHeight);
-
-    const rects = normalized
-      .slice(0, 80)
-      .map((item, index) => {
-        const x = pad + (item.x - minX) * scale;
-        const y = pad + (item.y - minY) * scale;
-        const w = Math.max(2, item.width * scale);
-        const h = Math.max(2, item.height * scale);
-
-        const fill = index % 2 === 0 ? "#d9c2a5" : "#c9b08f";
-
-        return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" ry="2" fill="${fill}" stroke="#5b4636" stroke-width="1" />`;
-      })
-      .join("");
-
-    const safeTitle = String(title || "Blueprint")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-
-    const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">
-        <rect width="100%" height="100%" fill="#efe7dc" />
-        <rect x="10" y="10" width="${svgWidth - 20}" height="${svgHeight - 20}" rx="10" fill="#f7f2ea" stroke="#d7c7b2" />
-        ${rects}
-        <text x="${svgWidth / 2}" y="${svgHeight - 18}" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#4b3b2c">${safeTitle}</text>
-      </svg>
-    `;
-
-    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-  };
-
   const saveDesign = async () => {
     if (!id || id === "new") {
       toast.error(
@@ -6965,105 +6818,10 @@ export default function BlueprintDesign() {
     };
   }, [selectedComp]);
 
-  const conversionCutListRows = useMemo(() => {
-    if (!convertedComponents.length) return [];
-
-    const rowMap = new Map();
-
-    convertedComponents.forEach((comp) => {
-      const partFamily = comp?.handoffPartFamily || "other";
-      const partRole = comp?.handoffPartRole || "other";
-      const material = comp?.material || "—";
-
-      const widthMm = Math.max(
-        0,
-        Number(comp?.handoffWidthMm) || Number(comp?.width) || 0,
-      );
-      const heightMm = Math.max(
-        0,
-        Number(comp?.handoffHeightMm) || Number(comp?.height) || 0,
-      );
-      const depthMm = Math.max(
-        0,
-        Number(comp?.handoffDepthMm) || Number(comp?.depth) || 0,
-      );
-      const thicknessMm = Math.max(0, Number(comp?.handoffThicknessMm) || 0);
-
-      const estimationUnit = comp?.handoffEstimationUnit || "other";
-      const cutListType = comp?.handoffCutListType || "other";
-      const costBasis = comp?.handoffCostBasis || "other";
-      const qty = Math.max(
-        1,
-        Number(comp?.handoffQty) || Number(comp?.qty) || 1,
-      );
-
-      const areaSqM =
-        Number(comp?.handoffAreaSqM) ||
-        (widthMm > 0 && heightMm > 0
-          ? Number(((widthMm * heightMm) / 1000000).toFixed(4))
-          : 0);
-
-      const volumeCuM =
-        Number(comp?.handoffVolumeCuM) ||
-        (widthMm > 0 && heightMm > 0 && depthMm > 0
-          ? Number(((widthMm * heightMm * depthMm) / 1000000000).toFixed(4))
-          : 0);
-
-      const key = [
-        partFamily,
-        partRole,
-        String(material).trim().toLowerCase(),
-        widthMm,
-        heightMm,
-        depthMm,
-        thicknessMm,
-        estimationUnit,
-        cutListType,
-        costBasis,
-      ].join("|");
-
-      if (!rowMap.has(key)) {
-        rowMap.set(key, {
-          id: key,
-          partFamily,
-          partRole,
-          material,
-          widthMm,
-          heightMm,
-          depthMm,
-          thicknessMm,
-          estimationUnit,
-          cutListType,
-          costBasis,
-          qty: 0,
-          partCount: 0,
-          totalAreaSqM: 0,
-          totalVolumeCuM: 0,
-          sampleLabel: comp?.label || "Converted Part",
-        });
-      }
-
-      const row = rowMap.get(key);
-      row.qty += qty;
-      row.partCount += 1;
-      row.totalAreaSqM = Number((row.totalAreaSqM + areaSqM * qty).toFixed(4));
-      row.totalVolumeCuM = Number(
-        (row.totalVolumeCuM + volumeCuM * qty).toFixed(4),
-      );
-    });
-
-    return Array.from(rowMap.values()).sort((a, b) => {
-      if ((a.partFamily || "") < (b.partFamily || "")) return -1;
-      if ((a.partFamily || "") > (b.partFamily || "")) return 1;
-      if ((a.partRole || "") < (b.partRole || "")) return -1;
-      if ((a.partRole || "") > (b.partRole || "")) return 1;
-      if ((a.material || "") < (b.material || "")) return -1;
-      if ((a.material || "") > (b.material || "")) return 1;
-      if (a.widthMm !== b.widthMm) return a.widthMm - b.widthMm;
-      if (a.heightMm !== b.heightMm) return a.heightMm - b.heightMm;
-      return a.depthMm - b.depthMm;
-    });
-  }, [convertedComponents]);
+  const conversionCutListRows = useMemo(
+    () => buildConversionCutListRows(convertedComponents),
+    [convertedComponents],
+  );
 
   const selectedGroupParts = useMemo(() => {
     if (!selectedComponents.length || selectedComponents.length === 1)
@@ -7077,403 +6835,28 @@ export default function BlueprintDesign() {
 
   return (
     <div style={{ ...S.fullScreenWrapper, fontFamily: "'Inter', sans-serif" }}>
-      <div
-        style={{
-          background: "#ffffff",
-          borderBottom: "1px solid #dfe3e8",
-          boxShadow: "0 2px 10px rgba(15, 23, 42, 0.05)",
-          position: "relative",
-          zIndex: 20,
-        }}
-      >
-        <div
-          style={{
-            minHeight: 58,
-            padding: "10px 18px",
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-            flexWrap: "wrap",
-            borderBottom: "1px solid #edf0f3",
-          }}
-        >
-          <button
-            onClick={() => navigate("/admin/blueprints")}
-            style={{
-              ...S.toolBtn,
-              background: "#ffffff",
-              color: "#18181b",
-              border: "1px solid #d7dce2",
-              padding: "8px 12px",
-            }}
-          >
-            ← Back
-          </button>
-
-          <div style={{ minWidth: 180 }}>
-            <div
-              style={{
-                fontWeight: 800,
-                fontSize: 16,
-                color: "#0a0a0a",
-                letterSpacing: "-0.01em",
-                lineHeight: 1.25,
-              }}
-            >
-              {blueprint?.title || "Blueprint Design"}
-            </div>
-            <div
-              style={{
-                marginTop: 2,
-                fontSize: 10,
-                fontWeight: 800,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                color: "#71717a",
-              }}
-            >
-              {blueprint ? `Stage: ${blueprint.stage}` : "Design workspace"}
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 3,
-              marginLeft: 8,
-              padding: 3,
-              border: "1px solid #dfe3e8",
-              background: "#f7f8fa",
-              borderRadius: 8,
-              overflowX: "auto",
-              maxWidth: "100%",
-            }}
-          >
-            {VIEWS.map((v) => (
-              <button
-                key={v.key}
-                onClick={() => setView(v.key)}
-                style={{
-                  ...S.toolBtn,
-                  background: view === v.key ? "#111827" : "transparent",
-                  color: view === v.key ? "#ffffff" : "#52525b",
-                  fontWeight: view === v.key ? 800 : 600,
-                  padding: "7px 13px",
-                  border: "none",
-                  boxShadow:
-                    view === v.key ? "0 2px 6px rgba(15,23,42,.18)" : "none",
-                }}
-              >
-                {v.label}
-              </button>
-            ))}
-          </div>
-
-          <div
-            style={{
-              marginLeft: "auto",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              flexWrap: "wrap",
-            }}
-          >
-            <span
-              style={{
-                minHeight: 34,
-                padding: "0 12px",
-                display: "inline-flex",
-                alignItems: "center",
-                border: "1px solid #dfe3e8",
-                background: "#f7f8fa",
-                color: "#18181b",
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: "0.08em",
-                borderRadius: 7,
-              }}
-            >
-              MM
-            </span>
-
-            {activeChairBuild?.label && (
-              <span
-                style={{
-                  ...S.smallPill,
-                  background: "#eef6ff",
-                  color: "#1e3a5f",
-                  border: "1px solid #cfe2f7",
-                }}
-              >
-                Active build: {activeChairBuild.label}
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div
-          style={{
-            minHeight: 62,
-            padding: "10px 18px",
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "wrap",
-            background: "#fbfcfd",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              flexWrap: "wrap",
-              minWidth: 0,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                paddingRight: 12,
-                borderRight: "1px solid #e1e5ea",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 9,
-                  fontWeight: 800,
-                  letterSpacing: "0.12em",
-                  color: "#8a9099",
-                }}
-              >
-                MODE
-              </span>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: 3,
-                  padding: 3,
-                  border: "1px solid #dfe3e8",
-                  background: "#ffffff",
-                  borderRadius: 8,
-                }}
-              >
-                {["reference", "editable"].map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => {
-                      if (mode === "reference") switchToReferenceMode();
-                      else switchToEditableMode();
-                    }}
-                    style={{
-                      ...S.toolBtn,
-                      background:
-                        editorMode === mode ? "#111827" : "transparent",
-                      color: editorMode === mode ? "#ffffff" : "#52525b",
-                      fontWeight: editorMode === mode ? 800 : 600,
-                      padding: "7px 12px",
-                      border: "none",
-                    }}
-                  >
-                    {mode === "reference" ? "Reference" : "Editable"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                paddingRight: 12,
-                borderRight: "1px solid #e1e5ea",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 9,
-                  fontWeight: 800,
-                  letterSpacing: "0.12em",
-                  color: "#8a9099",
-                }}
-              >
-                EDIT
-              </span>
-
-              {view !== "3d" && (
-                <button
-                  onClick={() => setShowGrid((g) => !g)}
-                  style={{
-                    ...S.toolBtn,
-                    background: "#ffffff",
-                    color: "#18181b",
-                    border: "1px solid #dfe3e8",
-                  }}
-                >
-                  {showGrid ? "Hide Grid" : "Show Grid"}
-                </button>
-              )}
-
-              <button
-                onClick={handleUndo}
-                title="Undo (Ctrl+Z)"
-                disabled={!historyRef.current?.length}
-                style={{
-                  ...S.toolBtn,
-                  background: "#ffffff",
-                  color: "#18181b",
-                  border: "1px solid #dfe3e8",
-                  opacity: !historyRef.current?.length ? 0.4 : 1,
-                }}
-              >
-                ↩ Undo
-              </button>
-
-              <button
-                onClick={handleRedo}
-                title="Redo (Ctrl+Y)"
-                disabled={!futureRef.current?.length}
-                style={{
-                  ...S.toolBtn,
-                  background: "#ffffff",
-                  color: "#18181b",
-                  border: "1px solid #dfe3e8",
-                  opacity: !futureRef.current?.length ? 0.4 : 1,
-                }}
-              >
-                ↪ Redo
-              </button>
-            </div>
-          </div>
-
-          <div
-            style={{
-              marginLeft: "auto",
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              flexWrap: "wrap",
-              justifyContent: "flex-end",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                paddingRight: 12,
-                borderRight: "1px solid #e1e5ea",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 9,
-                  fontWeight: 800,
-                  letterSpacing: "0.12em",
-                  color: "#8a9099",
-                }}
-              >
-                OUTPUT
-              </span>
-
-              <button
-                onClick={() => openExportSheets(false)}
-                style={{
-                  ...S.toolBtn,
-                  background: "#ffffff",
-                  color: "#18181b",
-                  border: "1px solid #dfe3e8",
-                }}
-              >
-                Export Sheets
-              </button>
-
-              <button
-                onClick={() => openExportSheets(true)}
-                style={{
-                  ...S.toolBtn,
-                  background: "#ffffff",
-                  color: "#18181b",
-                  border: "1px solid #dfe3e8",
-                }}
-              >
-                Print Sheets
-              </button>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                flexWrap: "wrap",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 9,
-                  fontWeight: 800,
-                  letterSpacing: "0.12em",
-                  color: "#8a9099",
-                }}
-              >
-                ACTIONS
-              </span>
-
-              <button
-                onClick={saveDesign}
-                disabled={saving}
-                style={{
-                  ...S.toolBtn,
-                  minWidth: 72,
-                  background: "#111827",
-                  color: "#ffffff",
-                  border: "1px solid #111827",
-                  boxShadow: "0 2px 6px rgba(15,23,42,.16)",
-                }}
-              >
-                {saving ? "Saving…" : "Save"}
-              </button>
-
-              <button
-                onClick={() => {
-                  setPublishForm((prev) => ({
-                    ...prev,
-                    name: blueprint?.title || "",
-                    description:
-                      blueprint?.description || "Custom blueprint product.",
-                  }));
-                  setPublishModal(true);
-                }}
-                style={{
-                  ...S.toolBtn,
-                  background: "#ffffff",
-                  color: "#18181b",
-                  border: "1px solid #bfc5cd",
-                }}
-              >
-                Publish to Gallery
-              </button>
-
-              <button
-                onClick={handleUnpublishProduct}
-                style={{
-                  ...S.toolBtn,
-                  background: "#fffafa",
-                  color: "#991b1b",
-                  border: "1px solid #fecaca",
-                }}
-              >
-                Unpublish
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <BlueprintEditorHeader
+        navigate={navigate}
+        blueprint={blueprint}
+        view={view}
+        setView={setView}
+        activeChairBuild={activeChairBuild}
+        editorMode={editorMode}
+        switchToReferenceMode={switchToReferenceMode}
+        switchToEditableMode={switchToEditableMode}
+        showGrid={showGrid}
+        setShowGrid={setShowGrid}
+        handleUndo={handleUndo}
+        historyRef={historyRef}
+        handleRedo={handleRedo}
+        futureRef={futureRef}
+        openExportSheets={openExportSheets}
+        saveDesign={saveDesign}
+        saving={saving}
+        setPublishForm={setPublishForm}
+        setPublishModal={setPublishModal}
+        handleUnpublishProduct={handleUnpublishProduct}
+      />
       {view === "3d" ? (
         <div style={{ flex: 1, minHeight: 0, width: "100%", height: "100%" }}>
           <ThreeDViewer
@@ -8837,235 +8220,13 @@ export default function BlueprintDesign() {
 
       {/* ── PUBLISH MODAL ── */}
       {publishModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(2, 6, 23, 0.72)",
-            zIndex: 9999,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 20,
-          }}
-          onClick={(event) => {
-            if (event.target === event.currentTarget && !publishing) {
-              setPublishModal(false);
-            }
-          }}
-        >
-          <div
-            style={{
-              background: "#ffffff",
-              width: "min(520px, 100%)",
-              borderRadius: 12,
-              boxShadow: "0 24px 70px rgba(2, 6, 23, 0.28)",
-              border: "1px solid #dfe3e8",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                padding: "24px 26px 18px",
-                borderBottom: "1px solid #edf0f3",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 800,
-                  letterSpacing: "0.12em",
-                  textTransform: "uppercase",
-                  color: "#64748b",
-                  marginBottom: 7,
-                }}
-              >
-                Customer catalog
-              </div>
-              <h2
-                style={{
-                  margin: 0,
-                  color: "#0f172a",
-                  fontWeight: 800,
-                  fontSize: 22,
-                  letterSpacing: "-0.02em",
-                }}
-              >
-                Publish Blueprint
-              </h2>
-              <p
-                style={{
-                  fontSize: 13,
-                  color: "#64748b",
-                  margin: "8px 0 0",
-                  lineHeight: 1.6,
-                }}
-              >
-                Make this completed design available in the customer Customize
-                Gallery. Pricing will be handled through project estimation and
-                will not be shown to customers as a base price.
-              </p>
-            </div>
-
-            <form onSubmit={handlePublishProduct} style={{ padding: 26 }}>
-              <div style={{ marginBottom: 18 }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: 11,
-                    fontWeight: 800,
-                    marginBottom: 7,
-                    color: "#334155",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.09em",
-                  }}
-                >
-                  Display title
-                </label>
-                <input
-                  required
-                  value={publishForm.name}
-                  onChange={(e) =>
-                    setPublishForm({ ...publishForm, name: e.target.value })
-                  }
-                  placeholder="Enter customer-facing blueprint title"
-                  style={{
-                    width: "100%",
-                    minHeight: 46,
-                    padding: "0 14px",
-                    border: "1px solid #cfd6df",
-                    borderRadius: 8,
-                    boxSizing: "border-box",
-                    outline: "none",
-                    fontSize: 13,
-                    color: "#0f172a",
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: 18 }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: 11,
-                    fontWeight: 800,
-                    marginBottom: 7,
-                    color: "#334155",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.09em",
-                  }}
-                >
-                  Customer description
-                </label>
-                <textarea
-                  required
-                  rows={4}
-                  value={publishForm.description}
-                  onChange={(e) =>
-                    setPublishForm({
-                      ...publishForm,
-                      description: e.target.value,
-                    })
-                  }
-                  placeholder="Describe the furniture design and its intended use"
-                  style={{
-                    width: "100%",
-                    padding: "12px 14px",
-                    border: "1px solid #cfd6df",
-                    borderRadius: 8,
-                    boxSizing: "border-box",
-                    outline: "none",
-                    fontSize: 13,
-                    lineHeight: 1.6,
-                    color: "#0f172a",
-                    resize: "vertical",
-                  }}
-                />
-              </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 10,
-                  marginBottom: 24,
-                }}
-              >
-                <div
-                  style={{
-                    padding: "12px 14px",
-                    background: "#f8fafc",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: 8,
-                  }}
-                >
-                  <div style={{ fontSize: 10, color: "#64748b", fontWeight: 800 }}>
-                    CATALOG TYPE
-                  </div>
-                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 700 }}>
-                    Custom Blueprint
-                  </div>
-                </div>
-                <div
-                  style={{
-                    padding: "12px 14px",
-                    background: "#f8fafc",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: 8,
-                  }}
-                >
-                  <div style={{ fontSize: 10, color: "#64748b", fontWeight: 800 }}>
-                    CUSTOMER PRICE
-                  </div>
-                  <div style={{ marginTop: 4, fontSize: 13, fontWeight: 700 }}>
-                    Quotation after estimation
-                  </div>
-                </div>
-              </div>
-
-              <div
-                style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setPublishModal(false)}
-                  disabled={publishing}
-                  style={{
-                    minHeight: 42,
-                    padding: "0 16px",
-                    background: "#ffffff",
-                    border: "1px solid #cfd6df",
-                    color: "#0f172a",
-                    borderRadius: 8,
-                    cursor: publishing ? "not-allowed" : "pointer",
-                    fontSize: 13,
-                    fontWeight: 700,
-                  }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={publishing}
-                  style={{
-                    minHeight: 42,
-                    padding: "0 20px",
-                    background: "#111827",
-                    color: "#ffffff",
-                    border: "1px solid #111827",
-                    borderRadius: 8,
-                    cursor: publishing ? "not-allowed" : "pointer",
-                    fontWeight: 800,
-                    fontSize: 13,
-                    opacity: publishing ? 0.65 : 1,
-                  }}
-                >
-                  {publishing ? "Publishing…" : "Publish to Gallery"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <BlueprintPublishModal
+          publishing={publishing}
+          setPublishModal={setPublishModal}
+          handlePublishProduct={handlePublishProduct}
+          publishForm={publishForm}
+          setPublishForm={setPublishForm}
+        />
       )}
     </div>
   );
