@@ -21,6 +21,177 @@ import {
 import { useBlueprintCanvasModel } from "./useBlueprintCanvasModel";
 import { useBlueprintTraceInteraction } from "./useBlueprintTraceInteraction";
 
+function ExplodedCallout({ comp, screenBox, idx, drawingArea }) {
+  const centerX = screenBox.x + screenBox.w / 2;
+  const centerY = screenBox.y + screenBox.h / 2;
+  const side =
+    screenBox.labelSide ||
+    (centerX >= drawingArea.x + drawingArea.w / 2 ? "right" : "left");
+  const lane = Number.isFinite(screenBox.labelLane)
+    ? screenBox.labelLane
+    : idx % 4;
+
+  const label = `${comp.partCode || `P${idx + 1}`} - ${comp.label || "Part"}`;
+  const sideLaneY = Math.min(
+    drawingArea.y + drawingArea.h - 36,
+    drawingArea.y + 66 + lane * 54,
+  );
+
+  if (side === "top") {
+    const labelW = 220;
+    const labelX = drawingArea.x + (drawingArea.w - labelW) / 2;
+    const labelY = drawingArea.y + 22 + lane * 18;
+    const elbowY = Math.max(labelY + 18, screenBox.y - 14);
+
+    return (
+      <>
+        <Line
+          points={[
+            centerX,
+            screenBox.y,
+            centerX,
+            elbowY,
+            labelX + labelW / 2,
+            elbowY,
+            labelX + labelW / 2,
+            labelY + 12,
+          ]}
+          stroke="#475569"
+          strokeWidth={1}
+          listening={false}
+        />
+        <Text
+          x={labelX}
+          y={labelY}
+          width={labelW}
+          align="center"
+          text={label}
+          fontSize={9}
+          fill="#0f172a"
+          fontStyle="bold"
+          listening={false}
+        />
+      </>
+    );
+  }
+
+  if (side === "bottom") {
+    const labelW = 220;
+    const labelX = drawingArea.x + (drawingArea.w - labelW) / 2;
+    const labelY =
+      drawingArea.y + drawingArea.h - 28 - Math.min(4, lane) * 18;
+    const elbowY = Math.min(labelY - 10, screenBox.y + screenBox.h + 14);
+
+    return (
+      <>
+        <Line
+          points={[
+            centerX,
+            screenBox.y + screenBox.h,
+            centerX,
+            elbowY,
+            labelX + labelW / 2,
+            elbowY,
+            labelX + labelW / 2,
+            labelY - 2,
+          ]}
+          stroke="#475569"
+          strokeWidth={1}
+          listening={false}
+        />
+        <Text
+          x={labelX}
+          y={labelY}
+          width={labelW}
+          align="center"
+          text={label}
+          fontSize={9}
+          fill="#0f172a"
+          fontStyle="bold"
+          listening={false}
+        />
+      </>
+    );
+  }
+
+  if (side === "right") {
+    const labelW = 170;
+    const labelX = drawingArea.x + drawingArea.w - labelW - 8;
+    const elbowX = Math.min(
+      labelX - 10,
+      screenBox.x + screenBox.w + 22,
+    );
+
+    return (
+      <>
+        <Line
+          points={[
+            screenBox.x + screenBox.w,
+            centerY,
+            elbowX,
+            centerY,
+            elbowX,
+            sideLaneY + 6,
+            labelX - 4,
+            sideLaneY + 6,
+          ]}
+          stroke="#475569"
+          strokeWidth={1}
+          listening={false}
+        />
+        <Text
+          x={labelX}
+          y={sideLaneY}
+          width={labelW}
+          align="right"
+          text={label}
+          fontSize={9}
+          fill="#0f172a"
+          fontStyle="bold"
+          listening={false}
+        />
+      </>
+    );
+  }
+
+  const labelW = 170;
+  const labelX = drawingArea.x + 8;
+  const elbowX = Math.max(
+    labelX + labelW + 10,
+    screenBox.x - 22,
+  );
+
+  return (
+    <>
+      <Line
+        points={[
+          screenBox.x,
+          centerY,
+          elbowX,
+          centerY,
+          elbowX,
+          sideLaneY + 6,
+          labelX + labelW + 4,
+          sideLaneY + 6,
+        ]}
+        stroke="#475569"
+        strokeWidth={1}
+        listening={false}
+      />
+      <Text
+        x={labelX}
+        y={sideLaneY}
+        width={labelW}
+        text={label}
+        fontSize={9}
+        fill="#0f172a"
+        fontStyle="bold"
+        listening={false}
+      />
+    </>
+  );
+}
+
 function Canvas2D({
   selectedComp,
   selectedComponents,
@@ -276,27 +447,12 @@ function Canvas2D({
               </Group>
 
               {view === "exploded" ? (
-                <>
-                  <Line
-                    points={[
-                      screenBox.x + screenBox.w,
-                      screenBox.y + screenBox.h / 2,
-                      screenBox.x + screenBox.w + 30,
-                      screenBox.y + screenBox.h / 2,
-                    ]}
-                    stroke="#475569"
-                    strokeWidth={1}
-                    listening={false}
-                  />
-                  <Text
-                    x={screenBox.x + screenBox.w + 34}
-                    y={screenBox.y + screenBox.h / 2 - 8}
-                    text={`${comp.partCode || `P${idx + 1}`} — ${comp.label}`}
-                    fontSize={10}
-                    fill="#0f172a"
-                    listening={false}
-                  />
-                </>
+                <ExplodedCallout
+                  comp={comp}
+                  screenBox={screenBox}
+                  idx={idx}
+                  drawingArea={drawingArea}
+                />
               ) : (
                 <Text
                   x={screenBox.x}
@@ -406,12 +562,12 @@ function Canvas2D({
             </>
           )}
 
-        {selectedComp && view === "exploded" && (
+        {view === "exploded" && scaledItems.length > 0 && (
           <>
             <Text
               x={drawingArea.x + 8}
               y={drawingArea.y + drawingArea.h - 40}
-              text={`EXPLODED PARTS: ${selectedComponents.length}`}
+              text={`EXPLODED PARTS: ${scaledItems.length}`}
               fontSize={10}
               fill="#475569"
               listening={false}
@@ -419,7 +575,7 @@ function Canvas2D({
             <Text
               x={drawingArea.x + 8}
               y={drawingArea.y + drawingArea.h - 24}
-              text="Blueprint exploded layout for fabrication and material reference."
+              text="VISUALIZATION ONLY - saved component coordinates are unchanged."
               fontSize={10}
               fill="#475569"
               listening={false}

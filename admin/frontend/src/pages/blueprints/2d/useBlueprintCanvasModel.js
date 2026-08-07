@@ -13,6 +13,7 @@ import {
 import { useReferenceImage } from "../data/initHelpers";
 import { VIEWS } from "../data/furnitureTypes";
 import { getExplodedBox } from "../export/placementHelpers";
+import { resolveExplodedPreviewComponents } from "./explodedViewUtils";
 import {
   PAPER_MARGIN,
   TITLE_BLOCK_H,
@@ -71,10 +72,17 @@ export function useBlueprintCanvasModel({
   );
 
   const previewComponents = useMemo(() => {
+    if (view === "exploded") {
+      return resolveExplodedPreviewComponents(
+        selectedComponents,
+        allComponents,
+      );
+    }
+
     if (selectedComponents.length) return selectedComponents;
     if (allComponents.length) return allComponents;
     return [];
-  }, [selectedComponents, allComponents]);
+  }, [selectedComponents, allComponents, view]);
 
   const referenceType = String(
     referenceFile?.type || referenceFile?.file_type || "",
@@ -148,6 +156,10 @@ export function useBlueprintCanvasModel({
         y: offsetY + (item.box.y - bounds2D.minY) * scale,
         w: Math.max(8, item.box.w * scale),
         h: Math.max(8, item.box.h * scale),
+        labelSide: item.box.labelSide || null,
+        labelLane: Number.isFinite(item.box.labelLane)
+          ? item.box.labelLane
+          : null,
       },
       scale,
     }));
