@@ -12,6 +12,7 @@ import {
   normalizeDimensionMm,
   makeId,
 } from "./utils";
+import { normalizeFurnitureStructureFields } from "./furnitureStructure";
 
 const GRID_SIZE = 20;
 const MIN_COMPONENT_DIMENSION_MM = 1;
@@ -110,11 +111,23 @@ function normalizeComponent(c) {
       ? finish?.material || rawMaterial
       : rawMaterial;
 
+  const structure = normalizeFurnitureStructureFields(c);
+
   return {
     id: c.id || makeId(),
-    groupId: c.groupId || null,
-    groupLabel: c.groupLabel || "",
-    groupType: c.groupType || null,
+
+    // Canonical Project -> Assembly -> Part metadata. Legacy group fields are
+    // intentionally kept in sync until all editor tools have migrated.
+    assemblyId: structure.assemblyId,
+    assemblyName: structure.assemblyName,
+    assemblyType: structure.assemblyType,
+    parentPartId: structure.parentPartId,
+    partRole: structure.partRole,
+    structureVersion: structure.structureVersion,
+    groupId: structure.groupId,
+    groupLabel: structure.groupLabel,
+    groupType: structure.groupType,
+
     partCode: c.partCode || "",
     category: c.category || "Custom",
     blueprintStyle: c.blueprintStyle || "box",
@@ -158,8 +171,8 @@ function normalizeComponent(c) {
     unitPrice: Number(c.unitPrice) || 0,
     groupUnitPrice: Number(c.groupUnitPrice) || 0,
     templateType: c.templateType || "",
-    ...(c.assemblyRole
-      ? { assemblyRole: String(c.assemblyRole) }
+    ...(structure.assemblyRole
+      ? { assemblyRole: structure.assemblyRole }
       : {}),
     ...(c.resizeRuleX
       ? { resizeRuleX: String(c.resizeRuleX) }

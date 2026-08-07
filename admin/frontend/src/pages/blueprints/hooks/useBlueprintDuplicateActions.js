@@ -154,6 +154,7 @@ export function useBlueprintDuplicateActions({
               ...deepClone(item),
               id: createObjectId(),
               groupId: nextGroupId,
+              assemblyId: nextGroupId,
               x: snap((Number(item.x) || 0) + offsetX * copyIndex),
               y: snap((Number(item.y) || 0) + offsetY * copyIndex),
               z: snap((Number(item.z) || 0) + offsetZ * copyIndex),
