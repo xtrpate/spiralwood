@@ -41,6 +41,7 @@ import {
   DEFAULT_RESIZE_ANCHORS,
   buildAnchoredResizeUpdates,
 } from "./resizeAnchors";
+import { buildExplodedAssemblyOffsets } from "./explodedAssembly3D";
 import {
   clearViewerSelectionOutlines,
   rebuildViewerObjects,
@@ -125,6 +126,8 @@ function ThreeDViewer({
   const [activeInspectorTab, setActiveInspectorTab] = useState("properties");
   const [activeToolTab, setActiveToolTab] = useState("builders");
   const [isLibraryDragPlacing, setIsLibraryDragPlacing] = useState(false);
+  const [isExploded3D, setIsExploded3D] = useState(false);
+  const [explodeStrength, setExplodeStrength] = useState(55);
 
   useEffect(() => {
     if (!showLibraryPanel && activeLeftPanel === "library") {
@@ -175,6 +178,7 @@ function ThreeDViewer({
   const editorModeRef = useRef(editorMode);
   const setTransformModeRef = useRef(setTransformMode);
   const onCancelPlacementRef = useRef(onCancelPlacement);
+  const isExploded3DRef = useRef(false);
 
   const selectedIdsRef = useRef(selectedIds || []);
 
@@ -616,6 +620,7 @@ function ThreeDViewer({
       });
 
       const hasEditableSelection =
+        !isExploded3DRef.current &&
         currentEditorMode === "editable" &&
         !!currentId &&
         !!currentComp &&
@@ -926,6 +931,10 @@ function ThreeDViewer({
   }, [editorMode]);
 
   useEffect(() => {
+    isExploded3DRef.current = isExploded3D;
+  }, [isExploded3D]);
+
+  useEffect(() => {
     setTransformModeRef.current = setTransformMode;
   }, [setTransformMode]);
 
@@ -1113,6 +1122,7 @@ function ThreeDViewer({
   const handleResizeDimensionChange = useCallback(
     (id, key, nextValue) => {
       if (!id || !["width", "height", "depth"].includes(key)) return;
+      if (isExploded3DRef.current) return;
       if (editorModeRef.current !== "editable") return;
 
       const comp = (componentsRef.current || []).find((item) => item.id === id);
@@ -1191,6 +1201,51 @@ function ThreeDViewer({
     return selectedId ? [selectedId] : [];
   }, [selectedId, selectedIds]);
 
+  const explodedDisplayOffsets = useMemo(() => {
+    if (!isExploded3D) return new Map();
+
+    return buildExplodedAssemblyOffsets({
+      components,
+      selectedIds: activeSelectionIds3D,
+      strength: explodeStrength,
+      worldFromComponent: worldFromComp,
+    });
+  }, [
+    components,
+    activeSelectionIds3D,
+    isExploded3D,
+    explodeStrength,
+    worldFromComp,
+  ]);
+
+  const viewerWorldFromComp = useCallback(
+    (comp) => {
+      const world = worldFromComp(comp);
+      if (!isExploded3D) return world;
+
+      const offset = explodedDisplayOffsets.get(comp.id);
+      if (!offset) return world;
+
+      return {
+        x: world.x + offset.x,
+        y: world.y + offset.y,
+        z: world.z + offset.z,
+      };
+    },
+    [explodedDisplayOffsets, isExploded3D, worldFromComp],
+  );
+
+  const explodedAssemblyLabel = useMemo(() => {
+    if (!selectedComp) return "All grouped assemblies";
+
+    return (
+      selectedComp.groupLabel ||
+      selectedComp.label ||
+      selectedComp.partCode ||
+      "Selected assembly"
+    );
+  }, [selectedComp]);
+
   const getAssemblyIdsFromComponentId = useCallback((rootId) => {
     if (!rootId) return [];
 
@@ -1231,11 +1286,15 @@ function ThreeDViewer({
   }, [activeSelectionIds3D, components, isLocked3D]);
 
   const canTransformSelection3D =
-    editorMode === "editable" && hasActiveSelection3D && !hasLockedSelection3D;
+    !isExploded3D &&
+    editorMode === "editable" &&
+    hasActiveSelection3D &&
+    !hasLockedSelection3D;
   const canScaleSelection3D =
     canTransformSelection3D && activeSelectionIds3D.length === 1;
 
   const toggleLockSelection3D = useCallback(() => {
+    if (isExploded3DRef.current) return;
     if (editorModeRef.current !== "editable") return;
 
     const ids = getActiveSelectionIds();
@@ -1513,7 +1572,7 @@ function ThreeDViewer({
 
     const activeIds = getActiveSelectionIds();
 
-    if (editorMode !== "editable" || !activeIds.length) {
+    if (isExploded3D || editorMode !== "editable" || !activeIds.length) {
       resetMultiTransformState();
       transform.detach();
       return;
@@ -1566,6 +1625,7 @@ function ThreeDViewer({
       transform.detach();
     }
   }, [
+    isExploded3D,
     editorMode,
     getActiveSelectionIds,
     getSelectionEntries,
@@ -1604,7 +1664,7 @@ function ThreeDViewer({
       components,
       normalizeComponent,
       createFurnitureObject,
-      worldFromComponent: worldFromComp,
+      worldFromComponent: viewerWorldFromComp,
       selectedIds: selectedIdsRef.current || [],
       selectedId: selectedIdRef.current,
       edit3DId: edit3DIdRef.current,
@@ -1632,7 +1692,7 @@ function ThreeDViewer({
     }
   }, [
     components,
-    worldFromComp,
+    viewerWorldFromComp,
     attachSelectedRaw,
     captureCameraView,
     restoreCameraView,
@@ -2399,7 +2459,156 @@ function ThreeDViewer({
         />
       )}
 
-      {showLibraryPanel ? (
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+        style={{
+          position: "absolute",
+          top: 14,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 1200,
+          minWidth: isExploded3D ? 340 : 210,
+          padding: "8px 10px",
+          border: "1px solid rgba(100,116,139,.56)",
+          borderRadius: 10,
+          background: "rgba(8,15,28,.92)",
+          boxShadow: "0 8px 28px rgba(0,0,0,.28)",
+          color: "#dbeafe",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 9,
+              fontWeight: 800,
+              letterSpacing: ".08em",
+              textTransform: "uppercase",
+              color: "#93a8c4",
+            }}
+          >
+            3D Assembly
+          </div>
+
+          <div style={{ display: "flex", gap: 5 }}>
+            <button
+              type="button"
+              onClick={() => setIsExploded3D(false)}
+              style={{
+                minHeight: 28,
+                padding: "4px 10px",
+                border: !isExploded3D
+                  ? "1px solid rgba(96,165,250,.9)"
+                  : "1px solid rgba(71,85,105,.72)",
+                borderRadius: 6,
+                background: !isExploded3D
+                  ? "rgba(37,99,235,.26)"
+                  : "rgba(15,23,42,.74)",
+                color: !isExploded3D ? "#dbeafe" : "#94a3b8",
+                fontSize: 9,
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              Normal
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                onCancelPlacementRef.current?.();
+                resetLibraryPlacementDrag({ disposePreview: true });
+                transformRef.current?.detach();
+                setActiveInspectorTab("properties");
+                if (activeLeftPanel === "library") {
+                  setActiveLeftPanel(null);
+                }
+                setIsExploded3D(true);
+              }}
+              style={{
+                minHeight: 28,
+                padding: "4px 10px",
+                border: isExploded3D
+                  ? "1px solid rgba(45,212,191,.9)"
+                  : "1px solid rgba(71,85,105,.72)",
+                borderRadius: 6,
+                background: isExploded3D
+                  ? "rgba(13,148,136,.22)"
+                  : "rgba(15,23,42,.74)",
+                color: isExploded3D ? "#ccfbf1" : "#94a3b8",
+                fontSize: 9,
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              Exploded
+            </button>
+          </div>
+        </div>
+
+        {isExploded3D ? (
+          <>
+            <div
+              style={{
+                marginTop: 7,
+                fontSize: 9,
+                color: "#94a3b8",
+                lineHeight: 1.4,
+              }}
+            >
+              {explodedAssemblyLabel} · visualization only · editing locked
+            </div>
+
+            <div
+              style={{
+                marginTop: 7,
+                display: "grid",
+                gridTemplateColumns: "72px minmax(0, 1fr) 36px",
+                alignItems: "center",
+                gap: 7,
+              }}
+            >
+              <span
+                style={{
+                  color: "#9fb1c9",
+                  fontSize: 9,
+                  fontWeight: 700,
+                }}
+              >
+                Explosion
+              </span>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                value={explodeStrength}
+                onChange={(e) => setExplodeStrength(Number(e.target.value))}
+                style={{ width: "100%", accentColor: "#2dd4bf" }}
+              />
+              <span
+                style={{
+                  color: "#ccfbf1",
+                  fontSize: 9,
+                  fontWeight: 800,
+                  textAlign: "right",
+                }}
+              >
+                {explodeStrength}%
+              </span>
+            </div>
+          </>
+        ) : null}
+      </div>
+
+      {showLibraryPanel && !isExploded3D ? (
         <FurnitureLibraryPanel
           onAdd={addComponent}
           onStartDrag={startLibraryPlacementDrag}
@@ -2436,9 +2645,13 @@ function ThreeDViewer({
         resizeAnchors={resizeAnchors}
         onResizeAnchorChange={handleResizeAnchorChange}
         unit={unit}
-        editorMode={editorMode}
+        editorMode={isExploded3D ? "reference" : editorMode}
         activeInspectorTab={activeInspectorTab}
-        onChangeInspectorTab={setActiveInspectorTab}
+        onChangeInspectorTab={
+          isExploded3D
+            ? () => setActiveInspectorTab("properties")
+            : setActiveInspectorTab
+        }
         renderSmartBuild={
           <FurnitureToolsPanel
             canUseSmartActions={canUseSmartActions}
@@ -2484,7 +2697,7 @@ function ThreeDViewer({
       <TransformToolbar
         transformMode={transformMode}
         setTransformMode={setTransformMode}
-        hasSelection={hasActiveSelection3D}
+        hasSelection={hasActiveSelection3D && !isExploded3D}
         canTransform={canTransformSelection3D}
         canScale={canScaleSelection3D}
         isSelectionLocked={isSelectionLocked3D}
