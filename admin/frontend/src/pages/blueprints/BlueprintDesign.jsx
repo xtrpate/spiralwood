@@ -529,6 +529,7 @@ export default function BlueprintDesign() {
     buildCabinetBox3D,
     buildCabinetShelfLayout3D,
     buildCabinetInteriorPreset3D,
+    buildCabinetDoorLayout3D,
     buildCabinetFrontPreset3D,
     buildCabinetCustomBayFronts3D,
     buildCabinetCustomCellFronts3D,
@@ -1901,6 +1902,7 @@ export default function BlueprintDesign() {
             onBuildCabinetBox={buildCabinetBox3D}
             onBuildCabinetShelfLayout={buildCabinetShelfLayout3D}
             onBuildCabinetInteriorPreset={buildCabinetInteriorPreset3D}
+            onBuildCabinetDoorLayout={buildCabinetDoorLayout3D}
             onBuildCabinetFrontPreset={buildCabinetFrontPreset3D}
             onBuildCabinetCustomBayFronts={buildCabinetCustomBayFronts3D}
             onBuildCabinetCustomCellFronts={buildCabinetCustomCellFronts3D}
@@ -1908,6 +1910,7 @@ export default function BlueprintDesign() {
             canBuildCabinetBox={editorMode === "editable"}
             canBuildCabinetShelfLayout={editorMode === "editable"}
             canBuildCabinetInteriorPreset={editorMode === "editable"}
+            canBuildCabinetDoorLayout={editorMode === "editable"}
             canBuildCabinetFrontPreset={editorMode === "editable"}
             canBuildCabinetCustomBayFronts={editorMode === "editable"}
             canBuildCabinetCustomCellFronts={editorMode === "editable"}

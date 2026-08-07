@@ -550,6 +550,8 @@ export function useBlueprintBuilderActions({
         return [
           ctx.buildPart({
             type: "door_front_panel",
+            partRole: "door",
+            doorLeaf: "single",
             label: `${labelPrefix} Door`,
             partCode: `${codePrefix}`,
             x: baseX,
@@ -570,6 +572,8 @@ export function useBlueprintBuilderActions({
       return [
         ctx.buildPart({
           type: "door_front_panel",
+          partRole: "door",
+          doorLeaf: "left",
           label: `${labelPrefix} Left Door`,
           partCode: `${codePrefix}-L`,
           x: baseX,
@@ -581,6 +585,8 @@ export function useBlueprintBuilderActions({
         }),
         ctx.buildPart({
           type: "door_front_panel",
+          partRole: "door",
+          doorLeaf: "right",
           label: `${labelPrefix} Right Door`,
           partCode: `${codePrefix}-R`,
           x: snap(baseX + eachWidth + safeGap),
@@ -954,6 +960,335 @@ export function useBlueprintBuilderActions({
     [editorMode, getCabinetBuilderContext3D, components, pushHistory],
   );
 
+
+  const buildCabinetDoorLayout3D = useCallback(
+    (options = {}) => {
+      if (editorMode !== "editable") {
+        toast.error("Reference mode ito. Lumipat muna sa editable mode.");
+        return;
+      }
+
+      if (view !== "3d") {
+        toast.error("Sa 3D view lang puwede gamitin ang Door Builder.");
+        return;
+      }
+
+      const ctx = getCabinetBuilderContext3D();
+      if (!ctx) return;
+
+      const lockedAssemblyPart = (ctx.assemblyItems || []).find((item) =>
+        isLocked?.(item),
+      );
+
+      if (lockedAssemblyPart) {
+        toast.error(
+          "Cannot apply Door Builder. Unlock all parts in the cabinet assembly first.",
+        );
+        return;
+      }
+
+      const isDrawerFrontPart = (item) => {
+        const itemType = String(item?.type || "").trim().toLowerCase();
+        const itemRole = String(item?.partRole || "").trim().toLowerCase();
+        const itemCode = String(
+          item?.partCode || item?.technicalId || "",
+        ).trim();
+        const itemLabel = String(item?.label || "").trim().toLowerCase();
+
+        return (
+          itemType === "drawer_front_panel" ||
+          itemType === "wr_drawer_front" ||
+          itemRole === "drawer_front" ||
+          itemRole === "drawer_front_panel" ||
+          /^WR-DF\d+/i.test(itemCode) ||
+          itemLabel.includes("drawer front")
+        );
+      };
+
+      // Important: legacy Wardrobe drawer fronts (WR-DF1/2/3) are not part
+      // of ctx.frontParts, so scan the complete selected assembly instead.
+      const existingDrawerFronts = (ctx.assemblyItems || []).filter(
+        isDrawerFrontPart,
+      );
+
+      if (existingDrawerFronts.length) {
+        const sampleDrawer =
+          existingDrawerFronts[0]?.partCode ||
+          existingDrawerFronts[0]?.label ||
+          "Drawer Front";
+
+        toast.error(
+          `Door Builder blocked: this cabinet already contains drawer fronts (${sampleDrawer}). Use a cabinet opening without drawers, or clear/change the drawer layout first.`,
+        );
+        return;
+      }
+
+      const doorMode =
+        String(options.doorMode || "pair").toLowerCase() === "single"
+          ? "single"
+          : "pair";
+
+      const requestedScope = String(options.scope || "whole").toLowerCase();
+      const scope = ["whole", "bay", "opening"].includes(requestedScope)
+        ? requestedScope
+        : "whole";
+
+      const reveal = Math.max(0, Number(options.reveal) || 0);
+      const frontGap = Math.max(0, Number(options.frontGap) || 0);
+      const frontThickness = Math.max(
+        1,
+        Number(options.frontThickness) || Number(ctx.thickness) || GRID_SIZE,
+      );
+
+      const roundMm = (value) =>
+        Number.isFinite(Number(value))
+          ? Number(Number(value).toFixed(3))
+          : 0;
+
+      const fullBayRects = (ctx.bayRects || []).map((bay, index) => ({
+        ...bay,
+        bayIndex: bay.bayIndex || index + 1,
+        y: ctx.overallRect.y,
+        height: ctx.overallRect.height,
+      }));
+
+      let targets = [];
+
+      if (scope === "opening") {
+        targets = [...(ctx.openingRects || [])]
+          .sort(
+            (a, b) =>
+              (a.rowIndex || 0) - (b.rowIndex || 0) ||
+              (a.bayIndex || 0) - (b.bayIndex || 0),
+          )
+          .map((opening, index) => ({
+            ...opening,
+            targetIndex: index + 1,
+          }));
+
+        if (!targets.length) {
+          toast.error(
+            "No cabinet openings found. Build a shelf/interior layout first or use Whole / Per Bay scope.",
+          );
+          return;
+        }
+      } else if (scope === "bay") {
+        targets = fullBayRects.length
+          ? fullBayRects
+          : [
+              {
+                ...ctx.overallRect,
+                bayIndex: 1,
+              },
+            ];
+      } else {
+        targets = [
+          {
+            ...ctx.overallRect,
+            bayIndex: 1,
+          },
+        ];
+      }
+
+      const buildDoorPartsForTarget = (rect, index) => {
+        const usableWidth = roundMm(Number(rect.width) - reveal * 2);
+        const usableHeight = roundMm(Number(rect.height) - reveal * 2);
+
+        if (usableWidth <= 0 || usableHeight <= 0) {
+          return {
+            supported: false,
+            reason:
+              "Door reveal is too large for one or more selected cabinet openings.",
+            parts: [],
+          };
+        }
+
+        const baseX = roundMm(Number(rect.x) + reveal);
+        const baseY = roundMm(Number(rect.y) + reveal);
+        const baseZ = roundMm(Number(ctx.frontZ) - frontThickness);
+
+        const bayIndex = Number(rect.bayIndex) || 1;
+        const rowIndex = Number(rect.rowIndex) || 1;
+
+        const prefix =
+          scope === "whole"
+            ? "CAB-DOOR"
+            : scope === "bay"
+              ? `CAB-B${bayIndex}-DOOR`
+              : `CAB-B${bayIndex}-R${rowIndex}-DOOR`;
+
+        const labelPrefix =
+          scope === "whole"
+            ? "Cabinet"
+            : scope === "bay"
+              ? `Bay ${bayIndex}`
+              : `Bay ${bayIndex} Row ${rowIndex}`;
+
+        const common = {
+          type: "door_front_panel",
+          partRole: "door",
+          doorLayoutMode: doorMode,
+          doorLayoutScope: scope,
+          doorReveal: roundMm(reveal),
+          doorGap: roundMm(frontGap),
+          x: baseX,
+          y: baseY,
+          z: baseZ,
+          height: usableHeight,
+          depth: roundMm(frontThickness),
+          unitPrice: 0,
+          groupUnitPrice: 0,
+          qty: 1,
+          locked: false,
+        };
+
+        if (doorMode === "single") {
+          return {
+            supported: true,
+            parts: [
+              ctx.buildPart({
+                ...common,
+                doorLeaf: "single",
+                label: `${labelPrefix} Door`,
+                partCode: prefix,
+                width: usableWidth,
+              }),
+            ],
+          };
+        }
+
+        if (frontGap >= usableWidth) {
+          return {
+            supported: false,
+            reason:
+              "Door gap must be smaller than the available opening width.",
+            parts: [],
+          };
+        }
+
+        const eachWidth = roundMm((usableWidth - frontGap) / 2);
+
+        if (eachWidth <= 0) {
+          return {
+            supported: false,
+            reason: "Door opening is too narrow for a double-door pair.",
+            parts: [],
+          };
+        }
+
+        return {
+          supported: true,
+          parts: [
+            ctx.buildPart({
+              ...common,
+              doorLeaf: "left",
+              label: `${labelPrefix} Left Door`,
+              partCode: `${prefix}-L`,
+              width: eachWidth,
+            }),
+            ctx.buildPart({
+              ...common,
+              doorLeaf: "right",
+              label: `${labelPrefix} Right Door`,
+              partCode: `${prefix}-R`,
+              x: roundMm(baseX + eachWidth + frontGap),
+              width: eachWidth,
+            }),
+          ],
+        };
+      };
+
+      const nextDoorParts = [];
+
+      for (let index = 0; index < targets.length; index += 1) {
+        const result = buildDoorPartsForTarget(targets[index], index);
+
+        if (!result.supported) {
+          toast.error(result.reason || "Door layout is not valid.");
+          return;
+        }
+
+        nextDoorParts.push(...result.parts);
+      }
+
+      const currentDoorParts = (ctx.frontParts || []).filter(
+        (item) =>
+          item?.type === "door_front_panel" ||
+          String(item?.partRole || "").toLowerCase() === "door",
+      );
+
+      const signature = (item) =>
+        JSON.stringify({
+          type: item?.type || "",
+          partRole: item?.partRole || "",
+          label: item?.label || "",
+          partCode: item?.partCode || "",
+          doorLeaf: item?.doorLeaf || "",
+          doorLayoutMode: item?.doorLayoutMode || "",
+          doorLayoutScope: item?.doorLayoutScope || "",
+          doorReveal: roundMm(item?.doorReveal || 0),
+          doorGap: roundMm(item?.doorGap || 0),
+          x: roundMm(item?.x || 0),
+          y: roundMm(item?.y || 0),
+          z: roundMm(item?.z || 0),
+          width: roundMm(item?.width || 0),
+          height: roundMm(item?.height || 0),
+          depth: roundMm(item?.depth || 0),
+        });
+
+      const currentSignatures = currentDoorParts
+        .map(signature)
+        .sort()
+        .join("|");
+      const nextSignatures = nextDoorParts.map(signature).sort().join("|");
+
+      if (
+        currentDoorParts.length === nextDoorParts.length &&
+        currentSignatures === nextSignatures
+      ) {
+        toast.success("Door layout already matches the current settings.");
+        return;
+      }
+
+      const removeDoorIds = new Set(currentDoorParts.map((item) => item.id));
+
+      pushHistory(
+        Array.isArray(components)
+          ? components.map((item) => normalizeComponent(item))
+          : [],
+      );
+
+      const nextComponents = components
+        .filter((item) => !removeDoorIds.has(item.id))
+        .concat(nextDoorParts);
+
+      setComponents(nextComponents);
+      setSelectedIds(nextDoorParts.map((item) => item.id));
+      setSelectedId(nextDoorParts[0]?.id || ctx.primaryId);
+      setEdit3DId(nextDoorParts[0]?.id || ctx.primaryId);
+      setTransformMode("translate");
+
+      const scopeLabel =
+        scope === "opening"
+          ? "per opening"
+          : scope === "bay"
+            ? "per bay"
+            : "whole opening";
+
+      toast.success(
+        `${doorMode === "single" ? "Single-door" : "Double-door"} layout applied ${scopeLabel} (${nextDoorParts.length} door${nextDoorParts.length !== 1 ? "s" : ""}).`,
+      );
+    },
+    [
+      editorMode,
+      view,
+      getCabinetBuilderContext3D,
+      isLocked,
+      components,
+      pushHistory,
+    ],
+  );
+
   const buildCabinetFrontPreset3D = useCallback(
     (options = {}) => {
       if (editorMode !== "editable") {
@@ -1304,6 +1639,7 @@ export function useBlueprintBuilderActions({
     buildCabinetBox3D,
     buildCabinetShelfLayout3D,
     buildCabinetInteriorPreset3D,
+    buildCabinetDoorLayout3D,
     buildCabinetFrontPreset3D,
     buildCabinetCustomBayFronts3D,
     buildCabinetCustomCellFronts3D,

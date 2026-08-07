@@ -31,6 +31,7 @@ export function FurnitureToolsPanel({
   onBuildCabinetBox,
   onBuildCabinetShelfLayout,
   onBuildCabinetInteriorPreset,
+  onBuildCabinetDoorLayout,
   onBuildCabinetFrontPreset,
   onBuildCabinetCustomBayFronts,
   onBuildCabinetCustomCellFronts,
@@ -38,6 +39,7 @@ export function FurnitureToolsPanel({
   canBuildCabinetBox = false,
   canBuildCabinetShelfLayout = false,
   canBuildCabinetInteriorPreset = false,
+  canBuildCabinetDoorLayout = false,
   canBuildCabinetFrontPreset = false,
   canBuildCabinetCustomBayFronts = false,
   canBuildCabinetCustomCellFronts = false,
@@ -97,6 +99,11 @@ export function FurnitureToolsPanel({
   const [frontReveal, setFrontReveal] = useState(10);
   const [frontGap, setFrontGap] = useState(10);
   const [frontThickness, setFrontThickness] = useState(20);
+  const [doorLayoutMode, setDoorLayoutMode] = useState("pair");
+  const [doorLayoutScope, setDoorLayoutScope] = useState("whole");
+  const [doorReveal, setDoorReveal] = useState(10);
+  const [doorGap, setDoorGap] = useState(10);
+  const [doorThickness, setDoorThickness] = useState(20);
   const [frontTargetBayIndex, setFrontTargetBayIndex] = useState(1);
   const [bay1FrontType, setBay1FrontType] = useState("door");
   const [bay2FrontType, setBay2FrontType] = useState("drawer");
@@ -196,6 +203,11 @@ export function FurnitureToolsPanel({
   const canInteriorPresetBuilder =
     canBuildCabinetInteriorPreset &&
     typeof onBuildCabinetInteriorPreset === "function" &&
+    smartSelectionCount > 0 &&
+    !hasLockedSmartSelection;
+  const canDoorBuilder =
+    canBuildCabinetDoorLayout &&
+    typeof onBuildCabinetDoorLayout === "function" &&
     smartSelectionCount > 0 &&
     !hasLockedSmartSelection;
   const canFrontPresetBuilder =
@@ -1641,6 +1653,152 @@ export function FurnitureToolsPanel({
                 style={getBtnStyle(canInteriorPresetBuilder)}
               >
                 Apply Interior Layout
+              </button>
+            </div>
+          </div>
+
+
+          <div style={sectionCardStyle}>
+            <div style={S.smartActionsSectionLabel}>Door Builder</div>
+            <div style={sectionHintStyle}>
+              Add production-style cabinet doors to the whole opening, each
+              cabinet bay, or each shelf opening. This builder manages doors
+              only; drawer fronts are handled separately.
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Door Layout
+                </span>
+                <select
+                  value={doorLayoutMode}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) => setDoorLayoutMode(e.target.value)}
+                  style={actionInputStyle}
+                >
+                  <option value="pair">Double Door Pair</option>
+                  <option value="single">Single Door</option>
+                </select>
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Apply To
+                </span>
+                <select
+                  value={doorLayoutScope}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) => setDoorLayoutScope(e.target.value)}
+                  style={actionInputStyle}
+                >
+                  <option value="whole">Whole Cabinet Opening</option>
+                  <option value="bay">Each Cabinet Bay</option>
+                  <option value="opening">Each Shelf Opening</option>
+                </select>
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Reveal (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={doorReveal}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setDoorReveal(Math.max(0, Number(e.target.value) || 0))
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Center Gap (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={doorGap}
+                  disabled={doorLayoutMode === "single"}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setDoorGap(Math.max(0, Number(e.target.value) || 0))
+                  }
+                  style={{
+                    ...actionInputStyle,
+                    opacity: doorLayoutMode === "single" ? 0.55 : 1,
+                  }}
+                />
+              </label>
+            </div>
+
+            <label
+              style={{
+                ...fieldStyle,
+                display: "block",
+                marginBottom: 8,
+              }}
+            >
+              <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                Door Thickness (mm)
+              </span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={doorThickness}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onChange={(e) =>
+                  setDoorThickness(Math.max(1, Number(e.target.value) || 1))
+                }
+                style={actionInputStyle}
+              />
+            </label>
+
+            <div
+              style={{
+                ...S.infoCard,
+                margin: "0 0 8px",
+                padding: "8px 10px",
+                fontSize: 10,
+                color: canDoorBuilder ? "#93c5fd" : "#fcd34d",
+                lineHeight: 1.5,
+              }}
+            >
+              {canDoorBuilder
+                ? "Generated doors stay inside the selected cabinet assembly and receive PART ROLE: Door. Reapplying the same settings creates no extra history step."
+                : "Select an unlocked cabinet/wardrobe assembly or one of its parts first."}
+            </div>
+
+            <div style={S.smartActionsWideGrid}>
+              <button
+                type="button"
+                onClick={makeHandler(
+                  canDoorBuilder,
+                  onBuildCabinetDoorLayout,
+                  {
+                    doorMode: doorLayoutMode,
+                    scope: doorLayoutScope,
+                    reveal: doorReveal,
+                    frontGap: doorGap,
+                    frontThickness: doorThickness,
+                  },
+                )}
+                style={getBtnStyle(canDoorBuilder)}
+              >
+                Apply Door Layout
               </button>
             </div>
           </div>

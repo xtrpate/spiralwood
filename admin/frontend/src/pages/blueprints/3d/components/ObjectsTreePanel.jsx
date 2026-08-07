@@ -197,9 +197,55 @@ export function ObjectsTreePanel({
         </button>
       ) : null}
 
+      <style>{`
+        .blueprint-objects-tree-scroll::-webkit-scrollbar {
+          width: 12px;
+        }
+
+        .blueprint-objects-tree-scroll::-webkit-scrollbar-track {
+          background: #0b1220;
+          border-left: 1px solid rgba(71, 85, 105, 0.55);
+          border-radius: 999px;
+        }
+
+        .blueprint-objects-tree-scroll::-webkit-scrollbar-thumb {
+          min-height: 42px;
+          background: #64748b;
+          border: 2px solid #0b1220;
+          border-radius: 999px;
+        }
+
+        .blueprint-objects-tree-scroll::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+
+        .blueprint-assembly-parts-scroll::-webkit-scrollbar {
+          width: 12px;
+        }
+
+        .blueprint-assembly-parts-scroll::-webkit-scrollbar-track {
+          background: #0b1220;
+          border-left: 1px solid rgba(71, 85, 105, 0.55);
+          border-radius: 999px;
+        }
+
+        .blueprint-assembly-parts-scroll::-webkit-scrollbar-thumb {
+          min-height: 44px;
+          background: #64748b;
+          border: 2px solid #0b1220;
+          border-radius: 999px;
+        }
+
+        .blueprint-assembly-parts-scroll::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+      `}</style>
+
       <div
         style={{
           ...VIEWER_UI.sideDockPanel,
+          height: "min(700px, calc(100vh - 210px))",
+          maxHeight: "min(700px, calc(100vh - 210px))",
           opacity: isOpen ? 1 : 0,
           transform: isOpen ? "translateX(0)" : "translateX(-18px)",
           pointerEvents: isOpen ? "auto" : "none",
@@ -268,11 +314,31 @@ export function ObjectsTreePanel({
         </div>
 
         <div
+          className="blueprint-objects-tree-scroll"
+          onWheel={(event) => {
+            // Once this element has a real constrained height, let the browser
+            // perform native scrolling and only keep the wheel away from the
+            // Three.js canvas/orbit controls.
+            event.stopPropagation();
+          }}
           style={{
             ...VIEWER_UI.sideDockBody,
+            flex: "1 1 0",
+            height: 0,
+            minHeight: 0,
             display: "grid",
             gap: 7,
             marginTop: 10,
+            overflowY: "scroll",
+            overflowX: "hidden",
+            scrollbarGutter: "stable",
+            scrollbarWidth: "auto",
+            scrollbarColor: "#64748b #0b1220",
+            overscrollBehavior: "contain",
+            touchAction: "pan-y",
+            WebkitOverflowScrolling: "touch",
+            paddingRight: 6,
+            paddingBottom: 8,
           }}
         >
           {grouped.groups.map((group) => {
@@ -402,12 +468,24 @@ export function ObjectsTreePanel({
 
                 {!collapsed ? (
                   <div
+                    className="blueprint-assembly-parts-scroll"
+                    onWheel={(event) => {
+                      // Keep scrolling inside the expanded assembly parts list.
+                      event.stopPropagation();
+                    }}
                     style={{
-                      padding: "6px 6px 7px",
+                      padding: "6px 8px 7px 6px",
                       display: "flex",
                       flexDirection: "column",
                       gap: 4,
                       borderTop: "1px solid rgba(51,65,85,.45)",
+                      maxHeight: "430px",
+                      overflowY: "scroll",
+                      overflowX: "hidden",
+                      scrollbarGutter: "stable",
+                      scrollbarWidth: "auto",
+                      scrollbarColor: "#64748b #0b1220",
+                      overscrollBehavior: "contain",
                     }}
                   >
                     {group.items.map((item) =>
