@@ -70,6 +70,7 @@ export function FurnitureToolsPanel({
   });
   const [smartResizePreview, setSmartResizePreview] = useState(null);
   const [builderInset, setBuilderInset] = useState(40);
+  const [builderLegSize, setBuilderLegSize] = useState(50);
   const [builderDrawerCount, setBuilderDrawerCount] = useState(3);
   const [cabinetWidth, setCabinetWidth] = useState(1200);
   const [cabinetHeight, setCabinetHeight] = useState(2000);
@@ -154,6 +155,10 @@ export function FurnitureToolsPanel({
   const canDistribute = canUseSmartActions && smartSelectionCount > 2;
   const canGapActions = canUseSmartActions && smartSelectionCount > 1;
   const canBuilderHelpers = canUseSmartActions && smartSelectionCount > 0;
+  const canFurnitureLegLayout =
+    canBuilderHelpers &&
+    typeof onAutoLegLayout === "function" &&
+    !hasLockedSmartSelection;
   const canStrictMultiBuilderHelpers =
     canUseSmartActions && smartSelectionCount > 1;
   const canSmartAssemblyResize =
@@ -1906,6 +1911,86 @@ export function FurnitureToolsPanel({
             </div>
           </div>
 
+
+          <div style={sectionCardStyle}>
+            <div style={S.smartActionsSectionLabel}>
+              Furniture Leg Layout
+            </div>
+            <div style={sectionHintStyle}>
+              Select a table/furniture assembly or one of its parts. This creates
+              four corner legs when none exist, or repositions the assembly's
+              existing four leg parts without duplicating them.
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Inset from Edge (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="5"
+                  value={builderInset}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setBuilderInset(Math.max(0, Number(e.target.value) || 0))
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Leg Size (mm)
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={builderLegSize}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setBuilderLegSize(Math.max(1, Number(e.target.value) || 50))
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div
+              style={{
+                ...S.infoCard,
+                margin: "0 0 8px",
+                padding: "8px 10px",
+                fontSize: 10,
+                color: canFurnitureLegLayout ? "#93c5fd" : "#fcd34d",
+                lineHeight: 1.5,
+              }}
+            >
+              {canFurnitureLegLayout
+                ? "Uses the selected assembly tabletop/body footprint. Existing four legs are rebuilt in place; zero-leg assemblies receive four new legs."
+                : "Select an unlocked table/furniture assembly or one of its parts first."}
+            </div>
+
+            <div style={S.smartActionsWideGrid}>
+              <button
+                type="button"
+                onClick={makeHandler(
+                  canFurnitureLegLayout,
+                  onAutoLegLayout,
+                  builderInset,
+                  builderLegSize,
+                )}
+                style={getBtnStyle(canFurnitureLegLayout)}
+              >
+                Apply 4-Leg Layout
+              </button>
+            </div>
+          </div>
+
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Builder Helpers</div>
             <div style={sectionHintStyle}>
@@ -2032,17 +2117,7 @@ export function FurnitureToolsPanel({
               >
                 Face Fit
               </button>
-              <button
-                type="button"
-                onClick={makeHandler(
-                  canStrictMultiBuilderHelpers,
-                  onAutoLegLayout,
-                  builderInset,
-                )}
-                style={getBtnStyle(canStrictMultiBuilderHelpers)}
-              >
-                Leg Layout
-              </button>
+
             </div>
           </div>
         </>

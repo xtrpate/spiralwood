@@ -518,6 +518,8 @@ export default function BlueprintDesign() {
     activeSelectionIds3D,
     activeSelectedComponents3D,
     hasLockedSmartSelection3D,
+    worldHeight: WORLD_H,
+    floorOffset: FLOOR_OFFSET,
     gridSize: GRID_SIZE,
   });
 

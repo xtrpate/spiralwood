@@ -27,9 +27,13 @@ export function useBlueprintArrangementActions({
   activeSelectionIds3D,
   activeSelectedComponents3D,
   hasLockedSmartSelection3D,
+  worldHeight,
+  floorOffset = 40,
   gridSize = 20,
 }) {
   const GRID_SIZE = gridSize;
+  const WORLD_H = Number(worldHeight) || 3200;
+  const FLOOR_OFFSET = Number(floorOffset) || 40;
 
   const getSmartWidthResizeAssembly3D = useCallback(() => {
     const primaryId =
@@ -321,38 +325,166 @@ export function useBlueprintArrangementActions({
     ],
   );
 
+
   const autoLegLayout3D = useCallback(
-    (inset = 40) => {
+    (inset = 40, legSize = 50) => {
       if (editorMode !== "editable") {
         toast.error("Reference mode ito. Lumipat muna sa editable mode.");
         return;
       }
 
-      if (hasLockedSmartSelection3D) {
+      const primaryId =
+        selectedId || selectedIds?.[0] || activeSelectionIds3D?.[0] || null;
+
+      if (!primaryId) {
+        toast.error("Select a table/furniture assembly first.");
+        return;
+      }
+
+      const assemblyItems = getAssemblyItemsFromComponent(primaryId)
+        .map((item) => normalizeComponent(item))
+        .filter((item) => item?.id);
+
+      if (assemblyItems.length < 2) {
         toast.error(
-          "Cannot auto-layout legs. One or more selected components are locked.",
+          "Leg Layout needs a furniture assembly. Create/select an assembly first.",
         );
         return;
       }
 
-      if (activeSelectedComponents3D.length !== 5) {
-        toast.error("Select exactly 1 tabletop/body and 4 leg parts.");
+      const lockedAssemblyPart = assemblyItems.find((item) => isLocked(item));
+
+      if (lockedAssemblyPart) {
+        toast.error(
+          "Cannot apply Leg Layout. Unlock all parts in the assembly first.",
+        );
         return;
       }
 
-      const selected = [...activeSelectedComponents3D];
+      const textOf = (item) =>
+        `${item?.label || ""} ${item?.partCode || ""} ${item?.type || ""} ${
+          item?.partRole || ""
+        }`
+          .toLowerCase()
+          .trim();
 
-      // host = pinakamalaking top footprint
-      const host = [...selected].sort((a, b) => {
-        const areaA = (Number(a.width) || 0) * (Number(a.depth) || 0);
-        const areaB = (Number(b.width) || 0) * (Number(b.depth) || 0);
-        return areaB - areaA;
-      })[0];
+      const isLegLike = (item) => {
+        const role = String(item?.partRole || "").toLowerCase();
+        const text = textOf(item);
+        return (
+          role === "leg" ||
+          item?.type === "furniture_leg" ||
+          /(^|[\s_-])leg([\s_-]|$)/i.test(text)
+        );
+      };
 
-      const legs = selected.filter((item) => item.id !== host?.id);
+      const isApronLike = (item) => {
+        const role = String(item?.partRole || "").toLowerCase();
+        const text = textOf(item);
+        return role === "apron_rail" || text.includes("apron") || text.includes("rail");
+      };
 
-      if (!host || legs.length !== 4) {
-        toast.error("Need 1 host and 4 leg parts.");
+      const isCabinetShellLike = (item) => {
+        const role = String(item?.partRole || "").toLowerCase();
+        const text = textOf(item);
+        return (
+          ["side_panel", "back_panel", "bottom_panel", "divider"].includes(role) ||
+          text.includes("cabinet") ||
+          text.includes("wardrobe") ||
+          text.includes("closet")
+        );
+      };
+
+      const legParts = assemblyItems.filter(isLegLike);
+      const nonLegParts = assemblyItems.filter((item) => !isLegLike(item));
+
+      if (![0, 4].includes(legParts.length)) {
+        toast.error(
+          `Leg Layout found ${legParts.length} leg parts. Use an assembly with exactly 0 or 4 legs.`,
+        );
+        return;
+      }
+
+      if (!nonLegParts.length) {
+        toast.error("No tabletop/body was found in the selected assembly.");
+        return;
+      }
+
+      const assemblyText = [
+        assemblyItems[0]?.assemblyName,
+        assemblyItems[0]?.assemblyType,
+        assemblyItems[0]?.groupLabel,
+        assemblyItems[0]?.groupType,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const explicitlyTableLike =
+        assemblyText.includes("table") ||
+        assemblyText.includes("desk") ||
+        assemblyText.includes("coffee");
+
+      const cabinetLike =
+        assemblyText.includes("cabinet") ||
+        assemblyText.includes("wardrobe") ||
+        assemblyText.includes("closet") ||
+        (!explicitlyTableLike &&
+          assemblyItems.filter(isCabinetShellLike).length >= 3);
+
+      if (cabinetLike) {
+        toast.error(
+          "Leg Layout is for table/furniture assemblies, not cabinet/wardrobe assemblies.",
+        );
+        return;
+      }
+
+      const scoreHost = (item) => {
+        const role = String(item?.partRole || "").toLowerCase();
+        const text = textOf(item);
+        const width = Math.max(0, Number(item?.width) || 0);
+        const depth = Math.max(0, Number(item?.depth) || 0);
+        const area = width * depth;
+
+        let score = area;
+
+        if (
+          role === "top_panel" ||
+          text.includes("tabletop") ||
+          text.includes("table top") ||
+          text.includes("top panel")
+        ) {
+          score += 1_000_000_000;
+        }
+
+        if (role === "shelf" || text.includes("shelf")) {
+          score -= 100_000_000;
+        }
+
+        if (isApronLike(item)) {
+          score -= 100_000_000;
+        }
+
+        // For similar footprints, prefer the physically higher part.
+        score -= Number(item?.y) || 0;
+
+        return score;
+      };
+
+      const host = [...nonLegParts].sort(
+        (a, b) => scoreHost(b) - scoreHost(a),
+      )[0];
+
+      if (!host) {
+        toast.error("No tabletop/body was found in the selected assembly.");
+        return;
+      }
+
+      const hostRotationY = Math.abs(Number(host.rotationY) || 0) % 360;
+      if (hostRotationY > 0.001 && Math.abs(hostRotationY - 360) > 0.001) {
+        toast.error(
+          "Leg Layout currently requires an unrotated tabletop/body (Rotation Y = 0°).",
+        );
         return;
       }
 
@@ -360,112 +492,205 @@ export function useBlueprintArrangementActions({
       const hostY = Number(host.y) || 0;
       const hostZ = Number(host.z) || 0;
       const hostWidth = Number(host.width) || 0;
+      const hostHeight = Number(host.height) || 0;
       const hostDepth = Number(host.depth) || 0;
-      const undersideY = snap(hostY + (Number(host.height) || 0));
-      const safeInset = snap(Math.max(0, Number(inset) || 0));
 
-      if (hostWidth < GRID_SIZE || hostDepth < GRID_SIZE) {
-        toast.error("Host size is too small for leg layout.");
+      if (hostWidth <= 0 || hostDepth <= 0 || hostHeight <= 0) {
+        toast.error("Tabletop/body dimensions are invalid for Leg Layout.");
         return;
       }
 
-      // hanapin apron/frame parts sa same assembly
-      const assemblyItems = host.groupId
-        ? components.filter((item) => item.groupId === host.groupId)
-        : selected;
-
-      const apronLikeParts = assemblyItems.filter((item) => {
-        if (item.id === host.id) return false;
-
-        const text =
-          `${item.label || ""} ${item.partCode || ""} ${item.type || ""}`.toLowerCase();
-
-        return text.includes("apron") || text.includes("rail");
-      });
-
-      let layoutMinX;
-      let layoutMaxX;
-      let layoutMinZ;
-      let layoutMaxZ;
-      let usedApronBounds = false;
-
-      const apronBounds = apronLikeParts.length
-        ? getSelectionBoundsXYZ(apronLikeParts)
-        : null;
-
-      if (apronBounds) {
-        // apron-aware: legs align to frame/apron bounds
-        layoutMinX = snap(apronBounds.minX);
-        layoutMaxX = snap(apronBounds.maxX);
-        layoutMinZ = snap(apronBounds.minZ);
-        layoutMaxZ = snap(apronBounds.maxZ);
-        usedApronBounds = true;
-      } else {
-        // fallback: old tabletop-based inset logic
-        layoutMinX = snap(hostX + safeInset);
-        layoutMaxX = snap(hostX + hostWidth - safeInset);
-        layoutMinZ = snap(hostZ + safeInset);
-        layoutMaxZ = snap(hostZ + hostDepth - safeInset);
-      }
-
-      if (
-        layoutMaxX - layoutMinX < GRID_SIZE ||
-        layoutMaxZ - layoutMinZ < GRID_SIZE
-      ) {
-        toast.error("Layout bounds are too small for leg placement.");
-        return;
-      }
-
-      // current positions ang basis para malaman alin ang FL/FR/BL/BR
-      const sortedLegs = [...legs].sort(
-        (a, b) =>
-          (Number(a.z) || 0) - (Number(b.z) || 0) ||
-          (Number(a.x) || 0) - (Number(b.x) || 0),
+      const safeInset = Math.max(0, Number(inset) || 0);
+      const safeLegSize = Math.max(
+        1,
+        Number(legSize) ||
+          (legParts.length
+            ? Math.min(
+                ...legParts.flatMap((leg) => [
+                  Number(leg.width) || 50,
+                  Number(leg.depth) || 50,
+                ]),
+              )
+            : 50),
       );
 
-      const [legFL, legFR, legBL, legBR] = sortedLegs;
+      if (
+        safeInset * 2 + safeLegSize >= hostWidth ||
+        safeInset * 2 + safeLegSize >= hostDepth
+      ) {
+        toast.error(
+          "Inset/leg size is too large for the selected tabletop/body.",
+        );
+        return;
+      }
 
-      const changesById = {
-        [legFL.id]: {
-          x: snap(layoutMinX),
-          y: undersideY,
-          z: snap(layoutMinZ),
-        },
-        [legFR.id]: {
-          x: snap(layoutMaxX - (Number(legFR.width) || 0)),
-          y: undersideY,
-          z: snap(layoutMinZ),
-        },
-        [legBL.id]: {
-          x: snap(layoutMinX),
-          y: undersideY,
-          z: snap(layoutMaxZ - (Number(legBL.depth) || 0)),
-        },
-        [legBR.id]: {
-          x: snap(layoutMaxX - (Number(legBR.width) || 0)),
-          y: undersideY,
-          z: snap(layoutMaxZ - (Number(legBR.depth) || 0)),
-        },
-      };
+      const roundMm = (value) =>
+        Number.isFinite(Number(value))
+          ? Number(Number(value).toFixed(3))
+          : 0;
 
-      updateManyComps(changesById);
-      setSelectedId(host.id);
-      setEdit3DId(host.id);
+      const undersideY = roundMm(hostY + hostHeight);
+      const floorY = roundMm(WORLD_H - FLOOR_OFFSET);
+      const generatedLegHeight = roundMm(
+        Math.max(GRID_SIZE, floorY - undersideY),
+      );
+
+      if (!legParts.length && generatedLegHeight <= 0) {
+        toast.error(
+          "Cannot infer leg height from the current tabletop/body position.",
+        );
+        return;
+      }
+
+      const slotMeta = [
+        {
+          key: "front-left",
+          label: "Front Left Leg",
+          code: "LEG-FL",
+          x: roundMm(hostX + safeInset),
+          z: roundMm(hostZ + safeInset),
+        },
+        {
+          key: "front-right",
+          label: "Front Right Leg",
+          code: "LEG-FR",
+          x: roundMm(hostX + hostWidth - safeInset - safeLegSize),
+          z: roundMm(hostZ + safeInset),
+        },
+        {
+          key: "back-left",
+          label: "Back Left Leg",
+          code: "LEG-BL",
+          x: roundMm(hostX + safeInset),
+          z: roundMm(hostZ + hostDepth - safeInset - safeLegSize),
+        },
+        {
+          key: "back-right",
+          label: "Back Right Leg",
+          code: "LEG-BR",
+          x: roundMm(hostX + hostWidth - safeInset - safeLegSize),
+          z: roundMm(hostZ + hostDepth - safeInset - safeLegSize),
+        },
+      ];
+
+      let nextLegIds = [];
+
+      if (legParts.length === 4) {
+        const sortedLegs = [...legParts].sort(
+          (a, b) =>
+            (Number(a.z) || 0) - (Number(b.z) || 0) ||
+            (Number(a.x) || 0) - (Number(b.x) || 0),
+        );
+
+        const changesById = {};
+
+        sortedLegs.forEach((leg, index) => {
+          const slot = slotMeta[index];
+          changesById[leg.id] = {
+            x: slot.x,
+            y: undersideY,
+            z: slot.z,
+            width: safeLegSize,
+            depth: safeLegSize,
+            partRole: "leg",
+            locked: false,
+          };
+        });
+
+        const hasChanges = sortedLegs.some((leg) => {
+          const attrs = changesById[leg.id];
+          return Object.entries(attrs).some(
+            ([key, value]) => !Object.is(leg?.[key], value),
+          );
+        });
+
+        if (!hasChanges) {
+          toast.success("4-leg layout already matches the current settings.");
+          return;
+        }
+
+        pushHistory(
+          Array.isArray(components)
+            ? components.map((item) => normalizeComponent(item))
+            : [],
+        );
+
+        const changeMap = new Map(Object.entries(changesById));
+
+        setComponents((prev) =>
+          prev.map((item) => {
+            const attrs = changeMap.get(item.id);
+            return attrs
+              ? normalizeComponent({
+                  ...item,
+                  ...attrs,
+                })
+              : item;
+          }),
+        );
+
+        nextLegIds = sortedLegs.map((leg) => leg.id);
+      } else {
+        const source = host;
+
+        const generatedLegs = slotMeta.map((slot) =>
+          normalizeComponent({
+            ...deepClone(source),
+            id: createObjectId(),
+            type: "furniture_leg",
+            category: "Furniture Parts",
+            blueprintStyle: "part",
+            label: slot.label,
+            partCode: slot.code,
+            partRole: "leg",
+            x: slot.x,
+            y: undersideY,
+            z: slot.z,
+            width: safeLegSize,
+            height: generatedLegHeight,
+            depth: safeLegSize,
+            rotationX: 0,
+            rotationY: 0,
+            rotationZ: 0,
+            unitPrice: 0,
+            groupUnitPrice: 0,
+            qty: 1,
+            locked: false,
+          }),
+        );
+
+        pushHistory(
+          Array.isArray(components)
+            ? components.map((item) => normalizeComponent(item))
+            : [],
+        );
+
+        setComponents((prev) => [...prev, ...generatedLegs]);
+        nextLegIds = generatedLegs.map((leg) => leg.id);
+      }
+
+      setSelectedIds(nextLegIds);
+      setSelectedId(nextLegIds[0] || host.id);
+      setEdit3DId(nextLegIds[0] || host.id);
       setTransformMode("translate");
 
       toast.success(
-        usedApronBounds
-          ? "Leg Layout applied using apron/frame bounds."
-          : "Leg Layout applied.",
+        legParts.length === 4
+          ? `4-leg layout updated (${safeLegSize} mm legs, ${safeInset} mm inset).`
+          : `4 legs created (${safeLegSize} mm, ${safeInset} mm inset).`,
       );
     },
     [
       editorMode,
-      hasLockedSmartSelection3D,
-      activeSelectedComponents3D,
+      selectedId,
+      selectedIds,
+      activeSelectionIds3D,
       components,
-      getSelectionBoundsXYZ,
-      updateManyComps,
+      getAssemblyItemsFromComponent,
+      isLocked,
+      pushHistory,
+      WORLD_H,
+      FLOOR_OFFSET,
     ],
   );
 
