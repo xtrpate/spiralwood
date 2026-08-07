@@ -11,6 +11,13 @@ export function PropertiesPanel({
   selectedIds = [],
   isLocked,
   onChange,
+  onResizeDimension = null,
+  resizeAnchors = {
+    width: "center",
+    height: "center",
+    depth: "center",
+  },
+  onResizeAnchorChange = null,
   unit,
   editorMode,
   activeInspectorTab = "properties",
@@ -24,8 +31,19 @@ export function PropertiesPanel({
 
   const handleNumericChange = (key) => (e) => {
     if (!selectedComp) return;
+
+    const nextValue = displayToMm(e.target.value, unit);
+
+    if (
+      ["width", "height", "depth"].includes(key) &&
+      typeof onResizeDimension === "function"
+    ) {
+      onResizeDimension(selectedComp.id, key, nextValue);
+      return;
+    }
+
     onChange(selectedComp.id, {
-      [key]: displayToMm(e.target.value, unit),
+      [key]: nextValue,
     });
   };
 
@@ -396,6 +414,114 @@ export function PropertiesPanel({
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div style={inspectorSectionStyle}>
+              <div style={inspectorSectionTitleStyle}>Resize Side</div>
+              <div
+                style={{
+                  marginBottom: 9,
+                  color: "#7f93ad",
+                  fontSize: 9,
+                  lineHeight: 1.45,
+                }}
+              >
+                Choose which side will move when the dimension changes.
+              </div>
+
+              {[
+                {
+                  key: "width",
+                  label: "Width",
+                  options: [
+                    ["right", "Left"],
+                    ["center", "Center"],
+                    ["left", "Right"],
+                  ],
+                },
+                {
+                  key: "height",
+                  label: "Height",
+                  options: [
+                    ["top", "Bottom"],
+                    ["center", "Center"],
+                    ["bottom", "Top"],
+                  ],
+                },
+                {
+                  key: "depth",
+                  label: "Depth",
+                  options: [
+                    ["front", "Front"],
+                    ["center", "Center"],
+                    ["back", "Back"],
+                  ],
+                },
+              ].map((group) => (
+                <div
+                  key={group.key}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "52px minmax(0, 1fr)",
+                    alignItems: "center",
+                    gap: 8,
+                    marginTop: group.key === "width" ? 0 : 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      color: "#9fb1c9",
+                      fontSize: 9,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {group.label}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      gap: 5,
+                    }}
+                  >
+                    {group.options.map(([value, label]) => {
+                      const isActive = resizeAnchors?.[group.key] === value;
+                      const disabled =
+                        editorMode !== "editable" || isLocked(selectedComp);
+
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() =>
+                            onResizeAnchorChange?.(group.key, value)
+                          }
+                          style={{
+                            minHeight: 28,
+                            padding: "4px 5px",
+                            border: isActive
+                              ? "1px solid rgba(96,165,250,.9)"
+                              : "1px solid rgba(71,85,105,.72)",
+                            borderRadius: 6,
+                            background: isActive
+                              ? "rgba(37,99,235,.24)"
+                              : "rgba(15,23,42,.55)",
+                            color: isActive ? "#dbeafe" : "#94a3b8",
+                            fontSize: 8,
+                            fontWeight: 800,
+                            cursor: disabled ? "not-allowed" : "pointer",
+                            opacity: disabled ? 0.45 : 1,
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div style={inspectorSectionStyle}>

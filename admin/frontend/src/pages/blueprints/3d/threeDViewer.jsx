@@ -38,6 +38,10 @@ import {
 } from "./cameraControls";
 import { configureTransformMode } from "./transformGizmo";
 import {
+  DEFAULT_RESIZE_ANCHORS,
+  buildAnchoredResizeUpdates,
+} from "./resizeAnchors";
+import {
   clearViewerSelectionOutlines,
   rebuildViewerObjects,
   syncViewerSelectionOutlines,
@@ -200,6 +204,20 @@ function ThreeDViewer({
   const startPointRef = useRef({ x: 0, y: 0 });
 
   const [liveSelectedComp, setLiveSelectedComp] = useState(null);
+  const [resizeAnchors, setResizeAnchors] = useState({
+    ...DEFAULT_RESIZE_ANCHORS,
+  });
+  const resizeAnchorsRef = useRef({ ...DEFAULT_RESIZE_ANCHORS });
+  const singleScaleStateRef = useRef(null);
+
+  const handleResizeAnchorChange = useCallback((axis, value) => {
+    if (!["width", "height", "depth"].includes(axis)) return;
+
+    setResizeAnchors((current) => ({
+      ...current,
+      [axis]: value,
+    }));
+  }, []);
 
   const updateKeyboardCamera = useCallback((delta) => {
     if (!moveEnabledRef.current) return;
@@ -900,6 +918,10 @@ function ThreeDViewer({
   }, [transformMode]);
 
   useEffect(() => {
+    resizeAnchorsRef.current = { ...resizeAnchors };
+  }, [resizeAnchors]);
+
+  useEffect(() => {
     editorModeRef.current = editorMode;
   }, [editorMode]);
 
@@ -1011,31 +1033,112 @@ function ThreeDViewer({
     [canvasW, canvasH, canvasD],
   );
 
+  const getAnchoredScaleUpdates = useCallback(
+    (obj, comp, stateOverride = null) => {
+      if (!obj || !comp) return null;
+
+      const state = stateOverride || singleScaleStateRef.current;
+      const baseComp =
+        state?.id === comp.id && state?.comp ? state.comp : comp;
+      const startScale = state?.startScale || new THREE.Vector3(1, 1, 1);
+
+      const safeStartScaleX =
+        Math.abs(startScale.x) > 1e-6 ? startScale.x : 1;
+      const safeStartScaleY =
+        Math.abs(startScale.y) > 1e-6 ? startScale.y : 1;
+      const safeStartScaleZ =
+        Math.abs(startScale.z) > 1e-6 ? startScale.z : 1;
+
+      const width = normalizeDimensionMm(
+        Math.abs(baseComp.width * (obj.scale.x / safeStartScaleX)),
+        MIN_COMPONENT_DIMENSION_MM,
+      );
+      const height = normalizeDimensionMm(
+        Math.abs(baseComp.height * (obj.scale.y / safeStartScaleY)),
+        MIN_COMPONENT_DIMENSION_MM,
+      );
+      const depth = normalizeDimensionMm(
+        Math.abs(baseComp.depth * (obj.scale.z / safeStartScaleZ)),
+        MIN_COMPONENT_DIMENSION_MM,
+      );
+
+      return buildAnchoredResizeUpdates({
+        comp: baseComp,
+        nextWidth: width,
+        nextHeight: height,
+        nextDepth: depth,
+        anchors: state?.anchors || resizeAnchorsRef.current,
+        canvasW,
+        canvasH,
+        canvasD,
+        quaternion: state?.quaternion || obj.quaternion,
+      });
+    },
+    [canvasW, canvasH, canvasD],
+  );
+
   const normalizeSingleScalePreview = useCallback(
     (obj, comp) => {
       if (!obj || !comp) return null;
 
-      const updates = compFromWorld(obj, comp, "scale");
-      const previewComp = {
-        ...comp,
+      const updates =
+        getAnchoredScaleUpdates(obj, comp) ||
+        compFromWorld(obj, comp, "scale");
+
+      if (!updates) return null;
+
+      const scaleState = singleScaleStateRef.current;
+      const baseComp =
+        scaleState?.id === comp.id && scaleState?.comp
+          ? scaleState.comp
+          : comp;
+
+      const previewComp = normalizeComponent({
+        ...baseComp,
         ...updates,
-      };
+      });
       const previewWorld = worldFromComp(previewComp);
 
-      // Keep the live mesh on the exact same snapped values that will be
-      // saved on pointer release. This removes the last-moment size jump.
+      // TransformControls scales around the object's center. Reposition that
+      // center during the drag so the selected resize face stays fixed in
+      // world space instead of correcting only after pointer release.
       obj.position.set(previewWorld.x, previewWorld.y, previewWorld.z);
-      obj.scale.set(
-        updates.width / Math.max(GRID_SIZE, Math.abs(comp.width) || GRID_SIZE),
-        updates.height /
-          Math.max(GRID_SIZE, Math.abs(comp.height) || GRID_SIZE),
-        updates.depth / Math.max(GRID_SIZE, Math.abs(comp.depth) || GRID_SIZE),
-      );
       obj.updateMatrixWorld(true);
 
       return updates;
     },
-    [compFromWorld, worldFromComp],
+    [compFromWorld, getAnchoredScaleUpdates, worldFromComp],
+  );
+
+  const handleResizeDimensionChange = useCallback(
+    (id, key, nextValue) => {
+      if (!id || !["width", "height", "depth"].includes(key)) return;
+      if (editorModeRef.current !== "editable") return;
+
+      const comp = (componentsRef.current || []).find((item) => item.id === id);
+      if (!comp || isLocked3DRef.current(comp)) return;
+
+      const normalizedValue = normalizeDimensionMm(
+        nextValue,
+        MIN_COMPONENT_DIMENSION_MM,
+      );
+
+      const updates = buildAnchoredResizeUpdates({
+        comp,
+        nextWidth: key === "width" ? normalizedValue : comp.width,
+        nextHeight: key === "height" ? normalizedValue : comp.height,
+        nextDepth: key === "depth" ? normalizedValue : comp.depth,
+        anchors: resizeAnchorsRef.current,
+        canvasW,
+        canvasH,
+        canvasD,
+      });
+
+      if (updates) {
+        onUpdateCompRef.current?.(id, updates);
+      }
+    },
+    [canvasW, canvasH, canvasD],
   );
 
   const clearLiveSelectedComp = useCallback(() => {
@@ -1059,14 +1162,19 @@ function ThreeDViewer({
         return;
       }
 
+      const updates =
+        transformModeRef.current === "scale"
+          ? normalizeSingleScalePreview(obj, comp)
+          : compFromWorld(obj, comp);
+
       setLiveSelectedComp(
         normalizeComponent({
           ...comp,
-          ...compFromWorld(obj, comp),
+          ...(updates || {}),
         }),
       );
     },
-    [compFromWorld],
+    [compFromWorld, normalizeSingleScalePreview],
   );
 
   const getActiveSelectionIds = useCallback(() => {
@@ -1691,12 +1799,25 @@ function ThreeDViewer({
           : null;
 
         if (isMultiTransform) {
+          singleScaleStateRef.current = null;
           beginMultiTransform(activeIds);
         } else {
           const currentId = selectedIdRef.current;
           const entry = currentId ? entryMapRef.current.get(currentId) : null;
 
           if (entry?.obj && entry?.comp) {
+            if (transformModeRef.current === "scale") {
+              singleScaleStateRef.current = {
+                id: currentId,
+                comp: normalizeComponent({ ...entry.comp }),
+                startScale: entry.obj.scale.clone(),
+                quaternion: entry.obj.quaternion.clone(),
+                anchors: { ...resizeAnchorsRef.current },
+              };
+            } else {
+              singleScaleStateRef.current = null;
+            }
+
             syncLiveSelectedCompFromObject(currentId, entry.obj, entry.comp);
           }
         }
@@ -1714,21 +1835,30 @@ function ThreeDViewer({
 
         const currentId = selectedIdRef.current;
         if (!currentId) {
+          singleScaleStateRef.current = null;
           clearLiveSelectedComp();
           return;
         }
 
         const entry = entryMapRef.current.get(currentId);
         if (!entry) {
+          singleScaleStateRef.current = null;
           clearLiveSelectedComp();
           return;
         }
 
-        const updates = compFromWorld(
-          entry.obj,
-          entry.comp,
-          transformModeRef.current,
-        );
+        const scaleState = singleScaleStateRef.current;
+        const isScaleCommit =
+          transformModeRef.current === "scale" &&
+          scaleState?.id === currentId;
+
+        const updates = isScaleCommit
+          ? getAnchoredScaleUpdates(entry.obj, entry.comp, scaleState)
+          : compFromWorld(
+              entry.obj,
+              entry.comp,
+              transformModeRef.current,
+            );
 
         if (onBeforeDragRef.current) {
           onPushHistoryRef.current?.(onBeforeDragRef.current);
@@ -1736,6 +1866,7 @@ function ThreeDViewer({
         }
 
         onUpdateCompRef.current?.(currentId, updates);
+        singleScaleStateRef.current = null;
 
         // Keep the final preview intact until React rebuilds the object from
         // the committed component data. Resetting the scale here caused a
@@ -2214,6 +2345,7 @@ function ThreeDViewer({
     clearLiveSelectedComp,
     syncLiveSelectedCompFromObject,
     normalizeSingleScalePreview,
+    getAnchoredScaleUpdates,
   ]);
 
   useEffect(() => {
@@ -2300,6 +2432,9 @@ function ThreeDViewer({
         selectedIds={selectedIds}
         isLocked={isLocked}
         onChange={onUpdateComp}
+        onResizeDimension={handleResizeDimensionChange}
+        resizeAnchors={resizeAnchors}
+        onResizeAnchorChange={handleResizeAnchorChange}
         unit={unit}
         editorMode={editorMode}
         activeInspectorTab={activeInspectorTab}
