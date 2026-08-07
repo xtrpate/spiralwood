@@ -1,7 +1,24 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { deepClone } from "../data/editorUtils";
 
 const MAX_HISTORY_ENTRIES = 50;
+
+function cloneSnapshot(snapshot) {
+  return deepClone(Array.isArray(snapshot) ? snapshot : []);
+}
+
+function snapshotsEqual(left, right) {
+  if (left === right) return true;
+  if (!Array.isArray(left) || !Array.isArray(right)) return false;
+  if (left.length !== right.length) return false;
+
+  try {
+    return JSON.stringify(left) === JSON.stringify(right);
+  } catch {
+    return false;
+  }
+}
 
 export function useBlueprintHistory({
   components,
@@ -12,17 +29,49 @@ export function useBlueprintHistory({
 }) {
   const historyRef = useRef([]);
   const futureRef = useRef([]);
+  const currentComponentsRef = useRef(components);
   const skipHistoryRef = useRef(false);
+  const [, setHistoryRevision] = useState(0);
 
-  const pushHistory = useCallback((snapshot) => {
-    if (skipHistoryRef.current) return;
-
-    historyRef.current = [
-      ...historyRef.current.slice(-(MAX_HISTORY_ENTRIES - 1)),
-      snapshot,
-    ];
-    futureRef.current = [];
+  const notifyHistoryChanged = useCallback(() => {
+    setHistoryRevision((value) => (value + 1) % 1000000);
   }, []);
+
+  useEffect(() => {
+    currentComponentsRef.current = components;
+  }, [components]);
+
+  const pushHistory = useCallback(
+    (snapshot) => {
+      if (skipHistoryRef.current) return false;
+
+      const nextSnapshot = cloneSnapshot(snapshot);
+      const previousEntry = historyRef.current[historyRef.current.length - 1];
+
+      // Prevent duplicate/no-op history entries. This is especially important
+      // for drag commits where the viewer owns the pre-drag snapshot.
+      if (previousEntry && snapshotsEqual(previousEntry, nextSnapshot)) {
+        return false;
+      }
+
+      historyRef.current = [
+        ...historyRef.current.slice(-(MAX_HISTORY_ENTRIES - 1)),
+        nextSnapshot,
+      ];
+
+      // Any real new edit invalidates redo, matching normal editor behavior.
+      futureRef.current = [];
+      notifyHistoryChanged();
+      return true;
+    },
+    [notifyHistoryChanged],
+  );
+
+  const resetHistory = useCallback(() => {
+    historyRef.current = [];
+    futureRef.current = [];
+    notifyHistoryChanged();
+  }, [notifyHistoryChanged]);
 
   const clearSelection = useCallback(() => {
     setSelectedId(null);
@@ -36,21 +85,26 @@ export function useBlueprintHistory({
       return;
     }
 
-    const previousSnapshot =
-      historyRef.current[historyRef.current.length - 1];
+    const previousSnapshot = cloneSnapshot(
+      historyRef.current[historyRef.current.length - 1],
+    );
     historyRef.current = historyRef.current.slice(0, -1);
+
+    const currentSnapshot = cloneSnapshot(currentComponentsRef.current);
     futureRef.current = [
-      components,
+      currentSnapshot,
       ...futureRef.current.slice(0, MAX_HISTORY_ENTRIES - 1),
     ];
 
     skipHistoryRef.current = true;
+    currentComponentsRef.current = previousSnapshot;
     setComponents(previousSnapshot);
     clearSelection();
     skipHistoryRef.current = false;
 
+    notifyHistoryChanged();
     toast.success("Undo");
-  }, [clearSelection, components, setComponents]);
+  }, [clearSelection, notifyHistoryChanged, setComponents]);
 
   const handleRedo = useCallback(() => {
     if (!futureRef.current.length) {
@@ -58,22 +112,32 @@ export function useBlueprintHistory({
       return;
     }
 
-    const nextSnapshot = futureRef.current[0];
+    const nextSnapshot = cloneSnapshot(futureRef.current[0]);
     futureRef.current = futureRef.current.slice(1);
-    historyRef.current = [...historyRef.current, components];
+
+    const currentSnapshot = cloneSnapshot(currentComponentsRef.current);
+    historyRef.current = [
+      ...historyRef.current.slice(-(MAX_HISTORY_ENTRIES - 1)),
+      currentSnapshot,
+    ];
 
     skipHistoryRef.current = true;
+    currentComponentsRef.current = nextSnapshot;
     setComponents(nextSnapshot);
     clearSelection();
     skipHistoryRef.current = false;
 
+    notifyHistoryChanged();
     toast.success("Redo");
-  }, [clearSelection, components, setComponents]);
+  }, [clearSelection, notifyHistoryChanged, setComponents]);
 
   return {
     historyRef,
     futureRef,
+    canUndo: historyRef.current.length > 0,
+    canRedo: futureRef.current.length > 0,
     pushHistory,
+    resetHistory,
     handleUndo,
     handleRedo,
   };

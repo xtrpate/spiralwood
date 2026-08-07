@@ -14,9 +14,9 @@ export function BlueprintEditorHeader({
   showGrid,
   setShowGrid,
   handleUndo,
-  historyRef,
+  canUndo = false,
   handleRedo,
-  futureRef,
+  canRedo = false,
   openExportSheets,
   saveDesign,
   saving,
@@ -269,13 +269,13 @@ export function BlueprintEditorHeader({
             <button
               onClick={handleUndo}
               title="Undo (Ctrl+Z)"
-              disabled={!historyRef.current?.length}
+              disabled={!canUndo}
               style={{
                 ...S.toolBtn,
                 background: "#ffffff",
                 color: "#18181b",
                 border: "1px solid #dfe3e8",
-                opacity: !historyRef.current?.length ? 0.4 : 1,
+                opacity: !canUndo ? 0.4 : 1,
               }}
             >
               ↩ Undo
@@ -283,14 +283,14 @@ export function BlueprintEditorHeader({
 
             <button
               onClick={handleRedo}
-              title="Redo (Ctrl+Y)"
-              disabled={!futureRef.current?.length}
+              title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
+              disabled={!canRedo}
               style={{
                 ...S.toolBtn,
                 background: "#ffffff",
                 color: "#18181b",
                 border: "1px solid #dfe3e8",
-                opacity: !futureRef.current?.length ? 0.4 : 1,
+                opacity: !canRedo ? 0.4 : 1,
               }}
             >
               ↪ Redo

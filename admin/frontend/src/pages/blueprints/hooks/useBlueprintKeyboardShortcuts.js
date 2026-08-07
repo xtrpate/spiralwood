@@ -8,6 +8,7 @@ export function useBlueprintKeyboardShortcuts({
   setSelectedId,
   setSelectedIds,
   setEdit3DId,
+  editorMode,
   handleUndo,
   handleRedo,
   duplicateSelected,
@@ -35,6 +36,7 @@ export function useBlueprintKeyboardShortcuts({
       const key = String(e.key || "").toLowerCase();
       const code = String(e.code || "").toLowerCase();
       const ctrlOrMeta = e.ctrlKey || e.metaKey;
+      const canEditHistory = editorMode === "editable";
 
       if (key === "escape") {
         if (pendingPlacement) {
@@ -51,6 +53,7 @@ export function useBlueprintKeyboardShortcuts({
       }
 
       if (
+        canEditHistory &&
         !isTyping &&
         ctrlOrMeta &&
         !e.shiftKey &&
@@ -63,6 +66,7 @@ export function useBlueprintKeyboardShortcuts({
       }
 
       if (
+        canEditHistory &&
         !isTyping &&
         ctrlOrMeta &&
         (key === "y" ||
@@ -131,6 +135,7 @@ export function useBlueprintKeyboardShortcuts({
     components,
     pendingPlacement,
     cancelPendingPlacement,
+    editorMode,
     handleUndo,
     handleRedo,
     duplicateSelected,

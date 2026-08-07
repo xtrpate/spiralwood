@@ -118,11 +118,12 @@ export default function BlueprintDesign() {
   });
 
   const {
-    historyRef,
-    futureRef,
     pushHistory,
+    resetHistory,
     handleUndo,
     handleRedo,
+    canUndo,
+    canRedo,
   } = useBlueprintHistory({
     components,
     setComponents,
@@ -130,6 +131,12 @@ export default function BlueprintDesign() {
     setSelectedIds,
     setEdit3DId,
   });
+
+  useEffect(() => {
+    // A different blueprint must never inherit Undo / Redo entries from the
+    // previously opened design.
+    resetHistory();
+  }, [id, resetHistory]);
 
   const [referenceCalibrationByView, setReferenceCalibrationByView] = useState(
     createEmptyReferenceCalibrationByView(),
@@ -274,6 +281,7 @@ export default function BlueprintDesign() {
     setSelectedId,
     setSelectedIds,
     setEdit3DId,
+    editorMode,
     handleUndo,
     handleRedo,
     duplicateSelected,
@@ -320,11 +328,36 @@ export default function BlueprintDesign() {
 
       if (!targetIds.length) return;
 
+      const targetSet = new Set(targetIds);
+      const hasMeaningfulChange = components.some((component) => {
+        if (!targetSet.has(component.id)) return false;
+
+        return Object.entries(attrs || {}).some(([key, nextValue]) => {
+          const currentValue = component?.[key];
+          if (Object.is(currentValue, nextValue)) return false;
+
+          if (
+            currentValue &&
+            nextValue &&
+            typeof currentValue === "object" &&
+            typeof nextValue === "object"
+          ) {
+            try {
+              return JSON.stringify(currentValue) !== JSON.stringify(nextValue);
+            } catch {
+              return true;
+            }
+          }
+
+          return true;
+        });
+      });
+
+      if (!hasMeaningfulChange) return;
+
       if (!options.skipHistory) {
         pushHistory(components);
       }
-
-      const targetSet = new Set(targetIds);
 
       setComponents((prev) =>
         prev.map((c) =>
@@ -342,9 +375,33 @@ export default function BlueprintDesign() {
         return;
       }
 
-      const entries = Object.entries(changesById).filter(
-        ([, attrs]) => attrs && Object.keys(attrs).length,
-      );
+      const currentById = new Map(components.map((component) => [component.id, component]));
+      const entries = Object.entries(changesById).filter(([id, attrs]) => {
+        if (!attrs || !Object.keys(attrs).length) return false;
+
+        const current = currentById.get(id);
+        if (!current) return false;
+
+        return Object.entries(attrs).some(([key, nextValue]) => {
+          const currentValue = current?.[key];
+          if (Object.is(currentValue, nextValue)) return false;
+
+          if (
+            currentValue &&
+            nextValue &&
+            typeof currentValue === "object" &&
+            typeof nextValue === "object"
+          ) {
+            try {
+              return JSON.stringify(currentValue) !== JSON.stringify(nextValue);
+            } catch {
+              return true;
+            }
+          }
+
+          return true;
+        });
+      });
 
       if (!entries.length) return;
 
@@ -1725,9 +1782,9 @@ export default function BlueprintDesign() {
         showGrid={showGrid}
         setShowGrid={setShowGrid}
         handleUndo={handleUndo}
-        historyRef={historyRef}
+        canUndo={editorMode === "editable" && canUndo}
         handleRedo={handleRedo}
-        futureRef={futureRef}
+        canRedo={editorMode === "editable" && canRedo}
         openExportSheets={openExportSheets}
         saveDesign={saveDesign}
         saving={saving}

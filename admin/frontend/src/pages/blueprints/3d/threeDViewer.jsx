@@ -1925,7 +1925,9 @@ function ThreeDViewer({
           onBeforeDragRef.current = null;
         }
 
-        onUpdateCompRef.current?.(currentId, updates);
+        // The pre-drag snapshot was already pushed above. Commit the final
+        // transform without creating a second identical history entry.
+        onUpdateCompRef.current?.(currentId, updates, { skipHistory: true });
         singleScaleStateRef.current = null;
 
         // Keep the final preview intact until React rebuilds the object from
