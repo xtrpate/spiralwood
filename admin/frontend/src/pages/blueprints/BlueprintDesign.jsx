@@ -489,6 +489,7 @@ export default function BlueprintDesign() {
     applySelectionGap3D,
     distributeSelection3D,
     autoLegLayout3D,
+    autoApronRailLayout3D,
     buildSelectionLine3D,
     autoShelfStack3D,
     panelPairSelection3D,
@@ -1888,6 +1889,7 @@ export default function BlueprintDesign() {
             onBuildLineSelection={buildSelectionLine3D}
             onAutoShelfStack={autoShelfStack3D}
             onAutoLegLayout={autoLegLayout3D}
+            onAutoApronRailLayout={autoApronRailLayout3D}
             onPanelPairSelection={panelPairSelection3D}
             onFrontPairSelection={frontPairSelection3D}
             onDoorSplitSelection={doorSplitSelection3D}

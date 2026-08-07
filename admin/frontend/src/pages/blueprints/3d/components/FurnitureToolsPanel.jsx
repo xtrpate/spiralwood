@@ -20,6 +20,7 @@ export function FurnitureToolsPanel({
   onBuildLineSelection,
   onAutoShelfStack,
   onAutoLegLayout,
+  onAutoApronRailLayout,
   onPanelPairSelection,
   onFrontPairSelection,
   onDoorSplitSelection,
@@ -71,6 +72,9 @@ export function FurnitureToolsPanel({
   const [smartResizePreview, setSmartResizePreview] = useState(null);
   const [builderInset, setBuilderInset] = useState(40);
   const [builderLegSize, setBuilderLegSize] = useState(50);
+  const [builderApronInset, setBuilderApronInset] = useState(0);
+  const [builderApronHeight, setBuilderApronHeight] = useState(70);
+  const [builderApronThickness, setBuilderApronThickness] = useState(22);
   const [builderDrawerCount, setBuilderDrawerCount] = useState(3);
   const [cabinetWidth, setCabinetWidth] = useState(1200);
   const [cabinetHeight, setCabinetHeight] = useState(2000);
@@ -158,6 +162,10 @@ export function FurnitureToolsPanel({
   const canFurnitureLegLayout =
     canBuilderHelpers &&
     typeof onAutoLegLayout === "function" &&
+    !hasLockedSmartSelection;
+  const canFurnitureApronLayout =
+    canBuilderHelpers &&
+    typeof onAutoApronRailLayout === "function" &&
     !hasLockedSmartSelection;
   const canStrictMultiBuilderHelpers =
     canUseSmartActions && smartSelectionCount > 1;
@@ -1987,6 +1995,114 @@ export function FurnitureToolsPanel({
                 style={getBtnStyle(canFurnitureLegLayout)}
               >
                 Apply 4-Leg Layout
+              </button>
+            </div>
+          </div>
+
+
+          <div style={sectionCardStyle}>
+            <div style={S.smartActionsSectionLabel}>
+              Apron / Rail Layout
+            </div>
+            <div style={sectionHintStyle}>
+              Build four structural table aprons from the current four-leg
+              layout. Existing apron/rail parts are reused; missing directions
+              are created without duplicating the assembly.
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Apron Inset (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="5"
+                  value={builderApronInset}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setBuilderApronInset(
+                      Math.max(0, Number(e.target.value) || 0),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Apron Height (mm)
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={builderApronHeight}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setBuilderApronHeight(
+                      Math.max(1, Number(e.target.value) || 70),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Apron Thickness (mm)
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={builderApronThickness}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setBuilderApronThickness(
+                      Math.max(1, Number(e.target.value) || 22),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+              <div style={fieldStyle} />
+            </div>
+
+            <div
+              style={{
+                ...S.infoCard,
+                margin: "0 0 8px",
+                padding: "8px 10px",
+                fontSize: 10,
+                color: canFurnitureApronLayout ? "#93c5fd" : "#fcd34d",
+                lineHeight: 1.5,
+              }}
+            >
+              {canFurnitureApronLayout
+                ? "Requires exactly 4 legs. Front/rear aprons span between left/right legs; side aprons span between front/back legs. Inset recesses the rails inside the leg faces."
+                : "Select an unlocked table/furniture assembly or one of its parts first."}
+            </div>
+
+            <div style={S.smartActionsWideGrid}>
+              <button
+                type="button"
+                onClick={makeHandler(
+                  canFurnitureApronLayout,
+                  onAutoApronRailLayout,
+                  builderApronInset,
+                  builderApronHeight,
+                  builderApronThickness,
+                )}
+                style={getBtnStyle(canFurnitureApronLayout)}
+              >
+                Apply 4-Apron Layout
               </button>
             </div>
           </div>

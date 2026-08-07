@@ -107,6 +107,7 @@ function ThreeDViewer({
   onBuildLineSelection,
   onAutoShelfStack,
   onAutoLegLayout,
+  onAutoApronRailLayout,
   onPanelPairSelection,
   onFrontPairSelection,
   onDoorSplitSelection,
@@ -2685,6 +2686,7 @@ function ThreeDViewer({
             onBuildLineSelection={onBuildLineSelection}
             onAutoShelfStack={onAutoShelfStack}
             onAutoLegLayout={onAutoLegLayout}
+            onAutoApronRailLayout={onAutoApronRailLayout}
             onPanelPairSelection={onPanelPairSelection}
             onFrontPairSelection={onFrontPairSelection}
             onDoorSplitSelection={onDoorSplitSelection}

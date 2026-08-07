@@ -694,6 +694,572 @@ export function useBlueprintArrangementActions({
     ],
   );
 
+
+  const autoApronRailLayout3D = useCallback(
+    (apronInset = 0, apronHeight = 70, apronThickness = 22) => {
+      if (editorMode !== "editable") {
+        toast.error("Reference mode ito. Lumipat muna sa editable mode.");
+        return;
+      }
+
+      const primaryId =
+        selectedId || selectedIds?.[0] || activeSelectionIds3D?.[0] || null;
+
+      if (!primaryId) {
+        toast.error("Select a table/furniture assembly first.");
+        return;
+      }
+
+      const assemblyItems = getAssemblyItemsFromComponent(primaryId)
+        .map((item) => normalizeComponent(item))
+        .filter((item) => item?.id);
+
+      if (assemblyItems.length < 2) {
+        toast.error(
+          "Apron / Rail Layout needs a furniture assembly. Create/select an assembly first.",
+        );
+        return;
+      }
+
+      const lockedAssemblyPart = assemblyItems.find((item) => isLocked(item));
+
+      if (lockedAssemblyPart) {
+        toast.error(
+          "Cannot apply Apron / Rail Layout. Unlock all parts in the assembly first.",
+        );
+        return;
+      }
+
+      const textOf = (item) =>
+        `${item?.label || ""} ${item?.partCode || ""} ${item?.type || ""} ${
+          item?.partRole || ""
+        } ${item?.groupLabel || ""} ${item?.templateType || ""}`
+          .toLowerCase()
+          .replace(/[_-]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+
+      const codeOf = (item) =>
+        String(item?.partCode || "")
+          .trim()
+          .toUpperCase();
+
+      const isLegLike = (item) => {
+        const role = String(item?.partRole || "").toLowerCase();
+        const text = textOf(item);
+        return (
+          role === "leg" ||
+          String(item?.type || "").toLowerCase().endsWith("_leg") ||
+          /-(FL|FR|BL|BR)$/.test(codeOf(item)) ||
+          /(^|\s)leg(\s|$)/.test(text)
+        );
+      };
+
+      const isApronLike = (item) => {
+        const role = String(item?.partRole || "").toLowerCase();
+        const type = String(item?.type || "").toLowerCase();
+        const text = textOf(item);
+        const code = codeOf(item);
+
+        return (
+          role === "apron_rail" ||
+          type.includes("apron") ||
+          text.includes("apron") ||
+          /-(AF|AR|AL|AR2)$/.test(code)
+        );
+      };
+
+      const isTopLike = (item) => {
+        const role = String(item?.partRole || "").toLowerCase();
+        const type = String(item?.type || "").toLowerCase();
+        const text = textOf(item);
+        const code = codeOf(item);
+
+        return (
+          role === "top_panel" ||
+          type.includes("top_panel") ||
+          code.endsWith("-TOP") ||
+          text.includes("top panel") ||
+          text.includes("table top") ||
+          text.includes("tabletop")
+        );
+      };
+
+      const isCabinetShellLike = (item) => {
+        const role = String(item?.partRole || "").toLowerCase();
+        const text = textOf(item);
+
+        return (
+          ["side_panel", "back_panel", "bottom_panel", "divider"].includes(role) ||
+          text.includes("cabinet") ||
+          text.includes("wardrobe") ||
+          text.includes("closet")
+        );
+      };
+
+      const assemblyText = assemblyItems.map(textOf).join(" ");
+      const explicitlyTableLike =
+        assemblyText.includes("table") ||
+        assemblyText.includes("desk") ||
+        assemblyText.includes("coffee");
+
+      const cabinetLike =
+        assemblyText.includes("cabinet") ||
+        assemblyText.includes("wardrobe") ||
+        assemblyText.includes("closet") ||
+        (!explicitlyTableLike &&
+          assemblyItems.filter(isCabinetShellLike).length >= 3);
+
+      if (cabinetLike) {
+        toast.error(
+          "Apron / Rail Layout is for table/furniture assemblies, not cabinet/wardrobe assemblies.",
+        );
+        return;
+      }
+
+      const legParts = assemblyItems.filter(isLegLike);
+      if (legParts.length !== 4) {
+        toast.error(
+          `Apron / Rail Layout needs exactly 4 leg parts. Found ${legParts.length}. Apply the 4-Leg Layout first.`,
+        );
+        return;
+      }
+
+      const apronParts = assemblyItems.filter(
+        (item) => isApronLike(item) && !isLegLike(item),
+      );
+
+      if (apronParts.length > 4) {
+        toast.error(
+          `Apron / Rail Layout found ${apronParts.length} apron/rail parts. Reduce the assembly to 4 or fewer apron/rail parts first.`,
+        );
+        return;
+      }
+
+      const hostCandidates = assemblyItems.filter(
+        (item) => !isLegLike(item) && !isApronLike(item),
+      );
+
+      const scoreHost = (item) => {
+        const width = Math.max(0, Number(item?.width) || 0);
+        const depth = Math.max(0, Number(item?.depth) || 0);
+        let score = width * depth;
+
+        if (isTopLike(item)) score += 1_000_000_000;
+
+        const role = String(item?.partRole || "").toLowerCase();
+        const text = textOf(item);
+
+        if (role === "shelf" || text.includes("shelf")) {
+          score -= 100_000_000;
+        }
+
+        score -= Number(item?.y) || 0;
+        return score;
+      };
+
+      const host = [...hostCandidates].sort(
+        (a, b) => scoreHost(b) - scoreHost(a),
+      )[0];
+
+      if (!host || (!explicitlyTableLike && !isTopLike(host))) {
+        toast.error(
+          "Select a table assembly with a recognizable Top Panel/tabletop.",
+        );
+        return;
+      }
+
+      const hasMeaningfulRotation = (item) =>
+        ["rotationX", "rotationY", "rotationZ"].some((key) => {
+          const raw = Number(item?.[key]) || 0;
+          const normalized = ((raw % 360) + 360) % 360;
+          return (
+            Math.abs(normalized) > 0.001 &&
+            Math.abs(normalized - 360) > 0.001
+          );
+        });
+
+      if (hasMeaningfulRotation(host) || legParts.some(hasMeaningfulRotation)) {
+        toast.error(
+          "Apron / Rail Layout currently requires an unrotated tabletop and four unrotated legs.",
+        );
+        return;
+      }
+
+      const roundMm = (value) =>
+        Number.isFinite(Number(value))
+          ? Number(Number(value).toFixed(3))
+          : 0;
+
+      const sortedByZThenX = [...legParts].sort(
+        (a, b) =>
+          (Number(a.z) || 0) - (Number(b.z) || 0) ||
+          (Number(a.x) || 0) - (Number(b.x) || 0),
+      );
+
+      const frontRow = sortedByZThenX
+        .slice(0, 2)
+        .sort((a, b) => (Number(a.x) || 0) - (Number(b.x) || 0));
+      const backRow = sortedByZThenX
+        .slice(2, 4)
+        .sort((a, b) => (Number(a.x) || 0) - (Number(b.x) || 0));
+
+      const [frontLeft, frontRight] = frontRow;
+      const [backLeft, backRight] = backRow;
+
+      if (!frontLeft || !frontRight || !backLeft || !backRight) {
+        toast.error("Could not resolve the four table leg corners.");
+        return;
+      }
+
+      const safeInset = Math.max(0, Number(apronInset) || 0);
+      const safeHeight = Math.max(1, Number(apronHeight) || 70);
+      const safeThickness = Math.max(1, Number(apronThickness) || 22);
+
+      const frontLegDepthLimit = Math.min(
+        Number(frontLeft.depth) || 0,
+        Number(frontRight.depth) || 0,
+      );
+      const backLegDepthLimit = Math.min(
+        Number(backLeft.depth) || 0,
+        Number(backRight.depth) || 0,
+      );
+      const leftLegWidthLimit = Math.min(
+        Number(frontLeft.width) || 0,
+        Number(backLeft.width) || 0,
+      );
+      const rightLegWidthLimit = Math.min(
+        Number(frontRight.width) || 0,
+        Number(backRight.width) || 0,
+      );
+
+      const smallestLegFace = Math.min(
+        frontLegDepthLimit,
+        backLegDepthLimit,
+        leftLegWidthLimit,
+        rightLegWidthLimit,
+      );
+
+      if (smallestLegFace <= 0 || safeInset + safeThickness > smallestLegFace) {
+        toast.error(
+          "Apron inset + thickness must fit inside the current leg face size.",
+        );
+        return;
+      }
+
+      const hostY = Number(host.y) || 0;
+      const hostHeight = Number(host.height) || 0;
+      const apronY = roundMm(hostY + hostHeight);
+
+      const availableLegDrop = Math.min(
+        ...legParts.map(
+          (leg) =>
+            (Number(leg.y) || 0) +
+            (Number(leg.height) || 0) -
+            apronY,
+        ),
+      );
+
+      if (availableLegDrop <= 0 || safeHeight > availableLegDrop + 0.001) {
+        toast.error(
+          `Apron height must fit below the tabletop. Maximum safe height is ${Math.max(
+            0,
+            Math.floor(availableLegDrop),
+          )} mm.`,
+        );
+        return;
+      }
+
+      const leftInnerX = roundMm(
+        Math.max(
+          (Number(frontLeft.x) || 0) + (Number(frontLeft.width) || 0),
+          (Number(backLeft.x) || 0) + (Number(backLeft.width) || 0),
+        ),
+      );
+      const rightInnerX = roundMm(
+        Math.min(Number(frontRight.x) || 0, Number(backRight.x) || 0),
+      );
+
+      const frontInnerZ = roundMm(
+        Math.max(
+          (Number(frontLeft.z) || 0) + (Number(frontLeft.depth) || 0),
+          (Number(frontRight.z) || 0) + (Number(frontRight.depth) || 0),
+        ),
+      );
+      const backInnerZ = roundMm(
+        Math.min(Number(backLeft.z) || 0, Number(backRight.z) || 0),
+      );
+
+      const longSpan = roundMm(rightInnerX - leftInnerX);
+      const sideSpan = roundMm(backInnerZ - frontInnerZ);
+
+      if (longSpan <= 0 || sideSpan <= 0) {
+        toast.error(
+          "The current leg positions do not leave a valid opening for four aprons.",
+        );
+        return;
+      }
+
+      const frontOuterZ = roundMm(
+        Math.max(Number(frontLeft.z) || 0, Number(frontRight.z) || 0),
+      );
+      const rearOuterZ = roundMm(
+        Math.min(
+          (Number(backLeft.z) || 0) + (Number(backLeft.depth) || 0),
+          (Number(backRight.z) || 0) + (Number(backRight.depth) || 0),
+        ),
+      );
+      const leftOuterX = roundMm(
+        Math.max(Number(frontLeft.x) || 0, Number(backLeft.x) || 0),
+      );
+      const rightOuterX = roundMm(
+        Math.min(
+          (Number(frontRight.x) || 0) + (Number(frontRight.width) || 0),
+          (Number(backRight.x) || 0) + (Number(backRight.width) || 0),
+        ),
+      );
+
+      const familyPrefix = assemblyItems.some((item) =>
+        codeOf(item).startsWith("CT-"),
+      )
+        ? "CT"
+        : assemblyItems.some((item) => codeOf(item).startsWith("DT-"))
+          ? "DT"
+          : "AP";
+
+      const slots = [
+        {
+          key: "front",
+          label: "Front Apron",
+          partCode: `${familyPrefix}-AF`,
+          generatedType: "table_apron_long",
+          orientation: "x",
+          x: leftInnerX,
+          y: apronY,
+          z: roundMm(frontOuterZ + safeInset),
+          width: longSpan,
+          height: roundMm(safeHeight),
+          depth: roundMm(safeThickness),
+        },
+        {
+          key: "rear",
+          label: "Rear Apron",
+          partCode: `${familyPrefix}-AR`,
+          generatedType: "table_apron_long",
+          orientation: "x",
+          x: leftInnerX,
+          y: apronY,
+          z: roundMm(rearOuterZ - safeInset - safeThickness),
+          width: longSpan,
+          height: roundMm(safeHeight),
+          depth: roundMm(safeThickness),
+        },
+        {
+          key: "left",
+          label: "Left Apron",
+          partCode: `${familyPrefix}-AL`,
+          generatedType: "table_apron_short",
+          orientation: "z",
+          x: roundMm(leftOuterX + safeInset),
+          y: apronY,
+          z: frontInnerZ,
+          width: roundMm(safeThickness),
+          height: roundMm(safeHeight),
+          depth: sideSpan,
+        },
+        {
+          key: "right",
+          label: "Right Apron",
+          partCode: `${familyPrefix}-AR2`,
+          generatedType: "table_apron_short",
+          orientation: "z",
+          x: roundMm(rightOuterX - safeInset - safeThickness),
+          y: apronY,
+          z: frontInnerZ,
+          width: roundMm(safeThickness),
+          height: roundMm(safeHeight),
+          depth: sideSpan,
+        },
+      ];
+
+      const directionHint = (item) => {
+        const text = textOf(item);
+        const code = codeOf(item);
+
+        if (text.includes("front apron") || /-AF$/.test(code)) return "front";
+        if (
+          text.includes("rear apron") ||
+          text.includes("back apron") ||
+          /-AR$/.test(code)
+        ) {
+          return "rear";
+        }
+        if (text.includes("left apron") || /-AL$/.test(code)) return "left";
+        if (text.includes("right apron") || /-AR2$/.test(code)) return "right";
+        return null;
+      };
+
+      const slotByKey = new Map(slots.map((slot) => [slot.key, slot]));
+      const assignedBySlot = new Map();
+      const assignedIds = new Set();
+
+      apronParts.forEach((item) => {
+        const hint = directionHint(item);
+        if (!hint || assignedBySlot.has(hint)) return;
+
+        assignedBySlot.set(hint, item);
+        assignedIds.add(item.id);
+      });
+
+      const remainingAprons = apronParts.filter(
+        (item) => !assignedIds.has(item.id),
+      );
+
+      remainingAprons.forEach((item) => {
+        const itemWidth = Number(item.width) || 0;
+        const itemDepth = Number(item.depth) || 0;
+        const preferredOrientation = itemWidth >= itemDepth ? "x" : "z";
+
+        let candidates = slots.filter(
+          (slot) =>
+            !assignedBySlot.has(slot.key) &&
+            slot.orientation === preferredOrientation,
+        );
+
+        if (!candidates.length) {
+          candidates = slots.filter((slot) => !assignedBySlot.has(slot.key));
+        }
+
+        if (!candidates.length) return;
+
+        const itemCenterX = (Number(item.x) || 0) + itemWidth / 2;
+        const itemCenterZ = (Number(item.z) || 0) + itemDepth / 2;
+
+        const bestSlot = [...candidates].sort((a, b) => {
+          const centerAX = a.x + a.width / 2;
+          const centerAZ = a.z + a.depth / 2;
+          const centerBX = b.x + b.width / 2;
+          const centerBZ = b.z + b.depth / 2;
+
+          const costA =
+            Math.abs(itemCenterX - centerAX) + Math.abs(itemCenterZ - centerAZ);
+          const costB =
+            Math.abs(itemCenterX - centerBX) + Math.abs(itemCenterZ - centerBZ);
+
+          return costA - costB;
+        })[0];
+
+        assignedBySlot.set(bestSlot.key, item);
+        assignedIds.add(item.id);
+      });
+
+      const updateMap = new Map();
+      const createdParts = [];
+      const resultIds = [];
+
+      slots.forEach((slot) => {
+        const existing = assignedBySlot.get(slot.key) || null;
+
+        const attrs = {
+          x: slot.x,
+          y: slot.y,
+          z: slot.z,
+          width: slot.width,
+          height: slot.height,
+          depth: slot.depth,
+          label: slot.label,
+          partCode: slot.partCode,
+          partRole: "apron_rail",
+          locked: false,
+        };
+
+        if (existing) {
+          updateMap.set(existing.id, attrs);
+          resultIds.push(existing.id);
+          return;
+        }
+
+        const source = apronParts[0] || host;
+        const generated = normalizeComponent({
+          ...deepClone(source),
+          id: createObjectId(),
+          type: slot.generatedType,
+          category: "Furniture Parts",
+          blueprintStyle: "part",
+          ...attrs,
+          unitPrice: 0,
+          groupUnitPrice: 0,
+          qty: 1,
+          rotationX: 0,
+          rotationY: 0,
+          rotationZ: 0,
+        });
+
+        createdParts.push(generated);
+        resultIds.push(generated.id);
+      });
+
+      const hasUpdates = Array.from(updateMap.entries()).some(([id, attrs]) => {
+        const current = assemblyItems.find((item) => item.id === id);
+        if (!current) return true;
+
+        return Object.entries(attrs).some(
+          ([key, value]) => !Object.is(current?.[key], value),
+        );
+      });
+
+      if (!hasUpdates && !createdParts.length) {
+        toast.success(
+          "Apron / Rail Layout already matches the current settings.",
+        );
+        return;
+      }
+
+      pushHistory(
+        Array.isArray(components)
+          ? components.map((item) => normalizeComponent(item))
+          : [],
+      );
+
+      setComponents((prev) =>
+        prev
+          .map((item) => {
+            const attrs = updateMap.get(item.id);
+            return attrs
+              ? normalizeComponent({
+                  ...item,
+                  ...attrs,
+                })
+              : item;
+          })
+          .concat(createdParts),
+      );
+
+      setSelectedIds(resultIds);
+      setSelectedId(resultIds[0] || host.id);
+      setEdit3DId(resultIds[0] || host.id);
+      setTransformMode("translate");
+
+      toast.success(
+        createdParts.length
+          ? `4-apron layout applied. Created ${createdParts.length} missing apron/rail part${
+              createdParts.length !== 1 ? "s" : ""
+            }.`
+          : `4-apron layout updated (${safeHeight} mm high, ${safeThickness} mm thick, ${safeInset} mm inset).`,
+      );
+    },
+    [
+      editorMode,
+      selectedId,
+      selectedIds,
+      activeSelectionIds3D,
+      components,
+      getAssemblyItemsFromComponent,
+      isLocked,
+      pushHistory,
+    ],
+  );
+
   const getSmartBuilderHostAndTargets3D = useCallback(() => {
     if (!activeSelectedComponents3D.length) {
       return { host: null, targets: [] };
@@ -2672,6 +3238,7 @@ export function useBlueprintArrangementActions({
     applySelectionGap3D,
     distributeSelection3D,
     autoLegLayout3D,
+    autoApronRailLayout3D,
     buildSelectionLine3D,
     autoShelfStack3D,
     panelPairSelection3D,
