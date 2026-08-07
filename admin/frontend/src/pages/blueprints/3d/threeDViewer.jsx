@@ -114,11 +114,13 @@ function ThreeDViewer({
   onFaceFitSelection,
   onInsideFitSelection,
   onBuildCabinetBox,
+  onBuildCabinetShelfLayout,
   onBuildCabinetInteriorPreset,
   onBuildCabinetFrontPreset,
   onBuildCabinetCustomBayFronts,
   onBuildCabinetCustomCellFronts,
   canBuildCabinetBox = false,
+  canBuildCabinetShelfLayout = false,
   canBuildCabinetInteriorPreset = false,
   canBuildCabinetFrontPreset = false,
   canBuildCabinetCustomBayFronts = false,
@@ -2690,11 +2692,13 @@ function ThreeDViewer({
             onFaceFitSelection={onFaceFitSelection}
             onInsideFitSelection={onInsideFitSelection}
             onBuildCabinetBox={onBuildCabinetBox}
+            onBuildCabinetShelfLayout={onBuildCabinetShelfLayout}
             onBuildCabinetInteriorPreset={onBuildCabinetInteriorPreset}
             onBuildCabinetFrontPreset={onBuildCabinetFrontPreset}
             onBuildCabinetCustomBayFronts={onBuildCabinetCustomBayFronts}
             onBuildCabinetCustomCellFronts={onBuildCabinetCustomCellFronts}
             canBuildCabinetBox={canBuildCabinetBox}
+            canBuildCabinetShelfLayout={canBuildCabinetShelfLayout}
             canBuildCabinetInteriorPreset={canBuildCabinetInteriorPreset}
             canBuildCabinetFrontPreset={canBuildCabinetFrontPreset}
             canBuildCabinetCustomBayFronts={canBuildCabinetCustomBayFronts}

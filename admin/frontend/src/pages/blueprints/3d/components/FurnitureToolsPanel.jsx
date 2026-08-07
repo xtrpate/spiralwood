@@ -27,11 +27,13 @@ export function FurnitureToolsPanel({
   onFaceFitSelection,
   onInsideFitSelection,
   onBuildCabinetBox,
+  onBuildCabinetShelfLayout,
   onBuildCabinetInteriorPreset,
   onBuildCabinetFrontPreset,
   onBuildCabinetCustomBayFronts,
   onBuildCabinetCustomCellFronts,
   canBuildCabinetBox = false,
+  canBuildCabinetShelfLayout = false,
   canBuildCabinetInteriorPreset = false,
   canBuildCabinetFrontPreset = false,
   canBuildCabinetCustomBayFronts = false,
@@ -74,6 +76,7 @@ export function FurnitureToolsPanel({
   const [cabinetDepth, setCabinetDepth] = useState(600);
   const [cabinetThickness, setCabinetThickness] = useState(20);
   const [cabinetShelfCount, setCabinetShelfCount] = useState(2);
+  const [shelfLayoutCount, setShelfLayoutCount] = useState(2);
   const [cabinetHasDivider, setCabinetHasDivider] = useState(false);
   const [interiorPreset, setInteriorPreset] = useState("two-column");
   const [frontPreset, setFrontPreset] = useState("double-door");
@@ -161,6 +164,11 @@ export function FurnitureToolsPanel({
     typeof onApplySmartWidthResize === "function";
   const canQuickCabinetBuilder =
     canBuildCabinetBox && typeof onBuildCabinetBox === "function";
+  const canShelfLayoutBuilder =
+    canBuildCabinetShelfLayout &&
+    typeof onBuildCabinetShelfLayout === "function" &&
+    smartSelectionCount > 0 &&
+    !hasLockedSmartSelection;
   const canInteriorPresetBuilder =
     canBuildCabinetInteriorPreset &&
     typeof onBuildCabinetInteriorPreset === "function" &&
@@ -1283,6 +1291,77 @@ export function FurnitureToolsPanel({
                 style={getBtnStyle(canQuickCabinetBuilder)}
               >
                 Build Cabinet Box
+              </button>
+            </div>
+          </div>
+
+
+          <div style={sectionCardStyle}>
+            <div style={S.smartActionsSectionLabel}>Shelf Layout</div>
+            <div style={sectionHintStyle}>
+              Rebuild fixed shelf levels inside the selected cabinet. Shelves
+              are evenly spaced across the current bay/column layout. Existing
+              generated fronts are cleared so opening geometry stays accurate.
+            </div>
+
+            <label
+              style={{
+                ...fieldStyle,
+                display: "block",
+                marginBottom: 8,
+              }}
+            >
+              <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                Fixed Shelf Levels
+              </span>
+              <input
+                type="number"
+                min="0"
+                max="8"
+                step="1"
+                value={shelfLayoutCount}
+                disabled={!canShelfLayoutBuilder}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onChange={(e) =>
+                  setShelfLayoutCount(
+                    Math.max(0, Math.min(8, Number(e.target.value) || 0)),
+                  )
+                }
+                style={actionInputStyle}
+              />
+            </label>
+
+            <div
+              style={{
+                ...S.infoCard,
+                margin: "0 0 8px",
+                padding: "8px 10px",
+                fontSize: 10,
+                color: canShelfLayoutBuilder ? "#93c5fd" : "#fcd34d",
+                lineHeight: 1.5,
+              }}
+            >
+              {canShelfLayoutBuilder
+                ? shelfLayoutCount > 0
+                  ? `${shelfLayoutCount} shelf level${shelfLayoutCount !== 1 ? "s" : ""} will be distributed evenly in every current cabinet bay.`
+                  : "Apply 0 levels to remove existing fixed shelves."
+                : "Select an unlocked cabinet assembly or one of its parts first."}
+            </div>
+
+            <div style={S.smartActionsWideGrid}>
+              <button
+                type="button"
+                onClick={makeHandler(
+                  canShelfLayoutBuilder,
+                  onBuildCabinetShelfLayout,
+                  {
+                    shelfCount: shelfLayoutCount,
+                  },
+                )}
+                style={getBtnStyle(canShelfLayoutBuilder)}
+              >
+                Apply Shelf Layout
               </button>
             </div>
           </div>

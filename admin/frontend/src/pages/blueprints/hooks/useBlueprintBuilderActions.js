@@ -15,6 +15,7 @@ export function useBlueprintBuilderActions({
   setComponents,
   editorMode,
   pushHistory,
+  isLocked,
   setSelectedId,
   setSelectedIds,
   setEdit3DId,
@@ -198,6 +199,7 @@ export function useBlueprintBuilderActions({
         parts.push(
           part({
             type: "wr_divider",
+            partRole: "divider",
             label: "Center Divider",
             partCode: "CB-DIV",
             x: originX + thickness + dividerLeftWidth,
@@ -223,6 +225,7 @@ export function useBlueprintBuilderActions({
             parts.push(
               part({
                 type: "wr_shelf",
+                partRole: "shelf",
                 label: `Fixed Shelf ${index} Left`,
                 partCode: `CB-SH${String(index).padStart(2, "0")}L`,
                 x: originX + thickness,
@@ -236,6 +239,7 @@ export function useBlueprintBuilderActions({
             parts.push(
               part({
                 type: "wr_shelf",
+                partRole: "shelf",
                 label: `Fixed Shelf ${index} Right`,
                 partCode: `CB-SH${String(index).padStart(2, "0")}R`,
                 x: dividerRightShelfX,
@@ -250,6 +254,7 @@ export function useBlueprintBuilderActions({
             parts.push(
               part({
                 type: "wr_shelf",
+                partRole: "shelf",
                 label: `Fixed Shelf ${index}`,
                 partCode: `CB-SH${String(index).padStart(2, "0")}`,
                 x: originX + thickness,
@@ -407,6 +412,165 @@ export function useBlueprintBuilderActions({
     [],
   );
 
+
+  const buildCabinetShelfLayout3D = useCallback(
+    (options = {}) => {
+      if (editorMode !== "editable") {
+        toast.error("Reference mode ito. Lumipat muna sa editable mode.");
+        return;
+      }
+
+      const ctx = getCabinetBuilderContext3D();
+      if (!ctx) return;
+
+      const lockedAssemblyPart = (ctx.assemblyItems || []).find((item) =>
+        isLocked?.(item),
+      );
+
+      if (lockedAssemblyPart) {
+        toast.error(
+          "Cannot rebuild shelves. Unlock all parts in the cabinet assembly first.",
+        );
+        return;
+      }
+
+      const shelfCount = Math.max(
+        0,
+        Math.min(8, Math.round(Number(options.shelfCount) || 0)),
+      );
+
+      const shelfThickness = snap(
+        Math.max(
+          GRID_SIZE,
+          Number(options.shelfThickness) ||
+            (ctx.shelfParts?.length
+              ? Math.min(
+                  ...ctx.shelfParts.map(
+                    (item) => Number(item.height) || ctx.thickness || GRID_SIZE,
+                  ),
+                )
+              : ctx.thickness || GRID_SIZE),
+        ),
+      );
+
+      const bays =
+        Array.isArray(ctx.bayRects) && ctx.bayRects.length
+          ? ctx.bayRects
+          : [
+              {
+                bayIndex: 1,
+                x: ctx.overallRect.x,
+                y: ctx.overallRect.y,
+                z: ctx.overallRect.z,
+                width: ctx.overallRect.width,
+                height: ctx.overallRect.height,
+                depth: ctx.overallRect.depth,
+              },
+            ];
+
+      const availableHeight = Math.max(
+        GRID_SIZE,
+        Number(ctx.overallRect?.height) || 0,
+      );
+      const totalShelfThickness = shelfThickness * shelfCount;
+      const clearSpace = availableHeight - totalShelfThickness;
+
+      if (shelfCount > 0 && clearSpace < GRID_SIZE * (shelfCount + 1)) {
+        toast.error(
+          "Not enough cabinet height for this shelf count. Reduce shelves or increase cabinet height.",
+        );
+        return;
+      }
+
+      const gap =
+        shelfCount > 0 ? clearSpace / Math.max(1, shelfCount + 1) : 0;
+      const newShelves = [];
+
+      for (let level = 1; level <= shelfCount; level += 1) {
+        const shelfY = snap(
+          ctx.overallRect.y +
+            gap * level +
+            shelfThickness * Math.max(0, level - 1),
+        );
+
+        bays.forEach((bay, bayOffset) => {
+          newShelves.push(
+            ctx.buildPart({
+              type: "wr_shelf",
+              label:
+                bays.length > 1
+                  ? `Fixed Shelf ${level} Bay ${bay.bayIndex || bayOffset + 1}`
+                  : `Fixed Shelf ${level}`,
+              partCode:
+                bays.length > 1
+                  ? `CB-SH-B${bay.bayIndex || bayOffset + 1}-${String(level).padStart(2, "0")}`
+                  : `CB-SH-${String(level).padStart(2, "0")}`,
+              partRole: "shelf",
+              x: snap(bay.x),
+              y: shelfY,
+              z: snap(bay.z),
+              width: snap(bay.width),
+              height: shelfThickness,
+              depth: snap(bay.depth),
+            }),
+          );
+        });
+      }
+
+      const removeShelfAndFrontIds = new Set([
+        ...(ctx.shelfParts || []).map((item) => item.id),
+        ...(ctx.frontParts || []).map((item) => item.id),
+      ]);
+
+      pushHistory(
+        Array.isArray(components)
+          ? components.map((item) => normalizeComponent(item))
+          : [],
+      );
+
+      const preserved = components.filter(
+        (item) => !removeShelfAndFrontIds.has(item.id),
+      );
+      const nextComponents = preserved.concat(newShelves);
+
+      setComponents(nextComponents);
+
+      const assemblyId =
+        ctx.assemblyItems?.[0]?.assemblyId ||
+        ctx.assemblyItems?.[0]?.groupId ||
+        null;
+      const nextAssemblySelection = nextComponents
+        .filter(
+          (item) =>
+            assemblyId &&
+            (item.assemblyId === assemblyId || item.groupId === assemblyId),
+        )
+        .map((item) => item.id);
+
+      setSelectedIds(
+        nextAssemblySelection.length
+          ? nextAssemblySelection
+          : newShelves.map((item) => item.id),
+      );
+      setSelectedId(ctx.primaryId);
+      setEdit3DId(ctx.primaryId);
+      setTransformMode("translate");
+
+      toast.success(
+        shelfCount > 0
+          ? `${shelfCount} evenly spaced shelf level${shelfCount !== 1 ? "s" : ""} applied across ${bays.length} bay${bays.length !== 1 ? "s" : ""}.`
+          : "Cabinet shelves cleared.",
+      );
+    },
+    [
+      editorMode,
+      getCabinetBuilderContext3D,
+      isLocked,
+      components,
+      pushHistory,
+    ],
+  );
+
   const buildCabinetInteriorPreset3D = useCallback(
     (options = {}) => {
       if (editorMode !== "editable") {
@@ -475,6 +639,7 @@ export function useBlueprintBuilderActions({
           newParts.push(
             ctx.buildPart({
               type: "wr_divider",
+              partRole: "divider",
               label: `Center Divider ${bayIndex}`,
               partCode: `CB-DIV-${bayIndex}`,
               x: cursorX,
@@ -495,6 +660,7 @@ export function useBlueprintBuilderActions({
           newParts.push(
             ctx.buildPart({
               type: "wr_shelf",
+              partRole: "shelf",
               label: `Fixed Shelf ${shelfIndex + 1} Bay ${bay.bayIndex}`,
               partCode: `CB-SH-${bay.bayIndex}-${String(shelfIndex + 1).padStart(2, "0")}`,
               x: bay.x,
@@ -886,6 +1052,7 @@ export function useBlueprintBuilderActions({
 
   return {
     buildCabinetBox3D,
+    buildCabinetShelfLayout3D,
     buildCabinetInteriorPreset3D,
     buildCabinetFrontPreset3D,
     buildCabinetCustomBayFronts3D,
