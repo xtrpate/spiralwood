@@ -6,8 +6,8 @@ import { clamp, makeGroupId, snap } from "../data/utils";
 import { createObjectId, deepClone } from "../data/editorUtils";
 import { getSelectionBoundsXYZ } from "../data/selectionUtils";
 import {
-  analyzeSmartWidthResizeAssembly,
-  buildSmartWidthResizePlan,
+  analyzeSmartAssemblyResize,
+  buildSmartAssemblyResizePlan,
 } from "../data/smartAssemblyResize";
 
 export function useBlueprintArrangementActions({
@@ -49,15 +49,16 @@ export function useBlueprintArrangementActions({
   const smartWidthResizeContext3D = useMemo(() => {
     const assemblyItems = getSmartWidthResizeAssembly3D();
     return {
-      ...analyzeSmartWidthResizeAssembly(assemblyItems),
+      ...analyzeSmartAssemblyResize(assemblyItems),
       hasLockedAssemblyPart: assemblyItems.some((item) => isLocked(item)),
     };
   }, [getSmartWidthResizeAssembly3D, isLocked]);
 
   const previewSmartWidthResize3D = useCallback(
-    (newWidth, anchor = "center") => {
-      return buildSmartWidthResizePlan(getSmartWidthResizeAssembly3D(), {
-        newWidth,
+    (dimension = "width", newValue, anchor = "center") => {
+      return buildSmartAssemblyResizePlan(getSmartWidthResizeAssembly3D(), {
+        dimension,
+        newValue,
         anchor,
       });
     },
@@ -65,7 +66,7 @@ export function useBlueprintArrangementActions({
   );
 
   const applySmartWidthResize3D = useCallback(
-    (newWidth, anchor = "center") => {
+    (dimension = "width", newValue, anchor = "center") => {
       if (editorMode !== "editable") {
         toast.error("Reference mode ito. Lumipat muna sa editable mode.");
         return null;
@@ -81,13 +82,14 @@ export function useBlueprintArrangementActions({
         return null;
       }
 
-      const plan = buildSmartWidthResizePlan(assemblyItems, {
-        newWidth,
+      const plan = buildSmartAssemblyResizePlan(assemblyItems, {
+        dimension,
+        newValue,
         anchor,
       });
 
       if (!plan.supported) {
-        toast.error(plan.reason || "Width resize is not available.");
+        toast.error(plan.reason || "Controlled assembly resize is not available.");
         return plan;
       }
 
@@ -103,9 +105,9 @@ export function useBlueprintArrangementActions({
       setTransformMode("translate");
 
       toast.success(
-        `${plan.assemblyLabel} resized from ${Math.round(
-          plan.previousWidth,
-        )} mm to ${Math.round(plan.requestedWidth)} mm.`,
+        `${plan.assemblyLabel} ${plan.dimensionLabel.toLowerCase()} resized from ${Math.round(
+          plan.previousValue,
+        )} mm to ${Math.round(plan.requestedValue)} mm.`,
       );
 
       return plan;

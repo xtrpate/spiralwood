@@ -65,7 +65,7 @@ export function TransformToolbar({
         title={
           canScale
             ? "Resize selected part"
-            : "Resize one part at a time. Assembly width resize is handled in Furniture Tools."
+            : "Resize one part at a time. Assembly Width / Height / Depth is handled in Design Tools > Resize."
         }
         onMouseDown={handleMouseDown}
         onPointerDown={handleMouseDown}

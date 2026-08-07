@@ -59,8 +59,13 @@ export function FurnitureToolsPanel({
   const [arraySpacing, setArraySpacing] = useState(0);
   const [gapValue, setGapValue] = useState(100);
   const [anchorMode, setAnchorMode] = useState("preserve-first");
-  const [smartResizeWidth, setSmartResizeWidth] = useState("");
-  const [smartResizeAnchor, setSmartResizeAnchor] = useState("center");
+  const [smartResizeDimension, setSmartResizeDimension] = useState("width");
+  const [smartResizeValue, setSmartResizeValue] = useState("");
+  const [smartResizeAnchors, setSmartResizeAnchors] = useState({
+    width: "center",
+    height: "center",
+    depth: "center",
+  });
   const [smartResizePreview, setSmartResizePreview] = useState(null);
   const [builderInset, setBuilderInset] = useState(40);
   const [builderDrawerCount, setBuilderDrawerCount] = useState(3);
@@ -93,17 +98,51 @@ export function FurnitureToolsPanel({
 
   useEffect(() => {
     if (!smartWidthResizeContext?.supported) {
-      setSmartResizeWidth("");
+      setSmartResizeValue("");
       setSmartResizePreview(null);
       return;
     }
 
-    setSmartResizeWidth(String(smartWidthResizeContext.currentWidth || ""));
+    const supportedDimensions =
+      smartWidthResizeContext?.supportedDimensions?.length
+        ? smartWidthResizeContext.supportedDimensions
+        : ["width"];
+
+    setSmartResizeDimension((current) =>
+      supportedDimensions.includes(current)
+        ? current
+        : supportedDimensions[0] || "width",
+    );
     setSmartResizePreview(null);
   }, [
     smartWidthResizeContext?.assemblyId,
+    smartWidthResizeContext?.supported,
+    smartWidthResizeContext?.supportedDimensions,
+  ]);
+
+  useEffect(() => {
+    if (!smartWidthResizeContext?.supported) return;
+
+    const currentValue =
+      smartWidthResizeContext?.currentDimensions?.[smartResizeDimension] ??
+      (smartResizeDimension === "width"
+        ? smartWidthResizeContext?.currentWidth
+        : "");
+
+    setSmartResizeValue(
+      currentValue === "" || currentValue === null || currentValue === undefined
+        ? ""
+        : String(currentValue),
+    );
+    setSmartResizePreview(null);
+  }, [
+    smartWidthResizeContext?.assemblyId,
+    smartWidthResizeContext?.currentDimensions?.width,
+    smartWidthResizeContext?.currentDimensions?.height,
+    smartWidthResizeContext?.currentDimensions?.depth,
     smartWidthResizeContext?.currentWidth,
     smartWidthResizeContext?.supported,
+    smartResizeDimension,
   ]);
 
   const canPairActions = canUseSmartActions && smartSelectionCount > 1;
@@ -114,7 +153,7 @@ export function FurnitureToolsPanel({
   const canBuilderHelpers = canUseSmartActions && smartSelectionCount > 0;
   const canStrictMultiBuilderHelpers =
     canUseSmartActions && smartSelectionCount > 1;
-  const canSmartWidthResize =
+  const canSmartAssemblyResize =
     canUseSmartActions &&
     Boolean(smartWidthResizeContext?.supported) &&
     !smartWidthResizeContext?.hasLockedAssemblyPart &&
@@ -155,13 +194,76 @@ export function FurnitureToolsPanel({
       if (enabled) fn?.(...args);
     };
 
+  const smartResizeDimensionOptions = [
+    {
+      key: "width",
+      label: "Width",
+      anchors: [
+        ["left", "Left"],
+        ["center", "Center"],
+        ["right", "Right"],
+      ],
+    },
+    {
+      key: "height",
+      label: "Height",
+      anchors: [
+        ["bottom", "Bottom"],
+        ["center", "Center"],
+        ["top", "Top"],
+      ],
+    },
+    {
+      key: "depth",
+      label: "Depth",
+      // Assembly Z anchors are internal references. The visible button name
+      // must mean the side that actually moves in the 3D workspace.
+      anchors: [
+        ["back", "Front"],
+        ["center", "Center"],
+        ["front", "Back"],
+      ],
+    },
+  ];
+
+  const activeSmartResizeMeta =
+    smartResizeDimensionOptions.find(
+      (item) => item.key === smartResizeDimension,
+    ) || smartResizeDimensionOptions[0];
+
+  const activeSmartResizeAnchor =
+    smartResizeAnchors?.[smartResizeDimension] || "center";
+
+  const getSmartResizeSideHint = () => {
+    if (activeSmartResizeAnchor === "center") {
+      return "Center stays fixed; both sides resize evenly.";
+    }
+
+    if (smartResizeDimension === "width") {
+      return activeSmartResizeAnchor === "left"
+        ? "Left side moves; right edge stays fixed."
+        : "Right side moves; left edge stays fixed.";
+    }
+
+    if (smartResizeDimension === "height") {
+      return activeSmartResizeAnchor === "bottom"
+        ? "Bottom side moves; top edge stays fixed."
+        : "Top side moves; bottom edge stays fixed.";
+    }
+
+    return activeSmartResizeAnchor === "back"
+      ? "Front side moves; back edge stays fixed."
+      : "Back side moves; front edge stays fixed.";
+  };
+
   const handleSmartResizePreview = (e) => {
     e.preventDefault();
     e.stopPropagation();
 
     const result = onPreviewSmartWidthResize?.(
-      smartResizeWidth,
-      smartResizeAnchor,
+      smartResizeDimension,
+      smartResizeValue,
+      activeSmartResizeAnchor,
     );
     setSmartResizePreview(result || null);
   };
@@ -171,8 +273,9 @@ export function FurnitureToolsPanel({
     e.stopPropagation();
 
     const result = onApplySmartWidthResize?.(
-      smartResizeWidth,
-      smartResizeAnchor,
+      smartResizeDimension,
+      smartResizeValue,
+      activeSmartResizeAnchor,
     );
     setSmartResizePreview(result || null);
   };
@@ -227,7 +330,7 @@ export function FurnitureToolsPanel({
       key: "resize",
       label: "Resize",
       hint:
-        "Exact anchored width resize for supported furniture assemblies.",
+        "Controlled Width, Height, and Depth resize for supported furniture assemblies.",
     },
     {
       key: "duplicate",
@@ -722,11 +825,12 @@ export function FurnitureToolsPanel({
         <>
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>
-              Assembly Width Resize
+              Controlled Assembly Resize
             </div>
             <div style={sectionHintStyle}>
-              Resize a Dining Table without changing leg, apron, or panel
-              thickness. Select any part of the table assembly first.
+              Resize supported furniture without using unrestricted whole-assembly
+              scale. Structural thickness is preserved where possible and
+              connected parts follow the selected assembly dimension.
             </div>
 
             {smartWidthResizeContext?.supported ? (
@@ -739,69 +843,164 @@ export function FurnitureToolsPanel({
                     lineHeight: 1.55,
                   }}
                 >
-                  <div style={{ fontSize: 11, fontWeight: 800, color: "#e5eefc" }}>
-                    {smartWidthResizeContext.assemblyLabel || "Dining Table"}
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 800,
+                      color: "#e5eefc",
+                    }}
+                  >
+                    {smartWidthResizeContext.assemblyLabel ||
+                      "Furniture Assembly"}
                   </div>
                   <div style={{ fontSize: 10, color: "#9fb0c7" }}>
-                    Current width: {Math.round(smartWidthResizeContext.currentWidth || 0)} mm
-                    {" · "}
                     {smartWidthResizeContext.partCount || 0} parts
+                    {" Â· "}
+                    W {Math.round(
+                      smartWidthResizeContext?.currentDimensions?.width ||
+                        smartWidthResizeContext?.currentWidth ||
+                        0,
+                    )} mm
+                    {" Â· "}
+                    H {Math.round(
+                      smartWidthResizeContext?.currentDimensions?.height || 0,
+                    )} mm
+                    {" Â· "}
+                    D {Math.round(
+                      smartWidthResizeContext?.currentDimensions?.depth || 0,
+                    )} mm
                   </div>
                   <div style={{ fontSize: 10, color: "#9fb0c7" }}>
-                    Minimum safe width: {Math.round(smartWidthResizeContext.minimumWidth || 1)} mm
+                    Minimum safe {activeSmartResizeMeta.label.toLowerCase()}:{" "}
+                    {Math.round(
+                      smartWidthResizeContext?.minimumDimensions?.[
+                        smartResizeDimension
+                      ] ||
+                        (smartResizeDimension === "width"
+                          ? smartWidthResizeContext?.minimumWidth
+                          : 1) ||
+                        1,
+                    )}{" "}
+                    mm
                   </div>
                   {smartWidthResizeContext.warning ? (
-                    <div style={{ fontSize: 10, color: "#fcd34d", marginTop: 4 }}>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: "#93c5fd",
+                        marginTop: 4,
+                      }}
+                    >
                       {smartWidthResizeContext.warning}
                     </div>
                   ) : null}
                 </div>
 
-                <label style={{ ...fieldStyle, display: "block", marginBottom: 10 }}>
+                <div
+                  style={{ ...S.smartActionsSectionLabel, marginBottom: 6 }}
+                >
+                  Dimension
+                </div>
+                <div style={{ ...S.smartActionsGrid, marginBottom: 10 }}>
+                  {smartResizeDimensionOptions.map((item) => {
+                    const dimensionSupported = (
+                      smartWidthResizeContext?.supportedDimensions || ["width"]
+                    ).includes(item.key);
+                    const enabled =
+                      canSmartAssemblyResize && dimensionSupported;
+
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        disabled={!enabled}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (!enabled) return;
+                          setSmartResizeDimension(item.key);
+                          setSmartResizePreview(null);
+                        }}
+                        style={{
+                          ...getBtnStyle(enabled),
+                          ...(smartResizeDimension === item.key
+                            ? {
+                                border:
+                                  "1px solid rgba(96,165,250,.75)",
+                                background:
+                                  "linear-gradient(180deg, rgba(37,99,235,.30) 0%, rgba(29,78,216,.22) 100%)",
+                                color: "#eef4ff",
+                              }
+                            : {}),
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <label
+                  style={{
+                    ...fieldStyle,
+                    display: "block",
+                    marginBottom: 10,
+                  }}
+                >
                   <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                    New Width (mm)
+                    New {activeSmartResizeMeta.label} (mm)
                   </span>
                   <input
                     type="number"
-                    min={smartWidthResizeContext.minimumWidth || 1}
+                    min={
+                      smartWidthResizeContext?.minimumDimensions?.[
+                        smartResizeDimension
+                      ] ||
+                      (smartResizeDimension === "width"
+                        ? smartWidthResizeContext?.minimumWidth
+                        : 1) ||
+                      1
+                    }
                     step="1"
-                    value={smartResizeWidth}
-                    disabled={!canSmartWidthResize}
+                    value={smartResizeValue}
+                    disabled={!canSmartAssemblyResize}
                     onMouseDown={(e) => e.stopPropagation()}
                     onPointerDown={(e) => e.stopPropagation()}
                     onChange={(e) => {
-                      setSmartResizeWidth(e.target.value);
+                      setSmartResizeValue(e.target.value);
                       setSmartResizePreview(null);
                     }}
                     style={actionInputStyle}
                   />
                 </label>
 
-                <div style={{ ...S.smartActionsSectionLabel, marginBottom: 6 }}>
-                  Resize From
+                <div
+                  style={{ ...S.smartActionsSectionLabel, marginBottom: 6 }}
+                >
+                  Resize Side
                 </div>
                 <div style={S.smartActionsGrid}>
-                  {[
-                    ["left", "Left"],
-                    ["center", "Center"],
-                    ["right", "Right"],
-                  ].map(([mode, label]) => (
+                  {activeSmartResizeMeta.anchors.map(([mode, label]) => (
                     <button
                       key={mode}
                       type="button"
-                      disabled={!canSmartWidthResize}
+                      disabled={!canSmartAssemblyResize}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        if (!canSmartWidthResize) return;
-                        setSmartResizeAnchor(mode);
+                        if (!canSmartAssemblyResize) return;
+                        setSmartResizeAnchors((current) => ({
+                          ...current,
+                          [smartResizeDimension]: mode,
+                        }));
                         setSmartResizePreview(null);
                       }}
                       style={{
-                        ...getBtnStyle(canSmartWidthResize),
-                        ...(smartResizeAnchor === mode
+                        ...getBtnStyle(canSmartAssemblyResize),
+                        ...(activeSmartResizeAnchor === mode
                           ? {
-                              border: "1px solid rgba(96,165,250,.75)",
+                              border:
+                                "1px solid rgba(96,165,250,.75)",
                               background:
                                 "linear-gradient(180deg, rgba(37,99,235,.30) 0%, rgba(29,78,216,.22) 100%)",
                               color: "#eef4ff",
@@ -823,27 +1022,23 @@ export function FurnitureToolsPanel({
                     marginBottom: 10,
                   }}
                 >
-                  {smartResizeAnchor === "left"
-                    ? "Left edge moves; right edge stays fixed."
-                    : smartResizeAnchor === "right"
-                      ? "Right edge moves; left edge stays fixed."
-                      : "Center stays fixed; both sides resize evenly."}
+                  {getSmartResizeSideHint()}
                 </div>
 
                 <div style={S.smartActionsGrid}>
                   <button
                     type="button"
-                    disabled={!canSmartWidthResize}
+                    disabled={!canSmartAssemblyResize}
                     onClick={handleSmartResizePreview}
-                    style={getBtnStyle(canSmartWidthResize)}
+                    style={getBtnStyle(canSmartAssemblyResize)}
                   >
                     Preview Changes
                   </button>
                   <button
                     type="button"
-                    disabled={!canSmartWidthResize}
+                    disabled={!canSmartAssemblyResize}
                     onClick={handleSmartResizeApply}
-                    style={getBtnStyle(canSmartWidthResize)}
+                    style={getBtnStyle(canSmartAssemblyResize)}
                   >
                     Apply Resize
                   </button>
@@ -863,19 +1058,36 @@ export function FurnitureToolsPanel({
                   >
                     {smartResizePreview.supported ? (
                       <>
-                        <div style={{ fontSize: 10, color: "#86efac", fontWeight: 800 }}>
-                          {Math.round(smartResizePreview.previousWidth || 0)} mm → {Math.round(smartResizePreview.requestedWidth || 0)} mm
+                        <div
+                          style={{
+                            fontSize: 10,
+                            color: "#86efac",
+                            fontWeight: 800,
+                          }}
+                        >
+                          {smartResizePreview.dimensionLabel}:{" "}
+                          {Math.round(
+                            smartResizePreview.previousValue || 0,
+                          )}{" "}
+                          mm â†’{" "}
+                          {Math.round(
+                            smartResizePreview.requestedValue || 0,
+                          )}{" "}
+                          mm
                         </div>
                         <div style={{ fontSize: 10, color: "#cbd5e1" }}>
-                          {smartResizePreview.fixedEdge}
+                          {getSmartResizeSideHint()}
                         </div>
                         <div style={{ fontSize: 10, color: "#9fb0c7" }}>
-                          {smartResizePreview.stretchedPartCount || 0} stretched · {smartResizePreview.movedPartCount || 0} repositioned
+                          {smartResizePreview.resizedPartCount || 0} resized
+                          {" Â· "}
+                          {smartResizePreview.movedPartCount || 0} repositioned
                         </div>
                       </>
                     ) : (
                       <div style={{ fontSize: 10, color: "#fca5a5" }}>
-                        {smartResizePreview.reason || "Resize preview is unavailable."}
+                        {smartResizePreview.reason ||
+                          "Resize preview is unavailable."}
                       </div>
                     )}
                   </div>
@@ -891,12 +1103,18 @@ export function FurnitureToolsPanel({
                 }}
               >
                 {smartWidthResizeContext?.reason ||
-                  "Select a Dining Table assembly to use Width Resize."}
+                  "Select a Dining Table, Coffee Table, Wardrobe, or Cabinet Box assembly to use controlled resize."}
               </div>
             )}
 
             {smartWidthResizeContext?.hasLockedAssemblyPart ? (
-              <div style={{ fontSize: 10, color: "#fca5a5", marginTop: 8 }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "#fca5a5",
+                  marginTop: 8,
+                }}
+              >
                 Unlock all parts in the assembly before resizing.
               </div>
             ) : null}
