@@ -50,6 +50,7 @@ import { useBlueprintKeyboardShortcuts } from "./hooks/useBlueprintKeyboardShort
 import { useBlueprintComponentInsertion } from "./hooks/useBlueprintComponentInsertion";
 import { useBlueprintArrangementActions } from "./hooks/useBlueprintArrangementActions";
 import { useBlueprintBuilderActions } from "./hooks/useBlueprintBuilderActions";
+import { useBlueprintAssemblyActions } from "./hooks/useBlueprintAssemblyActions";
 import { buildConversionCutListRows } from "./data/conversionCutListUtils";
 
 // ── 3D Viewer ─────────────────────────────────────────────────────────────────
@@ -421,6 +422,20 @@ export default function BlueprintDesign() {
     },
     [editorMode, components, pushHistory],
   );
+
+  const {
+    canCreateAssembly,
+    createAssemblyHint,
+    createAssemblySelectionCount,
+    createAssemblyFromSelection,
+  } = useBlueprintAssemblyActions({
+    components,
+    selectedId,
+    selectedIds,
+    editorMode,
+    isLocked,
+    updateManyComps,
+  });
 
   const {
     smartWidthResizeContext3D,
@@ -1814,6 +1829,10 @@ export default function BlueprintDesign() {
             onMirrorDuplicate={mirrorDuplicateSelection3D}
             onSelectAssembly={selectWholeAssembly}
             onDuplicateAssembly={duplicateWholeAssembly}
+            canCreateAssembly={canCreateAssembly}
+            createAssemblyHint={createAssemblyHint}
+            createAssemblySelectionCount={createAssemblySelectionCount}
+            onCreateAssembly={createAssemblyFromSelection}
             onArrayDuplicate={arrayDuplicateSelection}
             onDistributeSelection={distributeSelection3D}
             onGapSelection={applySelectionGap3D}

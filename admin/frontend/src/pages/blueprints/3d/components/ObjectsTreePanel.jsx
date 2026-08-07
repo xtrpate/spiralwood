@@ -17,6 +17,10 @@ export function ObjectsTreePanel({
   selectedId,
   selectedIds = [],
   onSelect,
+  canCreateAssembly = false,
+  createAssemblyHint = "",
+  createAssemblySelectionCount = 0,
+  onCreateAssembly,
   isOpen,
   onToggle,
   isLocked3D,
@@ -213,6 +217,54 @@ export function ObjectsTreePanel({
           <button type="button" onClick={onToggle} style={S.libraryCloseBtn}>
             {"\u00D7"}
           </button>
+        </div>
+
+        <div
+          style={{
+            marginTop: 10,
+            padding: 8,
+            border: "1px solid rgba(51,65,85,.58)",
+            borderRadius: 8,
+            background: "rgba(8,15,28,.42)",
+          }}
+        >
+          <button
+            type="button"
+            onClick={onCreateAssembly}
+            disabled={!canCreateAssembly}
+            title={createAssemblyHint}
+            style={{
+              width: "100%",
+              minHeight: 32,
+              border: canCreateAssembly
+                ? "1px solid rgba(96,165,250,.75)"
+                : "1px solid rgba(71,85,105,.55)",
+              borderRadius: 6,
+              background: canCreateAssembly
+                ? "rgba(37,99,235,.22)"
+                : "rgba(15,23,42,.58)",
+              color: canCreateAssembly ? "#dbeafe" : "#64748b",
+              fontSize: 10,
+              fontWeight: 800,
+              cursor: canCreateAssembly ? "pointer" : "not-allowed",
+            }}
+          >
+            + Create Assembly
+          </button>
+
+          <div
+            style={{
+              marginTop: 5,
+              color: canCreateAssembly ? "#93c5fd" : "#7c8da5",
+              fontSize: 9,
+              lineHeight: 1.35,
+            }}
+          >
+            {createAssemblyHint ||
+              `${createAssemblySelectionCount} selected part${
+                createAssemblySelectionCount !== 1 ? "s" : ""
+              }`}
+          </div>
         </div>
 
         <div

@@ -96,6 +96,10 @@ function ThreeDViewer({
   onMirrorDuplicate,
   onSelectAssembly,
   onDuplicateAssembly,
+  canCreateAssembly = false,
+  createAssemblyHint = "",
+  createAssemblySelectionCount = 0,
+  onCreateAssembly,
   onArrayDuplicate,
   onDistributeSelection,
   onGapSelection,
@@ -2630,6 +2634,10 @@ function ThreeDViewer({
         selectedId={selectedId}
         selectedIds={selectedIds}
         onSelect={applySelectionState}
+        canCreateAssembly={canCreateAssembly}
+        createAssemblyHint={createAssemblyHint}
+        createAssemblySelectionCount={createAssemblySelectionCount}
+        onCreateAssembly={onCreateAssembly}
         isOpen={activeLeftPanel === "objects"}
         onToggle={() =>
           setActiveLeftPanel((prev) => (prev === "objects" ? null : "objects"))
