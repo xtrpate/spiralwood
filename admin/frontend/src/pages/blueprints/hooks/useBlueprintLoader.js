@@ -30,6 +30,7 @@ export function useBlueprintLoader({
   setBlueprint,
   setComponents,
   setSelectedId,
+  setSelectedIds,
   setEdit3DId,
   setEstimatedPrice,
   setLockedFields,
@@ -54,9 +55,14 @@ export function useBlueprintLoader({
       setImportDimensions(DEFAULT_IMPORT_DIMENSIONS);
       setImportComments("");
 
+      setBlueprint(null);
+      setEstimatedPrice(null);
+      setLockedFields([]);
+      setUnit("mm");
       setView("front");
       setComponents([]);
       setSelectedId(null);
+      setSelectedIds([]);
       setEdit3DId(null);
       setReferenceCalibrationByView(createEmptyReferenceCalibrationByView());
       setTraceObjectsByView(createEmptyTraceObjectsByView());
@@ -169,6 +175,7 @@ export function useBlueprintLoader({
         );
         setComponents(loadedComponents);
         setSelectedId(loadedComponents[0]?.id || null);
+        setSelectedIds([]);
         setEdit3DId(null);
         setUnit(saved.unit || "mm");
         setReferenceFiles(loadedReferenceFiles);

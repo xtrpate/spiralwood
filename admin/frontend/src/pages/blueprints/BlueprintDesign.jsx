@@ -202,6 +202,7 @@ export default function BlueprintDesign() {
     setBlueprint,
     setComponents,
     setSelectedId,
+    setSelectedIds,
     setEdit3DId,
     setEstimatedPrice,
     setLockedFields,

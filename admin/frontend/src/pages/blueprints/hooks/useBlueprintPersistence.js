@@ -56,9 +56,21 @@ export function useBlueprintPersistence({
     setSaving(true);
 
     try {
-      const savedDesignData = blueprint?.design_data
-        ? JSON.parse(blueprint.design_data)
-        : {};
+      let savedDesignData = {};
+      if (blueprint?.design_data) {
+        try {
+          savedDesignData =
+            typeof blueprint.design_data === "string"
+              ? JSON.parse(blueprint.design_data)
+              : blueprint.design_data || {};
+        } catch (parseError) {
+          console.warn(
+            "Invalid local blueprint.design_data; saving current editor state instead:",
+            parseError,
+          );
+          savedDesignData = {};
+        }
+      }
 
       const actualFurnitureType =
         inferFurnitureTypeFromComponents(components) ||
@@ -165,7 +177,7 @@ export function useBlueprintPersistence({
         components: normalizedComponents,
       };
 
-      await api.put(`/blueprints/${id}`, {
+      const response = await api.put(`/blueprints/${id}`, {
         design_data: JSON.stringify(payload),
         view_3d_data: JSON.stringify(view3dPayload),
         thumbnail_url:
@@ -182,13 +194,42 @@ export function useBlueprintPersistence({
         description: publishForm?.description || blueprint?.description || "",
       });
 
+      const savedBlueprintPatch = response?.data?.blueprint || {};
+      const fallbackDesignData = JSON.stringify(payload);
+
+      setBlueprint((previous) => {
+        const base = previous || blueprint || {};
+        return {
+          ...base,
+          ...savedBlueprintPatch,
+          design_data:
+            savedBlueprintPatch.design_data ?? fallbackDesignData,
+          view_3d_data:
+            savedBlueprintPatch.view_3d_data ??
+            JSON.stringify(view3dPayload),
+          thumbnail_url:
+            savedBlueprintPatch.thumbnail_url ??
+            generatedThumbnailUrl ??
+            base.thumbnail_url ??
+            null,
+        };
+      });
+
       toast.success("Blueprint saved.");
+      return {
+        ok: true,
+        blueprint: savedBlueprintPatch,
+      };
     } catch (error) {
       console.error("saveDesign error:", error);
       toast.error(
         error?.response?.data?.message ||
           "Save failed. Check server connection.",
       );
+      return {
+        ok: false,
+        error,
+      };
     } finally {
       setSaving(false);
     }
@@ -212,6 +253,7 @@ export function useBlueprintPersistence({
     designTotal,
     publishForm,
     setSaving,
+    setBlueprint,
     worldSize,
     sheetSize,
     exportViews,
@@ -234,7 +276,11 @@ export function useBlueprintPersistence({
         ),
       );
 
-      await saveDesign();
+      const saveResult = await saveDesign();
+      if (!saveResult?.ok) {
+        return;
+      }
+
       setPublishing(true);
 
       try {
