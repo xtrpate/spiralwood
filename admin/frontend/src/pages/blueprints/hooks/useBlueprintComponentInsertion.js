@@ -292,6 +292,8 @@ export function useBlueprintComponentInsertion({
         label: typeDef.label,
         category: typeDef.category,
         blueprintStyle: typeDef.blueprintStyle,
+        partRole: typeDef.partRole || "",
+        partCode: typeDef.partCode || "",
         x: placement.x,
         y: placement.y,
         z: placement.z,

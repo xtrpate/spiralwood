@@ -506,6 +506,27 @@ export function PropertiesPanel({
                 </div>
               ) : null}
 
+              {selectedComp.partRole ? (
+                <div
+                  style={{
+                    marginTop: selectedComp.partCode ? 5 : 8,
+                    paddingTop: selectedComp.partCode ? 0 : 8,
+                    borderTop: selectedComp.partCode
+                      ? "none"
+                      : "1px solid rgba(71,85,105,.52)",
+                    color: "#93a8c4",
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: ".08em",
+                  }}
+                >
+                  PART ROLE:{" "}
+                  {String(selectedComp.partRole)
+                    .replace(/_/g, " ")
+                    .replace(/\b\w/g, (char) => char.toUpperCase())}
+                </div>
+              ) : null}
+
               <div
                 style={{
                   display: "grid",
