@@ -283,6 +283,255 @@ export function useBlueprintBuilderActions({
     [components, editorMode, view, WORLD_H, pushHistory],
   );
 
+
+  const buildSimpleTable3D = useCallback(
+    (options = {}) => {
+      if (editorMode !== "editable") {
+        toast.error("Reference mode ito. Lumipat muna sa editable mode.");
+        return;
+      }
+
+      if (view !== "3d") {
+        toast.error("Sa 3D view lang puwede gamitin ang Simple Table Builder.");
+        return;
+      }
+
+      const cleanMm = (value, fallback, minimum = 1) => {
+        const parsed = Number(value);
+        const resolved = Number.isFinite(parsed) ? parsed : fallback;
+        return Math.max(minimum, Math.round(resolved));
+      };
+
+      const width = cleanMm(options.width, 1400, 400);
+      const depth = cleanMm(options.depth, 800, 400);
+      const height = cleanMm(options.height, 760, 300);
+      const tabletopThickness = cleanMm(options.tabletopThickness, 36, 1);
+      const legSize = cleanMm(options.legSize, 70, 20);
+      const apronHeight = cleanMm(options.apronHeight, 90, 20);
+      const apronThickness = cleanMm(options.apronThickness, 25, 1);
+
+      if (tabletopThickness >= height) {
+        toast.error("Tabletop thickness must be smaller than the total table height.");
+        return;
+      }
+
+      const legHeight = height - tabletopThickness;
+      if (apronHeight > legHeight) {
+        toast.error("Apron height must fit below the tabletop.");
+        return;
+      }
+
+      if (apronThickness > legSize) {
+        toast.error("Apron thickness must not be larger than the leg size.");
+        return;
+      }
+
+      // Batch 30 intentionally keeps the simple builder compact: the corner
+      // inset is automatic while the production dimensions stay user-defined.
+      const preferredLegInset = 40;
+      const maxInsetX = Math.floor((width - legSize * 2 - 40) / 2);
+      const maxInsetZ = Math.floor((depth - legSize * 2 - 40) / 2);
+      const legInset = Math.max(
+        0,
+        Math.min(preferredLegInset, maxInsetX, maxInsetZ),
+      );
+
+      const innerSpanX = width - (legInset + legSize) * 2;
+      const innerSpanZ = depth - (legInset + legSize) * 2;
+
+      if (innerSpanX < 40 || innerSpanZ < 40) {
+        toast.error(
+          "Table width/depth is too small for the selected leg size. Increase the table size or reduce Leg Size.",
+        );
+        return;
+      }
+
+      const origin = getNextAssemblyOrigin(components);
+      const originX = snap(origin.x);
+      const originZ = snap(origin.z);
+      const floorY = WORLD_H - FLOOR_OFFSET;
+      const topY = Math.round(floorY - height);
+      const legY = topY + tabletopThickness;
+
+      const leftX = originX + legInset;
+      const rightX = originX + width - legInset - legSize;
+      const frontZ = originZ + legInset;
+      const backZ = originZ + depth - legInset - legSize;
+
+      const material = "Oak Wood";
+      const defaultFinish = getDefaultFinishId(material);
+      const finishData = defaultFinish
+        ? applyWoodFinish({ material }, defaultFinish)
+        : { material, fill: "#d9c2a5", finish: "" };
+
+      const simpleTableIds = new Set(
+        components
+          .filter((item) =>
+            /^Simple Table \d+$/i.test(
+              String(item?.groupLabel || item?.assemblyName || "").trim(),
+            ),
+          )
+          .map((item) => item.groupId || item.assemblyId)
+          .filter(Boolean),
+      );
+
+      let buildNumber = simpleTableIds.size + 1;
+      const usedNames = new Set(
+        components
+          .map((item) =>
+            String(item?.groupLabel || item?.assemblyName || "").trim(),
+          )
+          .filter(Boolean),
+      );
+
+      while (usedNames.has(`Simple Table ${buildNumber}`)) {
+        buildNumber += 1;
+      }
+
+      const groupId = makeGroupId();
+      const groupLabel = `Simple Table ${buildNumber}`;
+
+      const part = (overrides) =>
+        createAssemblyPart({
+          groupId,
+          groupLabel,
+          groupType: "assembly",
+          assemblyType: "dining_table",
+          material: finishData.material || material,
+          finish: finishData.finish || "",
+          fill: finishData.fill || "#d9c2a5",
+          unitPrice: 0,
+          groupUnitPrice: 0,
+          qty: 1,
+          locked: false,
+          ...overrides,
+        });
+
+      const parts = [
+        part({
+          type: "dt_top_panel",
+          label: "Top Panel",
+          partCode: "DT-TOP",
+          partRole: "top_panel",
+          x: originX,
+          y: topY,
+          z: originZ,
+          width,
+          height: tabletopThickness,
+          depth,
+        }),
+
+        part({
+          type: "dt_leg",
+          label: "Front Leg L",
+          partCode: "DT-FL",
+          partRole: "leg",
+          x: leftX,
+          y: legY,
+          z: frontZ,
+          width: legSize,
+          height: legHeight,
+          depth: legSize,
+        }),
+        part({
+          type: "dt_leg",
+          label: "Front Leg R",
+          partCode: "DT-FR",
+          partRole: "leg",
+          x: rightX,
+          y: legY,
+          z: frontZ,
+          width: legSize,
+          height: legHeight,
+          depth: legSize,
+        }),
+        part({
+          type: "dt_leg",
+          label: "Back Leg L",
+          partCode: "DT-BL",
+          partRole: "leg",
+          x: leftX,
+          y: legY,
+          z: backZ,
+          width: legSize,
+          height: legHeight,
+          depth: legSize,
+        }),
+        part({
+          type: "dt_leg",
+          label: "Back Leg R",
+          partCode: "DT-BR",
+          partRole: "leg",
+          x: rightX,
+          y: legY,
+          z: backZ,
+          width: legSize,
+          height: legHeight,
+          depth: legSize,
+        }),
+
+        part({
+          type: "table_apron_long",
+          label: "Front Apron",
+          partCode: "DT-AF",
+          partRole: "apron_rail",
+          x: leftX + legSize,
+          y: legY,
+          z: frontZ,
+          width: innerSpanX,
+          height: apronHeight,
+          depth: apronThickness,
+        }),
+        part({
+          type: "table_apron_long",
+          label: "Rear Apron",
+          partCode: "DT-AR",
+          partRole: "apron_rail",
+          x: leftX + legSize,
+          y: legY,
+          z: backZ + legSize - apronThickness,
+          width: innerSpanX,
+          height: apronHeight,
+          depth: apronThickness,
+        }),
+        part({
+          type: "table_apron_short",
+          label: "Left Apron",
+          partCode: "DT-AL",
+          partRole: "apron_rail",
+          x: leftX,
+          y: legY,
+          z: frontZ + legSize,
+          width: apronThickness,
+          height: apronHeight,
+          depth: innerSpanZ,
+        }),
+        part({
+          type: "table_apron_short",
+          label: "Right Apron",
+          partCode: "DT-AR2",
+          partRole: "apron_rail",
+          x: rightX + legSize - apronThickness,
+          y: legY,
+          z: frontZ + legSize,
+          width: apronThickness,
+          height: apronHeight,
+          depth: innerSpanZ,
+        }),
+      ];
+
+      pushHistory(components);
+      setComponents((prev) => [...prev, ...parts]);
+      setSelectedIds(parts.map((item) => item.id));
+      setSelectedId(parts[0]?.id || null);
+      setEdit3DId(parts[0]?.id || null);
+      setTransformMode("translate");
+
+      toast.success(`${groupLabel} generated (9 parts).`);
+    },
+    [components, editorMode, view, WORLD_H, pushHistory],
+  );
+
   const createDoorPairFrontParts3D = useCallback(
     (ctx, rect, options = {}, codePrefix = "FRONT", labelPrefix = "Front") => {
       const reveal = snap(Math.max(0, Number(options.reveal) || 0));
@@ -1051,6 +1300,7 @@ export function useBlueprintBuilderActions({
   );
 
   return {
+    buildSimpleTable3D,
     buildCabinetBox3D,
     buildCabinetShelfLayout3D,
     buildCabinetInteriorPreset3D,

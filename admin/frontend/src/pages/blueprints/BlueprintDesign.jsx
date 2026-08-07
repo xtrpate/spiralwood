@@ -525,6 +525,7 @@ export default function BlueprintDesign() {
   });
 
   const {
+    buildSimpleTable3D,
     buildCabinetBox3D,
     buildCabinetShelfLayout3D,
     buildCabinetInteriorPreset3D,
@@ -1896,12 +1897,14 @@ export default function BlueprintDesign() {
             onDrawerStackSelection={drawerStackSelection3D}
             onFaceFitSelection={faceFitSelection3D}
             onInsideFitSelection={insideFitSelection3D}
+            onBuildSimpleTable={buildSimpleTable3D}
             onBuildCabinetBox={buildCabinetBox3D}
             onBuildCabinetShelfLayout={buildCabinetShelfLayout3D}
             onBuildCabinetInteriorPreset={buildCabinetInteriorPreset3D}
             onBuildCabinetFrontPreset={buildCabinetFrontPreset3D}
             onBuildCabinetCustomBayFronts={buildCabinetCustomBayFronts3D}
             onBuildCabinetCustomCellFronts={buildCabinetCustomCellFronts3D}
+            canBuildSimpleTable={editorMode === "editable"}
             canBuildCabinetBox={editorMode === "editable"}
             canBuildCabinetShelfLayout={editorMode === "editable"}
             canBuildCabinetInteriorPreset={editorMode === "editable"}
