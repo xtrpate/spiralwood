@@ -196,6 +196,51 @@ export default function BlueprintDesign() {
     unit,
   });
 
+  const selectionInspectorSummary3D = useMemo(() => {
+    if (!selectedBounds3D || selectedComponents.length <= 1) return null;
+
+    const assemblyIds = selectedComponents.map(
+      (component) => component.assemblyId || component.groupId || null,
+    );
+    const firstAssemblyId = assemblyIds[0] || null;
+    const isWholeSingleAssembly =
+      !!firstAssemblyId &&
+      assemblyIds.every((assemblyId) => assemblyId === firstAssemblyId);
+    const firstComponent = selectedComponents[0] || null;
+    const lockedCount = selectedComponents.filter((component) =>
+      isLocked(component),
+    ).length;
+
+    return {
+      kind: isWholeSingleAssembly ? "assembly" : "selection",
+      name: isWholeSingleAssembly
+        ? firstComponent?.assemblyName ||
+          firstComponent?.groupLabel ||
+          "Furniture Assembly"
+        : `${selectedComponents.length} Selected Objects`,
+      type: isWholeSingleAssembly
+        ? firstComponent?.assemblyType ||
+          (firstComponent?.groupType === "chair"
+            ? "dining_chair"
+            : firstComponent?.groupType) ||
+          "assembly"
+        : "multi_selection",
+      partCount: selectedComponents.length,
+      lockedCount,
+      materialText: selectedMaterialText,
+      bounds: {
+        width: selectedBounds3D.width,
+        height: selectedBounds3D.height,
+        depth: selectedBounds3D.depth,
+      },
+    };
+  }, [
+    selectedBounds3D,
+    selectedComponents,
+    selectedMaterialText,
+    isLocked,
+  ]);
+
   useBlueprintLoader({
     id,
     worldDimensions: { w: WORLD_W, h: WORLD_H, d: WORLD_D },
@@ -1864,6 +1909,7 @@ export default function BlueprintDesign() {
             addComponent={addComponent}
             activeBuildLabel={activeChairBuild?.label || ""}
             selectedComp={selectedComp}
+            selectionSummary={selectionInspectorSummary3D}
             isLocked={isLocked}
             unit={unit}
             editorMode={editorMode}

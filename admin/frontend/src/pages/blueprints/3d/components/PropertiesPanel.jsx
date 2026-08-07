@@ -9,6 +9,7 @@ export function PropertiesPanel({
   selectedComp: committedSelectedComp,
   liveSelectedComp = null,
   selectedIds = [],
+  selectionSummary = null,
   isLocked,
   onChange,
   onResizeDimension = null,
@@ -27,7 +28,7 @@ export function PropertiesPanel({
   const selectedComp = liveSelectedComp || committedSelectedComp;
   const hasSmartBuild = Boolean(renderSmartBuild);
 
-  if (!selectedComp && !hasSmartBuild) return null;
+  if (!selectedComp && !hasSmartBuild && !selectionSummary) return null;
 
   const handleNumericChange = (key) => (e) => {
     if (!selectedComp) return;
@@ -274,6 +275,152 @@ export function PropertiesPanel({
       <div style={VIEWER_UI.inspectorTabBody}>
         {showSmartBuildTab ? (
           renderSmartBuild
+        ) : selectionSummary?.partCount > 1 ? (
+          <>
+            <div
+              style={{
+                ...inspectorSectionStyle,
+                padding: 12,
+                background:
+                  "linear-gradient(180deg, rgba(17,31,53,.92) 0%, rgba(11,20,36,.92) 100%)",
+                borderColor: "rgba(89,112,143,.72)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      color: "#f3f7ff",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      lineHeight: 1.35,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={selectionSummary.name}
+                  >
+                    {selectionSummary.name || "Selected Objects"}
+                  </div>
+                  <div style={{ marginTop: 3, color: "#91a4bf", fontSize: 10 }}>
+                    {String(selectionSummary.type || "selection")
+                      .replace(/^template_/, "")
+                      .replace(/_/g, " ")
+                      .replace(/\b\w/g, (char) => char.toUpperCase())}
+                    {" - "}
+                    {selectionSummary.partCount} parts
+                  </div>
+                </div>
+                <span
+                  style={{
+                    flexShrink: 0,
+                    minHeight: 22,
+                    padding: "0 8px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    border: "1px solid rgba(96,165,250,.34)",
+                    borderRadius: 999,
+                    background: "rgba(37,99,235,.14)",
+                    color: "#bfdbfe",
+                    fontSize: 9,
+                    fontWeight: 800,
+                  }}
+                >
+                  {selectionSummary.kind === "assembly" ? "ASSEMBLY" : "MULTI"}
+                </span>
+              </div>
+              <div
+                style={{
+                  marginTop: 9,
+                  paddingTop: 8,
+                  borderTop: "1px solid rgba(71,85,105,.52)",
+                  color: "#93a8c4",
+                  fontSize: 9,
+                  lineHeight: 1.45,
+                }}
+              >
+                Overall measurements are read-only. Use Tools &gt; Resize for
+                supported controlled assembly resizing.
+              </div>
+            </div>
+
+            <div style={inspectorSectionStyle}>
+              <div style={inspectorSectionTitleStyle}>Overall Measurements</div>
+              <div style={inspectorFieldGridStyle}>
+                {[
+                  ["Width", selectionSummary.bounds?.width],
+                  ["Height", selectionSummary.bounds?.height],
+                  ["Depth", selectionSummary.bounds?.depth],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ minWidth: 0 }}>
+                    <label style={S.floatingLabel}>{label}</label>
+                    <div
+                      style={{
+                        minHeight: 34,
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "0 9px",
+                        border: "1px solid rgba(71,85,105,.62)",
+                        borderRadius: 6,
+                        background: "rgba(15,23,42,.62)",
+                        color: "#dbeafe",
+                        fontSize: 10,
+                        fontWeight: 800,
+                        boxSizing: "border-box",
+                      }}
+                    >
+                      {formatDim(Number(value) || 0, unit)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={inspectorSectionStyle}>
+              <div style={inspectorSectionTitleStyle}>Selection</div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 8,
+                }}
+              >
+                <div style={infoCardStyle}>
+                  <div style={S.floatingLabel}>Parts</div>
+                  <div style={{ marginTop: 4, color: "#e5eefc", fontSize: 12, fontWeight: 800 }}>
+                    {selectionSummary.partCount}
+                  </div>
+                </div>
+                <div style={infoCardStyle}>
+                  <div style={S.floatingLabel}>Locked</div>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      color: selectionSummary.lockedCount > 0 ? "#fca5a5" : "#e5eefc",
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {selectionSummary.lockedCount || 0}
+                  </div>
+                </div>
+              </div>
+              <div style={{ ...infoCardStyle, marginTop: 8 }}>
+                <div style={S.floatingLabel}>Material</div>
+                <div
+                  style={{
+                    marginTop: 4,
+                    color: "#c8d5e8",
+                    fontSize: 10,
+                    lineHeight: 1.45,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {selectionSummary.materialText || "No material assigned"}
+                </div>
+              </div>
+            </div>
+          </>
         ) : selectedComp ? (
           <>
             <div

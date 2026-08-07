@@ -79,6 +79,7 @@ function ThreeDViewer({
   addComponent,
   activeBuildLabel,
   selectedComp,
+  selectionSummary = null,
   isLocked,
   unit,
   editorMode,
@@ -2649,6 +2650,7 @@ function ThreeDViewer({
         selectedComp={selectedComp}
         liveSelectedComp={liveSelectedComp}
         selectedIds={selectedIds}
+        selectionSummary={selectionSummary}
         isLocked={isLocked}
         onChange={onUpdateComp}
         onResizeDimension={handleResizeDimensionChange}
