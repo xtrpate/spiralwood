@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import api, { buildAssetUrl } from "../../services/api";
+import { buildEstimateProductionSnapshot } from "./data/estimateProductionSummary";
 
 const UNIT_OPTIONS = [
   "pc",
@@ -1129,6 +1130,159 @@ function EstimateTable({
 }
 
 
+function ProductionSnapshotPanel({ snapshot }) {
+  const parts = Array.isArray(snapshot?.parts) ? snapshot.parts : [];
+  const summary = snapshot?.summary || {};
+  const isReady = summary.handoffStatus === "READY";
+
+  return (
+    <div style={productionSnapshotCard}>
+      <div style={productionSnapshotHeader}>
+        <div>
+          <div style={productionEyebrow}>Internal Production Reference</div>
+          <h3 style={{ ...sectionTitle, marginTop: 5 }}>
+            Blueprint Production Requirements
+          </h3>
+          <p style={{ ...helperText, maxWidth: 850 }}>
+            Use the saved Blueprint details as a guide when preparing the estimate.
+            Required Inventory Materials are still selected manually by the Admin.
+            This panel does not reserve, deduct, or automatically match inventory.
+          </p>
+        </div>
+        <div
+          style={{
+            ...productionStatus,
+            ...(isReady ? productionStatusReady : productionStatusReview),
+          }}
+        >
+          <span style={productionStatusLabel}>Handoff Status</span>
+          <strong>{summary.handoffStatus || "REVIEW"}</strong>
+        </div>
+      </div>
+
+      <div style={productionSummaryGrid}>
+        {[
+          ["Production Parts", summary.productionParts || 0],
+          ["Material Types", summary.materialTypes || 0],
+          ["Edge-Treated Parts", summary.edgeTreatedParts || 0],
+          ["Hardware Qty", summary.hardwareQty || 0],
+          ["Custom Profiles", summary.customProfiles || 0],
+          ["Machining Ops", summary.machiningOps || 0],
+        ].map(([label, value]) => (
+          <div key={label} style={productionMetricCard}>
+            <span style={productionMetricLabel}>{label}</span>
+            <strong style={productionMetricValue}>{value}</strong>
+          </div>
+        ))}
+      </div>
+
+      {!parts.length ? (
+        <div style={productionEmpty}>
+          No saved Blueprint production parts are available yet. Save the Blueprint
+          design first, then return to Project Estimate.
+        </div>
+      ) : (
+        <>
+          {Number(summary.incompletePartCount || 0) > 0 && (
+            <div style={productionReviewNotice}>
+              Review {summary.incompletePartCount} part
+              {summary.incompletePartCount === 1 ? "" : "s"} with missing production
+              identity data before finalizing the quotation.
+            </div>
+          )}
+
+          <div style={productionGuide}>
+            <strong>Inventory remains manual.</strong>
+            <span>
+              Read the requirements below, then use the existing Required Inventory
+              Materials section to choose the actual stock items and quantities.
+            </span>
+          </div>
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={productionTable}>
+              <thead>
+                <tr style={productionTableHead}>
+                  <th style={{ ...productionTh, width: "17%" }}>Part</th>
+                  <th style={{ ...productionTh, width: "7%" }}>Qty</th>
+                  <th style={{ ...productionTh, width: "20%" }}>Cut Size</th>
+                  <th style={{ ...productionTh, width: "19%" }}>Material / Grain</th>
+                  <th style={{ ...productionTh, width: "37%" }}>Production Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {parts.map((part) => {
+                  const detailLines = [
+                    ...part.edgeLines,
+                    ...part.hardwareLines,
+                    ...part.cutoutLines,
+                    ...part.notchLines,
+                    ...part.operationLines,
+                  ];
+
+                  return (
+                    <tr key={part.id} style={productionRow}>
+                      <td style={productionTd}>
+                        <div style={productionPartCode}>{part.code}</div>
+                        <div style={productionPartName}>{part.name}</div>
+                        {part.completenessIssues.length > 0 && (
+                          <div style={productionPartReview}>
+                            Review: {part.completenessIssues.join(", ")}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ ...productionTd, fontWeight: 850 }}>
+                        {part.quantity}
+                      </td>
+                      <td style={productionTd}>
+                        <span style={productionMono}>{part.cutSize}</span>
+                      </td>
+                      <td style={productionTd}>
+                        <div style={{ fontWeight: 800 }}>{part.material}</div>
+                        <div style={productionSecondary}>{part.grain}</div>
+                      </td>
+                      <td style={productionTd}>
+                        <div style={productionTagWrap}>
+                          {(part.productionTags.length
+                            ? part.productionTags
+                            : ["Standard part"]
+                          ).map((tag) => (
+                            <span key={`${part.id}-${tag}`} style={productionTag}>
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+
+                        {detailLines.length > 0 ? (
+                          <div style={productionDetailList}>
+                            {detailLines.map((line, index) => (
+                              <div key={`${part.id}-detail-${index}`}>• {line}</div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={productionSecondary}>
+                            No special machining, hardware, or edge treatment assigned.
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={productionFooterNote}>
+            Production metadata is reference-only. Pricing remains controlled by the
+            existing Blueprint Components, Additional Items, Labor, Logistics, and
+            quotation fields.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 const getOversizedDeliveryDraftStorageKey = (blueprintId) =>
   `wisdom_oversized_delivery_draft:${blueprintId}`;
 
@@ -1168,6 +1322,10 @@ export default function EstimationPage() {
   const [approving, setApproving] = useState(false);
 
   const parsedDesign = useMemo(() => parseBlueprintDesignData(blueprint), [blueprint]);
+  const productionSnapshot = useMemo(
+    () => buildEstimateProductionSnapshot(parsedDesign),
+    [parsedDesign],
+  );
   const preferredAutoItems = useMemo(
     () => buildPreferredAutoItems(parsedDesign),
     [parsedDesign],
@@ -1987,6 +2145,8 @@ export default function EstimationPage() {
         </div>
       </div>
 
+      <ProductionSnapshotPanel snapshot={productionSnapshot} />
+
       <EstimateTable
         title="Blueprint Components"
         helper="Generated from the latest blueprint design. Confirm each component, quantity, unit rate, and note."
@@ -2271,6 +2431,232 @@ const helperText = {
   maxWidth: 760,
 };
 
+const productionSnapshotCard = {
+  ...card,
+  marginBottom: 20,
+  overflow: "hidden",
+};
+
+const productionSnapshotHeader = {
+  padding: "20px 22px",
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 20,
+  flexWrap: "wrap",
+  borderBottom: "1px solid #e4e4e7",
+  background: "#fff",
+};
+
+const productionEyebrow = {
+  fontSize: 9,
+  fontWeight: 900,
+  color: "#52525b",
+  textTransform: "uppercase",
+  letterSpacing: "0.14em",
+};
+
+const productionStatus = {
+  minWidth: 126,
+  padding: "10px 12px",
+  display: "grid",
+  gap: 3,
+  textAlign: "right",
+  borderRadius: 0,
+};
+
+const productionStatusReady = {
+  background: "#ecfdf5",
+  color: "#166534",
+  borderLeft: "3px solid #22c55e",
+};
+
+const productionStatusReview = {
+  background: "#fff7ed",
+  color: "#9a3412",
+  borderLeft: "3px solid #f97316",
+};
+
+const productionStatusLabel = {
+  fontSize: 8,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: "0.12em",
+  opacity: 0.78,
+};
+
+const productionSummaryGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))",
+  gap: 0,
+  borderBottom: "1px solid #e4e4e7",
+  background: "#fafafa",
+};
+
+const productionMetricCard = {
+  minHeight: 72,
+  padding: "14px 16px",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "space-between",
+  gap: 8,
+  borderRight: "1px solid #e4e4e7",
+  background: "#fafafa",
+};
+
+const productionMetricLabel = {
+  fontSize: 8,
+  fontWeight: 900,
+  color: "#71717a",
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
+};
+
+const productionMetricValue = {
+  fontSize: 20,
+  lineHeight: 1,
+  color: "#18181b",
+};
+
+const productionGuide = {
+  margin: "16px 18px 0",
+  padding: "12px 14px",
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 6,
+  fontSize: 11,
+  lineHeight: 1.5,
+  color: "#3f3f46",
+  background: "#f4f4f5",
+  borderLeft: "3px solid #18181b",
+};
+
+const productionReviewNotice = {
+  margin: "16px 18px 0",
+  padding: "11px 13px",
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#9a3412",
+  background: "#fff7ed",
+  borderLeft: "3px solid #f97316",
+};
+
+const productionEmpty = {
+  padding: 28,
+  color: "#71717a",
+  textAlign: "center",
+  fontSize: 12,
+  lineHeight: 1.6,
+  background: "#fcfcfd",
+};
+
+const productionTable = {
+  width: "100%",
+  minWidth: 1040,
+  marginTop: 16,
+  borderCollapse: "separate",
+  borderSpacing: 0,
+  tableLayout: "fixed",
+  fontSize: 11,
+};
+
+const productionTableHead = {
+  background: "#18181b",
+};
+
+const productionTh = {
+  padding: "11px 12px",
+  textAlign: "left",
+  color: "#fff",
+  fontSize: 8,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
+  borderRight: "1px solid #3f3f46",
+};
+
+const productionRow = {
+  background: "#fff",
+};
+
+const productionTd = {
+  padding: "12px",
+  verticalAlign: "top",
+  borderBottom: "1px solid #e4e4e7",
+  color: "#27272a",
+  lineHeight: 1.45,
+};
+
+const productionPartCode = {
+  fontSize: 10,
+  fontWeight: 900,
+  color: "#18181b",
+  letterSpacing: "0.04em",
+};
+
+const productionPartName = {
+  marginTop: 3,
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#3f3f46",
+};
+
+const productionPartReview = {
+  marginTop: 6,
+  fontSize: 9,
+  fontWeight: 750,
+  color: "#c2410c",
+};
+
+const productionMono = {
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  fontSize: 10,
+  fontWeight: 700,
+  color: "#18181b",
+};
+
+const productionSecondary = {
+  marginTop: 4,
+  fontSize: 9,
+  color: "#71717a",
+  lineHeight: 1.4,
+};
+
+const productionTagWrap = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 5,
+  marginBottom: 7,
+};
+
+const productionTag = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: 22,
+  padding: "4px 7px",
+  background: "#f4f4f5",
+  color: "#3f3f46",
+  fontSize: 8,
+  fontWeight: 800,
+  borderRadius: 0,
+};
+
+const productionDetailList = {
+  display: "grid",
+  gap: 3,
+  fontSize: 9,
+  color: "#52525b",
+  lineHeight: 1.45,
+};
+
+const productionFooterNote = {
+  padding: "12px 18px 16px",
+  color: "#71717a",
+  fontSize: 9,
+  lineHeight: 1.5,
+  background: "#fff",
+};
+
 const estimateTableStyle = {
   width: "100%",
   borderCollapse: "separate",
@@ -2518,8 +2904,8 @@ const btnPrimary = {
   padding: "9px 16px",
   background: "#18181b",
   color: "#fff",
-  border: "1px solid #18181b",
-  borderRadius: 9,
+  border: "none",
+  borderRadius: 0,
   cursor: "pointer",
   fontSize: 12,
   fontWeight: 800,
@@ -2529,10 +2915,10 @@ const btnPrimary = {
 const btnGhost = {
   minHeight: 38,
   padding: "9px 14px",
-  background: "#fff",
+  background: "#f4f4f5",
   color: "#27272a",
-  border: "1px solid #d4d4d8",
-  borderRadius: 9,
+  border: "none",
+  borderRadius: 0,
   cursor: "pointer",
   fontSize: 12,
   fontWeight: 750,
@@ -2542,10 +2928,10 @@ const btnGhost = {
 const btnBack = {
   minWidth: 72,
   padding: "8px 11px",
-  background: "#fff",
+  background: "#f4f4f5",
   color: "#52525b",
-  border: "1px solid #d4d4d8",
-  borderRadius: 9,
+  border: "none",
+  borderRadius: 0,
   cursor: "pointer",
   fontSize: 12,
   fontWeight: 750,
@@ -2556,8 +2942,8 @@ const btnAdd = {
   padding: "8px 13px",
   background: "#18181b",
   color: "#fff",
-  border: "1px solid #18181b",
-  borderRadius: 8,
+  border: "none",
+  borderRadius: 0,
   cursor: "pointer",
   fontSize: 11,
   fontWeight: 800,
@@ -2568,10 +2954,10 @@ const btnRemove = {
   width: 32,
   height: 32,
   padding: 0,
-  background: "#fff",
+  background: "#fef2f2",
   color: "#b91c1c",
-  border: "1px solid #fecaca",
-  borderRadius: 8,
+  border: "none",
+  borderRadius: 0,
   cursor: "pointer",
   fontSize: 12,
   fontWeight: 800,
