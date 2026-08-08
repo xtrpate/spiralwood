@@ -1289,6 +1289,567 @@ export function useBlueprintBuilderActions({
     ],
   );
 
+
+  const buildCabinetDrawerLayout3D = useCallback(
+    (options = {}) => {
+      if (editorMode !== "editable") {
+        toast.error("Reference mode ito. Lumipat muna sa editable mode.");
+        return;
+      }
+
+      if (view !== "3d") {
+        toast.error("Sa 3D view lang puwede gamitin ang Drawer Builder.");
+        return;
+      }
+
+      const ctx = getCabinetBuilderContext3D();
+      if (!ctx) return;
+
+      const lockedAssemblyPart = (ctx.assemblyItems || []).find((item) =>
+        isLocked?.(item),
+      );
+
+      if (lockedAssemblyPart) {
+        toast.error(
+          "Cannot apply Drawer Builder. Unlock all parts in the cabinet assembly first.",
+        );
+        return;
+      }
+
+      const textOf = (item) =>
+        `${item?.label || ""} ${item?.partCode || ""} ${item?.type || ""} ${
+          item?.partRole || ""
+        }`
+          .toLowerCase()
+          .trim();
+
+      const isDoorPart = (item) => {
+        const type = String(item?.type || "").toLowerCase();
+        const role = String(item?.partRole || "").toLowerCase();
+        return type === "door_front_panel" || role === "door";
+      };
+
+      const isGeneratedDrawerPart = (item) => {
+        const code = String(item?.partCode || item?.technicalId || "");
+        const role = String(item?.partRole || "").toLowerCase();
+
+        return (
+          item?.drawerBuilderGenerated === true ||
+          Number(item?.drawerBuilderVersion) === 1 ||
+          (/^CAB-(?:B\d+(?:-R\d+)?-)?DRW-/i.test(code) &&
+            [
+              "drawer_front",
+              "drawer_side",
+              "drawer_back",
+              "drawer_bottom",
+              "drawer_handle",
+              "drawer_slide",
+            ].includes(role))
+        );
+      };
+
+      const isDrawerRelatedPart = (item) => {
+        const type = String(item?.type || "").toLowerCase();
+        const role = String(item?.partRole || "").toLowerCase();
+        const text = textOf(item);
+
+        return (
+          type === "drawer_front_panel" ||
+          type.startsWith("wr_drawer_") ||
+          role.startsWith("drawer_") ||
+          text.includes("drawer front") ||
+          text.includes("drawer side") ||
+          text.includes("drawer back") ||
+          text.includes("drawer bottom") ||
+          text.includes("drawer slide")
+        );
+      };
+
+      const currentGeneratedDrawerParts = (ctx.assemblyItems || []).filter(
+        isGeneratedDrawerPart,
+      );
+
+      const existingDoors = (ctx.assemblyItems || []).filter(isDoorPart);
+      if (existingDoors.length) {
+        toast.error(
+          "Drawer Builder blocked: this cabinet already contains doors. Clear/change the door layout first.",
+        );
+        return;
+      }
+
+      const unmanagedDrawerParts = (ctx.assemblyItems || []).filter(
+        (item) =>
+          isDrawerRelatedPart(item) &&
+          !isGeneratedDrawerPart(item) &&
+          !isDoorPart(item),
+      );
+
+      if (unmanagedDrawerParts.length) {
+        const sample =
+          unmanagedDrawerParts[0]?.partCode ||
+          unmanagedDrawerParts[0]?.label ||
+          "existing drawer";
+
+        toast.error(
+          `Drawer Builder blocked: this cabinet already contains an existing drawer assembly (${sample}). Use a clean opening or clear/change that drawer layout first.`,
+        );
+        return;
+      }
+
+      const requestedScope = String(options.scope || "whole").toLowerCase();
+      const scope = ["whole", "bay", "opening"].includes(requestedScope)
+        ? requestedScope
+        : "whole";
+
+      const drawerCount = Math.max(
+        1,
+        Math.min(8, Math.round(Number(options.drawerCount) || 3)),
+      );
+      const drawerDepth = Math.max(80, Number(options.drawerDepth) || 450);
+      const leftClearance = Math.max(
+        0,
+        Number(options.leftClearance) || 12.5,
+      );
+      const rightClearance = Math.max(
+        0,
+        Number(options.rightClearance) || 12.5,
+      );
+      const bottomClearance = Math.max(
+        0,
+        Number(options.bottomClearance) || 12,
+      );
+      const frontOverlay = Math.max(0, Number(options.frontOverlay) || 0);
+      const drawerGap = Math.max(0, Number(options.drawerGap) || 0);
+      const frontThickness = Math.max(
+        1,
+        Number(options.frontThickness) || Number(ctx.thickness) || 20,
+      );
+
+      const roundMm = (value) =>
+        Number.isFinite(Number(value))
+          ? Number(Number(value).toFixed(3))
+          : 0;
+
+      const fullBayRects = (ctx.bayRects || []).map((bay, index) => ({
+        ...bay,
+        bayIndex: bay.bayIndex || index + 1,
+        y: ctx.overallRect.y,
+        height: ctx.overallRect.height,
+      }));
+
+      let targets = [];
+
+      if (scope === "opening") {
+        targets = [...(ctx.openingRects || [])]
+          .sort(
+            (a, b) =>
+              (a.rowIndex || 0) - (b.rowIndex || 0) ||
+              (a.bayIndex || 0) - (b.bayIndex || 0),
+          )
+          .map((opening, index) => ({
+            ...opening,
+            targetIndex: index + 1,
+          }));
+
+        if (!targets.length) {
+          toast.error(
+            "No cabinet openings found. Build a shelf/interior layout first or use Whole / Per Bay scope.",
+          );
+          return;
+        }
+      } else if (scope === "bay") {
+        targets = fullBayRects.length
+          ? fullBayRects
+          : [
+              {
+                ...ctx.overallRect,
+                bayIndex: 1,
+              },
+            ];
+      } else {
+        targets = [
+          {
+            ...ctx.overallRect,
+            bayIndex: 1,
+          },
+        ];
+      }
+
+      const sideThickness = roundMm(
+        Math.max(12, Math.min(20, Number(ctx.thickness) || 18)),
+      );
+      const bottomThickness = roundMm(
+        Math.max(6, Math.min(12, sideThickness)),
+      );
+      const slideWidth = 10;
+      const slideHeight = 12;
+      const slideDepthInset = 10;
+      const handleHeight = 12;
+      const handleDepth = 20;
+
+      const nextDrawerParts = [];
+      let drawerAssemblyCount = 0;
+
+      const buildTargetDrawers = (rect) => {
+        const rectWidth = roundMm(Number(rect.width) || 0);
+        const rectHeight = roundMm(Number(rect.height) || 0);
+        const rectDepth = roundMm(Number(rect.depth) || 0);
+
+        const boxWidth = roundMm(
+          rectWidth - leftClearance - rightClearance,
+        );
+
+        if (boxWidth <= sideThickness * 2 + 20) {
+          return {
+            supported: false,
+            reason:
+              "Drawer opening is too narrow after left/right slide clearance.",
+          };
+        }
+
+        const totalGap = drawerGap * Math.max(0, drawerCount - 1);
+        const slotHeight = roundMm(
+          (rectHeight - totalGap) / drawerCount,
+        );
+
+        if (slotHeight < 80) {
+          return {
+            supported: false,
+            reason:
+              "Not enough opening height for the requested drawer count and gap.",
+          };
+        }
+
+        const sideHeight = roundMm(slotHeight - bottomClearance);
+
+        if (sideHeight <= bottomThickness + 20) {
+          return {
+            supported: false,
+            reason:
+              "Bottom clearance is too large for the available drawer opening height.",
+          };
+        }
+
+        const boxFrontZ = roundMm(Number(ctx.frontZ) - frontThickness);
+        const availableDepth = roundMm(boxFrontZ - Number(rect.z || 0));
+        const safeDrawerDepth = roundMm(
+          Math.min(drawerDepth, rectDepth, availableDepth),
+        );
+
+        if (safeDrawerDepth < 80) {
+          return {
+            supported: false,
+            reason:
+              "Drawer depth does not fit inside this cabinet opening.",
+          };
+        }
+
+        const boxX = roundMm(Number(rect.x) + leftClearance);
+        const boxZ = roundMm(boxFrontZ - safeDrawerDepth);
+        const innerBoxWidth = roundMm(boxWidth - sideThickness * 2);
+        const innerBoxDepth = roundMm(safeDrawerDepth - sideThickness);
+
+        if (innerBoxWidth <= 20 || innerBoxDepth <= 20) {
+          return {
+            supported: false,
+            reason: "Drawer box is too small for the selected settings.",
+          };
+        }
+
+        const frontTotalHeight = roundMm(rectHeight + frontOverlay * 2);
+        const frontEachHeight = roundMm(
+          (frontTotalHeight - totalGap) / drawerCount,
+        );
+        const frontWidth = roundMm(rectWidth + frontOverlay * 2);
+        const frontX = roundMm(Number(rect.x) - frontOverlay);
+        const firstFrontY = roundMm(Number(rect.y) - frontOverlay);
+
+        if (frontEachHeight <= 20 || frontWidth <= 20) {
+          return {
+            supported: false,
+            reason: "Drawer front overlay/gap settings are not valid.",
+          };
+        }
+
+        const bayIndex = Number(rect.bayIndex) || 1;
+        const rowIndex = Number(rect.rowIndex) || 1;
+        const targetPrefix =
+          scope === "whole"
+            ? "CAB-DRW"
+            : scope === "bay"
+              ? `CAB-B${bayIndex}-DRW`
+              : `CAB-B${bayIndex}-R${rowIndex}-DRW`;
+
+        for (let index = 0; index < drawerCount; index += 1) {
+          const drawerNumber = index + 1;
+          const drawerSuffix = String(drawerNumber).padStart(2, "0");
+          const drawerAssemblyId = makeGroupId();
+          const slotY = roundMm(
+            Number(rect.y) + index * (slotHeight + drawerGap),
+          );
+          const frontY = roundMm(
+            firstFrontY + index * (frontEachHeight + drawerGap),
+          );
+
+          const common = {
+            drawerBuilderGenerated: true,
+            drawerBuilderVersion: 1,
+            drawerAssemblyId,
+            drawerIndex: drawerNumber,
+            drawerTargetScope: scope,
+            drawerTargetBayIndex: bayIndex,
+            drawerTargetRowIndex: rowIndex,
+            drawerDepth: safeDrawerDepth,
+            drawerLeftClearance: roundMm(leftClearance),
+            drawerRightClearance: roundMm(rightClearance),
+            drawerBottomClearance: roundMm(bottomClearance),
+            drawerFrontOverlay: roundMm(frontOverlay),
+            drawerGap: roundMm(drawerGap),
+            unitPrice: 0,
+            groupUnitPrice: 0,
+            qty: 1,
+            locked: false,
+          };
+
+          const front = ctx.buildPart({
+            ...common,
+            type: "drawer_front_panel",
+            partRole: "drawer_front",
+            label: `Drawer Front ${drawerNumber}`,
+            partCode: `${targetPrefix}-${drawerSuffix}-F`,
+            x: frontX,
+            y: frontY,
+            z: boxFrontZ,
+            width: frontWidth,
+            height: frontEachHeight,
+            depth: roundMm(frontThickness),
+          });
+
+          const leftSide = ctx.buildPart({
+            ...common,
+            type: "drawer_side_panel",
+            partRole: "drawer_side",
+            drawerSide: "left",
+            label: `Drawer Side L ${drawerNumber}`,
+            partCode: `${targetPrefix}-${drawerSuffix}-SL`,
+            x: boxX,
+            y: slotY,
+            z: boxZ,
+            width: sideThickness,
+            height: sideHeight,
+            depth: safeDrawerDepth,
+          });
+
+          const rightSide = ctx.buildPart({
+            ...common,
+            type: "drawer_side_panel",
+            partRole: "drawer_side",
+            drawerSide: "right",
+            label: `Drawer Side R ${drawerNumber}`,
+            partCode: `${targetPrefix}-${drawerSuffix}-SR`,
+            x: roundMm(boxX + boxWidth - sideThickness),
+            y: slotY,
+            z: boxZ,
+            width: sideThickness,
+            height: sideHeight,
+            depth: safeDrawerDepth,
+          });
+
+          const back = ctx.buildPart({
+            ...common,
+            type: "drawer_back_panel",
+            partRole: "drawer_back",
+            label: `Drawer Back ${drawerNumber}`,
+            partCode: `${targetPrefix}-${drawerSuffix}-B`,
+            x: roundMm(boxX + sideThickness),
+            y: slotY,
+            z: boxZ,
+            width: innerBoxWidth,
+            height: sideHeight,
+            depth: sideThickness,
+          });
+
+          const bottom = ctx.buildPart({
+            ...common,
+            type: "drawer_bottom_panel",
+            partRole: "drawer_bottom",
+            label: `Drawer Bottom ${drawerNumber}`,
+            partCode: `${targetPrefix}-${drawerSuffix}-BT`,
+            x: roundMm(boxX + sideThickness),
+            y: roundMm(slotY + sideHeight - bottomThickness),
+            z: roundMm(boxZ + sideThickness),
+            width: innerBoxWidth,
+            height: bottomThickness,
+            depth: innerBoxDepth,
+          });
+
+          const handleWidth = roundMm(
+            Math.min(128, Math.max(64, frontWidth * 0.25)),
+          );
+
+          const handle = ctx.buildPart({
+            ...common,
+            type: "drawer_handle",
+            partRole: "drawer_handle",
+            parentPartId: front.id,
+            label: `Drawer Handle ${drawerNumber}`,
+            partCode: `${targetPrefix}-${drawerSuffix}-HDL`,
+            x: roundMm(frontX + (frontWidth - handleWidth) / 2),
+            y: roundMm(frontY + frontEachHeight * 0.42),
+            z: roundMm(Number(ctx.frontZ)),
+            width: handleWidth,
+            height: handleHeight,
+            depth: handleDepth,
+            material: "Metal",
+            fill: "#64748b",
+          });
+
+          const slideDepth = roundMm(
+            Math.max(40, safeDrawerDepth - slideDepthInset),
+          );
+          const slideY = roundMm(slotY + Math.max(12, sideHeight * 0.55));
+
+          const leftSlide = ctx.buildPart({
+            ...common,
+            type: "drawer_slide",
+            partRole: "drawer_slide",
+            drawerSide: "left",
+            parentDrawerId: drawerAssemblyId,
+            label: `Drawer Slide L ${drawerNumber}`,
+            partCode: `${targetPrefix}-${drawerSuffix}-SDL`,
+            x: roundMm(Number(rect.x)),
+            y: slideY,
+            z: boxZ,
+            width: slideWidth,
+            height: slideHeight,
+            depth: slideDepth,
+            material: "Metal",
+            fill: "#64748b",
+          });
+
+          const rightSlide = ctx.buildPart({
+            ...common,
+            type: "drawer_slide",
+            partRole: "drawer_slide",
+            drawerSide: "right",
+            parentDrawerId: drawerAssemblyId,
+            label: `Drawer Slide R ${drawerNumber}`,
+            partCode: `${targetPrefix}-${drawerSuffix}-SDR`,
+            x: roundMm(Number(rect.x) + rectWidth - slideWidth),
+            y: slideY,
+            z: boxZ,
+            width: slideWidth,
+            height: slideHeight,
+            depth: slideDepth,
+            material: "Metal",
+            fill: "#64748b",
+          });
+
+          nextDrawerParts.push(
+            front,
+            leftSide,
+            rightSide,
+            back,
+            bottom,
+            handle,
+            leftSlide,
+            rightSlide,
+          );
+          drawerAssemblyCount += 1;
+        }
+
+        return { supported: true };
+      };
+
+      for (let index = 0; index < targets.length; index += 1) {
+        const result = buildTargetDrawers(targets[index]);
+
+        if (!result.supported) {
+          toast.error(result.reason || "Drawer layout is not valid.");
+          return;
+        }
+      }
+
+      const signature = (item) =>
+        JSON.stringify({
+          type: item?.type || "",
+          partRole: item?.partRole || "",
+          label: item?.label || "",
+          partCode: item?.partCode || "",
+          drawerIndex: Number(item?.drawerIndex) || 0,
+          drawerTargetScope: item?.drawerTargetScope || "",
+          drawerTargetBayIndex: Number(item?.drawerTargetBayIndex) || 0,
+          drawerTargetRowIndex: Number(item?.drawerTargetRowIndex) || 0,
+          drawerDepth: roundMm(item?.drawerDepth || 0),
+          drawerLeftClearance: roundMm(item?.drawerLeftClearance || 0),
+          drawerRightClearance: roundMm(item?.drawerRightClearance || 0),
+          drawerBottomClearance: roundMm(item?.drawerBottomClearance || 0),
+          drawerFrontOverlay: roundMm(item?.drawerFrontOverlay || 0),
+          drawerGap: roundMm(item?.drawerGap || 0),
+          drawerSide: item?.drawerSide || "",
+          material: item?.material || "",
+          x: roundMm(item?.x || 0),
+          y: roundMm(item?.y || 0),
+          z: roundMm(item?.z || 0),
+          width: roundMm(item?.width || 0),
+          height: roundMm(item?.height || 0),
+          depth: roundMm(item?.depth || 0),
+        });
+
+      const currentSignatures = currentGeneratedDrawerParts
+        .map(signature)
+        .sort()
+        .join("|");
+      const nextSignatures = nextDrawerParts.map(signature).sort().join("|");
+
+      if (
+        currentGeneratedDrawerParts.length === nextDrawerParts.length &&
+        currentSignatures === nextSignatures
+      ) {
+        toast.success("Drawer layout already matches the current settings.");
+        return;
+      }
+
+      const removeDrawerIds = new Set(
+        currentGeneratedDrawerParts.map((item) => item.id),
+      );
+
+      pushHistory(
+        Array.isArray(components)
+          ? components.map((item) => normalizeComponent(item))
+          : [],
+      );
+
+      const nextComponents = components
+        .filter((item) => !removeDrawerIds.has(item.id))
+        .concat(nextDrawerParts);
+
+      setComponents(nextComponents);
+      setSelectedIds(nextDrawerParts.map((item) => item.id));
+      setSelectedId(nextDrawerParts[0]?.id || ctx.primaryId);
+      setEdit3DId(nextDrawerParts[0]?.id || ctx.primaryId);
+      setTransformMode("translate");
+
+      const scopeLabel =
+        scope === "opening"
+          ? "per opening"
+          : scope === "bay"
+            ? "per bay"
+            : "whole opening";
+
+      toast.success(
+        `${drawerAssemblyCount} drawer assembl${drawerAssemblyCount === 1 ? "y" : "ies"} applied ${scopeLabel} (${nextDrawerParts.length} parts).`,
+      );
+    },
+    [
+      editorMode,
+      view,
+      getCabinetBuilderContext3D,
+      isLocked,
+      components,
+      pushHistory,
+    ],
+  );
   const buildCabinetFrontPreset3D = useCallback(
     (options = {}) => {
       if (editorMode !== "editable") {
@@ -1640,6 +2201,7 @@ export function useBlueprintBuilderActions({
     buildCabinetShelfLayout3D,
     buildCabinetInteriorPreset3D,
     buildCabinetDoorLayout3D,
+    buildCabinetDrawerLayout3D,
     buildCabinetFrontPreset3D,
     buildCabinetCustomBayFronts3D,
     buildCabinetCustomCellFronts3D,

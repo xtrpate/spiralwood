@@ -32,6 +32,7 @@ export function FurnitureToolsPanel({
   onBuildCabinetShelfLayout,
   onBuildCabinetInteriorPreset,
   onBuildCabinetDoorLayout,
+  onBuildCabinetDrawerLayout,
   onBuildCabinetFrontPreset,
   onBuildCabinetCustomBayFronts,
   onBuildCabinetCustomCellFronts,
@@ -40,6 +41,7 @@ export function FurnitureToolsPanel({
   canBuildCabinetShelfLayout = false,
   canBuildCabinetInteriorPreset = false,
   canBuildCabinetDoorLayout = false,
+  canBuildCabinetDrawerLayout = false,
   canBuildCabinetFrontPreset = false,
   canBuildCabinetCustomBayFronts = false,
   canBuildCabinetCustomCellFronts = false,
@@ -104,6 +106,15 @@ export function FurnitureToolsPanel({
   const [doorReveal, setDoorReveal] = useState(10);
   const [doorGap, setDoorGap] = useState(10);
   const [doorThickness, setDoorThickness] = useState(20);
+  const [drawerLayoutScope, setDrawerLayoutScope] = useState("whole");
+  const [drawerLayoutCount, setDrawerLayoutCount] = useState(3);
+  const [drawerLayoutDepth, setDrawerLayoutDepth] = useState(450);
+  const [drawerLeftClearance, setDrawerLeftClearance] = useState(12.5);
+  const [drawerRightClearance, setDrawerRightClearance] = useState(12.5);
+  const [drawerBottomClearance, setDrawerBottomClearance] = useState(12);
+  const [drawerFrontOverlay, setDrawerFrontOverlay] = useState(10);
+  const [drawerLayoutGap, setDrawerLayoutGap] = useState(10);
+  const [drawerFrontThickness, setDrawerFrontThickness] = useState(20);
   const [frontTargetBayIndex, setFrontTargetBayIndex] = useState(1);
   const [bay1FrontType, setBay1FrontType] = useState("door");
   const [bay2FrontType, setBay2FrontType] = useState("drawer");
@@ -208,6 +219,11 @@ export function FurnitureToolsPanel({
   const canDoorBuilder =
     canBuildCabinetDoorLayout &&
     typeof onBuildCabinetDoorLayout === "function" &&
+    smartSelectionCount > 0 &&
+    !hasLockedSmartSelection;
+  const canDrawerBuilder =
+    canBuildCabinetDrawerLayout &&
+    typeof onBuildCabinetDrawerLayout === "function" &&
     smartSelectionCount > 0 &&
     !hasLockedSmartSelection;
   const canFrontPresetBuilder =
@@ -1803,6 +1819,242 @@ export function FurnitureToolsPanel({
             </div>
           </div>
 
+
+          <div style={sectionCardStyle}>
+            <div style={S.smartActionsSectionLabel}>Drawer Builder</div>
+            <div style={sectionHintStyle}>
+              Build full production-style drawer assemblies inside the selected
+              cabinet opening. Each drawer receives a front, left/right sides,
+              back, bottom, handle, and left/right slide records.
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Apply To
+                </span>
+                <select
+                  value={drawerLayoutScope}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) => setDrawerLayoutScope(e.target.value)}
+                  style={actionInputStyle}
+                >
+                  <option value="whole">Whole Cabinet Opening</option>
+                  <option value="bay">Each Cabinet Bay</option>
+                  <option value="opening">Each Shelf Opening</option>
+                </select>
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Drawer Count
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  max="8"
+                  step="1"
+                  value={drawerLayoutCount}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setDrawerLayoutCount(
+                      Math.max(1, Math.min(8, Number(e.target.value) || 1)),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Drawer Depth (mm)
+                </span>
+                <input
+                  type="number"
+                  min="80"
+                  step="1"
+                  value={drawerLayoutDepth}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setDrawerLayoutDepth(Math.max(80, Number(e.target.value) || 80))
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Drawer Gap (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={drawerLayoutGap}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setDrawerLayoutGap(Math.max(0, Number(e.target.value) || 0))
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Left Slide Clearance (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={drawerLeftClearance}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setDrawerLeftClearance(
+                      Math.max(0, Number(e.target.value) || 0),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Right Slide Clearance (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.5"
+                  value={drawerRightClearance}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setDrawerRightClearance(
+                      Math.max(0, Number(e.target.value) || 0),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Bottom Clearance (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={drawerBottomClearance}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setDrawerBottomClearance(
+                      Math.max(0, Number(e.target.value) || 0),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Front Overlay (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={drawerFrontOverlay}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setDrawerFrontOverlay(
+                      Math.max(0, Number(e.target.value) || 0),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <label
+              style={{
+                ...fieldStyle,
+                display: "block",
+                marginBottom: 8,
+              }}
+            >
+              <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                Drawer Front Thickness (mm)
+              </span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={drawerFrontThickness}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onChange={(e) =>
+                  setDrawerFrontThickness(
+                    Math.max(1, Number(e.target.value) || 1),
+                  )
+                }
+                style={actionInputStyle}
+              />
+            </label>
+
+            <div
+              style={{
+                ...S.infoCard,
+                margin: "0 0 8px",
+                padding: "8px 10px",
+                fontSize: 10,
+                color: canDrawerBuilder ? "#93c5fd" : "#fcd34d",
+                lineHeight: 1.5,
+              }}
+            >
+              {canDrawerBuilder
+                ? "Full drawer boxes stay inside the selected cabinet. Reapplying identical settings creates no extra history step."
+                : "Select an unlocked cabinet/wardrobe assembly or one of its parts first."}
+            </div>
+
+            <div style={S.smartActionsWideGrid}>
+              <button
+                type="button"
+                onClick={makeHandler(
+                  canDrawerBuilder,
+                  onBuildCabinetDrawerLayout,
+                  {
+                    scope: drawerLayoutScope,
+                    drawerCount: drawerLayoutCount,
+                    drawerDepth: drawerLayoutDepth,
+                    leftClearance: drawerLeftClearance,
+                    rightClearance: drawerRightClearance,
+                    bottomClearance: drawerBottomClearance,
+                    frontOverlay: drawerFrontOverlay,
+                    drawerGap: drawerLayoutGap,
+                    frontThickness: drawerFrontThickness,
+                  },
+                )}
+                style={getBtnStyle(canDrawerBuilder)}
+              >
+                Apply Drawer Layout
+              </button>
+            </div>
+          </div>
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Front Builder Presets</div>
             <div style={sectionHintStyle}>
