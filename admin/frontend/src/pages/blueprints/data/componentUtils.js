@@ -14,6 +14,7 @@ import {
 } from "./utils";
 import { normalizeFurnitureStructureFields } from "./furnitureStructure";
 import { normalizeProductionMetadata } from "./productionMetadata";
+import { normalizeHardwareRequirements } from "./hardwareMetadata";
 
 const GRID_SIZE = 20;
 const MIN_COMPONENT_DIMENSION_MM = 1;
@@ -117,6 +118,12 @@ function normalizeComponent(c) {
     ...c,
     material: resolvedMaterial,
   });
+  const hardwareRequirements = normalizeHardwareRequirements(
+    c.hardwareRequirements ??
+      c.hardware_requirements ??
+      c.hardware ??
+      [],
+  );
 
   return {
     id: c.id || makeId(),
@@ -179,6 +186,10 @@ function normalizeComponent(c) {
     // them without linking to live inventory.
     grainDirection: productionMetadata.grainDirection,
     edgeTreatments: productionMetadata.edgeTreatments,
+
+    // Hardware requirements belong to the Blueprint part. They are production
+    // metadata only and intentionally do not reference/deduct live inventory.
+    hardwareRequirements,
 
     unitPrice: Number(c.unitPrice) || 0,
     groupUnitPrice: Number(c.groupUnitPrice) || 0,
