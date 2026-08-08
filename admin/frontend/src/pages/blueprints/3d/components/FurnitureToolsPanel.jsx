@@ -98,7 +98,16 @@ export function FurnitureToolsPanel({
   const [baseCabinetToeKickHeight, setBaseCabinetToeKickHeight] = useState(100);
   const [baseCabinetToeKickSetback, setBaseCabinetToeKickSetback] = useState(50);
   const [baseCabinetShelfCount, setBaseCabinetShelfCount] = useState(1);
-  const [baseCabinetDividerCount, setBaseCabinetDividerCount] = useState(0);  const [cabinetWidth, setCabinetWidth] = useState(1200);
+  const [baseCabinetDividerCount, setBaseCabinetDividerCount] = useState(0);
+  const [wallCabinetWidth, setWallCabinetWidth] = useState(900);
+  const [wallCabinetHeight, setWallCabinetHeight] = useState(720);
+  const [wallCabinetDepth, setWallCabinetDepth] = useState(350);
+  const [wallCabinetThickness, setWallCabinetThickness] = useState(18);
+  const [wallCabinetBackThickness, setWallCabinetBackThickness] = useState(6);
+  const [wallCabinetBottomHeight, setWallCabinetBottomHeight] = useState(1400);
+  const [wallCabinetShelfCount, setWallCabinetShelfCount] = useState(2);
+  const [wallCabinetDividerCount, setWallCabinetDividerCount] = useState(0);
+  const [cabinetWidth, setCabinetWidth] = useState(1200);
   const [cabinetHeight, setCabinetHeight] = useState(2000);
   const [cabinetDepth, setCabinetDepth] = useState(600);
   const [cabinetThickness, setCabinetThickness] = useState(20);
@@ -1925,6 +1934,229 @@ export function FurnitureToolsPanel({
                 style={getBtnStyle(canQuickCabinetBuilder)}
               >
                 Build Base Cabinet
+              </button>
+            </div>
+          </div>
+          <div style={sectionCardStyle}>
+            <div style={S.smartActionsSectionLabel}>Wall Cabinet Builder</div>
+            <div style={sectionHintStyle}>
+              Build an elevated wall cabinet carcass with exact panel and back
+              thickness, fixed shelves, and optional vertical dividers. Wall
+              cabinets have no toe kick and stay editable after generation.
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Width (mm)
+                </span>
+                <input
+                  type="number"
+                  min="300"
+                  step="1"
+                  value={wallCabinetWidth}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWallCabinetWidth(
+                      Math.max(300, Number(e.target.value) || 900),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Height (mm)
+                </span>
+                <input
+                  type="number"
+                  min="300"
+                  step="1"
+                  value={wallCabinetHeight}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWallCabinetHeight(
+                      Math.max(300, Number(e.target.value) || 720),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Depth (mm)
+                </span>
+                <input
+                  type="number"
+                  min="200"
+                  step="1"
+                  value={wallCabinetDepth}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWallCabinetDepth(
+                      Math.max(200, Number(e.target.value) || 350),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Panel Thickness (mm)
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={wallCabinetThickness}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWallCabinetThickness(
+                      Math.max(1, Number(e.target.value) || 18),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Back Thickness (mm)
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={wallCabinetBackThickness}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWallCabinetBackThickness(
+                      Math.max(1, Number(e.target.value) || 6),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Bottom Height from Floor (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={wallCabinetBottomHeight}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWallCabinetBottomHeight(
+                      Math.max(0, Number(e.target.value) || 0),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Fixed Shelf Levels
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="8"
+                  step="1"
+                  value={wallCabinetShelfCount}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWallCabinetShelfCount(
+                      Math.max(
+                        0,
+                        Math.min(8, Math.round(Number(e.target.value) || 0)),
+                      ),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Divider Count
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="4"
+                  step="1"
+                  value={wallCabinetDividerCount}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWallCabinetDividerCount(
+                      Math.max(
+                        0,
+                        Math.min(4, Math.round(Number(e.target.value) || 0)),
+                      ),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div
+              style={{
+                ...S.infoCard,
+                margin: "0 0 8px",
+                padding: "8px 10px",
+                fontSize: 10,
+                color: canQuickCabinetBuilder ? "#93c5fd" : "#fcd34d",
+                lineHeight: 1.5,
+              }}
+            >
+              {canQuickCabinetBuilder
+                ? "Creates an elevated editable Wall Cabinet. Existing Shelf, Door, Resize, Validate, and assembly tools remain available."
+                : "Wall Cabinet Builder is available in Editable mode."}
+            </div>
+
+            <div style={S.smartActionsWideGrid}>
+              <button
+                type="button"
+                onClick={makeHandler(
+                  canQuickCabinetBuilder,
+                  onBuildCabinetBox,
+                  {
+                    builderType: "wall",
+                    width: wallCabinetWidth,
+                    height: wallCabinetHeight,
+                    depth: wallCabinetDepth,
+                    thickness: wallCabinetThickness,
+                    backThickness: wallCabinetBackThickness,
+                    bottomHeightFromFloor: wallCabinetBottomHeight,
+                    shelfCount: wallCabinetShelfCount,
+                    dividerCount: wallCabinetDividerCount,
+                  },
+                )}
+                style={getBtnStyle(canQuickCabinetBuilder)}
+              >
+                Build Wall Cabinet
               </button>
             </div>
           </div>
