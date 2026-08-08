@@ -14,14 +14,22 @@ import {
   normalizeHardwareRequirements,
 } from "./hardwareMetadata";
 import { getWoodworkingProfileDescriptor } from "./woodworkingProfile";
-import {
-  getOperationLabel,
-  normalizeWoodworkingOperations,
-} from "./woodworkingOperations";
+import { normalizeWoodworkingOperations } from "./woodworkingOperations";
 
 const GRAIN_LABELS = Object.fromEntries(
-  GRAIN_DIRECTION_OPTIONS.map((item) => [item.value, item.label]),
+  GRAIN_DIRECTION_OPTIONS.map((item) => [
+    item.value,
+    item.value === "none" ? "No Grain" : item.label,
+  ]),
 );
+
+const FRIENDLY_OPERATION_LABELS = {
+  dado: "Dado",
+  rabbet: "Rabbet",
+  groove: "Groove",
+  recess: "Recess",
+  bore: "Bore",
+};
 
 const EDGE_LABELS = Object.fromEntries(
   EDGE_TREATMENT_OPTIONS.map((item) => [item.value, item.label]),
@@ -31,6 +39,9 @@ const cleanText = (value = "") =>
   String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
+
+const cleanDisplayLabel = (value = "") =>
+  cleanText(value).replace(/\s*\/\s*/g, " or ");
 
 const formatMm = (value, decimals = 0) => {
   const number = Number(value);
@@ -66,8 +77,9 @@ function getHardwareLines(component = {}) {
       component.hardware ??
       [],
   ).map((item) => {
-    const label =
-      cleanText(item.name) || getHardwareTypeLabel(item.type);
+    const label = cleanDisplayLabel(
+      cleanText(item.name) || getHardwareTypeLabel(item.type),
+    );
     return `${formatMm(item.quantity)}× ${label}`;
   });
 }
@@ -109,7 +121,8 @@ function getOperationLines(component = {}) {
       component.woodworking_operations ??
       [],
   ).map((operation) => {
-    const type = getOperationLabel(operation.type);
+    const type =
+      FRIENDLY_OPERATION_LABELS[operation.type] || "Machining";
 
     if (operation.type === "bore") {
       return `${type}: Ø${formatMm(
@@ -180,12 +193,7 @@ function buildPartProductionRow(component = {}, index = 0) {
 
   const productionTags = [];
 
-  if (production.grainDirection !== "none") {
-    productionTags.push(
-      GRAIN_LABELS[production.grainDirection] ||
-        production.grainDirection,
-    );
-  }
+
   if (edgeLines.length) {
     productionTags.push(plural(edgeLines.length, "treated edge"));
   }
@@ -199,7 +207,7 @@ function buildPartProductionRow(component = {}, index = 0) {
     productionTags.push(plural(notchLines.length, "edge notch"));
   }
   if (operationLines.length) {
-    productionTags.push(plural(operationLines.length, "machining op"));
+    productionTags.push(plural(operationLines.length, "machining step"));
   }
   if (descriptor) {
     productionTags.push(
@@ -221,7 +229,7 @@ function buildPartProductionRow(component = {}, index = 0) {
     material: cleanText(component.material) || "Material not set",
     grain:
       GRAIN_LABELS[production.grainDirection] ||
-      "No Grain / Not Applicable",
+      "No Grain",
     edgeLines,
     hardwareLines,
     cutoutLines,

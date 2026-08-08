@@ -1139,14 +1139,14 @@ function ProductionSnapshotPanel({ snapshot }) {
     <div style={productionSnapshotCard}>
       <div style={productionSnapshotHeader}>
         <div>
-          <div style={productionEyebrow}>Internal Production Reference</div>
+          <div style={productionEyebrow}>Production Reference</div>
           <h3 style={{ ...sectionTitle, marginTop: 5 }}>
             Blueprint Production Requirements
           </h3>
           <p style={{ ...helperText, maxWidth: 850 }}>
-            Use the saved Blueprint details as a guide when preparing the estimate.
-            Required Inventory Materials are still selected manually by the Admin.
-            This panel does not reserve, deduct, or automatically match inventory.
+            Use the saved Blueprint details as a production guide. Admin manually
+            selects the actual Required Inventory Materials. Nothing in this panel
+            reserves, deducts, or automatically matches inventory.
           </p>
         </div>
         <div
@@ -1155,7 +1155,7 @@ function ProductionSnapshotPanel({ snapshot }) {
             ...(isReady ? productionStatusReady : productionStatusReview),
           }}
         >
-          <span style={productionStatusLabel}>Handoff Status</span>
+          <span style={productionStatusLabel}>Production Status</span>
           <strong>{summary.handoffStatus || "REVIEW"}</strong>
         </div>
       </div>
@@ -1165,9 +1165,9 @@ function ProductionSnapshotPanel({ snapshot }) {
           ["Production Parts", summary.productionParts || 0],
           ["Material Types", summary.materialTypes || 0],
           ["Edge-Treated Parts", summary.edgeTreatedParts || 0],
-          ["Hardware Qty", summary.hardwareQty || 0],
+          ["Hardware Items", summary.hardwareQty || 0],
           ["Custom Profiles", summary.customProfiles || 0],
-          ["Machining Ops", summary.machiningOps || 0],
+          ["Machining Steps", summary.machiningOps || 0],
         ].map(([label, value]) => (
           <div key={label} style={productionMetricCard}>
             <span style={productionMetricLabel}>{label}</span>
@@ -1192,10 +1192,10 @@ function ProductionSnapshotPanel({ snapshot }) {
           )}
 
           <div style={productionGuide}>
-            <strong>Inventory remains manual.</strong>
+            <strong>Inventory selection is manual.</strong>
             <span>
-              Read the requirements below, then use the existing Required Inventory
-              Materials section to choose the actual stock items and quantities.
+              Review the requirements below, then choose the actual stock items and
+              quantities in Required Inventory Materials.
             </span>
           </div>
 
@@ -1203,11 +1203,12 @@ function ProductionSnapshotPanel({ snapshot }) {
             <table style={productionTable}>
               <thead>
                 <tr style={productionTableHead}>
-                  <th style={{ ...productionTh, width: "17%" }}>Part</th>
-                  <th style={{ ...productionTh, width: "7%" }}>Qty</th>
-                  <th style={{ ...productionTh, width: "20%" }}>Cut Size</th>
-                  <th style={{ ...productionTh, width: "19%" }}>Material / Grain</th>
-                  <th style={{ ...productionTh, width: "37%" }}>Production Notes</th>
+                  <th style={{ ...productionTh, width: "18%" }}>Part</th>
+                  <th style={{ ...productionTh, width: "6%" }}>Qty</th>
+                  <th style={{ ...productionTh, width: "18%" }}>Cut Size</th>
+                  <th style={{ ...productionTh, width: "20%" }}>Material</th>
+                  <th style={{ ...productionTh, width: "14%" }}>Grain</th>
+                  <th style={{ ...productionTh, width: "24%" }}>Production Details</th>
                 </tr>
               </thead>
               <tbody>
@@ -1239,30 +1240,42 @@ function ProductionSnapshotPanel({ snapshot }) {
                       </td>
                       <td style={productionTd}>
                         <div style={{ fontWeight: 800 }}>{part.material}</div>
-                        <div style={productionSecondary}>{part.grain}</div>
                       </td>
                       <td style={productionTd}>
-                        <div style={productionTagWrap}>
-                          {(part.productionTags.length
-                            ? part.productionTags
-                            : ["Standard part"]
-                          ).map((tag) => (
-                            <span key={`${part.id}-${tag}`} style={productionTag}>
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
+                        <div style={productionGrain}>{part.grain}</div>
+                      </td>
+                      <td style={productionTd}>
+                        {part.hasSpecialDetails ? (
+                          <>
+                            {part.productionTags.length > 0 && (
+                              <div style={productionTagWrap}>
+                                {part.productionTags.map((tag) => (
+                                  <span
+                                    key={`${part.id}-${tag}`}
+                                    style={productionTag}
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
 
-                        {detailLines.length > 0 ? (
-                          <div style={productionDetailList}>
-                            {detailLines.map((line, index) => (
-                              <div key={`${part.id}-detail-${index}`}>• {line}</div>
-                            ))}
-                          </div>
+                            {detailLines.length > 0 ? (
+                              <div style={productionDetailList}>
+                                {detailLines.map((line, index) => (
+                                  <div key={`${part.id}-detail-${index}`}>
+                                    • {line}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={productionSecondary}>
+                                Custom profile saved.
+                              </div>
+                            )}
+                          </>
                         ) : (
-                          <div style={productionSecondary}>
-                            No special machining, hardware, or edge treatment assigned.
-                          </div>
+                          <span style={productionStandard}>Standard part</span>
                         )}
                       </td>
                     </tr>
@@ -1273,9 +1286,9 @@ function ProductionSnapshotPanel({ snapshot }) {
           </div>
 
           <div style={productionFooterNote}>
-            Production metadata is reference-only. Pricing remains controlled by the
-            existing Blueprint Components, Additional Items, Labor, Logistics, and
-            quotation fields.
+            This production reference does not change pricing. Quotation amounts still
+            come from Blueprint Components, Additional Items, Labor, Logistics, and
+            the existing quotation fields.
           </div>
         </>
       )}
@@ -2552,8 +2565,8 @@ const productionEmpty = {
 
 const productionTable = {
   width: "100%",
-  minWidth: 1040,
-  marginTop: 16,
+  minWidth: 1080,
+  marginTop: 14,
   borderCollapse: "separate",
   borderSpacing: 0,
   tableLayout: "fixed",
@@ -2580,11 +2593,11 @@ const productionRow = {
 };
 
 const productionTd = {
-  padding: "12px",
-  verticalAlign: "top",
+  padding: "10px 12px",
+  verticalAlign: "middle",
   borderBottom: "1px solid #e4e4e7",
   color: "#27272a",
-  lineHeight: 1.45,
+  lineHeight: 1.4,
 };
 
 const productionPartCode = {
@@ -2622,11 +2635,29 @@ const productionSecondary = {
   lineHeight: 1.4,
 };
 
+const productionGrain = {
+  fontSize: 9,
+  fontWeight: 750,
+  color: "#52525b",
+};
+
+const productionStandard = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: 20,
+  padding: "3px 6px",
+  background: "#fafafa",
+  color: "#71717a",
+  fontSize: 8,
+  fontWeight: 750,
+  borderRadius: 0,
+};
+
 const productionTagWrap = {
   display: "flex",
   flexWrap: "wrap",
   gap: 5,
-  marginBottom: 7,
+  marginBottom: 5,
 };
 
 const productionTag = {
