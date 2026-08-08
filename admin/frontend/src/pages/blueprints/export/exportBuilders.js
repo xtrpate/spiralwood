@@ -63,6 +63,10 @@ import {
 } from "./exportSheetUtils";
 import { buildWoodworkingDetailsPages } from "./woodworkingDetailsExport";
 import { buildWoodworkingVisualCallouts } from "./woodworkingVisualCallouts";
+import {
+  EXPLODED_PARTS_SHEET_CODE,
+  buildExplodedPartsSchedulePages,
+} from "./explodedPartsSchedule";
 
 const GRID_SIZE = 20;
 const BOARD = 18;
@@ -788,7 +792,15 @@ function build2DViewPageSvg({
     selectedCompId: selectedComp?.id ?? null,
   });
 
-  const explodedNotes = "";
+  const explodedNotes =
+    view === "exploded"
+      ? svgText(
+          PAPER_MARGIN + 12,
+          pageH - PAPER_MARGIN - TITLE_BLOCK_H - 12,
+          `BALLOON NUMBERS REFER TO EXPLODED PARTS SCHEDULE — SHEET ${EXPLODED_PARTS_SHEET_CODE}`,
+          `font-size="8.5" font-weight="700" fill="#475569"`,
+        )
+      : "";
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="${pageW}" height="${pageH}" viewBox="0 0 ${pageW} ${pageH}">
@@ -1732,6 +1744,16 @@ function buildAllExportPages({
       ),
     );
   });
+
+  pages.push(
+    ...buildExplodedPartsSchedulePages({
+      selectedComponents: exportComponents,
+      selectedLabel: resolvedObjectLabel,
+      selectedDimsText,
+      selectedMaterialText,
+      blueprintTitle,
+    }),
+  );
 
   pages.push(
     buildMaterialsPageHtml({
