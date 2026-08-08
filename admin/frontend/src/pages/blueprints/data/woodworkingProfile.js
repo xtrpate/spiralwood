@@ -3,7 +3,7 @@
 // Pure woodworking profile geometry shared by 2D and 3D.
 // No inventory, pricing, backend, or estimation behavior lives here.
 
-const WOODWORKING_PROFILE_VERSION = 4;
+const WOODWORKING_PROFILE_VERSION = 5;
 
 const PROFILE_KIND_BY_TYPE = Object.freeze({
   wood_profile_rectangle: "rectangle",
@@ -550,10 +550,8 @@ function getContourCurvePathPointsMm(
   const descriptor = getWoodworkingProfileDescriptor(component);
   if (!descriptor || descriptor.kind !== "contour") return [];
 
-  return buildContourCurvedPath(
-    descriptor.contourPointsMm,
-    descriptor.profileContourBulges,
-    descriptor.contourCurveScaleMm,
+  return buildContourProfilePath(
+    descriptor,
     segments,
   );
 }
@@ -961,14 +959,22 @@ function pointInPolygon2(point, polygon = []) {
 
     if (onEdge) return true;
 
-    const intersects =
-      yi > y !== yj > y &&
-      x <
-        ((xj - xi) * (y - yi)) /
-          Math.max(1e-12, yj - yi) +
-          xi;
+    // Standard ray casting. Preserve the SIGN of (yj - yi).
+    // The previous Math.max(1e-12, yj - yi) turned every negative
+    // denominator into a tiny positive number and produced false OUTSIDE
+    // results on many polygon edges (especially obvious on oval boards).
+    const crossesHorizontalRay = (yi > y) !== (yj > y);
+    if (!crossesHorizontalRay) continue;
 
-    if (intersects) inside = !inside;
+    const denominator = yj - yi;
+    if (Math.abs(denominator) <= 1e-12) continue;
+
+    const intersectionX =
+      xi + ((xj - xi) * (y - yi)) / denominator;
+
+    if (x < intersectionX) {
+      inside = !inside;
+    }
   }
 
   return inside;
@@ -1099,9 +1105,23 @@ function getProfileCutoutStatus(
   const collides = descriptor.profileCutouts.some((other) => {
     if (other.id === cutout.id) return false;
 
+    const otherPoints = getProfileCutoutLocalPoints(other, 36);
+
+    // Do not let an already-invalid outside cutout make an otherwise valid
+    // cutout fail with an overlap error. Only internal cutouts participate
+    // in cutout-to-cutout collision validation.
+    if (
+      !isCutoutInsideOuterProfile(
+        outerPoints || [],
+        otherPoints,
+      )
+    ) {
+      return false;
+    }
+
     return polygonsIntersect2(
       cutoutPoints,
-      getProfileCutoutLocalPoints(other, 36),
+      otherPoints,
     );
   });
 
@@ -1167,6 +1187,429 @@ function getWoodworkingProfile2DCutouts(
       points,
     };
   });
+}
+
+const MAX_PROFILE_EDGE_NOTCHES = 8;
+
+function makeProfileEdgeNotchId() {
+  return `edge_notch_${Date.now().toString(36)}_${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+function normalizeProfileEdgeNotches(value, pointCount = 0) {
+  let source = value;
+
+  if (typeof source === "string") {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      source = null;
+    }
+  }
+
+  if (!Array.isArray(source)) return [];
+
+  const count = Math.max(0, Number(pointCount) || 0);
+
+  return source
+    .slice(0, MAX_PROFILE_EDGE_NOTCHES)
+    .map((item, index) => ({
+      id:
+        String(item?.id || "").trim() ||
+        `edge_notch_${index + 1}`,
+      edgeIndex: Math.max(
+        0,
+        Math.min(
+          Math.max(0, count - 1),
+          Math.floor(Number(item?.edgeIndex) || 0),
+        ),
+      ),
+      offset: clampNumber(item?.offset, 0, 100000, 20),
+      width: clampNumber(item?.width, 1, 100000, 80),
+      depth: clampNumber(item?.depth, 1, 100000, 40),
+    }));
+}
+
+function getDescriptorContourEdgeInfo(
+  descriptor,
+  edgeIndex = 0,
+) {
+  if (!descriptor || descriptor.kind !== "contour") return null;
+
+  const count = descriptor.contourPointsMm.length;
+  if (!count) return null;
+
+  const index = Math.max(
+    0,
+    Math.min(count - 1, Number(edgeIndex) || 0),
+  );
+  const nextIndex = (index + 1) % count;
+  const start = descriptor.contourPointsMm[index];
+  const end = descriptor.contourPointsMm[nextIndex];
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const lengthMm = Math.max(0.001, Math.hypot(dx, dy));
+  const curveRatio =
+    Number(descriptor.profileContourBulges[index]) || 0;
+
+  return {
+    index,
+    nextIndex,
+    start,
+    end,
+    dx,
+    dy,
+    lengthMm,
+    isCurved: Math.abs(curveRatio) > 1e-6,
+  };
+}
+
+function buildContourPathWithEdgeNotchesRaw(
+  descriptor,
+  edgeNotches = [],
+  segments = 12,
+) {
+  const points = descriptor?.contourPointsMm || [];
+  if (points.length < 3) return [];
+
+  const result = [];
+  const orientation = contourSignedArea(points) >= 0 ? 1 : -1;
+  const grouped = new Map();
+
+  edgeNotches.forEach((notch) => {
+    const edgeIndex = Math.max(
+      0,
+      Math.min(points.length - 1, Number(notch.edgeIndex) || 0),
+    );
+    if (!grouped.has(edgeIndex)) grouped.set(edgeIndex, []);
+    grouped.get(edgeIndex).push(notch);
+  });
+
+  grouped.forEach((items) =>
+    items.sort(
+      (a, b) =>
+        (Number(a.offset) || 0) - (Number(b.offset) || 0),
+    ),
+  );
+
+  for (let index = 0; index < points.length; index += 1) {
+    const start = points[index];
+    const end = points[(index + 1) % points.length];
+    const ratio =
+      Number(descriptor.profileContourBulges[index]) || 0;
+
+    if (Math.abs(ratio) > 1e-6) {
+      const arcPoints = getCircularArcPoints(
+        start,
+        end,
+        ratio * descriptor.contourCurveScaleMm,
+        segments,
+      );
+      arcPoints.forEach((point) =>
+        appendUniquePoint(result, point),
+      );
+      continue;
+    }
+
+    const dx = end[0] - start[0];
+    const dy = end[1] - start[1];
+    const length = Math.max(0.001, Math.hypot(dx, dy));
+    const dir = [dx / length, dy / length];
+    const inward =
+      orientation > 0
+        ? [-dir[1], dir[0]]
+        : [dir[1], -dir[0]];
+
+    appendUniquePoint(result, start);
+
+    const items = grouped.get(index) || [];
+    let cursor = 0;
+
+    items.forEach((notch) => {
+      const offset = Number(notch.offset) || 0;
+      const width = Math.max(1, Number(notch.width) || 1);
+      const depth = Math.max(1, Number(notch.depth) || 1);
+      const exit = offset + width;
+
+      if (
+        offset < 1 ||
+        exit > length - 1 ||
+        offset < cursor + 1
+      ) {
+        return;
+      }
+
+      const outerA = [
+        start[0] + dir[0] * offset,
+        start[1] + dir[1] * offset,
+      ];
+      const innerA = [
+        outerA[0] + inward[0] * depth,
+        outerA[1] + inward[1] * depth,
+      ];
+      const outerB = [
+        start[0] + dir[0] * exit,
+        start[1] + dir[1] * exit,
+      ];
+      const innerB = [
+        outerB[0] + inward[0] * depth,
+        outerB[1] + inward[1] * depth,
+      ];
+
+      appendUniquePoint(result, outerA);
+      appendUniquePoint(result, innerA);
+      appendUniquePoint(result, innerB);
+      appendUniquePoint(result, outerB);
+
+      cursor = exit;
+    });
+
+    appendUniquePoint(result, end);
+  }
+
+  if (
+    result.length > 2 &&
+    pointDistance(result[0], result[result.length - 1]) <= 1e-5
+  ) {
+    result.pop();
+  }
+
+  return result;
+}
+
+function getRenderableProfileEdgeNotchesFromDescriptor(
+  descriptor,
+  segments = 12,
+) {
+  if (!descriptor || descriptor.kind !== "contour") return [];
+
+  const accepted = [];
+
+  descriptor.profileEdgeNotches.forEach((notch) => {
+    const edge = getDescriptorContourEdgeInfo(
+      descriptor,
+      notch.edgeIndex,
+    );
+    if (!edge || edge.isCurved) return;
+
+    const offset = Number(notch.offset) || 0;
+    const width = Math.max(1, Number(notch.width) || 1);
+    const depth = Math.max(1, Number(notch.depth) || 1);
+
+    if (
+      offset < 1 ||
+      offset + width > edge.lengthMm - 1 ||
+      depth <= 0
+    ) {
+      return;
+    }
+
+    const overlaps = accepted.some((other) => {
+      if (other.edgeIndex !== notch.edgeIndex) return false;
+      const a0 = offset;
+      const a1 = offset + width;
+      const b0 = Number(other.offset) || 0;
+      const b1 = b0 + (Number(other.width) || 0);
+      return Math.max(a0, b0) < Math.min(a1, b1) + 1;
+    });
+
+    if (overlaps) return;
+
+    const candidate = [...accepted, notch];
+    const candidatePath = buildContourPathWithEdgeNotchesRaw(
+      descriptor,
+      candidate,
+      segments,
+    );
+
+    if (isValidContourPolygon(candidatePath)) {
+      accepted.push(notch);
+    }
+  });
+
+  return accepted;
+}
+
+function buildContourProfilePath(
+  descriptor,
+  segments = 12,
+) {
+  if (!descriptor || descriptor.kind !== "contour") return [];
+
+  const renderableNotches =
+    getRenderableProfileEdgeNotchesFromDescriptor(
+      descriptor,
+      segments,
+    );
+
+  return buildContourPathWithEdgeNotchesRaw(
+    descriptor,
+    renderableNotches,
+    segments,
+  );
+}
+
+function createProfileEdgeNotch(
+  component = {},
+  edgeIndex = 0,
+) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") return null;
+
+  const edge = getDescriptorContourEdgeInfo(
+    descriptor,
+    edgeIndex,
+  );
+  if (!edge || edge.isCurved) return null;
+
+  const width = Math.max(
+    20,
+    Math.min(120, edge.lengthMm * 0.25),
+  );
+  const depth = Math.max(
+    10,
+    Math.min(60, Math.min(descriptor.u, descriptor.v) * 0.14),
+  );
+  const offset = Math.max(
+    1,
+    (edge.lengthMm - width) / 2,
+  );
+
+  return {
+    id: makeProfileEdgeNotchId(),
+    edgeIndex: edge.index,
+    offset,
+    width,
+    depth,
+  };
+}
+
+function updateProfileEdgeNotch(
+  component = {},
+  notchId = "",
+  attrs = {},
+) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") return null;
+
+  const id = String(notchId || "");
+
+  return normalizeProfileEdgeNotches(
+    descriptor.profileEdgeNotches.map((item) =>
+      item.id === id
+        ? { ...item, ...attrs, id: item.id }
+        : item,
+    ),
+    descriptor.contourPointsMm.length,
+  );
+}
+
+function deleteProfileEdgeNotch(
+  component = {},
+  notchId = "",
+) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") return null;
+
+  const id = String(notchId || "");
+  return descriptor.profileEdgeNotches.filter(
+    (item) => item.id !== id,
+  );
+}
+
+function getProfileEdgeNotchStatus(
+  component = {},
+  notchOrId = "",
+) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") {
+    return {
+      valid: false,
+      code: "no_contour",
+      message: "Edge notches require a Custom Contour Board.",
+    };
+  }
+
+  const notch =
+    typeof notchOrId === "object" && notchOrId
+      ? notchOrId
+      : descriptor.profileEdgeNotches.find(
+          (item) => item.id === String(notchOrId || ""),
+        );
+
+  if (!notch) {
+    return {
+      valid: false,
+      code: "missing",
+      message: "Edge notch not found.",
+    };
+  }
+
+  const edge = getDescriptorContourEdgeInfo(
+    descriptor,
+    notch.edgeIndex,
+  );
+
+  if (!edge) {
+    return {
+      valid: false,
+      code: "edge_missing",
+      message: "Selected contour edge is unavailable.",
+    };
+  }
+
+  if (edge.isCurved) {
+    return {
+      valid: false,
+      code: "curved_edge",
+      message: "Straighten this edge before applying its notch.",
+    };
+  }
+
+  const offset = Number(notch.offset) || 0;
+  const width = Math.max(1, Number(notch.width) || 1);
+
+  if (
+    offset < 1 ||
+    offset + width > edge.lengthMm - 1
+  ) {
+    return {
+      valid: false,
+      code: "outside_edge",
+      message:
+        "Notch must stay inside the selected edge with a small end margin.",
+    };
+  }
+
+  const renderable =
+    getRenderableProfileEdgeNotchesFromDescriptor(
+      descriptor,
+      12,
+    );
+
+  if (!renderable.some((item) => item.id === notch.id)) {
+    return {
+      valid: false,
+      code: "collision",
+      message:
+        "Notch overlaps another notch or cuts across the contour.",
+    };
+  }
+
+  return {
+    valid: true,
+    code: "ok",
+    message: "Valid rectangular boundary notch.",
+  };
+}
+
+function getValidProfileEdgeNotches(component = {}) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  return getRenderableProfileEdgeNotchesFromDescriptor(
+    descriptor,
+    12,
+  );
 }
 
 function getProfileKind(component = {}) {
@@ -1365,6 +1808,14 @@ function getWoodworkingProfileDescriptor(component = {}) {
     axes,
   );
 
+  const profileEdgeNotches =
+    kind === "contour"
+      ? normalizeProfileEdgeNotches(
+          component.profileEdgeNotches,
+          profileContourPoints.length,
+        )
+      : [];
+
   const filletRadiusMax = Math.max(0, minProfileEdge / 2 - 0.5);
   const profileFilletRadius = supportsProfileFillet(kind)
     ? clampNumber(
@@ -1395,6 +1846,7 @@ function getWoodworkingProfileDescriptor(component = {}) {
     contourCurveScaleMm,
     hasContourCurves,
     profileCutouts,
+    profileEdgeNotches,
     profileFilletRadius,
     limits: {
       radiusMax,
@@ -1432,6 +1884,9 @@ function normalizeWoodworkingProfileMetadata(component = {}) {
             ([u, v]) => [u, v],
           ),
           profileContourBulges: [...descriptor.profileContourBulges],
+          profileEdgeNotches: descriptor.profileEdgeNotches.map(
+            (item) => ({ ...item }),
+          ),
         }
       : {}),
     profileCutouts: descriptor.profileCutouts.map((item) => ({
@@ -1684,12 +2139,19 @@ function getWoodworkingProfileLocalPoints(component = {}, options = {}) {
 
   if (kind === "contour") {
     const basePoints = descriptor.contourPointsMm.map(([u, v]) => [u, v]);
+    const validEdgeNotches =
+      getRenderableProfileEdgeNotchesFromDescriptor(
+        descriptor,
+        options.curveSegments || 14,
+      );
 
-    if (descriptor.hasContourCurves) {
-      return buildContourCurvedPath(
-        basePoints,
-        descriptor.profileContourBulges,
-        descriptor.contourCurveScaleMm,
+    if (
+      descriptor.hasContourCurves ||
+      validEdgeNotches.length > 0
+    ) {
+      return buildContourPathWithEdgeNotchesRaw(
+        descriptor,
+        validEdgeNotches,
         options.curveSegments || 14,
       );
     }
@@ -1978,6 +2440,12 @@ export {
   getProfileCutoutStatus,
   getValidProfileCutouts,
   getWoodworkingProfile2DCutouts,
+  MAX_PROFILE_EDGE_NOTCHES,
+  createProfileEdgeNotch,
+  updateProfileEdgeNotch,
+  deleteProfileEdgeNotch,
+  getProfileEdgeNotchStatus,
+  getValidProfileEdgeNotches,
   isValidContourPolygon,
   getWoodworkingProfileLocalPoints,
   getWoodworkingProfile2DPoints,

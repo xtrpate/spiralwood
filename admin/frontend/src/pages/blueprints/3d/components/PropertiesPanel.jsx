@@ -38,6 +38,11 @@ import {
   getProfileCutoutLocalPoints,
   getProfileCutoutStatus,
   getWoodworkingProfileLocalPoints,
+  MAX_PROFILE_EDGE_NOTCHES,
+  createProfileEdgeNotch,
+  updateProfileEdgeNotch,
+  deleteProfileEdgeNotch,
+  getProfileEdgeNotchStatus,
 } from "../../data/woodworkingProfile";
 
 function ContourEditorCard({
@@ -51,10 +56,12 @@ function ContourEditorCard({
   const svgRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [activeEdgeIndex, setActiveEdgeIndex] = useState(0);
+  const [activeNotchId, setActiveNotchId] = useState("");
 
   useEffect(() => {
     setActiveIndex(0);
     setActiveEdgeIndex(0);
+    setActiveNotchId("");
   }, [selectedComp?.id]);
 
   const points = Array.isArray(woodworkingProfile?.contourPointsMm)
@@ -76,6 +83,23 @@ function ContourEditorCard({
     safeEdgeIndex,
     18,
   );
+  const allEdgeNotches = Array.isArray(
+    woodworkingProfile?.profileEdgeNotches,
+  )
+    ? woodworkingProfile.profileEdgeNotches
+    : [];
+  const activeEdgeNotches = allEdgeNotches.filter(
+    (item) => Number(item.edgeIndex) === safeEdgeIndex,
+  );
+  const activeNotch =
+    activeEdgeNotches.find(
+      (item) => item.id === activeNotchId,
+    ) ||
+    activeEdgeNotches[0] ||
+    null;
+  const activeNotchStatus = activeNotch
+    ? getProfileEdgeNotchStatus(selectedComp, activeNotch)
+    : null;
 
   const disabled =
     editorMode !== "editable" || isLocked(selectedComp);
@@ -136,7 +160,9 @@ function ContourEditorCard({
   const commitContour = ({
     nextPoints = null,
     nextCurves = null,
+    nextNotches = null,
     resetFilletForCurves = false,
+    resetFilletForNotches = false,
   }) => {
     const attrs = {};
 
@@ -155,6 +181,18 @@ function ContourEditorCard({
       ) {
         // V3 keeps circular edges mathematically clean. Corner fillet remains
         // available whenever all custom contour edges are straight.
+        attrs.profileFilletRadius = 0;
+      }
+    }
+
+    if (Array.isArray(nextNotches)) {
+      attrs.profileEdgeNotches = nextNotches;
+
+      if (
+        resetFilletForNotches &&
+        nextNotches.length > 0
+      ) {
+        // V4B boundary notches define their own hard inside corners.
         attrs.profileFilletRadius = 0;
       }
     }
@@ -198,11 +236,23 @@ function ContourEditorCard({
       safeEdgeIndex,
       nextBulgeMm,
     );
+    const willCurve =
+      Math.abs(Number(nextBulgeMm) || 0) > 0.01;
+    const nextNotches = willCurve
+      ? allEdgeNotches.filter(
+          (item) => Number(item.edgeIndex) !== safeEdgeIndex,
+        )
+      : null;
 
     commitContour({
       nextCurves,
+      nextNotches,
       resetFilletForCurves: true,
     });
+
+    if (willCurve) {
+      setActiveNotchId("");
+    }
   };
 
   const commitEdgeRadius = (nextRadiusMm) => {
@@ -217,6 +267,56 @@ function ContourEditorCard({
       nextCurves,
       resetFilletForCurves: true,
     });
+  };
+
+  const addEdgeNotch = () => {
+    if (
+      disabled ||
+      activeEdgeInfo?.isCurved ||
+      allEdgeNotches.length >= MAX_PROFILE_EDGE_NOTCHES
+    ) {
+      return;
+    }
+
+    const created = createProfileEdgeNotch(
+      selectedComp,
+      safeEdgeIndex,
+    );
+    if (!created) return;
+
+    const nextNotches = [...allEdgeNotches, created];
+    commitContour({
+      nextNotches,
+      resetFilletForNotches: true,
+    });
+    setActiveNotchId(created.id);
+  };
+
+  const updateActiveNotch = (attrs) => {
+    if (!activeNotch) return;
+
+    const nextNotches = updateProfileEdgeNotch(
+      selectedComp,
+      activeNotch.id,
+      attrs,
+    );
+
+    commitContour({
+      nextNotches,
+      resetFilletForNotches: true,
+    });
+  };
+
+  const deleteActiveNotch = () => {
+    if (!activeNotch) return;
+
+    const nextNotches = deleteProfileEdgeNotch(
+      selectedComp,
+      activeNotch.id,
+    );
+
+    commitContour({ nextNotches });
+    setActiveNotchId("");
   };
 
   const handleCurvePointerMove = (event) => {
@@ -261,7 +361,9 @@ function ContourEditorCard({
     commitContour({
       nextPoints,
       nextCurves,
+      nextNotches: [],
     });
+    setActiveNotchId("");
 
     const nextIndex = Math.min(
       safeIndex + 1,
@@ -286,7 +388,9 @@ function ContourEditorCard({
     commitContour({
       nextPoints,
       nextCurves,
+      nextNotches: [],
     });
+    setActiveNotchId("");
 
     const nextIndex = Math.max(
       0,
@@ -304,8 +408,10 @@ function ContourEditorCard({
     commitContour({
       nextPoints,
       nextCurves: resetContourCurveRatios(nextPoints.length),
+      nextNotches: [],
     });
 
+    setActiveNotchId("");
     setActiveIndex(0);
     setActiveEdgeIndex(0);
   };
@@ -770,8 +876,276 @@ function ContourEditorCard({
           {activeEdgeInfo?.isCurved
             ? `radius ${Math.round(activeEdgeInfo.radiusMm)}mm`
             : "straight edge"}.
-          Adding an arc resets Custom Contour corner fillet to 0 so the
-          two operations do not overlap.
+          Adding an arc resets Custom Contour corner fillet to 0 and removes
+          any notch on that same edge.
+        </div>
+      </div>
+
+      <div
+        style={{
+          paddingTop: 8,
+          marginTop: 3,
+          marginBottom: 9,
+          borderTop: "1px solid #243247",
+        }}
+      >
+        <div
+          style={{
+            marginBottom: 5,
+            color: "#fde68a",
+            fontSize: 9,
+            fontWeight: 850,
+          }}
+        >
+          Edge Notch · {edgeLabel}
+        </div>
+
+        <div
+          style={{
+            marginBottom: 7,
+            color: "#7f8ea3",
+            fontSize: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          Rectangular boundary cut from the selected straight contour edge.
+          Offset is measured from P{safeEdgeIndex + 1} toward P{
+            activeEdgeInfo?.nextIndex + 1 || 1
+          }.
+        </div>
+
+        {activeEdgeInfo?.isCurved ? (
+          <div
+            style={{
+              padding: 7,
+              border: "1px solid #78350f",
+              borderRadius: 0,
+              background: "rgba(120, 53, 15, 0.15)",
+              color: "#fde68a",
+              fontSize: 8,
+              lineHeight: 1.4,
+            }}
+          >
+            Straighten this edge before adding an edge notch.
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled={
+                disabled ||
+                allEdgeNotches.length >= MAX_PROFILE_EDGE_NOTCHES
+              }
+              onClick={addEdgeNotch}
+              style={{
+                width: "100%",
+                height: 30,
+                border: "1px solid #854d0e",
+                borderRadius: 0,
+                background: "#211b0b",
+                color: "#fef3c7",
+                fontSize: 8,
+                fontWeight: 800,
+                cursor:
+                  disabled ||
+                  allEdgeNotches.length >= MAX_PROFILE_EDGE_NOTCHES
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              + Edge Notch
+            </button>
+
+            {activeEdgeNotches.length ? (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 4,
+                    marginTop: 7,
+                    marginBottom: 7,
+                  }}
+                >
+                  {activeEdgeNotches.map((notch, index) => (
+                    <button
+                      key={notch.id}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => setActiveNotchId(notch.id)}
+                      style={{
+                        minWidth: 40,
+                        height: 25,
+                        padding: "0 6px",
+                        border: `1px solid ${
+                          activeNotch?.id === notch.id
+                            ? "#f59e0b"
+                            : "#334155"
+                        }`,
+                        borderRadius: 0,
+                        background:
+                          activeNotch?.id === notch.id
+                            ? "#451a03"
+                            : "#0f172a",
+                        color:
+                          activeNotch?.id === notch.id
+                            ? "#fef3c7"
+                            : "#94a3b8",
+                        fontSize: 8,
+                        fontWeight: 800,
+                      }}
+                    >
+                      N{index + 1}
+                    </button>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    marginBottom: 7,
+                    padding: 7,
+                    border: `1px solid ${
+                      activeNotchStatus?.valid
+                        ? "#365314"
+                        : "#7f1d1d"
+                    }`,
+                    borderRadius: 0,
+                    background: activeNotchStatus?.valid
+                      ? "rgba(54, 83, 20, 0.12)"
+                      : "rgba(127, 29, 29, 0.12)",
+                    color: activeNotchStatus?.valid
+                      ? "#d9f99d"
+                      : "#fecaca",
+                    fontSize: 8,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {activeNotchStatus?.valid ? "VALID" : "CHECK"} ·{" "}
+                  {activeNotchStatus?.message}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 6,
+                    marginBottom: 7,
+                  }}
+                >
+                  <div>
+                    <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                      Offset From Start (mm)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={Math.round(activeNotch?.offset || 0)}
+                      disabled={disabled}
+                      onChange={(event) =>
+                        updateActiveNotch({
+                          offset: Math.max(
+                            0,
+                            Number(event.target.value) || 0,
+                          ),
+                        })
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                      Width (mm)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={Math.round(activeNotch?.width || 1)}
+                      disabled={disabled}
+                      onChange={(event) =>
+                        updateActiveNotch({
+                          width: Math.max(
+                            1,
+                            Number(event.target.value) || 1,
+                          ),
+                        })
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 7 }}>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Depth Into Board (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={Math.round(activeNotch?.depth || 1)}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActiveNotch({
+                        depth: Math.max(
+                          1,
+                          Number(event.target.value) || 1,
+                        ),
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  disabled={disabled || !activeNotch}
+                  onClick={deleteActiveNotch}
+                  style={{
+                    width: "100%",
+                    height: 28,
+                    border: "1px solid #7f1d1d",
+                    borderRadius: 0,
+                    background: "#1f1115",
+                    color: "#fca5a5",
+                    fontSize: 8,
+                    fontWeight: 800,
+                  }}
+                >
+                  Delete Selected Edge Notch
+                </button>
+              </>
+            ) : (
+              <div
+                style={{
+                  marginTop: 7,
+                  padding: 7,
+                  border: "1px solid #243247",
+                  borderRadius: 0,
+                  color: "#64748b",
+                  fontSize: 8,
+                  lineHeight: 1.4,
+                }}
+              >
+                No notch on this selected edge.
+              </div>
+            )}
+          </>
+        )}
+
+        <div
+          style={{
+            marginTop: 6,
+            color: "#64748b",
+            fontSize: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          {allEdgeNotches.length}/{MAX_PROFILE_EDGE_NOTCHES} boundary notches.
+          Point insert/delete/reset clears indexed notches to avoid attaching
+          a saved notch to the wrong contour edge.
         </div>
       </div>
 

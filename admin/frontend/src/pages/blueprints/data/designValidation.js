@@ -162,6 +162,15 @@ const stableComponentSnapshot = (component = {}) => ({
         height: roundMetric(item?.height),
       }))
     : [],
+  profileEdgeNotches: Array.isArray(component.profileEdgeNotches)
+    ? component.profileEdgeNotches.map((item) => ({
+        id: cleanText(item?.id),
+        edgeIndex: Number(item?.edgeIndex) || 0,
+        offset: roundMetric(item?.offset),
+        width: roundMetric(item?.width),
+        depth: roundMetric(item?.depth),
+      }))
+    : [],
   profileFilletRadius: roundMetric(component.profileFilletRadius),
   locked: Boolean(component.locked),
 });
