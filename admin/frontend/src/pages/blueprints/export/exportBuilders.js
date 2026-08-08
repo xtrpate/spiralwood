@@ -61,6 +61,7 @@ import {
   resolveExportFocusLabel,
   formatDimsForTitleBlock,
 } from "./exportSheetUtils";
+import { buildWoodworkingDetailsPages } from "./woodworkingDetailsExport";
 
 const GRID_SIZE = 20;
 const BOARD = 18;
@@ -1446,6 +1447,209 @@ function buildBlueprintDocumentHtml(pages) {
           .bp-table .table-total td {
             background: #f8fafc;
           }
+          .ww-summary-strip {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            padding: 14px 34px 0;
+          }
+          .ww-summary-strip > div {
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            padding: 9px 11px;
+            display: grid;
+            gap: 3px;
+          }
+          .ww-summary-strip span {
+            color: #64748b;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: .5px;
+            text-transform: uppercase;
+          }
+          .ww-summary-strip b {
+            font-size: 14px;
+          }
+          .ww-page-note {
+            margin: 12px 34px 10px;
+            border: 1px solid #94a3b8;
+            border-left: 4px solid #0f172a;
+            background: #f8fafc;
+            padding: 8px 10px;
+            display: grid;
+            gap: 3px;
+            font-size: 9.5px;
+            line-height: 1.35;
+          }
+          .ww-page-note b {
+            font-size: 9px;
+            letter-spacing: .7px;
+          }
+          .ww-cards {
+            padding: 0 34px 24px;
+            display: grid;
+            gap: 10px;
+          }
+          .ww-compact-part {
+            border: 1px solid #94a3b8;
+            background: #fff;
+            display: grid;
+            grid-template-columns: 1.15fr .35fr 1.45fr 1.35fr 1fr 1.65fr auto;
+            align-items: center;
+            min-height: 48px;
+          }
+          .ww-compact-part > div {
+            min-width: 0;
+            padding: 6px 8px;
+            border-right: 1px solid #e2e8f0;
+            font-size: 8.8px;
+            overflow-wrap: anywhere;
+          }
+          .ww-compact-part > div:last-child {
+            border-right: 0;
+          }
+          .ww-compact-id {
+            display: grid;
+            gap: 2px;
+          }
+          .ww-compact-id b {
+            font-size: 9px;
+            letter-spacing: .45px;
+          }
+          .ww-compact-id span {
+            font-size: 9.2px;
+            font-weight: 700;
+          }
+          .ww-compact-label {
+            display: block;
+            color: #64748b;
+            font-size: 7.5px;
+            text-transform: uppercase;
+            letter-spacing: .4px;
+            margin-bottom: 2px;
+          }
+          .ww-compact-note {
+            color: #64748b;
+            font-size: 8px !important;
+            line-height: 1.25;
+          }
+          .ww-part-card {
+            border: 1.2px solid #64748b;
+            background: #fff;
+          }
+          .ww-part-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: center;
+            padding: 8px 10px;
+            border-bottom: 1px solid #cbd5e1;
+            background: #f8fafc;
+          }
+          .ww-part-code {
+            font-size: 9px;
+            color: #64748b;
+            font-weight: 700;
+            letter-spacing: .6px;
+          }
+          .ww-part-name {
+            font-size: 13px;
+            font-weight: 800;
+            margin-top: 2px;
+          }
+          .ww-status {
+            min-width: 54px;
+            padding: 4px 8px;
+            border: 1px solid #475569;
+            font-size: 9px;
+            font-weight: 800;
+            text-align: center;
+            letter-spacing: .6px;
+          }
+          .ww-status.is-ok {
+            background: #f8fafc;
+          }
+          .ww-status.is-check {
+            background: #fff7ed;
+            border-color: #c2410c;
+            color: #9a3412;
+          }
+          .ww-core-grid {
+            display: grid;
+            grid-template-columns: .5fr 1.15fr 1.15fr 1fr;
+            border-bottom: 1px solid #cbd5e1;
+          }
+          .ww-core-grid > div {
+            padding: 6px 8px;
+            border-right: 1px solid #e2e8f0;
+            min-width: 0;
+          }
+          .ww-core-grid > div:nth-child(4) {
+            border-right: 0;
+          }
+          .ww-core-grid .ww-wide {
+            grid-column: 1 / -1;
+            border-top: 1px solid #e2e8f0;
+            border-right: 0;
+          }
+          .ww-core-grid span {
+            display: block;
+            color: #64748b;
+            font-size: 8px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 2px;
+          }
+          .ww-core-grid b {
+            font-size: 9.5px;
+            overflow-wrap: anywhere;
+          }
+          .ww-detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+          }
+          .ww-section {
+            padding: 7px 9px;
+            border-right: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e2e8f0;
+            min-height: 50px;
+          }
+          .ww-section:nth-child(even) {
+            border-right: 0;
+          }
+          .ww-section-title {
+            font-size: 8.5px;
+            font-weight: 800;
+            letter-spacing: .55px;
+            text-transform: uppercase;
+            color: #334155;
+            margin-bottom: 4px;
+          }
+          .ww-list {
+            margin: 0;
+            padding-left: 14px;
+            display: grid;
+            gap: 2px;
+            font-size: 8.8px;
+            line-height: 1.25;
+          }
+          .ww-empty {
+            color: #94a3b8;
+            font-size: 8.8px;
+          }
+          .ww-span-2 {
+            grid-column: 1 / -1;
+          }
+          .ww-span-2 .ww-section {
+            border-right: 0;
+          }
+          .ww-check-note {
+            padding: 6px 9px;
+            background: #fff7ed;
+            color: #9a3412;
+            border-top: 1px solid #fdba74;
+            font-size: 8.8px;
+          }
           @page {
             size: ${EXPORT_PAGE_W}px ${EXPORT_PAGE_H}px;
             margin: 0;
@@ -1527,6 +1731,14 @@ function buildAllExportPages({
       selectedMaterialText,
       blueprintTitle,
       unit,
+    }),
+  );
+
+  pages.push(
+    ...buildWoodworkingDetailsPages({
+      selectedComponents: exportComponents,
+      selectedLabel: resolvedObjectLabel,
+      blueprintTitle,
     }),
   );
 
