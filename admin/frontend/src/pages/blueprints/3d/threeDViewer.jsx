@@ -132,6 +132,7 @@ function ThreeDViewer({
   canBuildCabinetFrontPreset = false,
   canBuildCabinetCustomBayFronts = false,
   canBuildCabinetCustomCellFronts = false,
+  designValidationReport = null,
   showLibraryPanel = true,
 }) {
   const [activeLeftPanel, setActiveLeftPanel] = useState(
@@ -2717,6 +2718,7 @@ function ThreeDViewer({
             canBuildCabinetFrontPreset={canBuildCabinetFrontPreset}
             canBuildCabinetCustomBayFronts={canBuildCabinetCustomBayFronts}
             canBuildCabinetCustomCellFronts={canBuildCabinetCustomCellFronts}
+            designValidationReport={designValidationReport}
             isDocked={true}
             activeToolTab={activeToolTab}
             onChangeToolTab={setActiveToolTab}

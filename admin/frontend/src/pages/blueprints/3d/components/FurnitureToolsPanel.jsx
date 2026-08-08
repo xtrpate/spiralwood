@@ -45,6 +45,7 @@ export function FurnitureToolsPanel({
   canBuildCabinetFrontPreset = false,
   canBuildCabinetCustomBayFronts = false,
   canBuildCabinetCustomCellFronts = false,
+  designValidationReport = null,
 
   isDocked = false,
   activeToolTab: activeToolTabProp = undefined,
@@ -130,6 +131,12 @@ export function FurnitureToolsPanel({
     "door",
     "door",
   ]);
+  const [validationReviewer, setValidationReviewer] = useState("");
+  const [validationReviewDate, setValidationReviewDate] = useState(() =>
+    new Date().toISOString().slice(0, 10),
+  );
+  const [validationProductionNotes, setValidationProductionNotes] = useState("");
+  const [validationRunAt, setValidationRunAt] = useState("");
 
   useEffect(() => {
     if (!smartWidthResizeContext?.supported) {
@@ -244,6 +251,12 @@ export function FurnitureToolsPanel({
 
   const handlePanelPointerDown = (e) => {
     e.stopPropagation();
+  };
+
+  const handleRunDesignValidation = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setValidationRunAt(new Date().toLocaleString());
   };
 
   const makeHandler =
@@ -397,6 +410,12 @@ export function FurnitureToolsPanel({
       label: "Duplicate",
       hint: "Mirror, assembly actions, and repeat / array tools.",
     },
+    {
+      key: "validate",
+      label: "Validate",
+      hint:
+        "Run production-readiness checks for dimensions, materials, cabinet structure, drawers, duplicate geometry, and unsaved changes.",
+    },
   ];
 
   const sectionCardStyle = {
@@ -418,7 +437,7 @@ export function FurnitureToolsPanel({
 
   const toolTabsRowStyle = {
     display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
     gap: 6,
     marginBottom: 10,
   };
@@ -484,6 +503,285 @@ export function FurnitureToolsPanel({
         </div>
         <div style={{ fontSize: 10, color: "#cbd5e1" }}>{activeTabHint}</div>
       </div>
+
+      {activeToolTab === "validate" ? (
+        <>
+          <div style={sectionCardStyle}>
+            <div style={S.smartActionsSectionLabel}>Production Readiness Check</div>
+            <div style={sectionHintStyle}>
+              Check the current design for common production issues. Automated checks help
+              with review, but final approval must still be done by an experienced carpenter.
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRunDesignValidation}
+              style={getBtnStyle(Boolean(designValidationReport))}
+            >
+              Run Validation
+            </button>
+
+            {validationRunAt ? (
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 9,
+                  color: "#94a3b8",
+                }}
+              >
+                Last checked: {validationRunAt}
+              </div>
+            ) : null}
+          </div>
+
+          <div style={sectionCardStyle}>
+            <div style={S.smartActionsSectionLabel}>Validation Summary</div>
+
+            <div
+              style={{
+                ...S.infoCard,
+                marginBottom: 10,
+                padding: "9px 10px",
+                borderColor: designValidationReport?.passed
+                  ? designValidationReport?.warnings?.length
+                    ? "rgba(251,191,36,.55)"
+                    : "rgba(74,222,128,.55)"
+                  : "rgba(248,113,113,.62)",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 900,
+                  color: designValidationReport?.passed
+                    ? designValidationReport?.warnings?.length
+                      ? "#fde68a"
+                      : "#86efac"
+                    : "#fca5a5",
+                }}
+              >
+                {designValidationReport?.passed
+                  ? "Validation Passed"
+                  : "Validation Blocked"}
+              </div>
+              <div
+                style={{
+                  marginTop: 3,
+                  fontSize: 9,
+                  color: "#cbd5e1",
+                  lineHeight: 1.45,
+                }}
+              >
+                {designValidationReport?.summary?.totalParts || 0}{" "}{(designValidationReport?.summary?.totalParts || 0) === 1 ? "Part" : "Parts"} |{" "}
+                {designValidationReport?.summary?.assemblyCount || 0}{" "}{(designValidationReport?.summary?.assemblyCount || 0) === 1 ? "Assembly" : "Assemblies"}
+                | {designValidationReport?.summary?.errorCount || 0}{" "}{(designValidationReport?.summary?.errorCount || 0) === 1 ? "Error" : "Errors"} |{" "}
+                {designValidationReport?.summary?.warningCount || 0}{" "}{(designValidationReport?.summary?.warningCount || 0) === 1 ? "Warning" : "Warnings"}
+              </div>
+            </div>
+
+            {(designValidationReport?.errors || []).length ? (
+              <div style={{ marginBottom: 10 }}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    color: "#fca5a5",
+                    marginBottom: 5,
+                  }}
+                >
+                  Critical Errors
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    maxHeight: 190,
+                    overflowY: "auto",
+                  }}
+                >
+                  {designValidationReport.errors.map((issue, index) => (
+                    <div
+                      key={`${issue.code}-${issue.componentId || issue.assemblyId || index}`}
+                      style={{
+                        ...S.infoCard,
+                        padding: "7px 8px",
+                        borderColor: "rgba(248,113,113,.42)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 800,
+                          color: "#fecaca",
+                        }}
+                      >
+                        {issue.title}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 2,
+                          fontSize: 9,
+                          color: "#cbd5e1",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {issue.message}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {(designValidationReport?.warnings || []).length ? (
+              <div style={{ marginBottom: 10 }}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    color: "#fde68a",
+                    marginBottom: 5,
+                  }}
+                >
+                  Warnings
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    maxHeight: 170,
+                    overflowY: "auto",
+                  }}
+                >
+                  {designValidationReport.warnings.map((issue, index) => (
+                    <div
+                      key={`${issue.code}-${issue.componentId || issue.assemblyId || index}`}
+                      style={{
+                        ...S.infoCard,
+                        padding: "7px 8px",
+                        borderColor: "rgba(251,191,36,.35)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 800,
+                          color: "#fde68a",
+                        }}
+                      >
+                        {issue.title}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 2,
+                          fontSize: 9,
+                          color: "#cbd5e1",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {issue.message}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {!designValidationReport?.errors?.length &&
+            !designValidationReport?.warnings?.length ? (
+              <div
+                style={{
+                  ...S.infoCard,
+                  color: "#86efac",
+                  fontSize: 10,
+                  lineHeight: 1.5,
+                }}
+              >
+                No critical errors or warnings were found by the current
+                automated checks.
+              </div>
+            ) : null}
+          </div>
+
+          <div style={sectionCardStyle}>
+            <div style={S.smartActionsSectionLabel}>Final Production Review</div>
+            <div style={sectionHintStyle}>
+              Record the reviewer and notes for this validation. Final carpenter
+              approval is required before production.
+            </div>
+
+            <label style={{ ...fieldStyle, display: "block", marginBottom: 8 }}>
+              <span style={{ fontSize: 10, color: "#94a3b8" }}>Reviewer</span>
+              <input
+                type="text"
+                value={validationReviewer}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onChange={(e) => setValidationReviewer(e.target.value)}
+                placeholder="Enter reviewer name"
+                style={actionInputStyle}
+              />
+            </label>
+
+            <label style={{ ...fieldStyle, display: "block", marginBottom: 8 }}>
+              <span style={{ fontSize: 10, color: "#94a3b8" }}>Review Date</span>
+              <input
+                type="date"
+                value={validationReviewDate}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onChange={(e) => setValidationReviewDate(e.target.value)}
+                style={actionInputStyle}
+              />
+            </label>
+
+            <label style={{ ...fieldStyle, display: "block" }}>
+              <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                Review Notes
+              </span>
+              <textarea
+                value={validationProductionNotes}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onChange={(e) => setValidationProductionNotes(e.target.value)}
+                rows={4}
+                placeholder="Add notes for final production review"
+                style={{
+                  ...actionInputStyle,
+                  resize: "vertical",
+                  minHeight: 76,
+                  paddingTop: 8,
+                }}
+              />
+            </label>
+          </div>
+
+          {(designValidationReport?.notices || []).length ? (
+            <div style={sectionCardStyle}>
+              <div style={S.smartActionsSectionLabel}>Review Notices</div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {designValidationReport.notices.map((notice) => (
+                  <div
+                    key={notice.code}
+                    style={{
+                      ...S.infoCard,
+                      padding: "7px 8px",
+                      fontSize: 9,
+                      lineHeight: 1.45,
+                      color: "#cbd5e1",
+                    }}
+                  >
+                    <strong style={{ color: "#93c5fd" }}>
+                      {notice.title}
+                    </strong>
+                    <div style={{ marginTop: 2 }}>{notice.message}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : null}
 
       {activeToolTab === "arrange" ? (
         <>
@@ -915,17 +1213,17 @@ export function FurnitureToolsPanel({
                   </div>
                   <div style={{ fontSize: 10, color: "#9fb0c7" }}>
                     {smartWidthResizeContext.partCount || 0} parts
-                    {" Â· "}
+                    {" | "}
                     W {Math.round(
                       smartWidthResizeContext?.currentDimensions?.width ||
                         smartWidthResizeContext?.currentWidth ||
                         0,
                     )} mm
-                    {" Â· "}
+                    {" | "}
                     H {Math.round(
                       smartWidthResizeContext?.currentDimensions?.height || 0,
                     )} mm
-                    {" Â· "}
+                    {" | "}
                     D {Math.round(
                       smartWidthResizeContext?.currentDimensions?.depth || 0,
                     )} mm
@@ -1140,7 +1438,7 @@ export function FurnitureToolsPanel({
                         </div>
                         <div style={{ fontSize: 10, color: "#9fb0c7" }}>
                           {smartResizePreview.resizedPartCount || 0} resized
-                          {" Â· "}
+                          {" | "}
                           {smartResizePreview.movedPartCount || 0} repositioned
                         </div>
                       </>
@@ -2362,13 +2660,13 @@ export function FurnitureToolsPanel({
                 : bay1FrontType === "drawer"
                   ? "Drawer Stack"
                   : "Door Pair"}{" "}
-              · Bay 2:{" "}
+              | Bay 2:{" "}
               {bay2FrontType === "open"
                 ? "Open"
                 : bay2FrontType === "drawer"
                   ? "Drawer Stack"
                   : "Door Pair"}{" "}
-              · Bay 3:{" "}
+              | Bay 3:{" "}
               {bay3FrontType === "open"
                 ? "Open"
                 : bay3FrontType === "drawer"
@@ -2494,7 +2792,7 @@ export function FurnitureToolsPanel({
                   (cellType, index) =>
                     `Cell ${index + 1}: ${cellType === "open" ? "Open" : cellType === "drawer" ? "Drawer Stack" : "Door Pair"}`,
                 )
-                .join(" · ")}
+                .join(" | ")}
             </div>
 
             <div style={S.smartActionsWideGrid}>

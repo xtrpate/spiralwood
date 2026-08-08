@@ -52,6 +52,11 @@ import { useBlueprintArrangementActions } from "./hooks/useBlueprintArrangementA
 import { useBlueprintBuilderActions } from "./hooks/useBlueprintBuilderActions";
 import { useBlueprintAssemblyActions } from "./hooks/useBlueprintAssemblyActions";
 import { buildConversionCutListRows } from "./data/conversionCutListUtils";
+import {
+  buildDesignValidationReport,
+  getDesignComponentSignature,
+  getSavedDesignComponentSignature,
+} from "./data/designValidation";
 
 // ── 3D Viewer ─────────────────────────────────────────────────────────────────
 import { ThreeDViewer } from "./3d/threeDViewer";
@@ -155,6 +160,45 @@ export default function BlueprintDesign() {
       0,
     );
   }, [components]);
+
+  const savedDesignComponentSignature = useMemo(
+    () => getSavedDesignComponentSignature(blueprint?.design_data),
+    [blueprint?.design_data],
+  );
+
+  const currentDesignComponentSignature = useMemo(
+    () => getDesignComponentSignature(components),
+    [components],
+  );
+
+  const hasUnsavedDesignChanges = useMemo(() => {
+    if (savedDesignComponentSignature === null) {
+      return components.some((component) => component?.type !== "reference_proxy");
+    }
+
+    return currentDesignComponentSignature !== savedDesignComponentSignature;
+  }, [
+    components,
+    currentDesignComponentSignature,
+    savedDesignComponentSignature,
+  ]);
+
+  const designValidationReport = useMemo(
+    () =>
+      buildDesignValidationReport({
+        components,
+        worldDimensions: { w: WORLD_W, h: WORLD_H, d: WORLD_D },
+        hasUnsavedChanges: hasUnsavedDesignChanges,
+      }),
+    [
+      components,
+      hasUnsavedDesignChanges,
+      WORLD_W,
+      WORLD_H,
+      WORLD_D,
+    ],
+  );
+
   const [newTraceType, setNewTraceType] = useState("door");
   const isLocked = useCallback(
     (comp) =>
@@ -1917,6 +1961,7 @@ export default function BlueprintDesign() {
             canBuildCabinetFrontPreset={editorMode === "editable"}
             canBuildCabinetCustomBayFronts={editorMode === "editable"}
             canBuildCabinetCustomCellFronts={editorMode === "editable"}
+            designValidationReport={designValidationReport}
             lockedFields={lockedFields}
             canvasW={WORLD_W}
             canvasH={WORLD_H}
