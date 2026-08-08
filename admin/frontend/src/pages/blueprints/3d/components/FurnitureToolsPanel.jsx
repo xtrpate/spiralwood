@@ -115,7 +115,16 @@ export function FurnitureToolsPanel({
   const [tallCabinetToeKickHeight, setTallCabinetToeKickHeight] = useState(100);
   const [tallCabinetToeKickSetback, setTallCabinetToeKickSetback] = useState(50);
   const [tallCabinetShelfCount, setTallCabinetShelfCount] = useState(4);
-  const [tallCabinetDividerCount, setTallCabinetDividerCount] = useState(0);  const [cabinetWidth, setCabinetWidth] = useState(900);
+  const [tallCabinetDividerCount, setTallCabinetDividerCount] = useState(0);  const [wardrobeWidth, setWardrobeWidth] = useState(1200);
+  const [wardrobeHeight, setWardrobeHeight] = useState(2100);
+  const [wardrobeDepth, setWardrobeDepth] = useState(600);
+  const [wardrobeThickness, setWardrobeThickness] = useState(18);
+  const [wardrobeBackThickness, setWardrobeBackThickness] = useState(6);
+  const [wardrobePlinthHeight, setWardrobePlinthHeight] = useState(80);
+  const [wardrobePlinthSetback, setWardrobePlinthSetback] = useState(30);
+  const [wardrobeShelfCount, setWardrobeShelfCount] = useState(4);
+  const [wardrobeDividerCount, setWardrobeDividerCount] = useState(1);
+  const [wardrobeShelfPlacement, setWardrobeShelfPlacement] = useState("right");  const [cabinetWidth, setCabinetWidth] = useState(900);
   const [cabinetHeight, setCabinetHeight] = useState(1800);
   const [cabinetDepth, setCabinetDepth] = useState(450);
   const [cabinetThickness, setCabinetThickness] = useState(20);
@@ -2416,6 +2425,300 @@ export function FurnitureToolsPanel({
                 style={getBtnStyle(canQuickCabinetBuilder)}
               >
                 Build Tall Cabinet
+              </button>
+            </div>
+          </div>
+          <div style={sectionCardStyle}>
+            <div style={S.smartActionsSectionLabel}>Wardrobe Builder</div>
+            <div style={sectionHintStyle}>
+              Build a production-style wardrobe carcass using real board parts.
+              The default layout creates one open hanging bay and one shelf bay.
+              Doors and drawers can be added afterward with existing builders.
+              Hanging rails and wardrobe hardware will be handled in the later
+              hardware phase.
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Width (mm)
+                </span>
+                <input
+                  type="number"
+                  min="600"
+                  max="2400"
+                  step="1"
+                  value={wardrobeWidth}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWardrobeWidth(
+                      Math.max(
+                        600,
+                        Math.min(2400, Number(e.target.value) || 1200),
+                      ),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Height (mm)
+                </span>
+                <input
+                  type="number"
+                  min="1800"
+                  max="2400"
+                  step="1"
+                  value={wardrobeHeight}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWardrobeHeight(
+                      Math.max(
+                        1800,
+                        Math.min(2400, Number(e.target.value) || 2100),
+                      ),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Depth (mm)
+                </span>
+                <input
+                  type="number"
+                  min="500"
+                  max="650"
+                  step="1"
+                  value={wardrobeDepth}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWardrobeDepth(
+                      Math.max(
+                        500,
+                        Math.min(650, Number(e.target.value) || 600),
+                      ),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Panel Thickness (mm)
+                </span>
+                <input
+                  type="number"
+                  min="12"
+                  max="25"
+                  step="1"
+                  value={wardrobeThickness}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWardrobeThickness(
+                      Math.max(
+                        12,
+                        Math.min(25, Number(e.target.value) || 18),
+                      ),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Back Thickness (mm)
+                </span>
+                <input
+                  type="number"
+                  min="3"
+                  max="12"
+                  step="1"
+                  value={wardrobeBackThickness}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWardrobeBackThickness(
+                      Math.max(
+                        3,
+                        Math.min(12, Number(e.target.value) || 6),
+                      ),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Plinth Height (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="150"
+                  step="1"
+                  value={wardrobePlinthHeight}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWardrobePlinthHeight(
+                      Math.max(
+                        0,
+                        Math.min(150, Number(e.target.value) || 0),
+                      ),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Plinth Setback (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="120"
+                  step="1"
+                  value={wardrobePlinthSetback}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWardrobePlinthSetback(
+                      Math.max(
+                        0,
+                        Math.min(120, Number(e.target.value) || 0),
+                      ),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Divider Count
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="3"
+                  step="1"
+                  value={wardrobeDividerCount}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWardrobeDividerCount(
+                      Math.max(
+                        0,
+                        Math.min(3, Math.round(Number(e.target.value) || 0)),
+                      ),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Fixed Shelf Levels
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="8"
+                  step="1"
+                  value={wardrobeShelfCount}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setWardrobeShelfCount(
+                      Math.max(
+                        0,
+                        Math.min(8, Math.round(Number(e.target.value) || 0)),
+                      ),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Shelf Section
+                </span>
+                <select
+                  value={wardrobeShelfPlacement}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) => setWardrobeShelfPlacement(e.target.value)}
+                  style={actionInputStyle}
+                >
+                  <option value="right">Right Bay</option>
+                  <option value="left">Left Bay</option>
+                  <option value="all">All Bays</option>
+                </select>
+              </label>
+            </div>
+
+            <div
+              style={{
+                ...S.infoCard,
+                margin: "0 0 8px",
+                padding: "8px 10px",
+                fontSize: 10,
+                color: canQuickCabinetBuilder ? "#93c5fd" : "#fcd34d",
+                lineHeight: 1.5,
+              }}
+            >
+              {canQuickCabinetBuilder
+                ? "Default: 1200 W x 2100 H x 600 D mm, 1 divider, left open bay + right shelf bay. Generated boards remain individually editable."
+                : "Wardrobe Builder is available in Editable mode."}
+            </div>
+
+            <div style={S.smartActionsWideGrid}>
+              <button
+                type="button"
+                onClick={makeHandler(
+                  canQuickCabinetBuilder,
+                  onBuildCabinetBox,
+                  {
+                    builderType: "wardrobe",
+                    width: wardrobeWidth,
+                    height: wardrobeHeight,
+                    depth: wardrobeDepth,
+                    thickness: wardrobeThickness,
+                    backThickness: wardrobeBackThickness,
+                    plinthHeight: wardrobePlinthHeight,
+                    plinthSetback: wardrobePlinthSetback,
+                    shelfCount: wardrobeShelfCount,
+                    dividerCount: wardrobeDividerCount,
+                    shelfPlacement: wardrobeShelfPlacement,
+                  },
+                )}
+                style={getBtnStyle(canQuickCabinetBuilder)}
+              >
+                Build Wardrobe
               </button>
             </div>
           </div>

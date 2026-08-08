@@ -297,12 +297,18 @@ function classifyWardrobePart(item, dimension) {
   const isBottom = code === "WR-BOT" || type === "wr_bottom_panel";
   const isBack = code === "WR-BK" || type === "wr_back_panel";
   const isShelf = type === "wr_shelf" || code.startsWith("WR-SH");
+  const isDivider = type === "wr_divider" || code.startsWith("WR-DIV");
+  const isPlinth =
+    type === "wardrobe_plinth" ||
+    code === "WR-PLINTH";
   const isDoor = type === "wr_door" || code === "WR-DL" || code === "WR-DR";
 
   if (dimension === "width") {
     if (isLeftSide) return role("follow-min", "left-side");
     if (isRightSide) return role("follow-max", "right-side");
     if (isDoor) return role("ratio-scale", "door");
+    if (isPlinth) return role("stretch", "plinth");
+    if (isDivider) return role("proportional", "divider");
     if (isTop || isBottom || isBack || isShelf) {
       return role("stretch", "span-member");
     }
@@ -311,8 +317,17 @@ function classifyWardrobePart(item, dimension) {
 
   if (dimension === "depth") {
     if (isBack) return role("follow-min", "back-panel");
-    if (isDoor) return role("follow-max", "door");
-    if (isLeftSide || isRightSide || isTop || isBottom || isShelf) {
+    if (isDoor || isPlinth) {
+      return role("follow-max", isDoor ? "door" : "plinth");
+    }
+    if (
+      isLeftSide ||
+      isRightSide ||
+      isTop ||
+      isBottom ||
+      isShelf ||
+      isDivider
+    ) {
       return role("stretch", "depth-member");
     }
     return role("proportional", "wardrobe-member");
@@ -320,8 +335,10 @@ function classifyWardrobePart(item, dimension) {
 
   if (dimension === "height") {
     if (isTop) return role("follow-min", "top-panel");
-    if (isBottom) return role("follow-max", "bottom-panel");
-    if (isLeftSide || isRightSide || isBack || isDoor) {
+    if (isBottom || isPlinth) {
+      return role("follow-max", isBottom ? "bottom-panel" : "plinth");
+    }
+    if (isLeftSide || isRightSide || isBack || isDoor || isDivider) {
       return role("stretch", "height-member");
     }
     if (isShelf) return role("proportional", "shelf");

@@ -978,6 +978,343 @@ export function useBlueprintBuilderActions({
         );
         return;
       }
+      if (builderType === "wardrobe") {
+        const cleanMm = (
+          value,
+          fallback,
+          minimum = 1,
+          maximum = Number.POSITIVE_INFINITY,
+        ) => {
+          const parsed = Number(value);
+          const resolved = Number.isFinite(parsed) ? parsed : fallback;
+          return Math.min(
+            maximum,
+            Math.max(
+              minimum,
+              Number(Number(resolved).toFixed(3)),
+            ),
+          );
+        };
+
+        const outerWidth = cleanMm(options.width, 1200, 600, 2400);
+        const outerHeight = cleanMm(options.height, 2100, 1800, 2400);
+        const outerDepth = cleanMm(options.depth, 600, 500, 650);
+        const thickness = cleanMm(options.thickness, 18, 12, 25);
+        const backThickness = cleanMm(options.backThickness, 6, 3, 12);
+        const plinthHeight = cleanMm(options.plinthHeight, 80, 0, 150);
+        const requestedPlinthSetback = cleanMm(
+          options.plinthSetback,
+          30,
+          0,
+          120,
+        );
+        const shelfCount = Math.max(
+          0,
+          Math.min(8, Math.round(Number(options.shelfCount) || 0)),
+        );
+        const dividerCount = Math.max(
+          0,
+          Math.min(3, Math.round(Number(options.dividerCount) || 0)),
+        );
+        const shelfPlacement = String(
+          options.shelfPlacement || "right",
+        )
+          .trim()
+          .toLowerCase();
+
+        if (thickness * 2 >= outerWidth) {
+          toast.error(
+            "Panel thickness is too large for the selected wardrobe width.",
+          );
+          return;
+        }
+
+        if (backThickness >= outerDepth) {
+          toast.error(
+            "Back thickness must be smaller than the wardrobe depth.",
+          );
+          return;
+        }
+
+        const cavityHeight =
+          outerHeight - plinthHeight - thickness * 2;
+
+        if (cavityHeight < 600) {
+          toast.error(
+            "Wardrobe height is too small for the selected panel and plinth dimensions.",
+          );
+          return;
+        }
+
+        const innerWidth = outerWidth - thickness * 2;
+        const innerDepth = outerDepth - backThickness;
+        const dividerSpace = dividerCount * thickness;
+        const bayCount = dividerCount + 1;
+        const usableBayWidth = innerWidth - dividerSpace;
+
+        if (usableBayWidth < bayCount * 250) {
+          toast.error(
+            "Wardrobe width is too small for the selected divider count.",
+          );
+          return;
+        }
+
+        const bayWidth = Number(
+          (usableBayWidth / bayCount).toFixed(3),
+        );
+
+        const maxPlinthSetback = Math.max(
+          0,
+          outerDepth - backThickness - thickness,
+        );
+        const plinthSetback = Math.min(
+          requestedPlinthSetback,
+          maxPlinthSetback,
+        );
+
+        const origin = getNextAssemblyOrigin(components);
+        const originX = snap(origin.x);
+        const originZ = snap(origin.z);
+        const floorY = WORLD_H - FLOOR_OFFSET;
+
+        if (outerHeight > floorY) {
+          toast.error(
+            "Wardrobe is too high for the current Blueprint workspace. Lower the Height.",
+          );
+          return;
+        }
+
+        const topY = Number((floorY - outerHeight).toFixed(3));
+        const bottomPanelY = Number(
+          (floorY - plinthHeight - thickness).toFixed(3),
+        );
+        const cavityTopY = Number((topY + thickness).toFixed(3));
+
+        const material = "Marine Plywood";
+        const defaultFinish = getDefaultFinishId(material);
+        const finishData = defaultFinish
+          ? applyWoodFinish({ material }, defaultFinish)
+          : { material, fill: "#d9c2a5", finish: "" };
+
+        const usedNames = new Set(
+          components
+            .map((item) =>
+              String(
+                item?.groupLabel || item?.assemblyName || "",
+              ).trim(),
+            )
+            .filter(Boolean),
+        );
+
+        let buildNumber = 1;
+        while (usedNames.has(`Wardrobe Cabinet ${buildNumber}`)) {
+          buildNumber += 1;
+        }
+
+        const groupId = makeGroupId();
+        const groupLabel = `Wardrobe Cabinet ${buildNumber}`;
+
+        const part = (overrides) =>
+          createAssemblyPart({
+            groupId,
+            groupLabel,
+            groupType: "assembly",
+            assemblyType: "wardrobe_cabinet",
+            material: finishData.material || material,
+            finish: finishData.finish || "",
+            fill: finishData.fill || "#d9c2a5",
+            unitPrice: 0,
+            groupUnitPrice: 0,
+            qty: 1,
+            locked: false,
+            ...overrides,
+          });
+
+        const parts = [
+          part({
+            type: "wr_side_panel",
+            partRole: "left_side_panel",
+            label: "Left Side Panel",
+            partCode: "WR-SL",
+            x: originX,
+            y: topY,
+            z: originZ,
+            width: thickness,
+            height: outerHeight,
+            depth: outerDepth,
+          }),
+          part({
+            type: "wr_side_panel",
+            partRole: "right_side_panel",
+            label: "Right Side Panel",
+            partCode: "WR-SR",
+            x: Number((originX + outerWidth - thickness).toFixed(3)),
+            y: topY,
+            z: originZ,
+            width: thickness,
+            height: outerHeight,
+            depth: outerDepth,
+          }),
+          part({
+            type: "wr_top_panel",
+            partRole: "top_panel",
+            label: "Top Panel",
+            partCode: "WR-TOP",
+            x: Number((originX + thickness).toFixed(3)),
+            y: topY,
+            z: originZ,
+            width: innerWidth,
+            height: thickness,
+            depth: outerDepth,
+          }),
+          part({
+            type: "wr_bottom_panel",
+            partRole: "bottom_panel",
+            label: "Bottom Panel",
+            partCode: "WR-BOT",
+            x: Number((originX + thickness).toFixed(3)),
+            y: bottomPanelY,
+            z: originZ,
+            width: innerWidth,
+            height: thickness,
+            depth: outerDepth,
+          }),
+          part({
+            type: "wr_back_panel",
+            partRole: "back_panel",
+            label: "Back Panel",
+            partCode: "WR-BK",
+            x: Number((originX + thickness).toFixed(3)),
+            y: cavityTopY,
+            z: originZ,
+            width: innerWidth,
+            height: cavityHeight,
+            depth: backThickness,
+            material: "Panel Board",
+          }),
+        ];
+
+        if (plinthHeight > 0) {
+          parts.push(
+            part({
+              type: "wardrobe_plinth",
+              partRole: "plinth",
+              label: "Plinth",
+              partCode: "WR-PLINTH",
+              x: Number((originX + thickness).toFixed(3)),
+              y: Number((floorY - plinthHeight).toFixed(3)),
+              z: Number(
+                (
+                  originZ +
+                  outerDepth -
+                  plinthSetback -
+                  thickness
+                ).toFixed(3),
+              ),
+              width: innerWidth,
+              height: plinthHeight,
+              depth: thickness,
+            }),
+          );
+        }
+
+        for (
+          let dividerIndex = 1;
+          dividerIndex <= dividerCount;
+          dividerIndex += 1
+        ) {
+          const dividerX = Number(
+            (
+              originX +
+              thickness +
+              bayWidth * dividerIndex +
+              thickness * (dividerIndex - 1)
+            ).toFixed(3),
+          );
+
+          parts.push(
+            part({
+              type: "wr_divider",
+              partRole: "divider",
+              label: `Divider ${dividerIndex}`,
+              partCode: `WR-DIV${String(dividerIndex).padStart(2, "0")}`,
+              x: dividerX,
+              y: cavityTopY,
+              z: Number((originZ + backThickness).toFixed(3)),
+              width: thickness,
+              height: cavityHeight,
+              depth: innerDepth,
+            }),
+          );
+        }
+
+        const shouldShelfBay = (bayIndex) => {
+          if (bayCount === 1) return true;
+          if (shelfPlacement === "all") return true;
+          if (shelfPlacement === "left") return bayIndex === 0;
+          return bayIndex === bayCount - 1;
+        };
+
+        if (shelfCount > 0) {
+          const shelfTravel = Math.max(0, cavityHeight - thickness);
+
+          for (let level = 1; level <= shelfCount; level += 1) {
+            const shelfY = Number(
+              (
+                cavityTopY +
+                (shelfTravel * level) / (shelfCount + 1)
+              ).toFixed(3),
+            );
+
+            for (let bay = 0; bay < bayCount; bay += 1) {
+              if (!shouldShelfBay(bay)) continue;
+
+              const shelfX = Number(
+                (
+                  originX +
+                  thickness +
+                  bay * (bayWidth + thickness)
+                ).toFixed(3),
+              );
+
+              const baySuffix =
+                bayCount > 1
+                  ? `-B${String(bay + 1).padStart(2, "0")}`
+                  : "";
+
+              parts.push(
+                part({
+                  type: "wr_shelf",
+                  partRole: "shelf",
+                  label:
+                    bayCount > 1
+                      ? `Fixed Shelf ${level} Bay ${bay + 1}`
+                      : `Fixed Shelf ${level}`,
+                  partCode: `WR-SH${String(level).padStart(2, "0")}${baySuffix}`,
+                  x: shelfX,
+                  y: shelfY,
+                  z: Number((originZ + backThickness).toFixed(3)),
+                  width: bayWidth,
+                  height: thickness,
+                  depth: innerDepth,
+                }),
+              );
+            }
+          }
+        }
+
+        pushHistory(components);
+        setComponents((prev) => [...prev, ...parts]);
+        setSelectedIds(parts.map((item) => item.id));
+        setSelectedId(parts[0]?.id || null);
+        setEdit3DId(parts[0]?.id || null);
+        setTransformMode("translate");
+
+        toast.success(
+          `${groupLabel} generated (${parts.length} part${parts.length !== 1 ? "s" : ""}).`,
+        );
+        return;
+      }
       const outerWidth = snap(
         Math.max(GRID_SIZE * 4, Number(options.width) || 1200),
       );
