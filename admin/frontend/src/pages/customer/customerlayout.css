@@ -1195,3 +1195,27 @@ a {
   cursor: pointer;
   text-align: left;
 }
+
+/* BOTTOM SIDEBAR LINKS (About, FAQ, Contact) */
+.cust-side-footer-links {
+  margin-top: auto; /* This pushes the links to the absolute bottom of the sidebar */
+  padding: 24px 20px;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cust-side-footer-link {
+  font-size: 13px;
+  color: #94a3b8; /* Light stealthy gray */
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s;
+  width: fit-content;
+}
+
+.cust-side-footer-link:hover {
+  color: #0f172a; /* Turns dark on hover */
+  text-decoration: underline;
+}

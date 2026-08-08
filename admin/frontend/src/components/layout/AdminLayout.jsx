@@ -1,11 +1,7 @@
 // src/components/layout/AdminLayout.jsx – Sidebar + topbar shell
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import {
-  Outlet,
-  NavLink,
-  useNavigate,
-  useLocation,
-} from "react-router-dom";
+import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
+import api, { buildAssetUrl } from "../../services/api";
 import useAuthStore from "../../store/authStore";
 import toast from "react-hot-toast";
 import { useCart } from "../../pages/customer/cartcontext";
@@ -178,6 +174,34 @@ export default function AdminLayout() {
     message: "",
   });
 
+  useEffect(() => {
+    let active = true;
+    api
+      .get("/website/settings")
+      .then((res) => {
+        if (active) {
+          if (res.data?.display?.site_name) {
+            document.title = res.data.display.site_name + " - Admin"; // Added " - Admin" to distinguish the tab
+          }
+          if (res.data?.display?.site_logo) {
+            const faviconUrl = buildAssetUrl(res.data.display.site_logo);
+            let link = document.querySelector("link[rel~='icon']");
+            if (!link) {
+              link = document.createElement("link");
+              link.rel = "icon";
+              document.head.appendChild(link);
+            }
+            link.href = faviconUrl;
+          }
+        }
+      })
+      .catch((err) => console.error("Failed to load admin branding", err));
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const estimationBlueprintId = useMemo(() => {
     const match = String(location.pathname || "").match(
       /^\/admin\/blueprints\/([1-9][0-9]*)\/estimation\/?$/,
@@ -249,10 +273,7 @@ export default function AdminLayout() {
   const handleMainClickCapture = (event) => {
     if (!estimationBlueprintId || !deliveryGate.active) return;
 
-    const target =
-      event.target instanceof Element
-        ? event.target
-        : null;
+    const target = event.target instanceof Element ? event.target : null;
 
     const button = target?.closest("button");
     if (!button) return;
@@ -275,10 +296,7 @@ export default function AdminLayout() {
   };
 
   const visibleItems = NAV_ITEMS.filter(
-    (item) =>
-      item.section ||
-      !item.roles ||
-      item.roles.includes(user?.role),
+    (item) => item.section || !item.roles || item.roles.includes(user?.role),
   );
 
   return (
@@ -299,9 +317,7 @@ export default function AdminLayout() {
       )}
 
       <aside
-        className={`wisdom-sidebar ${
-          mobileOpen ? "mobile-open" : ""
-        }`}
+        className={`wisdom-sidebar ${mobileOpen ? "mobile-open" : ""}`}
         style={{
           width: open ? 240 : 64,
           background: "#0a0a0a",
@@ -402,9 +418,7 @@ export default function AdminLayout() {
                   gap: 10,
                   padding: "9px 16px",
                   color: isActive ? "#ffffff" : "#a1a1aa",
-                  background: isActive
-                    ? "#27272a"
-                    : "transparent",
+                  background: isActive ? "#27272a" : "transparent",
                   textDecoration: "none",
                   fontSize: 13,
                   fontWeight: isActive ? 600 : 500,
@@ -415,9 +429,7 @@ export default function AdminLayout() {
                   transition: "all .15s",
                 })}
               >
-                <span style={{ fontSize: 16 }}>
-                  {item.icon}
-                </span>
+                <span style={{ fontSize: 16 }}>{item.icon}</span>
                 {open && item.label}
               </NavLink>
             );
@@ -595,9 +607,8 @@ export default function AdminLayout() {
                 lineHeight: 1.5,
               }}
             >
-              Are you sure you want to log out of your
-              account? You will need to sign back in to access
-              the admin portal.
+              Are you sure you want to log out of your account? You will need to
+              sign back in to access the admin portal.
             </p>
 
             <div
@@ -621,12 +632,10 @@ export default function AdminLayout() {
                   transition: "background 0.2s",
                 }}
                 onMouseEnter={(event) => {
-                  event.currentTarget.style.background =
-                    "#27272a";
+                  event.currentTarget.style.background = "#27272a";
                 }}
                 onMouseLeave={(event) => {
-                  event.currentTarget.style.background =
-                    "transparent";
+                  event.currentTarget.style.background = "transparent";
                 }}
               >
                 Cancel

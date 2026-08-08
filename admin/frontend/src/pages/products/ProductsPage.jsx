@@ -232,7 +232,7 @@ export default function ProductsPage() {
               </th>
               {[
                 "Image",
-                "Barcode",
+                "Wood Type",
                 "Name",
                 "Category",
                 "Type",
@@ -339,8 +339,15 @@ export default function ProductsPage() {
                         </div>
                       )}
                     </td>
-                    <td style={{ ...td, color: "#71717a", fontSize: 12 }}>
-                      {p.barcode || "—"}
+                    <td
+                      style={{
+                        ...td,
+                        color: "#71717a",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {p.wood_type || "—"}
                     </td>
                     <td
                       style={{

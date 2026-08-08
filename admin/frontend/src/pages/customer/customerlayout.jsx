@@ -66,6 +66,46 @@ export default function CustomerLayout() {
   const [activeOrdersCount, setActiveOrdersCount] = useState(0);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [itemToRemove, setItemToRemove] = useState(null);
+  const [siteSettings, setSiteSettings] = useState(null);
+  const isTrue = (val) =>
+    val === "true" || val === true || val === 1 || val === "1";
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get("/website/settings")
+      .then((res) => {
+        if (active) {
+          setSiteSettings(res.data);
+
+          // 1. Updates the Browser Tab title dynamically!
+          if (res.data?.display?.site_name) {
+            document.title = res.data.display.site_name;
+          }
+
+          // 2. 👉 Updates the Browser Tab Logo (Favicon) dynamically!
+          if (res.data?.display?.site_logo) {
+            // We use your existing buildAssetUrl function to get the full image path
+            const faviconUrl = buildAssetUrl(res.data.display.site_logo);
+
+            // Find the existing favicon tag, or create one if it doesn't exist
+            let link = document.querySelector("link[rel~='icon']");
+            if (!link) {
+              link = document.createElement("link");
+              link.rel = "icon";
+              document.head.appendChild(link);
+            }
+            // Swap the image!
+            link.href = faviconUrl;
+          }
+        }
+      })
+      .catch((err) => console.error("Failed to load site settings", err));
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // this is for avatar on the navigation bar.
   const [avatarFailed, setAvatarFailed] = useState(false);
@@ -284,13 +324,18 @@ export default function CustomerLayout() {
       ? getAvatarUrl(customerUser.profile_photo)
       : "";
 
+  const dynamicAddress =
+    siteSettings?.display?.business_address ||
+    "8 Sitio Laot, Prenza 1, Marilao, Bulacan";
+  const dynamicName =
+    siteSettings?.display?.site_name || "Spiral Wood Services";
+
   const footerInfo = {
-    address: "8 Sitio Laot, Prenza 1, Marilao, Bulacan",
-    phone: "09530695310",
-    mapUrl:
-      "https://www.google.com/maps/search/?api=1&query=8+Sitio+Laot,+Prenza+1,+Marilao,+Bulacan",
-    email: "spiralwood@gmail.com",
-    facebookName: "Spiral Wood Services",
+    address: dynamicAddress,
+    phone: siteSettings?.display?.business_phone || "09530695310",
+    mapUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dynamicAddress)}`,
+    email: "spiralwood@gmail.com", // (You can add an email field to your Admin settings later!)
+    facebookName: dynamicName,
     facebookUrl: "https://www.facebook.com/",
   };
 
@@ -900,6 +945,37 @@ export default function CustomerLayout() {
             </NavLink>
           ))}
         </nav>
+
+        {/* 👉 THE NEW STEALTHY BOTTOM LINKS */}
+        <div className="cust-side-footer-links">
+          {isTrue(siteSettings?.display?.show_about_section) && (
+            <NavLink
+              to="/about"
+              className="cust-side-footer-link"
+              onClick={() => setMenuOpen(false)}
+            >
+              About Us
+            </NavLink>
+          )}
+
+          {isTrue(siteSettings?.display?.show_faq_section) && (
+            <NavLink
+              to="/faq"
+              className="cust-side-footer-link"
+              onClick={() => setMenuOpen(false)}
+            >
+              FAQ's
+            </NavLink>
+          )}
+
+          <NavLink
+            to="/contact"
+            className="cust-side-footer-link"
+            onClick={() => setMenuOpen(false)}
+          >
+            Contact Us
+          </NavLink>
+        </div>
       </aside>
 
       <aside
@@ -1350,8 +1426,7 @@ export default function CustomerLayout() {
             </div>
 
             <p>
-              © {new Date().getFullYear()} Spiral Wood Services. All rights
-              reserved.
+              © {new Date().getFullYear()} {dynamicName}. All rights reserved.
             </p>
           </div>
         </div>

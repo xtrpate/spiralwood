@@ -15,14 +15,8 @@ const PAYMENT_SETTING_KEYS = [
   "cod_enabled",
   "cop_enabled",
 ];
-const MESSAGE_SETTING_KEYS = [
-  "email_footer",
-  "checkout_note",
-];
-const POLICY_SETTING_KEYS = [
-  "warranty_period_days",
-  "cancellation_fee_pct",
-];
+const MESSAGE_SETTING_KEYS = ["email_footer", "checkout_note"];
+const POLICY_SETTING_KEYS = ["warranty_period_days", "cancellation_fee_pct"];
 const DELIVERY_SETTING_KEYS = [
   "standard_truck_limit_width_mm",
   "standard_truck_limit_height_mm",
@@ -123,19 +117,15 @@ exports.updateSettings = async (req, res) => {
 
     if (hasDeliveryLimitUpdate) {
       const mergedLimits = DELIVERY_SETTING_KEYS.map((key) => {
-        const incoming =
-          Object.prototype.hasOwnProperty.call(req.body, key)
-            ? req.body[key]
-            : existingMap.get(key)?.value;
+        const incoming = Object.prototype.hasOwnProperty.call(req.body, key)
+          ? req.body[key]
+          : existingMap.get(key)?.value;
 
         return Number(incoming);
       });
 
       const hasInvalidLimit = mergedLimits.some(
-        (value) =>
-          !Number.isFinite(value) ||
-          value <= 0 ||
-          value > 20000,
+        (value) => !Number.isFinite(value) || value <= 0 || value > 20000,
       );
 
       if (hasInvalidLimit) {
@@ -196,6 +186,33 @@ exports.updateSettings = async (req, res) => {
            updated_by = VALUES(updated_by)`,
         [logoUrl, parseInt(req.user.id)],
       );
+
+      // ── THE SWAP & SWEEP LOGIC ──
+      // If a previous logo exists, locate it on the hard drive and delete it.
+      if (hasLogoBefore && existingLogo.value) {
+        try {
+          // existingLogo.value looks like "/uploads/settings/old-logo.png"
+          // We resolve this to an absolute server path based on your folder structure
+          const oldFilePath = path.join(
+            __dirname,
+            "../../",
+            existingLogo.value,
+          );
+
+          if (fs.existsSync(oldFilePath)) {
+            fs.unlinkSync(oldFilePath);
+            console.log(
+              `[SWAP & SWEEP] Successfully deleted old logo: ${oldFilePath}`,
+            );
+          }
+        } catch (unlinkErr) {
+          // We catch the error so it doesn't roll back the successful database transaction
+          console.error(
+            "[SWAP & SWEEP ERROR] Failed to delete old logo:",
+            unlinkErr.message,
+          );
+        }
+      }
     }
 
     const [[updatedLogo]] = await conn.query(
@@ -293,13 +310,7 @@ exports.updateFaq = async (req, res) => {
     // ── FIXED: Parsed ID ──
     const [updateResult] = await pool.query(
       "UPDATE faqs SET question=?,answer=?,sort_order=?,is_visible=? WHERE id=?",
-      [
-        question,
-        answer,
-        sort_order,
-        is_visible ? 1 : 0,
-        faqId,
-      ],
+      [question, answer, sort_order, is_visible ? 1 : 0, faqId],
     );
 
     if (oldFaq && updateResult.affectedRows > 0) {
@@ -461,13 +472,7 @@ exports.updatePage = async (req, res) => {
          group_name = NULL,
          is_visible = VALUES(is_visible),
          updated_by = VALUES(updated_by)`,
-      [
-        slug,
-        nextTitle,
-        nextContent,
-        nextVisible,
-        parseInt(req.user.id),
-      ],
+      [slug, nextTitle, nextContent, nextVisible, parseInt(req.user.id)],
     );
 
     req.auditRecord = {

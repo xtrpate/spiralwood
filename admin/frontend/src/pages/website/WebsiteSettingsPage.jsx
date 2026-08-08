@@ -49,6 +49,9 @@ const KEY_META = {
     label: "Business Phone",
     type: "text",
     hint: "Shown on the Contact page and receipts.",
+    pattern: /^09\d{9}$/,
+    patternMessage:
+      "Business phone must be exactly 11 digits and start with '09'.",
   },
 
   // payment
@@ -76,6 +79,9 @@ const KEY_META = {
     label: "GCash Number",
     type: "text",
     hint: "Displayed to customers during GCash checkout.",
+    pattern: /^09\d{9}$/,
+    patternMessage:
+      "GCash number must be exactly 11 digits and start with '09'.",
   },
   bank_account_name: {
     label: "Bank Account Name",
@@ -86,6 +92,16 @@ const KEY_META = {
     label: "Bank Account Number",
     type: "text",
     hint: "Account number shown during bank transfer checkout.",
+  },
+  paymongo_public_key: {
+    label: "PayMongo Public Key",
+    type: "text",
+    hint: "Used for frontend payment tokenization (usually starts with pk_).",
+  },
+  paymongo_secret_key: {
+    label: "PayMongo Secret Key",
+    type: "password",
+    hint: "Used for backend API processing (starts with sk_). Keep this secure.",
   },
 
   // email
@@ -127,8 +143,7 @@ const KEY_META = {
     min: 1,
     max: 20000,
     step: 1,
-    hint:
-      "Enter the actual usable internal cargo width. Do not use the truck's exterior width.",
+    hint: "Enter the actual usable internal cargo width. Do not use the truck's exterior width.",
   },
   standard_truck_limit_height_mm: {
     label: "Standard Truck Internal Height",
@@ -137,8 +152,7 @@ const KEY_META = {
     min: 1,
     max: 20000,
     step: 1,
-    hint:
-      "Enter the smaller of the usable internal cargo height or loading-door opening.",
+    hint: "Enter the smaller of the usable internal cargo height or loading-door opening.",
   },
   standard_truck_limit_depth_mm: {
     label: "Standard Truck Internal Length / Depth",
@@ -147,8 +161,7 @@ const KEY_META = {
     min: 1,
     max: 20000,
     step: 1,
-    hint:
-      "Enter the usable cargo length from the loading opening to the front wall.",
+    hint: "Enter the usable cargo length from the loading opening to the front wall.",
   },
 };
 
@@ -204,38 +217,78 @@ export default function WebsiteSettingsPage() {
     setDirty((current) => ({ ...current, [key]: val }));
   };
 
-  const validateDeliveryLimits = () => {
+  const validateSettings = () => {
+    // 1. Validate Delivery Limits (Existing Logic)
     const deliveryChanged = DELIVERY_LIMIT_KEYS.some((key) =>
       Object.prototype.hasOwnProperty.call(dirty, key),
     );
 
-    if (!deliveryChanged) return true;
+    if (deliveryChanged) {
+      const values = DELIVERY_LIMIT_KEYS.map((key) => Number(settings[key]));
+      if (
+        values.some(
+          (value) => !Number.isFinite(value) || value <= 0 || value > 20000,
+        )
+      ) {
+        setActiveTab("delivery");
+        toast.error(
+          "Enter valid internal truck width, height, and depth limits in millimeters.",
+        );
+        return false;
+      }
+    }
 
-    const values = DELIVERY_LIMIT_KEYS.map((key) => Number(settings[key]));
+    // 2. Validate Regex Patterns for ALL modified fields
+    for (const key of Object.keys(dirty)) {
+      const meta = KEY_META[key];
+      const value = settings[key];
 
-    if (
-      values.some(
-        (value) =>
-          !Number.isFinite(value) ||
-          value <= 0 ||
-          value > 20000,
-      )
-    ) {
-      setActiveTab("delivery");
-      toast.error(
-        "Enter valid internal truck width, height, and depth limits in millimeters.",
-      );
-      return false;
+      // If the field has a regex pattern and isn't empty, test it
+      if (meta?.pattern && value) {
+        if (!meta.pattern.test(value)) {
+          // Find which tab this field belongs to so we can auto-switch to it
+          const targetTab = Object.entries({
+            display: [
+              "site_logo",
+              "site_name",
+              "show_faq_section",
+              "show_about_section",
+              "business_address",
+              "business_phone",
+            ],
+            payment: [
+              "cod_enabled",
+              "cop_enabled",
+              "gcash_enabled",
+              "bank_transfer_enabled",
+              "gcash_number",
+              "bank_account_name",
+              "bank_account_number",
+              "paymongo_public_key",
+              "paymongo_secret_key",
+            ],
+            email: ["email_footer", "checkout_note"],
+            policy: ["warranty_period_days", "cancellation_fee_pct"],
+            delivery: DELIVERY_LIMIT_KEYS,
+          }).find(([, keys]) => keys.includes(key))?.[0];
+
+          if (targetTab) setActiveTab(targetTab);
+
+          toast.error(
+            meta.patternMessage || `Invalid format for ${meta.label}`,
+          );
+          return false;
+        }
+      }
     }
 
     return true;
   };
 
   const handleSave = async () => {
-    if (!validateDeliveryLimits()) return;
+    if (!validateSettings()) return;
 
     setSaving(true);
-
     try {
       const fd = new FormData();
 
@@ -262,12 +315,29 @@ export default function WebsiteSettingsPage() {
     }
   };
 
+  const hasDirty = Object.keys(dirty).length > 0 || logoFile !== null;
+
+  // Intercept browser refresh/close if there are unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (hasDirty) {
+        e.preventDefault();
+        e.returnValue = ""; // This triggers the browser's native warning prompt
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasDirty]);
+
   if (loading) return <div style={center}>Loading settings...</div>;
 
   if (loadError) {
     return (
       <div style={{ ...card, padding: 24 }}>
-        <h2 style={{ margin: 0, fontSize: 20 }}>Unable to load Site Settings</h2>
+        <h2 style={{ margin: 0, fontSize: 20 }}>
+          Unable to load Site Settings
+        </h2>
         <p style={{ margin: "8px 0 0", color: "#71717a", fontSize: 13 }}>
           {loadError}
         </p>
@@ -309,8 +379,6 @@ export default function WebsiteSettingsPage() {
 
     return group?.[0] === activeTab;
   });
-
-  const hasDirty = Object.keys(dirty).length > 0 || logoFile !== null;
 
   return (
     <div>
@@ -448,8 +516,7 @@ function SettingRow({
   onChange,
   onLogoChange,
 }) {
-  const isTrue = (input) =>
-    input === "true" || input === true || input === 1;
+  const isTrue = (input) => input === "true" || input === true || input === 1;
 
   return (
     <div
@@ -557,9 +624,9 @@ function SettingRow({
           </label>
         )}
 
-        {meta.type === "text" && (
+        {(meta.type === "text" || meta.type === "password") && (
           <input
-            type="text"
+            type={meta.type}
             value={value || ""}
             onChange={(event) => onChange(event.target.value)}
             style={inputFull}

@@ -1,3 +1,6 @@
+import { useEffect } from "react";
+import api, { buildAssetUrl } from "./services/api";
+
 import {
   BrowserRouter,
   Routes,
@@ -64,6 +67,7 @@ import ResetPasswordPage from "./pages/customer/resetpasswordpage";
 import PendingApprovalPage from "./pages/customer/pendingapprovalpage";
 import TermsPage from "./pages/customer/TermsPage";
 import PrivacyPolicyPage from "./pages/customer/PrivacyPolicyPage";
+import CustomerStaticPage from "./pages/customer/customerstaticpage";
 import SupportPage from "./pages/customer/supportpage";
 import AdminSupportPage from "./pages/support/SupportPage";
 
@@ -199,6 +203,30 @@ function BlockNonCustomerPortal({ children }) {
 }
 
 export default function App() {
+  useEffect(() => {
+    api
+      .get("/website/settings")
+      .then((res) => {
+        // 1. Change the Browser Tab Title
+        if (res.data?.display?.site_name) {
+          document.title = res.data.display.site_name;
+        }
+
+        // 2. Change the Browser Tab Logo
+        if (res.data?.display?.site_logo) {
+          const faviconUrl = buildAssetUrl(res.data.display.site_logo);
+          let link = document.querySelector("link[rel~='icon']");
+          if (!link) {
+            link = document.createElement("link");
+            link.rel = "icon";
+            document.head.appendChild(link);
+          }
+          link.href = faviconUrl;
+        }
+      })
+      .catch((err) => console.error("Failed to load global tab settings", err));
+  }, []);
+
   return (
     <ErrorBoundary>
       <BrowserRouter>
@@ -262,6 +290,19 @@ export default function App() {
                   <Route
                     path="pending-approval"
                     element={<PendingApprovalPage />}
+                  />
+
+                  <Route
+                    path="about"
+                    element={<CustomerStaticPage slug="about_us" />}
+                  />
+                  <Route
+                    path="contact"
+                    element={<CustomerStaticPage slug="contact" />}
+                  />
+                  <Route
+                    path="faq"
+                    element={<CustomerStaticPage slug="faq" />}
                   />
 
                   <Route path="catalog" element={<ProductCatalog />} />
@@ -429,10 +470,7 @@ export default function App() {
                 />
 
                 <Route path="sales" element={<SalesReportPage />} />
-                <Route
-                  path="pos-qr-recovery"
-                  element={<PosQrRecoveryPage />}
-                />
+                <Route path="pos-qr-recovery" element={<PosQrRecoveryPage />} />
                 <Route path="warranty" element={<WarrantyPage />} />
                 <Route path="support" element={<AdminSupportPage />} />
 
