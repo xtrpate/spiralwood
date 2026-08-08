@@ -91,8 +91,8 @@ export function FurnitureToolsPanel({
   const [simpleTableApronHeight, setSimpleTableApronHeight] = useState(90);
   const [simpleTableApronThickness, setSimpleTableApronThickness] = useState(25);
   const [baseCabinetWidth, setBaseCabinetWidth] = useState(900);
-  const [baseCabinetHeight, setBaseCabinetHeight] = useState(900);
-  const [baseCabinetDepth, setBaseCabinetDepth] = useState(600);
+  const [baseCabinetHeight, setBaseCabinetHeight] = useState(876);
+  const [baseCabinetDepth, setBaseCabinetDepth] = useState(610);
   const [baseCabinetThickness, setBaseCabinetThickness] = useState(18);
   const [baseCabinetBackThickness, setBaseCabinetBackThickness] = useState(6);
   const [baseCabinetToeKickHeight, setBaseCabinetToeKickHeight] = useState(100);
@@ -100,16 +100,24 @@ export function FurnitureToolsPanel({
   const [baseCabinetShelfCount, setBaseCabinetShelfCount] = useState(1);
   const [baseCabinetDividerCount, setBaseCabinetDividerCount] = useState(0);
   const [wallCabinetWidth, setWallCabinetWidth] = useState(900);
-  const [wallCabinetHeight, setWallCabinetHeight] = useState(720);
-  const [wallCabinetDepth, setWallCabinetDepth] = useState(350);
+  const [wallCabinetHeight, setWallCabinetHeight] = useState(760);
+  const [wallCabinetDepth, setWallCabinetDepth] = useState(305);
   const [wallCabinetThickness, setWallCabinetThickness] = useState(18);
   const [wallCabinetBackThickness, setWallCabinetBackThickness] = useState(6);
-  const [wallCabinetBottomHeight, setWallCabinetBottomHeight] = useState(1400);
+  const [wallCabinetBottomHeight, setWallCabinetBottomHeight] = useState(0);
   const [wallCabinetShelfCount, setWallCabinetShelfCount] = useState(2);
   const [wallCabinetDividerCount, setWallCabinetDividerCount] = useState(0);
-  const [cabinetWidth, setCabinetWidth] = useState(1200);
-  const [cabinetHeight, setCabinetHeight] = useState(2000);
-  const [cabinetDepth, setCabinetDepth] = useState(600);
+  const [tallCabinetWidth, setTallCabinetWidth] = useState(600);
+  const [tallCabinetHeight, setTallCabinetHeight] = useState(2135);
+  const [tallCabinetDepth, setTallCabinetDepth] = useState(610);
+  const [tallCabinetThickness, setTallCabinetThickness] = useState(18);
+  const [tallCabinetBackThickness, setTallCabinetBackThickness] = useState(6);
+  const [tallCabinetToeKickHeight, setTallCabinetToeKickHeight] = useState(100);
+  const [tallCabinetToeKickSetback, setTallCabinetToeKickSetback] = useState(50);
+  const [tallCabinetShelfCount, setTallCabinetShelfCount] = useState(4);
+  const [tallCabinetDividerCount, setTallCabinetDividerCount] = useState(0);  const [cabinetWidth, setCabinetWidth] = useState(900);
+  const [cabinetHeight, setCabinetHeight] = useState(1800);
+  const [cabinetDepth, setCabinetDepth] = useState(450);
   const [cabinetThickness, setCabinetThickness] = useState(20);
   const [cabinetShelfCount, setCabinetShelfCount] = useState(2);
   const [shelfLayoutCount, setShelfLayoutCount] = useState(2);
@@ -2052,7 +2060,7 @@ export function FurnitureToolsPanel({
 
               <label style={fieldStyle}>
                 <span style={{ fontSize: 10, color: "#94a3b8" }}>
-                  Bottom Height from Floor (mm)
+                  Mount Height from Floor (mm)
                 </span>
                 <input
                   type="number"
@@ -2132,7 +2140,7 @@ export function FurnitureToolsPanel({
               }}
             >
               {canQuickCabinetBuilder
-                ? "Creates an elevated editable Wall Cabinet. Existing Shelf, Door, Resize, Validate, and assembly tools remain available."
+                ? "Standalone Preview: floor. Mount Height 0 mm keeps a wall cabinet on the floor while designing it alone. Set a higher Mount Height only when placing it on an actual wall. Existing Shelf, Door, Resize, Validate, and assembly tools remain available."
                 : "Wall Cabinet Builder is available in Editable mode."}
             </div>
 
@@ -2157,6 +2165,257 @@ export function FurnitureToolsPanel({
                 style={getBtnStyle(canQuickCabinetBuilder)}
               >
                 Build Wall Cabinet
+              </button>
+            </div>
+          </div>
+          <div style={sectionCardStyle}>
+            <div style={S.smartActionsSectionLabel}>Tall Cabinet Builder</div>
+            <div style={sectionHintStyle}>
+              Build a full-height floor cabinet for pantry, storage, or tall
+              kitchen use. It uses exact panel and back thickness, a raised
+              bottom with toe kick, optional dividers, and per-bay shelves.
+              Doors and drawers can be added afterward with existing builders.
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Width (mm)
+                </span>
+                <input
+                  type="number"
+                  min="300"
+                  step="1"
+                  value={tallCabinetWidth}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setTallCabinetWidth(
+                      Math.max(300, Number(e.target.value) || 900),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Height (mm)
+                </span>
+                <input
+                  type="number"
+                  min="1200"
+                  step="1"
+                  value={tallCabinetHeight}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setTallCabinetHeight(
+                      Math.max(1200, Number(e.target.value) || 2100),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Depth (mm)
+                </span>
+                <input
+                  type="number"
+                  min="250"
+                  step="1"
+                  value={tallCabinetDepth}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setTallCabinetDepth(
+                      Math.max(250, Number(e.target.value) || 600),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Panel Thickness (mm)
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={tallCabinetThickness}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setTallCabinetThickness(
+                      Math.max(1, Number(e.target.value) || 18),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Back Thickness (mm)
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={tallCabinetBackThickness}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setTallCabinetBackThickness(
+                      Math.max(1, Number(e.target.value) || 6),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Toe Kick Height (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={tallCabinetToeKickHeight}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setTallCabinetToeKickHeight(
+                      Math.max(0, Number(e.target.value) || 0),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Toe Kick Setback (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={tallCabinetToeKickSetback}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setTallCabinetToeKickSetback(
+                      Math.max(0, Number(e.target.value) || 0),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Fixed Shelf Levels
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="12"
+                  step="1"
+                  value={tallCabinetShelfCount}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setTallCabinetShelfCount(
+                      Math.max(
+                        0,
+                        Math.min(12, Math.round(Number(e.target.value) || 0)),
+                      ),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <label
+              style={{
+                ...fieldStyle,
+                display: "block",
+                marginBottom: 8,
+              }}
+            >
+              <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                Divider Count
+              </span>
+              <input
+                type="number"
+                min="0"
+                max="4"
+                step="1"
+                value={tallCabinetDividerCount}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onChange={(e) =>
+                  setTallCabinetDividerCount(
+                    Math.max(
+                      0,
+                      Math.min(4, Math.round(Number(e.target.value) || 0)),
+                    ),
+                  )
+                }
+                style={actionInputStyle}
+              />
+            </label>
+
+            <div
+              style={{
+                ...S.infoCard,
+                margin: "0 0 8px",
+                padding: "8px 10px",
+                fontSize: 10,
+                color: canQuickCabinetBuilder ? "#93c5fd" : "#fcd34d",
+                lineHeight: 1.5,
+              }}
+            >
+              {canQuickCabinetBuilder
+                ? "Creates an editable Tall Cabinet assembly. Existing Shelf, Door, Drawer, Resize, Validate, and assembly tools remain available."
+                : "Tall Cabinet Builder is available in Editable mode."}
+            </div>
+
+            <div style={S.smartActionsWideGrid}>
+              <button
+                type="button"
+                onClick={makeHandler(
+                  canQuickCabinetBuilder,
+                  onBuildCabinetBox,
+                  {
+                    builderType: "tall",
+                    width: tallCabinetWidth,
+                    height: tallCabinetHeight,
+                    depth: tallCabinetDepth,
+                    thickness: tallCabinetThickness,
+                    backThickness: tallCabinetBackThickness,
+                    toeKickHeight: tallCabinetToeKickHeight,
+                    toeKickSetback: tallCabinetToeKickSetback,
+                    shelfCount: tallCabinetShelfCount,
+                    dividerCount: tallCabinetDividerCount,
+                  },
+                )}
+                style={getBtnStyle(canQuickCabinetBuilder)}
+              >
+                Build Tall Cabinet
               </button>
             </div>
           </div>
