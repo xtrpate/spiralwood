@@ -27,6 +27,219 @@ function isHexColor(value = "") {
   return HEX_COLOR_RE.test(String(value || "").trim());
 }
 
+const LEGACY_UNIQUE_PART_CODES = {
+  ct_top_panel: "CT-TOP",
+  ct_lower_shelf: "CT-SH",
+  ct_front_apron: "CT-AF",
+  ct_rear_apron: "CT-AR",
+  dt_top_panel: "DT-TOP",
+  bed_headboard: "BED-HB",
+  bed_footboard: "BED-FB",
+  wr_top_panel: "WR-TOP",
+  wr_bottom_panel: "WR-BOT",
+  wr_back_panel: "WR-BK",
+};
+
+const PRODUCTION_ROLE_PREFIXES = {
+  top_panel: "TOP",
+  bottom_panel: "BOT",
+  back_panel: "BK",
+  side_panel: "SIDE",
+  shelf: "SH",
+  leg: "LEG",
+  apron_rail: "RAIL",
+  rail: "RAIL",
+  door: "DR",
+  drawer_front: "DF",
+  drawer_side: "DS",
+  drawer_back: "DB",
+  drawer_bottom: "DBOT",
+  support_panel: "SUP",
+  board_panel: "PNL",
+};
+
+function cleanPartIdentityText(value = "") {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function getTrailingNumber(value = "") {
+  const match = cleanPartIdentityText(value).match(/(\d+)\s*$/);
+  return match ? match[1] : "";
+}
+
+function getSideToken(label = "") {
+  const text = cleanPartIdentityText(label).toLowerCase();
+
+  if (/\bfront\b/.test(text) && /\bleft\b|\bl\b/.test(text)) return "FL";
+  if (/\bfront\b/.test(text) && /\bright\b|\br\b/.test(text)) return "FR";
+  if (/\bback\b|\brear\b/.test(text) && /\bleft\b|\bl\b/.test(text)) return "BL";
+  if (/\bback\b|\brear\b/.test(text) && /\bright\b|\br\b/.test(text)) return "BR";
+  if (/\bleft\b/.test(text)) return "L";
+  if (/\bright\b/.test(text)) return "R";
+
+  return "";
+}
+
+function getKnownLegacyPartCode(component = {}) {
+  const type = cleanPartIdentityText(component.type).toLowerCase();
+  const label = cleanPartIdentityText(component.label);
+  const labelLower = label.toLowerCase();
+
+  if (LEGACY_UNIQUE_PART_CODES[type]) {
+    return LEGACY_UNIQUE_PART_CODES[type];
+  }
+
+  if (type === "ct_leg") {
+    const side = getSideToken(label);
+    if (side) return `CT-${side}`;
+  }
+
+  if (type === "dt_leg") {
+    const side = getSideToken(label);
+    if (side) return `DT-${side}`;
+  }
+
+  if (type === "dt_apron_long") {
+    if (labelLower.includes("front")) return "DT-AF";
+    if (labelLower.includes("rear") || labelLower.includes("back")) {
+      return "DT-AR";
+    }
+  }
+
+  if (type === "dt_apron_short") {
+    if (labelLower.includes("left")) return "DT-AL";
+    if (labelLower.includes("right")) return "DT-AR2";
+  }
+
+  if (type === "bed_side_rail") {
+    if (labelLower.includes("left")) return "BED-SL";
+    if (labelLower.includes("right")) return "BED-SR";
+  }
+
+  if (type === "bed_slat") {
+    const number = getTrailingNumber(label);
+    if (number) return `BED-ST${number}`;
+  }
+
+  if (type === "wr_side_panel") {
+    if (labelLower.includes("left")) return "WR-SL";
+    if (labelLower.includes("right")) return "WR-SR";
+  }
+
+  if (type === "wr_shelf" || type === "wr_top_shelf") {
+    const number = getTrailingNumber(label);
+    if (number) return `WR-SH${number}`;
+  }
+
+  if (type === "wr_door") {
+    if (labelLower.includes("left")) return "WR-DL";
+    if (labelLower.includes("right")) return "WR-DR";
+  }
+
+  if (type === "chair_seat_panel") return "SP";
+
+  if (type === "chair_front_leg") {
+    if (labelLower.includes("left")) return "FL";
+    if (labelLower.includes("right")) return "FR";
+  }
+
+  if (type === "chair_back_leg") {
+    if (labelLower.includes("left")) return "BL";
+    if (labelLower.includes("right")) return "BR";
+  }
+
+  if (type === "chair_front_rail") return "FRT";
+  if (type === "chair_rear_rail") return "RRT";
+
+  if (type === "chair_side_rail") {
+    if (labelLower.includes("left")) return "SRL";
+    if (labelLower.includes("right")) return "SRR";
+  }
+
+  if (type === "chair_back_slat") {
+    const number = getTrailingNumber(label);
+    if (number) return `BS${number}`;
+  }
+
+  return "";
+}
+
+function hashProductionIdentity(value = "") {
+  const text = String(value || "");
+  let hash = 2166136261;
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(36).toUpperCase().padStart(6, "0").slice(-6);
+}
+
+function getProductionPartPrefix(component = {}) {
+  const role = cleanPartIdentityText(
+    component.partRole ?? component.part_role ?? component.assemblyRole ?? "",
+  )
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+
+  if (PRODUCTION_ROLE_PREFIXES[role]) {
+    return PRODUCTION_ROLE_PREFIXES[role];
+  }
+
+  const type = cleanPartIdentityText(component.type || "part")
+    .toUpperCase()
+    .replace(/^FURNITURE_/, "")
+    .replace(/^CUSTOM_/, "")
+    .replace(/[^A-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  if (!type || type === "COMPONENT") return "PT";
+
+  const tokens = type.split("-").filter(Boolean);
+  if (tokens.length > 1) {
+    return tokens
+      .slice(0, 3)
+      .map((token) => token.slice(0, 3))
+      .join("-")
+      .slice(0, 12);
+  }
+
+  return type.slice(0, 10);
+}
+
+function resolveProductionPartCode(component = {}) {
+  const existing = cleanPartIdentityText(
+    component.partCode ?? component.part_code ?? "",
+  );
+
+  if (existing) return existing;
+
+  const knownCode = getKnownLegacyPartCode(component);
+  if (knownCode) return knownCode;
+
+  const prefix = getProductionPartPrefix(component);
+  const identity = [
+    component.id,
+    component.type,
+    component.label,
+    component.partRole ?? component.part_role,
+    component.groupId ?? component.group_id,
+    component.groupLabel ?? component.group_label,
+    component.assemblyId ?? component.assembly_id,
+    component.x ?? component.position_x,
+    component.y ?? component.position_y,
+    component.z ?? component.position_z,
+    component.width ?? component.width_mm,
+    component.height ?? component.height_mm,
+    component.depth ?? component.depth_mm,
+  ]
+    .map((value) => cleanPartIdentityText(value))
+    .join("|");
+
+  return `${prefix}-${hashProductionIdentity(identity || "part")}`;
+}
+
 function isChairPartType(type) {
   return CHAIR_PART_SET.has(type);
 }
@@ -133,8 +346,14 @@ function normalizeComponent(c) {
       [],
   );
 
+  const resolvedId = c.id || makeId();
+  const resolvedPartCode = resolveProductionPartCode({
+    ...c,
+    id: resolvedId,
+  });
+
   return {
-    id: c.id || makeId(),
+    id: resolvedId,
 
     // Canonical Project -> Assembly -> Part metadata. Legacy group fields are
     // intentionally kept in sync until all editor tools have migrated.
@@ -148,7 +367,7 @@ function normalizeComponent(c) {
     groupLabel: structure.groupLabel,
     groupType: structure.groupType,
 
-    partCode: c.partCode || "",
+    partCode: resolvedPartCode,
     category: c.category || "Custom",
     blueprintStyle: c.blueprintStyle || "box",
     type: c.type || "custom_component",
@@ -386,6 +605,7 @@ export {
   isWoodLikeMaterial,
   getDefaultFinishId,
   applyWoodFinish,
+  resolveProductionPartCode,
   normalizeComponent,
   getProjectedBox,
   getComponentsBounds3D,

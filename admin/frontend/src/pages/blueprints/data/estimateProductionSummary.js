@@ -15,6 +15,7 @@ import {
 } from "./hardwareMetadata";
 import { getWoodworkingProfileDescriptor } from "./woodworkingProfile";
 import { normalizeWoodworkingOperations } from "./woodworkingOperations";
+import { resolveProductionPartCode } from "./componentUtils";
 
 const GRAIN_LABELS = Object.fromEntries(
   GRAIN_DIRECTION_OPTIONS.map((item) => [
@@ -151,8 +152,9 @@ function getOperationLines(component = {}) {
 
 function getProductionCompleteness(component = {}) {
   const issues = [];
+  const resolvedPartCode = resolveProductionPartCode(component);
 
-  if (!cleanText(component.partCode)) {
+  if (!cleanText(resolvedPartCode)) {
     issues.push("Missing part code");
   }
   if (!cleanText(component.material)) {
@@ -176,6 +178,7 @@ function getProductionCompleteness(component = {}) {
 
 function buildPartProductionRow(component = {}, index = 0) {
   const production = normalizeProductionMetadata(component);
+  const resolvedPartCode = resolveProductionPartCode(component);
   const descriptor = getWoodworkingProfileDescriptor(component);
   const edgeLines = getEdgeTreatmentLines(component);
   const hardwareLines = getHardwareLines(component);
@@ -220,9 +223,9 @@ function buildPartProductionRow(component = {}, index = 0) {
   return {
     id:
       component.id ||
-      component.partCode ||
+      resolvedPartCode ||
       `production-part-${index + 1}`,
-    code: cleanText(component.partCode) || `P${index + 1}`,
+    code: cleanText(resolvedPartCode) || `P${index + 1}`,
     name: cleanText(component.label) || "Component",
     quantity: Math.max(1, Number(component.qty) || 1),
     cutSize: formatCutSize(component),
