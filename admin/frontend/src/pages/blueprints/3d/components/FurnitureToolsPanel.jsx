@@ -90,7 +90,15 @@ export function FurnitureToolsPanel({
   const [simpleTableLegSize, setSimpleTableLegSize] = useState(70);
   const [simpleTableApronHeight, setSimpleTableApronHeight] = useState(90);
   const [simpleTableApronThickness, setSimpleTableApronThickness] = useState(25);
-  const [cabinetWidth, setCabinetWidth] = useState(1200);
+  const [baseCabinetWidth, setBaseCabinetWidth] = useState(900);
+  const [baseCabinetHeight, setBaseCabinetHeight] = useState(900);
+  const [baseCabinetDepth, setBaseCabinetDepth] = useState(600);
+  const [baseCabinetThickness, setBaseCabinetThickness] = useState(18);
+  const [baseCabinetBackThickness, setBaseCabinetBackThickness] = useState(6);
+  const [baseCabinetToeKickHeight, setBaseCabinetToeKickHeight] = useState(100);
+  const [baseCabinetToeKickSetback, setBaseCabinetToeKickSetback] = useState(50);
+  const [baseCabinetShelfCount, setBaseCabinetShelfCount] = useState(1);
+  const [baseCabinetDividerCount, setBaseCabinetDividerCount] = useState(0);  const [cabinetWidth, setCabinetWidth] = useState(1200);
   const [cabinetHeight, setCabinetHeight] = useState(2000);
   const [cabinetDepth, setCabinetDepth] = useState(600);
   const [cabinetThickness, setCabinetThickness] = useState(20);
@@ -1669,6 +1677,257 @@ export function FurnitureToolsPanel({
             </div>
           </div>
 
+          <div style={sectionCardStyle}>
+            <div style={S.smartActionsSectionLabel}>Base Cabinet Builder</div>
+            <div style={sectionHintStyle}>
+              Build a production-style base cabinet carcass with exact panel
+              thickness, a separate back panel, raised bottom, toe kick,
+              dividers, and per-bay shelves. Doors and drawers can be added
+              afterward using the existing cabinet builders.
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Width (mm)
+                </span>
+                <input
+                  type="number"
+                  min="300"
+                  step="1"
+                  value={baseCabinetWidth}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setBaseCabinetWidth(
+                      Math.max(300, Number(e.target.value) || 900),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Height (mm)
+                </span>
+                <input
+                  type="number"
+                  min="400"
+                  step="1"
+                  value={baseCabinetHeight}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setBaseCabinetHeight(
+                      Math.max(400, Number(e.target.value) || 900),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Depth (mm)
+                </span>
+                <input
+                  type="number"
+                  min="250"
+                  step="1"
+                  value={baseCabinetDepth}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setBaseCabinetDepth(
+                      Math.max(250, Number(e.target.value) || 600),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Panel Thickness (mm)
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={baseCabinetThickness}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setBaseCabinetThickness(
+                      Math.max(1, Number(e.target.value) || 18),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Back Thickness (mm)
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={baseCabinetBackThickness}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setBaseCabinetBackThickness(
+                      Math.max(1, Number(e.target.value) || 6),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Toe Kick Height (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={baseCabinetToeKickHeight}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setBaseCabinetToeKickHeight(
+                      Math.max(0, Number(e.target.value) || 0),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <div style={S.smartActionsFieldsRow}>
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Toe Kick Setback (mm)
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={baseCabinetToeKickSetback}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setBaseCabinetToeKickSetback(
+                      Math.max(0, Number(e.target.value) || 0),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                  Fixed Shelf Levels
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="8"
+                  step="1"
+                  value={baseCabinetShelfCount}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onChange={(e) =>
+                    setBaseCabinetShelfCount(
+                      Math.max(
+                        0,
+                        Math.min(8, Math.round(Number(e.target.value) || 0)),
+                      ),
+                    )
+                  }
+                  style={actionInputStyle}
+                />
+              </label>
+            </div>
+
+            <label
+              style={{
+                ...fieldStyle,
+                display: "block",
+                marginBottom: 8,
+              }}
+            >
+              <span style={{ fontSize: 10, color: "#94a3b8" }}>
+                Divider Count
+              </span>
+              <input
+                type="number"
+                min="0"
+                max="4"
+                step="1"
+                value={baseCabinetDividerCount}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onChange={(e) =>
+                  setBaseCabinetDividerCount(
+                    Math.max(
+                      0,
+                      Math.min(4, Math.round(Number(e.target.value) || 0)),
+                    ),
+                  )
+                }
+                style={actionInputStyle}
+              />
+            </label>
+
+            <div
+              style={{
+                ...S.infoCard,
+                margin: "0 0 8px",
+                padding: "8px 10px",
+                fontSize: 10,
+                color: canQuickCabinetBuilder ? "#93c5fd" : "#fcd34d",
+                lineHeight: 1.5,
+              }}
+            >
+              {canQuickCabinetBuilder
+                ? "Creates an editable Base Cabinet assembly. Existing Shelf, Door, Drawer, Resize, and assembly tools remain available after generation."
+                : "Base Cabinet Builder is available in Editable mode."}
+            </div>
+
+            <div style={S.smartActionsWideGrid}>
+              <button
+                type="button"
+                onClick={makeHandler(
+                  canQuickCabinetBuilder,
+                  onBuildCabinetBox,
+                  {
+                    builderType: "base",
+                    width: baseCabinetWidth,
+                    height: baseCabinetHeight,
+                    depth: baseCabinetDepth,
+                    thickness: baseCabinetThickness,
+                    backThickness: baseCabinetBackThickness,
+                    toeKickHeight: baseCabinetToeKickHeight,
+                    toeKickSetback: baseCabinetToeKickSetback,
+                    shelfCount: baseCabinetShelfCount,
+                    dividerCount: baseCabinetDividerCount,
+                  },
+                )}
+                style={getBtnStyle(canQuickCabinetBuilder)}
+              >
+                Build Base Cabinet
+              </button>
+            </div>
+          </div>
           <div style={sectionCardStyle}>
             <div style={S.smartActionsSectionLabel}>Quick Cabinet Builder</div>
             <div style={sectionHintStyle}>

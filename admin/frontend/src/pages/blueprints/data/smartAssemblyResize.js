@@ -342,7 +342,12 @@ function classifyCabinetPart(item, dimension) {
   const isBack = code === "CB-BACK";
   const isDivider = code.startsWith("CB-DIV") || type === "wr_divider";
   const isShelf = code.startsWith("CB-SH") || type === "wr_shelf";
-  const isSplitShelf = /^CB-SH\d+(L|R)$/.test(code);
+  const isToeKick =
+    code === "CB-TOE-KICK" ||
+    type.includes("toe_kick") ||
+    type.includes("toekick");
+  const isSplitShelf =
+    /^CB-SH\d+(L|R)$/.test(code) || /-B\d+$/.test(code);
   const isFront =
     type.includes("door_front") ||
     type.includes("drawer_front") ||
@@ -353,6 +358,7 @@ function classifyCabinetPart(item, dimension) {
     if (isLeftSide) return role("follow-min", "left-side");
     if (isRightSide) return role("follow-max", "right-side");
     if (isTop || isBottom || isBack) return role("stretch", "span-member");
+    if (isToeKick) return role("stretch", "toe-kick");
     if (isSplitShelf || isFront) return role("ratio-scale", "opening-member");
     if (isShelf) return role("stretch", "shelf");
     if (isDivider) return role("proportional", "divider");
@@ -361,6 +367,7 @@ function classifyCabinetPart(item, dimension) {
 
   if (dimension === "depth") {
     if (isBack) return role("follow-min", "back-panel");
+    if (isToeKick) return role("follow-max", "toe-kick");
     if (isFront) return role("follow-max", "front");
     if (isLeftSide || isRightSide || isTop || isBottom || isDivider || isShelf) {
       return role("stretch", "depth-member");
@@ -370,6 +377,7 @@ function classifyCabinetPart(item, dimension) {
 
   if (dimension === "height") {
     if (isTop) return role("follow-min", "top-panel");
+    if (isToeKick) return role("follow-max", "toe-kick");
     if (isBottom) return role("follow-max", "bottom-panel");
     if (isLeftSide || isRightSide || isBack || isDivider) {
       return role("stretch", "height-member");
