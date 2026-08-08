@@ -151,6 +151,17 @@ const stableComponentSnapshot = (component = {}) => ({
         roundMetric(value, 6),
       )
     : [],
+  profileCutouts: Array.isArray(component.profileCutouts)
+    ? component.profileCutouts.map((item) => ({
+        id: cleanText(item?.id),
+        type: cleanText(item?.type),
+        u: roundMetric(item?.u),
+        v: roundMetric(item?.v),
+        diameter: roundMetric(item?.diameter),
+        width: roundMetric(item?.width),
+        height: roundMetric(item?.height),
+      }))
+    : [],
   profileFilletRadius: roundMetric(component.profileFilletRadius),
   locked: Boolean(component.locked),
 });

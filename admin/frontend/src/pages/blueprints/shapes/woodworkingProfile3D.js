@@ -5,6 +5,8 @@ import * as THREE from "three";
 import {
   getWoodworkingProfileDescriptor,
   getWoodworkingProfileLocalPoints,
+  getValidProfileCutouts,
+  getProfileCutoutLocalPoints,
 } from "../data/woodworkingProfile";
 
 function orientProfileGeometry(geometry, plane) {
@@ -45,6 +47,25 @@ function addWoodworkingProfile3D(
   }
 
   shape.closePath();
+
+  getValidProfileCutouts(component).forEach((cutout) => {
+    const holePoints = getProfileCutoutLocalPoints(
+      cutout,
+      cutout.type === "round" ? 48 : 4,
+    );
+
+    if (!holePoints?.length) return;
+
+    const hole = new THREE.Path();
+    hole.moveTo(holePoints[0][0], holePoints[0][1]);
+
+    for (let index = 1; index < holePoints.length; index += 1) {
+      hole.lineTo(holePoints[index][0], holePoints[index][1]);
+    }
+
+    hole.closePath();
+    shape.holes.push(hole);
+  });
 
   const geometry = new THREE.ExtrudeGeometry(shape, {
     depth: Math.max(1, descriptor.thickness),

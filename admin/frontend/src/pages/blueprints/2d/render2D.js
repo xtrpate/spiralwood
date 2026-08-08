@@ -18,6 +18,7 @@ import {
 import { escapeHtml, clamp } from "../data/utils";
 import {
   getWoodworkingProfile2DPoints,
+  getWoodworkingProfile2DCutouts,
   buildWoodworkingProfileSvgMarkup,
 } from "../data/woodworkingProfile";
 
@@ -882,15 +883,35 @@ function renderBlueprintShape(comp, view, box) {
   );
 
   if (woodworkingProfilePoints) {
+    const profileCutouts = getWoodworkingProfile2DCutouts(
+      comp,
+      effectiveView,
+      box,
+    ).filter((cutout) => cutout.valid);
+
     return (
-      <Line
-        points={woodworkingProfilePoints}
-        closed
-        fill="#f8fafc"
-        stroke={stroke}
-        strokeWidth={1.6}
-        listening={false}
-      />
+      <Group listening={false}>
+        <Line
+          points={woodworkingProfilePoints}
+          closed
+          fill="#f8fafc"
+          stroke={stroke}
+          strokeWidth={1.6}
+          listening={false}
+        />
+
+        {profileCutouts.map((cutout) => (
+          <Line
+            key={`profile-cutout-${cutout.id}`}
+            points={cutout.points}
+            closed
+            fill="#ffffff"
+            stroke={stroke}
+            strokeWidth={1.2}
+            listening={false}
+          />
+        ))}
+      </Group>
     );
   }
   const shell = Math.max(6, Math.min(BOARD, Math.min(box.w, box.h) * 0.12));

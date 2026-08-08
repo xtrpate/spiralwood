@@ -3,7 +3,7 @@
 // Pure woodworking profile geometry shared by 2D and 3D.
 // No inventory, pricing, backend, or estimation behavior lives here.
 
-const WOODWORKING_PROFILE_VERSION = 3;
+const WOODWORKING_PROFILE_VERSION = 4;
 
 const PROFILE_KIND_BY_TYPE = Object.freeze({
   wood_profile_rectangle: "rectangle",
@@ -780,6 +780,395 @@ function resetContourCurveRatios(pointCount = 0) {
   );
 }
 
+const MAX_PROFILE_CUTOUTS = 12;
+const PROFILE_CUTOUT_TYPES = new Set(["round", "rect"]);
+
+function makeProfileCutoutId() {
+  return `cutout_${Date.now().toString(36)}_${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+function normalizeProfileCutouts(value, axes = {}) {
+  let source = value;
+
+  if (typeof source === "string") {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      source = null;
+    }
+  }
+
+  if (!Array.isArray(source)) return [];
+
+  const defaultSize = Math.max(
+    20,
+    Math.min(80, Math.min(Number(axes.u) || 450, Number(axes.v) || 450) * 0.16),
+  );
+
+  return source
+    .slice(0, MAX_PROFILE_CUTOUTS)
+    .map((item, index) => {
+      const type = PROFILE_CUTOUT_TYPES.has(
+        cleanText(item?.type),
+      )
+        ? cleanText(item.type)
+        : "round";
+
+      const id =
+        String(item?.id || "").trim() ||
+        `cutout_${index + 1}`;
+
+      return {
+        id,
+        type,
+        u: clampNumber(item?.u, -100000, 100000, 0),
+        v: clampNumber(item?.v, -100000, 100000, 0),
+        diameter: clampNumber(
+          item?.diameter,
+          1,
+          100000,
+          defaultSize,
+        ),
+        width: clampNumber(
+          item?.width,
+          1,
+          100000,
+          defaultSize * 1.5,
+        ),
+        height: clampNumber(
+          item?.height,
+          1,
+          100000,
+          defaultSize,
+        ),
+      };
+    });
+}
+
+function createProfileCutout(component = {}, type = "round") {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor) return null;
+
+  const normalizedType = cleanText(type) === "rect" ? "rect" : "round";
+  const minEdge = Math.max(
+    20,
+    Math.min(descriptor.u, descriptor.v),
+  );
+  const baseSize = Math.max(20, Math.min(80, minEdge * 0.16));
+
+  return {
+    id: makeProfileCutoutId(),
+    type: normalizedType,
+    u: 0,
+    v: 0,
+    diameter: baseSize,
+    width: Math.max(30, Math.min(140, baseSize * 1.5)),
+    height: baseSize,
+  };
+}
+
+function updateProfileCutout(
+  component = {},
+  cutoutId = "",
+  attrs = {},
+) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor) return null;
+
+  const id = String(cutoutId || "");
+
+  return normalizeProfileCutouts(
+    descriptor.profileCutouts.map((item) =>
+      item.id === id ? { ...item, ...attrs, id: item.id } : item,
+    ),
+    descriptor,
+  );
+}
+
+function deleteProfileCutout(component = {}, cutoutId = "") {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor) return null;
+
+  const id = String(cutoutId || "");
+  return descriptor.profileCutouts.filter((item) => item.id !== id);
+}
+
+function getProfileCutoutLocalPoints(
+  cutout = {},
+  segments = 36,
+) {
+  const type = cleanText(cutout?.type);
+
+  if (type === "rect") {
+    const halfW = Math.max(0.5, Number(cutout.width) || 1) / 2;
+    const halfH = Math.max(0.5, Number(cutout.height) || 1) / 2;
+    const u = Number(cutout.u) || 0;
+    const v = Number(cutout.v) || 0;
+
+    return [
+      [u - halfW, v - halfH],
+      [u + halfW, v - halfH],
+      [u + halfW, v + halfH],
+      [u - halfW, v + halfH],
+    ];
+  }
+
+  const radius = Math.max(
+    0.5,
+    (Number(cutout.diameter) || 1) / 2,
+  );
+  const u = Number(cutout.u) || 0;
+  const v = Number(cutout.v) || 0;
+  const steps = Math.max(16, Number(segments) || 36);
+
+  return Array.from({ length: steps }, (_, index) => {
+    const angle = (index / steps) * Math.PI * 2;
+    return [
+      u + Math.cos(angle) * radius,
+      v + Math.sin(angle) * radius,
+    ];
+  });
+}
+
+function pointInPolygon2(point, polygon = []) {
+  const x = Number(point?.[0]) || 0;
+  const y = Number(point?.[1]) || 0;
+  let inside = false;
+
+  for (
+    let index = 0, previous = polygon.length - 1;
+    index < polygon.length;
+    previous = index, index += 1
+  ) {
+    const xi = Number(polygon[index]?.[0]) || 0;
+    const yi = Number(polygon[index]?.[1]) || 0;
+    const xj = Number(polygon[previous]?.[0]) || 0;
+    const yj = Number(polygon[previous]?.[1]) || 0;
+
+    const onEdge =
+      contourOrientation(
+        [xi, yi],
+        [xj, yj],
+        [x, y],
+      ) === 0 &&
+      contourPointOnSegment(
+        [xi, yi],
+        [xj, yj],
+        [x, y],
+      );
+
+    if (onEdge) return true;
+
+    const intersects =
+      yi > y !== yj > y &&
+      x <
+        ((xj - xi) * (y - yi)) /
+          Math.max(1e-12, yj - yi) +
+          xi;
+
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+}
+
+function polygonsIntersect2(a = [], b = []) {
+  if (a.length < 3 || b.length < 3) return false;
+
+  for (let ai = 0; ai < a.length; ai += 1) {
+    const aNext = (ai + 1) % a.length;
+
+    for (let bi = 0; bi < b.length; bi += 1) {
+      const bNext = (bi + 1) % b.length;
+
+      if (
+        contourSegmentsIntersect(
+          a[ai],
+          a[aNext],
+          b[bi],
+          b[bNext],
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return (
+    pointInPolygon2(a[0], b) ||
+    pointInPolygon2(b[0], a)
+  );
+}
+
+function isCutoutInsideOuterProfile(
+  outerPoints = [],
+  cutoutPoints = [],
+) {
+  if (outerPoints.length < 3 || cutoutPoints.length < 3) {
+    return false;
+  }
+
+  if (
+    !cutoutPoints.every((point) =>
+      pointInPolygon2(point, outerPoints),
+    )
+  ) {
+    return false;
+  }
+
+  for (let ci = 0; ci < cutoutPoints.length; ci += 1) {
+    const cNext = (ci + 1) % cutoutPoints.length;
+
+    for (let oi = 0; oi < outerPoints.length; oi += 1) {
+      const oNext = (oi + 1) % outerPoints.length;
+
+      if (
+        contourSegmentsIntersect(
+          cutoutPoints[ci],
+          cutoutPoints[cNext],
+          outerPoints[oi],
+          outerPoints[oNext],
+        )
+      ) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function getProfileCutoutStatus(
+  component = {},
+  cutoutOrId = "",
+) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor) {
+    return {
+      valid: false,
+      code: "no_profile",
+      message: "No woodworking profile is available.",
+    };
+  }
+
+  const cutout =
+    typeof cutoutOrId === "object" && cutoutOrId
+      ? cutoutOrId
+      : descriptor.profileCutouts.find(
+          (item) => item.id === String(cutoutOrId || ""),
+        );
+
+  if (!cutout) {
+    return {
+      valid: false,
+      code: "missing",
+      message: "Cutout not found.",
+    };
+  }
+
+  const outerPoints = getWoodworkingProfileLocalPoints(
+    component,
+    {
+      curveSegments: 48,
+      cornerSegments: 10,
+      filletSegments: 10,
+    },
+  );
+
+  const cutoutPoints = getProfileCutoutLocalPoints(
+    cutout,
+    36,
+  );
+
+  if (
+    !isCutoutInsideOuterProfile(
+      outerPoints || [],
+      cutoutPoints,
+    )
+  ) {
+    return {
+      valid: false,
+      code: "outside",
+      message:
+        "Cutout must stay fully inside the board profile.",
+    };
+  }
+
+  const collides = descriptor.profileCutouts.some((other) => {
+    if (other.id === cutout.id) return false;
+
+    return polygonsIntersect2(
+      cutoutPoints,
+      getProfileCutoutLocalPoints(other, 36),
+    );
+  });
+
+  if (collides) {
+    return {
+      valid: false,
+      code: "overlap",
+      message: "Cutouts cannot overlap each other.",
+    };
+  }
+
+  return {
+    valid: true,
+    code: "ok",
+    message: "Valid internal through-cutout.",
+  };
+}
+
+function getValidProfileCutouts(component = {}) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor) return [];
+
+  return descriptor.profileCutouts.filter(
+    (item) => getProfileCutoutStatus(component, item).valid,
+  );
+}
+
+function getWoodworkingProfile2DCutouts(
+  component = {},
+  view = "front",
+  box = {},
+) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor) return [];
+
+  if (getProjectionPlaneForView(view) !== descriptor.plane) {
+    return [];
+  }
+
+  const boxWidth = Math.max(1, Number(box.w) || 1);
+  const boxHeight = Math.max(1, Number(box.h) || 1);
+  const mirrorU = view === "back" || view === "right";
+
+  return descriptor.profileCutouts.map((cutout) => {
+    const status = getProfileCutoutStatus(component, cutout);
+    const localPoints = getProfileCutoutLocalPoints(
+      cutout,
+      36,
+    );
+
+    const points = localPoints.flatMap(([rawU, rawV]) => {
+      const localU = mirrorU ? -rawU : rawU;
+      return [
+        (localU / descriptor.u + 0.5) * boxWidth,
+        (0.5 - rawV / descriptor.v) * boxHeight,
+      ];
+    });
+
+    return {
+      ...cutout,
+      valid: status.valid,
+      status,
+      points,
+    };
+  });
+}
+
 function getProfileKind(component = {}) {
   // React inspector can call this helper while there is temporarily no
   // selected component. Default parameters do not protect against explicit
@@ -971,6 +1360,11 @@ function getWoodworkingProfileDescriptor(component = {}) {
     (value) => Math.abs(Number(value) || 0) > 1e-6,
   );
 
+  const profileCutouts = normalizeProfileCutouts(
+    component.profileCutouts,
+    axes,
+  );
+
   const filletRadiusMax = Math.max(0, minProfileEdge / 2 - 0.5);
   const profileFilletRadius = supportsProfileFillet(kind)
     ? clampNumber(
@@ -1000,6 +1394,7 @@ function getWoodworkingProfileDescriptor(component = {}) {
     profileContourBulges,
     contourCurveScaleMm,
     hasContourCurves,
+    profileCutouts,
     profileFilletRadius,
     limits: {
       radiusMax,
@@ -1039,6 +1434,9 @@ function normalizeWoodworkingProfileMetadata(component = {}) {
           profileContourBulges: [...descriptor.profileContourBulges],
         }
       : {}),
+    profileCutouts: descriptor.profileCutouts.map((item) => ({
+      ...item,
+    })),
     profileFilletRadius: descriptor.profileFilletRadius,
   };
 }
@@ -1520,7 +1918,31 @@ function buildWoodworkingProfileSvgMarkup(
     pairs.push(`${points[i].toFixed(3)},${points[i + 1].toFixed(3)}`);
   }
 
-  return `<polygon points="${pairs.join(" ")}" fill="#f8fafc" stroke="${stroke}" stroke-width="1.5" />`;
+  const cutoutMarkup = getWoodworkingProfile2DCutouts(
+    component,
+    view,
+    box,
+  )
+    .filter((cutout) => cutout.valid)
+    .map((cutout) => {
+      const cutoutPairs = [];
+      for (let i = 0; i < cutout.points.length; i += 2) {
+        cutoutPairs.push(
+          `${cutout.points[i].toFixed(3)},${cutout.points[
+            i + 1
+          ].toFixed(3)}`,
+        );
+      }
+
+      return `<polygon points="${cutoutPairs.join(
+        " ",
+      )}" fill="#ffffff" stroke="${stroke}" stroke-width="1.2" />`;
+    })
+    .join("");
+
+  return `<polygon points="${pairs.join(
+    " ",
+  )}" fill="#f8fafc" stroke="${stroke}" stroke-width="1.5" />${cutoutMarkup}`;
 }
 
 export {
@@ -1548,6 +1970,14 @@ export {
   deleteContourCurveAt,
   resetContourCurvesAroundPoint,
   resetContourCurveRatios,
+  MAX_PROFILE_CUTOUTS,
+  createProfileCutout,
+  updateProfileCutout,
+  deleteProfileCutout,
+  getProfileCutoutLocalPoints,
+  getProfileCutoutStatus,
+  getValidProfileCutouts,
+  getWoodworkingProfile2DCutouts,
   isValidContourPolygon,
   getWoodworkingProfileLocalPoints,
   getWoodworkingProfile2DPoints,

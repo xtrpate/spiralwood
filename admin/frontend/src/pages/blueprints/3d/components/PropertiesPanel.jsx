@@ -31,6 +31,13 @@ import {
   deleteContourCurveAt,
   resetContourCurvesAroundPoint,
   resetContourCurveRatios,
+  MAX_PROFILE_CUTOUTS,
+  createProfileCutout,
+  updateProfileCutout,
+  deleteProfileCutout,
+  getProfileCutoutLocalPoints,
+  getProfileCutoutStatus,
+  getWoodworkingProfileLocalPoints,
 } from "../../data/woodworkingProfile";
 
 function ContourEditorCard({
@@ -847,6 +854,631 @@ function ContourEditorCard({
         {points.length} contour points · minimum 3 · maximum 24.
         Moving a point straightens its two adjacent curved edges.
         Invalid self-crossing arc edits are ignored.
+      </div>
+    </div>
+  );
+}
+
+function CutoutEditorCard({
+  selectedComp,
+  woodworkingProfile,
+  editorMode,
+  isLocked,
+  onChange,
+  inputStyle,
+}) {
+  const svgRef = useRef(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const cutouts = Array.isArray(woodworkingProfile?.profileCutouts)
+    ? woodworkingProfile.profileCutouts
+    : [];
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [selectedComp?.id]);
+
+  const safeIndex = Math.max(
+    0,
+    Math.min(cutouts.length - 1, activeIndex),
+  );
+  const activeCutout = cutouts[safeIndex] || null;
+  const activeStatus = activeCutout
+    ? getProfileCutoutStatus(selectedComp, activeCutout)
+    : null;
+
+  const disabled =
+    editorMode !== "editable" || isLocked(selectedComp);
+
+  const viewWidth = 240;
+  const viewHeight = 160;
+  const padding = 18;
+  const usableWidth = viewWidth - padding * 2;
+  const usableHeight = viewHeight - padding * 2;
+
+  const toScreen = ([u, v]) => [
+    padding +
+      (u / Math.max(1, woodworkingProfile.u) + 0.5) *
+        usableWidth,
+    padding +
+      (0.5 - v / Math.max(1, woodworkingProfile.v)) *
+        usableHeight,
+  ];
+
+  const pointerToLocal = (event) => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+
+    const x =
+      ((event.clientX - rect.left) / rect.width) * viewWidth;
+    const y =
+      ((event.clientY - rect.top) / rect.height) * viewHeight;
+
+    const normalizedU = Math.max(
+      0,
+      Math.min(1, (x - padding) / usableWidth),
+    );
+    const normalizedV = Math.max(
+      0,
+      Math.min(1, (y - padding) / usableHeight),
+    );
+
+    return [
+      (normalizedU - 0.5) * woodworkingProfile.u,
+      (0.5 - normalizedV) * woodworkingProfile.v,
+    ];
+  };
+
+  const outerPoints = (
+    getWoodworkingProfileLocalPoints(selectedComp, {
+      curveSegments: 48,
+      cornerSegments: 10,
+      filletSegments: 10,
+    }) || []
+  ).map(toScreen);
+
+  const commitCutouts = (nextCutouts) => {
+    if (!Array.isArray(nextCutouts)) return;
+    onChange(selectedComp.id, {
+      profileCutouts: nextCutouts,
+    });
+  };
+
+  const updateActive = (attrs) => {
+    if (!activeCutout) return;
+
+    commitCutouts(
+      updateProfileCutout(
+        selectedComp,
+        activeCutout.id,
+        attrs,
+      ),
+    );
+  };
+
+  const addCutout = (type) => {
+    if (cutouts.length >= MAX_PROFILE_CUTOUTS) return;
+
+    const created = createProfileCutout(selectedComp, type);
+    if (!created) return;
+
+    const nextCutouts = [...cutouts, created];
+    commitCutouts(nextCutouts);
+    setActiveIndex(nextCutouts.length - 1);
+  };
+
+  const removeActive = () => {
+    if (!activeCutout) return;
+
+    const nextCutouts = deleteProfileCutout(
+      selectedComp,
+      activeCutout.id,
+    );
+
+    commitCutouts(nextCutouts);
+    setActiveIndex(
+      Math.max(0, Math.min(safeIndex, nextCutouts.length - 1)),
+    );
+  };
+
+  const handleCutoutPointerMove = (event, index) => {
+    if (disabled) return;
+    if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      return;
+    }
+
+    const local = pointerToLocal(event);
+    if (!local) return;
+
+    const target = cutouts[index];
+    if (!target) return;
+
+    const nextCutouts = updateProfileCutout(
+      selectedComp,
+      target.id,
+      {
+        u: Math.round(local[0]),
+        v: Math.round(local[1]),
+      },
+    );
+
+    commitCutouts(nextCutouts);
+  };
+
+  const maxRoundDiameter = Math.max(
+    10,
+    Math.floor(Math.min(woodworkingProfile.u, woodworkingProfile.v) * 0.9),
+  );
+  const maxRectWidth = Math.max(
+    10,
+    Math.floor(woodworkingProfile.u * 0.9),
+  );
+  const maxRectHeight = Math.max(
+    10,
+    Math.floor(woodworkingProfile.v * 0.9),
+  );
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        paddingTop: 10,
+        borderTop: "1px solid #243247",
+      }}
+    >
+      <div
+        style={{
+          marginBottom: 5,
+          color: "#e5eefc",
+          fontSize: 10,
+          fontWeight: 850,
+        }}
+      >
+        Internal Holes & Cutouts
+      </div>
+
+      <div
+        style={{
+          marginBottom: 7,
+          color: "#8fa3bd",
+          fontSize: 8,
+          lineHeight: 1.45,
+        }}
+      >
+        Add real through-holes to this board. Drag a cutout in the preview
+        or type exact local U / V millimeter positions. Invalid cutouts stay
+        saved for correction but are not cut from the 3D board.
+      </div>
+
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${viewWidth} ${viewHeight}`}
+        preserveAspectRatio="none"
+        style={{
+          width: "100%",
+          height: 160,
+          display: "block",
+          marginBottom: 8,
+          border: "1px solid #334155",
+          borderRadius: 0,
+          background: "#08111f",
+          touchAction: "none",
+        }}
+      >
+        {outerPoints.length >= 3 ? (
+          <polygon
+            points={outerPoints
+              .map(([x, y]) => `${x},${y}`)
+              .join(" ")}
+            fill="rgba(148, 163, 184, 0.12)"
+            stroke="#94a3b8"
+            strokeWidth="1.5"
+          />
+        ) : null}
+
+        {cutouts.map((cutout, index) => {
+          const status = getProfileCutoutStatus(
+            selectedComp,
+            cutout,
+          );
+          const points = getProfileCutoutLocalPoints(
+            cutout,
+            cutout.type === "round" ? 36 : 4,
+          ).map(toScreen);
+          const active = index === safeIndex;
+
+          return (
+            <polygon
+              key={cutout.id}
+              points={points
+                .map(([x, y]) => `${x},${y}`)
+                .join(" ")}
+              fill={
+                status.valid
+                  ? active
+                    ? "rgba(56, 189, 248, 0.38)"
+                    : "rgba(56, 189, 248, 0.18)"
+                  : "rgba(248, 113, 113, 0.28)"
+              }
+              stroke={
+                status.valid
+                  ? active
+                    ? "#38bdf8"
+                    : "#7dd3fc"
+                  : "#f87171"
+              }
+              strokeWidth={active ? 2.4 : 1.5}
+              style={{
+                cursor: disabled ? "not-allowed" : "move",
+              }}
+              onPointerDown={(event) => {
+                if (disabled) return;
+                setActiveIndex(index);
+                event.currentTarget.setPointerCapture?.(
+                  event.pointerId,
+                );
+              }}
+              onPointerMove={(event) =>
+                handleCutoutPointerMove(event, index)
+              }
+              onPointerUp={(event) =>
+                event.currentTarget.releasePointerCapture?.(
+                  event.pointerId,
+                )
+              }
+              onPointerCancel={(event) =>
+                event.currentTarget.releasePointerCapture?.(
+                  event.pointerId,
+                )
+              }
+            />
+          );
+        })}
+      </svg>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 6,
+          marginBottom: 8,
+        }}
+      >
+        <button
+          type="button"
+          disabled={disabled || cutouts.length >= MAX_PROFILE_CUTOUTS}
+          onClick={() => addCutout("round")}
+          style={{
+            height: 30,
+            border: "1px solid #334155",
+            borderRadius: 0,
+            background: "#111827",
+            color: "#dbeafe",
+            fontSize: 8,
+            fontWeight: 800,
+            cursor:
+              disabled || cutouts.length >= MAX_PROFILE_CUTOUTS
+                ? "not-allowed"
+                : "pointer",
+          }}
+        >
+          + Round Hole
+        </button>
+
+        <button
+          type="button"
+          disabled={disabled || cutouts.length >= MAX_PROFILE_CUTOUTS}
+          onClick={() => addCutout("rect")}
+          style={{
+            height: 30,
+            border: "1px solid #334155",
+            borderRadius: 0,
+            background: "#111827",
+            color: "#dbeafe",
+            fontSize: 8,
+            fontWeight: 800,
+            cursor:
+              disabled || cutouts.length >= MAX_PROFILE_CUTOUTS
+                ? "not-allowed"
+                : "pointer",
+          }}
+        >
+          + Rect Cutout
+        </button>
+      </div>
+
+      {cutouts.length ? (
+        <>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 4,
+              marginBottom: 8,
+            }}
+          >
+            {cutouts.map((cutout, index) => (
+              <button
+                key={`cutout-select-${cutout.id}`}
+                type="button"
+                disabled={disabled}
+                onClick={() => setActiveIndex(index)}
+                style={{
+                  minWidth: 42,
+                  height: 26,
+                  padding: "0 7px",
+                  border: `1px solid ${
+                    index === safeIndex ? "#38bdf8" : "#334155"
+                  }`,
+                  borderRadius: 0,
+                  background:
+                    index === safeIndex ? "#0c4a6e" : "#0f172a",
+                  color:
+                    index === safeIndex ? "#e0f2fe" : "#94a3b8",
+                  fontSize: 8,
+                  fontWeight: 800,
+                  cursor: disabled ? "not-allowed" : "pointer",
+                }}
+              >
+                {cutout.type === "round" ? "○" : "□"} C{index + 1}
+              </button>
+            ))}
+          </div>
+
+          <div
+            style={{
+              marginBottom: 7,
+              padding: 7,
+              border: `1px solid ${
+                activeStatus?.valid ? "#164e63" : "#7f1d1d"
+              }`,
+              borderRadius: 0,
+              background: activeStatus?.valid
+                ? "rgba(8, 145, 178, 0.08)"
+                : "rgba(127, 29, 29, 0.12)",
+              color: activeStatus?.valid ? "#a5f3fc" : "#fecaca",
+              fontSize: 8,
+              lineHeight: 1.4,
+            }}
+          >
+            {activeStatus?.valid ? "VALID" : "CHECK"} ·{" "}
+            {activeStatus?.message || "Select a cutout."}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 6,
+              marginBottom: 8,
+            }}
+          >
+            <div>
+              <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                Center U (mm)
+              </label>
+              <input
+                type="number"
+                step="1"
+                value={Math.round(activeCutout?.u || 0)}
+                disabled={disabled}
+                onChange={(event) =>
+                  updateActive({
+                    u: Number(event.target.value) || 0,
+                  })
+                }
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                Center V (mm)
+              </label>
+              <input
+                type="number"
+                step="1"
+                value={Math.round(activeCutout?.v || 0)}
+                disabled={disabled}
+                onChange={(event) =>
+                  updateActive({
+                    v: Number(event.target.value) || 0,
+                  })
+                }
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          {activeCutout?.type === "round" ? (
+            <div style={{ marginBottom: 8 }}>
+              <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                Diameter (mm) — current:{" "}
+                {Math.round(activeCutout.diameter)}mm
+              </label>
+              <input
+                type="range"
+                min="1"
+                max={maxRoundDiameter}
+                step="1"
+                value={Math.min(
+                  maxRoundDiameter,
+                  Math.round(activeCutout.diameter),
+                )}
+                disabled={disabled}
+                onChange={(event) =>
+                  updateActive({
+                    diameter: Number(event.target.value) || 1,
+                  })
+                }
+                style={{
+                  width: "100%",
+                  accentColor: "#0ea5e9",
+                }}
+              />
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={Math.round(activeCutout.diameter)}
+                disabled={disabled}
+                onChange={(event) =>
+                  updateActive({
+                    diameter: Math.max(
+                      1,
+                      Number(event.target.value) || 1,
+                    ),
+                  })
+                }
+                style={inputStyle}
+              />
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 6,
+                marginBottom: 8,
+              }}
+            >
+              <div>
+                <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                  Width (mm)
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max={maxRectWidth}
+                  step="1"
+                  value={Math.min(
+                    maxRectWidth,
+                    Math.round(activeCutout?.width || 1),
+                  )}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      width: Number(event.target.value) || 1,
+                    })
+                  }
+                  style={{
+                    width: "100%",
+                    accentColor: "#0ea5e9",
+                  }}
+                />
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={Math.round(activeCutout?.width || 1)}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      width: Math.max(
+                        1,
+                        Number(event.target.value) || 1,
+                      ),
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                  Height (mm)
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max={maxRectHeight}
+                  step="1"
+                  value={Math.min(
+                    maxRectHeight,
+                    Math.round(activeCutout?.height || 1),
+                  )}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      height: Number(event.target.value) || 1,
+                    })
+                  }
+                  style={{
+                    width: "100%",
+                    accentColor: "#0ea5e9",
+                  }}
+                />
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={Math.round(activeCutout?.height || 1)}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      height: Math.max(
+                        1,
+                        Number(event.target.value) || 1,
+                      ),
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={disabled || !activeCutout}
+            onClick={removeActive}
+            style={{
+              width: "100%",
+              height: 30,
+              border: "1px solid #7f1d1d",
+              borderRadius: 0,
+              background: "#1f1115",
+              color: "#fca5a5",
+              fontSize: 8,
+              fontWeight: 800,
+              cursor:
+                disabled || !activeCutout
+                  ? "not-allowed"
+                  : "pointer",
+            }}
+          >
+            Delete Selected Cutout
+          </button>
+        </>
+      ) : (
+        <div
+          style={{
+            padding: 8,
+            border: "1px solid #243247",
+            borderRadius: 0,
+            color: "#64748b",
+            fontSize: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          No internal holes yet. Add a round or rectangular through-cutout.
+        </div>
+      )}
+
+      <div
+        style={{
+          marginTop: 6,
+          color: "#64748b",
+          fontSize: 8,
+          lineHeight: 1.4,
+        }}
+      >
+        {cutouts.length}/{MAX_PROFILE_CUTOUTS} cutouts. Dimensions are stored
+        in exact millimeters; resizing the board does not silently change hole
+        diameter or cutout size.
       </div>
     </div>
   );
@@ -2208,7 +2840,17 @@ export function PropertiesPanel({
                       style={inputStyle}
                     />
                   </div>
-                ) : null}              </div>
+                ) : null}
+
+                <CutoutEditorCard
+                  selectedComp={selectedComp}
+                  woodworkingProfile={woodworkingProfile}
+                  editorMode={editorMode}
+                  isLocked={isLocked}
+                  onChange={onChange}
+                  inputStyle={inputStyle}
+                />
+              </div>
             ) : null}
 
             {!isWoodworkingProfile && (
