@@ -183,6 +183,29 @@ export default function BlueprintDesign() {
     savedDesignComponentSignature,
   ]);
 
+  const openProjectEstimate = useCallback(() => {
+    if (!id || id === "new") {
+      toast.error(
+        "Create and save the Blueprint record before opening Project Estimate.",
+      );
+      return;
+    }
+
+    if (saving) {
+      toast.error("Wait for the current Blueprint save to finish.");
+      return;
+    }
+
+    if (hasUnsavedDesignChanges) {
+      toast.error(
+        "Save the Blueprint first so Project Estimate uses the latest parts.",
+      );
+      return;
+    }
+
+    navigate(`/admin/blueprints/${id}/estimation`);
+  }, [hasUnsavedDesignChanges, id, navigate, saving]);
+
   const designValidationReport = useMemo(
     () =>
       buildDesignValidationReport({
@@ -1933,6 +1956,7 @@ export default function BlueprintDesign() {
         handleRedo={handleRedo}
         canRedo={editorMode === "editable" && canRedo}
         openExportSheets={openExportSheets}
+        openProjectEstimate={openProjectEstimate}
         saveDesign={saveDesign}
         saving={saving}
         setPublishForm={setPublishForm}
