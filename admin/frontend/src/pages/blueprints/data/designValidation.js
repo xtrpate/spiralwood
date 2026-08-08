@@ -134,6 +134,18 @@ const stableComponentSnapshot = (component = {}) => ({
   notchDepth: roundMetric(component.notchDepth),
   profileTopRatio: roundMetric(component.profileTopRatio),
   profileOvalRoundness: roundMetric(component.profileOvalRoundness),
+  profileContourPoints: Array.isArray(component.profileContourPoints)
+    ? component.profileContourPoints
+        .map((point) =>
+          Array.isArray(point) && point.length >= 2
+            ? [
+                roundMetric(point[0], 6),
+                roundMetric(point[1], 6),
+              ]
+            : null,
+        )
+        .filter(Boolean)
+    : [],
   profileFilletRadius: roundMetric(component.profileFilletRadius),
   locked: Boolean(component.locked),
 });

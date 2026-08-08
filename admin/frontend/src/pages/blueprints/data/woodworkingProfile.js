@@ -3,7 +3,7 @@
 // Pure woodworking profile geometry shared by 2D and 3D.
 // No inventory, pricing, backend, or estimation behavior lives here.
 
-const WOODWORKING_PROFILE_VERSION = 1;
+const WOODWORKING_PROFILE_VERSION = 2;
 
 const PROFILE_KIND_BY_TYPE = Object.freeze({
   wood_profile_rectangle: "rectangle",
@@ -12,6 +12,7 @@ const PROFILE_KIND_BY_TYPE = Object.freeze({
   wood_profile_notch: "notch",
   wood_profile_oval: "oval",
   wood_profile_trapezoid: "trapezoid",
+  wood_profile_contour: "contour",
 });
 
 const PROFILE_KIND_LABELS = Object.freeze({
@@ -21,6 +22,7 @@ const PROFILE_KIND_LABELS = Object.freeze({
   notch: "Notched Board",
   oval: "Circle / Oval Board",
   trapezoid: "Trapezoid Board",
+  contour: "Custom Contour Board",
 });
 
 const VALID_PROFILE_KINDS = new Set(Object.keys(PROFILE_KIND_LABELS));
@@ -106,6 +108,28 @@ const WOODWORKING_PROFILE_TYPES = [
     unitPrice: 0,
     blueprintStyle: "profile_part",
   },
+  {
+    label: "Custom Contour Board",
+    type: "wood_profile_contour",
+    category: "Custom Shape Parts",
+    partRole: "custom_profile",
+    w: 800,
+    h: 18,
+    d: 450,
+    fill: "#d7b58a",
+    material: "Marine Plywood",
+    unitPrice: 0,
+    blueprintStyle: "profile_part",
+    profilePlane: "auto",
+    profileContourPoints: [
+      [-0.5, -0.5],
+      [0.5, -0.5],
+      [0.5, 0.12],
+      [0.18, 0.12],
+      [0.18, 0.5],
+      [-0.5, 0.5],
+    ],
+  },
 ];
 
 function clampNumber(value, min, max, fallback = min) {
@@ -116,6 +140,264 @@ function clampNumber(value, min, max, fallback = min) {
 
 function cleanText(value) {
   return String(value ?? "").trim().toLowerCase();
+}
+
+const MAX_CONTOUR_POINTS = 24;
+const DEFAULT_CONTOUR_POINT_RATIOS = Object.freeze([
+  Object.freeze([-0.5, -0.5]),
+  Object.freeze([0.5, -0.5]),
+  Object.freeze([0.5, 0.12]),
+  Object.freeze([0.18, 0.12]),
+  Object.freeze([0.18, 0.5]),
+  Object.freeze([-0.5, 0.5]),
+]);
+
+function cloneDefaultContourPointRatios() {
+  return DEFAULT_CONTOUR_POINT_RATIOS.map(([u, v]) => [u, v]);
+}
+
+function normalizeContourPointRatios(value) {
+  let source = value;
+
+  if (typeof source === "string") {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      source = null;
+    }
+  }
+
+  if (!Array.isArray(source)) {
+    return cloneDefaultContourPointRatios();
+  }
+
+  const points = source
+    .slice(0, MAX_CONTOUR_POINTS)
+    .map((point) => {
+      const rawU = Array.isArray(point)
+        ? point[0]
+        : point?.uRatio ?? point?.u ?? point?.x;
+      const rawV = Array.isArray(point)
+        ? point[1]
+        : point?.vRatio ?? point?.v ?? point?.y;
+
+      const u = clampNumber(rawU, -0.5, 0.5, 0);
+      const v = clampNumber(rawV, -0.5, 0.5, 0);
+
+      return [u, v];
+    })
+    .filter(
+      (point, index, list) =>
+        index === 0 ||
+        Math.abs(point[0] - list[index - 1][0]) > 1e-6 ||
+        Math.abs(point[1] - list[index - 1][1]) > 1e-6,
+    );
+
+  if (
+    points.length > 2 &&
+    Math.abs(points[0][0] - points[points.length - 1][0]) <= 1e-6 &&
+    Math.abs(points[0][1] - points[points.length - 1][1]) <= 1e-6
+  ) {
+    points.pop();
+  }
+
+  return points.length >= 3 ? points : cloneDefaultContourPointRatios();
+}
+
+function contourSignedArea(points = []) {
+  let area = 0;
+
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index];
+    const next = points[(index + 1) % points.length];
+    area += current[0] * next[1] - next[0] * current[1];
+  }
+
+  return area / 2;
+}
+
+function contourOrientation(a, b, c) {
+  const cross =
+    (b[0] - a[0]) * (c[1] - a[1]) -
+    (b[1] - a[1]) * (c[0] - a[0]);
+
+  if (Math.abs(cross) <= 1e-8) return 0;
+  return cross > 0 ? 1 : -1;
+}
+
+function contourPointOnSegment(a, b, point) {
+  return (
+    point[0] >= Math.min(a[0], b[0]) - 1e-8 &&
+    point[0] <= Math.max(a[0], b[0]) + 1e-8 &&
+    point[1] >= Math.min(a[1], b[1]) - 1e-8 &&
+    point[1] <= Math.max(a[1], b[1]) + 1e-8
+  );
+}
+
+function contourSegmentsIntersect(a, b, c, d) {
+  const o1 = contourOrientation(a, b, c);
+  const o2 = contourOrientation(a, b, d);
+  const o3 = contourOrientation(c, d, a);
+  const o4 = contourOrientation(c, d, b);
+
+  if (o1 !== o2 && o3 !== o4) return true;
+
+  if (o1 === 0 && contourPointOnSegment(a, b, c)) return true;
+  if (o2 === 0 && contourPointOnSegment(a, b, d)) return true;
+  if (o3 === 0 && contourPointOnSegment(c, d, a)) return true;
+  if (o4 === 0 && contourPointOnSegment(c, d, b)) return true;
+
+  return false;
+}
+
+function isValidContourPolygon(points = []) {
+  if (!Array.isArray(points) || points.length < 3) return false;
+  if (Math.abs(contourSignedArea(points)) <= 0.001) return false;
+
+  for (let index = 0; index < points.length; index += 1) {
+    const nextIndex = (index + 1) % points.length;
+    const current = points[index];
+    const next = points[nextIndex];
+
+    if (
+      Math.hypot(next[0] - current[0], next[1] - current[1]) <= 0.002
+    ) {
+      return false;
+    }
+  }
+
+  for (let aIndex = 0; aIndex < points.length; aIndex += 1) {
+    const aNext = (aIndex + 1) % points.length;
+    const a = points[aIndex];
+    const b = points[aNext];
+
+    for (let bIndex = aIndex + 1; bIndex < points.length; bIndex += 1) {
+      const bNext = (bIndex + 1) % points.length;
+
+      if (
+        aIndex === bIndex ||
+        aNext === bIndex ||
+        bNext === aIndex
+      ) {
+        continue;
+      }
+
+      const c = points[bIndex];
+      const d = points[bNext];
+
+      if (contourSegmentsIntersect(a, b, c, d)) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function getContourPointRatios(component = {}) {
+  const source =
+    component && typeof component === "object" && !Array.isArray(component)
+      ? component
+      : {};
+
+  const points = normalizeContourPointRatios(source.profileContourPoints);
+  return isValidContourPolygon(points)
+    ? points
+    : cloneDefaultContourPointRatios();
+}
+
+function getContourPointsMm(component = {}) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") return [];
+
+  return descriptor.contourPointsMm.map(([u, v]) => [u, v]);
+}
+
+function updateContourPointMm(
+  component = {},
+  pointIndex = 0,
+  nextUmm,
+  nextVmm,
+) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") return null;
+
+  const index = Math.max(
+    0,
+    Math.min(
+      descriptor.profileContourPoints.length - 1,
+      Number(pointIndex) || 0,
+    ),
+  );
+
+  const current = descriptor.contourPointsMm[index];
+  const uMm = Number.isFinite(Number(nextUmm))
+    ? Number(nextUmm)
+    : current[0];
+  const vMm = Number.isFinite(Number(nextVmm))
+    ? Number(nextVmm)
+    : current[1];
+
+  const candidate = descriptor.profileContourPoints.map(([u, v]) => [u, v]);
+
+  candidate[index] = [
+    clampNumber(uMm / descriptor.u, -0.5, 0.5, 0),
+    clampNumber(vMm / descriptor.v, -0.5, 0.5, 0),
+  ];
+
+  return isValidContourPolygon(candidate)
+    ? candidate
+    : descriptor.profileContourPoints;
+}
+
+function insertContourPointAfter(component = {}, pointIndex = 0) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") return null;
+
+  const points = descriptor.profileContourPoints.map(([u, v]) => [u, v]);
+  if (points.length >= MAX_CONTOUR_POINTS) return points;
+
+  const index = Math.max(
+    0,
+    Math.min(points.length - 1, Number(pointIndex) || 0),
+  );
+  const nextIndex = (index + 1) % points.length;
+  const current = points[index];
+  const next = points[nextIndex];
+
+  const midpoint = [
+    (current[0] + next[0]) / 2,
+    (current[1] + next[1]) / 2,
+  ];
+
+  points.splice(index + 1, 0, midpoint);
+
+  return isValidContourPolygon(points)
+    ? points
+    : descriptor.profileContourPoints;
+}
+
+function deleteContourPointAt(component = {}, pointIndex = 0) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") return null;
+
+  const points = descriptor.profileContourPoints.map(([u, v]) => [u, v]);
+  if (points.length <= 3) return points;
+
+  const index = Math.max(
+    0,
+    Math.min(points.length - 1, Number(pointIndex) || 0),
+  );
+
+  points.splice(index, 1);
+
+  return isValidContourPolygon(points)
+    ? points
+    : descriptor.profileContourPoints;
+}
+
+function resetContourPointRatios() {
+  return cloneDefaultContourPointRatios();
 }
 
 function getProfileKind(component = {}) {
@@ -205,7 +487,7 @@ function getProfileAxisDimensions(component = {}, plane = resolveProfilePlane(co
 }
 
 function supportsProfileFillet(kind = "") {
-  return ["rectangle", "chamfer", "notch", "trapezoid"].includes(
+  return ["rectangle", "chamfer", "notch", "trapezoid", "contour"].includes(
     String(kind || "").toLowerCase(),
   );
 }
@@ -281,6 +563,19 @@ function getWoodworkingProfileDescriptor(component = {}) {
     100,
   );
 
+  const profileContourPoints =
+    kind === "contour"
+      ? getContourPointRatios(component)
+      : [];
+
+  const contourPointsMm =
+    kind === "contour"
+      ? profileContourPoints.map(([uRatio, vRatio]) => [
+          uRatio * axes.u,
+          vRatio * axes.v,
+        ])
+      : [];
+
   const filletRadiusMax = Math.max(0, minProfileEdge / 2 - 0.5);
   const profileFilletRadius = supportsProfileFillet(kind)
     ? clampNumber(
@@ -305,6 +600,8 @@ function getWoodworkingProfileDescriptor(component = {}) {
     notchDepth,
     profileTopRatio,
     profileOvalRoundness,
+    profileContourPoints,
+    contourPointsMm,
     profileFilletRadius,
     limits: {
       radiusMax,
@@ -336,6 +633,13 @@ function normalizeWoodworkingProfileMetadata(component = {}) {
     notchDepth: descriptor.notchDepth,
     profileTopRatio: descriptor.profileTopRatio,
     profileOvalRoundness: descriptor.profileOvalRoundness,
+    ...(descriptor.kind === "contour"
+      ? {
+          profileContourPoints: descriptor.profileContourPoints.map(
+            ([u, v]) => [u, v],
+          ),
+        }
+      : {}),
     profileFilletRadius: descriptor.profileFilletRadius,
   };
 }
@@ -581,6 +885,18 @@ function getWoodworkingProfileLocalPoints(component = {}, options = {}) {
   const bottom = -v / 2;
   const top = v / 2;
 
+  if (kind === "contour") {
+    const basePoints = descriptor.contourPointsMm.map(([u, v]) => [u, v]);
+
+    return supportsProfileFillet(kind)
+      ? applyPolygonFillet(
+          basePoints,
+          descriptor.profileFilletRadius,
+          options.filletSegments,
+        )
+      : basePoints;
+  }
+
   if (kind === "oval") {
     const segments = Math.max(24, Number(options.curveSegments) || 56);
     const roundness = Math.max(
@@ -811,6 +1127,12 @@ export {
   getProfileAxisDimensions,
   getWoodworkingProfileDescriptor,
   normalizeWoodworkingProfileMetadata,
+  getContourPointsMm,
+  updateContourPointMm,
+  insertContourPointAfter,
+  deleteContourPointAt,
+  resetContourPointRatios,
+  isValidContourPolygon,
   getWoodworkingProfileLocalPoints,
   getWoodworkingProfile2DPoints,
   buildWoodworkingProfileSvgMarkup,

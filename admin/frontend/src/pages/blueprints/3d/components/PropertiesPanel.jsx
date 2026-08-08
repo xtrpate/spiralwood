@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { WOOD_FINISHES } from "../../data/furnitureTypes";
 import { applyWoodFinish, isWoodLikeMaterial } from "../../data/componentUtils";
 import {
@@ -19,7 +19,426 @@ import {
   isWoodworkingProfileComponent,
   supportsProfileFillet,
   getWoodworkingProfileDescriptor,
+  updateContourPointMm,
+  insertContourPointAfter,
+  deleteContourPointAt,
+  resetContourPointRatios,
 } from "../../data/woodworkingProfile";
+
+function ContourEditorCard({
+  selectedComp,
+  woodworkingProfile,
+  editorMode,
+  isLocked,
+  onChange,
+  inputStyle,
+}) {
+  const svgRef = useRef(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [selectedComp?.id]);
+
+  const points = Array.isArray(woodworkingProfile?.contourPointsMm)
+    ? woodworkingProfile.contourPointsMm
+    : [];
+
+  const safeIndex = Math.max(
+    0,
+    Math.min(points.length - 1, activeIndex),
+  );
+
+  const activePoint = points[safeIndex] || [0, 0];
+  const disabled =
+    editorMode !== "editable" || isLocked(selectedComp);
+
+  const viewWidth = 240;
+  const viewHeight = 160;
+  const padding = 18;
+  const usableWidth = viewWidth - padding * 2;
+  const usableHeight = viewHeight - padding * 2;
+
+  const toScreen = ([u, v]) => [
+    padding +
+      (u / Math.max(1, woodworkingProfile.u) + 0.5) *
+        usableWidth,
+    padding +
+      (0.5 - v / Math.max(1, woodworkingProfile.v)) *
+        usableHeight,
+  ];
+
+  const screenPoints = points.map(toScreen);
+
+  const commitPoints = (nextPoints) => {
+    if (!Array.isArray(nextPoints)) return;
+
+    onChange(selectedComp.id, {
+      profileContourPoints: nextPoints,
+    });
+  };
+
+  const commitPointMm = (index, nextU, nextV) => {
+    const nextPoints = updateContourPointMm(
+      selectedComp,
+      index,
+      nextU,
+      nextV,
+    );
+
+    commitPoints(nextPoints);
+  };
+
+  const handlePointPointerMove = (event, index) => {
+    if (disabled) return;
+    if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      return;
+    }
+
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
+    const x =
+      ((event.clientX - rect.left) / rect.width) * viewWidth;
+    const y =
+      ((event.clientY - rect.top) / rect.height) * viewHeight;
+
+    const normalizedU = Math.max(
+      0,
+      Math.min(1, (x - padding) / usableWidth),
+    );
+    const normalizedV = Math.max(
+      0,
+      Math.min(1, (y - padding) / usableHeight),
+    );
+
+    const nextU =
+      (normalizedU - 0.5) * woodworkingProfile.u;
+    const nextV =
+      (0.5 - normalizedV) * woodworkingProfile.v;
+
+    commitPointMm(index, nextU, nextV);
+  };
+
+  const insertAfterActive = () => {
+    const nextPoints = insertContourPointAfter(
+      selectedComp,
+      safeIndex,
+    );
+
+    if (!Array.isArray(nextPoints)) return;
+
+    commitPoints(nextPoints);
+    setActiveIndex(
+      Math.min(safeIndex + 1, nextPoints.length - 1),
+    );
+  };
+
+  const deleteActive = () => {
+    const nextPoints = deleteContourPointAt(
+      selectedComp,
+      safeIndex,
+    );
+
+    if (!Array.isArray(nextPoints)) return;
+
+    commitPoints(nextPoints);
+    setActiveIndex(
+      Math.max(0, Math.min(safeIndex, nextPoints.length - 1)),
+    );
+  };
+
+  const resetContour = () => {
+    commitPoints(resetContourPointRatios());
+    setActiveIndex(0);
+  };
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div
+        style={{
+          marginBottom: 6,
+          color: "#e5eefc",
+          fontSize: 10,
+          fontWeight: 850,
+        }}
+      >
+        Contour Editor
+      </div>
+
+      <div
+        style={{
+          marginBottom: 7,
+          color: "#8fa3bd",
+          fontSize: 8,
+          lineHeight: 1.45,
+        }}
+      >
+        Drag a blue point in the preview, or type its exact
+        U / V position in millimeters. The same contour drives
+        the saved 2D and 3D board.
+      </div>
+
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${viewWidth} ${viewHeight}`}
+        preserveAspectRatio="none"
+        style={{
+          width: "100%",
+          height: 160,
+          display: "block",
+          marginBottom: 8,
+          border: "1px solid #334155",
+          borderRadius: 0,
+          background: "#08111f",
+          touchAction: "none",
+        }}
+      >
+        <line
+          x1={viewWidth / 2}
+          y1={padding}
+          x2={viewWidth / 2}
+          y2={viewHeight - padding}
+          stroke="#1e293b"
+          strokeWidth="1"
+          strokeDasharray="4 4"
+        />
+        <line
+          x1={padding}
+          y1={viewHeight / 2}
+          x2={viewWidth - padding}
+          y2={viewHeight / 2}
+          stroke="#1e293b"
+          strokeWidth="1"
+          strokeDasharray="4 4"
+        />
+
+        {screenPoints.length >= 3 ? (
+          <polygon
+            points={screenPoints
+              .map(([x, y]) => `${x},${y}`)
+              .join(" ")}
+            fill="rgba(96, 165, 250, 0.13)"
+            stroke="#93c5fd"
+            strokeWidth="1.6"
+          />
+        ) : null}
+
+        {screenPoints.map(([x, y], index) => {
+          const active = index === safeIndex;
+
+          return (
+            <circle
+              key={`contour-point-${index}`}
+              cx={x}
+              cy={y}
+              r={active ? 5.2 : 4.2}
+              fill={active ? "#ffffff" : "#3b82f6"}
+              stroke={active ? "#3b82f6" : "#bfdbfe"}
+              strokeWidth="1.5"
+              style={{
+                cursor: disabled ? "not-allowed" : "grab",
+              }}
+              onPointerDown={(event) => {
+                if (disabled) return;
+
+                setActiveIndex(index);
+                event.currentTarget.setPointerCapture?.(
+                  event.pointerId,
+                );
+              }}
+              onPointerMove={(event) =>
+                handlePointPointerMove(event, index)
+              }
+              onPointerUp={(event) =>
+                event.currentTarget.releasePointerCapture?.(
+                  event.pointerId,
+                )
+              }
+              onPointerCancel={(event) =>
+                event.currentTarget.releasePointerCapture?.(
+                  event.pointerId,
+                )
+              }
+            />
+          );
+        })}
+      </svg>
+
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 4,
+          marginBottom: 8,
+        }}
+      >
+        {points.map((_, index) => (
+          <button
+            key={`point-select-${index}`}
+            type="button"
+            disabled={disabled}
+            onClick={() => setActiveIndex(index)}
+            style={{
+              minWidth: 34,
+              height: 26,
+              padding: "0 7px",
+              border: `1px solid ${
+                index === safeIndex ? "#60a5fa" : "#334155"
+              }`,
+              borderRadius: 0,
+              background:
+                index === safeIndex ? "#172554" : "#0f172a",
+              color:
+                index === safeIndex ? "#dbeafe" : "#94a3b8",
+              fontSize: 8,
+              fontWeight: 800,
+              cursor: disabled ? "not-allowed" : "pointer",
+            }}
+          >
+            P{index + 1}
+          </button>
+        ))}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 6,
+          marginBottom: 8,
+        }}
+      >
+        <div>
+          <label style={{ fontSize: 8, color: "#94a3b8" }}>
+            U Position (mm)
+          </label>
+          <input
+            type="number"
+            step="1"
+            value={Math.round(activePoint[0])}
+            min={Math.round(-woodworkingProfile.u / 2)}
+            max={Math.round(woodworkingProfile.u / 2)}
+            disabled={disabled}
+            onChange={(event) =>
+              commitPointMm(
+                safeIndex,
+                Number(event.target.value) || 0,
+                activePoint[1],
+              )
+            }
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 8, color: "#94a3b8" }}>
+            V Position (mm)
+          </label>
+          <input
+            type="number"
+            step="1"
+            value={Math.round(activePoint[1])}
+            min={Math.round(-woodworkingProfile.v / 2)}
+            max={Math.round(woodworkingProfile.v / 2)}
+            disabled={disabled}
+            onChange={(event) =>
+              commitPointMm(
+                safeIndex,
+                activePoint[0],
+                Number(event.target.value) || 0,
+              )
+            }
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr 1fr",
+          gap: 6,
+        }}
+      >
+        <button
+          type="button"
+          disabled={disabled || points.length >= 24}
+          onClick={insertAfterActive}
+          style={{
+            height: 30,
+            border: "1px solid #334155",
+            borderRadius: 0,
+            background: "#111827",
+            color: "#dbeafe",
+            fontSize: 8,
+            fontWeight: 800,
+            cursor:
+              disabled || points.length >= 24
+                ? "not-allowed"
+                : "pointer",
+          }}
+        >
+          + Point
+        </button>
+
+        <button
+          type="button"
+          disabled={disabled || points.length <= 3}
+          onClick={deleteActive}
+          style={{
+            height: 30,
+            border: "1px solid #334155",
+            borderRadius: 0,
+            background: "#111827",
+            color: "#fca5a5",
+            fontSize: 8,
+            fontWeight: 800,
+            cursor:
+              disabled || points.length <= 3
+                ? "not-allowed"
+                : "pointer",
+          }}
+        >
+          Delete
+        </button>
+
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={resetContour}
+          style={{
+            height: 30,
+            border: "1px solid #334155",
+            borderRadius: 0,
+            background: "#111827",
+            color: "#cbd5e1",
+            fontSize: 8,
+            fontWeight: 800,
+            cursor: disabled ? "not-allowed" : "pointer",
+          }}
+        >
+          Reset
+        </button>
+      </div>
+
+      <div
+        style={{
+          marginTop: 6,
+          color: "#64748b",
+          fontSize: 8,
+          lineHeight: 1.4,
+        }}
+      >
+        {points.length} contour points · minimum 3 · maximum 24.
+        Invalid self-crossing moves are ignored.
+      </div>
+    </div>
+  );
+}
 
 export function PropertiesPanel({
   selectedComp: committedSelectedComp,
@@ -1304,6 +1723,17 @@ export function PropertiesPanel({
                       style={inputStyle}
                     />
                   </div>
+                ) : null}
+
+                {woodworkingProfile.kind === "contour" ? (
+                  <ContourEditorCard
+                    selectedComp={selectedComp}
+                    woodworkingProfile={woodworkingProfile}
+                    editorMode={editorMode}
+                    isLocked={isLocked}
+                    onChange={onChange}
+                    inputStyle={inputStyle}
+                  />
                 ) : null}
 
                 {woodworkingProfile.kind === "trapezoid" ? (
