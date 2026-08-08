@@ -32,8 +32,12 @@ const SETTING_KEY_GROUPS = {
   site_name: "display",
   show_faq_section: "display",
   show_about_section: "display",
+  show_contact_section: "display",
   business_address: "display",
   business_phone: "display",
+  business_email: "display",
+  social_facebook: "display",
+  operating_hours: "display",
   cod_enabled: "payment",
   cop_enabled: "payment",
   gcash_enabled: "payment",
@@ -235,7 +239,13 @@ exports.updateSettings = async (req, res) => {
           keys_changed: changedKeys,
           business_name_changed: changedKeys.includes("site_name"),
           contact_info_changed: changedKeys.some((k) =>
-            ["business_address", "business_phone"].includes(k),
+            [
+              "business_address",
+              "business_phone",
+              "business_email",
+              "social_facebook",
+              "operating_hours",
+            ].includes(k),
           ),
           payment_settings_changed: changedKeys.some((k) =>
             PAYMENT_SETTING_KEYS.includes(k),

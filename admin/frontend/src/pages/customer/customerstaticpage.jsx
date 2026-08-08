@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import api from "../../services/api"; // Adjust path if necessary
+import api from "../../services/api";
 
 export default function CustomerStaticPage({ slug }) {
   const [pageData, setPageData] = useState(null);
@@ -7,29 +7,50 @@ export default function CustomerStaticPage({ slug }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
     setLoading(true);
 
-    // 1. Fetch the main page content (Title and text body)
-    api
-      .get(`/website/pages/${slug}`)
-      .then((res) => setPageData(res.data))
-      .catch((err) => console.error("Failed to load page content:", err));
-
-    // 2. If this is the FAQ page, also fetch the Q&A list
+    // Group the API requests so we can wait for all of them to finish
+    const requests = [api.get(`/website/pages/${slug}`)];
     if (slug === "faq") {
-      api
-        .get("/website/faqs")
-        .then((res) => {
-          // Only store FAQs that the admin toggled to "Visible"
-          setFaqs(res.data.filter((f) => f.is_visible));
-        })
-        .catch((err) => console.error("Failed to load FAQs:", err));
+      requests.push(api.get("/website/faqs"));
     }
 
-    setLoading(false);
+    Promise.all(requests)
+      .then((responses) => {
+        if (!active) return;
+
+        // Fix 1: Handle if the database returns an array instead of a direct object
+        const pageRes = responses[0].data;
+        const pageObj = Array.isArray(pageRes) ? pageRes[0] : pageRes;
+        setPageData(pageObj || null);
+
+        if (slug === "faq" && responses[1]) {
+          const faqRes = responses[1].data || [];
+
+          // Fix 2: Handle MySQL booleans (1 or 0) for the FAQ visibility
+          setFaqs(
+            faqRes.filter(
+              (f) =>
+                f.is_visible === true ||
+                f.is_visible === 1 ||
+                f.is_visible === "1",
+            ),
+          );
+        }
+      })
+      .catch((err) => console.error("Failed to load page content:", err))
+      .finally(() => {
+        // Only turn off the loading state AFTER the data has safely arrived
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [slug]);
 
-  if (loading || !pageData) {
+  if (loading) {
     return (
       <div
         style={{ padding: "120px 20px", textAlign: "center", color: "#6b7280" }}
@@ -39,8 +60,24 @@ export default function CustomerStaticPage({ slug }) {
     );
   }
 
-  // If the admin hides the page via the toggle switch, hide it from the public
-  if (!pageData.is_visible) {
+  // If the database query returned absolutely nothing
+  if (!pageData) {
+    return (
+      <div
+        style={{ padding: "120px 20px", textAlign: "center", color: "#6b7280" }}
+      >
+        Failed to load page data.
+      </div>
+    );
+  }
+
+  // Safely check for MySQL boolean (1 or 0) on the page visibility
+  const isVisible =
+    pageData.is_visible === true ||
+    pageData.is_visible === 1 ||
+    pageData.is_visible === "1";
+
+  if (!isVisible) {
     return (
       <div
         style={{ padding: "120px 20px", textAlign: "center", color: "#6b7280" }}
@@ -71,7 +108,6 @@ export default function CustomerStaticPage({ slug }) {
         {pageData.title}
       </h1>
 
-      {/* Renders the plain text written in the Admin dashboard with line breaks */}
       <div
         style={{
           fontSize: "16px",
@@ -84,7 +120,6 @@ export default function CustomerStaticPage({ slug }) {
         {pageData.content}
       </div>
 
-      {/* Accordion list specifically for the FAQ page */}
       {slug === "faq" && faqs.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {faqs.map((faq) => (

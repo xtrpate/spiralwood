@@ -61,8 +61,8 @@ export default function RegisterPage() {
 
     const nameRegex = /^[a-zA-Z\s\-]+$/;
 
-    if (!nameRegex.test(form.first_name) || !nameRegex.test(form.last_name)){
-      return setError("Names must contain only letters")
+    if (!nameRegex.test(form.first_name) || !nameRegex.test(form.last_name)) {
+      return setError("Names must contain only letters");
     }
 
     if (form.password !== form.confirm_password) {
@@ -73,8 +73,16 @@ export default function RegisterPage() {
       return setError("Password must be at least 8 characters.");
     }
 
+    const hasLetters = /[A-Za-z]/.test(form.password);
+    const hasNumbers = /[0-9]/.test(form.password);
+    if (!hasLetters || !hasNumbers) {
+      return setError("Password must contain a mix of letters and numbers.");
+    }
+
     if (!form.agreed) {
-      return setError("Please agree to the Terms of Service and Privacy Policy to continue.");
+      return setError(
+        "Please agree to the Terms of Service and Privacy Policy to continue.",
+      );
     }
 
     if (!captchaToken) {
@@ -100,11 +108,10 @@ export default function RegisterPage() {
       setError(
         err.response?.data?.message || "Registration failed. Please try again.",
       );
-      
+
       // reset captcha on error
       if (recaptchaRef.current) recaptchaRef.current.reset();
       setCaptchaToken("");
-
     } finally {
       setLoading(false);
     }
@@ -285,7 +292,16 @@ export default function RegisterPage() {
             >
               {otpLoading ? (
                 <>
-                  <svg className="spinner-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                  <svg
+                    className="spinner-icon"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  >
                     <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                   </svg>
                   Verifying...
@@ -419,14 +435,15 @@ export default function RegisterPage() {
                   value={form.phone}
                   onChange={(e) => {
                     // 1. Remove all non-numeric characters
-                    let val = e.target.value.replace(/\D/g, ""); 
+                    let val = e.target.value.replace(/\D/g, "");
                     // 2. Auto-format: If they type '9' first, prepend '0'
-                    if (val.length > 0 && val[0] !== "0") val = "0" + val; 
+                    if (val.length > 0 && val[0] !== "0") val = "0" + val;
                     // 3. Auto-format: Force the second digit to be '9'
-                    if (val.length > 1 && val[1] !== "9") val = "09" + val.slice(2); 
+                    if (val.length > 1 && val[1] !== "9")
+                      val = "09" + val.slice(2);
                     // 4. Restrict to exactly 11 digits
-                    if (val.length > 11) val = val.slice(0, 11); 
-                    
+                    if (val.length > 11) val = val.slice(0, 11);
+
                     set("phone", val);
                   }}
                   required
@@ -560,11 +577,24 @@ export default function RegisterPage() {
               type="submit"
               className={`btn-auth ${!form.agreed || !captchaToken || loading ? "btn-auth-disabled" : ""}`}
               disabled={loading || !form.agreed || !captchaToken}
-              title={!form.agreed ? "Please agree to the Terms of Service and Privacy Policy first." : ""}
+              title={
+                !form.agreed
+                  ? "Please agree to the Terms of Service and Privacy Policy first."
+                  : ""
+              }
             >
               {loading ? (
                 <>
-                  <svg className="spinner-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                  <svg
+                    className="spinner-icon"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  >
                     <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                   </svg>
                   Creating account...

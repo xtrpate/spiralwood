@@ -40,6 +40,11 @@ const KEY_META = {
     type: "toggle",
     hint: "Toggle visibility of the About Us section.",
   },
+  show_contact_section: {
+    label: "Show Contact Section",
+    type: "toggle",
+    hint: "Toggle visibility of the Contact Us section.",
+  },
   business_address: {
     label: "Business Address",
     type: "text",
@@ -52,6 +57,21 @@ const KEY_META = {
     pattern: /^09\d{9}$/,
     patternMessage:
       "Business phone must be exactly 11 digits and start with '09'.",
+  },
+  business_email: {
+    label: "Business Email",
+    type: "text",
+    hint: "Displayed on the Contact page and used as your public email.",
+  },
+  social_facebook: {
+    label: "Facebook Page URL",
+    type: "text",
+    hint: "Link to your official Facebook page.",
+  },
+  operating_hours: {
+    label: "Operating Hours",
+    type: "textarea",
+    hint: "Displayed on the website footer. Use line breaks for multiple days.",
   },
 
   // payment
@@ -253,8 +273,12 @@ export default function WebsiteSettingsPage() {
               "site_name",
               "show_faq_section",
               "show_about_section",
+              "show_contact_section",
               "business_address",
               "business_phone",
+              "business_email",
+              "social_facebook",
+              "operating_hours",
             ],
             payment: [
               "cod_enabled",
@@ -360,8 +384,12 @@ export default function WebsiteSettingsPage() {
         "site_name",
         "show_faq_section",
         "show_about_section",
+        "show_contact_section",
         "business_address",
         "business_phone",
+        "business_email",
+        "social_facebook",
+        "operating_hours",
       ],
       payment: [
         "cod_enabled",
