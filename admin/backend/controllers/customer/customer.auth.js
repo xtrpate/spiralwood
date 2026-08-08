@@ -278,12 +278,13 @@ exports.register = async (req, res) => {
           role,
           is_verified,
           otp_code,
+          otp_purpose,   /* 👉 FIX: Added the column */
           otp_expires,
           approval_status,
           is_active
         )
       VALUES
-        (?, ?, ?, ?, ?, 'customer', FALSE, ?, ?, 'approved', TRUE)
+        (?, ?, ?, ?, ?, 'customer', FALSE, ?, 'verify_email', ?, 'approved', TRUE) /* 👉 FIX: Added 'verify_email' */
       `,
       [fullName, normalizedEmail, hashed, phone, address, otp, expiry],
     );
@@ -355,9 +356,7 @@ exports.verifyOtp = async (req, res) => {
       });
     }
 
-    const savedOtp = String(user.otp_code ?? "").trim();
-
-    if (savedOtp !== normalizedOtp) {
+    if (user.otp_code != otp) {
       return res.status(400).json({
         message: "Invalid verification code.",
       });

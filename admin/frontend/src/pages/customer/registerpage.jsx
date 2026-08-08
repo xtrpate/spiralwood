@@ -72,11 +72,14 @@ export default function RegisterPage() {
     if (form.password.length < 8) {
       return setError("Password must be at least 8 characters.");
     }
-
     const hasLetters = /[A-Za-z]/.test(form.password);
     const hasNumbers = /[0-9]/.test(form.password);
-    if (!hasLetters || !hasNumbers) {
-      return setError("Password must contain a mix of letters and numbers.");
+    const hasSpecial = /[^A-Za-z0-9]/.test(form.password);
+
+    if (!hasLetters || !hasNumbers || !hasSpecial) {
+      return setError(
+        "Password must contain a mix of letters, numbers, and special characters.",
+      );
     }
 
     if (!form.agreed) {
