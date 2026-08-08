@@ -1,6 +1,12 @@
 import React from "react";
 import { WOOD_FINISHES } from "../../data/furnitureTypes";
 import { applyWoodFinish, isWoodLikeMaterial } from "../../data/componentUtils";
+import {
+  MATERIAL_SUGGESTIONS,
+  GRAIN_DIRECTION_OPTIONS,
+  EDGE_TREATMENT_OPTIONS,
+  EDGE_KEYS,
+} from "../../data/productionMetadata";
 import { displayToMm, formatDim, formatDims, mmToDisplay } from "../../data/utils";
 import S from "../../styles/blueprintStyles";
 import { VIEWER_UI } from "../viewerUi";
@@ -1181,7 +1187,9 @@ export function PropertiesPanel({
               />
             </div>
 
-            <div style={inspectorSectionTitleStyle}>Material & Finish</div>
+            <div style={inspectorSectionTitleStyle}>
+              Material / Grain / Edge
+            </div>
 
             <div style={{ marginBottom: 6 }}>
               <label style={S.floatingLabel}>Fill Color</label>
@@ -1200,13 +1208,19 @@ export function PropertiesPanel({
             </div>
 
             <div style={{ marginBottom: 6 }}>
-              <label style={S.floatingLabel}>Material</label>
+              <label style={S.floatingLabel}>Board Material</label>
               <input
+                list="blueprint-production-materials"
                 value={selectedComp.material || ""}
                 disabled={editorMode !== "editable" || isLocked(selectedComp)}
                 onChange={(e) => applyStyleChange({ material: e.target.value })}
                 style={inputStyle}
               />
+              <datalist id="blueprint-production-materials">
+                {MATERIAL_SUGGESTIONS.map((material) => (
+                  <option key={material} value={material} />
+                ))}
+              </datalist>
             </div>
 
             {(isWoodLikeMaterial(selectedComp.material) ||
@@ -1232,6 +1246,108 @@ export function PropertiesPanel({
                 </select>
               </div>
             )}
+
+            <div style={{ marginBottom: 8 }}>
+              <label style={S.floatingLabel}>Grain Direction</label>
+              <select
+                value={selectedComp.grainDirection || "none"}
+                disabled={editorMode !== "editable" || isLocked(selectedComp)}
+                onChange={(e) =>
+                  applySelectionChange({
+                    grainDirection: e.target.value,
+                  })
+                }
+                style={inputStyle}
+              >
+                {GRAIN_DIRECTION_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <div
+                style={{
+                  marginTop: 4,
+                  color: "#71849e",
+                  fontSize: 8,
+                  lineHeight: 1.4,
+                }}
+              >
+                Direction follows the selected part's own Width / Height / Depth
+                axes. New wood parts default to their longest dimension.
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ ...S.floatingLabel, marginBottom: 6 }}>
+                Edge Treatment
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 6,
+                }}
+              >
+                {EDGE_KEYS.map((edge) => (
+                  <label key={edge.key} style={{ minWidth: 0 }}>
+                    <span
+                      style={{
+                        display: "block",
+                        marginBottom: 3,
+                        color: "#91a4bf",
+                        fontSize: 8,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {edge.label}
+                    </span>
+                    <select
+                      value={
+                        selectedComp.edgeTreatments?.[edge.key] || "none"
+                      }
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        applySelectionChange({
+                          edgeTreatments: {
+                            ...(selectedComp.edgeTreatments || {}),
+                            [edge.key]: e.target.value,
+                          },
+                        })
+                      }
+                      style={{
+                        ...inputStyle,
+                        minHeight: 32,
+                        fontSize: 9,
+                      }}
+                    >
+                      {EDGE_TREATMENT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div
+              style={{
+                ...infoCardStyle,
+                marginBottom: 8,
+                color: "#93a8c4",
+                fontSize: 9,
+                lineHeight: 1.45,
+              }}
+            >
+              Material, grain, and edge treatment are Blueprint production
+              metadata only. They do not reserve or deduct live inventory.
+              Actual inventory deduction remains in Create Estimation.
+            </div>
 
             <div style={{ marginBottom: 6 }}>
               <label style={S.floatingLabel}>Qty</label>
