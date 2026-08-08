@@ -3,14 +3,7 @@ const db = require("../../config/db"); // Uses the unified db config
 const bcrypt = require("bcryptjs");
 const path = require("path");
 const fs = require("fs");
-const nodemailer = require("nodemailer");
 const twilio = require("twilio");
-
-/* ── Nodemailer ── */
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: { user: process.env.MAIL_USER, pass: process.env.MAIL_PASS },
-});
 
 /* ── Twilio ── */
 const twilioClient = twilio(
@@ -42,10 +35,10 @@ exports.uploadAvatar = async (req, res) => {
     }
 
     // ── FIXED: Switched to .query ──
-    const [updateResult] = await db.query("UPDATE users SET profile_photo=? WHERE id=?", [
-      req.file.filename,
-      req.user.id,
-    ]);
+    const [updateResult] = await db.query(
+      "UPDATE users SET profile_photo=? WHERE id=?",
+      [req.file.filename, req.user.id],
+    );
 
     if (updateResult?.affectedRows === 1) {
       req.auditRecord = {
@@ -97,8 +90,10 @@ exports.updateBasic = async (req, res) => {
 
   if (touchesPin) {
     const isEmptyPinValue = (v) => v === null || v === "";
-    const bothEmpty = isEmptyPinValue(address_lat) && isEmptyPinValue(address_lng);
-    const bothFilled = !isEmptyPinValue(address_lat) && !isEmptyPinValue(address_lng);
+    const bothEmpty =
+      isEmptyPinValue(address_lat) && isEmptyPinValue(address_lng);
+    const bothFilled =
+      !isEmptyPinValue(address_lat) && !isEmptyPinValue(address_lng);
 
     if (!bothEmpty && !bothFilled) {
       return res.status(400).json({
@@ -161,11 +156,10 @@ exports.updateBasic = async (req, res) => {
     } else {
       // Request didn't mention lat/lng at all — only touch name/address,
       // leaving any previously saved pin exactly as it was.
-      [updateResult] = await db.query("UPDATE users SET name=?, address=? WHERE id=?", [
-        name.trim(),
-        address?.trim() || "",
-        req.user.id,
-      ]);
+      [updateResult] = await db.query(
+        "UPDATE users SET name=?, address=? WHERE id=?",
+        [name.trim(), address?.trim() || "", req.user.id],
+      );
     }
 
     if (existingUser && updateResult?.affectedRows === 1) {
@@ -181,11 +175,8 @@ exports.updateBasic = async (req, res) => {
 
       const changedFields = [
         ...(trimmedName !== (existingUser.name || "") ? ["name"] : []),
-        ...(trimmedAddress !== (existingUser.address || "")
-          ? ["address"]
-          : []),
-        ...(touchesPin &&
-        (cleanLat !== existingLat || cleanLng !== existingLng)
+        ...(trimmedAddress !== (existingUser.address || "") ? ["address"] : []),
+        ...(touchesPin && (cleanLat !== existingLat || cleanLng !== existingLng)
           ? ["coordinates"]
           : []),
       ];
@@ -257,11 +248,11 @@ exports.requestEmailChange = async (req, res) => {
       [otp, expires, new_email, req.user.id],
     );
 
-    await transporter.sendMail({
-      from: `"Spiral Wood Services" <${process.env.MAIL_USER}>`,
-      to: new_email,
+    const payload = {
+      sender: { name: "Spiral Wood Services", email: process.env.MAIL_USER },
+      to: [{ email: new_email, name: "Customer" }],
       subject: "Verify your new email — Spiral Wood",
-      html: `
+      htmlContent: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
           <h2 style="color:#8B4513">Verify New Email</h2>
           <p>Use this OTP to confirm your new email address. It expires in 15 minutes.</p>
@@ -273,7 +264,21 @@ exports.requestEmailChange = async (req, res) => {
           <p style="color:#888;font-size:13px">If you didn't request this, ignore this email.</p>
         </div>
       `,
+    };
+
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "api-key": process.env.BREVO_API_KEY,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
     });
+
+    if (!response.ok) {
+      throw new Error(`BREVO_REJECTED: ${response.status}`);
+    }
 
     res.json({ message: "OTP sent to new email." });
   } catch (err) {
@@ -348,10 +353,10 @@ exports.updatePhone = async (req, res) => {
     const existingPhone = String(existingUser?.phone || "").trim();
     const phoneChanged = trimmedPhone !== existingPhone;
 
-    const [updateResult] = await db.query("UPDATE users SET phone=? WHERE id=?", [
-      trimmedPhone,
-      req.user.id,
-    ]);
+    const [updateResult] = await db.query(
+      "UPDATE users SET phone=? WHERE id=?",
+      [trimmedPhone, req.user.id],
+    );
 
     if (existingUser && phoneChanged && updateResult?.affectedRows === 1) {
       req.auditRecord = {
@@ -399,11 +404,11 @@ exports.requestPasswordChange = async (req, res) => {
       req.user.id,
     ]);
 
-    await transporter.sendMail({
-      from: `"Spiral Wood Services" <${process.env.MAIL_USER}>`,
-      to: u.email,
+    const payload = {
+      sender: { name: "Spiral Wood Services", email: process.env.MAIL_USER },
+      to: [{ email: u.email, name: "Customer" }],
       subject: "Confirm password change — Spiral Wood",
-      html: `
+      htmlContent: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
           <h2 style="color:#8B4513">Confirm Password Change</h2>
           <p>Use this OTP to confirm your password change. Valid for 15 minutes.</p>
@@ -417,7 +422,21 @@ exports.requestPasswordChange = async (req, res) => {
           </p>
         </div>
       `,
+    };
+
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "api-key": process.env.BREVO_API_KEY,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
     });
+
+    if (!response.ok) {
+      throw new Error(`BREVO_REJECTED: ${response.status}`);
+    }
 
     res.json({ message: "OTP sent to your email." });
   } catch (err) {
