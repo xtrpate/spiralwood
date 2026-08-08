@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { WOOD_FINISHES } from "../../data/furnitureTypes";
 import { applyWoodFinish, isWoodLikeMaterial } from "../../data/componentUtils";
 import {
@@ -7,6 +7,11 @@ import {
   EDGE_TREATMENT_OPTIONS,
   EDGE_KEYS,
 } from "../../data/productionMetadata";
+import {
+  HARDWARE_TYPE_OPTIONS,
+  createHardwareRequirement,
+  getHardwareTypeLabel,
+} from "../../data/hardwareMetadata";
 import { displayToMm, formatDim, formatDims, mmToDisplay } from "../../data/utils";
 import S from "../../styles/blueprintStyles";
 import { VIEWER_UI } from "../viewerUi";
@@ -33,6 +38,19 @@ export function PropertiesPanel({
 }) {
   const selectedComp = liveSelectedComp || committedSelectedComp;
   const hasSmartBuild = Boolean(renderSmartBuild);
+
+  const [hardwareDraftType, setHardwareDraftType] =
+    useState("concealed_hinge");
+  const [hardwareDraftName, setHardwareDraftName] = useState("");
+  const [hardwareDraftQuantity, setHardwareDraftQuantity] = useState(1);
+  const [hardwareDraftNote, setHardwareDraftNote] = useState("");
+
+  useEffect(() => {
+    setHardwareDraftType("concealed_hinge");
+    setHardwareDraftName("");
+    setHardwareDraftQuantity(1);
+    setHardwareDraftNote("");
+  }, [selectedComp?.id]);
 
   if (!selectedComp && !hasSmartBuild && !selectionSummary) return null;
 
@@ -66,6 +84,55 @@ export function PropertiesPanel({
     onChange(selectedComp.id, attrs, {
       applyToSelection: selectedIds.length > 1,
     });
+  };
+
+  const getHardwareRequirements = () =>
+    Array.isArray(selectedComp?.hardwareRequirements)
+      ? selectedComp.hardwareRequirements
+      : [];
+
+  const updateHardwareRequirement = (hardwareId, attrs) => {
+    if (!selectedComp) return;
+
+    const nextRequirements = getHardwareRequirements().map((item) =>
+      item.id === hardwareId ? { ...item, ...attrs } : item,
+    );
+
+    onChange(selectedComp.id, {
+      hardwareRequirements: nextRequirements,
+    });
+  };
+
+  const removeHardwareRequirement = (hardwareId) => {
+    if (!selectedComp) return;
+
+    onChange(selectedComp.id, {
+      hardwareRequirements: getHardwareRequirements().filter(
+        (item) => item.id !== hardwareId,
+      ),
+    });
+  };
+
+  const addHardwareRequirement = () => {
+    if (!selectedComp) return;
+
+    const requirement = createHardwareRequirement({
+      type: hardwareDraftType,
+      name: hardwareDraftName,
+      quantity: hardwareDraftQuantity,
+      installationNote: hardwareDraftNote,
+    });
+
+    onChange(selectedComp.id, {
+      hardwareRequirements: [
+        ...getHardwareRequirements(),
+        requirement,
+      ],
+    });
+
+    setHardwareDraftName("");
+    setHardwareDraftQuantity(1);
+    setHardwareDraftNote("");
   };
 
   const unitLabel = unit === "inch" ? "in" : "mm";
@@ -1347,6 +1414,375 @@ export function PropertiesPanel({
               Material, grain, and edge treatment are Blueprint production
               metadata only. They do not reserve or deduct live inventory.
               Actual inventory deduction remains in Create Estimation.
+            </div>
+
+            <div style={inspectorSectionTitleStyle}>Hardware Requirements</div>
+
+            <div
+              style={{
+                ...infoCardStyle,
+                marginBottom: 8,
+                color: "#93a8c4",
+                fontSize: 9,
+                lineHeight: 1.45,
+              }}
+            >
+              Add hardware needed by this selected part. Related Part is
+              automatically this object:
+              {" "}
+              <b>{selectedComp.partCode || selectedComp.label || "Selected Part"}</b>.
+            </div>
+
+            {getHardwareRequirements().length > 0 ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr",
+                  gap: 8,
+                  marginBottom: 10,
+                }}
+              >
+                {getHardwareRequirements().map((item, index) => (
+                  <div
+                    key={item.id || `${item.type}-${index}`}
+                    style={{
+                      padding: 8,
+                      border: "1px solid rgba(71,85,105,.62)",
+                      borderRadius: 7,
+                      background: "rgba(15,23,42,.52)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 8,
+                        marginBottom: 7,
+                      }}
+                    >
+                      <div
+                        style={{
+                          minWidth: 0,
+                          color: "#dbeafe",
+                          fontSize: 9,
+                          fontWeight: 800,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.name || getHardwareTypeLabel(item.type)}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
+                        onClick={() => removeHardwareRequirement(item.id)}
+                        style={{
+                          minHeight: 24,
+                          padding: "3px 7px",
+                          border: "1px solid rgba(248,113,113,.45)",
+                          borderRadius: 5,
+                          background: "rgba(127,29,29,.18)",
+                          color: "#fecaca",
+                          fontSize: 8,
+                          fontWeight: 800,
+                          cursor:
+                            editorMode !== "editable" ||
+                            isLocked(selectedComp)
+                              ? "not-allowed"
+                              : "pointer",
+                          opacity:
+                            editorMode !== "editable" ||
+                            isLocked(selectedComp)
+                              ? 0.45
+                              : 1,
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(0, 1fr) 72px",
+                        gap: 6,
+                        marginBottom: 6,
+                      }}
+                    >
+                      <label style={{ minWidth: 0 }}>
+                        <span style={S.floatingLabel}>Hardware Type</span>
+                        <select
+                          value={item.type || "other"}
+                          disabled={
+                            editorMode !== "editable" ||
+                            isLocked(selectedComp)
+                          }
+                          onChange={(e) =>
+                            updateHardwareRequirement(item.id, {
+                              type: e.target.value,
+                            })
+                          }
+                          style={inputStyle}
+                        >
+                          {HARDWARE_TYPE_OPTIONS.map((option) => (
+                            <option
+                              key={option.value}
+                              value={option.value}
+                            >
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label style={{ minWidth: 0 }}>
+                        <span style={S.floatingLabel}>Qty</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="9999"
+                          step="1"
+                          value={item.quantity || 1}
+                          disabled={
+                            editorMode !== "editable" ||
+                            isLocked(selectedComp)
+                          }
+                          onChange={(e) =>
+                            updateHardwareRequirement(item.id, {
+                              quantity: Math.max(
+                                1,
+                                Math.min(
+                                  9999,
+                                  Math.round(Number(e.target.value) || 1),
+                                ),
+                              ),
+                            })
+                          }
+                          style={inputStyle}
+                        />
+                      </label>
+                    </div>
+
+                    <div style={{ marginBottom: 6 }}>
+                      <label style={S.floatingLabel}>Name / Description</label>
+                      <input
+                        value={item.name || ""}
+                        maxLength={150}
+                        disabled={
+                          editorMode !== "editable" ||
+                          isLocked(selectedComp)
+                        }
+                        onChange={(e) =>
+                          updateHardwareRequirement(item.id, {
+                            name: e.target.value,
+                          })
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={S.floatingLabel}>Installation Note</label>
+                      <textarea
+                        value={item.installationNote || ""}
+                        maxLength={500}
+                        rows={2}
+                        disabled={
+                          editorMode !== "editable" ||
+                          isLocked(selectedComp)
+                        }
+                        onChange={(e) =>
+                          updateHardwareRequirement(item.id, {
+                            installationNote: e.target.value,
+                          })
+                        }
+                        style={{
+                          ...inputStyle,
+                          minHeight: 54,
+                          resize: "vertical",
+                          lineHeight: 1.35,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div
+                style={{
+                  ...infoCardStyle,
+                  marginBottom: 8,
+                  color: "#71849e",
+                  fontSize: 9,
+                }}
+              >
+                No hardware assigned to this part yet.
+              </div>
+            )}
+
+            <div
+              style={{
+                padding: 8,
+                marginBottom: 8,
+                border: "1px dashed rgba(96,165,250,.38)",
+                borderRadius: 7,
+                background: "rgba(30,64,175,.08)",
+              }}
+            >
+              <div
+                style={{
+                  marginBottom: 7,
+                  color: "#bfdbfe",
+                  fontSize: 9,
+                  fontWeight: 800,
+                }}
+              >
+                Add Hardware
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) 72px",
+                  gap: 6,
+                  marginBottom: 6,
+                }}
+              >
+                <label style={{ minWidth: 0 }}>
+                  <span style={S.floatingLabel}>Hardware Type</span>
+                  <select
+                    value={hardwareDraftType}
+                    disabled={
+                      editorMode !== "editable" || isLocked(selectedComp)
+                    }
+                    onChange={(e) => {
+                      setHardwareDraftType(e.target.value);
+                      if (!hardwareDraftName.trim()) {
+                        setHardwareDraftName(
+                          getHardwareTypeLabel(e.target.value),
+                        );
+                      }
+                    }}
+                    style={inputStyle}
+                  >
+                    {HARDWARE_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label style={{ minWidth: 0 }}>
+                  <span style={S.floatingLabel}>Qty</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="9999"
+                    step="1"
+                    value={hardwareDraftQuantity}
+                    disabled={
+                      editorMode !== "editable" || isLocked(selectedComp)
+                    }
+                    onChange={(e) =>
+                      setHardwareDraftQuantity(
+                        Math.max(
+                          1,
+                          Math.min(
+                            9999,
+                            Math.round(Number(e.target.value) || 1),
+                          ),
+                        ),
+                      )
+                    }
+                    style={inputStyle}
+                  />
+                </label>
+              </div>
+
+              <div style={{ marginBottom: 6 }}>
+                <label style={S.floatingLabel}>Name / Description</label>
+                <input
+                  value={hardwareDraftName}
+                  maxLength={150}
+                  placeholder={getHardwareTypeLabel(hardwareDraftType)}
+                  disabled={
+                    editorMode !== "editable" || isLocked(selectedComp)
+                  }
+                  onChange={(e) => setHardwareDraftName(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ marginBottom: 7 }}>
+                <label style={S.floatingLabel}>Installation Note</label>
+                <textarea
+                  value={hardwareDraftNote}
+                  maxLength={500}
+                  rows={2}
+                  placeholder="Example: 100 mm from top and bottom"
+                  disabled={
+                    editorMode !== "editable" || isLocked(selectedComp)
+                  }
+                  onChange={(e) => setHardwareDraftNote(e.target.value)}
+                  style={{
+                    ...inputStyle,
+                    minHeight: 54,
+                    resize: "vertical",
+                    lineHeight: 1.35,
+                  }}
+                />
+              </div>
+
+              <button
+                type="button"
+                disabled={
+                  editorMode !== "editable" || isLocked(selectedComp)
+                }
+                onClick={addHardwareRequirement}
+                style={{
+                  width: "100%",
+                  minHeight: 32,
+                  border: "1px solid rgba(96,165,250,.55)",
+                  borderRadius: 6,
+                  background: "rgba(37,99,235,.22)",
+                  color: "#dbeafe",
+                  fontSize: 9,
+                  fontWeight: 800,
+                  cursor:
+                    editorMode !== "editable" ||
+                    isLocked(selectedComp)
+                      ? "not-allowed"
+                      : "pointer",
+                  opacity:
+                    editorMode !== "editable" ||
+                    isLocked(selectedComp)
+                      ? 0.45
+                      : 1,
+                }}
+              >
+                Add Hardware Requirement
+              </button>
+            </div>
+
+            <div
+              style={{
+                ...infoCardStyle,
+                marginBottom: 8,
+                color: "#93a8c4",
+                fontSize: 9,
+                lineHeight: 1.45,
+              }}
+            >
+              Hardware entries are Blueprint production requirements only.
+              They do not deduct inventory or calculate price. Automatic
+              suggestions will be added in a later batch after manual
+              assignment is stable.
             </div>
 
             <div style={{ marginBottom: 6 }}>
