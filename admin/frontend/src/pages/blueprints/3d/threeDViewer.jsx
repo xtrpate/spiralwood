@@ -14,6 +14,7 @@ import {
 import { createFurnitureObject } from "./createFurnitureObjects";
 import { FURNITURE_TEMPLATE_SET } from "../data/furnitureTypes";
 import { normalizeComponent } from "../data/componentUtils";
+import { isWoodworkingProfileComponent } from "../data/woodworkingProfile";
 import {
   snap,
   roundToPrecision,
@@ -149,6 +150,21 @@ function ThreeDViewer({
       setActiveLeftPanel(null);
     }
   }, [showLibraryPanel, activeLeftPanel]);
+
+  const selectedCustomProfileId =
+    isWoodworkingProfileComponent(selectedComp)
+      ? selectedComp?.id || null
+      : null;
+
+  useEffect(() => {
+    if (!selectedCustomProfileId) return;
+
+    // From-scratch custom-part workflow: after placing/selecting a profile
+    // board, expose Geometry / Cutouts / Woodworking Operations immediately.
+    // Depend only on the selected id so normal property edits do not keep
+    // forcing the user away from another inspector tab.
+    setActiveInspectorTab("properties");
+  }, [selectedCustomProfileId]);
 
   const openCabinetBuilderShortcut = useCallback(() => {
     setActiveInspectorTab("smartbuild");

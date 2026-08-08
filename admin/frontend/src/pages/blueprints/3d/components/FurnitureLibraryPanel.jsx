@@ -701,7 +701,7 @@ export function FurnitureLibraryPanel({
           <div
             style={{
               ...S.libraryTabsRow,
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
               marginTop: 10,
               marginBottom: 0,
             }}
@@ -713,6 +713,7 @@ export function FurnitureLibraryPanel({
                 onClick={() => setActiveTab(tab.key)}
                 style={{
                   ...S.libraryTabBtn,
+                  borderRadius: 0,
                   ...(activeTab === tab.key ? S.libraryTabBtnActive : {}),
                 }}
               >
@@ -731,6 +732,34 @@ export function FurnitureLibraryPanel({
           >
             {activeTabLabel} | {totalVisibleItems} items | {totalVisibleSections} groups
           </div>
+
+          {activeTab === "custom" ? (
+            <div
+              style={{
+                marginTop: 8,
+                padding: "8px 10px",
+                border: "1px solid rgba(96,165,250,.28)",
+                borderRadius: 0,
+                background: "rgba(15,23,42,.72)",
+                color: "#cbd5e1",
+                fontSize: 9,
+                lineHeight: 1.5,
+              }}
+            >
+              <div
+                style={{
+                  color: "#e2e8f0",
+                  fontWeight: 850,
+                  marginBottom: 3,
+                }}
+              >
+                Custom Part Workflow
+              </div>
+              Place board → set exact size → edit Geometry → add Holes /
+              Cutouts → add Woodworking Operations → set Material / Grain /
+              Edges / Hardware → Save.
+            </div>
+          ) : null}
         </div>
 
         <div

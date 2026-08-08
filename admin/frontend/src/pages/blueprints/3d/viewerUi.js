@@ -3,11 +3,14 @@ export const LIBRARY_TABS = [
   { key: "all", label: "All" },
   { key: "templates", label: "Furniture" },
   { key: "parts", label: "Parts" },
+  { key: "custom", label: "Custom" },
 ];
 
 export const getLibraryBucket = (groupLabel = "") => {
   const text = groupLabel.toLowerCase();
 
+  // Custom Shape Parts must be checked before the generic "part" bucket.
+  if (text.includes("custom shape")) return "custom";
   if (text.includes("part")) return "parts";
   if (text.includes("template")) return "templates";
 
