@@ -4,6 +4,7 @@ import {
   clamp,
   getMaterialPalette,
   createMaterial,
+  createFurnitureMaterial,
   addEdgeHighlight,
   addShelfLine,
   addHandle,
@@ -111,11 +112,12 @@ function buildCasework3D(
       selectableMeshes,
       [w - t * 2, toeKick, d * 0.68],
       [0, -h / 2 + toeKick / 2, d * 0.08],
-      new THREE.MeshStandardMaterial({
-        color: 0x5b4632,
-        roughness: 0.9,
-        metalness: 0,
-      }),
+      createFurnitureMaterial(
+        comp,
+        "#5b4632",
+        "carcass",
+        { roughness: 0.82, clearcoat: 0.02 },
+      ),
       comp.id,
       r,
     );
@@ -181,7 +183,15 @@ function buildCasework3D(
     const shelves = 4;
     for (let i = 1; i <= shelves; i += 1) {
       const y = yOffset + bodyH / 2 - (bodyH / (shelves + 1)) * i;
-      addShelfLine(root, selectableMeshes, w - t * 2 - 10, d - 14, y, comp.id);
+      addShelfLine(
+        root,
+        selectableMeshes,
+        w - t * 2 - 10,
+        d - 14,
+        y,
+        comp.id,
+        insideMat,
+      );
     }
   } else if (isDrawerType) {
     const rows =
@@ -320,11 +330,12 @@ function buildTable3D(
     ),
   );
 
-  const apronMat = new THREE.MeshStandardMaterial({
-    color: palette.carcass,
-    roughness: 0.7,
-    metalness: 0.03,
-  });
+  const apronMat = createFurnitureMaterial(
+    comp,
+    palette.carcass,
+    "carcass",
+    { roughness: 0.62, clearcoat: 0.06 },
+  );
   addSmartBox(
     root,
     selectableMeshes,
@@ -466,19 +477,19 @@ function buildSofa3D(root, selectableMeshes, comp, palette, r = 0) {
   const backH = Math.max(260, h * 0.34);
   const armW = Math.max(140, w * 0.12);
 
-  const frameMat = new THREE.MeshPhysicalMaterial({
-    color: palette.accent,
-    roughness: 0.75,
-    metalness: 0.02,
-    clearcoat: 0.08,
-  });
+  const frameMat = createFurnitureMaterial(
+    { ...comp, material: "Wood Frame" },
+    palette.accent,
+    "frame",
+    { roughness: 0.64, clearcoat: 0.06 },
+  );
 
-  const fabricMat = new THREE.MeshPhysicalMaterial({
-    color: palette.fabric,
-    roughness: 0.9,
-    metalness: 0,
-    clearcoat: 0.02,
-  });
+  const fabricMat = createFurnitureMaterial(
+    { ...comp, material: "Upholstery Fabric", grainDirection: "none" },
+    palette.fabric,
+    "fabric",
+    { roughness: 0.94, clearcoat: 0 },
+  );
 
   addSmartPanel(
     root,
@@ -603,11 +614,12 @@ function buildBed3D(
     r,
   );
 
-  const mattressMat = new THREE.MeshPhysicalMaterial({
-    color: 0xf5f5f4,
-    roughness: 0.95,
-    metalness: 0,
-  });
+  const mattressMat = createFurnitureMaterial(
+    { material: "Upholstery Fabric", grainDirection: "none" },
+    "#f5f5f4",
+    "mattress",
+    { roughness: 0.96, clearcoat: 0 },
+  );
   addSmartPanel(
     root,
     selectableMeshes,
@@ -628,18 +640,19 @@ function buildOfficeChair3D(root, selectableMeshes, comp, palette) {
   const h = comp.height;
   const d = comp.depth;
 
-  const frameMat = new THREE.MeshPhysicalMaterial({
-    color: palette.accent,
-    roughness: 0.3,
-    metalness: 0.92,
-    clearcoat: 0.4,
-  });
+  const frameMat = createFurnitureMaterial(
+    { ...comp, material: "Brushed Metal", grainDirection: "none" },
+    palette.accent,
+    "metal",
+    { roughness: 0.24, metalness: 0.92, clearcoat: 0.34 },
+  );
 
-  const fabricMat = new THREE.MeshPhysicalMaterial({
-    color: palette.fabric,
-    roughness: 0.9,
-    metalness: 0,
-  });
+  const fabricMat = createFurnitureMaterial(
+    { ...comp, material: "Upholstery Fabric", grainDirection: "none" },
+    palette.fabric,
+    "fabric",
+    { roughness: 0.94, clearcoat: 0 },
+  );
 
   addRoundedPanel(
     root,
@@ -821,11 +834,12 @@ function buildPatioSet3D(
     r,
   );
 
-  const chairMat = new THREE.MeshPhysicalMaterial({
-    color: palette.front,
-    roughness: 0.7,
-    metalness: 0.02,
-  });
+  const chairMat = createFurnitureMaterial(
+    comp,
+    palette.front,
+    "front",
+    { roughness: 0.58, clearcoat: 0.08 },
+  );
 
   const positions = [
     [-comp.width * 0.34, -comp.height * 0.1, -comp.depth * 0.26],
