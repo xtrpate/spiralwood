@@ -5,7 +5,6 @@ import {
   getMaterialPalette,
   createMaterial,
   addEdgeHighlight,
-  addInnerShadowPanel,
   addShelfLine,
   addHandle,
   addBoxPart,
@@ -16,6 +15,13 @@ import { addSmartBox, addSmartPanel } from "../shapes/roundedBox";
 import { OPEN_SHELF_SET } from "../data/furnitureTypes";
 
 const BOARD = 18;
+
+// Visual-only offsets for overlay doors and drawer fronts.
+// The old front panel placement made the front face land exactly on the
+// carcass front plane, causing z-fighting / flickering as the camera moved.
+// These values do not change saved component dimensions or coordinates.
+const CASEWORK_FRONT_PANEL_DEPTH = 4;
+const CASEWORK_FRONT_CLEARANCE = 1.5;
 
 function buildCasework3D(
   root,
@@ -46,6 +52,12 @@ function buildCasework3D(
   const toeKick = isBaseLike ? Math.max(30, Math.min(100, h * 0.08)) : 0;
   const bodyH = h - toeKick;
   const yOffset = toeKick / 2;
+  const frontPanelCenterZ =
+    d / 2 +
+    CASEWORK_FRONT_CLEARANCE +
+    CASEWORK_FRONT_PANEL_DEPTH / 2;
+  const frontSurfaceZ =
+    frontPanelCenterZ + CASEWORK_FRONT_PANEL_DEPTH / 2;
 
   const top = addSmartBox(
     root,
@@ -184,15 +196,23 @@ function buildCasework3D(
         selectableMeshes,
         w - 10,
         rowH - 10,
-        4,
+        CASEWORK_FRONT_PANEL_DEPTH,
         0,
         y,
-        d / 2 - 2,
+        frontPanelCenterZ,
         frontMat,
         comp.id,
         r,
       );
-      addHandle(root, selectableMeshes, 0, y, d / 2, true, comp.id);
+      addHandle(
+        root,
+        selectableMeshes,
+        0,
+        y,
+        frontSurfaceZ,
+        true,
+        comp.id,
+      );
     }
   } else {
     const doorW = w / 2 - 6;
@@ -201,10 +221,10 @@ function buildCasework3D(
       selectableMeshes,
       doorW,
       bodyH - 10,
-      4,
+      CASEWORK_FRONT_PANEL_DEPTH,
       -w / 4,
       yOffset,
-      d / 2 - 2,
+      frontPanelCenterZ,
       frontMat,
       comp.id,
       r,
@@ -214,28 +234,35 @@ function buildCasework3D(
       selectableMeshes,
       doorW,
       bodyH - 10,
-      4,
+      CASEWORK_FRONT_PANEL_DEPTH,
       w / 4,
       yOffset,
-      d / 2 - 2,
+      frontPanelCenterZ,
       frontMat,
       comp.id,
       r,
     );
-    addHandle(root, selectableMeshes, -8, yOffset, d / 2, false, comp.id);
-    addHandle(root, selectableMeshes, 8, yOffset, d / 2, false, comp.id);
+    addHandle(
+      root,
+      selectableMeshes,
+      -8,
+      yOffset,
+      frontSurfaceZ,
+      false,
+      comp.id,
+    );
+    addHandle(
+      root,
+      selectableMeshes,
+      8,
+      yOffset,
+      frontSurfaceZ,
+      false,
+      comp.id,
+    );
   }
 
-  addInnerShadowPanel(
-    root,
-    w - t * 2 - 4,
-    bodyH - t * 2 - 4,
-    d - 18,
-    0,
-    yOffset,
-    -4,
-    comp.id,
-  );
+
   [top, bottom, left, right, back].forEach((m) =>
     addEdgeHighlight(root, m, palette.edge, 0.1),
   );

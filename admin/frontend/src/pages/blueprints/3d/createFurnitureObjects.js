@@ -38,6 +38,7 @@ const WARDROBE_PART_SET = new Set([
   "wr_bottom_panel",
   "wr_top_shelf",
   "wr_shelf",
+  "wr_door",
   "wr_base_top",
   "wr_drawer_front",
   "wr_drawer_side",
@@ -48,6 +49,12 @@ const WARDROBE_PART_SET = new Set([
   "wr_support_panel",
   "wr_table",
 ]);
+
+// Visual-only overlay clearance. Wardrobe shelves and carcass panels can end
+// on the same front plane as door components in saved template geometry.
+// Moving only the rendered door/front mesh slightly outward prevents
+// depth-buffer competition while preserving all saved component coordinates.
+const WARDROBE_DOOR_VISUAL_CLEARANCE = 3;
 
 function toneColor(color, amount = 0) {
   const c = new THREE.Color(color || "#c08a5a");
@@ -207,6 +214,21 @@ function buildWardrobePart3D(root, selectableMeshes, comp, palette, r = 0) {
     return true;
   }
 
+  if (comp.type === "wr_door") {
+    addBoxPart(
+      root,
+      selectableMeshes,
+      [w, h, d],
+      [0, 0, WARDROBE_DOOR_VISUAL_CLEARANCE],
+      faceMat,
+      comp.id,
+      true,
+      Math.min(r, 3),
+    );
+
+    return true;
+  }
+
   if (
     comp.type === "wr_side_panel" ||
     comp.type === "wr_divider" ||
@@ -269,7 +291,7 @@ function buildWardrobePart3D(root, selectableMeshes, comp, palette, r = 0) {
       root,
       selectableMeshes,
       [w, h, Math.max(18, d)],
-      [0, 0, 0],
+      [0, 0, WARDROBE_DOOR_VISUAL_CLEARANCE],
       faceMat,
       comp.id,
       true,
