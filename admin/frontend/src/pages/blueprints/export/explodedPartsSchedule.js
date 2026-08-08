@@ -120,7 +120,7 @@ function buildExplodedPartsSchedulePages({
               )}</div>
             </div>
             <div class="sheet-meta">
-              <div><b>Status:</b> FOR REVIEW</div>
+              <div><b>Production Status:</b> FOR REVIEW</div>
               <div><b>Production Unit:</b> MM</div>
               <div><b>Sheet:</b> ${escapeHtml(sheetLabel)}</div>
               <div><b>Page:</b> ${pageNumber} / ${pages.length}</div>
@@ -193,9 +193,8 @@ function buildExplodedPartsSchedulePages({
           </table>
 
           <div class="drawing-note" style="margin-top:8px;">
-            <b>PRODUCTION NOTE</b>
-            <span>This schedule is generated from the same saved Blueprint component order used by the exploded-view balloons.</span>
-            <span>Inventory selection remains manual in Project Estimate; this sheet does not reserve or deduct stock.</span>
+            <b>INVENTORY NOTE</b>
+            <span>Inventory selection remains manual in Project Estimate. This sheet does not reserve or deduct stock.</span>
           </div>
         </div>
       </div>

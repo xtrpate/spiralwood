@@ -5,6 +5,7 @@ import {
   shouldMirrorView,
   getMirroredBox,
   getViewSheetCode,
+  resolveProductionPartCode,
 } from "../data/componentUtils";
 import {
   getScaledExportItems,
@@ -65,6 +66,7 @@ import { buildWoodworkingDetailsPages } from "./woodworkingDetailsExport";
 import { buildWoodworkingVisualCallouts } from "./woodworkingVisualCallouts";
 import {
   EXPLODED_PARTS_SHEET_CODE,
+  buildExplodedPartScheduleRows,
   buildExplodedPartsSchedulePages,
 } from "./explodedPartsSchedule";
 
@@ -973,7 +975,10 @@ function build3DViewPageSvg({
         comp.z + comp.depth / 2,
       );
 
-      const labelText = truncateText(comp.partCode || `P${idx + 1}`, 12);
+      const labelText = truncateText(
+        resolveProductionPartCode(comp) || `P${idx + 1}`,
+        12,
+      );
       const placement = get3DCalloutPlacement(
         comp,
         selectedComponents,
@@ -1145,10 +1150,12 @@ function formatCurrency(value = 0) {
 function getMaterialsSummary(components) {
   const byMaterial = new Map();
   const byComponent = [];
+  const productionRows = buildExplodedPartScheduleRows(components);
   let totalQty = 0;
   let grandTotal = 0;
 
-  components.forEach((c) => {
+  components.forEach((c, index) => {
+    const productionRow = productionRows[index] || null;
     const key = c.material || "Unspecified";
     const resolvedPrice = getResolvedComponentPrice(c, components);
     const qty = Number(c.qty || 1);
@@ -1170,11 +1177,17 @@ function getMaterialsSummary(components) {
     grandTotal += resolvedPrice;
 
     byComponent.push({
-      partCode: c.partCode || "—",
-      label: c.label || "Part",
-      material: c.material || "—",
+      partCode:
+        productionRow?.partCode ||
+        resolveProductionPartCode(c) ||
+        "—",
+      label: productionRow?.partName || c.label || "Part",
+      material: productionRow?.material || c.material || "—",
+      grain: productionRow?.grain || "No Grain",
       qty,
-      size: formatDims(c.width, c.height, c.depth, "mm"),
+      size:
+        productionRow?.cutSize ||
+        formatDims(c.width, c.height, c.depth, "mm"),
       unitCost,
       price: resolvedPrice,
     });
@@ -1246,12 +1259,13 @@ function buildMaterialsPageHtml({
     <table class="bp-table">
       <thead>
         <tr>
-          <th>Item</th>
+          <th>Item No.</th>
           <th>Part Code</th>
-          <th>Description</th>
-          <th>Material</th>
+          <th>Part Name</th>
           <th>Qty</th>
           <th>Cut Size</th>
+          <th>Material</th>
+          <th>Grain</th>
         </tr>
       </thead>
       <tbody>
@@ -1260,19 +1274,20 @@ function buildMaterialsPageHtml({
             (row, index) => `
         <tr>
           <td>${index + 1}</td>
-          <td>${escapeHtml(row.partCode)}</td>
+          <td><b>${escapeHtml(row.partCode)}</b></td>
           <td>${escapeHtml(row.label)}</td>
-          <td>${escapeHtml(row.material)}</td>
           <td>${row.qty}</td>
           <td>${escapeHtml(row.size)}</td>
+          <td>${escapeHtml(row.material)}</td>
+          <td>${escapeHtml(row.grain)}</td>
         </tr>
       `,
           )
           .join("")}
         <tr class="table-total">
-          <td colspan="4"><b>Total</b></td>
+          <td colspan="3"><b>Total</b></td>
           <td><b>${totalQty}</b></td>
-          <td></td>
+          <td colspan="3"></td>
         </tr>
       </tbody>
     </table>
@@ -1287,7 +1302,7 @@ function buildMaterialsPageHtml({
             <div class="sheet-subtitle">${escapeHtml(selectedLabel || "No Selection")}</div>
           </div>
           <div class="sheet-meta">
-            <div><b>Status:</b> ${PROFESSIONAL_DRAWING_STATUS}</div>
+            <div><b>Production Status:</b> ${PROFESSIONAL_DRAWING_STATUS}</div>
             <div><b>Unit:</b> ${escapeHtml(unit.toUpperCase())}</div>
             <div><b>Sheet:</b> ${getExportSheetCode("materials")}</div>
             <div><b>Date:</b> ${escapeHtml(getNowStamp())}</div>
@@ -1297,13 +1312,13 @@ function buildMaterialsPageHtml({
         <div class="info-grid">
           <div><b>Project:</b> ${escapeHtml(resolvedProjectTitle || "Blueprint Design")}</div>
           <div><b>Object:</b> ${escapeHtml(selectedLabel || "No Selection")}</div>
-          <div><b>Dimensions:</b> ${escapeHtml(selectedDimsText || "—")}</div>
+          <div><b>Overall Dimensions:</b> ${escapeHtml(selectedDimsText || "—")}</div>
           <div><b>Material / Finish:</b> ${escapeHtml(selectedMaterialText || "—")}</div>
         </div>
 
         <div class="summary-strip">
           <div class="summary-card">
-            <span class="summary-label">Parts</span>
+            <span class="summary-label">Production Parts</span>
             <strong>${selectedComponents.length}</strong>
           </div>
           <div class="summary-card">
@@ -1317,15 +1332,15 @@ function buildMaterialsPageHtml({
         </div>
 
         <div class="drawing-note">
-          <b>GENERAL DRAWING NOTES</b>
-          <span>Verify written dimensions and material specifications before production.</span>
-          <span>Do not scale the drawing from screen or print.</span>
+          <b>PRODUCTION NOTES</b>
+          <span>Verify written cut sizes and material specifications before production.</span>
+          <span>Written dimensions control. Do not scale the drawing from screen or print.</span>
         </div>
 
         <h3 class="section-head">Materials Summary</h3>
         ${materialTable}
 
-        <h3 class="section-head">Parts / Cut List</h3>
+        <h3 class="section-head">Parts and Cut List</h3>
         ${partTable}
       </div>
     </div>
@@ -1383,7 +1398,7 @@ function buildBlueprintDocumentHtml(pages) {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            padding: 30px 34px 12px;
+            padding: 26px 34px 12px;
             border-bottom: 2px solid #0f172a;
           }
           .sheet-title {
@@ -1404,8 +1419,8 @@ function buildBlueprintDocumentHtml(pages) {
           .info-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px 20px;
-            padding: 16px 34px;
+            gap: 8px 20px;
+            padding: 14px 34px;
             font-size: 12px;
             border-bottom: 1px solid #cbd5e1;
           }
@@ -1413,7 +1428,7 @@ function buildBlueprintDocumentHtml(pages) {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 12px;
-            padding: 16px 34px 4px;
+            padding: 14px 34px 4px;
           }
           .summary-card {
             border: 1px solid #cbd5e1;
@@ -1465,6 +1480,8 @@ function buildBlueprintDocumentHtml(pages) {
           .bp-table th {
             background: #e2e8f0;
             text-align: left;
+            font-size: 11px;
+            letter-spacing: .15px;
           }
           .bp-table .table-total td {
             background: #f8fafc;
@@ -1472,19 +1489,19 @@ function buildBlueprintDocumentHtml(pages) {
           .ww-summary-strip {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 10px;
-            padding: 14px 34px 0;
+            gap: 12px;
+            padding: 14px 34px 4px;
           }
           .ww-summary-strip > div {
             border: 1px solid #cbd5e1;
             background: #f8fafc;
-            padding: 9px 11px;
+            padding: 10px 12px;
             display: grid;
-            gap: 3px;
+            gap: 4px;
           }
           .ww-summary-strip span {
             color: #64748b;
-            font-size: 9px;
+            font-size: 9.5px;
             font-weight: 700;
             letter-spacing: .5px;
             text-transform: uppercase;

@@ -4,6 +4,7 @@
 // No pricing, inventory reservation/deduction, backend, or estimation mutation.
 
 import { escapeHtml, formatDims, getNowStamp } from "../data/utils";
+import { resolveProductionPartCode } from "../data/componentUtils";
 import {
   EDGE_KEYS,
   EDGE_TREATMENT_OPTIONS,
@@ -34,7 +35,10 @@ import {
 } from "./exportSheetUtils";
 
 const GRAIN_LABELS = Object.fromEntries(
-  GRAIN_DIRECTION_OPTIONS.map((item) => [item.value, item.label]),
+  GRAIN_DIRECTION_OPTIONS.map((item) => [
+    item.value,
+    item.value === "none" ? "No Grain" : item.label,
+  ]),
 );
 const EDGE_LABELS = Object.fromEntries(
   EDGE_TREATMENT_OPTIONS.map((item) => [item.value, item.label]),
@@ -238,7 +242,7 @@ const buildPartProductionDetails = (component = {}) => {
 
   const profileText = descriptor
     ? `${descriptor.label} · ${String(descriptor.plane || "").toUpperCase()} profile`
-    : "Standard rectangular / library part";
+    : "Standard part";
 
   const detailWeight =
     edgeTreatments.length +
@@ -256,7 +260,7 @@ const buildPartProductionDetails = (component = {}) => {
     hardwareLines.length > 0;
 
   const hasProductionIdentity =
-    Boolean(cleanText(component.partCode)) ||
+    Boolean(cleanText(resolveProductionPartCode(component))) ||
     Boolean(
       cleanText(component.label) &&
         [component.width, component.height, component.depth].some(
@@ -339,7 +343,7 @@ const renderList = (title, rows = [], emptyText = "None assigned") => `
 
 const renderPartCard = (detail = {}) => {
   const component = detail.component || {};
-  const partCode = cleanText(component.partCode) || "—";
+  const partCode = cleanText(resolveProductionPartCode(component)) || "—";
   const label = cleanText(component.label) || "Part";
   const material = cleanText(component.material) || "Unspecified";
   const qty = Math.max(1, Number(component.qty) || 1);
@@ -373,7 +377,7 @@ const renderPartCard = (detail = {}) => {
           <span class="ww-compact-label">Grain</span>
           <b>${escapeHtml(detail.grain)}</b>
         </div>
-        <div class="ww-compact-note">No special machining / hardware / edge treatment</div>
+        <div class="ww-compact-note">Standard part</div>
         <div class="ww-status is-ok">OK</div>
       </section>
     `;
@@ -384,10 +388,10 @@ const renderPartCard = (detail = {}) => {
       ? renderList("Edge Treatment", detail.edgeTreatments)
       : "",
     detail.hardware.length
-      ? renderList("Hardware", detail.hardware)
+      ? renderList("Hardware Items", detail.hardware)
       : "",
     detail.cutouts.length
-      ? renderList("Holes / Cutouts", detail.cutouts)
+      ? renderList("Cutouts and Holes", detail.cutouts)
       : "",
     detail.notches.length
       ? renderList("Edge Notches", detail.notches)
@@ -422,7 +426,7 @@ const renderPartCard = (detail = {}) => {
               ${
                 detail.machining.length
                   ? `<div class="ww-span-2">${renderList(
-                      "Woodworking Operations",
+                      "Machining Steps",
                       detail.machining,
                     )}</div>`
                   : ""
@@ -434,7 +438,7 @@ const renderPartCard = (detail = {}) => {
 
       ${
         detail.invalidCount > 0
-          ? `<div class="ww-check-note"><b>CHECK BEFORE PRODUCTION:</b> ${detail.invalidCount} invalid woodworking item(s) detected in this part.</div>`
+          ? `<div class="ww-check-note"><b>CHECK BEFORE PRODUCTION:</b> ${detail.invalidCount} production detail(s) need correction in this part.</div>`
           : ""
       }
     </section>
@@ -494,7 +498,7 @@ function buildWoodworkingDetailsPages({
             )}</div>
           </div>
           <div class="sheet-meta">
-            <div><b>Status:</b> ${checkCount > 0 ? "CHECK" : PRODUCTION_STATUS}</div>
+            <div><b>Production Status:</b> ${checkCount > 0 ? "CHECK" : PRODUCTION_STATUS}</div>
             <div><b>Production Unit:</b> MM</div>
             <div><b>Sheet:</b> ${getExportSheetCode("woodworking")}.${pageIndex + 1}</div>
             <div><b>Page:</b> ${pageIndex + 1} / ${groups.length}</div>
@@ -505,21 +509,21 @@ function buildWoodworkingDetailsPages({
         <div class="info-grid">
           <div><b>Project:</b> ${escapeHtml(resolvedProjectTitle || "Blueprint Design")}</div>
           <div><b>Object:</b> ${escapeHtml(selectedLabel || "Production Parts")}</div>
-          <div><b>Source:</b> Saved Blueprint component metadata</div>
-          <div><b>Review Rule:</b> Written dimensions control; do not scale drawing</div>
+          <div><b>Source:</b> Saved Blueprint production data</div>
+          <div><b>Production Rule:</b> Written dimensions control; do not scale drawing</div>
         </div>
 
         <div class="ww-summary-strip">
           <div><span>Production Parts</span><b>${details.length}</b></div>
           <div><span>Custom Profiles</span><b>${customProfileCount}</b></div>
-          <div><span>Machining Ops</span><b>${operationCount}</b></div>
-          <div><span>Hardware Qty</span><b>${hardwareQty}</b></div>
+          <div><span>Machining Steps</span><b>${operationCount}</b></div>
+          <div><span>Hardware Items</span><b>${hardwareQty}</b></div>
         </div>
 
         <div class="ww-page-note">
           <b>PRODUCTION REFERENCE</b>
-          <span>OK = valid against current Blueprint geometry rules. CHECK = correct the source Blueprint before production.</span>
-          <span>Blueprint export is read-only. Inventory selection and deduction remain controlled in Project Estimate / Create Estimation.</span>
+          <span>OK = ready against current Blueprint production rules. CHECK = correct the source Blueprint before production.</span>
+          <span>Blueprint export is read-only. Inventory selection and stock deduction remain manually controlled in Project Estimate.</span>
         </div>
 
         <div class="ww-cards">
