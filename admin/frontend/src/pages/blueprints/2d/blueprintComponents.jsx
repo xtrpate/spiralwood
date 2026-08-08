@@ -21,170 +21,241 @@ import {
 import { useBlueprintCanvasModel } from "./useBlueprintCanvasModel";
 import { useBlueprintTraceInteraction } from "./useBlueprintTraceInteraction";
 
-function ExplodedCallout({ comp, screenBox, idx, drawingArea }) {
+function compactExplodedLabel(comp = {}, idx = 0) {
+  const code = String(comp?.partCode || `P${idx + 1}`).trim();
+  const label = String(comp?.label || "Part").replace(/\s+/g, " ").trim();
+  const combined = `${code} — ${label}`;
+  return combined.length <= 28 ? combined : `${combined.slice(0, 27).trimEnd()}…`;
+}
+
+function buildExplodedCalloutLayout(scaledItems = [], drawingArea) {
+  if (!drawingArea || !Array.isArray(scaledItems)) return new Map();
+
+  const layout = new Map();
+  const buckets = {
+    left: [],
+    right: [],
+    top: [],
+    bottom: [],
+  };
+
+  scaledItems.forEach((item, idx) => {
+    const box = item?.screenBox;
+    if (!box || !item?.comp?.id) return;
+
+    const centerX = box.x + box.w / 2;
+    const centerY = box.y + box.h / 2;
+    const requested = box.labelSide;
+    const side = ["left", "right", "top", "bottom"].includes(requested)
+      ? requested
+      : centerX >= drawingArea.x + drawingArea.w / 2
+        ? "right"
+        : "left";
+
+    buckets[side].push({
+      id: item.comp.id,
+      idx,
+      centerX,
+      centerY,
+    });
+  });
+
+  const safeTop = drawingArea.y + 58;
+  const safeBottom = drawingArea.y + drawingArea.h - 28;
+
+  ["left", "right"].forEach((side) => {
+    const items = buckets[side].sort(
+      (a, b) => a.centerY - b.centerY || a.idx - b.idx,
+    );
+    const count = items.length;
+
+    items.forEach((item, position) => {
+      const ratio = count <= 1 ? 0.5 : position / (count - 1);
+      layout.set(item.id, {
+        side,
+        labelY: safeTop + (safeBottom - safeTop) * ratio,
+      });
+    });
+  });
+
+  ["top", "bottom"].forEach((side) => {
+    const items = buckets[side].sort(
+      (a, b) => a.centerX - b.centerX || a.idx - b.idx,
+    );
+    const count = items.length;
+
+    items.forEach((item, position) => {
+      layout.set(item.id, {
+        side,
+        slot: position,
+        slotCount: Math.max(1, count),
+      });
+    });
+  });
+
+  return layout;
+}
+
+function ExplodedCallout({
+  comp,
+  screenBox,
+  idx,
+  drawingArea,
+  placement,
+}) {
   const centerX = screenBox.x + screenBox.w / 2;
   const centerY = screenBox.y + screenBox.h / 2;
   const side =
+    placement?.side ||
     screenBox.labelSide ||
     (centerX >= drawingArea.x + drawingArea.w / 2 ? "right" : "left");
-  const lane = Number.isFinite(screenBox.labelLane)
-    ? screenBox.labelLane
-    : idx % 4;
+  const label = compactExplodedLabel(comp, idx);
+  const balloonText = String(idx + 1);
+  const balloonR = 8;
 
-  const label = `${comp.partCode || `P${idx + 1}`} - ${comp.label || "Part"}`;
-  const sideLaneY = Math.min(
-    drawingArea.y + drawingArea.h - 36,
-    drawingArea.y + 66 + lane * 54,
-  );
-
-  if (side === "top") {
-    const labelW = 220;
-    const labelX = drawingArea.x + (drawingArea.w - labelW) / 2;
-    const labelY = drawingArea.y + 22 + lane * 18;
-    const elbowY = Math.max(labelY + 18, screenBox.y - 14);
-
-    return (
-      <>
-        <Line
-          points={[
-            centerX,
-            screenBox.y,
-            centerX,
-            elbowY,
-            labelX + labelW / 2,
-            elbowY,
-            labelX + labelW / 2,
-            labelY + 12,
-          ]}
-          stroke="#475569"
-          strokeWidth={1}
-          listening={false}
-        />
-        <Text
-          x={labelX}
-          y={labelY}
-          width={labelW}
-          align="center"
-          text={label}
-          fontSize={9}
-          fill="#0f172a"
-          fontStyle="bold"
-          listening={false}
-        />
-      </>
-    );
-  }
-
-  if (side === "bottom") {
-    const labelW = 220;
-    const labelX = drawingArea.x + (drawingArea.w - labelW) / 2;
+  if (side === "top" || side === "bottom") {
+    const slot = Number(placement?.slot) || 0;
+    const slotCount = Math.max(1, Number(placement?.slotCount) || 1);
+    const usableW = Math.max(220, drawingArea.w - 260);
+    const slotX =
+      drawingArea.x +
+      (drawingArea.w - usableW) / 2 +
+      usableW * ((slot + 0.5) / slotCount);
+    const labelW = 150;
+    const labelX = slotX - labelW / 2;
     const labelY =
-      drawingArea.y + drawingArea.h - 28 - Math.min(4, lane) * 18;
-    const elbowY = Math.min(labelY - 10, screenBox.y + screenBox.h + 14);
+      side === "top"
+        ? drawingArea.y + 12
+        : drawingArea.y + drawingArea.h - 24;
+    const anchorY =
+      side === "top" ? screenBox.y : screenBox.y + screenBox.h;
+    const elbowY =
+      side === "top"
+        ? Math.max(labelY + 18, anchorY - 14)
+        : Math.min(labelY - 8, anchorY + 14);
+    const balloonY = side === "top" ? labelY + 5 : labelY + 5;
 
     return (
       <>
         <Line
           points={[
             centerX,
-            screenBox.y + screenBox.h,
+            anchorY,
             centerX,
             elbowY,
-            labelX + labelW / 2,
+            slotX,
             elbowY,
-            labelX + labelW / 2,
-            labelY - 2,
+            slotX,
+            balloonY,
           ]}
-          stroke="#475569"
+          stroke="#64748b"
+          strokeWidth={0.9}
+          listening={false}
+        />
+        <Circle
+          x={slotX}
+          y={balloonY}
+          radius={balloonR}
+          fill="#ffffff"
+          stroke="#0f172a"
           strokeWidth={1}
           listening={false}
         />
         <Text
+          x={slotX - balloonR}
+          y={balloonY - 4.5}
+          width={balloonR * 2}
+          align="center"
+          text={balloonText}
+          fontSize={7.5}
+          fill="#0f172a"
+          fontStyle="bold"
+          listening={false}
+        />
+        <Text
           x={labelX}
-          y={labelY}
+          y={side === "top" ? labelY + 16 : labelY - 12}
           width={labelW}
           align="center"
           text={label}
-          fontSize={9}
-          fill="#0f172a"
-          fontStyle="bold"
+          fontSize={8}
+          fill="#334155"
           listening={false}
         />
       </>
     );
   }
 
-  if (side === "right") {
-    const labelW = 170;
-    const labelX = drawingArea.x + drawingArea.w - labelW - 8;
-    const elbowX = Math.min(
-      labelX - 10,
-      screenBox.x + screenBox.w + 22,
-    );
-
-    return (
-      <>
-        <Line
-          points={[
-            screenBox.x + screenBox.w,
-            centerY,
-            elbowX,
-            centerY,
-            elbowX,
-            sideLaneY + 6,
-            labelX - 4,
-            sideLaneY + 6,
-          ]}
-          stroke="#475569"
-          strokeWidth={1}
-          listening={false}
-        />
-        <Text
-          x={labelX}
-          y={sideLaneY}
-          width={labelW}
-          align="right"
-          text={label}
-          fontSize={9}
-          fill="#0f172a"
-          fontStyle="bold"
-          listening={false}
-        />
-      </>
-    );
-  }
-
-  const labelW = 170;
-  const labelX = drawingArea.x + 8;
-  const elbowX = Math.max(
-    labelX + labelW + 10,
-    screenBox.x - 22,
-  );
+  const labelY =
+    Number.isFinite(placement?.labelY)
+      ? placement.labelY
+      : centerY;
+  const labelW = 142;
+  const leftX = drawingArea.x + 8;
+  const rightX = drawingArea.x + drawingArea.w - labelW - 8;
+  const labelX = side === "right" ? rightX : leftX;
+  const balloonX =
+    side === "right"
+      ? labelX - balloonR - 6
+      : labelX + labelW + balloonR + 6;
+  const lineEndX =
+    side === "right"
+      ? balloonX - balloonR
+      : balloonX + balloonR;
+  const anchorX =
+    side === "right"
+      ? screenBox.x + screenBox.w
+      : screenBox.x;
+  const elbowX =
+    side === "right"
+      ? Math.max(anchorX + 10, lineEndX - 18)
+      : Math.min(anchorX - 10, lineEndX + 18);
 
   return (
     <>
       <Line
         points={[
-          screenBox.x,
+          anchorX,
           centerY,
           elbowX,
           centerY,
           elbowX,
-          sideLaneY + 6,
-          labelX + labelW + 4,
-          sideLaneY + 6,
+          labelY,
+          lineEndX,
+          labelY,
         ]}
-        stroke="#475569"
+        stroke="#64748b"
+        strokeWidth={0.9}
+        listening={false}
+      />
+      <Circle
+        x={balloonX}
+        y={labelY}
+        radius={balloonR}
+        fill="#ffffff"
+        stroke="#0f172a"
         strokeWidth={1}
         listening={false}
       />
       <Text
-        x={labelX}
-        y={sideLaneY}
-        width={labelW}
-        text={label}
-        fontSize={9}
+        x={balloonX - balloonR}
+        y={labelY - 4.5}
+        width={balloonR * 2}
+        align="center"
+        text={balloonText}
+        fontSize={7.5}
         fill="#0f172a"
+        fontStyle="bold"
+        listening={false}
+      />
+      <Text
+        x={labelX}
+        y={labelY - 5}
+        width={labelW}
+        align={side === "right" ? "right" : "left"}
+        text={label}
+        fontSize={8}
+        fill="#334155"
         fontStyle="bold"
         listening={false}
       />
@@ -261,6 +332,11 @@ function Canvas2D({
     setTraceObjects,
     setSelectedTraceId,
   });
+
+  const explodedCalloutLayout =
+    view === "exploded"
+      ? buildExplodedCalloutLayout(scaledItems, drawingArea)
+      : new Map();
 
   const gridLines = () => {
     if (!showGrid) return [];
@@ -355,6 +431,32 @@ function Canvas2D({
           fill="#475569"
           listening={false}
         />
+
+        {view === "exploded" && scaledItems.length > 0 && (
+          <>
+            <Text
+              x={canvasW - PAPER_MARGIN - 260}
+              y={PAPER_MARGIN + 10}
+              width={248}
+              align="right"
+              text={`EXPLODED VIEW · ${scaledItems.length} PARTS`}
+              fontSize={8}
+              fill="#334155"
+              fontStyle="bold"
+              listening={false}
+            />
+            <Text
+              x={canvasW - PAPER_MARGIN - 300}
+              y={PAPER_MARGIN + 26}
+              width={288}
+              align="right"
+              text="VISUALIZATION ONLY · MODEL POSITIONS UNCHANGED"
+              fontSize={7}
+              fill="#64748b"
+              listening={false}
+            />
+          </>
+        )}
 
         <Rect
           x={drawingArea.x}
@@ -452,6 +554,7 @@ function Canvas2D({
                   screenBox={screenBox}
                   idx={idx}
                   drawingArea={drawingArea}
+                  placement={explodedCalloutLayout.get(comp.id)}
                 />
               ) : (
                 <Text
@@ -562,26 +665,7 @@ function Canvas2D({
             </>
           )}
 
-        {view === "exploded" && scaledItems.length > 0 && (
-          <>
-            <Text
-              x={drawingArea.x + 8}
-              y={drawingArea.y + drawingArea.h - 40}
-              text={`EXPLODED PARTS: ${scaledItems.length}`}
-              fontSize={10}
-              fill="#475569"
-              listening={false}
-            />
-            <Text
-              x={drawingArea.x + 8}
-              y={drawingArea.y + drawingArea.h - 24}
-              text="VISUALIZATION ONLY - saved component coordinates are unchanged."
-              fontSize={10}
-              fill="#475569"
-              listening={false}
-            />
-          </>
-        )}
+
         {visibleTraceObjects.map((obj) => {
           const isSelected = obj.id === selectedTraceId;
 
