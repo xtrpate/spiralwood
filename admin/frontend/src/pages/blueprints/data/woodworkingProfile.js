@@ -3,7 +3,7 @@
 // Pure woodworking profile geometry shared by 2D and 3D.
 // No inventory, pricing, backend, or estimation behavior lives here.
 
-const WOODWORKING_PROFILE_VERSION = 2;
+const WOODWORKING_PROFILE_VERSION = 3;
 
 const PROFILE_KIND_BY_TYPE = Object.freeze({
   wood_profile_rectangle: "rectangle",
@@ -400,6 +400,386 @@ function resetContourPointRatios() {
   return cloneDefaultContourPointRatios();
 }
 
+const MAX_CONTOUR_CURVE_RATIO = 1;
+
+function normalizeContourCurveRatios(value, pointCount = 0) {
+  let source = value;
+
+  if (typeof source === "string") {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      source = null;
+    }
+  }
+
+  const count = Math.max(0, Number(pointCount) || 0);
+
+  return Array.from({ length: count }, (_, index) =>
+    clampNumber(
+      Array.isArray(source) ? source[index] : 0,
+      -MAX_CONTOUR_CURVE_RATIO,
+      MAX_CONTOUR_CURVE_RATIO,
+      0,
+    ),
+  );
+}
+
+function getCircularArcPoints(
+  start,
+  end,
+  requestedBulgeMm = 0,
+  segments = 12,
+) {
+  const x1 = Number(start?.[0]) || 0;
+  const y1 = Number(start?.[1]) || 0;
+  const x2 = Number(end?.[0]) || 0;
+  const y2 = Number(end?.[1]) || 0;
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const chord = Math.hypot(dx, dy);
+
+  if (chord <= 1e-6) {
+    return [[x1, y1]];
+  }
+
+  const maxBulge = chord * 0.49;
+  const bulge = clampNumber(
+    requestedBulgeMm,
+    -maxBulge,
+    maxBulge,
+    0,
+  );
+
+  if (Math.abs(bulge) <= 0.01) {
+    return [
+      [x1, y1],
+      [x2, y2],
+    ];
+  }
+
+  const midpoint = [(x1 + x2) / 2, (y1 + y2) / 2];
+  const normal = [-dy / chord, dx / chord];
+  const absBulge = Math.abs(bulge);
+
+  // Circle radius from chord length + signed sagitta.
+  const radius =
+    (chord * chord) / (8 * absBulge) + absBulge / 2;
+
+  // Positive bulge is on the left side of start -> end.
+  const centerOffset =
+    Math.sign(bulge) * (absBulge - radius);
+
+  const center = [
+    midpoint[0] + normal[0] * centerOffset,
+    midpoint[1] + normal[1] * centerOffset,
+  ];
+
+  const startAngle = Math.atan2(
+    y1 - center[1],
+    x1 - center[0],
+  );
+  const endAngle = Math.atan2(
+    y2 - center[1],
+    x2 - center[0],
+  );
+
+  let delta = endAngle - startAngle;
+
+  if (bulge > 0) {
+    while (delta >= 0) delta -= Math.PI * 2;
+    if (delta < -Math.PI) delta += Math.PI * 2;
+  } else {
+    while (delta <= 0) delta += Math.PI * 2;
+    if (delta > Math.PI) delta -= Math.PI * 2;
+  }
+
+  const steps = Math.max(4, Number(segments) || 12);
+
+  return Array.from({ length: steps + 1 }, (_, index) => {
+    const ratio = index / steps;
+    const angle = startAngle + delta * ratio;
+
+    return [
+      center[0] + Math.cos(angle) * radius,
+      center[1] + Math.sin(angle) * radius,
+    ];
+  });
+}
+
+function buildContourCurvedPath(
+  points = [],
+  curveRatios = [],
+  curveScaleMm = 1,
+  segments = 12,
+) {
+  if (!Array.isArray(points) || points.length < 3) return [];
+
+  const result = [];
+
+  for (let index = 0; index < points.length; index += 1) {
+    const start = points[index];
+    const end = points[(index + 1) % points.length];
+    const ratio = Number(curveRatios[index]) || 0;
+    const requestedBulge = ratio * Math.max(1, curveScaleMm);
+    const arcPoints = getCircularArcPoints(
+      start,
+      end,
+      requestedBulge,
+      segments,
+    );
+
+    arcPoints.forEach((point) => appendUniquePoint(result, point));
+  }
+
+  if (
+    result.length > 2 &&
+    pointDistance(result[0], result[result.length - 1]) <= 1e-5
+  ) {
+    result.pop();
+  }
+
+  return result;
+}
+
+function getContourCurvePathPointsMm(
+  component = {},
+  segments = 12,
+) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") return [];
+
+  return buildContourCurvedPath(
+    descriptor.contourPointsMm,
+    descriptor.profileContourBulges,
+    descriptor.contourCurveScaleMm,
+    segments,
+  );
+}
+
+function getContourEdgeCurveInfo(
+  component = {},
+  edgeIndex = 0,
+  segments = 14,
+) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") return null;
+
+  const count = descriptor.contourPointsMm.length;
+  if (!count) return null;
+
+  const index = Math.max(
+    0,
+    Math.min(count - 1, Number(edgeIndex) || 0),
+  );
+  const nextIndex = (index + 1) % count;
+  const start = descriptor.contourPointsMm[index];
+  const end = descriptor.contourPointsMm[nextIndex];
+
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const chordMm = Math.max(0.001, Math.hypot(dx, dy));
+  const maxBulgeMm = chordMm * 0.49;
+
+  const requestedBulge =
+    (Number(descriptor.profileContourBulges[index]) || 0) *
+    descriptor.contourCurveScaleMm;
+
+  const bulgeMm = clampNumber(
+    requestedBulge,
+    -maxBulgeMm,
+    maxBulgeMm,
+    0,
+  );
+
+  const absBulge = Math.abs(bulgeMm);
+  const radiusMm =
+    absBulge <= 0.01
+      ? null
+      : (chordMm * chordMm) / (8 * absBulge) +
+        absBulge / 2;
+
+  const normal = [-dy / chordMm, dx / chordMm];
+  const midpoint = [
+    (start[0] + end[0]) / 2,
+    (start[1] + end[1]) / 2,
+  ];
+  const sagittaPoint = [
+    midpoint[0] + normal[0] * bulgeMm,
+    midpoint[1] + normal[1] * bulgeMm,
+  ];
+
+  return {
+    index,
+    nextIndex,
+    start,
+    end,
+    chordMm,
+    bulgeMm,
+    radiusMm,
+    maxBulgeMm,
+    minRadiusMm: chordMm / 2,
+    sagittaPoint,
+    isCurved: absBulge > 0.01,
+    side: bulgeMm < 0 ? -1 : 1,
+    arcPoints: getCircularArcPoints(
+      start,
+      end,
+      bulgeMm,
+      segments,
+    ),
+  };
+}
+
+function validateContourCurveRatios(
+  descriptor,
+  candidateRatios,
+) {
+  const path = buildContourCurvedPath(
+    descriptor.contourPointsMm,
+    candidateRatios,
+    descriptor.contourCurveScaleMm,
+    8,
+  );
+
+  return isValidContourPolygon(path);
+}
+
+function updateContourEdgeBulgeMm(
+  component = {},
+  edgeIndex = 0,
+  nextBulgeMm = 0,
+) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") return null;
+
+  const info = getContourEdgeCurveInfo(component, edgeIndex);
+  if (!info) return descriptor.profileContourBulges;
+
+  const clampedBulge = clampNumber(
+    nextBulgeMm,
+    -info.maxBulgeMm,
+    info.maxBulgeMm,
+    0,
+  );
+
+  const candidate = [...descriptor.profileContourBulges];
+  candidate[info.index] = clampNumber(
+    clampedBulge / descriptor.contourCurveScaleMm,
+    -MAX_CONTOUR_CURVE_RATIO,
+    MAX_CONTOUR_CURVE_RATIO,
+    0,
+  );
+
+  return validateContourCurveRatios(descriptor, candidate)
+    ? candidate
+    : descriptor.profileContourBulges;
+}
+
+function updateContourEdgeRadiusMm(
+  component = {},
+  edgeIndex = 0,
+  nextRadiusMm = 0,
+  requestedSide = null,
+) {
+  const info = getContourEdgeCurveInfo(component, edgeIndex);
+  if (!info) return null;
+
+  const numericRadius = Number(nextRadiusMm);
+
+  if (!Number.isFinite(numericRadius) || numericRadius <= 0) {
+    return updateContourEdgeBulgeMm(component, edgeIndex, 0);
+  }
+
+  const radius = Math.max(info.minRadiusMm, numericRadius);
+  const halfChord = info.chordMm / 2;
+  const root = Math.sqrt(
+    Math.max(0, radius * radius - halfChord * halfChord),
+  );
+  const sagitta = Math.max(0, radius - root);
+  const side =
+    requestedSide === -1 || requestedSide === 1
+      ? requestedSide
+      : info.side;
+
+  return updateContourEdgeBulgeMm(
+    component,
+    edgeIndex,
+    sagitta * side,
+  );
+}
+
+function insertContourCurveAfter(component = {}, pointIndex = 0) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") return null;
+
+  const curves = [...descriptor.profileContourBulges];
+  const index = Math.max(
+    0,
+    Math.min(curves.length - 1, Number(pointIndex) || 0),
+  );
+
+  // One curved edge becomes two straight edges after topology changes.
+  curves[index] = 0;
+  curves.splice(index + 1, 0, 0);
+
+  return curves;
+}
+
+function deleteContourCurveAt(component = {}, pointIndex = 0) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") return null;
+
+  const curves = [...descriptor.profileContourBulges];
+  if (curves.length <= 3) return curves;
+
+  const index = Math.max(
+    0,
+    Math.min(curves.length - 1, Number(pointIndex) || 0),
+  );
+
+  curves.splice(index, 1);
+
+  if (index === 0) {
+    curves[curves.length - 1] = 0;
+  } else {
+    curves[index - 1] = 0;
+  }
+
+  return curves;
+}
+
+function resetContourCurvesAroundPoint(
+  component = {},
+  pointIndex = 0,
+) {
+  const descriptor = getWoodworkingProfileDescriptor(component);
+  if (!descriptor || descriptor.kind !== "contour") return null;
+
+  const curves = [...descriptor.profileContourBulges];
+  if (!curves.length) return curves;
+
+  const index = Math.max(
+    0,
+    Math.min(curves.length - 1, Number(pointIndex) || 0),
+  );
+  const previousEdge =
+    (index - 1 + curves.length) % curves.length;
+
+  curves[previousEdge] = 0;
+  curves[index] = 0;
+
+  return curves;
+}
+
+function resetContourCurveRatios(pointCount = 0) {
+  return Array.from(
+    { length: Math.max(0, Number(pointCount) || 0) },
+    () => 0,
+  );
+}
+
 function getProfileKind(component = {}) {
   // React inspector can call this helper while there is temporarily no
   // selected component. Default parameters do not protect against explicit
@@ -576,6 +956,21 @@ function getWoodworkingProfileDescriptor(component = {}) {
         ])
       : [];
 
+  const profileContourBulges =
+    kind === "contour"
+      ? normalizeContourCurveRatios(
+          component.profileContourBulges,
+          profileContourPoints.length,
+        )
+      : [];
+
+  // Signed contour-edge bulges are saved relative to the smaller profile
+  // dimension so resizing the board scales its arc geometry parametrically.
+  const contourCurveScaleMm = minProfileEdge;
+  const hasContourCurves = profileContourBulges.some(
+    (value) => Math.abs(Number(value) || 0) > 1e-6,
+  );
+
   const filletRadiusMax = Math.max(0, minProfileEdge / 2 - 0.5);
   const profileFilletRadius = supportsProfileFillet(kind)
     ? clampNumber(
@@ -602,6 +997,9 @@ function getWoodworkingProfileDescriptor(component = {}) {
     profileOvalRoundness,
     profileContourPoints,
     contourPointsMm,
+    profileContourBulges,
+    contourCurveScaleMm,
+    hasContourCurves,
     profileFilletRadius,
     limits: {
       radiusMax,
@@ -638,6 +1036,7 @@ function normalizeWoodworkingProfileMetadata(component = {}) {
           profileContourPoints: descriptor.profileContourPoints.map(
             ([u, v]) => [u, v],
           ),
+          profileContourBulges: [...descriptor.profileContourBulges],
         }
       : {}),
     profileFilletRadius: descriptor.profileFilletRadius,
@@ -888,6 +1287,15 @@ function getWoodworkingProfileLocalPoints(component = {}, options = {}) {
   if (kind === "contour") {
     const basePoints = descriptor.contourPointsMm.map(([u, v]) => [u, v]);
 
+    if (descriptor.hasContourCurves) {
+      return buildContourCurvedPath(
+        basePoints,
+        descriptor.profileContourBulges,
+        descriptor.contourCurveScaleMm,
+        options.curveSegments || 14,
+      );
+    }
+
     return supportsProfileFillet(kind)
       ? applyPolygonFillet(
           basePoints,
@@ -1132,6 +1540,14 @@ export {
   insertContourPointAfter,
   deleteContourPointAt,
   resetContourPointRatios,
+  getContourCurvePathPointsMm,
+  getContourEdgeCurveInfo,
+  updateContourEdgeBulgeMm,
+  updateContourEdgeRadiusMm,
+  insertContourCurveAfter,
+  deleteContourCurveAt,
+  resetContourCurvesAroundPoint,
+  resetContourCurveRatios,
   isValidContourPolygon,
   getWoodworkingProfileLocalPoints,
   getWoodworkingProfile2DPoints,

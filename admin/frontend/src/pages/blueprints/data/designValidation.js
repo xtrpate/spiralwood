@@ -146,6 +146,11 @@ const stableComponentSnapshot = (component = {}) => ({
         )
         .filter(Boolean)
     : [],
+  profileContourBulges: Array.isArray(component.profileContourBulges)
+    ? component.profileContourBulges.map((value) =>
+        roundMetric(value, 6),
+      )
+    : [],
   profileFilletRadius: roundMetric(component.profileFilletRadius),
   locked: Boolean(component.locked),
 });

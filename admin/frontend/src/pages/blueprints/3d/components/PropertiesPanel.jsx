@@ -23,6 +23,14 @@ import {
   insertContourPointAfter,
   deleteContourPointAt,
   resetContourPointRatios,
+  getContourCurvePathPointsMm,
+  getContourEdgeCurveInfo,
+  updateContourEdgeBulgeMm,
+  updateContourEdgeRadiusMm,
+  insertContourCurveAfter,
+  deleteContourCurveAt,
+  resetContourCurvesAroundPoint,
+  resetContourCurveRatios,
 } from "../../data/woodworkingProfile";
 
 function ContourEditorCard({
@@ -35,9 +43,11 @@ function ContourEditorCard({
 }) {
   const svgRef = useRef(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [activeEdgeIndex, setActiveEdgeIndex] = useState(0);
 
   useEffect(() => {
     setActiveIndex(0);
+    setActiveEdgeIndex(0);
   }, [selectedComp?.id]);
 
   const points = Array.isArray(woodworkingProfile?.contourPointsMm)
@@ -48,8 +58,18 @@ function ContourEditorCard({
     0,
     Math.min(points.length - 1, activeIndex),
   );
+  const safeEdgeIndex = Math.max(
+    0,
+    Math.min(points.length - 1, activeEdgeIndex),
+  );
 
   const activePoint = points[safeIndex] || [0, 0];
+  const activeEdgeInfo = getContourEdgeCurveInfo(
+    selectedComp,
+    safeEdgeIndex,
+    18,
+  );
+
   const disabled =
     editorMode !== "editable" || isLocked(selectedComp);
 
@@ -68,38 +88,12 @@ function ContourEditorCard({
         usableHeight,
   ];
 
-  const screenPoints = points.map(toScreen);
-
-  const commitPoints = (nextPoints) => {
-    if (!Array.isArray(nextPoints)) return;
-
-    onChange(selectedComp.id, {
-      profileContourPoints: nextPoints,
-    });
-  };
-
-  const commitPointMm = (index, nextU, nextV) => {
-    const nextPoints = updateContourPointMm(
-      selectedComp,
-      index,
-      nextU,
-      nextV,
-    );
-
-    commitPoints(nextPoints);
-  };
-
-  const handlePointPointerMove = (event, index) => {
-    if (disabled) return;
-    if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) {
-      return;
-    }
-
+  const pointerToLocal = (event) => {
     const svg = svgRef.current;
-    if (!svg) return;
+    if (!svg) return null;
 
     const rect = svg.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
+    if (!rect.width || !rect.height) return null;
 
     const x =
       ((event.clientX - rect.left) / rect.width) * viewWidth;
@@ -115,12 +109,134 @@ function ContourEditorCard({
       Math.min(1, (y - padding) / usableHeight),
     );
 
-    const nextU =
-      (normalizedU - 0.5) * woodworkingProfile.u;
-    const nextV =
-      (0.5 - normalizedV) * woodworkingProfile.v;
+    return [
+      (normalizedU - 0.5) * woodworkingProfile.u,
+      (0.5 - normalizedV) * woodworkingProfile.v,
+    ];
+  };
 
-    commitPointMm(index, nextU, nextV);
+  const screenPoints = points.map(toScreen);
+  const curvePathPoints = getContourCurvePathPointsMm(
+    selectedComp,
+    18,
+  );
+  const curveScreenPoints = curvePathPoints.map(toScreen);
+
+  const edgeInfos = points.map((_, index) =>
+    getContourEdgeCurveInfo(selectedComp, index, 18),
+  );
+
+  const commitContour = ({
+    nextPoints = null,
+    nextCurves = null,
+    resetFilletForCurves = false,
+  }) => {
+    const attrs = {};
+
+    if (Array.isArray(nextPoints)) {
+      attrs.profileContourPoints = nextPoints;
+    }
+
+    if (Array.isArray(nextCurves)) {
+      attrs.profileContourBulges = nextCurves;
+
+      if (
+        resetFilletForCurves &&
+        nextCurves.some(
+          (value) => Math.abs(Number(value) || 0) > 1e-6,
+        )
+      ) {
+        // V3 keeps circular edges mathematically clean. Corner fillet remains
+        // available whenever all custom contour edges are straight.
+        attrs.profileFilletRadius = 0;
+      }
+    }
+
+    onChange(selectedComp.id, attrs);
+  };
+
+  const commitPointMm = (index, nextU, nextV) => {
+    const nextPoints = updateContourPointMm(
+      selectedComp,
+      index,
+      nextU,
+      nextV,
+    );
+    const nextCurves = resetContourCurvesAroundPoint(
+      selectedComp,
+      index,
+    );
+
+    commitContour({
+      nextPoints,
+      nextCurves,
+    });
+  };
+
+  const handlePointPointerMove = (event, index) => {
+    if (disabled) return;
+    if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      return;
+    }
+
+    const local = pointerToLocal(event);
+    if (!local) return;
+
+    commitPointMm(index, local[0], local[1]);
+  };
+
+  const commitEdgeBulge = (nextBulgeMm) => {
+    const nextCurves = updateContourEdgeBulgeMm(
+      selectedComp,
+      safeEdgeIndex,
+      nextBulgeMm,
+    );
+
+    commitContour({
+      nextCurves,
+      resetFilletForCurves: true,
+    });
+  };
+
+  const commitEdgeRadius = (nextRadiusMm) => {
+    const nextCurves = updateContourEdgeRadiusMm(
+      selectedComp,
+      safeEdgeIndex,
+      nextRadiusMm,
+      activeEdgeInfo?.side || 1,
+    );
+
+    commitContour({
+      nextCurves,
+      resetFilletForCurves: true,
+    });
+  };
+
+  const handleCurvePointerMove = (event) => {
+    if (disabled || !activeEdgeInfo) return;
+    if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      return;
+    }
+
+    const local = pointerToLocal(event);
+    if (!local) return;
+
+    const [startU, startV] = activeEdgeInfo.start;
+    const [endU, endV] = activeEdgeInfo.end;
+    const dx = endU - startU;
+    const dy = endV - startV;
+    const chord = Math.max(0.001, Math.hypot(dx, dy));
+    const midpoint = [
+      (startU + endU) / 2,
+      (startV + endV) / 2,
+    ];
+    const normal = [-dy / chord, dx / chord];
+
+    const signedDistance =
+      (local[0] - midpoint[0]) * normal[0] +
+      (local[1] - midpoint[1]) * normal[1];
+
+    commitEdgeBulge(signedDistance);
   };
 
   const insertAfterActive = () => {
@@ -128,13 +244,24 @@ function ContourEditorCard({
       selectedComp,
       safeIndex,
     );
+    const nextCurves = insertContourCurveAfter(
+      selectedComp,
+      safeIndex,
+    );
 
     if (!Array.isArray(nextPoints)) return;
 
-    commitPoints(nextPoints);
-    setActiveIndex(
-      Math.min(safeIndex + 1, nextPoints.length - 1),
+    commitContour({
+      nextPoints,
+      nextCurves,
+    });
+
+    const nextIndex = Math.min(
+      safeIndex + 1,
+      nextPoints.length - 1,
     );
+    setActiveIndex(nextIndex);
+    setActiveEdgeIndex(nextIndex);
   };
 
   const deleteActive = () => {
@@ -142,19 +269,54 @@ function ContourEditorCard({
       selectedComp,
       safeIndex,
     );
+    const nextCurves = deleteContourCurveAt(
+      selectedComp,
+      safeIndex,
+    );
 
     if (!Array.isArray(nextPoints)) return;
 
-    commitPoints(nextPoints);
-    setActiveIndex(
-      Math.max(0, Math.min(safeIndex, nextPoints.length - 1)),
+    commitContour({
+      nextPoints,
+      nextCurves,
+    });
+
+    const nextIndex = Math.max(
+      0,
+      Math.min(safeIndex, nextPoints.length - 1),
+    );
+    setActiveIndex(nextIndex);
+    setActiveEdgeIndex(
+      Math.max(0, Math.min(safeEdgeIndex, nextPoints.length - 1)),
     );
   };
 
   const resetContour = () => {
-    commitPoints(resetContourPointRatios());
+    const nextPoints = resetContourPointRatios();
+
+    commitContour({
+      nextPoints,
+      nextCurves: resetContourCurveRatios(nextPoints.length),
+    });
+
     setActiveIndex(0);
+    setActiveEdgeIndex(0);
   };
+
+  const activeCurveHandle = activeEdgeInfo
+    ? toScreen(activeEdgeInfo.sagittaPoint)
+    : null;
+
+  const edgeLabel = activeEdgeInfo
+    ? `P${activeEdgeInfo.index + 1} → P${
+        activeEdgeInfo.nextIndex + 1
+      }`
+    : "—";
+
+  const radiusValue =
+    activeEdgeInfo?.radiusMm == null
+      ? 0
+      : Math.round(activeEdgeInfo.radiusMm);
 
   return (
     <div style={{ marginTop: 8 }}>
@@ -177,9 +339,9 @@ function ContourEditorCard({
           lineHeight: 1.45,
         }}
       >
-        Drag a blue point in the preview, or type its exact
-        U / V position in millimeters. The same contour drives
-        the saved 2D and 3D board.
+        Drag blue points for straight contour geometry. Click an edge, then
+        drag the purple arc handle to curve that edge. Exact point, bulge,
+        and radius values remain available below.
       </div>
 
       <svg
@@ -216,9 +378,9 @@ function ContourEditorCard({
           strokeDasharray="4 4"
         />
 
-        {screenPoints.length >= 3 ? (
+        {curveScreenPoints.length >= 3 ? (
           <polygon
-            points={screenPoints
+            points={curveScreenPoints
               .map(([x, y]) => `${x},${y}`)
               .join(" ")}
             fill="rgba(96, 165, 250, 0.13)"
@@ -226,6 +388,43 @@ function ContourEditorCard({
             strokeWidth="1.6"
           />
         ) : null}
+
+        {edgeInfos.map((info, index) => {
+          if (!info) return null;
+
+          const active = index === safeEdgeIndex;
+          const arcScreen = info.arcPoints.map(toScreen);
+          const polylinePoints = arcScreen
+            .map(([x, y]) => `${x},${y}`)
+            .join(" ");
+
+          return (
+            <g key={`contour-edge-${index}`}>
+              <polyline
+                points={polylinePoints}
+                fill="none"
+                stroke="rgba(255,255,255,0.001)"
+                strokeWidth="12"
+                style={{
+                  cursor: disabled ? "not-allowed" : "pointer",
+                }}
+                onPointerDown={() => {
+                  if (disabled) return;
+                  setActiveEdgeIndex(index);
+                }}
+              />
+              {active ? (
+                <polyline
+                  points={polylinePoints}
+                  fill="none"
+                  stroke="#a78bfa"
+                  strokeWidth="2.6"
+                  pointerEvents="none"
+                />
+              ) : null}
+            </g>
+          );
+        })}
 
         {screenPoints.map(([x, y], index) => {
           const active = index === safeIndex;
@@ -246,6 +445,7 @@ function ContourEditorCard({
                 if (disabled) return;
 
                 setActiveIndex(index);
+                setActiveEdgeIndex(index);
                 event.currentTarget.setPointerCapture?.(
                   event.pointerId,
                 );
@@ -266,6 +466,37 @@ function ContourEditorCard({
             />
           );
         })}
+
+        {activeCurveHandle ? (
+          <circle
+            cx={activeCurveHandle[0]}
+            cy={activeCurveHandle[1]}
+            r="5.4"
+            fill="#c4b5fd"
+            stroke="#7c3aed"
+            strokeWidth="1.8"
+            style={{
+              cursor: disabled ? "not-allowed" : "ns-resize",
+            }}
+            onPointerDown={(event) => {
+              if (disabled) return;
+              event.currentTarget.setPointerCapture?.(
+                event.pointerId,
+              );
+            }}
+            onPointerMove={handleCurvePointerMove}
+            onPointerUp={(event) =>
+              event.currentTarget.releasePointerCapture?.(
+                event.pointerId,
+              )
+            }
+            onPointerCancel={(event) =>
+              event.currentTarget.releasePointerCapture?.(
+                event.pointerId,
+              )
+            }
+          />
+        ) : null}
       </svg>
 
       <div
@@ -273,7 +504,7 @@ function ContourEditorCard({
           display: "flex",
           flexWrap: "wrap",
           gap: 4,
-          marginBottom: 8,
+          marginBottom: 7,
         }}
       >
         {points.map((_, index) => (
@@ -281,7 +512,10 @@ function ContourEditorCard({
             key={`point-select-${index}`}
             type="button"
             disabled={disabled}
-            onClick={() => setActiveIndex(index)}
+            onClick={() => {
+              setActiveIndex(index);
+              setActiveEdgeIndex(index);
+            }}
             style={{
               minWidth: 34,
               height: 26,
@@ -309,7 +543,7 @@ function ContourEditorCard({
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
           gap: 6,
-          marginBottom: 8,
+          marginBottom: 9,
         }}
       >
         <div>
@@ -354,6 +588,183 @@ function ContourEditorCard({
             }
             style={inputStyle}
           />
+        </div>
+      </div>
+
+      <div
+        style={{
+          paddingTop: 8,
+          marginTop: 3,
+          marginBottom: 9,
+          borderTop: "1px solid #243247",
+        }}
+      >
+        <div
+          style={{
+            marginBottom: 5,
+            color: "#ddd6fe",
+            fontSize: 9,
+            fontWeight: 850,
+          }}
+        >
+          Arc Edge · {edgeLabel}
+        </div>
+
+        <div
+          style={{
+            marginBottom: 6,
+            color: "#7f8ea3",
+            fontSize: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          Positive / negative bulge chooses which side of the selected
+          edge curves outward. Purple handle = draggable arc control.
+        </div>
+
+        <label style={{ fontSize: 8, color: "#94a3b8" }}>
+          Curve Bulge (mm) — current:{" "}
+          {Math.round(activeEdgeInfo?.bulgeMm || 0)}mm
+        </label>
+        <input
+          type="range"
+          min={Math.round(-(activeEdgeInfo?.maxBulgeMm || 1))}
+          max={Math.round(activeEdgeInfo?.maxBulgeMm || 1)}
+          step="1"
+          value={Math.round(activeEdgeInfo?.bulgeMm || 0)}
+          disabled={disabled || !activeEdgeInfo}
+          onChange={(event) =>
+            commitEdgeBulge(Number(event.target.value) || 0)
+          }
+          style={{
+            width: "100%",
+            accentColor: "#8b5cf6",
+          }}
+        />
+        <input
+          type="number"
+          step="1"
+          min={Math.round(-(activeEdgeInfo?.maxBulgeMm || 1))}
+          max={Math.round(activeEdgeInfo?.maxBulgeMm || 1)}
+          value={Math.round(activeEdgeInfo?.bulgeMm || 0)}
+          disabled={disabled || !activeEdgeInfo}
+          onChange={(event) =>
+            commitEdgeBulge(Number(event.target.value) || 0)
+          }
+          style={inputStyle}
+        />
+
+        <div style={{ marginTop: 6 }}>
+          <label style={{ fontSize: 8, color: "#94a3b8" }}>
+            Arc Radius (mm)
+          </label>
+          <input
+            type="number"
+            step="1"
+            min={Math.ceil(activeEdgeInfo?.minRadiusMm || 1)}
+            value={radiusValue}
+            disabled={disabled || !activeEdgeInfo}
+            onChange={(event) =>
+              commitEdgeRadius(Number(event.target.value) || 0)
+            }
+            style={inputStyle}
+          />
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: 6,
+            marginTop: 6,
+          }}
+        >
+          <button
+            type="button"
+            disabled={disabled || !activeEdgeInfo}
+            onClick={() =>
+              commitEdgeBulge(
+                Math.max(
+                  10,
+                  Math.min(
+                    60,
+                    activeEdgeInfo?.maxBulgeMm || 10,
+                  ),
+                ),
+              )
+            }
+            style={{
+              height: 28,
+              border: "1px solid #4c3d75",
+              borderRadius: 0,
+              background: "#16112a",
+              color: "#ddd6fe",
+              fontSize: 8,
+              fontWeight: 800,
+            }}
+          >
+            Curve +
+          </button>
+
+          <button
+            type="button"
+            disabled={disabled || !activeEdgeInfo}
+            onClick={() => commitEdgeBulge(0)}
+            style={{
+              height: 28,
+              border: "1px solid #334155",
+              borderRadius: 0,
+              background: "#111827",
+              color: "#cbd5e1",
+              fontSize: 8,
+              fontWeight: 800,
+            }}
+          >
+            Straight
+          </button>
+
+          <button
+            type="button"
+            disabled={disabled || !activeEdgeInfo}
+            onClick={() =>
+              commitEdgeBulge(
+                -Math.max(
+                  10,
+                  Math.min(
+                    60,
+                    activeEdgeInfo?.maxBulgeMm || 10,
+                  ),
+                ),
+              )
+            }
+            style={{
+              height: 28,
+              border: "1px solid #4c3d75",
+              borderRadius: 0,
+              background: "#16112a",
+              color: "#ddd6fe",
+              fontSize: 8,
+              fontWeight: 800,
+            }}
+          >
+            Curve -
+          </button>
+        </div>
+
+        <div
+          style={{
+            marginTop: 6,
+            color: "#64748b",
+            fontSize: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          Chord {Math.round(activeEdgeInfo?.chordMm || 0)}mm ·{" "}
+          {activeEdgeInfo?.isCurved
+            ? `radius ${Math.round(activeEdgeInfo.radiusMm)}mm`
+            : "straight edge"}.
+          Adding an arc resets Custom Contour corner fillet to 0 so the
+          two operations do not overlap.
         </div>
       </div>
 
@@ -434,12 +845,12 @@ function ContourEditorCard({
         }}
       >
         {points.length} contour points · minimum 3 · maximum 24.
-        Invalid self-crossing moves are ignored.
+        Moving a point straightens its two adjacent curved edges.
+        Invalid self-crossing arc edits are ignored.
       </div>
     </div>
   );
 }
-
 export function PropertiesPanel({
   selectedComp: committedSelectedComp,
   liveSelectedComp = null,
