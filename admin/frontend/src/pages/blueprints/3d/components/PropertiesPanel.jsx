@@ -280,21 +280,22 @@ export function PropertiesPanel({
   };
 
   const inspectorSectionStyle = {
-    marginBottom: 12,
+    marginBottom: 10,
     padding: 10,
-    border: "1px solid rgba(71,85,105,.62)",
-    borderRadius: 8,
-    background: "rgba(11,20,36,.72)",
+    border: "1px solid rgba(71,85,105,.58)",
+    borderLeft: "2px solid rgba(96,165,250,.28)",
+    borderRadius: 2,
+    background: "#091321",
     boxSizing: "border-box",
   };
 
   const inspectorSectionTitleStyle = {
     marginBottom: 8,
-    fontSize: 9,
-    fontWeight: 800,
-    letterSpacing: "0.12em",
+    fontSize: 10,
+    fontWeight: 850,
+    letterSpacing: "0.08em",
     textTransform: "uppercase",
-    color: "#8fa4c0",
+    color: "#b9c8db",
   };
 
   const inspectorFieldGridStyle = {
@@ -434,7 +435,7 @@ export function PropertiesPanel({
                         alignItems: "center",
                         padding: "0 9px",
                         border: "1px solid rgba(71,85,105,.62)",
-                        borderRadius: 6,
+                        borderRadius: 0,
                         background: "rgba(15,23,42,.62)",
                         color: "#dbeafe",
                         fontSize: 10,
@@ -575,7 +576,7 @@ export function PropertiesPanel({
                     letterSpacing: ".08em",
                   }}
                 >
-                  TECHNICAL ID · {selectedComp.partCode}
+                  PART CODE | {selectedComp.partCode}
                 </div>
               ) : null}
 
@@ -593,7 +594,7 @@ export function PropertiesPanel({
                     letterSpacing: ".08em",
                   }}
                 >
-                  PART ROLE:{" "}
+                  ROLE |{" "}
                   {String(selectedComp.partRole)
                     .replace(/_/g, " ")
                     .replace(/\b\w/g, (char) => char.toUpperCase())}
@@ -630,7 +631,7 @@ export function PropertiesPanel({
             </div>
 
             <div style={inspectorSectionStyle}>
-              <div style={inspectorSectionTitleStyle}>Dimensions</div>
+              <div style={inspectorSectionTitleStyle}>Size</div>
               <div style={inspectorFieldGridStyle}>
                 {[
                   ["Width", "width"],
@@ -658,7 +659,7 @@ export function PropertiesPanel({
             </div>
 
             <div style={inspectorSectionStyle}>
-              <div style={inspectorSectionTitleStyle}>Resize Side</div>
+              <div style={inspectorSectionTitleStyle}>Resize From</div>
               <div
                 style={{
                   marginBottom: 9,
@@ -667,7 +668,7 @@ export function PropertiesPanel({
                   lineHeight: 1.45,
                 }}
               >
-                Choose which side will move when the dimension changes.
+                Choose the side that moves when you change the size.
               </div>
 
               {[
@@ -745,7 +746,7 @@ export function PropertiesPanel({
                             border: isActive
                               ? "1px solid rgba(96,165,250,.9)"
                               : "1px solid rgba(71,85,105,.72)",
-                            borderRadius: 6,
+                            borderRadius: 0,
                             background: isActive
                               ? "rgba(37,99,235,.24)"
                               : "rgba(15,23,42,.55)",
@@ -1225,7 +1226,7 @@ export function PropertiesPanel({
               </div>
             )}
 
-            <div style={inspectorSectionTitleStyle}>Identity & Rotation</div>
+            <div style={inspectorSectionTitleStyle}>Part Details</div>
 
             <div style={{ marginBottom: 6 }}>
               <label style={S.floatingLabel}>Rotation Y (°)</label>
@@ -1255,7 +1256,7 @@ export function PropertiesPanel({
             </div>
 
             <div style={inspectorSectionTitleStyle}>
-              Material / Grain / Edge
+              Material & Finish
             </div>
 
             <div style={{ marginBottom: 6 }}>
@@ -1411,12 +1412,11 @@ export function PropertiesPanel({
                 lineHeight: 1.45,
               }}
             >
-              Material, grain, and edge treatment are Blueprint production
-              metadata only. They do not reserve or deduct live inventory.
-              Actual inventory deduction remains in Create Estimation.
+              Blueprint production details only. Inventory is handled later in
+              Create Estimation.
             </div>
 
-            <div style={inspectorSectionTitleStyle}>Hardware Requirements</div>
+            <div style={inspectorSectionTitleStyle}>Hardware</div>
 
             <div
               style={{
@@ -1427,8 +1427,7 @@ export function PropertiesPanel({
                 lineHeight: 1.45,
               }}
             >
-              Add hardware needed by this selected part. Related Part is
-              automatically this object:
+              Hardware saved on this part:
               {" "}
               <b>{selectedComp.partCode || selectedComp.label || "Selected Part"}</b>.
             </div>
@@ -1749,7 +1748,7 @@ export function PropertiesPanel({
                   width: "100%",
                   minHeight: 32,
                   border: "1px solid rgba(96,165,250,.55)",
-                  borderRadius: 6,
+                  borderRadius: 0,
                   background: "rgba(37,99,235,.22)",
                   color: "#dbeafe",
                   fontSize: 9,
@@ -1779,10 +1778,8 @@ export function PropertiesPanel({
                 lineHeight: 1.45,
               }}
             >
-              Hardware entries are Blueprint production requirements only.
-              They do not deduct inventory or calculate price. Automatic
-              suggestions will be added in a later batch after manual
-              assignment is stable.
+              Hardware requirements only. No inventory deduction or pricing is
+              performed here.
             </div>
 
             <div style={{ marginBottom: 6 }}>

@@ -25,7 +25,10 @@ export function ObjectsTreePanel({
   onToggle,
   isLocked3D,
 }) {
-  const [collapsedAssemblyIds, setCollapsedAssemblyIds] = useState(() => new Set());
+  const [collapsedAssemblyIds, setCollapsedAssemblyIds] = useState(
+    () => new Set(),
+  );
+  const [treeSearch, setTreeSearch] = useState("");
 
   const grouped = useMemo(() => {
     const groups = new Map();
@@ -71,6 +74,58 @@ export function ObjectsTreePanel({
     return { groups: assemblies, standalone };
   }, [components, isLocked3D]);
 
+  const filteredGrouped = useMemo(() => {
+    const query = treeSearch.trim().toLowerCase();
+    if (!query) return grouped;
+
+    const partMatches = (item) =>
+      [
+        item?.partCode,
+        item?.label,
+        item?.material,
+        item?.partRole,
+        item?.type,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+
+    const groups = grouped.groups
+      .map((group) => {
+        const assemblyMatches = [group.label, group.type]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(query);
+
+        const items = assemblyMatches
+          ? group.items
+          : group.items.filter(partMatches);
+
+        return {
+          ...group,
+          allItems: group.items,
+          items,
+        };
+      })
+      .filter((group) => group.items.length > 0);
+
+    return {
+      groups,
+      standalone: grouped.standalone.filter(partMatches),
+    };
+  }, [grouped, treeSearch]);
+
+  const visiblePartCount = useMemo(
+    () =>
+      filteredGrouped.groups.reduce(
+        (total, group) => total + group.items.length,
+        0,
+      ) + filteredGrouped.standalone.length,
+    [filteredGrouped],
+  );
+
   const selectedSet = useMemo(
     () => new Set(Array.isArray(selectedIds) ? selectedIds : []),
     [selectedIds],
@@ -98,7 +153,7 @@ export function ObjectsTreePanel({
   const handleSelectAssembly = (group, event) => {
     event.stopPropagation();
 
-    const ids = group.items.map((item) => item.id).filter(Boolean);
+    const ids = (group.allItems || group.items).map((item) => item.id).filter(Boolean);
     if (!ids.length) return;
 
     onSelect?.(ids, ids[0]);
@@ -205,14 +260,14 @@ export function ObjectsTreePanel({
         .blueprint-objects-tree-scroll::-webkit-scrollbar-track {
           background: #0b1220;
           border-left: 1px solid rgba(71, 85, 105, 0.55);
-          border-radius: 999px;
+          border-radius: 0;
         }
 
         .blueprint-objects-tree-scroll::-webkit-scrollbar-thumb {
           min-height: 42px;
           background: #64748b;
           border: 2px solid #0b1220;
-          border-radius: 999px;
+          border-radius: 0;
         }
 
         .blueprint-objects-tree-scroll::-webkit-scrollbar-thumb:hover {
@@ -226,14 +281,14 @@ export function ObjectsTreePanel({
         .blueprint-assembly-parts-scroll::-webkit-scrollbar-track {
           background: #0b1220;
           border-left: 1px solid rgba(71, 85, 105, 0.55);
-          border-radius: 999px;
+          border-radius: 0;
         }
 
         .blueprint-assembly-parts-scroll::-webkit-scrollbar-thumb {
           min-height: 44px;
           background: #64748b;
           border: 2px solid #0b1220;
-          border-radius: 999px;
+          border-radius: 0;
         }
 
         .blueprint-assembly-parts-scroll::-webkit-scrollbar-thumb:hover {
@@ -254,9 +309,9 @@ export function ObjectsTreePanel({
       >
         <div style={S.libraryHeaderRow}>
           <div style={{ minWidth: 0 }}>
-            <div style={S.floatingTitle}>Objects Tree</div>
+            <div style={S.floatingTitle}>Project Structure</div>
             <div style={S.librarySubtleText}>
-              Project &rarr; Assembly &rarr; Part
+              Select an assembly or part. Shift-click selects multiple parts.
             </div>
           </div>
 
@@ -270,7 +325,7 @@ export function ObjectsTreePanel({
             marginTop: 10,
             padding: 8,
             border: "1px solid rgba(51,65,85,.58)",
-            borderRadius: 8,
+            borderRadius: 2,
             background: "rgba(8,15,28,.42)",
           }}
         >
@@ -285,7 +340,7 @@ export function ObjectsTreePanel({
               border: canCreateAssembly
                 ? "1px solid rgba(96,165,250,.75)"
                 : "1px solid rgba(71,85,105,.55)",
-              borderRadius: 6,
+              borderRadius: 0,
               background: canCreateAssembly
                 ? "rgba(37,99,235,.22)"
                 : "rgba(15,23,42,.58)",
@@ -295,7 +350,7 @@ export function ObjectsTreePanel({
               cursor: canCreateAssembly ? "pointer" : "not-allowed",
             }}
           >
-            + Create Assembly
+            Create Assembly
           </button>
 
           <div
@@ -310,6 +365,36 @@ export function ObjectsTreePanel({
               `${createAssemblySelectionCount} selected part${
                 createAssemblySelectionCount !== 1 ? "s" : ""
               }`}
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: 10,
+            display: "grid",
+            gap: 6,
+          }}
+        >
+          <input
+            type="text"
+            value={treeSearch}
+            onChange={(event) => setTreeSearch(event.target.value)}
+            placeholder="Search parts or assemblies..."
+            style={S.floatingSearchInput}
+          />
+
+          <div
+            style={{
+              color: "#8799b1",
+              fontSize: 9,
+              lineHeight: 1.35,
+            }}
+          >
+            {filteredGrouped.groups.length} assembl{
+              filteredGrouped.groups.length === 1 ? "y" : "ies"
+            } | {visiblePartCount} visible part{
+              visiblePartCount === 1 ? "" : "s"
+            }
           </div>
         </div>
 
@@ -341,7 +426,7 @@ export function ObjectsTreePanel({
             paddingBottom: 8,
           }}
         >
-          {grouped.groups.map((group) => {
+          {filteredGrouped.groups.map((group) => {
             const collapsed = collapsedAssemblyIds.has(group.id);
             const assemblyIds = group.items
               .map((item) => item.id)
@@ -358,7 +443,7 @@ export function ObjectsTreePanel({
                   border: assemblySelected
                     ? "1px solid rgba(96,165,250,.62)"
                     : "1px solid rgba(51,65,85,.58)",
-                  borderRadius: 8,
+                  borderRadius: 2,
                   background: assemblySelected
                     ? "rgba(30,64,175,.10)"
                     : "rgba(8,15,28,.32)",
@@ -497,13 +582,13 @@ export function ObjectsTreePanel({
             );
           })}
 
-          {grouped.standalone.length ? (
+          {filteredGrouped.standalone.length ? (
             <div
               style={{
-                borderTop: grouped.groups.length
+                borderTop: filteredGrouped.groups.length
                   ? "1px solid rgba(51,65,85,.58)"
                   : "none",
-                paddingTop: grouped.groups.length ? 8 : 0,
+                paddingTop: filteredGrouped.groups.length ? 8 : 0,
               }}
             >
               <div
@@ -513,7 +598,7 @@ export function ObjectsTreePanel({
                   marginBottom: 5,
                 }}
               >
-                Standalone {"\u00B7"} {grouped.standalone.length}
+                Standalone {"\u00B7"} {filteredGrouped.standalone.length}
               </div>
 
               <div
@@ -523,15 +608,15 @@ export function ObjectsTreePanel({
                   gap: 4,
                 }}
               >
-                {grouped.standalone.map((item) =>
+                {filteredGrouped.standalone.map((item) =>
                   renderPartButton(item),
                 )}
               </div>
             </div>
           ) : null}
 
-          {!grouped.groups.length && !grouped.standalone.length ? (
-            <div style={S.libraryEmptyState}>No objects in scene.</div>
+          {!filteredGrouped.groups.length && !filteredGrouped.standalone.length ? (
+            <div style={S.libraryEmptyState}>{treeSearch.trim() ? "No matching parts or assemblies." : "No objects in scene."}</div>
           ) : null}
         </div>
       </div>

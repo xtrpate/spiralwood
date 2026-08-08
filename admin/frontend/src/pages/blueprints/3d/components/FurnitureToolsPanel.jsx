@@ -424,39 +424,37 @@ export function FurnitureToolsPanel({
 
   const toolTabs = [
     {
-      key: "arrange",
-      label: "Arrange",
-      hint: "Align, flush, spacing, and lineup tools for current selection.",
+      key: "builders",
+      label: "Build",
+      hint: "Create a table, cabinet, wardrobe, doors, drawers, or shelves.",
     },
     {
-      key: "builders",
-      label: "Builders",
-      hint: "Cabinet generator and furniture builder helpers.",
+      key: "arrange",
+      label: "Arrange",
+      hint: "Line up selected parts and control spacing.",
     },
     {
       key: "resize",
       label: "Resize",
-      hint:
-        "Controlled Width, Height, and Depth resize for supported furniture assemblies.",
+      hint: "Change assembly width, height, or depth safely.",
     },
     {
       key: "duplicate",
-      label: "Duplicate",
-      hint: "Mirror, assembly actions, and repeat / array tools.",
+      label: "Copy",
+      hint: "Duplicate, mirror, or repeat selected parts.",
     },
     {
       key: "validate",
-      label: "Validate",
-      hint:
-        "Run production-readiness checks for dimensions, materials, cabinet structure, drawers, duplicate geometry, and unsaved changes.",
+      label: "Check",
+      hint: "Review the design for common production problems.",
     },
   ];
 
   const sectionCardStyle = {
-    border: "1px solid rgba(71,85,105,.45)",
-    background:
-      "linear-gradient(180deg, rgba(8,17,32,.86) 0%, rgba(7,14,26,.92) 100%)",
-    borderRadius: 12,
+    border: "1px solid rgba(71,85,105,.58)",
+    borderLeft: "2px solid rgba(96,165,250,.32)",
+    background: "#091321",
+    borderRadius: 2,
     padding: 10,
     marginBottom: 10,
     boxSizing: "border-box",
@@ -471,7 +469,7 @@ export function FurnitureToolsPanel({
 
   const toolTabsRowStyle = {
     display: "grid",
-    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: 6,
     marginBottom: 10,
   };
@@ -485,12 +483,12 @@ export function FurnitureToolsPanel({
   });
 
   const statusText = hasLockedSmartSelection
-    ? "Locked items selected. Unlock them first."
+    ? "Selection is locked. Unlock it to edit."
     : smartSelectionCount > 1
-      ? `${smartSelectionCount} objects selected`
+      ? `${smartSelectionCount} parts selected`
       : smartSelectionCount === 1
-        ? "1 object selected"
-        : "No active selection. Builders can still create a new cabinet.";
+        ? "1 part selected"
+        : "No part selected. Build tools are still available.";
 
   const activeTabHint =
     toolTabs.find((tab) => tab.key === activeToolTab)?.hint || "";
@@ -501,7 +499,7 @@ export function FurnitureToolsPanel({
       onMouseDown={handlePanelPointerDown}
       onPointerDown={handlePanelPointerDown}
     >
-      <div style={S.smartActionsTitle}>Design Tools</div>
+      <div style={S.smartActionsTitle}>Tools</div>
       <div style={S.smartActionsSubtle}>{statusText}</div>
 
       <div style={toolTabsRowStyle}>

@@ -2488,9 +2488,9 @@ function ThreeDViewer({
           minWidth: isExploded3D ? 340 : 210,
           padding: "8px 10px",
           border: "1px solid rgba(100,116,139,.56)",
-          borderRadius: 10,
-          background: "rgba(8,15,28,.92)",
-          boxShadow: "0 8px 28px rgba(0,0,0,.28)",
+          borderRadius: 2,
+          background: "rgba(7,14,26,.96)",
+          boxShadow: "0 8px 20px rgba(0,0,0,.22)",
           color: "#dbeafe",
         }}
       >
@@ -2511,7 +2511,7 @@ function ThreeDViewer({
               color: "#93a8c4",
             }}
           >
-            3D Assembly
+            View Mode
           </div>
 
           <div style={{ display: "flex", gap: 5 }}>
@@ -2524,7 +2524,7 @@ function ThreeDViewer({
                 border: !isExploded3D
                   ? "1px solid rgba(96,165,250,.9)"
                   : "1px solid rgba(71,85,105,.72)",
-                borderRadius: 6,
+                borderRadius: 0,
                 background: !isExploded3D
                   ? "rgba(37,99,235,.26)"
                   : "rgba(15,23,42,.74)",
@@ -2555,7 +2555,7 @@ function ThreeDViewer({
                 border: isExploded3D
                   ? "1px solid rgba(45,212,191,.9)"
                   : "1px solid rgba(71,85,105,.72)",
-                borderRadius: 6,
+                borderRadius: 0,
                 background: isExploded3D
                   ? "rgba(13,148,136,.22)"
                   : "rgba(15,23,42,.74)",

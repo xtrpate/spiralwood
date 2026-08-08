@@ -106,7 +106,7 @@ function VisualLibraryCard({
           width: "100%",
           minHeight: 104,
           padding: 8,
-          borderRadius: 16,
+          borderRadius: 2,
           border: "1px solid rgba(71, 110, 180, 0.42)",
           background:
             "linear-gradient(180deg, rgba(8,16,30,.98) 0%, rgba(6,12,24,.98) 100%)",
@@ -130,7 +130,7 @@ function VisualLibraryCard({
         >
           <div
             style={{
-              borderRadius: 12,
+              borderRadius: 2,
               border: "1px solid rgba(70, 103, 162, 0.24)",
               background:
                 "radial-gradient(circle at 35% 20%, rgba(70,130,220,.18) 0%, rgba(26,39,66,.18) 35%, rgba(9,15,26,.84) 100%)",
@@ -164,7 +164,7 @@ function VisualLibraryCard({
                 style={{
                   width: "84%",
                   height: "78%",
-                  borderRadius: 12,
+                  borderRadius: 2,
                   border: "1px dashed rgba(96,165,250,.28)",
                   background:
                     "linear-gradient(180deg, rgba(10,18,34,.78) 0%, rgba(8,14,26,.92) 100%)",
@@ -200,24 +200,58 @@ function VisualLibraryCard({
               paddingRight: 4,
             }}
           >
-            <div
-              style={{
-                width: "100%",
-                color: "#e8f0ff",
-                fontSize: 12,
-                fontWeight: 700,
-                lineHeight: 1.45,
-                letterSpacing: ".01em",
-                textAlign: "left",
-                overflow: "hidden",
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                wordBreak: "normal",
-                overflowWrap: "anywhere",
-              }}
-            >
-              {tooltip.title}
+            <div style={{ width: "100%", minWidth: 0 }}>
+              <div
+                style={{
+                  color: "#eef4ff",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  lineHeight: 1.35,
+                  textAlign: "left",
+                  overflow: "hidden",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                }}
+              >
+                {tooltip.title}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 6,
+                  color: "#9eb0c7",
+                  fontSize: 9,
+                  lineHeight: 1.35,
+                  textAlign: "left",
+                }}
+              >
+                {tooltip.dims}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 2,
+                  color: "#7f93ad",
+                  fontSize: 9,
+                  lineHeight: 1.35,
+                  textAlign: "left",
+                }}
+              >
+                {tooltip.material}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 7,
+                  color: "#93c5fd",
+                  fontSize: 9,
+                  fontWeight: 800,
+                  textAlign: "left",
+                }}
+              >
+                Drag to place
+              </div>
             </div>
           </div>
         </div>
@@ -230,7 +264,7 @@ function VisualLibraryCard({
               bottom: 8,
               maxWidth: 150,
               padding: "8px 10px",
-              borderRadius: 10,
+              borderRadius: 2,
               border: "1px solid rgba(96,165,250,.28)",
               background: "rgba(6,10,18,.92)",
               backdropFilter: "blur(6px)",
@@ -281,9 +315,9 @@ function VisualLibraryCard({
       style={{
         position: "relative",
         width: "100%",
-        height: LIBRARY_PREVIEW.partHeight,
+        minHeight: 108,
         padding: 8,
-        borderRadius: 14,
+        borderRadius: 2,
         border: "1px solid rgba(71, 110, 180, 0.42)",
         background:
           "linear-gradient(180deg, rgba(8,16,30,.98) 0%, rgba(6,12,24,.98) 100%)",
@@ -298,8 +332,8 @@ function VisualLibraryCard({
       <div
         style={{
           width: "100%",
-          height: "100%",
-          borderRadius: 12,
+          height: 70,
+          borderRadius: 2,
           border: "1px solid rgba(70, 103, 162, 0.24)",
           background:
             "radial-gradient(circle at 35% 20%, rgba(70,130,220,.18) 0%, rgba(26,39,66,.18) 35%, rgba(9,15,26,.84) 100%)",
@@ -332,7 +366,7 @@ function VisualLibraryCard({
             style={{
               width: "84%",
               height: "78%",
-              borderRadius: 12,
+              borderRadius: 2,
               border: "1px dashed rgba(96,165,250,.28)",
               background:
                 "linear-gradient(180deg, rgba(10,18,34,.78) 0%, rgba(8,14,26,.92) 100%)",
@@ -359,6 +393,22 @@ function VisualLibraryCard({
         )}
       </div>
 
+      <div
+        style={{
+          marginTop: 6,
+          color: "#dbe7f7",
+          fontSize: 9,
+          fontWeight: 750,
+          lineHeight: 1.3,
+          textAlign: "left",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {tooltip.title}
+      </div>
+
       {hovered ? (
         <div
           style={{
@@ -367,7 +417,7 @@ function VisualLibraryCard({
             right: 8,
             bottom: 8,
             padding: "8px 10px",
-            borderRadius: 10,
+            borderRadius: 2,
             border: "1px solid rgba(96,165,250,.28)",
             background: "rgba(6,10,18,.88)",
             backdropFilter: "blur(6px)",
@@ -565,7 +615,7 @@ export function FurnitureLibraryPanel({
           ...VIEWER_UI.sideDockPanel,
           width: 310,
           padding: 10,
-          borderRadius: 14,
+          borderRadius: 2,
           opacity: isOpen ? 1 : 0,
           transform: isOpen ? "translateX(0)" : "translateX(-18px)",
           pointerEvents: isOpen ? "auto" : "none",
@@ -575,9 +625,9 @@ export function FurnitureLibraryPanel({
         <div style={S.libraryStickyTop}>
           <div style={S.libraryHeaderRow}>
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={S.floatingTitle}>Furniture Library</div>
+              <div style={S.floatingTitle}>Add Furniture</div>
               <div style={S.librarySubtleText}>
-                Click and hold an item, then drag it into the workspace.
+                Drag a furniture template or part into the workspace.
               </div>
             </div>
 
@@ -591,7 +641,7 @@ export function FurnitureLibraryPanel({
               style={{
                 marginTop: 8,
                 padding: "7px 10px",
-                borderRadius: 10,
+                borderRadius: 2,
                 border: "1px solid rgba(96,165,250,.34)",
                 background: "rgba(17,24,39,.92)",
                 color: "#dbeafe",
@@ -671,12 +721,15 @@ export function FurnitureLibraryPanel({
             ))}
           </div>
 
-          <div style={S.librarySummaryRow}>
-            <span style={S.librarySummaryPill}>{activeTabLabel}</span>
-            <span style={S.librarySummaryPill}>{totalVisibleItems} items</span>
-            <span style={S.librarySummaryPill}>
-              {totalVisibleSections} sections
-            </span>
+          <div
+            style={{
+              marginTop: 8,
+              color: "#8799b1",
+              fontSize: 9,
+              lineHeight: 1.35,
+            }}
+          >
+            {activeTabLabel} | {totalVisibleItems} items | {totalVisibleSections} groups
           </div>
         </div>
 
