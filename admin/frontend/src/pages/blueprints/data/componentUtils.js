@@ -12,6 +12,8 @@ import {
   normalizeDimensionMm,
   makeId,
 } from "./utils";
+import { normalizeFurnitureStructureFields } from "./furnitureStructure";
+import { normalizeProductionMetadata } from "./productionMetadata";
 
 const GRID_SIZE = 20;
 const MIN_COMPONENT_DIMENSION_MM = 1;
@@ -68,7 +70,9 @@ function applyWoodFinish(comp = {}, finishId = "") {
   return {
     finish: finish.id,
     fill: finish.front,
-    material: finish.material,
+    // Finish controls appearance only. Keep the structural board material
+    // separate so Marine Plywood does not silently become Oak Wood, etc.
+    material: comp.material || finish.material,
   };
 }
 
@@ -104,17 +108,31 @@ function normalizeComponent(c) {
       ? finish?.front || explicitFill || explicitColor || "#d9c2a5"
       : explicitFill || explicitColor || explicitFinishColor || "#d9c2a5";
 
-  const resolvedMaterial = preserveSolidColor
-    ? rawMaterial
-    : resolvedFinishId
-      ? finish?.material || rawMaterial
-      : rawMaterial;
+  // Material and finish are separate production properties.
+  // A visual oak/walnut/etc. finish must not overwrite the saved substrate.
+  const resolvedMaterial = rawMaterial;
+
+  const structure = normalizeFurnitureStructureFields(c);
+  const productionMetadata = normalizeProductionMetadata({
+    ...c,
+    material: resolvedMaterial,
+  });
 
   return {
     id: c.id || makeId(),
-    groupId: c.groupId || null,
-    groupLabel: c.groupLabel || "",
-    groupType: c.groupType || null,
+
+    // Canonical Project -> Assembly -> Part metadata. Legacy group fields are
+    // intentionally kept in sync until all editor tools have migrated.
+    assemblyId: structure.assemblyId,
+    assemblyName: structure.assemblyName,
+    assemblyType: structure.assemblyType,
+    parentPartId: structure.parentPartId,
+    partRole: structure.partRole,
+    structureVersion: structure.structureVersion,
+    groupId: structure.groupId,
+    groupLabel: structure.groupLabel,
+    groupType: structure.groupType,
+
     partCode: c.partCode || "",
     category: c.category || "Custom",
     blueprintStyle: c.blueprintStyle || "box",
@@ -155,11 +173,18 @@ function normalizeComponent(c) {
       : resolvedFinishId
         ? "wood"
         : explicitColorMode,
+
+    // Canonical woodworking production metadata. These fields intentionally
+    // stay inside the Blueprint component payload so Save / Reload preserves
+    // them without linking to live inventory.
+    grainDirection: productionMetadata.grainDirection,
+    edgeTreatments: productionMetadata.edgeTreatments,
+
     unitPrice: Number(c.unitPrice) || 0,
     groupUnitPrice: Number(c.groupUnitPrice) || 0,
     templateType: c.templateType || "",
-    ...(c.assemblyRole
-      ? { assemblyRole: String(c.assemblyRole) }
+    ...(structure.assemblyRole
+      ? { assemblyRole: structure.assemblyRole }
       : {}),
     ...(c.resizeRuleX
       ? { resizeRuleX: String(c.resizeRuleX) }

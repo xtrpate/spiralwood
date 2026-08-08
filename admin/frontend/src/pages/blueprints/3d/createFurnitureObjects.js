@@ -846,44 +846,4 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
   return root;
 }
 
-function Floating3DPalette({ onAdd, activeBuildLabel }) {
-  return (
-    <div style={S.floatingPanelLeft}>
-      <div style={S.floatingTitle}>Furniture Library</div>
-
-      {COMPONENT_LIBRARY_GROUPS.map((group) => (
-        <div key={group.label} style={{ marginBottom: 10 }}>
-          <div style={S.floatingSectionLabel}>{group.label}</div>
-          <div style={{ display: "grid", gap: 6 }}>
-            {group.items.map((t) => (
-              <button
-                key={`${group.label}-${t.type}`}
-                onClick={() => onAdd(t)}
-                style={
-                  t.type === "chair_template"
-                    ? S.floatingPrimaryBtn
-                    : S.floatingPaletteBtn
-                }
-              >
-                {t.fill ? (
-                  <span
-                    style={{
-                      width: 11,
-                      height: 11,
-                      background: t.fill,
-                      borderRadius: 2,
-                      flexShrink: 0,
-                    }}
-                  />
-                ) : null}
-                <span style={{ flex: 1, textAlign: "left" }}>{t.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export { createFurnitureObject };
