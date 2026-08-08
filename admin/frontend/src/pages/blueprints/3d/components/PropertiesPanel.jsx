@@ -15,6 +15,11 @@ import {
 import { displayToMm, formatDim, formatDims, mmToDisplay } from "../../data/utils";
 import S from "../../styles/blueprintStyles";
 import { VIEWER_UI } from "../viewerUi";
+import {
+  isWoodworkingProfileComponent,
+  supportsProfileFillet,
+  getWoodworkingProfileDescriptor,
+} from "../../data/woodworkingProfile";
 
 export function PropertiesPanel({
   selectedComp: committedSelectedComp,
@@ -138,6 +143,10 @@ export function PropertiesPanel({
   const unitLabel = unit === "inch" ? "in" : "mm";
 
   const isRoundedBox = selectedComp?.type === "rounded_box";
+  const isWoodworkingProfile = isWoodworkingProfileComponent(selectedComp);
+  const woodworkingProfile = isWoodworkingProfile
+    ? getWoodworkingProfileDescriptor(selectedComp)
+    : null;
   const boxWallMax = selectedComp
     ? Math.max(
         20,
@@ -796,44 +805,610 @@ export function PropertiesPanel({
 
             <div style={inspectorSectionTitleStyle}>Geometry</div>
 
-            <div style={{ marginBottom: 6 }}>
-              <label style={S.floatingLabel}>
-                Corner Radius (mm) — current: {selectedComp.cornerRadius ?? 0}mm
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="500"
-                step="5"
-                value={selectedComp.cornerRadius ?? 0}
-                disabled={editorMode !== "editable" || isLocked(selectedComp)}
-                onChange={(e) =>
-                  applySelectionChange({
-                    cornerRadius: Number(e.target.value),
-                  })
-                }
-                style={{ width: "100%", accentColor: "#3b82f6" }}
-              />
-              <input
-                type="number"
-                min="0"
-                max="500"
-                step="5"
-                value={selectedComp.cornerRadius ?? 0}
-                disabled={editorMode !== "editable" || isLocked(selectedComp)}
-                onChange={(e) =>
-                  applySelectionChange({
-                    cornerRadius: Math.max(
-                      0,
-                      Math.min(500, Number(e.target.value) || 0),
-                    ),
-                  })
-                }
-                style={inputStyle}
-              />
-            </div>
+            {isWoodworkingProfile && woodworkingProfile ? (
+              <div
+                style={{
+                  ...infoCardStyle,
+                  marginBottom: 10,
+                  padding: 10,
+                  color: "#c8d5e8",
+                  fontSize: 9,
+                  lineHeight: 1.5,
+                }}
+              >
+                <div
+                  style={{
+                    marginBottom: 8,
+                    color: "#e5eefc",
+                    fontSize: 10,
+                    fontWeight: 850,
+                  }}
+                >
+                  {woodworkingProfile.label}
+                </div>
 
-            {isRoundedBox && (
+                <div style={{ marginBottom: 8 }}>
+                  <label style={S.floatingLabel}>Profile Face</label>
+                  <select
+                    value={selectedComp.profilePlane || "auto"}
+                    disabled={editorMode !== "editable" || isLocked(selectedComp)}
+                    onChange={(e) =>
+                      onChange(selectedComp.id, {
+                        profilePlane: e.target.value,
+                      })
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="auto">Auto - thinnest dimension is thickness</option>
+                    <option value="xy">Front / Back profile (Width × Height)</option>
+                    <option value="xz">Top / Bottom profile (Width × Depth)</option>
+                    <option value="yz">Left / Right profile (Depth × Height)</option>
+                  </select>
+                </div>
+
+                <div
+                  style={{
+                    marginBottom: 8,
+                    color: "#8fa3bd",
+                    fontSize: 9,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  Active profile: {woodworkingProfile.plane.toUpperCase()} ·
+                  thickness {Math.round(woodworkingProfile.thickness)} mm.
+                  2D and 3D use this same saved profile.
+                </div>
+
+                {supportsProfileFillet(woodworkingProfile.kind) ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={S.floatingLabel}>
+                      Corner Fillet Radius (mm) — current:{" "}
+                      {Math.round(
+                        woodworkingProfile.profileFilletRadius || 0,
+                      )}
+                      mm
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max={Math.max(
+                        0,
+                        Math.floor(
+                          woodworkingProfile.limits.filletRadiusMax,
+                        ),
+                      )}
+                      step="1"
+                      value={Math.round(
+                        woodworkingProfile.profileFilletRadius || 0,
+                      )}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) => {
+                        const maxRadius = Math.max(
+                          0,
+                          Math.floor(
+                            woodworkingProfile.limits.filletRadiusMax,
+                          ),
+                        );
+
+                        onChange(selectedComp.id, {
+                          profileFilletRadius: Math.max(
+                            0,
+                            Math.min(
+                              maxRadius,
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        });
+                      }}
+                      style={{
+                        width: "100%",
+                        accentColor: "#3b82f6",
+                      }}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max={Math.max(
+                        0,
+                        Math.floor(
+                          woodworkingProfile.limits.filletRadiusMax,
+                        ),
+                      )}
+                      step="1"
+                      value={Math.round(
+                        woodworkingProfile.profileFilletRadius || 0,
+                      )}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) => {
+                        const maxRadius = Math.max(
+                          0,
+                          Math.floor(
+                            woodworkingProfile.limits.filletRadiusMax,
+                          ),
+                        );
+
+                        onChange(selectedComp.id, {
+                          profileFilletRadius: Math.max(
+                            0,
+                            Math.min(
+                              maxRadius,
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        });
+                      }}
+                      style={inputStyle}
+                    />
+                  </div>
+                ) : null}
+
+                {woodworkingProfile.kind === "rounded" ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={S.floatingLabel}>
+                      Profile Corner Radius (mm) — current:{" "}
+                      {Math.round(woodworkingProfile.radius)}mm
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max={Math.max(
+                        0,
+                        Math.floor(woodworkingProfile.limits.radiusMax),
+                      )}
+                      step="1"
+                      value={Math.round(woodworkingProfile.radius)}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          profileRadius: Math.max(
+                            0,
+                            Math.min(
+                              Math.floor(
+                                woodworkingProfile.limits.radiusMax,
+                              ),
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        accentColor: "#3b82f6",
+                      }}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max={Math.max(
+                        0,
+                        Math.floor(woodworkingProfile.limits.radiusMax),
+                      )}
+                      step="1"
+                      value={Math.round(woodworkingProfile.radius)}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          profileRadius: Math.max(
+                            0,
+                            Math.min(
+                              Math.floor(
+                                woodworkingProfile.limits.radiusMax,
+                              ),
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        })
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+                ) : null}
+
+                {woodworkingProfile.kind === "chamfer" ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={S.floatingLabel}>
+                      Chamfer Size (mm) — current:{" "}
+                      {Math.round(woodworkingProfile.chamferSize)}mm
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max={Math.max(
+                        0,
+                        Math.floor(
+                          woodworkingProfile.limits.chamferMax,
+                        ),
+                      )}
+                      step="1"
+                      value={Math.round(woodworkingProfile.chamferSize)}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          chamferSize: Math.max(
+                            0,
+                            Math.min(
+                              Math.floor(
+                                woodworkingProfile.limits.chamferMax,
+                              ),
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        accentColor: "#3b82f6",
+                      }}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max={Math.max(
+                        0,
+                        Math.floor(
+                          woodworkingProfile.limits.chamferMax,
+                        ),
+                      )}
+                      step="1"
+                      value={Math.round(woodworkingProfile.chamferSize)}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          chamferSize: Math.max(
+                            0,
+                            Math.min(
+                              Math.floor(
+                                woodworkingProfile.limits.chamferMax,
+                              ),
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        })
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+                ) : null}
+
+                {woodworkingProfile.kind === "notch" ? (
+                  <>
+                    <div style={{ marginBottom: 8 }}>
+                      <label style={S.floatingLabel}>Notch Edge</label>
+                      <select
+                        value={woodworkingProfile.notchEdge}
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
+                        onChange={(e) =>
+                          onChange(selectedComp.id, {
+                            notchEdge: e.target.value,
+                          })
+                        }
+                        style={inputStyle}
+                      >
+                        <option value="top">Top</option>
+                        <option value="right">Right</option>
+                        <option value="bottom">Bottom</option>
+                        <option value="left">Left</option>
+                      </select>
+                    </div>
+
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={S.floatingLabel}>
+                        Notch Width (mm) — current:{" "}
+                        {Math.round(woodworkingProfile.notchWidth)}mm
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max={Math.max(
+                          1,
+                          Math.floor(
+                            woodworkingProfile.limits.notchSpanMax,
+                          ),
+                        )}
+                        step="1"
+                        value={Math.round(woodworkingProfile.notchWidth)}
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
+                        onChange={(e) =>
+                          onChange(selectedComp.id, {
+                            notchWidth: Math.max(
+                              1,
+                              Math.min(
+                                Math.floor(
+                                  woodworkingProfile.limits.notchSpanMax,
+                                ),
+                                Number(e.target.value) || 1,
+                              ),
+                            ),
+                          })
+                        }
+                        style={{
+                          width: "100%",
+                          accentColor: "#3b82f6",
+                        }}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        max={Math.max(
+                          1,
+                          Math.floor(
+                            woodworkingProfile.limits.notchSpanMax,
+                          ),
+                        )}
+                        step="1"
+                        value={Math.round(woodworkingProfile.notchWidth)}
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
+                        onChange={(e) =>
+                          onChange(selectedComp.id, {
+                            notchWidth: Math.max(
+                              1,
+                              Math.min(
+                                Math.floor(
+                                  woodworkingProfile.limits.notchSpanMax,
+                                ),
+                                Number(e.target.value) || 1,
+                              ),
+                            ),
+                          })
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={S.floatingLabel}>
+                        Notch Depth (mm) — current:{" "}
+                        {Math.round(woodworkingProfile.notchDepth)}mm
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max={Math.max(
+                          1,
+                          Math.floor(
+                            woodworkingProfile.limits.notchDepthMax,
+                          ),
+                        )}
+                        step="1"
+                        value={Math.round(woodworkingProfile.notchDepth)}
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
+                        onChange={(e) =>
+                          onChange(selectedComp.id, {
+                            notchDepth: Math.max(
+                              1,
+                              Math.min(
+                                Math.floor(
+                                  woodworkingProfile.limits.notchDepthMax,
+                                ),
+                                Number(e.target.value) || 1,
+                              ),
+                            ),
+                          })
+                        }
+                        style={{
+                          width: "100%",
+                          accentColor: "#3b82f6",
+                        }}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        max={Math.max(
+                          1,
+                          Math.floor(
+                            woodworkingProfile.limits.notchDepthMax,
+                          ),
+                        )}
+                        step="1"
+                        value={Math.round(woodworkingProfile.notchDepth)}
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
+                        onChange={(e) =>
+                          onChange(selectedComp.id, {
+                            notchDepth: Math.max(
+                              1,
+                              Math.min(
+                                Math.floor(
+                                  woodworkingProfile.limits.notchDepthMax,
+                                ),
+                                Number(e.target.value) || 1,
+                              ),
+                            ),
+                          })
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+                  </>
+                ) : null}
+
+                {woodworkingProfile.kind === "oval" ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={S.floatingLabel}>
+                      Oval Roundness (%) — current:{" "}
+                      {Math.round(
+                        woodworkingProfile.profileOvalRoundness ?? 100,
+                      )}
+                      %
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={Math.round(
+                        woodworkingProfile.profileOvalRoundness ?? 100,
+                      )}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          profileOvalRoundness: Math.max(
+                            0,
+                            Math.min(
+                              100,
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        accentColor: "#3b82f6",
+                      }}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={Math.round(
+                        woodworkingProfile.profileOvalRoundness ?? 100,
+                      )}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          profileOvalRoundness: Math.max(
+                            0,
+                            Math.min(
+                              100,
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        })
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+                ) : null}
+
+                {woodworkingProfile.kind === "trapezoid" ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={S.floatingLabel}>
+                      Top Width (%) — current:{" "}
+                      {Math.round(
+                        woodworkingProfile.profileTopRatio * 100,
+                      )}
+                      %
+                    </label>
+                    <input
+                      type="range"
+                      min="5"
+                      max="100"
+                      step="1"
+                      value={Math.round(
+                        woodworkingProfile.profileTopRatio * 100,
+                      )}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          profileTopRatio: Math.max(
+                            0.05,
+                            Math.min(
+                              1,
+                              (Number(e.target.value) || 5) / 100,
+                            ),
+                          ),
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        accentColor: "#3b82f6",
+                      }}
+                    />
+                    <input
+                      type="number"
+                      min="5"
+                      max="100"
+                      step="1"
+                      value={Math.round(
+                        woodworkingProfile.profileTopRatio * 100,
+                      )}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          profileTopRatio: Math.max(
+                            0.05,
+                            Math.min(
+                              1,
+                              (Number(e.target.value) || 5) / 100,
+                            ),
+                          ),
+                        })
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+                ) : null}              </div>
+            ) : null}
+
+            {!isWoodworkingProfile && (
+              <div style={{ marginBottom: 6 }}>
+                <label style={S.floatingLabel}>
+                  Corner Radius (mm) — current: {selectedComp.cornerRadius ?? 0}mm
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="500"
+                  step="5"
+                  value={selectedComp.cornerRadius ?? 0}
+                  disabled={editorMode !== "editable" || isLocked(selectedComp)}
+                  onChange={(e) =>
+                    applySelectionChange({
+                      cornerRadius: Number(e.target.value),
+                    })
+                  }
+                  style={{ width: "100%", accentColor: "#3b82f6" }}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="500"
+                  step="5"
+                  value={selectedComp.cornerRadius ?? 0}
+                  disabled={editorMode !== "editable" || isLocked(selectedComp)}
+                  onChange={(e) =>
+                    applySelectionChange({
+                      cornerRadius: Math.max(
+                        0,
+                        Math.min(500, Number(e.target.value) || 0),
+                      ),
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+            )}
+{isRoundedBox && (
               <>
                 <div style={infoCardStyle}>
                   <div>

@@ -4,6 +4,7 @@ import { CIRCLE_TYPES } from "../shapes/circleShape";
 import { TRIANGLE_TYPES } from "../shapes/triangleShape";
 import { CUBE_TYPES } from "../shapes/cubeShape";
 import { TRAPEZOID_TYPES } from "../shapes/trapezoidShape";
+import { WOODWORKING_PROFILE_TYPES } from "./woodworkingProfile";
 
 const CABINET_COMPONENT_TYPES = [
   {
@@ -757,6 +758,7 @@ const COMPONENT_LIBRARY_GROUPS = [
   },
   { label: "Furniture Parts", items: FURNITURE_PART_TYPES },
   { label: "Chair Parts", items: CHAIR_PART_TYPES },
+  { label: "Custom Shape Parts", items: WOODWORKING_PROFILE_TYPES },
   {
     label: "Custom Shapes",
     items: [

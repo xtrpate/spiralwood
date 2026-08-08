@@ -124,6 +124,17 @@ const stableComponentSnapshot = (component = {}) => ({
   material: cleanText(component.material || component.wood_type),
   finish: cleanText(component.finish || component.finish_id),
   qty: Number(component.qty) || 1,
+  profileVersion: Number(component.profileVersion) || 0,
+  profileKind: cleanText(component.profileKind),
+  profilePlane: cleanText(component.profilePlane),
+  profileRadius: roundMetric(component.profileRadius),
+  chamferSize: roundMetric(component.chamferSize),
+  notchEdge: cleanText(component.notchEdge),
+  notchWidth: roundMetric(component.notchWidth),
+  notchDepth: roundMetric(component.notchDepth),
+  profileTopRatio: roundMetric(component.profileTopRatio),
+  profileOvalRoundness: roundMetric(component.profileOvalRoundness),
+  profileFilletRadius: roundMetric(component.profileFilletRadius),
   locked: Boolean(component.locked),
 });
 

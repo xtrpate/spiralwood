@@ -16,6 +16,10 @@ import {
   isChairPartType,
 } from "../data/componentUtils";
 import { escapeHtml, clamp } from "../data/utils";
+import {
+  getWoodworkingProfile2DPoints,
+  buildWoodworkingProfileSvgMarkup,
+} from "../data/woodworkingProfile";
 
 const GRID_SIZE = 20;
 const BOARD = 18;
@@ -94,6 +98,16 @@ function getBlueprintStroke(comp) {
 function buildBlueprintSvgMarkup(comp, box, view) {
   const effectiveView = view === "exploded" ? "front" : view;
   const stroke = getBlueprintStroke(comp);
+  const woodworkingProfileMarkup = buildWoodworkingProfileSvgMarkup(
+    comp,
+    effectiveView,
+    box,
+    stroke,
+  );
+
+  if (woodworkingProfileMarkup) {
+    return woodworkingProfileMarkup;
+  }
   const shell = Math.max(6, Math.min(BOARD, Math.min(box.w, box.h) * 0.12));
   const midX = box.w / 2;
   const midY = box.h / 2;
@@ -861,6 +875,24 @@ function renderPatioSetBlueprint(box, stroke) {
 function renderBlueprintShape(comp, view, box) {
   const effectiveView = view === "exploded" ? "front" : view;
   const stroke = getBlueprintStroke(comp);
+  const woodworkingProfilePoints = getWoodworkingProfile2DPoints(
+    comp,
+    effectiveView,
+    box,
+  );
+
+  if (woodworkingProfilePoints) {
+    return (
+      <Line
+        points={woodworkingProfilePoints}
+        closed
+        fill="#f8fafc"
+        stroke={stroke}
+        strokeWidth={1.6}
+        listening={false}
+      />
+    );
+  }
   const shell = Math.max(6, Math.min(BOARD, Math.min(box.w, box.h) * 0.12));
   const midX = box.w / 2;
   const midY = box.h / 2;

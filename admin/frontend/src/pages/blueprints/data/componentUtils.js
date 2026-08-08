@@ -15,6 +15,7 @@ import {
 import { normalizeFurnitureStructureFields } from "./furnitureStructure";
 import { normalizeProductionMetadata } from "./productionMetadata";
 import { normalizeHardwareRequirements } from "./hardwareMetadata";
+import { normalizeWoodworkingProfileMetadata } from "./woodworkingProfile";
 
 const GRID_SIZE = 20;
 const MIN_COMPONENT_DIMENSION_MM = 1;
@@ -124,6 +125,7 @@ function normalizeComponent(c) {
       c.hardware ??
       [],
   );
+  const woodworkingProfile = normalizeWoodworkingProfileMetadata(c);
 
   return {
     id: c.id || makeId(),
@@ -190,6 +192,11 @@ function normalizeComponent(c) {
     // Hardware requirements belong to the Blueprint part. They are production
     // metadata only and intentionally do not reference/deduct live inventory.
     hardwareRequirements,
+
+    // Custom Shape Foundation V1 metadata. Kept in the Blueprint component
+    // payload so Undo/Redo, Duplicate, Save/Reload, and future Cut List logic
+    // all read the same shape definition.
+    ...(woodworkingProfile || {}),
 
     unitPrice: Number(c.unitPrice) || 0,
     groupUnitPrice: Number(c.groupUnitPrice) || 0,

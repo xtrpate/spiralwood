@@ -23,6 +23,8 @@ import { addCircleShape } from "../shapes/circleShape";
 import { addTriangleShape } from "../shapes/triangleShape";
 import { addCubeShape } from "../shapes/cubeShape";
 import { addTrapezoidShape } from "../shapes/trapezoidShape";
+import { addWoodworkingProfile3D } from "../shapes/woodworkingProfile3D";
+import { isWoodworkingProfileComponent } from "../data/woodworkingProfile";
 import { CASEWORK_SET, TABLE_SET, BENCH_SET } from "../data/furnitureTypes";
 import { createDiningChairTemplateComponents } from "../data/templateComponents";
 
@@ -341,6 +343,22 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
     clearcoat: 0.4,
     clearcoatRoughness: 0.22,
   });
+
+  if (isWoodworkingProfileComponent(comp)) {
+    const profileMesh = addWoodworkingProfile3D(
+      root,
+      selectableMeshes,
+      comp,
+      frontMat,
+      comp.id,
+    );
+
+    if (profileMesh) {
+      addEdgeHighlight(root, profileMesh, palette.edge, 0.07);
+    }
+
+    return root;
+  }
 
   if (WARDROBE_PART_SET.has(comp.type)) {
     buildWardrobePart3D(root, selectableMeshes, comp, palette, r);
