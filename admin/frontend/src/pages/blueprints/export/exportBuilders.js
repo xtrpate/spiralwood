@@ -62,6 +62,7 @@ import {
   formatDimsForTitleBlock,
 } from "./exportSheetUtils";
 import { buildWoodworkingDetailsPages } from "./woodworkingDetailsExport";
+import { buildWoodworkingVisualCallouts } from "./woodworkingVisualCallouts";
 
 const GRID_SIZE = 20;
 const BOARD = 18;
@@ -779,6 +780,14 @@ function build2DViewPageSvg({
     unit,
   });
 
+  const woodworkingVisualCallouts = buildWoodworkingVisualCallouts({
+    view,
+    selectedComponents,
+    scaledItems,
+    drawingArea,
+    selectedCompId: selectedComp?.id ?? null,
+  });
+
   const explodedNotes = "";
 
   return `
@@ -801,6 +810,7 @@ function build2DViewPageSvg({
       ${itemsMarkup}
       ${dimMarkup}
       ${partCallouts}
+      ${woodworkingVisualCallouts}
       ${technicalNotes}
       ${explodedNotes}
       ${buildSvgTitleBlockMarkup({
