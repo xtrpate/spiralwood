@@ -11,7 +11,7 @@ import {
 const FLOOR_OFFSET = 40;
 const EXPORT_PAGE_W = 1200;
 const EXPORT_PAGE_H = 820;
-const DRAWING_PADDING = 56;
+const DRAWING_PADDING = 40;
 const TITLE_BLOCK_H = 96;
 const PAPER_MARGIN = 28;
 

@@ -69,6 +69,8 @@ const TITLE_BLOCK_H = 96;
 const DRAWING_PADDING = 56;
 const EXPORT_PAGE_W = 1200;
 const EXPORT_PAGE_H = 820;
+const PROFESSIONAL_DRAWING_STATUS = "FOR REVIEW";
+const PROFESSIONAL_DRAWING_NOTE = "DO NOT SCALE DRAWING";
 
 function buildExplodedLabelMarkup({ comp, screenBox, idx, drawingArea }) {
   const labelText = String(idx + 1);
@@ -280,9 +282,28 @@ function buildSvgPaperMarkup(pageW, pageH) {
       PAPER_MARGIN + 8,
       pageW - PAPER_MARGIN * 2 - 16,
       pageH - PAPER_MARGIN * 2 - 16,
-      `fill="none" stroke="#94a3b8" stroke-width="0.8"`,
+      `fill="none" stroke="#94a3b8" stroke-width="0.65"`,
     )}
     ${refs.join("")}
+  `;
+}
+
+function buildSvgSheetMetaMarkup({ pageW, unit }) {
+  const unitText = String(unit || "mm").toUpperCase();
+
+  return `
+    ${svgText(
+      pageW - PAPER_MARGIN - 12,
+      PAPER_MARGIN + 20,
+      `${PROFESSIONAL_DRAWING_STATUS}  |  ${PROFESSIONAL_DRAWING_NOTE}`,
+      `font-size="9" font-weight="700" fill="#334155" text-anchor="end"`,
+    )}
+    ${svgText(
+      pageW - PAPER_MARGIN - 12,
+      PAPER_MARGIN + 36,
+      `ALL WRITTEN DIMENSIONS IN ${unitText}`,
+      `font-size="8.5" fill="#64748b" text-anchor="end"`,
+    )}
   `;
 }
 
@@ -307,21 +328,24 @@ function buildSvgTitleBlockMarkup({
   const objectText = truncateText(objectLabel || "No Selection", 30);
   const viewText = truncateText(viewLabel || "View", 18);
   const unitText = truncateText(String(unit || "mm").toUpperCase(), 8);
-  const materialValue = truncateText(materialText || "—", 28);
-  const dimsValue = truncateText(dimsText || "—", 26);
+  const rawMaterialValue = String(materialText || "—").trim();
+  const materialValue = rawMaterialValue.includes(",")
+    ? "MULTIPLE MATERIALS"
+    : truncateText(rawMaterialValue, 20);
+  const dimsValue = truncateText(dimsText || "—", 18);
   const scaleValue = truncateText(scaleText || "NTS", 8);
   const sheetValue = truncateText(sheetCode || "A-101", 10);
 
   const projectFont = fitFontSize(projectText, 15, 34, 11);
   const objectFont = fitFontSize(objectText, 12, 20, 9);
-  const materialFont = fitFontSize(materialValue, 10, 18, 8);
-  const dimsFont = fitFontSize(dimsValue, 10, 22, 8);
+  const materialFont = fitFontSize(materialValue, 9.5, 18, 8);
+  const dimsFont = fitFontSize(dimsValue, 9.5, 18, 8);
 
   return `
     ${svgRect(x, y, w, h, `fill="#ffffff" stroke="#0f172a" stroke-width="1.4"`)}
-    ${svgLine(x + w - 390, y, x + w - 390, y + h, `stroke="#0f172a" stroke-width="1"`)}
-    ${svgLine(x + w - 230, y, x + w - 230, y + h, `stroke="#0f172a" stroke-width="1"`)}
-    ${svgLine(x + w - 120, y, x + w - 120, y + h, `stroke="#0f172a" stroke-width="1"`)}
+    ${svgLine(x + w - 410, y, x + w - 410, y + h, `stroke="#0f172a" stroke-width="1"`)}
+    ${svgLine(x + w - 205, y, x + w - 205, y + h, `stroke="#0f172a" stroke-width="1"`)}
+    ${svgLine(x + w - 95, y, x + w - 95, y + h, `stroke="#0f172a" stroke-width="1"`)}
     ${svgLine(x, y + 32, x + w, y + 32, `stroke="#0f172a" stroke-width="1"`)}
     ${svgLine(x + w - 390, y + 54, x + w, y + 54, `stroke="#0f172a" stroke-width="1"`)}
     ${svgLine(x + w - 390, y + 76, x + w, y + 76, `stroke="#0f172a" stroke-width="1"`)}
@@ -333,37 +357,51 @@ function buildSvgTitleBlockMarkup({
       projectText,
       `font-size="${projectFont}" font-weight="700" fill="#0f172a"`,
     )}
-    ${svgText(x + w - 380, y + 16, "OBJECT", `font-size="9" fill="#64748b"`)}
+    ${svgText(x + w - 400, y + 16, "OBJECT", `font-size="9" fill="#64748b"`)}
     ${svgText(
-      x + w - 380,
+      x + w - 400,
       y + 48,
       objectText,
       `font-size="${objectFont}" font-weight="700" fill="#0f172a"`,
     )}
-    ${svgText(x + w - 220, y + 16, "VIEW", `font-size="9" fill="#64748b"`)}
-    ${svgText(x + w - 220, y + 48, viewText, `font-size="12" font-weight="700" fill="#0f172a"`)}
-    ${svgText(x + w - 110, y + 16, "UNIT", `font-size="9" fill="#64748b"`)}
-    ${svgText(x + w - 110, y + 48, unitText, `font-size="12" font-weight="700" fill="#0f172a"`)}
-    ${svgText(x + w - 380, y + 68, "MATERIAL / FINISH", `font-size="9" fill="#64748b"`)}
+    ${svgText(x + w - 195, y + 16, "VIEW", `font-size="9" fill="#64748b"`)}
+    ${svgText(x + w - 195, y + 48, viewText, `font-size="12" font-weight="700" fill="#0f172a"`)}
+    ${svgText(x + w - 85, y + 16, "UNIT", `font-size="9" fill="#64748b"`)}
+    ${svgText(x + w - 85, y + 48, unitText, `font-size="12" font-weight="700" fill="#0f172a"`)}
+    ${svgText(x + w - 400, y + 68, "MATERIAL / FINISH", `font-size="9" fill="#64748b"`)}
     ${svgText(
-      x + w - 380,
+      x + w - 400,
       y + 90,
       materialValue,
       `font-size="${materialFont}" fill="#0f172a"`,
     )}
-    ${svgText(x + w - 220, y + 68, "DIMENSIONS", `font-size="9" fill="#64748b"`)}
+    ${svgText(x + w - 195, y + 68, "DIMENSIONS", `font-size="9" fill="#64748b"`)}
     ${svgText(
-      x + w - 220,
+      x + w - 195,
       y + 90,
       dimsValue,
       `font-size="${dimsFont}" fill="#0f172a"`,
     )}
-    ${svgText(x + w - 110, y + 68, "SCALE", `font-size="9" fill="#64748b"`)}
-    ${svgText(x + w - 110, y + 90, scaleValue, `font-size="10" fill="#0f172a"`)}
+    ${svgText(x + w - 85, y + 68, "SCALE", `font-size="9" fill="#64748b"`)}
+    ${svgText(x + w - 85, y + 90, scaleValue, `font-size="10" fill="#0f172a"`)}
     ${svgText(x + 10, y + 68, "DATE", `font-size="9" fill="#64748b"`)}
     ${svgText(x + 10, y + 90, getNowStamp(), `font-size="10" fill="#0f172a"`)}
     ${svgText(x + 120, y + 68, "SHEET", `font-size="9" fill="#64748b"`)}
     ${svgText(x + 120, y + 90, sheetValue, `font-size="10" fill="#0f172a"`)}
+    ${svgText(x + 220, y + 68, "STATUS", `font-size="9" fill="#64748b"`)}
+    ${svgText(
+      x + 220,
+      y + 90,
+      PROFESSIONAL_DRAWING_STATUS,
+      `font-size="10" font-weight="700" fill="#0f172a"`,
+    )}
+    ${svgText(x + 350, y + 68, "DRAWN BY", `font-size="9" fill="#64748b"`)}
+    ${svgText(
+      x + 350,
+      y + 90,
+      "WISDOM",
+      `font-size="10" font-weight="700" fill="#0f172a"`,
+    )}
   `;
 }
 
@@ -723,12 +761,15 @@ function build2DViewPageSvg({
         )}
       `
       : "";
-  const technicalNotes = buildOrthographicTechnicalNotes({
-    view,
-    selectedComponents,
-    drawingArea,
-    unit,
-  });
+  const technicalNotes =
+    view === "exploded"
+      ? ""
+      : buildOrthographicTechnicalNotes({
+          view,
+          selectedComponents,
+          drawingArea,
+          unit,
+        });
 
   const partCallouts = buildOrthographicPartCallouts({
     view,
@@ -748,6 +789,7 @@ function build2DViewPageSvg({
         getPageHeaderTitle(view, rawViewLabel),
         `font-size="12" font-weight="700" fill="#0f172a"`,
       )}
+      ${buildSvgSheetMetaMarkup({ pageW, unit })}
       ${svgText(
         PAPER_MARGIN + 12,
         PAPER_MARGIN + 40,
@@ -859,7 +901,7 @@ function build3DViewPageSvg({
   const rawW = Math.max(1, maxPx - minPx);
   const rawH = Math.max(1, maxPy - minPy);
 
-  const scale = Math.min(drawingArea.w / rawW, drawingArea.h / rawH) * 0.9;
+  const scale = Math.min(drawingArea.w / rawW, drawingArea.h / rawH) * 0.96;
 
   const offsetX =
     drawingArea.x + (drawingArea.w - rawW * scale) / 2 - minPx * scale;
@@ -939,6 +981,7 @@ function build3DViewPageSvg({
         "TECHNICAL BLUEPRINT — 3D ISOMETRIC VIEW",
         `font-size="12" font-weight="700" fill="#0f172a"`,
       )}
+      ${buildSvgSheetMetaMarkup({ pageW, unit })}
       ${svgText(
         PAPER_MARGIN + 12,
         PAPER_MARGIN + 40,
@@ -1221,6 +1264,7 @@ function buildMaterialsPageHtml({
             <div class="sheet-subtitle">${escapeHtml(selectedLabel || "No Selection")}</div>
           </div>
           <div class="sheet-meta">
+            <div><b>Status:</b> ${PROFESSIONAL_DRAWING_STATUS}</div>
             <div><b>Unit:</b> ${escapeHtml(unit.toUpperCase())}</div>
             <div><b>Sheet:</b> ${getExportSheetCode("materials")}</div>
             <div><b>Date:</b> ${escapeHtml(getNowStamp())}</div>
@@ -1247,6 +1291,12 @@ function buildMaterialsPageHtml({
             <span class="summary-label">Material Types</span>
             <strong>${materialTypes}</strong>
           </div>
+        </div>
+
+        <div class="drawing-note">
+          <b>GENERAL DRAWING NOTES</b>
+          <span>Verify written dimensions and material specifications before production.</span>
+          <span>Do not scale the drawing from screen or print.</span>
         </div>
 
         <h3 class="section-head">Materials Summary</h3>
@@ -1354,6 +1404,21 @@ function buildBlueprintDocumentHtml(pages) {
             margin-bottom: 6px;
             text-transform: uppercase;
             letter-spacing: .6px;
+          }
+          .drawing-note {
+            margin: 16px 34px 4px;
+            padding: 10px 12px;
+            border: 1px solid #94a3b8;
+            border-left: 4px solid #0f172a;
+            background: #f8fafc;
+            display: grid;
+            gap: 4px;
+            font-size: 11px;
+            line-height: 1.45;
+          }
+          .drawing-note b {
+            font-size: 10px;
+            letter-spacing: .8px;
           }
           .section-head {
             margin: 18px 34px 8px;
