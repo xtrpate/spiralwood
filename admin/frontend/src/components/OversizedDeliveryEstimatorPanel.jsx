@@ -112,12 +112,14 @@ export default function OversizedDeliveryEstimatorPanel({
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notApplicable, setNotApplicable] = useState(false);
 
   const load = useCallback(async () => {
     if (!blueprintId) return;
 
     setLoading(true);
     setError("");
+    setNotApplicable(false);
 
     try {
       const response = await api.get(
@@ -126,6 +128,7 @@ export default function OversizedDeliveryEstimatorPanel({
       const nextPayload = response.data || null;
       const savedDecision = nextPayload?.estimation?.decision || {};
 
+      setNotApplicable(false);
       setPayload(nextPayload);
       setForm({
         decision:
@@ -138,12 +141,48 @@ export default function OversizedDeliveryEstimatorPanel({
         truck_type: String(savedDecision.truck_type || ""),
       });
     } catch (requestError) {
-      console.error("Failed to load oversized-delivery assessment:", requestError);
+      const statusCode = Number(requestError?.response?.status || 0);
       const message =
         requestError?.response?.data?.message ||
         "Unable to load the oversized-delivery assessment.";
-      setError(message);
-      setPayload(null);
+      const isExpectedNoLinkedOrder =
+        statusCode === 404 &&
+        String(message).trim() ===
+          "No customer order is currently linked to this blueprint.";
+
+      if (isExpectedNoLinkedOrder) {
+        setNotApplicable(true);
+        setError("");
+        setPayload(null);
+
+        try {
+          window.sessionStorage.removeItem(
+            getDraftStorageKey(blueprintId),
+          );
+        } catch {
+          // Nothing else is required when storage is unavailable.
+        }
+
+        window.dispatchEvent(
+          new CustomEvent(
+            "wisdom:oversized-delivery-draft-changed",
+            {
+              detail: {
+                blueprintId: String(blueprintId),
+                oversized_delivery: null,
+              },
+            },
+          ),
+        );
+      } else {
+        console.error(
+          "Failed to load oversized-delivery assessment:",
+          requestError,
+        );
+        setNotApplicable(false);
+        setError(message);
+        setPayload(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -179,7 +218,7 @@ export default function OversizedDeliveryEstimatorPanel({
   );
 
   useEffect(() => {
-    if (!blueprintId) return;
+    if (!blueprintId || notApplicable) return;
 
     const detail = {
       blueprintId: String(blueprintId),
@@ -200,7 +239,7 @@ export default function OversizedDeliveryEstimatorPanel({
         detail,
       }),
     );
-  }, [blueprintId, draftDecision]);
+  }, [blueprintId, draftDecision, notApplicable]);
 
   useEffect(() => {
     const handleEstimationSaved = (event) => {
@@ -227,6 +266,14 @@ export default function OversizedDeliveryEstimatorPanel({
 
   const gate = useMemo(() => {
     if (!blueprintId) {
+      return {
+        active: false,
+        readyForQuote: true,
+        message: "",
+      };
+    }
+
+    if (notApplicable) {
       return {
         active: false,
         readyForQuote: true,
@@ -314,6 +361,7 @@ export default function OversizedDeliveryEstimatorPanel({
     draftMatchesSaved,
     error,
     loading,
+    notApplicable,
     payload,
   ]);
 
@@ -323,6 +371,10 @@ export default function OversizedDeliveryEstimatorPanel({
     }
   }, [gate, onGateChange]);
 
+
+  if (notApplicable) {
+    return null;
+  }
 
   if (loading) {
     return (

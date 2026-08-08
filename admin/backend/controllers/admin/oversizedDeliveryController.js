@@ -287,10 +287,17 @@ exports.getByBlueprint = async (req, res) => {
       ),
     });
   } catch (error) {
-    console.error(
-      "[admin oversized delivery GET BY BLUEPRINT]",
-      error,
-    );
+    const isExpectedNoLinkedOrder =
+      Number(error?.statusCode || 0) === 404 &&
+      String(error?.message || "").trim() ===
+        "No customer order is currently linked to this blueprint.";
+
+    if (!isExpectedNoLinkedOrder) {
+      console.error(
+        "[admin oversized delivery GET BY BLUEPRINT]",
+        error,
+      );
+    }
 
     return res.status(error.statusCode || 500).json({
       message:
