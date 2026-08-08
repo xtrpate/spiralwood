@@ -1893,8 +1893,36 @@ function WoodworkingOperationsCard({
     operations[0] ||
     null;
   const dims = getOperationProfileDimensions(selectedComp);
+  const operationOuterPoints =
+    getWoodworkingProfileLocalPoints(selectedComp, {
+      curveSegments: 56,
+      cornerSegments: 10,
+      filletSegments: 10,
+    }) || [];
+  const operationCutoutPolygons = (
+    Array.isArray(selectedComp?.profileCutouts)
+      ? selectedComp.profileCutouts
+      : []
+  )
+    .filter(
+      (cutout) =>
+        getProfileCutoutStatus(selectedComp, cutout).valid,
+    )
+    .map((cutout) =>
+      getProfileCutoutLocalPoints(
+        cutout,
+        cutout.type === "round" ? 48 : 4,
+      ),
+    );
   const status = active
-    ? getWoodworkingOperationStatus(selectedComp, active)
+    ? getWoodworkingOperationStatus(
+        selectedComp,
+        active,
+        {
+          outerPoints: operationOuterPoints,
+          cutoutPolygons: operationCutoutPolygons,
+        },
+      )
     : null;
   const disabled =
     editorMode !== "editable" || isLocked(selectedComp);
@@ -2031,7 +2059,7 @@ function WoodworkingOperationsCard({
           marginBottom: 4,
         }}
       >
-        Woodworking Operations · V5A
+        Woodworking Operations · V5B
       </div>
 
       <div
@@ -2042,9 +2070,9 @@ function WoodworkingOperationsCard({
           marginBottom: 8,
         }}
       >
-        Exact production metadata for dado, rabbet, groove, recess/pocket,
-        and bore/drill. V5A stores and validates the plan; actual 3D material
-        removal comes in V5B.
+        Dado, rabbet, groove, recess/pocket, and bore/drill now remove
+        material from the actual 3D Custom Shape Part. CHECK operations stay
+        saved for correction but are intentionally not cut in 3D.
       </div>
 
       <div
