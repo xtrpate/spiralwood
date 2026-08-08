@@ -172,6 +172,23 @@ const stableComponentSnapshot = (component = {}) => ({
       }))
     : [],
   profileFilletRadius: roundMetric(component.profileFilletRadius),
+  woodworkingOperations: Array.isArray(component.woodworkingOperations)
+    ? component.woodworkingOperations.map((item) => ({
+        id: cleanText(item?.id),
+        type: cleanText(item?.type),
+        surface: cleanText(item?.surface),
+        direction: cleanText(item?.direction),
+        edge: cleanText(item?.edge),
+        u: roundMetric(item?.u),
+        v: roundMetric(item?.v),
+        offset: roundMetric(item?.offset),
+        length: roundMetric(item?.length),
+        width: roundMetric(item?.width),
+        depth: roundMetric(item?.depth),
+        diameter: roundMetric(item?.diameter),
+        note: cleanText(item?.note),
+      }))
+    : [],
   locked: Boolean(component.locked),
 });
 

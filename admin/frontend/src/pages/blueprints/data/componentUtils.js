@@ -16,6 +16,7 @@ import { normalizeFurnitureStructureFields } from "./furnitureStructure";
 import { normalizeProductionMetadata } from "./productionMetadata";
 import { normalizeHardwareRequirements } from "./hardwareMetadata";
 import { normalizeWoodworkingProfileMetadata } from "./woodworkingProfile";
+import { normalizeWoodworkingOperations } from "./woodworkingOperations";
 
 const GRID_SIZE = 20;
 const MIN_COMPONENT_DIMENSION_MM = 1;
@@ -126,6 +127,11 @@ function normalizeComponent(c) {
       [],
   );
   const woodworkingProfile = normalizeWoodworkingProfileMetadata(c);
+  const woodworkingOperations = normalizeWoodworkingOperations(
+    c.woodworkingOperations ??
+      c.woodworking_operations ??
+      [],
+  );
 
   return {
     id: c.id || makeId(),
@@ -197,6 +203,11 @@ function normalizeComponent(c) {
     // payload so Undo/Redo, Duplicate, Save/Reload, and future Cut List logic
     // all read the same shape definition.
     ...(woodworkingProfile || {}),
+
+    // Woodworking Operations V5A production metadata. Geometry application
+    // is intentionally deferred to V5B, but Save/Reload and Duplicate must
+    // preserve the exact operation plan now.
+    woodworkingOperations,
 
     unitPrice: Number(c.unitPrice) || 0,
     groupUnitPrice: Number(c.groupUnitPrice) || 0,

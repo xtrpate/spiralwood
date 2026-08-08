@@ -16,6 +16,18 @@ import { displayToMm, formatDim, formatDims, mmToDisplay } from "../../data/util
 import S from "../../styles/blueprintStyles";
 import { VIEWER_UI } from "../viewerUi";
 import {
+  MAX_WOODWORKING_OPERATIONS,
+  WOODWORKING_OPERATION_TYPES,
+  getOperationLabel,
+  getOperationProfileDimensions,
+  normalizeWoodworkingOperations,
+  createWoodworkingOperation,
+  updateWoodworkingOperation,
+  deleteWoodworkingOperation,
+  getWoodworkingOperationFootprint,
+  getWoodworkingOperationStatus,
+} from "../../data/woodworkingOperations";
+import {
   isWoodworkingProfileComponent,
   supportsProfileFillet,
   getWoodworkingProfileDescriptor,
@@ -1857,6 +1869,757 @@ function CutoutEditorCard({
     </div>
   );
 }
+
+function WoodworkingOperationsCard({
+  selectedComp,
+  editorMode,
+  isLocked,
+  onChange,
+  inputStyle,
+}) {
+  const [draftType, setDraftType] = useState("dado");
+  const [activeId, setActiveId] = useState("");
+
+  useEffect(() => {
+    setActiveId("");
+    setDraftType("dado");
+  }, [selectedComp?.id]);
+
+  const operations = normalizeWoodworkingOperations(
+    selectedComp?.woodworkingOperations,
+  );
+  const active =
+    operations.find((item) => item.id === activeId) ||
+    operations[0] ||
+    null;
+  const dims = getOperationProfileDimensions(selectedComp);
+  const status = active
+    ? getWoodworkingOperationStatus(selectedComp, active)
+    : null;
+  const disabled =
+    editorMode !== "editable" || isLocked(selectedComp);
+
+  const commit = (nextOperations) => {
+    onChange(selectedComp.id, {
+      woodworkingOperations: normalizeWoodworkingOperations(
+        nextOperations,
+      ),
+    });
+  };
+
+  const addOperation = () => {
+    if (
+      disabled ||
+      operations.length >= MAX_WOODWORKING_OPERATIONS
+    ) {
+      return;
+    }
+
+    const created = createWoodworkingOperation(
+      selectedComp,
+      draftType,
+    );
+    const next = [...operations, created];
+    commit(next);
+    setActiveId(created.id);
+  };
+
+  const updateActive = (attrs) => {
+    if (!active) return;
+    commit(
+      updateWoodworkingOperation(
+        operations,
+        active.id,
+        attrs,
+      ),
+    );
+  };
+
+  const removeActive = () => {
+    if (!active) return;
+    const next = deleteWoodworkingOperation(
+      operations,
+      active.id,
+    );
+    commit(next);
+    setActiveId(next[0]?.id || "");
+  };
+
+  const toScreen = (u, v) => {
+    const width = 240;
+    const height = 150;
+    const padding = 16;
+    const usableW = width - padding * 2;
+    const usableH = height - padding * 2;
+
+    return [
+      padding + (u / Math.max(1, dims.u) + 0.5) * usableW,
+      padding + (0.5 - v / Math.max(1, dims.v)) * usableH,
+    ];
+  };
+
+  const preview = (() => {
+    if (!active) return null;
+
+    const footprint = getWoodworkingOperationFootprint(
+      selectedComp,
+      active,
+    );
+
+    if (footprint.shape === "circle") {
+      const [cx, cy] = toScreen(
+        footprint.centerU,
+        footprint.centerV,
+      );
+      const [rx] = toScreen(
+        footprint.centerU + footprint.radius,
+        footprint.centerV,
+      );
+      const [, ry] = toScreen(
+        footprint.centerU,
+        footprint.centerV + footprint.radius,
+      );
+
+      return (
+        <ellipse
+          cx={cx}
+          cy={cy}
+          rx={Math.max(2, Math.abs(rx - cx))}
+          ry={Math.max(2, Math.abs(ry - cy))}
+          fill="rgba(245, 158, 11, 0.30)"
+          stroke="#f59e0b"
+          strokeWidth="2"
+        />
+      );
+    }
+
+    const [left, top] = toScreen(
+      footprint.minU,
+      footprint.maxV,
+    );
+    const [right, bottom] = toScreen(
+      footprint.maxU,
+      footprint.minV,
+    );
+
+    return (
+      <rect
+        x={Math.min(left, right)}
+        y={Math.min(top, bottom)}
+        width={Math.max(2, Math.abs(right - left))}
+        height={Math.max(2, Math.abs(bottom - top))}
+        fill="rgba(245, 158, 11, 0.30)"
+        stroke="#f59e0b"
+        strokeWidth="2"
+      />
+    );
+  })();
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        paddingTop: 10,
+        borderTop: "1px solid #243247",
+      }}
+    >
+      <div
+        style={{
+          color: "#f8fafc",
+          fontSize: 10,
+          fontWeight: 850,
+          marginBottom: 4,
+        }}
+      >
+        Woodworking Operations · V5A
+      </div>
+
+      <div
+        style={{
+          color: "#8fa3bd",
+          fontSize: 8,
+          lineHeight: 1.45,
+          marginBottom: 8,
+        }}
+      >
+        Exact production metadata for dado, rabbet, groove, recess/pocket,
+        and bore/drill. V5A stores and validates the plan; actual 3D material
+        removal comes in V5B.
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr auto",
+          gap: 6,
+          marginBottom: 8,
+        }}
+      >
+        <select
+          value={draftType}
+          disabled={disabled}
+          onChange={(event) =>
+            setDraftType(event.target.value)
+          }
+          style={inputStyle}
+        >
+          {WOODWORKING_OPERATION_TYPES.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+
+        <button
+          type="button"
+          disabled={
+            disabled ||
+            operations.length >= MAX_WOODWORKING_OPERATIONS
+          }
+          onClick={addOperation}
+          style={{
+            minWidth: 70,
+            border: "1px solid #854d0e",
+            borderRadius: 0,
+            background: "#211b0b",
+            color: "#fef3c7",
+            fontSize: 8,
+            fontWeight: 800,
+          }}
+        >
+          + Add
+        </button>
+      </div>
+
+      {operations.length ? (
+        <>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 4,
+              marginBottom: 8,
+            }}
+          >
+            {operations.map((item, index) => (
+              <button
+                key={item.id}
+                type="button"
+                disabled={disabled}
+                onClick={() => setActiveId(item.id)}
+                style={{
+                  minWidth: 44,
+                  height: 26,
+                  padding: "0 6px",
+                  border: `1px solid ${
+                    active?.id === item.id
+                      ? "#f59e0b"
+                      : "#334155"
+                  }`,
+                  borderRadius: 0,
+                  background:
+                    active?.id === item.id
+                      ? "#451a03"
+                      : "#0f172a",
+                  color:
+                    active?.id === item.id
+                      ? "#fef3c7"
+                      : "#94a3b8",
+                  fontSize: 8,
+                  fontWeight: 800,
+                }}
+              >
+                O{index + 1}
+              </button>
+            ))}
+          </div>
+
+          <svg
+            viewBox="0 0 240 150"
+            preserveAspectRatio="none"
+            style={{
+              width: "100%",
+              height: 150,
+              display: "block",
+              border: "1px solid #334155",
+              borderRadius: 0,
+              background: "#08111f",
+              marginBottom: 8,
+            }}
+          >
+            <rect
+              x="16"
+              y="16"
+              width="208"
+              height="118"
+              fill="rgba(148, 163, 184, 0.10)"
+              stroke="#64748b"
+              strokeWidth="1.5"
+            />
+            {preview}
+          </svg>
+
+          <div
+            style={{
+              padding: 7,
+              marginBottom: 8,
+              border: `1px solid ${
+                status?.valid ? "#365314" : "#7f1d1d"
+              }`,
+              borderRadius: 0,
+              background: status?.valid
+                ? "rgba(54,83,20,0.12)"
+                : "rgba(127,29,29,0.12)",
+              color: status?.valid
+                ? "#d9f99d"
+                : "#fecaca",
+              fontSize: 8,
+              lineHeight: 1.4,
+            }}
+          >
+            {status?.valid ? "VALID" : "CHECK"} ·{" "}
+            {status?.message}
+          </div>
+
+          <div
+            style={{
+              marginBottom: 7,
+              color: "#fde68a",
+              fontSize: 9,
+              fontWeight: 850,
+            }}
+          >
+            {getOperationLabel(active?.type)} ·{" "}
+            {active?.surface === "face_b"
+              ? "Face B"
+              : "Face A"}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 6,
+              marginBottom: 7,
+            }}
+          >
+            <div>
+              <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                Surface
+              </label>
+              <select
+                value={active?.surface || "face_a"}
+                disabled={disabled}
+                onChange={(event) =>
+                  updateActive({
+                    surface: event.target.value,
+                  })
+                }
+                style={inputStyle}
+              >
+                <option value="face_a">Face A</option>
+                <option value="face_b">Face B</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                Depth (mm)
+              </label>
+              <input
+                type="number"
+                min="0.1"
+                step="0.5"
+                value={active?.depth ?? 1}
+                disabled={disabled}
+                onChange={(event) =>
+                  updateActive({
+                    depth: Math.max(
+                      0.1,
+                      Number(event.target.value) || 0.1,
+                    ),
+                  })
+                }
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          {active?.type === "rabbet" ? (
+            <>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 6,
+                  marginBottom: 7,
+                }}
+              >
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Edge
+                  </label>
+                  <select
+                    value={active.edge}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        edge: event.target.value,
+                      })
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="top">Top</option>
+                    <option value="right">Right</option>
+                    <option value="bottom">Bottom</option>
+                    <option value="left">Left</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Width Into Board (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={active.width}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        width: Math.max(
+                          1,
+                          Number(event.target.value) || 1,
+                        ),
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 6,
+                  marginBottom: 7,
+                }}
+              >
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    {active.edge === "left" ||
+                    active.edge === "right"
+                      ? "Offset From Bottom (mm)"
+                      : "Offset From Left (mm)"}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={active.offset || 0}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        offset: Math.max(
+                          0,
+                          Number(event.target.value) || 0,
+                        ),
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Length Along Edge (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={active.length}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        length: Math.max(
+                          1,
+                          Number(event.target.value) || 1,
+                        ),
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginBottom: 7,
+                  color: "#64748b",
+                  fontSize: 8,
+                  lineHeight: 1.4,
+                }}
+              >
+                Top/Bottom offset starts from the left side. Left/Right offset
+                starts from the bottom side. Length now controls the exact
+                segment along the selected edge.
+              </div>
+            </>
+          ) : active?.type === "bore" ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 6,
+                marginBottom: 7,
+              }}
+            >
+              <div>
+                <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                  Center U (mm)
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  value={active.u}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      u: Number(event.target.value) || 0,
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                  Center V (mm)
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  value={active.v}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      v: Number(event.target.value) || 0,
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+              <div style={{ gridColumn: "1 / span 2" }}>
+                <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                  Diameter (mm)
+                </label>
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.5"
+                  value={active.diameter}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      diameter: Math.max(
+                        0.1,
+                        Number(event.target.value) || 0.1,
+                      ),
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 6,
+                  marginBottom: 7,
+                }}
+              >
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Center U (mm)
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={active.u}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        u: Number(event.target.value) || 0,
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Center V (mm)
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={active.v}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        v: Number(event.target.value) || 0,
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 6,
+                  marginBottom: 7,
+                }}
+              >
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Direction
+                  </label>
+                  <select
+                    value={active.direction}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        direction: event.target.value,
+                      })
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="u">
+                      Along {dims.uAxis}
+                    </option>
+                    <option value="v">
+                      Along {dims.vAxis}
+                    </option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Width (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={active.width}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        width: Math.max(
+                          1,
+                          Number(event.target.value) || 1,
+                        ),
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 7 }}>
+                <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                  Length (mm)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={active.length}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      length: Math.max(
+                        1,
+                        Number(event.target.value) || 1,
+                      ),
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+            </>
+          )}
+
+          <div style={{ marginBottom: 7 }}>
+            <label style={{ fontSize: 8, color: "#94a3b8" }}>
+              Production Note
+            </label>
+            <input
+              type="text"
+              maxLength="240"
+              value={active?.note || ""}
+              disabled={disabled}
+              onChange={(event) =>
+                updateActive({
+                  note: event.target.value,
+                })
+              }
+              style={inputStyle}
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={disabled || !active}
+            onClick={removeActive}
+            style={{
+              width: "100%",
+              height: 28,
+              border: "1px solid #7f1d1d",
+              borderRadius: 0,
+              background: "#1f1115",
+              color: "#fca5a5",
+              fontSize: 8,
+              fontWeight: 800,
+            }}
+          >
+            Delete Selected Operation
+          </button>
+        </>
+      ) : (
+        <div
+          style={{
+            padding: 8,
+            border: "1px solid #243247",
+            borderRadius: 0,
+            color: "#64748b",
+            fontSize: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          No woodworking operations yet.
+        </div>
+      )}
+
+      <div
+        style={{
+          marginTop: 6,
+          color: "#64748b",
+          fontSize: 8,
+          lineHeight: 1.4,
+        }}
+      >
+        {operations.length}/{MAX_WOODWORKING_OPERATIONS} operations · profile{" "}
+        {dims.plane.toUpperCase()} · thickness {Math.round(dims.thickness)}mm.
+      </div>
+    </div>
+  );
+}
 export function PropertiesPanel({
   selectedComp: committedSelectedComp,
   liveSelectedComp = null,
@@ -3219,6 +3982,14 @@ export function PropertiesPanel({
                 <CutoutEditorCard
                   selectedComp={selectedComp}
                   woodworkingProfile={woodworkingProfile}
+                  editorMode={editorMode}
+                  isLocked={isLocked}
+                  onChange={onChange}
+                  inputStyle={inputStyle}
+                />
+
+                <WoodworkingOperationsCard
+                  selectedComp={selectedComp}
                   editorMode={editorMode}
                   isLocked={isLocked}
                   onChange={onChange}
