@@ -1,6 +1,25 @@
 // data/designValidation.js
-// Batch 33: read-only Blueprint design validation.
+// Read-only Blueprint design validation.
+// Custom Shape Upgrade V1 reuses the same V4/V5 validators used by the editor.
 // This module never mutates components and never replaces final carpenter review.
+
+import {
+  getProfileCutoutLocalPoints,
+  getProfileCutoutStatus,
+  getProfileEdgeNotchStatus,
+  getWoodworkingProfileDescriptor,
+  getWoodworkingProfileLocalPoints,
+  isValidContourPolygon,
+  isWoodworkingProfileComponent,
+} from "./woodworkingProfile";
+import {
+  getOperationLabel,
+  getOperationProfileDimensions,
+  getWoodworkingOperationFootprintPoints,
+  getWoodworkingOperationStatus,
+  normalizeWoodworkingOperations,
+  operationPolygonsOverlap,
+} from "./woodworkingOperations";
 
 const REAL_COMPONENT_FILTER = (component) =>
   component && component.type !== "reference_proxy";
@@ -325,6 +344,384 @@ const isPanelLikePart = (component = {}) => {
   );
 };
 
+const parseRawContourPointsForValidation = (value) => {
+  let source = value;
+
+  if (typeof source === "string") {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      return [];
+    }
+  }
+
+  if (source === null || source === undefined) return null;
+  if (!Array.isArray(source)) return [];
+
+  const points = [];
+
+  for (const point of source) {
+    const rawU = Array.isArray(point)
+      ? point[0]
+      : point?.uRatio ?? point?.u ?? point?.x;
+    const rawV = Array.isArray(point)
+      ? point[1]
+      : point?.vRatio ?? point?.v ?? point?.y;
+    const u = Number(rawU);
+    const v = Number(rawV);
+
+    if (
+      !Number.isFinite(u) ||
+      !Number.isFinite(v) ||
+      Math.abs(u) > 0.500001 ||
+      Math.abs(v) > 0.500001
+    ) {
+      return [];
+    }
+
+    points.push([u, v]);
+  }
+
+  return points;
+};
+
+const pointToSegmentDistance = (point, start, end) => {
+  const px = Number(point?.[0]) || 0;
+  const py = Number(point?.[1]) || 0;
+  const ax = Number(start?.[0]) || 0;
+  const ay = Number(start?.[1]) || 0;
+  const bx = Number(end?.[0]) || 0;
+  const by = Number(end?.[1]) || 0;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSquared = dx * dx + dy * dy;
+
+  if (lengthSquared <= 1e-12) {
+    return Math.hypot(px - ax, py - ay);
+  }
+
+  const t = Math.max(
+    0,
+    Math.min(
+      1,
+      ((px - ax) * dx + (py - ay) * dy) / lengthSquared,
+    ),
+  );
+  const closestX = ax + dx * t;
+  const closestY = ay + dy * t;
+
+  return Math.hypot(px - closestX, py - closestY);
+};
+
+const getPolygonBoundaryClearance = (
+  innerPoints = [],
+  outerPoints = [],
+) => {
+  if (innerPoints.length < 1 || outerPoints.length < 2) {
+    return Infinity;
+  }
+
+  let minimum = Infinity;
+
+  innerPoints.forEach((point) => {
+    for (let index = 0; index < outerPoints.length; index += 1) {
+      const nextIndex = (index + 1) % outerPoints.length;
+      minimum = Math.min(
+        minimum,
+        pointToSegmentDistance(
+          point,
+          outerPoints[index],
+          outerPoints[nextIndex],
+        ),
+      );
+    }
+  });
+
+  return minimum;
+};
+
+function buildCustomShapeValidationIssues(component = {}) {
+  const errors = [];
+  const warnings = [];
+
+  if (!isWoodworkingProfileComponent(component)) {
+    return { errors, warnings };
+  }
+
+  const componentId = cleanText(component.id) || null;
+  const assemblyId = getAssemblyId(component);
+  const partCode = getPartCode(component);
+  const partLabel =
+    cleanText(component.label) ||
+    partCode ||
+    "Custom Shape Part";
+  const descriptor = getWoodworkingProfileDescriptor(component);
+
+  const issueBase = {
+    componentId,
+    assemblyId,
+    partCode,
+  };
+
+  if (!descriptor) {
+    errors.push(
+      makeIssue({
+        severity: "error",
+        code: "INVALID_CUSTOM_PROFILE",
+        title: "Invalid custom profile",
+        message: `${partLabel} has no usable woodworking profile definition.`,
+        ...issueBase,
+      }),
+    );
+
+    return { errors, warnings };
+  }
+
+  const rawProfilePlane = cleanText(component.profilePlane).toLowerCase();
+  if (
+    rawProfilePlane &&
+    !["auto", "xy", "xz", "yz"].includes(rawProfilePlane)
+  ) {
+    errors.push(
+      makeIssue({
+        severity: "error",
+        code: "INVALID_PROFILE_PLANE",
+        title: "Invalid custom profile plane",
+        message: `${partLabel} uses unsupported profile plane "${component.profilePlane}".`,
+        ...issueBase,
+      }),
+    );
+  }
+
+  if (descriptor.kind === "contour") {
+    const rawContour = parseRawContourPointsForValidation(
+      component.profileContourPoints,
+    );
+
+    if (
+      rawContour !== null &&
+      !isValidContourPolygon(rawContour)
+    ) {
+      errors.push(
+        makeIssue({
+          severity: "error",
+          code: "INVALID_CUSTOM_CONTOUR",
+          title: "Invalid custom contour",
+          message: `${partLabel} has missing, crossing, duplicate, or out-of-bounds contour points.`,
+          ...issueBase,
+        }),
+      );
+    }
+  }
+
+  const outerPoints =
+    getWoodworkingProfileLocalPoints(component, {
+      curveSegments: 56,
+      cornerSegments: 10,
+      filletSegments: 10,
+    }) || [];
+
+  const outerProfileValid =
+    outerPoints.length >= 3 &&
+    isValidContourPolygon(outerPoints);
+
+  if (!outerProfileValid) {
+    errors.push(
+      makeIssue({
+        severity: "error",
+        code: "INVALID_CUSTOM_PROFILE_GEOMETRY",
+        title: "Invalid final custom profile",
+        message: `${partLabel} becomes invalid after applying its contour, curves, fillets, or boundary notches.`,
+        ...issueBase,
+      }),
+    );
+  }
+
+  const validCutoutPolygons = [];
+
+  (descriptor.profileCutouts || []).forEach((cutout, index) => {
+    const status = getProfileCutoutStatus(component, cutout);
+    const cutoutLabel =
+      cleanText(cutout?.id) || `Cutout ${index + 1}`;
+
+    if (!status.valid) {
+      errors.push(
+        makeIssue({
+          severity: "error",
+          code: "INVALID_PROFILE_CUTOUT",
+          title: "Invalid hole / cutout",
+          message: `${partLabel} - ${cutoutLabel}: ${status.message}`,
+          ...issueBase,
+        }),
+      );
+      return;
+    }
+
+    const polygon = getProfileCutoutLocalPoints(
+      cutout,
+      cutout.type === "round" ? 48 : 4,
+    );
+
+    validCutoutPolygons.push(polygon);
+
+    if (outerProfileValid) {
+      const clearance = getPolygonBoundaryClearance(
+        polygon,
+        outerPoints,
+      );
+
+      if (Number.isFinite(clearance) && clearance < 3) {
+        warnings.push(
+          makeIssue({
+            severity: "warning",
+            code: "LOW_CUTOUT_EDGE_CLEARANCE",
+            title: "Cutout is very close to an edge",
+            message: `${partLabel} - ${cutoutLabel} has only ${roundMetric(
+              clearance,
+              1,
+            )} mm minimum edge clearance. Verify this before production.`,
+            ...issueBase,
+          }),
+        );
+      }
+    }
+  });
+
+  (descriptor.profileEdgeNotches || []).forEach((notch, index) => {
+    const status = getProfileEdgeNotchStatus(component, notch);
+    if (status.valid) return;
+
+    errors.push(
+      makeIssue({
+        severity: "error",
+        code: "INVALID_PROFILE_EDGE_NOTCH",
+        title: "Invalid edge notch",
+        message: `${partLabel} - Edge Notch ${index + 1}: ${status.message}`,
+        ...issueBase,
+      }),
+    );
+  });
+
+  const operations = normalizeWoodworkingOperations(
+    component.woodworkingOperations,
+  );
+  const operationContext = {
+    outerPoints,
+    cutoutPolygons: validCutoutPolygons,
+  };
+  const operationDims = getOperationProfileDimensions(component);
+  const validOperations = [];
+
+  operations.forEach((operation, index) => {
+    const status = getWoodworkingOperationStatus(
+      component,
+      operation,
+      operationContext,
+    );
+    const operationLabel = `${getOperationLabel(operation.type)} ${
+      index + 1
+    }`;
+
+    if (!status.valid) {
+      errors.push(
+        makeIssue({
+          severity: "error",
+          code: "INVALID_WOODWORKING_OPERATION",
+          title: "Invalid woodworking operation",
+          message: `${partLabel} - ${operationLabel}: ${status.message}`,
+          ...issueBase,
+        }),
+      );
+      return;
+    }
+
+    validOperations.push(operation);
+
+    const remainingWeb =
+      operationDims.thickness - Number(operation.depth || 0);
+    const thinWebThreshold = Math.max(
+      2,
+      operationDims.thickness * 0.1,
+    );
+
+    if (
+      remainingWeb > 0 &&
+      remainingWeb < thinWebThreshold
+    ) {
+      warnings.push(
+        makeIssue({
+          severity: "warning",
+          code: "THIN_OPERATION_WEB",
+          title: "Very thin material remains below a cut",
+          message: `${partLabel} - ${operationLabel} leaves only ${roundMetric(
+            remainingWeb,
+            1,
+          )} mm of material. Verify strength before production.`,
+          ...issueBase,
+        }),
+      );
+    }
+  });
+
+  for (let firstIndex = 0; firstIndex < validOperations.length; firstIndex += 1) {
+    const first = validOperations[firstIndex];
+
+    for (
+      let secondIndex = firstIndex + 1;
+      secondIndex < validOperations.length;
+      secondIndex += 1
+    ) {
+      const second = validOperations[secondIndex];
+
+      if (first.surface === second.surface) continue;
+
+      const firstPoints = getWoodworkingOperationFootprintPoints(
+        component,
+        first,
+        first.type === "bore" ? 48 : 4,
+      );
+      const secondPoints = getWoodworkingOperationFootprintPoints(
+        component,
+        second,
+        second.type === "bore" ? 48 : 4,
+      );
+
+      if (!operationPolygonsOverlap(firstPoints, secondPoints)) {
+        continue;
+      }
+
+      const remainingCenterWeb =
+        operationDims.thickness -
+        Number(first.depth || 0) -
+        Number(second.depth || 0);
+      const thinCenterThreshold = Math.max(
+        2,
+        operationDims.thickness * 0.1,
+      );
+
+      if (
+        remainingCenterWeb > 0 &&
+        remainingCenterWeb < thinCenterThreshold
+      ) {
+        warnings.push(
+          makeIssue({
+            severity: "warning",
+            code: "THIN_OPPOSITE_FACE_WEB",
+            title: "Thin web between opposite-face cuts",
+            message: `${partLabel} has overlapping cuts from Face A and Face B with only ${roundMetric(
+              remainingCenterWeb,
+              1,
+            )} mm material between them. Verify strength before production.`,
+            ...issueBase,
+          }),
+        );
+      }
+    }
+  }
+
+  return { errors, warnings };
+}
+
 function buildDesignValidationReport({
   components = [],
   worldDimensions = null,
@@ -491,6 +888,14 @@ function buildDesignValidationReport({
           );
         }
       }
+    }
+
+    if (isWoodworkingProfileComponent(component)) {
+      const customShapeIssues =
+        buildCustomShapeValidationIssues(component);
+
+      errors.push(...customShapeIssues.errors);
+      warnings.push(...customShapeIssues.warnings);
     }
 
     if (isPanelLikePart(component)) {
@@ -844,9 +1249,9 @@ function buildDesignValidationReport({
   notices.push({
     severity: "notice",
     code: "INVENTORY_NOT_LINKED",
-    title: "Inventory check not available yet",
+    title: "Custom Blueprint inventory remains manual",
     message:
-      "Current Blueprint parts are not linked to live inventory records, so stock sufficiency is not evaluated in Batch 33.",
+      "This validation does not deduct inventory. Customized Blueprint material selection and deduction remain manually controlled in Admin Create Estimation.",
   });
 
   notices.push({
@@ -870,6 +1275,9 @@ function buildDesignValidationReport({
     notices,
     summary: {
       totalParts: realComponents.length,
+      customPartCount: realComponents.filter(
+        isWoodworkingProfileComponent,
+      ).length,
       assemblyCount: assemblyMap.size,
       errorCount: errors.length,
       warningCount: warnings.length,
