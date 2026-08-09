@@ -2533,3 +2533,223 @@ a {
 .cust-header-search input::placeholder {
   font-weight: 400 !important;
 }
+/* WISDOM MINI CART READABILITY POLISH V3 */
+
+/*
+  Keep the current compact 445px drawer width.
+  Improve readability only: image, product text, quantity,
+  summary rows, estimated total, and main actions.
+*/
+
+.cust-mini-cart-drawer {
+  width: min(445px, 94vw) !important;
+}
+
+/* Product row */
+.cust-mini-cart-item {
+  grid-template-columns: 72px minmax(0, 1fr) !important;
+  gap: 13px !important;
+  padding: 16px 0 !important;
+}
+
+.cust-mini-cart-thumb {
+  width: 72px !important;
+  height: 72px !important;
+  border-radius: 0 !important;
+}
+
+.cust-mini-cart-item-top strong {
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+  font-weight: 600 !important;
+}
+
+.cust-mini-cart-line-total {
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+  font-weight: 600 !important;
+}
+
+.cust-mini-cart-meta {
+  font-size: 11px !important;
+  line-height: 1.45 !important;
+  font-weight: 400 !important;
+}
+
+/* Quantity stays compact, but no longer looks undersized. */
+.cust-mini-cart-item-actions {
+  gap: 8px !important;
+  margin-top: 7px !important;
+}
+
+.cust-mini-cart-qty {
+  height: 34px !important;
+  grid-template-columns: 32px 40px 32px !important;
+  border-radius: 0 !important;
+}
+
+.cust-mini-cart-qty button,
+.cust-mini-cart-qty span {
+  font-size: 12px !important;
+  border-radius: 0 !important;
+}
+
+.cust-mini-cart-qty span {
+  font-weight: 600 !important;
+}
+
+.cust-mini-cart-remove {
+  width: 26px !important;
+  height: 34px !important;
+  border-radius: 0 !important;
+}
+
+.cust-mini-cart-remove svg {
+  width: 15px !important;
+  height: 15px !important;
+}
+
+/* Footer summary */
+.cust-mini-cart-foot {
+  padding: 17px 20px 20px !important;
+}
+
+.cust-mini-cart-summary {
+  gap: 8px !important;
+  margin-bottom: 10px !important;
+}
+
+.cust-mini-cart-summary-row {
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+  font-weight: 400 !important;
+}
+
+.cust-mini-cart-summary-row strong {
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+}
+
+.cust-mini-cart-summary-muted {
+  font-size: 10.5px !important;
+  font-weight: 400 !important;
+}
+
+.cust-mini-cart-summary-total {
+  font-size: 13px !important;
+  line-height: 1.4 !important;
+  font-weight: 600 !important;
+}
+
+.cust-mini-cart-summary-total strong {
+  font-size: 17px !important;
+  line-height: 1.2 !important;
+  font-weight: 700 !important;
+}
+
+.cust-mini-cart-note {
+  margin-bottom: 13px !important;
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
+
+/* Main actions */
+.cust-mini-cart-view,
+.cust-mini-cart-checkout,
+.cust-mini-cart-shop-btn {
+  min-height: 46px !important;
+  border-radius: 0 !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+
+/* Keep mobile readable without making the drawer wider. */
+@media (max-width: 680px) {
+  .cust-mini-cart-drawer {
+    width: min(100vw, 445px) !important;
+  }
+
+  .cust-mini-cart-item {
+    grid-template-columns: 68px minmax(0, 1fr) !important;
+    gap: 11px !important;
+  }
+
+  .cust-mini-cart-thumb {
+    width: 68px !important;
+    height: 68px !important;
+  }
+
+  .cust-mini-cart-item-top strong,
+  .cust-mini-cart-line-total {
+    font-size: 12.5px !important;
+  }
+}
+/* WISDOM MINI CART QTY RADIUS V3.1 */
+
+/* Only the quantity control is reduced and rounded again. */
+.cust-mini-cart-qty {
+  height: 30px !important;
+  grid-template-columns: 28px 36px 28px !important;
+  border: 1px solid #cfcfcf !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+}
+
+.cust-mini-cart-qty button,
+.cust-mini-cart-qty span {
+  font-size: 11px !important;
+}
+
+.cust-mini-cart-qty button:first-child {
+  border-radius: 10px 0 0 10px !important;
+}
+
+.cust-mini-cart-qty button:last-child {
+  border-radius: 0 10px 10px 0 !important;
+}
+
+.cust-mini-cart-remove {
+  height: 30px !important;
+}
+
+@media (max-width: 680px) {
+  .cust-mini-cart-qty {
+    height: 30px !important;
+    grid-template-columns: 28px 36px 28px !important;
+    border-radius: 10px !important;
+  }
+}
+/* WISDOM MINI CART QTY SMALL V3.2 KEEP */
+
+/* Keep only the smaller quantity treatment requested after V3.1. */
+.cust-mini-cart-qty {
+  height: 28px !important;
+  grid-template-columns: 25px 32px 25px !important;
+  border-radius: 9px !important;
+}
+
+.cust-mini-cart-qty button,
+.cust-mini-cart-qty span {
+  font-size: 10.5px !important;
+}
+
+.cust-mini-cart-qty button:first-child {
+  border-radius: 9px 0 0 9px !important;
+}
+
+.cust-mini-cart-qty button:last-child {
+  border-radius: 0 9px 9px 0 !important;
+}
+
+.cust-mini-cart-remove {
+  height: 28px !important;
+}
+
+@media (max-width: 680px) {
+  .cust-mini-cart-qty {
+    height: 28px !important;
+    grid-template-columns: 25px 32px 25px !important;
+    border-radius: 9px !important;
+  }
+}
