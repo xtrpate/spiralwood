@@ -221,7 +221,10 @@ exports.getReceiptById = async (req, res) => {
     });
     biz.business_name = biz.site_name || "Spiral Wood Services";
     biz.site_logo = biz.site_logo || null;
-    biz.business_address = biz.business_address || null;
+    // WISDOM OFFICIAL RECEIPT LOCATION V1
+    // Keep the customer-facing receipt aligned with the verified pickup location.
+    biz.business_address =
+      "8 Laot Street, Near Gavino, Prenza I, Marilao, 3019 Bulacan";
     biz.business_phone = biz.business_phone || null;
     biz.thank_you_message = biz.thank_you_message || "Thank you for your purchase!";
 
