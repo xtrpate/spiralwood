@@ -714,6 +714,56 @@ const formatInventoryQuantity = (value) => {
   });
 };
 
+// WISDOM Project Estimate Physical Specs V1
+const INVENTORY_MATERIAL_FORM_LABELS = {
+  sheet: "Sheet / Board",
+  linear: "Linear Material",
+  piece: "Solid / Stock Piece",
+  hardware: "Hardware / Counted Item",
+  other: "Other / Not Dimension-Based",
+};
+
+const formatPhysicalDimension = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  return number.toLocaleString("en-PH", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+};
+
+const getInventoryPhysicalSpec = (material = null) => {
+  if (!material) return "";
+
+  const form = String(material.material_form || "other")
+    .trim()
+    .toLowerCase();
+  const formLabel =
+    INVENTORY_MATERIAL_FORM_LABELS[form] || "Other / Not Dimension-Based";
+  const length = formatPhysicalDimension(material.length_mm);
+  const width = formatPhysicalDimension(material.width_mm);
+  const thickness = formatPhysicalDimension(material.thickness_mm);
+
+  if (form === "sheet") {
+    if (length && width && thickness) {
+      return `${formLabel} · ${length} × ${width} × ${thickness} mm`;
+    }
+    return `${formLabel} · Physical size not set`;
+  }
+
+  if (form === "linear" || form === "piece") {
+    const parts = [
+      length ? `L ${length} mm` : null,
+      width ? `W ${width} mm` : null,
+      thickness ? `T ${thickness} mm` : null,
+    ].filter(Boolean);
+
+    return parts.length ? `${formLabel} · ${parts.join(" · ")}` : formLabel;
+  }
+
+  return formLabel;
+};
+
 const getInventoryAvailability = (item = {}, material = null) => {
   const unit = String(material?.unit || item?.unit || "").trim();
 
@@ -872,7 +922,9 @@ function EstimateTable({
               </th>
               {isInventory && <th style={{ ...th, width: "13%" }}>Available Stock</th>}
               <th style={{ ...th, width: "10%" }}>Unit</th>
-              <th style={{ ...th, width: "10%" }}>Quantity</th>
+              <th style={{ ...th, width: "10%" }}>
+                {isInventory ? "Required Qty" : "Quantity"}
+              </th>
               {isInventory && <th style={{ ...th, width: "18%" }}>Stock Status</th>}
               {(!isInventory || showInventoryPricing) && (
                 <th style={{ ...th, width: "12%" }}>Unit Rate</th>
@@ -919,21 +971,45 @@ function EstimateTable({
                     </td>
                     <td style={td}>
                       {isInventory ? (
-                        <select
-                          value={item.raw_material_id || ""}
-                          onChange={(event) =>
-                            onUpdate(item._row_key, "raw_material_id", event.target.value)
-                          }
-                          style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
-                          disabled={readOnly}
-                        >
-                          <option value="">Select material...</option>
-                          {rawMaterials.map((material) => (
-                            <option key={material.id} value={material.id}>
-                              {material.name}
-                            </option>
-                          ))}
-                        </select>
+                        <>
+                          {/* WISDOM Project Estimate Physical Specs V1 Syntax Hotfix */}
+                          <select
+                            value={item.raw_material_id || ""}
+                            onChange={(event) =>
+                              onUpdate(item._row_key, "raw_material_id", event.target.value)
+                            }
+                            style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
+                            disabled={readOnly}
+                          >
+                            <option value="">Select material...</option>
+                            {rawMaterials.map((material) => (
+                              <option key={material.id} value={material.id}>
+                                {material.name}
+                                {getInventoryPhysicalSpec(material)
+                                  ? ` — ${getInventoryPhysicalSpec(material)}`
+                                  : ""}
+                              </option>
+                            ))}
+                          </select>
+                          {selectedMaterial && (
+                            <div
+                              style={{
+                                marginTop: 5,
+                                padding: "5px 7px",
+                                border: "1px solid #e4e4e7",
+                                background: "#fafafa",
+                                color: "#52525b",
+                                fontSize: 10,
+                                lineHeight: 1.35,
+                              }}
+                            >
+                              <strong style={{ color: "#27272a" }}>
+                                Stock specification:
+                              </strong>{" "}
+                              {getInventoryPhysicalSpec(selectedMaterial)}
+                            </div>
+                          )}
+                        </>
                       ) : (
                         <input
                           value={item.name}
