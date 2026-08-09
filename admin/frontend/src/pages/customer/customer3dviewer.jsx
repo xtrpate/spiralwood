@@ -251,6 +251,7 @@ export default function Customer3DViewer({
   customizationRules = {},
   isCustomizable = true,
   readOnly = false,
+  onViewCustomize,
   applyLabel = "Add to Custom Cart",
   commentsLabel = "Additional Comments",
   commentsPlaceholder = "Optional notes for this custom draft...",
@@ -414,6 +415,36 @@ export default function Customer3DViewer({
       return current;
     return normalizeDimensions(initialDimensions || {});
   }, [components, initialDimensions]);
+
+  const viewMetadata = useMemo(() => {
+    const firstComponent = Array.isArray(components)
+      ? components.find(Boolean) || {}
+      : {};
+
+    const material =
+      String(firstComponent?.material || firstComponent?.wood_type || "").trim() ||
+      "Standard material";
+
+    const finishId = String(
+      firstComponent?.finish_id ||
+        firstComponent?.woodFinish ||
+        firstComponent?.finish ||
+        "",
+    ).trim();
+
+    const finishMatch = Array.isArray(WOOD_FINISHES)
+      ? WOOD_FINISHES.find((item) => item?.id === finishId)
+      : null;
+
+    const finish =
+      finishMatch?.label ||
+      finishId ||
+      (firstComponent?.color_mode === "solid"
+        ? "Custom color"
+        : "Original finish");
+
+    return { material, finish };
+  }, [components]);
 
   useEffect(() => {
     let active = true;
@@ -679,6 +710,129 @@ export default function Customer3DViewer({
     };
   }, [selectionMode, readOnly, components]);
 
+  const fitReadOnlyCameraToFurniture = (viewMode = "3D") => {
+    if (
+      !readOnly ||
+      !boundsBoxRef.current ||
+      boundsBoxRef.current.isEmpty() ||
+      !cameraRef.current ||
+      !orbitRef.current
+    ) {
+      return false;
+    }
+
+    const box = boundsBoxRef.current;
+    const camera = cameraRef.current;
+    const orbit = orbitRef.current;
+
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    box.getCenter(center);
+    box.getSize(size);
+
+    const safeWidth = Math.max(1, size.x);
+    const safeHeight = Math.max(1, size.y);
+    const safeDepth = Math.max(1, size.z);
+    const maxDim = Math.max(safeWidth, safeHeight, safeDepth);
+
+    const verticalFov = THREE.MathUtils.degToRad(camera.fov || 40);
+    const canvasAspect =
+      Number(canvasSizeRef.current.width || 1) /
+      Math.max(1, Number(canvasSizeRef.current.height || 1));
+    const safeAspect = Math.max(
+      0.5,
+      Number(camera.aspect || canvasAspect || 1),
+    );
+    const horizontalFov =
+      2 * Math.atan(Math.tan(verticalFov / 2) * safeAspect);
+
+    const fitPlaneDistance = (planeWidth, planeHeight) => {
+      const distanceForHeight =
+        planeHeight / (2 * Math.tan(verticalFov / 2));
+      const distanceForWidth =
+        planeWidth / (2 * Math.tan(horizontalFov / 2));
+
+      return Math.max(distanceForHeight, distanceForWidth) * 1.18;
+    };
+
+    let distance = 0;
+
+    if (viewMode === "Front" || viewMode === "Back") {
+      distance = fitPlaneDistance(safeWidth, safeHeight);
+    } else if (viewMode === "Side") {
+      distance = fitPlaneDistance(safeDepth, safeHeight);
+    } else if (viewMode === "Top" || viewMode === "Bottom") {
+      distance = fitPlaneDistance(safeWidth, safeDepth);
+    } else {
+      const radius =
+        Math.sqrt(
+          safeWidth * safeWidth +
+            safeHeight * safeHeight +
+            safeDepth * safeDepth,
+        ) / 2;
+
+      const limitingFov = Math.max(
+        THREE.MathUtils.degToRad(18),
+        Math.min(verticalFov, horizontalFov),
+      );
+
+      distance = (radius / Math.sin(limitingFov / 2)) * 1.18;
+    }
+
+    distance = Math.max(700, distance);
+
+    // Avoid the old fixed 5000 max-distance clamp that could crop large items.
+    orbit.minDistance = Math.max(120, Math.min(500, distance * 0.1));
+    orbit.maxDistance = Math.max(5000, distance * 2.5, maxDim * 4);
+
+    camera.near = Math.max(0.5, Math.min(20, distance * 0.002));
+    camera.far = Math.max(12000, distance + maxDim * 8);
+    camera.updateProjectionMatrix();
+
+    orbit.enableRotate = viewMode === "3D";
+    orbit.maxPolarAngle =
+      viewMode === "3D" ? Math.PI / 2 - 0.05 : Math.PI;
+
+    switch (viewMode) {
+      case "Front":
+        camera.position.set(center.x, center.y, center.z + distance);
+        break;
+      case "Back":
+        camera.position.set(center.x, center.y, center.z - distance);
+        break;
+      case "Side":
+        camera.position.set(center.x - distance, center.y, center.z);
+        break;
+      case "Top":
+        camera.position.set(
+          center.x,
+          center.y + distance,
+          center.z + 0.1,
+        );
+        break;
+      case "Bottom":
+        camera.position.set(
+          center.x,
+          center.y - distance,
+          center.z + 0.1,
+        );
+        break;
+      case "3D":
+      default: {
+        const direction = new THREE.Vector3(1, 0.72, 1).normalize();
+        camera.position.copy(
+          center.clone().add(direction.multiplyScalar(distance)),
+        );
+        break;
+      }
+    }
+
+    orbit.target.copy(center);
+    orbit.update();
+    setActiveView(viewMode);
+    return true;
+  };
+
   // BUILD 3D OBJECTS (Runs ONLY when components change, stops disappearing bug)
   useEffect(() => {
     const rootGroup = rootGroupRef.current;
@@ -739,6 +893,12 @@ export default function Customer3DViewer({
     });
 
     boundsBoxRef.current.copy(boundsBox);
+
+    if (readOnly && !boundsBox.isEmpty()) {
+      requestAnimationFrame(() => {
+        fitReadOnlyCameraToFurniture("3D");
+      });
+    }
 
     if (!boundsBox.isEmpty()) {
       const offset = 100;
@@ -1022,6 +1182,10 @@ export default function Customer3DViewer({
     )
       return;
 
+    if (readOnly && fitReadOnlyCameraToFurniture(viewMode)) {
+      return;
+    }
+
     const box = boundsBoxRef.current;
     const center = new THREE.Vector3();
     box.getCenter(center);
@@ -1262,7 +1426,7 @@ export default function Customer3DViewer({
       <div style={styles.topBar}>
         <div style={styles.topBarMeta}>
           <div style={styles.topBarEyebrow}>
-            {readOnly ? "Approved Template Preview" : "Live Configurator"}
+            {readOnly ? "Design Preview" : "Customize Design"}
           </div>
           <div style={styles.topBarTitle}>
             {formatUnitLabel(overallBounds.width_mm)} ×{" "}
@@ -1319,7 +1483,7 @@ export default function Customer3DViewer({
         </div>
       </div>
 
-      <div style={styles.viewerShell}>
+      <div style={{ ...styles.viewerShell, ...(!readOnly ? styles.customizeViewerShell : {}) }}>
         <div style={styles.canvasWrap}>
           <div style={styles.cameraToolbar}>
             {["3D", "Front", "Back", "Side", "Top", "Bottom"].map((view) => (
@@ -1350,42 +1514,101 @@ export default function Customer3DViewer({
           </div>
         </div>
 
-        <aside style={styles.sidebar}>
-          <div style={styles.sidebarScroll}>
-            <section style={styles.sidebarSection}>
+        {readOnly ? (
+          <aside
+            style={{
+              ...styles.sidebar,
+              gridTemplateRows: "minmax(0, 1fr)",
+            }}
+          >
+            <div style={styles.viewSidebarScroll}>
+              <section style={styles.viewDetailsCard}>
+                <div style={styles.viewDetailsTitle}>Design Details</div>
+                <p style={styles.viewDetailsNote}>
+                  Review the key details of this furniture design.
+                </p>
+
+                <div style={styles.viewDetailsDivider} />
+
+                <div style={styles.viewDetailsGroup}>
+                  <div style={styles.viewDetailsGroupTitle}>Dimensions</div>
+
+                  <div style={styles.viewDetailRow}>
+                    <span style={styles.viewDetailLabel}>Width</span>
+                    <strong style={styles.viewDetailValue}>
+                      {formatUnitLabel(overallBounds.width_mm)}
+                    </strong>
+                  </div>
+
+                  <div style={styles.viewDetailRow}>
+                    <span style={styles.viewDetailLabel}>Height</span>
+                    <strong style={styles.viewDetailValue}>
+                      {formatUnitLabel(overallBounds.height_mm)}
+                    </strong>
+                  </div>
+
+                  <div style={styles.viewDetailRow}>
+                    <span style={styles.viewDetailLabel}>Depth</span>
+                    <strong style={styles.viewDetailValue}>
+                      {formatUnitLabel(overallBounds.depth_mm)}
+                    </strong>
+                  </div>
+                </div>
+
+                <div style={styles.viewDetailsDivider} />
+
+                <div style={styles.viewDetailsGroup}>
+                  <div style={styles.viewDetailRow}>
+                    <span style={styles.viewDetailLabel}>Material</span>
+                    <strong style={styles.viewDetailValue}>
+                      {viewMetadata.material}
+                    </strong>
+                  </div>
+
+                  <div style={styles.viewDetailRow}>
+                    <span style={styles.viewDetailLabel}>Finish</span>
+                    <strong style={styles.viewDetailValue}>
+                      {viewMetadata.finish}
+                    </strong>
+                  </div>
+
+                  <div style={styles.viewDetailRowLast}>
+                    <span style={styles.viewDetailLabel}>Order Type</span>
+                    <strong style={styles.viewDetailValue}>Made to Order</strong>
+                  </div>
+                </div>
+              </section>
+
+              {typeof onViewCustomize === "function" ? (
+                <button
+                  type="button"
+                  onClick={onViewCustomize}
+                  style={styles.viewCustomizeBtn}
+                >
+                  Customize
+                </button>
+              ) : null}
+            </div>
+          </aside>
+        ) : (
+          <aside style={styles.sidebar}>
+            <div style={styles.sidebarScroll}>
+            <section
+              style={{
+                ...styles.sidebarSection,
+                ...styles.customizeIntroSection,
+              }}
+            >
               <div style={styles.sidebarSectionHeader}>
                 <div style={styles.sidebarSectionTitle}>
-                  Template Configurator
+                  Design Options
                 </div>
               </div>
 
               <p style={styles.sidebarSectionNote}>
-                Adjust only the admin-approved values. Structure stays based on
-                the saved template.
+                Set the size and finish. Optional tools are below.
               </p>
 
-              <div style={styles.metricsGrid}>
-                <div style={styles.metricCard}>
-                  <span style={styles.metricLabel}>Width</span>
-                  <strong style={styles.metricValue}>
-                    {formatUnitLabel(overallBounds.width_mm)}
-                  </strong>
-                </div>
-
-                <div style={styles.metricCard}>
-                  <span style={styles.metricLabel}>Height</span>
-                  <strong style={styles.metricValue}>
-                    {formatUnitLabel(overallBounds.height_mm)}
-                  </strong>
-                </div>
-
-                <div style={styles.metricCard}>
-                  <span style={styles.metricLabel}>Depth</span>
-                  <strong style={styles.metricValue}>
-                    {formatUnitLabel(overallBounds.depth_mm)}
-                  </strong>
-                </div>
-              </div>
 
               <OversizedDeliveryWarning
                 assessment={deliveryAssessment}
@@ -1393,14 +1616,20 @@ export default function Customer3DViewer({
               />
             </section>
 
+            <div style={styles.customizeOptionalToolsHeading}>
+              <span style={styles.customizeOptionalToolsTitle}>Optional Tools</span>
+              <span style={styles.customizeOptionalToolsNote}>Use only when needed</span>
+            </div>
+
             <section
               style={{
                 ...styles.sidebarSection,
+                ...styles.customizeOptionalSection,
                 ...(selectionMode ? styles.sidebarSectionActive : {}),
               }}
             >
               <div style={styles.sectionRow}>
-                <label style={styles.label}>Specific Part Editing</label>
+                <label style={styles.label}>Edit Individual Parts</label>
 
                 <label style={styles.inlineCheck}>
                   <input
@@ -1412,7 +1641,7 @@ export default function Customer3DViewer({
                     }}
                   />
                   <span style={selectionMode ? styles.inlineCheckActive : null}>
-                    Customize Individual Parts
+                    Enable
                   </span>
                 </label>
               </div>
@@ -1424,32 +1653,41 @@ export default function Customer3DViewer({
                     below.
                   </div>
 
-                  <div style={styles.chipRow}>
-                    {partGroups.map((group, index) => {
-                      const isSelected =
-                        selectedCompIds.length > 0 &&
-                        selectedCompIds.includes(group.ids[0]);
+                  <select
+                    value={
+                      selectedCompIds.length
+                        ? String(
+                            partGroups.findIndex((group) =>
+                              group.ids.some((id) =>
+                                selectedCompIds.includes(id),
+                              ),
+                            ),
+                          )
+                        : ""
+                    }
+                    onChange={(e) => {
+                      const index = Number(e.target.value);
+                      if (!Number.isInteger(index) || index < 0) {
+                        setSelectedCompIds([]);
+                        return;
+                      }
 
-                      return (
-                        <button
-                          key={index}
-                          type="button"
-                          onClick={() => setSelectedCompIds(group.ids)}
-                          style={{
-                            ...styles.miniBtn,
-                            ...(isSelected ? styles.miniBtnActive : {}),
-                          }}
-                        >
-                          {group.label} ({group.ids.length})
-                        </button>
-                      );
-                    })}
-                  </div>
+                      const group = partGroups[index];
+                      setSelectedCompIds(group?.ids || []);
+                    }}
+                    style={styles.partGroupSelect}
+                  >
+                    <option value="">Choose a furniture part</option>
+                    {partGroups.map((group, index) => (
+                      <option key={`${group.label}_${index}`} value={index}>
+                        {group.label} ({group.ids.length})
+                      </option>
+                    ))}
+                  </select>
                 </>
               ) : (
                 <div style={styles.helperTextMuted}>
-                  Turn this on if you want to edit a repeated group like legs,
-                  shelves, or panels instead of scaling the whole furniture.
+                  Turn this on to select and edit repeated parts such as legs, shelves, or panels.
                 </div>
               )}
             </section>
@@ -1548,7 +1786,12 @@ export default function Customer3DViewer({
                 </div>
               </section>
             ) : (
-              <section style={styles.sidebarSection}>
+              <section
+                style={{
+                  ...styles.sidebarSection,
+                  ...styles.customizeSizeSection,
+                }}
+              >
                 <div style={styles.sectionRow}>
                   <label style={styles.label}>
                     Furniture Size ({unit})
@@ -1614,20 +1857,21 @@ export default function Customer3DViewer({
             <section
               style={{
                 ...styles.sidebarSection,
+                ...styles.customizeFinishSection,
                 ...(readOnly || !editable.finish_color
                   ? styles.sidebarSectionDisabled
                   : {}),
               }}
             >
               <div style={styles.sectionRow}>
-                <label style={styles.label}>Finish & Paint</label>
+                <label style={styles.label}>Finish & Color</label>
                 {selectedGroup.length > 0 ? (
                   <span style={styles.pill}>Applies to selection</span>
                 ) : null}
               </div>
 
               <div style={styles.inputGroup}>
-                <span style={styles.dimLabel}>Standard Wood Finish</span>
+                <span style={styles.dimLabel}>Wood Finish</span>
                 <select
                   onChange={(e) => handleFinishChange(e.target.value)}
                   style={styles.input}
@@ -1666,9 +1910,14 @@ export default function Customer3DViewer({
               </div>
             </section>
 
-            <section style={styles.sidebarSection}>
+            <section
+              style={{
+                ...styles.sidebarSection,
+                ...styles.customizeHumanSection,
+              }}
+            >
               <div style={styles.sectionRow}>
-                <label style={styles.label}>Size Reference</label>
+                <label style={styles.label}>Human Size Reference</label>
 
                 <label style={styles.inlineCheck}>
                   <input
@@ -1701,10 +1950,9 @@ export default function Customer3DViewer({
             <div style={styles.sidebarFooter}>
               <div style={styles.footerHeader}>
                 <div>
-                  <div style={styles.footerTitle}>Finalize</div>
+                  <div style={styles.footerTitle}>Order Details</div>
                   <div style={styles.footerNote}>
-                    Set quantity, upload references, add a message, then add to
-                    cart.
+                    Add reference photos or notes if needed.
                   </div>
                 </div>
 
@@ -1784,10 +2032,15 @@ export default function Customer3DViewer({
                 ) : null}
               </div>
 
-              <div style={styles.footerField}>
+              <div
+                style={{
+                  ...styles.footerField,
+                  ...styles.notesFooterField,
+                }}
+              >
                 <label style={styles.footerLabel}>{commentsLabel}</label>
                 <textarea
-                  rows={4}
+                  rows={2}
                   maxLength={500}
                   value={comments}
                   disabled={!editable.comments}
@@ -1806,7 +2059,8 @@ export default function Customer3DViewer({
               </button>
             </div>
           ) : null}
-        </aside>
+          </aside>
+        )}
       </div>
     </div>
   );
@@ -1838,8 +2092,8 @@ const styles = {
 
   topBarEyebrow: {
     fontSize: 11,
-    fontWeight: 700,
-    letterSpacing: "0.08em",
+    fontWeight: 600,
+    letterSpacing: "0.06em",
     textTransform: "uppercase",
     color: "#6b7280",
   },
@@ -1893,7 +2147,7 @@ const styles = {
     background: "#ffffff",
     color: "#111111",
     fontSize: 11,
-    fontWeight: 700,
+    fontWeight: 600,
     cursor: "pointer",
   },
 
@@ -1904,16 +2158,37 @@ const styles = {
   unitBtnActive: {
     background: "#111111",
     color: "#ffffff",
+    fontWeight: 700,
   },
 
   viewerShell: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) 340px",
-    height: "clamp(640px, 78vh, 820px)",
-    minHeight: 640,
+    height: "clamp(500px, 66vh, 600px)",
+    minHeight: 500,
     border: "1px solid #d9dee4",
     background: "#ffffff",
     overflow: "hidden",
+  },
+
+  customizeViewerShell: {
+    gridTemplateColumns: "minmax(0, 1fr) 400px",
+    height: "min(735px, calc(100vh - 128px))",
+    minHeight: 565,
+  },
+
+  rightShiftFillSpaceV10: {
+    minHeight: 0,
+    boxSizing: "border-box",
+  },
+
+  rightShiftMoreV10_1: {
+    minHeight: 0,
+    boxSizing: "border-box",
+  },
+
+  noScrollDesktopFit: {
+    boxSizing: "border-box",
   },
 
   canvasWrap: {
@@ -1926,7 +2201,7 @@ const styles = {
   canvasContainer: {
     width: "100%",
     height: "100%",
-    minHeight: 640,
+    minHeight: 500,
     backgroundColor: "#f7f7f7",
   },
 
@@ -1952,8 +2227,8 @@ const styles = {
     borderRight: "1px solid #cfcfcf",
     background: "#ffffff",
     color: "#111111",
-    fontSize: 11,
-    fontWeight: 700,
+    fontSize: 12,
+    fontWeight: 500,
     cursor: "pointer",
     boxSizing: "border-box",
   },
@@ -1961,6 +2236,7 @@ const styles = {
   cameraBtnActive: {
     background: "#111111",
     color: "#ffffff",
+    fontWeight: 700,
   },
 
   floatingLabel: {
@@ -1981,30 +2257,205 @@ const styles = {
     zIndex: 10,
   },
 
+  viewSidebarScroll: {
+    minHeight: 0,
+    overflowY: "auto",
+    padding: "18px 16px 16px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+  },
+
+  viewDetailsCard: {
+    border: "none",
+    background: "transparent",
+    padding: 0,
+  },
+
+  viewDetailsTitle: {
+    margin: 0,
+    fontSize: 16,
+    lineHeight: 1.3,
+    fontWeight: 700,
+    color: "#111111",
+  },
+
+  viewDetailsNote: {
+    margin: "6px 0 0",
+    fontSize: 13,
+    lineHeight: 1.55,
+    fontWeight: 400,
+    color: "#6b7280",
+  },
+
+  viewDetailsDivider: {
+    height: 1,
+    background: "#e5e7eb",
+    margin: "15px 0",
+  },
+
+  viewDetailsGroup: {
+    display: "grid",
+    gap: 0,
+  },
+
+  viewDetailsGroupTitle: {
+    marginBottom: 6,
+    fontSize: 13,
+    lineHeight: 1.4,
+    fontWeight: 600,
+    color: "#333333",
+  },
+
+  viewDetailRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 14,
+    minHeight: 40,
+    borderBottom: "1px solid #eeeeee",
+  },
+
+  viewDetailRowLast: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 14,
+    minHeight: 40,
+  },
+
+  viewDetailLabel: {
+    fontSize: 13,
+    lineHeight: 1.4,
+    fontWeight: 400,
+    color: "#6b7280",
+  },
+
+  viewDetailValue: {
+    fontSize: 13,
+    lineHeight: 1.4,
+    fontWeight: 600,
+    color: "#111111",
+    textAlign: "right",
+  },
+
+  viewCustomizeBtn: {
+    width: "100%",
+    minHeight: 44,
+    padding: "0 16px",
+    border: "1px solid #111111",
+    borderRadius: 0,
+    background: "#111111",
+    color: "#ffffff",
+    fontSize: 13,
+    lineHeight: 1,
+    fontWeight: 700,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+
   sidebar: {
     minWidth: 0,
     minHeight: 0,
     borderLeft: "1px solid #d9dee4",
     backgroundColor: "#ffffff",
     display: "grid",
-    gridTemplateRows: "minmax(0, 1fr) auto",
+    gridTemplateRows: "auto minmax(0, 1fr)",
+    overflow: "hidden",
+  },
+
+  fullHeightNoScrollLayout: {
+    minHeight: 0,
+    height: "100%",
   },
 
   sidebarScroll: {
     minHeight: 0,
-    overflowY: "auto",
-    padding: 12,
+    overflow: "visible",
+    padding: "6px 7px 5px",
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gridAutoRows: "min-content",
+    alignContent: "start",
+    gap: 5,
+  },
+
+  uniformControlWidth: {
+    width: "100%",
+    boxSizing: "border-box",
+  },
+
+  customizeSidebarSectionWide: {
+    gridColumn: "1 / -1",
+  },
+
+  customizeIntroSection: {
+    gridColumn: "1 / -1",
+    order: 1,
+    border: "none",
+    background: "transparent",
+    padding: "0 1px 2px",
+  },
+
+  customizeSizeSection: {
+    gridColumn: "1 / -1",
+    order: 2,
+  },
+
+  customizeFinishSection: {
+    gridColumn: "1 / -1",
+    order: 3,
+  },
+
+  customizeOptionalToolsHeading: {
+    gridColumn: "1 / -1",
+    order: 4,
     display: "flex",
-    flexDirection: "column",
-    gap: 10,
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    padding: "1px 1px 0",
+    minHeight: 18,
+  },
+
+  customizeOptionalToolsTitle: {
+    fontSize: 12,
+    lineHeight: 1.3,
+    fontWeight: 700,
+    color: "#111111",
+  },
+
+  customizeOptionalToolsNote: {
+    fontSize: 10,
+    lineHeight: 1.3,
+    fontWeight: 400,
+    color: "#7a7f87",
+  },
+
+  customizeOptionalSection: {
+    order: 5,
+    background: "#fafafa",
+    borderColor: "#e5e7eb",
+    minHeight: 72,
+    height: "100%",
+  },
+
+  customizeHumanSection: {
+    order: 6,
+    background: "#fafafa",
+    borderColor: "#e5e7eb",
+    minHeight: 72,
+    height: "100%",
   },
 
   sidebarSection: {
     display: "grid",
-    gap: 8,
-    padding: 10,
-    border: "1px solid #d9dee4",
+    gap: 4,
+    padding: "7px",
+    border: "1px solid #e2e5e9",
     background: "#ffffff",
+    alignContent: "start",
+    boxSizing: "border-box",
   },
 
   sidebarSectionActive: {
@@ -2024,18 +2475,20 @@ const styles = {
   },
 
   sidebarSectionTitle: {
-    fontSize: 12,
-    fontWeight: 800,
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
+    fontSize: 13,
+    lineHeight: 1.25,
+    fontWeight: 700,
+    letterSpacing: 0,
+    textTransform: "none",
     color: "#111111",
   },
 
   sidebarSectionNote: {
     margin: 0,
-    fontSize: 12,
-    lineHeight: 1.55,
-    color: "#525252",
+    fontSize: 10.25,
+    lineHeight: 1.3,
+    fontWeight: 400,
+    color: "#6b7280",
   },
 
   metricsGrid: {
@@ -2074,10 +2527,11 @@ const styles = {
   },
 
   label: {
-    fontSize: 12,
-    fontWeight: 800,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
+    fontSize: 11.5,
+    lineHeight: 1.25,
+    fontWeight: 700,
+    letterSpacing: 0,
+    textTransform: "none",
     color: "#111111",
   },
 
@@ -2096,27 +2550,38 @@ const styles = {
   },
 
   helperText: {
-    fontSize: 12,
-    lineHeight: 1.5,
+    fontSize: 10.5,
+    lineHeight: 1.35,
     color: "#111111",
     border: "1px dashed #cbd5e1",
     background: "#fafafa",
-    padding: "8px 10px",
+    padding: "6px 7px",
   },
 
   helperTextMuted: {
-    fontSize: 12,
-    lineHeight: 1.5,
+    fontSize: 9.75,
+    lineHeight: 1.28,
+    fontWeight: 400,
     color: "#6b7280",
-    background: "#fafafa",
-    border: "1px solid #ececec",
-    padding: "8px 10px",
+    background: "transparent",
+    border: "none",
+    padding: 0,
   },
 
-  chipRow: {
-    display: "flex",
-    gap: 6,
-    flexWrap: "wrap",
+  partGroupSelect: {
+    width: "100%",
+    height: 34,
+    minHeight: 34,
+    padding: "0 9px",
+    border: "1px solid #111111",
+    borderRadius: 0,
+    background: "#ffffff",
+    color: "#111111",
+    fontSize: 11,
+    fontWeight: 600,
+    outline: "none",
+    boxSizing: "border-box",
+    cursor: "pointer",
   },
 
   miniBtn: {
@@ -2149,43 +2614,44 @@ const styles = {
   },
 
   pill: {
-    fontSize: 10,
-    fontWeight: 700,
-    letterSpacing: "0.04em",
-    textTransform: "uppercase",
-    color: "#111111",
+    fontSize: 9.5,
+    fontWeight: 600,
+    letterSpacing: "0.01em",
+    textTransform: "none",
+    color: "#4b5563",
     background: "#f3f4f6",
-    padding: "5px 8px",
+    padding: "4px 6px",
     whiteSpace: "nowrap",
   },
 
   dimensionGrid: {
     display: "grid",
-    gridTemplateColumns: "1fr 1fr 1fr",
-    gap: 8,
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 5,
   },
 
   inputGroup: {
     display: "grid",
-    gap: 4,
+    gap: 3,
   },
 
   dimLabel: {
-    fontSize: 10,
+    fontSize: 10.5,
     color: "#6b7280",
     display: "block",
-    fontWeight: 700,
-    letterSpacing: "0.04em",
-    textTransform: "uppercase",
+    fontWeight: 600,
+    letterSpacing: "0.01em",
+    textTransform: "none",
   },
 
   input: {
     width: "100%",
-    height: 38,
-    padding: "0 10px",
+    height: 34,
+    minHeight: 34,
+    padding: "0 9px",
     borderRadius: 0,
     border: "1px solid #111111",
-    fontSize: 13,
+    fontSize: 11.5,
     outline: "none",
     boxSizing: "border-box",
     background: "#ffffff",
@@ -2194,14 +2660,15 @@ const styles = {
 
   colorPickerRow: {
     display: "grid",
-    gridTemplateColumns: "44px minmax(0, 1fr)",
-    gap: 8,
+    gridTemplateColumns: "36px minmax(0, 1fr)",
+    gap: 6,
     alignItems: "center",
   },
 
   colorPicker: {
-    width: 44,
-    height: 38,
+    width: 36,
+    minWidth: 36,
+    height: 34,
     padding: 0,
     border: "1px solid #111111",
     borderRadius: 0,
@@ -2211,33 +2678,55 @@ const styles = {
   },
 
   sidebarFooter: {
+    minHeight: 0,
+    height: "100%",
+    overflowY: "auto",
     borderTop: "1px solid #d9dee4",
     background: "#ffffff",
-    padding: 12,
+    padding: "8px 9px 9px",
     display: "grid",
-    gap: 10,
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gridTemplateRows: "auto auto minmax(92px, 1fr) auto",
+    rowGap: 5,
+    alignItems: "stretch",
+  },
+
+  orderDetailsStackedUniform: {
+    width: "100%",
+    height: "100%",
+    minHeight: 0,
+    boxSizing: "border-box",
+  },
+
+  orderDetailsStackedUniform: {
+    width: "100%",
+    boxSizing: "border-box",
   },
 
   footerHeader: {
     display: "flex",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
+    width: "100%",
+    minHeight: 32,
   },
 
   footerTitle: {
-    fontSize: 12,
-    fontWeight: 800,
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
+    fontSize: 12.5,
+    lineHeight: 1.25,
+    fontWeight: 700,
+    letterSpacing: 0,
+    textTransform: "none",
     color: "#111111",
   },
 
   footerNote: {
-    fontSize: 11,
-    lineHeight: 1.45,
+    fontSize: 10.25,
+    lineHeight: 1.3,
+    fontWeight: 400,
     color: "#6b7280",
-    marginTop: 4,
+    marginTop: 1,
   },
 
   qtyBox: {
@@ -2246,48 +2735,59 @@ const styles = {
     gap: 0,
     border: "1px solid #111111",
     background: "#ffffff",
-    height: 36,
+    width: 100,
+    height: 32,
+    flex: "0 0 auto",
   },
 
   qtyBtn: {
-    width: 34,
-    height: 34,
-    border: "none",
+    width: 31,
+    height: 30,
+    border: 0,
     background: "#ffffff",
     color: "#111111",
+    fontSize: 12,
     cursor: "pointer",
-    fontSize: 18,
-    lineHeight: 1,
-    borderRight: "1px solid #d9d9d9",
   },
 
   qtyValue: {
-    minWidth: 34,
+    minWidth: 38,
     textAlign: "center",
-    fontSize: 14,
+    fontSize: 12,
+    fontWeight: 600,
     color: "#111111",
-    fontWeight: 700,
   },
 
   footerField: {
     display: "grid",
-    gap: 6,
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: 3,
+    width: "100%",
+    minHeight: 0,
+    minWidth: 0,
+    alignContent: "start",
+  },
+
+  notesFooterField: {
+    height: "100%",
+    gridTemplateRows: "auto minmax(0, 1fr)",
+    alignContent: "stretch",
   },
 
   footerLabel: {
-    fontSize: 11,
-    fontWeight: 800,
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
+    fontSize: 11.5,
+    lineHeight: 1.25,
+    fontWeight: 700,
+    letterSpacing: 0,
+    textTransform: "none",
     color: "#111111",
   },
 
   uploadHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-    flexWrap: "wrap",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: 3,
+    width: "100%",
   },
 
   uploadHint: {
@@ -2297,18 +2797,23 @@ const styles = {
   },
 
   uploadButton: {
-    minHeight: 38,
+    width: "100%",
+    height: 34,
+    minHeight: 34,
     padding: "0 12px",
     border: "1px solid #111111",
     borderRadius: 0,
     background: "#ffffff",
     color: "#111111",
-    display: "inline-flex",
+    fontSize: 11.5,
+    lineHeight: 1,
+    fontWeight: 600,
+    cursor: "pointer",
+    display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: 700,
+    textAlign: "center",
+    boxSizing: "border-box",
   },
 
   uploadError: {
@@ -2376,27 +2881,46 @@ const styles = {
 
   textarea: {
     width: "100%",
-    minHeight: 86,
+    minHeight: 92,
+    height: "100%",
     resize: "none",
     borderRadius: 0,
     border: "1px solid #111111",
-    padding: 10,
+    padding: "8px 9px",
     font: "inherit",
-    fontSize: 13,
+    fontSize: 11.5,
+    lineHeight: 1.35,
     boxSizing: "border-box",
+    outline: "none",
     background: "#ffffff",
     color: "#111111",
+    alignSelf: "stretch",
   },
 
   applyBtn: {
-    height: 46,
+    width: "100%",
+    height: 36,
+    minHeight: 36,
+    margin: 0,
     borderRadius: 0,
     border: "1px solid #111111",
     background: "#111111",
     color: "#ffffff",
-    fontWeight: 800,
-    fontSize: 14,
+    fontSize: 12,
+    lineHeight: 1,
+    fontWeight: 700,
     cursor: "pointer",
-    letterSpacing: "0.02em",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    boxSizing: "border-box",
+  },
+
+  balancedActionRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
   },
 };

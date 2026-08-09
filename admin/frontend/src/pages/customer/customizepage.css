@@ -1697,3 +1697,53 @@
 }
 
 /* WISDOM CUSTOMER CUSTOMIZE TARGETED UI END */
+/* =========================================================
+   WISDOM ZERO-SCROLL CUSTOMIZE V3
+   Customize-only desktop workspace override
+   ========================================================= */
+.cust-modal-customize {
+  width: min(calc(100vw - 20px), 1580px);
+  max-height: calc(100vh - 10px);
+  border-radius: 0;
+}
+
+.cust-modal-customize .cust-modal-head {
+  padding: 12px 15px 10px;
+}
+
+.cust-modal-customize .cust-modal-head h2 {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.cust-modal-customize .cust-modal-head p {
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.cust-modal-customize .cust-modal-content {
+  min-height: 0;
+  overflow: hidden;
+  padding: 7px;
+}
+
+.cust-modal-customize .cust-modal-inner-content {
+  min-height: 0;
+}
+
+@media (max-width: 1180px) {
+  .cust-modal-customize {
+    width: min(calc(100vw - 16px), 1360px);
+  }
+
+  .cust-modal-customize .cust-modal-content {
+    overflow: auto;
+  }
+}
+
+@media (max-height: 760px) {
+  .cust-modal-customize .cust-modal-content {
+    overflow: auto;
+  }
+}

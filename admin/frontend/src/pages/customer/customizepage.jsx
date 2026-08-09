@@ -773,11 +773,11 @@ function SkeletonCard() {
   );
 }
 
-function ModalShell({ title, subtitle, onClose, children, wide = false }) {
+function ModalShell({ title, subtitle, onClose, children, wide = false, variant = "" }) {
   return (
     <div className="cust-modal-backdrop" onClick={onClose}>
       <div
-        className={`cust-modal ${wide ? "cust-modal-wide" : ""}`}
+        className={`cust-modal ${wide ? "cust-modal-wide" : ""} ${variant === "customize" ? "cust-modal-customize" : ""}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="cust-modal-head">
@@ -900,7 +900,7 @@ function ViewModal({ product, onClose, onCustomize }) {
   return (
     <ModalShell
       title={blueprint.title || "Design Preview"}
-      subtitle="Review the design, dimensions, and available customization options."
+      subtitle="Review the design and dimensions before customizing."
       onClose={onClose}
       wide
     >
@@ -909,29 +909,11 @@ function ViewModal({ product, onClose, onCustomize }) {
       ) : error ? (
         <div className="cust-modal-error">{error}</div>
       ) : (
-        <div style={{ display: "grid", gap: 14 }}>
-          <CustomerTemplateWorkbench blueprint={blueprint} readOnly />
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 10,
-            }}
-          >
-            <button type="button" className="cust-view-btn" onClick={onClose}>
-              Close
-            </button>
-
-            <button
-              type="button"
-              className="cust-customize-btn"
-              onClick={() => onCustomize?.(blueprint)}
-            >
-              Customize
-            </button>
-          </div>
-        </div>
+        <CustomerTemplateWorkbench
+          blueprint={blueprint}
+          readOnly
+          onViewCustomize={() => onCustomize?.(blueprint)}
+        />
       )}
     </ModalShell>
   );
@@ -950,6 +932,7 @@ function CustomizeModal({ product, onClose, onAdd }) {
       subtitle="Adjust the available options to match your space and preferences."
       onClose={onClose}
       wide
+      variant="customize"
     >
       {loading ? (
         <div className="cust-modal-state">Loading customization options…</div>

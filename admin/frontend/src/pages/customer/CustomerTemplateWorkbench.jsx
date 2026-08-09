@@ -75,6 +75,7 @@ export default function CustomerTemplateWorkbench({
   blueprint,
   readOnly = false,
   onConfirm,
+  onViewCustomize,
   confirmLabel = "Add to Cart",
 }) {
   const [referencePhotos, setReferencePhotos] = useState([]);
@@ -341,6 +342,7 @@ export default function CustomerTemplateWorkbench({
       customizationRules={blueprint?.customization_rules || {}}
       isCustomizable={!readOnly}
       readOnly={readOnly}
+      onViewCustomize={onViewCustomize}
       applyLabel={confirmLabel}
       commentsLabel="Project Notes"
       commentsPlaceholder="Tell us about your preferred look, space, or special requests (optional)."
