@@ -1142,10 +1142,34 @@ exports.getCustomOrderById = async (req, res) => {
         "Please contact support if you need assistance with payment.";
     }
 
+    // CUSTOMER RESPONSE SANITIZATION V1.4.1
+    // Inventory/raw-material estimation rows are tracking data for the
+    // admin/inventory workflow. They remain stored in estimation_items and
+    // continue contributing wherever the existing estimation logic uses
+    // them, but they are not customer-facing quotation lines.
+    //
+    // Internal estimation notes are also intentionally omitted from the
+    // customer payload. Admin/customer communication belongs in Messages.
+    const customerVisibleEstimationV141 = latestEstimation
+      ? {
+          ...latestEstimation,
+          notes: "",
+          items: (latestEstimation.items || [])
+            .filter((item) => !item.raw_material_id)
+            .map((item) => ({
+              id: item.id,
+              description: item.description || "",
+              quantity: Number(item.quantity || 0),
+              unit_cost: Number(item.unit_cost || 0),
+              subtotal: Number(item.subtotal || 0),
+            })),
+        }
+      : null;
+
     return res.json({
       ...order,
       items: normalizedItemsWithPhotos,
-      latest_estimation: latestEstimation,
+      latest_estimation: customerVisibleEstimationV141,
       quotation_available: quotationAvailable,
       quotation_action_blocked: quotationActionBlocked,
       quotation_integrity_warning: quotationIntegrityWarning,

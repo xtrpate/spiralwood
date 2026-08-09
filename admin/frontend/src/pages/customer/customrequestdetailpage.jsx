@@ -482,6 +482,7 @@ export default function CustomRequestDetailPage() {
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
+  const [activeRequestTab, setActiveRequestTab] = useState("overview");
 
   const loadPaymentHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -738,6 +739,13 @@ export default function CustomRequestDetailPage() {
     .trim()
     .toLowerCase();
 
+  const customerQuotationItemsV141 = useMemo(
+    () =>
+      (Array.isArray(latestEstimation?.items) ? latestEstimation.items : [])
+        .filter((item) => !item?.raw_material_id),
+    [latestEstimation],
+  );
+
   const requestLifecycleMessage = getRequestLifecycleMessage({
     orderStatus: orderStatusKey,
     estimationStatus: estimationStatusKey,
@@ -748,6 +756,17 @@ export default function CustomRequestDetailPage() {
     orderStatus: orderStatusKey,
     estimationStatus: estimationStatusKey,
   });
+
+  const showPaymentInStatus =
+    Number(verifiedPaymentTotal || 0) > 0 ||
+    estimationStatusKey === "approved" ||
+    [
+      "contract_released",
+      "production",
+      "shipping",
+      "delivered",
+      "completed",
+    ].includes(orderStatusKey);
 
   // Quotation action buttons (approve / request revision / reject) may
   // appear only when every one of these is true — mirrored exactly
@@ -993,6 +1012,24 @@ export default function CustomRequestDetailPage() {
         <div>
           <h1>Request details</h1>
           <p>Review your submitted request and current status.</p>
+
+          {requestData ? (
+            <div className="crd-request-meta-v12">
+              <span>
+                <span className="crd-request-meta-label-v12">Request</span>
+                <span className="crd-request-number-value-v16">
+                  {requestData.order_number || "-"}
+                </span>
+              </span>
+              <span className="crd-request-meta-separator-v12" aria-hidden="true">
+                /
+              </span>
+              <span>
+                <span className="crd-request-meta-label-v12">Submitted</span>
+                {formatDate(requestData.created_at)}
+              </span>
+            </div>
+          ) : null}
         </div>
 
         <div className="crd-top-actions">
@@ -1030,8 +1067,57 @@ export default function CustomRequestDetailPage() {
       ) : (
         <>
           <div className="checkout-layout crd-layout">
-            <div className="checkout-form-panel">
-              <div className="checkout-section">
+            <div
+              className={`checkout-form-panel wisdom-request-details-main-v11 wisdom-request-tab-${activeRequestTab}-v12`}
+            >
+              <div
+                className="wisdom-request-tabs-v12"
+                role="tablist"
+                aria-label="Request details sections"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeRequestTab === "overview"}
+                  className={
+                    activeRequestTab === "overview"
+                      ? "wisdom-request-tab-btn-v12 is-active"
+                      : "wisdom-request-tab-btn-v12"
+                  }
+                  onClick={() => setActiveRequestTab("overview")}
+                >
+                  Overview
+                </button>
+
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeRequestTab === "quotation"}
+                  className={
+                    activeRequestTab === "quotation"
+                      ? "wisdom-request-tab-btn-v12 is-active"
+                      : "wisdom-request-tab-btn-v12"
+                  }
+                  onClick={() => setActiveRequestTab("quotation")}
+                >
+                  Quotation &amp; Payment
+                </button>
+
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeRequestTab === "messages"}
+                  className={
+                    activeRequestTab === "messages"
+                      ? "wisdom-request-tab-btn-v12 is-active"
+                      : "wisdom-request-tab-btn-v12"
+                  }
+                  onClick={() => setActiveRequestTab("messages")}
+                >
+                  Messages
+                </button>
+              </div>
+              <div className="checkout-section wisdom-request-overview-v11">
                 <div className="checkout-section-header">
                   <div className="checkout-section-num">01</div>
                   <h3>Request overview</h3>
@@ -1095,7 +1181,7 @@ export default function CustomRequestDetailPage() {
               </div>
 
               {latestEstimation ? (
-                <div className="checkout-section">
+                <div className="checkout-section wisdom-request-quotation-v11">
                   <div className="checkout-section-header">
                     <div className="checkout-section-num">02</div>
                     <h3>Quotation breakdown</h3>
@@ -1115,17 +1201,17 @@ export default function CustomRequestDetailPage() {
                   <div className="checkout-section-body">
                     <div className="crd-table">
                       <div className="crd-table-head">
-                        <div>Description</div>
+                        <div>Item</div>
                         <div>Qty</div>
-                        <div>Rate</div>
+                        <div>Unit price</div>
                         <div>Amount</div>
                       </div>
 
-                      {(latestEstimation.items || []).length ? (
-                        latestEstimation.items.map((item) => (
+                      {customerQuotationItemsV141.length ? (
+                        customerQuotationItemsV141.map((item) => (
                           <div key={item.id} className="crd-table-row">
                             <div className="crd-table-desc">
-                              {item.description || "Material item"}
+                              {item.description || "Quotation item"}
                             </div>
                             <div>{item.quantity || 0}</div>
                             <div>{formatMoney(item.unit_cost || 0)}</div>
@@ -1141,21 +1227,18 @@ export default function CustomRequestDetailPage() {
                       )}
                     </div>
 
-                    <div className="crd-grid-split">
-                      <div className="crd-panel">
-                        <h4>Admin notes</h4>
+                    <div
+                      className={`crd-grid-split crd-quote-bottom-v141 ${
+                        canDecideOnQuote ? "" : "is-summary-only"
+                      }`}
+                    >
+                      {canDecideOnQuote ? (
+                        <div className="crd-panel crd-quote-review-v141">
+                          <h4>Review quotation</h4>
+                          <p className="crd-quote-review-copy-v141">
+                            Review the quotation details, then choose an option.
+                          </p>
 
-                        {String(latestEstimation.notes || "").trim() ? (
-                          <div className="crd-panel-copy">
-                            {latestEstimation.notes}
-                          </div>
-                        ) : (
-                          <div className="crd-panel-copy muted">
-                            No admin notes were attached to this quotation.
-                          </div>
-                        )}
-
-                        {canDecideOnQuote ? (
                           <div className="crd-action-row">
                             <button
                               type="button"
@@ -1192,10 +1275,10 @@ export default function CustomRequestDetailPage() {
                                 : "Reject quotation"}
                             </button>
                           </div>
-                        ) : null}
-                      </div>
+                        </div>
+                      ) : null}
 
-                      <div className="crd-panel crd-panel-soft">
+                      <div className="crd-panel crd-panel-soft crd-quote-summary-v141">
                         <h4>Quotation summary</h4>
 
                         <DetailValue label="Materials">
@@ -1216,9 +1299,11 @@ export default function CustomRequestDetailPage() {
                           </DetailValue>
                         ) : null}
 
-                        <DetailValue label="Discount">
-                          {formatMoney(latestEstimation.discount || 0)}
-                        </DetailValue>
+                        {Number(latestEstimation.discount || 0) > 0 ? (
+                          <DetailValue label="Discount">
+                            {formatMoney(latestEstimation.discount || 0)}
+                          </DetailValue>
+                        ) : null}
 
                         <DetailValue label="VAT">
                           {formatMoney(latestEstimation.tax || 0)}
@@ -1239,10 +1324,10 @@ export default function CustomRequestDetailPage() {
                   </div>
                 </div>
               ) : quotationMessage ? (
-                <div className="checkout-section">
+                <div className="checkout-section wisdom-request-quotation-v11">
                   <div className="checkout-section-header">
                     <div className="checkout-section-num">02</div>
-                    <h3>Quotation status</h3>
+                    <h3>Quotation &amp; payment</h3>
                   </div>
 
                   <div className="checkout-section-body">
@@ -1264,7 +1349,7 @@ export default function CustomRequestDetailPage() {
               !quotationActionBlocked &&
               !quotationIntegrityWarning &&
               estimationStatusKey === "approved" ? (
-                <div className="checkout-section">
+                <div className="checkout-section wisdom-request-payment-v11">
                   <div className="checkout-section-header">
                     <div className="checkout-section-num">03</div>
                     <h3>Payment</h3>
@@ -1272,38 +1357,58 @@ export default function CustomRequestDetailPage() {
 
                   <div className="checkout-section-body">
                     <div className="crd-grid-split">
-                      <div className="crd-panel crd-panel-soft">
-                        <h4>Payment Summary</h4>
+                      <div className="crd-panel crd-panel-soft wisdom-payment-summary-v16">
+                        <h4>Payment summary</h4>
 
                         <DetailValue label="Quoted total">
                           {formatMoney(quotedTotal || 0)}
                         </DetailValue>
 
-                        <DetailValue label="30% Down Payment">
+                        <DetailValue label="Required down payment (30%)">
                           {formatMoney(downPaymentDue || 0)}
                         </DetailValue>
 
-                        <DetailValue label="Amount Paid">
-                          {formatMoney(verifiedPaymentTotal || 0)}
-                        </DetailValue>
+                        {verifiedPaymentTotal > 0 ? (
+                          <DetailValue label="Amount paid">
+                            {formatMoney(verifiedPaymentTotal || 0)}
+                          </DetailValue>
+                        ) : null}
 
-                        <DetailValue label="Remaining Balance">
-                          {formatMoney(balanceDue || 0)}
-                        </DetailValue>
+                        {verifiedPaymentTotal > 0 ? (
+                          <div className="wisdom-payment-due-v16">
+                            <span>Remaining balance</span>
+                            <strong>{formatMoney(balanceDue || 0)}</strong>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="wisdom-payment-due-v16 is-initial">
+                              <span>Amount due now</span>
+                              <strong>{formatMoney(downPaymentDue || 0)}</strong>
+                            </div>
 
-                        <p className="crd-panel-copy muted">
+                            <DetailValue label="Balance after down payment">
+                              {formatMoney(
+                                Math.max(
+                                  Number(quotedTotal || 0) -
+                                    Number(downPaymentDue || 0),
+                                  0,
+                                ),
+                              )}
+                            </DetailValue>
+                          </>
+                        )}
+
+                        <p className="crd-panel-copy muted wisdom-payment-helper-v16">
                           {requestData.payment_status === "partial" ||
                           requestData.payment_status === "paid"
-                            ? "Your verified payments are reflected below. Contact us if you have questions about this order's payment history."
+                            ? "Verified payments are reflected in your current balance."
                             : hasPendingPaymentTransaction
-                              ? "A payment is currently awaiting verification for this order."
-                              : isHistoricalUnsupportedMethod
-                                ? "A supported payment method must be selected before continuing."
-                                : normalizedOrderPaymentMethod === "cash"
-                                  ? "Your payment will remain unpaid until the 30% cash down payment is received and verified at the Spiral Wood store."
-                                  : normalizedOrderPaymentMethod === "paymongo"
-                                    ? "Payments are securely processed online. Once your payment is completed, your payment status will automatically update without requiring manual verification."
-                                    : "Choose Cash at Store or Online Payment to continue with the required 30% down payment."}
+                              ? "Your payment is currently awaiting verification."
+                              : normalizedOrderPaymentMethod === "cash"
+                                ? "Pay the required down payment at the Spiral Wood store."
+                                : normalizedOrderPaymentMethod === "paymongo"
+                                  ? "Complete the required down payment through secure online payment."
+                                  : "Choose a payment method to continue."}
                         </p>
 
                         {latestPayment ? (
@@ -1390,15 +1495,14 @@ export default function CustomRequestDetailPage() {
                         </div>
                       ) : !normalizedOrderPaymentMethod ? (
                         canChooseMethod ? (
-                          <div className="crd-panel">
-                            <h4>Choose a Payment Method</h4>
+                          <div className="crd-panel wisdom-payment-method-choice-v16">
+                            <h4>Choose payment method</h4>
 
                             <div className="crd-grid-split">
                               <div className="crd-panel crd-panel-soft">
                                 <h4>Cash at Store</h4>
                                 <p className="crd-panel-copy muted">
-                                  Pay the required 30% down payment at the
-                                  Spiral Wood physical store.
+                                  Pay the required down payment at the Spiral Wood store.
                                 </p>
                                 <div className="summary-row">
                                   <span>30% Down Payment</span>
@@ -1421,8 +1525,7 @@ export default function CustomRequestDetailPage() {
                               <div className="crd-panel crd-panel-soft">
                                 <h4>Online Payment</h4>
                                 <p className="crd-panel-copy muted">
-                                  Pay securely via GCash, Maya, Online
-                                  Banking, or Credit/Debit Card.
+                                  Pay securely with GCash, Maya, online banking, or card.
                                 </p>
                                 <div className="summary-row">
                                   <span>30% Down Payment</span>
@@ -1761,11 +1864,12 @@ export default function CustomRequestDetailPage() {
                 </div>
               ) : null}
 
-              {requestData ? (
-                <div className="checkout-section">
+              {requestData &&
+              (historyLoading || historyError || paymentHistory.length > 0) ? (
+                <div className="checkout-section wisdom-request-payment-history-v11">
                   <div className="checkout-section-header">
                     <div className="checkout-section-num">PH</div>
-                    <h3>Payment History</h3>
+                    <h3>Payment activity</h3>
                   </div>
 
                   <div className="checkout-section-body">
@@ -1886,10 +1990,10 @@ export default function CustomRequestDetailPage() {
                 </div>
               ) : null}
 
-              <div className="checkout-section">
+              <div className="checkout-section wisdom-request-items-v11">
                 <div className="checkout-section-header">
                   <div className="checkout-section-num">04</div>
-                  <h3>Submitted items</h3>
+                  <h3>Submitted design</h3>
 
                   <span className="crd-mini-meta">
                     {requestData.total_items || 0} design
@@ -2053,7 +2157,7 @@ export default function CustomRequestDetailPage() {
                 </div>
               </div>
 
-              <div className="checkout-section">
+              <div className="checkout-section wisdom-request-project-v11">
                 <div className="checkout-section-header">
                   <div className="checkout-section-num">05</div>
                   <h3>Project details</h3>
@@ -2071,38 +2175,33 @@ export default function CustomRequestDetailPage() {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="crd-field-label">Customer notes</label>
-
-                      {String(requestData.notes || "").trim() ? (
+                    {String(requestData.notes || "").trim() ? (
+                      <div>
+                        <label className="crd-field-label">Customer notes</label>
                         <div className="crd-read-box crd-read-box-copy">
                           {requestData.notes}
                         </div>
-                      ) : (
-                        <div className="crd-read-box muted">
-                          No additional notes were submitted for this request.
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
 
-              <div className="checkout-section">
+              <div className="checkout-section wisdom-request-messages-v11">
                 <div className="checkout-section-header">
                   <div className="checkout-section-num">06</div>
-                  <h3>Chat</h3>
+                  <h3>Messages</h3>
                 </div>
 
                 <div className="checkout-section-body">
-                  <div className="crd-chat-wrap">
+                  <div className="crd-chat-wrap wisdom-request-chat-v13">
                     <div className="crd-chat-card">
-                      <div className="crd-chat-card-head">Chat history</div>
+                      <div className="crd-chat-card-head">Conversation</div>
 
                       <div className="crd-chat-thread">
                         {!discussionThread.length ? (
                           <div className="crd-chat-empty">
-                            No messages yet. You can send a message below.
+                            No messages yet. Send a message to our team below.
                           </div>
                         ) : (
                           discussionThread.map((entry) => {
@@ -2182,7 +2281,7 @@ export default function CustomRequestDetailPage() {
 
                     <form
                       onSubmit={handleSendDiscussionMessage}
-                      className="crd-chat-form"
+                      className="crd-chat-form wisdom-request-chat-form-v13"
                     >
                       <div className="crd-chat-form-title">Send message</div>
 
@@ -2191,22 +2290,22 @@ export default function CustomRequestDetailPage() {
                         value={discussionMessage}
                         onChange={(e) => setDiscussionMessage(e.target.value)}
                         placeholder="Write your clarification, concern, or request update here."
-                        className="crd-control crd-textarea"
+                        className="crd-control crd-textarea wisdom-chat-input-v13"
                       />
 
                       <div>
-                        <label className="crd-field-label">Attachments</label>
+                        <label className="crd-field-label wisdom-chat-attachments-label-v13">Attach files</label>
 
                         <input
                           type="file"
                           multiple
                           accept=".jpg,.jpeg,.png,.webp,.pdf"
                           onChange={handleDiscussionFilesChange}
-                          className="crd-file-input"
+                          className="crd-file-input wisdom-chat-file-input-v13"
                         />
 
                         <div className="crd-help-text">
-                          You may upload up to 5 attachments per message.
+                          Up to 5 JPG, PNG, WEBP, or PDF files.
                         </div>
                       </div>
 
@@ -2238,7 +2337,7 @@ export default function CustomRequestDetailPage() {
                         </div>
                       ) : null}
 
-                      <div className="crd-chat-form-actions">
+                      <div className="crd-chat-form-actions wisdom-chat-send-v13">
                         <button
                           type="submit"
                           className="btn btn-primary"
@@ -2253,7 +2352,7 @@ export default function CustomRequestDetailPage() {
               </div>
             </div>
 
-            <div className="checkout-summary">
+            <div className="checkout-summary wisdom-request-status-v11">
               <div className="checkout-summary-header">
                 <h3>Request status</h3>
               </div>
@@ -2266,28 +2365,33 @@ export default function CustomRequestDetailPage() {
                   </span>
                 </div>
 
-                <div className="summary-row">
-                  <span>Payment</span>
-                  <span style={{ color: payMeta.color, fontWeight: 700 }}>
-                    {payMeta.label}
-                  </span>
-                </div>
+                {showPaymentInStatus ? (
+                  <>
+                    <div className="summary-row">
+                      <span>Payment</span>
+                      <span style={{ color: payMeta.color, fontWeight: 700 }}>
+                        {payMeta.label}
+                      </span>
+                    </div>
 
-                <div className="summary-row">
-                  <span>{paymentMethodFieldLabel}</span>
-                  <span>{displayPaymentMethod}</span>
-                </div>
+                    <div className="summary-row">
+                      <span>{paymentMethodFieldLabel}</span>
+                      <span>{displayPaymentMethod}</span>
+                    </div>
+                  </>
+                ) : null}
 
                 <div className="summary-row">
                   <span>Total</span>
                   <span className="crd-summary-total">
                     {quotedTotal > 0
                       ? formatMoney(quotedTotal)
-                      : "To be quoted by admin"}
+                      : "Pending quotation"}
                   </span>
                 </div>
 
-                <p className="summary-note" style={{ marginTop: 12 }}>
+                <div className="crd-whats-next-v12">What's next</div>
+                <p className="summary-note" style={{ marginTop: 6 }}>
                   {requestLifecycleMessage}
                 </p>
               </div>

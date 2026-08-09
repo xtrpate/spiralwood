@@ -845,3 +845,1394 @@
   font-size: 13px;
   line-height: 1.5;
 }
+/* WISDOM REQUEST DETAILS CUSTOMER UI POLISH V1.1 */
+
+/* Professional page shell */
+.crd-page .page-hero {
+  padding-top: 24px;
+  padding-bottom: 18px;
+  align-items: flex-start;
+}
+
+.crd-page .page-hero h1 {
+  font-size: 1.9rem;
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+}
+
+.crd-page .page-hero p {
+  font-size: 0.86rem;
+  font-weight: 400;
+  color: #666666;
+}
+
+.crd-top-actions {
+  gap: 8px;
+}
+
+.crd-page .crd-top-actions .btn {
+  min-height: 38px;
+  padding: 0 15px;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Main layout */
+.crd-layout {
+  grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 20px;
+  align-items: start;
+}
+
+.wisdom-request-details-main-v11 {
+  display: flex !important;
+  flex-direction: column;
+  gap: 14px !important;
+  min-width: 0;
+}
+
+/* Every request-related section defaults into the middle workflow.
+   Specific customer-facing sections receive explicit positions below.
+   This also keeps conditional payment/delivery sections in the proper
+   area without rewriting any lifecycle logic. */
+.wisdom-request-details-main-v11 > .checkout-section {
+  order: 5;
+  margin: 0;
+}
+
+.wisdom-request-overview-v11 {
+  order: 1 !important;
+}
+
+.wisdom-request-items-v11 {
+  order: 2 !important;
+}
+
+.wisdom-request-project-v11 {
+  order: 3 !important;
+}
+
+.wisdom-request-quotation-v11 {
+  order: 4 !important;
+}
+
+.wisdom-request-payment-v11 {
+  order: 5 !important;
+}
+
+.wisdom-request-payment-history-v11 {
+  order: 6 !important;
+}
+
+.wisdom-request-messages-v11 {
+  order: 7 !important;
+}
+
+/* Card hierarchy */
+.wisdom-request-details-main-v11 > .checkout-section,
+.wisdom-request-status-v11 {
+  border: 1px solid #dedede !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: #ffffff;
+}
+
+.wisdom-request-details-main-v11 .checkout-section-header {
+  min-height: 48px;
+  padding-top: 0;
+  padding-bottom: 0;
+  background: #ffffff;
+}
+
+.wisdom-request-details-main-v11 .checkout-section-header h3 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.3;
+}
+
+.wisdom-request-details-main-v11 .checkout-section-num {
+  display: none !important;
+}
+
+.wisdom-request-details-main-v11 .checkout-section-body {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+/* Request Overview should answer only: which request and when?
+   Status/payment/total already live in the dedicated right-side summary. */
+.wisdom-request-overview-v11 .crd-overview-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 12px 24px !important;
+}
+
+.wisdom-request-overview-v11 .crd-overview-grid > :nth-child(n + 3) {
+  display: none !important;
+}
+
+.wisdom-request-overview-v11 .summary-row,
+.wisdom-request-overview-v11 > div {
+  font-size: 13px;
+}
+
+.wisdom-request-overview-v11 strong,
+.wisdom-request-overview-v11 b {
+  font-weight: 650 !important;
+}
+
+/* Submitted design */
+.wisdom-request-items-v11 .checkout-item-row {
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+.wisdom-request-items-v11 .checkout-item-name {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.wisdom-request-items-v11 .crd-item-subtitle {
+  font-size: 12px;
+  font-weight: 400;
+  color: #68707a;
+}
+
+.wisdom-request-items-v11 .custom-spec-tag {
+  font-weight: 500 !important;
+}
+
+.wisdom-request-items-v11 .crd-small-btn {
+  min-height: 34px !important;
+  border-radius: 0 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+
+/* Project details */
+.wisdom-request-project-v11 .crd-field-label {
+  margin-bottom: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #5f6670;
+}
+
+.wisdom-request-project-v11 .crd-read-box {
+  min-height: 46px;
+  background: #fafafa;
+  color: #222222;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+/* Quotation + payment group */
+.wisdom-request-quotation-v11,
+.wisdom-request-payment-v11,
+.wisdom-request-payment-history-v11 {
+  box-shadow: none !important;
+}
+
+.wisdom-request-quotation-v11 .crd-info-box,
+.wisdom-request-payment-history-v11 .crd-info-box {
+  margin-top: 0;
+  padding: 13px 14px;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: #5f6670;
+  background: #fafafa;
+}
+
+/* Payment-history table: reserve strong emphasis for amounts/status only. */
+.wisdom-request-payment-history-v11 table {
+  font-size: 12.5px !important;
+}
+
+.wisdom-request-payment-history-v11 th {
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+}
+
+.wisdom-request-payment-history-v11 td {
+  font-weight: 400;
+}
+
+/* Messages: reduce the nested-box appearance and create one calm
+   customer communication workspace. */
+.wisdom-request-messages-v11 .crd-chat-wrap {
+  gap: 0;
+  border: 1px solid #e3e3e3;
+}
+
+.wisdom-request-messages-v11 .crd-chat-card,
+.wisdom-request-messages-v11 .crd-chat-form {
+  border: 0;
+  border-radius: 0;
+}
+
+.wisdom-request-messages-v11 .crd-chat-card {
+  border-bottom: 1px solid #e3e3e3;
+}
+
+.wisdom-request-messages-v11 .crd-chat-card-head {
+  padding: 13px 14px;
+  background: #fafafa;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.wisdom-request-messages-v11 .crd-chat-thread {
+  min-height: 92px;
+  max-height: 360px;
+  padding: 14px;
+}
+
+.wisdom-request-messages-v11 .crd-chat-empty {
+  padding: 14px;
+  border: 0;
+  background: #fafafa;
+  color: #707780;
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+.wisdom-request-messages-v11 .crd-chat-form {
+  padding: 14px;
+  gap: 10px;
+}
+
+.wisdom-request-messages-v11 .crd-chat-form-title {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.wisdom-request-messages-v11 .crd-textarea {
+  min-height: 104px;
+  border-radius: 0 !important;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.wisdom-request-messages-v11 .crd-field-label {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wisdom-request-messages-v11 .crd-file-input {
+  font-size: 12px;
+}
+
+.wisdom-request-messages-v11 .crd-file-input::file-selector-button {
+  min-height: 34px;
+  padding: 0 12px;
+  margin-right: 8px;
+  border: 1px solid #111111;
+  border-radius: 0;
+  background: #ffffff;
+  color: #111111;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wisdom-request-messages-v11 .crd-help-text {
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.wisdom-request-messages-v11 .crd-chat-form-actions .btn {
+  min-width: 122px;
+  min-height: 38px;
+  border-radius: 0 !important;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Request status: concise and easy to scan */
+.wisdom-request-status-v11 {
+  position: sticky;
+  top: 96px;
+  align-self: start;
+  overflow: hidden;
+}
+
+.wisdom-request-status-v11 .checkout-summary-header {
+  padding: 16px 18px;
+}
+
+.wisdom-request-status-v11 .checkout-summary-header h3 {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wisdom-request-status-v11 .checkout-summary-totals {
+  padding: 15px 18px 17px;
+}
+
+.wisdom-request-status-v11 .summary-row {
+  gap: 14px;
+  padding: 7px 0;
+  font-size: 12.5px;
+}
+
+.wisdom-request-status-v11 .summary-row > span:first-child {
+  color: #555d66;
+  font-weight: 400;
+}
+
+.wisdom-request-status-v11 .summary-row > span:last-child {
+  text-align: right;
+  font-weight: 600 !important;
+}
+
+.wisdom-request-status-v11 .crd-summary-total {
+  font-size: 15px;
+  font-weight: 700 !important;
+}
+
+.wisdom-request-status-v11 .summary-note {
+  margin-top: 12px !important;
+  padding-top: 12px;
+  border-top: 1px solid #ececec;
+  color: #6a7179;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+/* Reduce excessive bold across supporting content */
+.wisdom-request-details-main-v11 p,
+.wisdom-request-details-main-v11 .crd-panel-copy,
+.wisdom-request-details-main-v11 .crd-help-text,
+.wisdom-request-details-main-v11 .crd-mini-meta {
+  font-weight: 400;
+}
+
+.wisdom-request-details-main-v11 .crd-panel h4,
+.wisdom-request-details-main-v11 .crd-info-title,
+.wisdom-request-details-main-v11 .crd-chat-sender {
+  font-weight: 650;
+}
+
+@media (max-width: 1180px) {
+  .crd-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .wisdom-request-status-v11 {
+    position: static;
+    top: auto;
+  }
+}
+
+@media (max-width: 820px) {
+  .wisdom-request-overview-v11 .crd-overview-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .wisdom-request-details-main-v11 {
+    gap: 12px !important;
+  }
+
+  .wisdom-request-messages-v11 .crd-chat-form-actions .btn {
+    width: 100%;
+  }
+}
+/* WISDOM REQUEST DETAILS TABS CUSTOMER PORTAL V1.2.1 */
+
+/* Metadata belongs with the page identity, not in another large card. */
+.crd-request-meta-v12 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 9px;
+  color: #555d66;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.crd-request-meta-v12 > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.crd-request-meta-label-v12 {
+  color: #8a9097;
+  font-weight: 500;
+}
+
+.crd-request-meta-separator-v12 {
+  color: #c0c4c8;
+}
+
+/* Tabs */
+.wisdom-request-tabs-v12 {
+  order: 0;
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid #dedede;
+  border-bottom: 0;
+  background: #ffffff;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.wisdom-request-tab-btn-v12 {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 46px;
+  padding: 0 18px;
+  border: 0;
+  border-right: 1px solid #ececec;
+  border-radius: 0 !important;
+  background: #ffffff;
+  color: #666d75;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.wisdom-request-tab-btn-v12:hover {
+  background: #fafafa;
+  color: #111111;
+}
+
+.wisdom-request-tab-btn-v12.is-active {
+  color: #111111;
+  font-weight: 700;
+  background: #ffffff;
+}
+
+.wisdom-request-tab-btn-v12.is-active::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 2px;
+  background: #111111;
+}
+
+/* Request Overview is now represented by metadata beneath the title. */
+.wisdom-request-overview-v11 {
+  display: none !important;
+}
+
+/* By default the tab portal shows no section until its active tab opts in. */
+.wisdom-request-details-main-v11 > .checkout-section {
+  display: none !important;
+}
+
+/* OVERVIEW: the customer only needs the submitted design and project info. */
+.wisdom-request-tab-overview-v12 > .wisdom-request-items-v11,
+.wisdom-request-tab-overview-v12 > .wisdom-request-project-v11 {
+  display: block !important;
+}
+
+/* QUOTATION & PAYMENT:
+   keep every existing lifecycle-specific section without rewriting logic,
+   but exclude content owned by the other tabs. */
+.wisdom-request-tab-quotation-v12 > .checkout-section {
+  display: block !important;
+}
+
+.wisdom-request-tab-quotation-v12 > .wisdom-request-overview-v11,
+.wisdom-request-tab-quotation-v12 > .wisdom-request-items-v11,
+.wisdom-request-tab-quotation-v12 > .wisdom-request-project-v11,
+.wisdom-request-tab-quotation-v12 > .wisdom-request-messages-v11 {
+  display: none !important;
+}
+
+/* MESSAGES */
+.wisdom-request-tab-messages-v12 > .wisdom-request-messages-v11 {
+  display: block !important;
+}
+
+/* The active tab content begins immediately under the tab strip. */
+.wisdom-request-details-main-v11 > .checkout-section {
+  border-top-color: #dedede !important;
+}
+
+.wisdom-request-tab-overview-v12 > .wisdom-request-items-v11,
+.wisdom-request-tab-quotation-v12 > .wisdom-request-quotation-v11,
+.wisdom-request-tab-messages-v12 > .wisdom-request-messages-v11 {
+  margin-top: 0 !important;
+}
+
+/* Overview is now intentionally lighter. */
+.wisdom-request-items-v11 .crd-quote-note {
+  display: none !important;
+}
+
+.wisdom-request-project-v11 .crd-form-grid {
+  gap: 12px;
+}
+
+/* Pending quotation should feel like one useful state, not an error box. */
+.wisdom-request-quotation-v11 .crd-info-box.muted {
+  min-height: 88px;
+  display: flex;
+  align-items: center;
+  padding: 18px;
+  border: 1px solid #e5e5e5;
+  background: #fafafa;
+  color: #5f6670;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* Status card */
+.wisdom-request-status-v11 {
+  top: 96px;
+}
+
+.crd-whats-next-v12 {
+  margin-top: 12px;
+  padding-top: 13px;
+  border-top: 1px solid #ececec;
+  color: #555d66;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.wisdom-request-status-v11 .crd-whats-next-v12 + .summary-note {
+  padding-top: 0;
+  border-top: 0;
+}
+
+/* Messages now occupy the tab as one main customer workspace. */
+.wisdom-request-tab-messages-v12 .wisdom-request-messages-v11 {
+  border-top: 1px solid #dedede !important;
+}
+
+.wisdom-request-tab-messages-v12
+  .wisdom-request-messages-v11
+  .checkout-section-body {
+  padding: 16px;
+}
+
+.wisdom-request-tab-messages-v12
+  .wisdom-request-messages-v11
+  .crd-chat-wrap {
+  border: 0;
+}
+
+.wisdom-request-tab-messages-v12
+  .wisdom-request-messages-v11
+  .crd-chat-card {
+  border: 1px solid #e5e5e5;
+  border-bottom: 0;
+}
+
+.wisdom-request-tab-messages-v12
+  .wisdom-request-messages-v11
+  .crd-chat-form {
+  border: 1px solid #e5e5e5;
+}
+
+/* Keep tab content compact while preserving all conditional lifecycle UI. */
+.wisdom-request-tab-quotation-v12 > .checkout-section,
+.wisdom-request-tab-overview-v12 > .checkout-section,
+.wisdom-request-tab-messages-v12 > .checkout-section {
+  margin-bottom: 0 !important;
+}
+
+/* Status values: only important current facts are bold. */
+.wisdom-request-status-v11 .summary-row > span:last-child {
+  font-weight: 600 !important;
+}
+
+.wisdom-request-status-v11 .crd-summary-total {
+  font-weight: 700 !important;
+}
+
+/* Mobile: tabs remain usable without turning back into a long vertical page. */
+@media (max-width: 820px) {
+  .crd-request-meta-v12 {
+    align-items: flex-start;
+    gap: 5px 7px;
+  }
+
+  .crd-request-meta-separator-v12 {
+    display: none !important;
+  }
+
+  .crd-request-meta-v12 > span {
+    width: 100%;
+  }
+
+  .wisdom-request-tabs-v12 {
+    min-height: 44px;
+  }
+
+  .wisdom-request-tab-btn-v12 {
+    flex: 1 0 auto;
+    min-height: 44px;
+    padding: 0 13px;
+    font-size: 12px;
+  }
+}
+/* WISDOM REQUEST DETAILS MESSENGER CHAT UI V1.3 */
+
+/* One contained messaging surface */
+.wisdom-request-chat-v13 {
+  display: flex !important;
+  flex-direction: column;
+  gap: 0 !important;
+  min-height: 500px;
+  max-height: 620px;
+  border: 1px solid #dedede !important;
+  background: #f7f7f7;
+  overflow: hidden;
+}
+
+.wisdom-request-chat-v13 .crd-chat-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 0 !important;
+  background: #f7f7f7;
+}
+
+.wisdom-request-chat-v13 .crd-chat-card-head {
+  flex: 0 0 auto;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e4e4e4;
+  background: #ffffff;
+  color: #111111;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+/* Scrollable conversation like a chat app */
+.wisdom-request-chat-v13 .crd-chat-thread {
+  flex: 1 1 auto;
+  min-height: 280px;
+  max-height: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 16px;
+  background: #f7f7f7;
+  scroll-behavior: smooth;
+}
+
+.wisdom-request-chat-v13 .crd-chat-empty {
+  margin: auto;
+  max-width: 420px;
+  padding: 18px 20px;
+  border: 0;
+  background: transparent;
+  color: #737980;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+/* Shared bubble */
+.wisdom-request-chat-v13 .crd-chat-entry {
+  width: fit-content;
+  max-width: min(76%, 620px);
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #dedede;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+/* Admin side */
+.wisdom-request-chat-v13 .crd-chat-entry.is-admin,
+.wisdom-request-chat-v13 .crd-chat-entry.is-staff {
+  align-self: flex-start;
+  margin-right: auto;
+  border-bottom-left-radius: 3px;
+  background: #ffffff;
+  color: #111111;
+}
+
+/* Customer side */
+.wisdom-request-chat-v13 .crd-chat-entry.is-you {
+  align-self: flex-end;
+  margin-left: auto;
+  border-color: #111111;
+  border-bottom-right-radius: 3px;
+  background: #111111;
+  color: #ffffff;
+}
+
+/* System fallback stays neutral and centered */
+.wisdom-request-chat-v13 .crd-chat-entry.is-system {
+  align-self: center;
+  max-width: 86%;
+  border-style: dashed;
+  background: #f1f1f1;
+  color: #555d66;
+}
+
+/* Bubble metadata */
+.wisdom-request-chat-v13 .crd-chat-entry-top {
+  gap: 8px;
+  margin-bottom: 5px;
+  align-items: center;
+}
+
+.wisdom-request-chat-v13 .crd-chat-sender {
+  font-size: 10.5px;
+  font-weight: 650;
+  color: #555d66;
+}
+
+.wisdom-request-chat-v13 .crd-chat-date {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 400;
+  color: #8a9097;
+}
+
+.wisdom-request-chat-v13 .crd-chat-message {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #111111;
+}
+
+.wisdom-request-chat-v13 .crd-chat-entry.is-you .crd-chat-sender,
+.wisdom-request-chat-v13 .crd-chat-entry.is-you .crd-chat-date {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.wisdom-request-chat-v13 .crd-chat-entry.is-you .crd-chat-message {
+  color: #ffffff;
+}
+
+/* Attachments inside bubbles */
+.wisdom-request-chat-v13 .crd-chat-attachments {
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.wisdom-request-chat-v13 .crd-attachment-thumb {
+  width: 84px;
+  height: 84px;
+  border-radius: 7px;
+  border-color: #d9d9d9;
+}
+
+.wisdom-request-chat-v13 .crd-chat-entry.is-you .crd-attachment-thumb {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.wisdom-request-chat-v13 .crd-attachment-file {
+  min-width: 170px;
+  max-width: 250px;
+  padding: 9px 10px;
+  border-radius: 7px;
+  background: #fafafa;
+}
+
+.wisdom-request-chat-v13 .crd-chat-entry.is-you .crd-attachment-file {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.wisdom-request-chat-v13 .crd-chat-entry.is-you .crd-attachment-name,
+.wisdom-request-chat-v13 .crd-chat-entry.is-you .crd-attachment-open {
+  color: #ffffff;
+}
+
+/* Composer stays at the bottom of the chat surface */
+.wisdom-request-chat-form-v13 {
+  flex: 0 0 auto;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title title"
+    "input input"
+    "attach send"
+    "files files";
+  gap: 8px 10px !important;
+  padding: 12px !important;
+  border: 0 !important;
+  border-top: 1px solid #dedede !important;
+  background: #ffffff !important;
+}
+
+.wisdom-request-chat-form-v13 .crd-chat-form-title {
+  grid-area: title;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #555d66;
+}
+
+.wisdom-request-chat-form-v13 .wisdom-chat-input-v13 {
+  grid-area: input;
+  min-height: 46px;
+  max-height: 120px;
+  padding: 11px 12px;
+  border: 1px solid #cfd3d7;
+  border-radius: 8px !important;
+  background: #ffffff;
+  resize: vertical;
+  font-size: 13px;
+  line-height: 1.45;
+  box-shadow: none !important;
+}
+
+.wisdom-request-chat-form-v13 .wisdom-chat-input-v13:focus {
+  border-color: #111111;
+  box-shadow: none !important;
+}
+
+/* Existing attachment block becomes a compact utility area */
+.wisdom-request-chat-form-v13 > div:has(.wisdom-chat-file-input-v13) {
+  grid-area: attach;
+  min-width: 0;
+  align-self: center;
+}
+
+.wisdom-request-chat-form-v13 .wisdom-chat-attachments-label-v13 {
+  margin: 0 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #737980;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.wisdom-request-chat-form-v13 .wisdom-chat-file-input-v13 {
+  width: auto;
+  max-width: 260px;
+  font-size: 11px;
+  color: #666d75;
+}
+
+.wisdom-request-chat-form-v13
+  .wisdom-chat-file-input-v13::file-selector-button {
+  min-height: 34px;
+  padding: 0 12px;
+  margin-right: 7px;
+  border: 1px solid #111111;
+  border-radius: 0;
+  background: #ffffff;
+  color: #111111;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wisdom-request-chat-form-v13 .crd-help-text {
+  margin-top: 4px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: #8a9097;
+}
+
+.wisdom-request-chat-form-v13 .crd-file-list {
+  grid-area: files;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.wisdom-request-chat-form-v13 .crd-file-row {
+  width: auto;
+  max-width: 280px;
+  padding: 7px 9px;
+  gap: 8px;
+  border-radius: 7px;
+  background: #f7f7f7;
+}
+
+.wisdom-request-chat-form-v13 .crd-file-name {
+  max-width: 190px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wisdom-request-chat-form-v13 .crd-file-size {
+  font-size: 10px;
+}
+
+.wisdom-request-chat-form-v13 .crd-remove-btn {
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+/* Send button */
+.wisdom-request-chat-form-v13 .wisdom-chat-send-v13 {
+  grid-area: send;
+  align-self: center;
+  justify-content: flex-end;
+}
+
+.wisdom-request-chat-form-v13 .wisdom-chat-send-v13 .btn {
+  min-width: 92px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 0 !important;
+  border: 1px solid #111111 !important;
+  background: #111111 !important;
+  color: #ffffff !important;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* Firefox does not support :has in older versions; the original form still
+   remains fully usable because this only enhances layout. */
+
+@media (max-width: 760px) {
+  .wisdom-request-chat-v13 {
+    min-height: 460px;
+    max-height: 560px;
+  }
+
+  .wisdom-request-chat-v13 .crd-chat-entry {
+    max-width: 86%;
+  }
+
+  .wisdom-request-chat-form-v13 {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "title"
+      "input"
+      "attach"
+      "files"
+      "send";
+  }
+
+  .wisdom-request-chat-form-v13 .wisdom-chat-file-input-v13 {
+    max-width: 100%;
+  }
+
+  .wisdom-request-chat-form-v13 .wisdom-chat-send-v13 {
+    width: 100%;
+  }
+
+  .wisdom-request-chat-form-v13 .wisdom-chat-send-v13 .btn {
+    width: 100%;
+  }
+}
+/* WISDOM QUOTATION CUSTOMER UI POLISH V1.4.1 */
+
+.wisdom-request-tab-quotation-v12 .wisdom-request-quotation-v11 {
+  background: #ffffff;
+}
+
+.wisdom-request-tab-quotation-v12
+  .wisdom-request-quotation-v11
+  .checkout-section-header {
+  min-height: 50px;
+}
+
+.wisdom-request-tab-quotation-v12
+  .wisdom-request-quotation-v11
+  .checkout-section-header h3 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.wisdom-request-tab-quotation-v12
+  .wisdom-request-quotation-v11
+  .crd-status-pill {
+  min-height: 26px;
+  padding: 0 9px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #555d66 !important;
+  background: #f7f7f7 !important;
+}
+
+/* Quotation table: important, but not an admin inventory table. */
+.wisdom-request-tab-quotation-v12 .crd-table {
+  margin-bottom: 14px;
+  border-color: #dedede;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-table-head,
+.wisdom-request-tab-quotation-v12 .crd-table-row {
+  grid-template-columns: minmax(0, 1fr) 64px 112px 120px;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-table-head {
+  background: #fafafa;
+  color: #666d75;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-table-row {
+  min-height: 40px;
+  color: #222222;
+  font-size: 12.5px;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-table-desc {
+  font-weight: 500;
+  color: #222222;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-table-row > div:nth-child(2),
+.wisdom-request-tab-quotation-v12 .crd-table-row > div:nth-child(3) {
+  font-weight: 400;
+  color: #4f565e;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-table-amount {
+  font-weight: 600;
+  color: #111111;
+}
+
+/* Bottom quotation controls + summary */
+.wisdom-request-tab-quotation-v12 .crd-quote-bottom-v141 {
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.9fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-quote-bottom-v141.is-summary-only {
+  grid-template-columns: minmax(280px, 440px);
+  justify-content: end;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-quote-review-v141,
+.wisdom-request-tab-quotation-v12 .crd-quote-summary-v141 {
+  padding: 15px;
+  border-color: #dedede;
+  box-shadow: none;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-quote-review-v141 {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: #ffffff;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-quote-review-v141 h4,
+.wisdom-request-tab-quotation-v12 .crd-quote-summary-v141 h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-quote-review-copy-v141 {
+  margin: 0;
+  color: #666d75;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-quote-review-v141 .crd-action-row {
+  margin-top: 14px;
+  gap: 7px;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-quote-review-v141 .btn,
+.wisdom-request-tab-quotation-v12 .crd-quote-review-v141 .crd-danger-btn {
+  min-height: 36px;
+  padding: 0 13px;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-quote-review-v141 .crd-danger-btn {
+  background: #ffffff;
+  border: 1px solid #111111;
+  color: #111111;
+}
+
+/* Customer quotation summary: labels regular, values selectively emphasized. */
+.wisdom-request-tab-quotation-v12 .crd-quote-summary-v141 {
+  background: #fafafa;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-quote-summary-v141 .summary-row {
+  gap: 14px;
+  padding: 6px 0;
+  font-size: 12.5px;
+}
+
+.wisdom-request-tab-quotation-v12
+  .crd-quote-summary-v141
+  .summary-row
+  > span:first-child {
+  color: #555d66;
+  font-weight: 400;
+}
+
+.wisdom-request-tab-quotation-v12
+  .crd-quote-summary-v141
+  .summary-row
+  > strong,
+.wisdom-request-tab-quotation-v12
+  .crd-quote-summary-v141
+  .summary-row
+  > span:last-child {
+  color: #111111;
+  font-weight: 600;
+}
+
+.wisdom-request-tab-quotation-v12 .crd-quote-summary-v141 .crd-grand-total {
+  margin-top: 8px;
+  padding-top: 11px;
+}
+
+.wisdom-request-tab-quotation-v12
+  .crd-quote-summary-v141
+  .crd-grand-total
+  > span {
+  color: #111111;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.wisdom-request-tab-quotation-v12
+  .crd-quote-summary-v141
+  .crd-grand-total
+  > strong {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+/* Keep the permanent status card visually lighter than the main quotation. */
+.wisdom-request-status-v11 .summary-row > span:last-child {
+  font-weight: 600 !important;
+}
+
+.wisdom-request-status-v11 .crd-summary-total {
+  font-weight: 700 !important;
+}
+
+/* Responsive quotation layout */
+@media (max-width: 900px) {
+  .wisdom-request-tab-quotation-v12 .crd-quote-bottom-v141,
+  .wisdom-request-tab-quotation-v12 .crd-quote-bottom-v141.is-summary-only {
+    grid-template-columns: 1fr;
+  }
+
+  .wisdom-request-tab-quotation-v12 .crd-table-head,
+  .wisdom-request-tab-quotation-v12 .crd-table-row {
+    grid-template-columns: minmax(160px, 1fr) 54px 96px 104px;
+    gap: 7px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+}
+/* WISDOM PAYMENT CUSTOMER UI V1.6 */
+
+/* Request number: emphasis only, no font-size change. */
+.crd-request-number-value-v16 {
+  color: #111111;
+  font-weight: 700;
+}
+
+/* Payment section hierarchy */
+.wisdom-request-payment-v11 .checkout-section-header h3 {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.wisdom-request-payment-v11
+  > .checkout-section-body
+  > .crd-grid-split {
+  grid-template-columns: minmax(320px, 0.9fr) minmax(440px, 1.1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+/* Payment summary */
+.wisdom-payment-summary-v16 {
+  padding: 16px !important;
+  background: #fafafa !important;
+  border-color: #dedede !important;
+  box-shadow: none !important;
+}
+
+.wisdom-payment-summary-v16 h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wisdom-payment-summary-v16 .summary-row {
+  gap: 14px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.wisdom-payment-summary-v16 .summary-row > span:first-child {
+  color: #555d66;
+  font-weight: 400;
+}
+
+.wisdom-payment-summary-v16 .summary-row > span:last-child,
+.wisdom-payment-summary-v16 .summary-row > strong {
+  color: #111111;
+  font-weight: 600;
+}
+
+/* The payment amount that matters right now receives strongest emphasis. */
+.wisdom-payment-due-v16 {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 5px;
+  padding: 12px 0 10px;
+  border-top: 1px solid #dedede;
+}
+
+.wisdom-payment-due-v16 > span {
+  color: #555d66;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.wisdom-payment-due-v16 > strong {
+  color: #111111;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.wisdom-payment-helper-v16 {
+  margin: 10px 0 0 !important;
+  color: #666d75 !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  line-height: 1.5 !important;
+}
+
+/* Payment method choice */
+.wisdom-payment-method-choice-v16 {
+  padding: 16px !important;
+  border-color: #dedede !important;
+  background: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.wisdom-payment-method-choice-v16 > h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wisdom-payment-method-choice-v16 > .crd-grid-split {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.wisdom-payment-method-choice-v16
+  > .crd-grid-split
+  > .crd-panel {
+  min-height: 170px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 14px !important;
+  border-color: #dedede !important;
+  background: #fafafa !important;
+  box-shadow: none !important;
+}
+
+.wisdom-payment-method-choice-v16
+  > .crd-grid-split
+  > .crd-panel
+  > h4 {
+  margin: 0 0 7px;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.wisdom-payment-method-choice-v16
+  > .crd-grid-split
+  > .crd-panel
+  .crd-panel-copy {
+  margin: 0 0 12px;
+  color: #666d75;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* Down-payment amount is already clearly shown in Payment summary. */
+.wisdom-payment-method-choice-v16
+  > .crd-grid-split
+  > .crd-panel
+  > .summary-row {
+  display: none !important;
+}
+
+.wisdom-payment-method-choice-v16
+  > .crd-grid-split
+  > .crd-panel
+  > .btn {
+  width: 100%;
+  min-height: 38px;
+  margin-top: auto;
+  padding: 0 12px;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Supporting payment content should not compete with amounts/actions. */
+.wisdom-request-payment-v11 .crd-panel-copy,
+.wisdom-request-payment-v11 .crd-info-box {
+  font-weight: 400;
+}
+
+.wisdom-request-payment-v11 .crd-info-title {
+  font-weight: 650;
+}
+
+@media (max-width: 1040px) {
+  .wisdom-request-payment-v11
+    > .checkout-section-body
+    > .crd-grid-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 650px) {
+  .wisdom-payment-method-choice-v16 > .crd-grid-split {
+    grid-template-columns: 1fr;
+  }
+
+  .wisdom-payment-method-choice-v16
+    > .crd-grid-split
+    > .crd-panel {
+    min-height: 0;
+  }
+}

@@ -1747,3 +1747,105 @@
     overflow: auto;
   }
 }
+/* WISDOM CUSTOM REQUEST BACK NAV RIGHT COLUMN V1.4 */
+.wisdom-custom-request-summary-column-v14 {
+  position: sticky;
+  top: 96px;
+  align-self: start;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.wisdom-custom-request-summary-column-v14 .checkout-summary {
+  position: static;
+  top: auto;
+  width: 100%;
+}
+
+.wisdom-custom-request-back-nav-v14 {
+  justify-self: start;
+  width: auto;
+  min-width: 0;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  margin: 0;
+  border: 1px solid #111111;
+  border-radius: 0;
+  background: #ffffff;
+  color: #111111;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.wisdom-custom-request-back-nav-v14:hover {
+  background: #f7f7f7;
+}
+
+@media (max-width: 1180px) {
+  .wisdom-custom-request-summary-column-v14 {
+    position: static;
+    top: auto;
+  }
+}
+/* WISDOM CUSTOM REQUEST SUMMARY ALIGN V1.5 */
+.wisdom-custom-request-summary-column-v14 {
+  position: sticky;
+  top: 96px;
+  align-self: start;
+  display: block;
+  min-width: 0;
+}
+
+.wisdom-custom-request-summary-column-v14 .checkout-summary {
+  position: static;
+  top: auto;
+  width: 100%;
+  margin: 0;
+}
+
+.wisdom-custom-request-back-nav-v15 {
+  position: absolute;
+  left: 0;
+  top: -46px;
+  z-index: 2;
+  width: auto;
+  min-width: 0;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  margin: 0;
+  border: 1px solid #111111;
+  border-radius: 0 !important;
+  background: #ffffff;
+  color: #111111;
+  box-shadow: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.wisdom-custom-request-back-nav-v15:hover {
+  background: #f7f7f7;
+}
+
+@media (max-width: 1180px) {
+  .wisdom-custom-request-summary-column-v14 {
+    position: relative;
+    top: auto;
+    margin-top: 46px;
+  }
+
+  .wisdom-custom-request-back-nav-v15 {
+    top: -46px;
+  }
+}
