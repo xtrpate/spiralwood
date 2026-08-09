@@ -262,6 +262,7 @@ export default function CustomerBlueprintViewer({
   defaultShowHuman = true,
 }) {
   const mountRef = useRef(null);
+  const previewHostRef = useRef(null);
   const rendererRef = useRef(null);
   const cameraRef = useRef(null);
   const controlsRef = useRef(null);
@@ -277,6 +278,8 @@ export default function CustomerBlueprintViewer({
   const [humanHeightMm, setHumanHeightMm] = useState(1700);
   const [humanBuild, setHumanBuild] = useState(1);
   const [fallbackImageError, setFallbackImageError] = useState(false);
+  const [compactPreviewVisible, setCompactPreviewVisible] = useState(!compact);
+  const [webglContextLost, setWebglContextLost] = useState(false);
 
   useEffect(() => {
     setViewPreset(defaultPreset);
@@ -293,7 +296,40 @@ export default function CustomerBlueprintViewer({
 
   useEffect(() => {
     setFallbackImageError(false);
+    setWebglContextLost(false);
   }, [blueprint?.id, sceneData?.thumbnail_url]);
+
+  useEffect(() => {
+    // WISDOM MOBILE COMPACT 3D LIFECYCLE V1
+    // Full modal viewers stay mounted as before. Compact gallery viewers
+    // only keep a WebGL context while they are near the visible viewport.
+    if (!compact) {
+      setCompactPreviewVisible(true);
+      return undefined;
+    }
+
+    const host = previewHostRef.current;
+
+    if (!host || typeof IntersectionObserver === "undefined") {
+      setCompactPreviewVisible(true);
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setCompactPreviewVisible(Boolean(entry?.isIntersecting));
+      },
+      {
+        root: null,
+        rootMargin: "180px 0px",
+        threshold: 0.01,
+      },
+    );
+
+    observer.observe(host);
+
+    return () => observer.disconnect();
+  }, [compact, blueprint?.id]);
 
   const displayBounds = useMemo(() => {
     const base = sceneData?.defaultDimensions || {};
@@ -390,8 +426,11 @@ export default function CustomerBlueprintViewer({
   }, [viewPreset, fitCameraToObject, compact]);
 
   useEffect(() => {
+    if (compact && !compactPreviewVisible) return undefined;
+    if (webglContextLost) return undefined;
+
     const mount = mountRef.current;
-    if (!mount) return;
+    if (!mount) return undefined;
 
     const width = mount.clientWidth || 640;
     const height = mount.clientHeight || (compact ? 240 : 420);
@@ -410,6 +449,17 @@ export default function CustomerBlueprintViewer({
 
     mount.innerHTML = "";
     mount.appendChild(renderer.domElement);
+
+    const handleContextLost = (event) => {
+      event.preventDefault();
+      setWebglContextLost(true);
+    };
+
+    renderer.domElement.addEventListener(
+      "webglcontextlost",
+      handleContextLost,
+      false,
+    );
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0xf4f1eb);
@@ -477,18 +527,38 @@ export default function CustomerBlueprintViewer({
       fitCameraToObject(viewPresetRef.current);
     };
 
-    const animate = () => {
-      frameRef.current = requestAnimationFrame(animate);
+    const renderFrame = () => {
       controls.update();
       renderer.render(scene, camera);
     };
 
-    animate();
+    const animate = () => {
+      frameRef.current = requestAnimationFrame(animate);
+      renderFrame();
+    };
+
+    if (compact) {
+      // Compact cards are static previews. Do not run permanent loops.
+      try {
+        renderFrame();
+      } catch (error) {
+        console.warn("[customer-blueprint compact init]", error);
+        setWebglContextLost(true);
+      }
+    } else {
+      animate();
+    }
+
     window.addEventListener("resize", handleResize);
 
     return () => {
       cancelAnimationFrame(frameRef.current);
       window.removeEventListener("resize", handleResize);
+      renderer.domElement.removeEventListener(
+        "webglcontextlost",
+        handleContextLost,
+        false,
+      );
 
       disposeObjectTree(helperGroupRef.current);
       disposeObjectTree(productGroupRef.current);
@@ -496,11 +566,24 @@ export default function CustomerBlueprintViewer({
       controls.dispose();
       renderer.dispose();
 
+      if (rendererRef.current === renderer) rendererRef.current = null;
+      if (cameraRef.current === camera) cameraRef.current = null;
+      if (controlsRef.current === controls) controlsRef.current = null;
+      if (sceneRef.current === scene) sceneRef.current = null;
+      if (productGroupRef.current === productGroup) productGroupRef.current = null;
+      if (helperGroupRef.current === helperGroup) helperGroupRef.current = null;
+      if (floorRef.current === showroomBase) floorRef.current = null;
+
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [fitCameraToObject, compact]);
+  }, [
+    fitCameraToObject,
+    compact,
+    compactPreviewVisible,
+    webglContextLost,
+  ]);
 
   useEffect(() => {
     const productGroup = productGroupRef.current;
@@ -599,6 +682,21 @@ export default function CustomerBlueprintViewer({
     }
 
     fitCameraToObject(viewPresetRef.current);
+
+    if (compact && !webglContextLost) {
+      const renderer = rendererRef.current;
+      const scene = sceneRef.current;
+      const camera = cameraRef.current;
+
+      if (renderer && scene && camera) {
+        try {
+          renderer.render(scene, camera);
+        } catch (error) {
+          console.warn("[customer-blueprint compact render]", error);
+          setWebglContextLost(true);
+        }
+      }
+    }
   }, [
     sceneData,
     displayBounds,
@@ -608,6 +706,8 @@ export default function CustomerBlueprintViewer({
     viewPreset,
     fitCameraToObject,
     compact,
+    compactPreviewVisible,
+    webglContextLost,
   ]);
 
   const exactAdmin3D = useMemo(
@@ -626,6 +726,7 @@ export default function CustomerBlueprintViewer({
 
   return (
     <div
+      ref={previewHostRef}
       className="cust-viewer-card"
       style={
         compact
@@ -684,11 +785,19 @@ export default function CustomerBlueprintViewer({
         className="cust-viewer-stage"
         style={compact ? { minHeight: 240, background: "#f7f2ea" } : undefined}
       >
-        {has3D ? (
+        {has3D &&
+        (!compact || compactPreviewVisible) &&
+        !webglContextLost ? (
           <div
             ref={mountRef}
             className="cust-viewer-canvas"
             style={compact ? { height: 240 } : undefined}
+          />
+        ) : has3D && compact && !compactPreviewVisible ? (
+          <div
+            className="cust-viewer-empty"
+            style={{ minHeight: 240, padding: 0, background: "#f7f2ea" }}
+            aria-hidden="true"
           />
         ) : sceneData?.thumbnail_url && !fallbackImageError ? (
           <div
@@ -700,6 +809,8 @@ export default function CustomerBlueprintViewer({
               alt={sceneData.title}
               className="cust-viewer-fallback-img"
               style={compact ? { height: 240, borderRadius: 0 } : undefined}
+              loading="lazy"
+              decoding="async"
               onError={() => setFallbackImageError(true)}
             />
             {!compact ? (

@@ -1873,3 +1873,33 @@
 .cust-search input::placeholder {
   font-weight: 400 !important;
 }
+/* WISDOM TOUCH DEVICE CUSTOMIZE GALLERY V1
+   Some mobile browsers can report a desktop-like CSS viewport, which can
+   bypass width-only breakpoints. Coarse touch input is the safer signal. */
+@media (hover: none) and (pointer: coarse) {
+  .cust-page-head,
+  .cust-toolbar,
+  .cust-products-grid {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .cust-products-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 16px;
+  }
+
+  .cust-product-card,
+  .product-skeleton {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .cust-product-image-wrap {
+    height: 255px;
+  }
+
+  .cust-card-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+}
