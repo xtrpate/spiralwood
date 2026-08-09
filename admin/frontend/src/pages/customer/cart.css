@@ -478,7 +478,7 @@
 }
 
 .fm-cart-primary-btn:hover {
-  background: #000000;
+  background: #373737;
 }
 
 .fm-cart-secondary-btn {
@@ -1473,21 +1473,19 @@
 }
 
 .fm-cart-hero-btn {
-  min-height: 42px;
-  padding: 0 16px;
+  min-height: 44px;
+  padding: 0 18px;
   border: 1px solid #111111;
-  border-radius: 0 !important;
-  background: #ffffff;
-  color: #111111;
-  font-size: 0.82rem;
-  font-weight: 600;
-  letter-spacing: 0;
+  border-radius: 0;
+  background: #111111;
+  color: #ffffff;
+  font-size: 0.88rem;
+  font-weight: 700;
   cursor: pointer;
-  white-space: nowrap;
 }
 
 .fm-cart-hero-btn:hover {
-  background: #f6f6f6;
+  background: #373737;
 }
 
 /* ---------- Checkout progress ---------- */

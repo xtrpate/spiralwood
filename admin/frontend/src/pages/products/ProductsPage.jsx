@@ -10,6 +10,9 @@ const STOCK_BADGE = {
 };
 
 export default function ProductsPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);

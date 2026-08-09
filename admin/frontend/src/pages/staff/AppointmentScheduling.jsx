@@ -287,6 +287,9 @@ function SummaryCard({ label, count, hint }) {
 }
 
 export default function AppointmentScheduling() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const { user } = useAuthStore();
 
   const isAdmin = user?.role === "admin";

@@ -206,6 +206,9 @@ const KEY_META = {
 };
 
 export default function WebsiteSettingsPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const [settings, setSettings] = useState({});
   const [dirty, setDirty] = useState({});
   const [logoFile, setLogoFile] = useState(null);

@@ -1,5 +1,11 @@
 // src/components/layout/AdminLayout.jsx – Sidebar + topbar shell
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import useAuthStore from "../../store/authStore";
@@ -165,6 +171,13 @@ export default function AdminLayout() {
   const location = useLocation();
   const [open, setOpen] = useState(true);
   const { clearCart } = useCart();
+
+  const mainRef = useRef(null);
+  useEffect(() => {
+    if (mainRef.current) {
+      mainRef.current.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
+  }, [location.pathname]);
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -473,6 +486,9 @@ export default function AdminLayout() {
         <header
           className="wisdom-admin-topbar"
           style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 100,
             background: "#ffffff",
             borderBottom: "1px solid #e4e4e7",
             padding: "12px 24px",
@@ -543,6 +559,7 @@ export default function AdminLayout() {
         </header>
 
         <main
+          ref={mainRef}
           style={{
             flex: 1,
             padding: 24,

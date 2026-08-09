@@ -6,6 +6,9 @@ import toast from "react-hot-toast";
 const BLANK = { question: "", answer: "", sort_order: 0, is_visible: true };
 
 export default function FaqsPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const [faqs, setFaqs] = useState([]);
   const [loading, setLoad] = useState(true);
   const [modal, setModal] = useState(null); // null | 'add' | 'edit'

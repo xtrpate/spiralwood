@@ -92,6 +92,9 @@ const RESERVATION_STATUS_STYLES = {
 };
 
 export default function RawMaterialsPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
@@ -277,9 +280,10 @@ export default function RawMaterialsPage() {
         <div>
           <h1 style={title}>Raw Materials Inventory</h1>
           <div style={subtitle}>
-            On hand is physical stock. Reserved stock is allocated to paid blueprint orders,
-            while available stock can still be assigned to new work. Add physical size for
-            sheet and board materials so Blueprint material requirements can use real stock dimensions.
+            On hand is physical stock. Reserved stock is allocated to paid
+            blueprint orders, while available stock can still be assigned to new
+            work. Add physical size for sheet and board materials so Blueprint
+            material requirements can use real stock dimensions.
           </div>
         </div>
         <button onClick={openAdd} style={btnPrimary}>
@@ -331,11 +335,15 @@ export default function RawMaterialsPage() {
           <option value="archived">Archived</option>
           <option value="all">All Records</option>
         </select>
-        <span style={resultCount}>{total} record{total === 1 ? "" : "s"}</span>
+        <span style={resultCount}>
+          {total} record{total === 1 ? "" : "s"}
+        </span>
       </div>
 
       <div style={tableCard}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <table
+          style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
+        >
           <thead>
             <tr style={{ background: "#fafafa" }}>
               {[
@@ -370,11 +378,9 @@ export default function RawMaterialsPage() {
               items.map((item) => {
                 const availabilityStatus =
                   item.availability_status || item.stock_status;
-                const [bg, color, border] = STOCK_COLORS[availabilityStatus] || [
-                  "#f4f4f5",
-                  "#18181b",
-                  "#e4e4e7",
-                ];
+                const [bg, color, border] = STOCK_COLORS[
+                  availabilityStatus
+                ] || ["#f4f4f5", "#18181b", "#e4e4e7"];
                 const isActive = Number(item.is_active) === 1;
                 const hasReferences = Number(item.has_references) === 1;
                 const reservationRecordCount = Number(
@@ -388,9 +394,14 @@ export default function RawMaterialsPage() {
                   reservedQuantity > 0 || pendingNeedQuantity > 0;
 
                 return (
-                  <tr key={item.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
+                  <tr
+                    key={item.id}
+                    style={{ borderBottom: "1px solid #f4f4f5" }}
+                  >
                     <td style={td}>
-                      <strong style={{ color: isActive ? "#0a0a0a" : "#71717a" }}>
+                      <strong
+                        style={{ color: isActive ? "#0a0a0a" : "#71717a" }}
+                      >
                         {item.name}
                       </strong>
                       <div
@@ -416,7 +427,9 @@ export default function RawMaterialsPage() {
                       {reservedQuantity > 0 ? (
                         <button
                           type="button"
-                          onClick={() => openReservationHistory(item, "reserved")}
+                          onClick={() =>
+                            openReservationHistory(item, "reserved")
+                          }
                           style={quantityLink}
                           title="View reserved orders"
                         >
@@ -445,10 +458,15 @@ export default function RawMaterialsPage() {
                         formatQuantity(pendingNeedQuantity)
                       )}
                     </td>
-                    <td style={{ ...td, color: "#52525b" }}>{item.reorder_point}</td>
+                    <td style={{ ...td, color: "#52525b" }}>
+                      {item.reorder_point}
+                    </td>
                     <td style={td}>₱ {Number(item.unit_cost).toFixed(2)}</td>
                     <td style={{ ...td, fontWeight: 600 }}>
-                      ₱ {(Number(item.quantity) * Number(item.unit_cost)).toFixed(2)}
+                      ₱{" "}
+                      {(Number(item.quantity) * Number(item.unit_cost)).toFixed(
+                        2,
+                      )}
                     </td>
                     <td style={td}>
                       <span
@@ -483,7 +501,10 @@ export default function RawMaterialsPage() {
                       )}
                       {isActive ? (
                         <>
-                          <button onClick={() => openEdit(item)} style={btnEdit}>
+                          <button
+                            onClick={() => openEdit(item)}
+                            style={btnEdit}
+                          >
                             Edit
                           </button>
                           <button
@@ -506,14 +527,21 @@ export default function RawMaterialsPage() {
                           {!hasReferences && (
                             <button
                               onClick={() => handleDelete(item)}
-                              style={{ ...btnEdit, ...btnDelete, marginLeft: 6 }}
+                              style={{
+                                ...btnEdit,
+                                ...btnDelete,
+                                marginLeft: 6,
+                              }}
                             >
                               Delete
                             </button>
                           )}
                         </>
                       ) : (
-                        <button onClick={() => handleRestore(item)} style={btnRestore}>
+                        <button
+                          onClick={() => handleRestore(item)}
+                          style={btnRestore}
+                        >
                           Restore
                         </button>
                       )}
@@ -697,7 +725,11 @@ export default function RawMaterialsPage() {
                 </select>
               </div>
               <div style={modalActions}>
-                <button type="button" onClick={() => setModal(null)} style={btnGhost}>
+                <button
+                  type="button"
+                  onClick={() => setModal(null)}
+                  style={btnGhost}
+                >
                   Cancel
                 </button>
                 <button type="submit" disabled={saving} style={btnPrimary}>
@@ -722,7 +754,9 @@ export default function RawMaterialsPage() {
                 <h3 style={{ ...modalTitle, marginBottom: 5 }}>
                   Reservation History
                 </h3>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#27272a" }}>
+                <div
+                  style={{ fontSize: 13, fontWeight: 700, color: "#27272a" }}
+                >
                   {reservationModal.material?.name || "Raw material"}
                 </div>
                 <div style={{ fontSize: 11, color: "#71717a", marginTop: 3 }}>
@@ -773,7 +807,8 @@ export default function RawMaterialsPage() {
                     <div key={label} style={summaryCard}>
                       <div style={summaryLabel}>{label}</div>
                       <div style={summaryValue}>
-                        {formatQuantity(value)} {reservationModal.material?.unit || ""}
+                        {formatQuantity(value)}{" "}
+                        {reservationModal.material?.unit || ""}
                       </div>
                       <div style={summaryDetail}>{detail}</div>
                     </div>
@@ -792,7 +827,9 @@ export default function RawMaterialsPage() {
                         key={value}
                         type="button"
                         onClick={() => setReservationFilter(value)}
-                        style={active ? historyFilterActive : historyFilterButton}
+                        style={
+                          active ? historyFilterActive : historyFilterButton
+                        }
                       >
                         {label} ({count})
                       </button>
@@ -849,10 +886,13 @@ export default function RawMaterialsPage() {
                                   {row.order_number || `Order #${row.order_id}`}
                                 </button>
                                 <div style={orderMeta}>
-                                  {formatStatus(row.order_status)} · {formatStatus(row.payment_status)}
+                                  {formatStatus(row.order_status)} ·{" "}
+                                  {formatStatus(row.payment_status)}
                                 </div>
                               </td>
-                              <td style={historyTd}>{row.customer_name || "—"}</td>
+                              <td style={historyTd}>
+                                {row.customer_name || "—"}
+                              </td>
                               <td style={{ ...historyTd, fontWeight: 800 }}>
                                 {formatQuantity(row.quantity)} {row.unit || ""}
                               </td>
@@ -869,23 +909,30 @@ export default function RawMaterialsPage() {
                                 </span>
                               </td>
                               <td style={historyTd}>
-                                {row.status === "pending_stock" && !row.reserved_at
+                                {row.status === "pending_stock" &&
+                                !row.reserved_at
                                   ? "Waiting for stock"
                                   : formatDateTime(row.reserved_at)}
                                 {row.created_by_name && (
-                                  <div style={orderMeta}>By {row.created_by_name}</div>
+                                  <div style={orderMeta}>
+                                    By {row.created_by_name}
+                                  </div>
                                 )}
                               </td>
                               <td style={historyTd}>
                                 {formatDateTime(row.consumed_at)}
                                 {row.consumed_by_name && (
-                                  <div style={orderMeta}>By {row.consumed_by_name}</div>
+                                  <div style={orderMeta}>
+                                    By {row.consumed_by_name}
+                                  </div>
                                 )}
                               </td>
                               <td style={historyTd}>
                                 {formatDateTime(row.released_at)}
                                 {row.released_by_name && (
-                                  <div style={orderMeta}>By {row.released_by_name}</div>
+                                  <div style={orderMeta}>
+                                    By {row.released_by_name}
+                                  </div>
                                 )}
                               </td>
                               <td style={{ ...historyTd, minWidth: 220 }}>

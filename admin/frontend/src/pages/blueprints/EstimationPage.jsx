@@ -143,7 +143,8 @@ const normalizeItem = (raw = {}, index = 0) => {
   const requestedType = String(raw.source_type || raw.sourceType || "")
     .trim()
     .toLowerCase();
-  const sourceType = requestedType || (rawMaterialId ? "inventory_material" : "other");
+  const sourceType =
+    requestedType || (rawMaterialId ? "inventory_material" : "other");
   const unit = normalizeText(raw.unit || "pc") || "pc";
   const numericQty = Number(raw.quantity ?? raw.qty ?? 1);
 
@@ -167,7 +168,9 @@ const normalizeItem = (raw = {}, index = 0) => {
     _row_key:
       raw._row_key ||
       normalizeText(raw.source_key || raw.sourceKey || "") ||
-      (raw.id ? `db:${raw.id}` : makeLocalKey(`${sourceType || "row"}-${index}`)),
+      (raw.id
+        ? `db:${raw.id}`
+        : makeLocalKey(`${sourceType || "row"}-${index}`)),
   };
 };
 
@@ -190,13 +193,15 @@ const serializeItem = (item = {}) => ({
 const isFilledItem = (item = {}) =>
   Boolean(
     normalizeText(item.name) ||
-      item.raw_material_id ||
-      Number(item.unit_cost || 0) > 0 ||
-      normalizeText(item.note),
+    item.raw_material_id ||
+    Number(item.unit_cost || 0) > 0 ||
+    normalizeText(item.note),
   );
 
 const isInventoryItem = (item = {}) =>
-  String(item.source_type || "").trim().toLowerCase() === "inventory_material";
+  String(item.source_type || "")
+    .trim()
+    .toLowerCase() === "inventory_material";
 
 const isBlueprintPartItem = (item = {}) => {
   if (isInventoryItem(item)) return false;
@@ -278,7 +283,8 @@ const getComponentSurfaceAreaSqM = (width = 0, height = 0, depth = 0) => {
 };
 
 const getComponentFloorPrice = (component = {}) => {
-  const hint = `${component?.label || ""} ${component?.name || ""} ${component?.type || ""}`.toLowerCase();
+  const hint =
+    `${component?.label || ""} ${component?.name || ""} ${component?.type || ""}`.toLowerCase();
   if (/(leg|post|support|foot|base)/i.test(hint)) return 650;
   if (/(top|tabletop|panel|shelf|door|drawer)/i.test(hint)) return 1200;
   if (/(apron|rail|brace|stretcher)/i.test(hint)) return 450;
@@ -336,10 +342,13 @@ const getDefaultCutListUnitCost = (row = {}) => {
     MATERIAL_AREA_RATE_MAP[getMaterialRateKey(row?.material)] ||
     MATERIAL_AREA_RATE_MAP.default;
   if (isArea) return Number(areaRate.toFixed(2));
-  const base = String(row?.cutListType || "").toLowerCase() === "cabinet_body"
-    ? 2800
-    : 1200;
-  return Number((base * (areaRate / MATERIAL_AREA_RATE_MAP.default)).toFixed(2));
+  const base =
+    String(row?.cutListType || "").toLowerCase() === "cabinet_body"
+      ? 2800
+      : 1200;
+  return Number(
+    (base * (areaRate / MATERIAL_AREA_RATE_MAP.default)).toFixed(2),
+  );
 };
 
 const condenseAutoItems = (rows = []) => {
@@ -472,7 +481,11 @@ const getDimensionIdentity = (note = "") => {
 const getLegacyIdentity = (item = {}) =>
   `${normalizeIdentityName(item.name)}|${getDimensionIdentity(item.note)}`;
 
-const mergeAutoRows = (latestRows = [], savedAutoRows = [], legacyRows = []) => {
+const mergeAutoRows = (
+  latestRows = [],
+  savedAutoRows = [],
+  legacyRows = [],
+) => {
   const exactMap = new Map();
   const identityMap = new Map();
 
@@ -481,19 +494,25 @@ const mergeAutoRows = (latestRows = [], savedAutoRows = [], legacyRows = []) => 
     const identity = getLegacyIdentity(row);
     if (!identity || identity === "|") return;
     const current = identityMap.get(identity);
-    if (!current || Number(row.unit_cost || 0) > Number(current.unit_cost || 0)) {
+    if (
+      !current ||
+      Number(row.unit_cost || 0) > Number(current.unit_cost || 0)
+    ) {
       identityMap.set(identity, row);
     }
   });
 
   return latestRows.map((raw, index) => {
     const row = normalizeItem(raw, index);
-    const match = exactMap.get(row.source_key) || identityMap.get(getLegacyIdentity(row));
+    const match =
+      exactMap.get(row.source_key) || identityMap.get(getLegacyIdentity(row));
     if (!match) return row;
     return {
       ...row,
       unit_cost:
-        Number(match.unit_cost || 0) > 0 ? Number(match.unit_cost) : row.unit_cost,
+        Number(match.unit_cost || 0) > 0
+          ? Number(match.unit_cost)
+          : row.unit_cost,
       quantity:
         Number(match.quantity || 0) > 0 ? Number(match.quantity) : row.quantity,
       unit: normalizeText(match.unit) || row.unit,
@@ -553,7 +572,8 @@ const getDraftRows = (draft = {}) => {
 const getValidationErrors = ({ items = [], costs = {} } = {}) => {
   const errors = [];
   const filled = items.filter(isFilledItem);
-  if (!filled.length) errors.push("Add at least one estimate item before saving.");
+  if (!filled.length)
+    errors.push("Add at least one estimate item before saving.");
 
   const seenMaterialIds = new Set();
   filled.forEach((item, index) => {
@@ -561,7 +581,8 @@ const getValidationErrors = ({ items = [], costs = {} } = {}) => {
     if (isInventoryItem(item) && !item.raw_material_id) {
       errors.push(`${label}: Select an inventory material.`);
     }
-    if (!normalizeText(item.name)) errors.push(`${label}: Description is required.`);
+    if (!normalizeText(item.name))
+      errors.push(`${label}: Description is required.`);
     if (normalizeText(item.name).length > 255) {
       errors.push(`${label}: Description must not exceed 255 characters.`);
     }
@@ -576,7 +597,8 @@ const getValidationErrors = ({ items = [], costs = {} } = {}) => {
     }
     if (
       isInventoryItem(item) &&
-      (!Number.isFinite(Number(item.unit_cost || 0)) || Number(item.unit_cost || 0) < 0)
+      (!Number.isFinite(Number(item.unit_cost || 0)) ||
+        Number(item.unit_cost || 0) < 0)
     ) {
       errors.push(`${label}: Inventory tracking cost cannot be negative.`);
     }
@@ -586,7 +608,9 @@ const getValidationErrors = ({ items = [], costs = {} } = {}) => {
     if (isInventoryItem(item) && item.raw_material_id) {
       const materialId = Number(item.raw_material_id);
       if (seenMaterialIds.has(materialId)) {
-        errors.push(`${label}: The same inventory material cannot be added twice.`);
+        errors.push(
+          `${label}: The same inventory material cannot be added twice.`,
+        );
       }
       seenMaterialIds.add(materialId);
     }
@@ -596,7 +620,8 @@ const getValidationErrors = ({ items = [], costs = {} } = {}) => {
   const logistics = Number(costs.overhead_cost ?? 0);
   const discount = Number(costs.discount ?? 0);
   const tax = Number(costs.tax_rate ?? 0);
-  if (!Number.isFinite(labor) || labor < 0) errors.push("Labor cost cannot be negative.");
+  if (!Number.isFinite(labor) || labor < 0)
+    errors.push("Labor cost cannot be negative.");
   if (!Number.isFinite(logistics) || logistics < 0) {
     errors.push("Logistics cost cannot be negative.");
   }
@@ -611,7 +636,9 @@ const getValidationErrors = ({ items = [], costs = {} } = {}) => {
 
 const showFirstValidationError = (errors = []) => {
   if (!errors.length) return false;
-  toast.error(`${errors[0]}${errors.length > 1 ? ` (+${errors.length - 1} more)` : ""}`);
+  toast.error(
+    `${errors[0]}${errors.length > 1 ? ` (+${errors.length - 1} more)` : ""}`,
+  );
   return true;
 };
 
@@ -623,9 +650,15 @@ const resolveAttachmentUrl = (src) => {
 };
 
 const isImageAttachment = (attachment = {}) => {
-  const mime = String(attachment?.mime_type || attachment?.type || "").toLowerCase();
-  const url = String(attachment?.file_url || attachment?.url || "").toLowerCase();
-  return mime.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(url);
+  const mime = String(
+    attachment?.mime_type || attachment?.type || "",
+  ).toLowerCase();
+  const url = String(
+    attachment?.file_url || attachment?.url || "",
+  ).toLowerCase();
+  return (
+    mime.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(url)
+  );
 };
 
 const collectBlueprintReferenceFiles = (design = {}) => {
@@ -634,7 +667,12 @@ const collectBlueprintReferenceFiles = (design = {}) => {
     .map(([view, file]) => {
       if (!file) return null;
       if (typeof file === "string") {
-        return { id: `blueprint-${view}`, file_url: file, file_name: `${view} reference`, type: "image" };
+        return {
+          id: `blueprint-${view}`,
+          file_url: file,
+          file_name: `${view} reference`,
+          type: "image",
+        };
       }
       return {
         id: `blueprint-${view}`,
@@ -667,19 +705,22 @@ const isCustomizationImageValue = (key, value) => {
 
 const collectCustomizationReferenceFiles = (orderContext = {}) => {
   const files = [];
-  (Array.isArray(orderContext?.items) ? orderContext.items : []).forEach((item, itemIndex) => {
-    const customization = item?.customization || {};
-    Object.entries(customization).forEach(([key, value], fieldIndex) => {
-      if (typeof value !== "string" || !isCustomizationImageValue(key, value)) return;
-      const fileUrl = value.trim();
-      files.push({
-        id: `customization-${item?.order_item_id || itemIndex}-${key}-${fieldIndex}`,
-        file_url: fileUrl,
-        file_name: `${humanizeKey(key).replace(/\s+(Url|Uri)$/i, "")} reference`,
-        mime_type: getImageMimeType(fileUrl) || "image/*",
+  (Array.isArray(orderContext?.items) ? orderContext.items : []).forEach(
+    (item, itemIndex) => {
+      const customization = item?.customization || {};
+      Object.entries(customization).forEach(([key, value], fieldIndex) => {
+        if (typeof value !== "string" || !isCustomizationImageValue(key, value))
+          return;
+        const fileUrl = value.trim();
+        files.push({
+          id: `customization-${item?.order_item_id || itemIndex}-${key}-${fieldIndex}`,
+          file_url: fileUrl,
+          file_name: `${humanizeKey(key).replace(/\s+(Url|Uri)$/i, "")} reference`,
+          mime_type: getImageMimeType(fileUrl) || "image/*",
+        });
       });
-    });
-  });
+    },
+  );
   return files;
 };
 
@@ -690,18 +731,22 @@ const humanizeKey = (key = "") =>
 
 const getCustomizationEntries = (orderContext = {}) => {
   const entries = [];
-  (Array.isArray(orderContext?.items) ? orderContext.items : []).forEach((item) => {
-    const customization = item?.customization || {};
-    Object.entries(customization).forEach(([key, value]) => {
-      if (value === null || value === undefined || typeof value === "object") return;
-      const normalizedValue = String(value).trim();
-      if (!normalizedValue || isCustomizationImageValue(key, normalizedValue)) return;
-      entries.push({
-        label: humanizeKey(key),
-        value: normalizedValue,
+  (Array.isArray(orderContext?.items) ? orderContext.items : []).forEach(
+    (item) => {
+      const customization = item?.customization || {};
+      Object.entries(customization).forEach(([key, value]) => {
+        if (value === null || value === undefined || typeof value === "object")
+          return;
+        const normalizedValue = String(value).trim();
+        if (!normalizedValue || isCustomizationImageValue(key, normalizedValue))
+          return;
+        entries.push({
+          label: humanizeKey(key),
+          value: normalizedValue,
+        });
       });
-    });
-  });
+    },
+  );
   return entries.slice(0, 12);
 };
 
@@ -785,8 +830,12 @@ const getInventoryAvailability = (item = {}, material = null) => {
   );
   const requiredValue = Number(item.quantity);
   const reorderValue = Number(material.reorder_point);
-  const available = Number.isFinite(availableValue) ? Math.max(0, availableValue) : 0;
-  const reorderPoint = Number.isFinite(reorderValue) ? Math.max(0, reorderValue) : 0;
+  const available = Number.isFinite(availableValue)
+    ? Math.max(0, availableValue)
+    : 0;
+  const reorderPoint = Number.isFinite(reorderValue)
+    ? Math.max(0, reorderValue)
+    : 0;
 
   if (!Number.isFinite(requiredValue) || requiredValue <= 0) {
     return {
@@ -867,11 +916,7 @@ function EstimateTable({
       : section === "inventory"
         ? "No required inventory materials added yet."
         : "No additional items added yet.";
-  const columnCount = isInventory
-    ? showInventoryPricing
-      ? 10
-      : 8
-    : 8;
+  const columnCount = isInventory ? (showInventoryPricing ? 10 : 8) : 8;
   const inventoryChecks = isInventory
     ? rows.map((item) => {
         const material = rawMaterials.find(
@@ -907,7 +952,8 @@ function EstimateTable({
             disabled={readOnly}
             style={readOnly ? { ...btnAdd, ...btnDisabled } : btnAdd}
           >
-            + Add {section === "inventory" ? "Required Material" : "Additional Item"}
+            + Add{" "}
+            {section === "inventory" ? "Required Material" : "Additional Item"}
           </button>
         )}
       </div>
@@ -920,19 +966,25 @@ function EstimateTable({
               <th style={{ ...th, width: isInventory ? "30%" : "28%" }}>
                 {isInventory ? "Inventory Material" : "Description"}
               </th>
-              {isInventory && <th style={{ ...th, width: "13%" }}>Available Stock</th>}
+              {isInventory && (
+                <th style={{ ...th, width: "13%" }}>Available Stock</th>
+              )}
               <th style={{ ...th, width: "10%" }}>Unit</th>
               <th style={{ ...th, width: "10%" }}>
                 {isInventory ? "Required Qty" : "Quantity"}
               </th>
-              {isInventory && <th style={{ ...th, width: "18%" }}>Stock Status</th>}
+              {isInventory && (
+                <th style={{ ...th, width: "18%" }}>Stock Status</th>
+              )}
               {(!isInventory || showInventoryPricing) && (
                 <th style={{ ...th, width: "12%" }}>Unit Rate</th>
               )}
               {(!isInventory || showInventoryPricing) && (
                 <th style={{ ...th, width: "13%" }}>Line Total</th>
               )}
-              <th style={{ ...th, width: isInventory ? "27%" : "20%" }}>Notes</th>
+              <th style={{ ...th, width: isInventory ? "27%" : "20%" }}>
+                Notes
+              </th>
               <th style={{ ...th, width: "5%" }} />
             </tr>
           </thead>
@@ -946,26 +998,34 @@ function EstimateTable({
             ) : (
               rows.map((item, index) => {
                 const selectedMaterial = rawMaterials.find(
-                  (material) => Number(material.id) === Number(item.raw_material_id),
+                  (material) =>
+                    Number(material.id) === Number(item.raw_material_id),
                 );
                 const availability = isInventory
                   ? getInventoryAvailability(item, selectedMaterial)
                   : null;
-                const availabilityColors = getAvailabilityColors(availability?.state);
+                const availabilityColors = getAvailabilityColors(
+                  availability?.state,
+                );
                 const selectedOnHandQuantity = selectedMaterial
-                  ? selectedMaterial.on_hand_quantity ?? selectedMaterial.quantity
+                  ? (selectedMaterial.on_hand_quantity ??
+                    selectedMaterial.quantity)
                   : 0;
                 const selectedReservedQuantity = selectedMaterial
-                  ? selectedMaterial.reserved_quantity ?? 0
+                  ? (selectedMaterial.reserved_quantity ?? 0)
                   : 0;
                 const selectedAvailableQuantity = selectedMaterial
-                  ? selectedMaterial.available_quantity ?? selectedMaterial.quantity
+                  ? (selectedMaterial.available_quantity ??
+                    selectedMaterial.quantity)
                   : 0;
                 const selectedPendingNeedQuantity = selectedMaterial
-                  ? selectedMaterial.pending_need_quantity ?? 0
+                  ? (selectedMaterial.pending_need_quantity ?? 0)
                   : 0;
                 return (
-                  <tr key={item._row_key} style={{ borderBottom: "1px solid #f4f4f5" }}>
+                  <tr
+                    key={item._row_key}
+                    style={{ borderBottom: "1px solid #f4f4f5" }}
+                  >
                     <td style={{ ...td, color: "#71717a", fontWeight: 800 }}>
                       {index + 1}
                     </td>
@@ -976,9 +1036,17 @@ function EstimateTable({
                           <select
                             value={item.raw_material_id || ""}
                             onChange={(event) =>
-                              onUpdate(item._row_key, "raw_material_id", event.target.value)
+                              onUpdate(
+                                item._row_key,
+                                "raw_material_id",
+                                event.target.value,
+                              )
                             }
-                            style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
+                            style={{
+                              ...cellInput,
+                              ...readOnlyFieldStyle(readOnly),
+                              width: "100%",
+                            }}
                             disabled={readOnly}
                           >
                             <option value="">Select material...</option>
@@ -1013,9 +1081,20 @@ function EstimateTable({
                       ) : (
                         <input
                           value={item.name}
-                          onChange={(event) => onUpdate(item._row_key, "name", event.target.value)}
-                          style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%", fontWeight: 600 }}
-                          placeholder={section === "blueprint" ? "Blueprint part" : "e.g. Custom carved design"}
+                          onChange={(event) =>
+                            onUpdate(item._row_key, "name", event.target.value)
+                          }
+                          style={{
+                            ...cellInput,
+                            ...readOnlyFieldStyle(readOnly),
+                            width: "100%",
+                            fontWeight: 600,
+                          }}
+                          placeholder={
+                            section === "blueprint"
+                              ? "Blueprint part"
+                              : "e.g. Custom carved design"
+                          }
                           maxLength={255}
                           disabled={readOnly}
                         />
@@ -1029,15 +1108,35 @@ function EstimateTable({
                             : "—"}
                         </div>
                         {selectedMaterial && (
-                          <div style={{ fontSize: 10, color: "#71717a", marginTop: 3 }}>
-                            On hand {formatInventoryQuantity(selectedOnHandQuantity)} · Reserved {formatInventoryQuantity(selectedReservedQuantity)}
+                          <div
+                            style={{
+                              fontSize: 10,
+                              color: "#71717a",
+                              marginTop: 3,
+                            }}
+                          >
+                            On hand{" "}
+                            {formatInventoryQuantity(selectedOnHandQuantity)} ·
+                            Reserved{" "}
+                            {formatInventoryQuantity(selectedReservedQuantity)}
                           </div>
                         )}
-                        {selectedMaterial && Number(selectedPendingNeedQuantity) > 0 && (
-                          <div style={{ fontSize: 10, color: "#991b1b", marginTop: 3 }}>
-                            Pending need {formatInventoryQuantity(selectedPendingNeedQuantity)} {selectedMaterial.unit || ""}
-                          </div>
-                        )}
+                        {selectedMaterial &&
+                          Number(selectedPendingNeedQuantity) > 0 && (
+                            <div
+                              style={{
+                                fontSize: 10,
+                                color: "#991b1b",
+                                marginTop: 3,
+                              }}
+                            >
+                              Pending need{" "}
+                              {formatInventoryQuantity(
+                                selectedPendingNeedQuantity,
+                              )}{" "}
+                              {selectedMaterial.unit || ""}
+                            </div>
+                          )}
                       </td>
                     )}
                     <td style={td}>
@@ -1045,17 +1144,30 @@ function EstimateTable({
                         <input
                           value={item.unit || selectedMaterial?.unit || ""}
                           readOnly
-                          style={{ ...cellInput, width: "100%", background: "#fafafa", color: "#71717a" }}
+                          style={{
+                            ...cellInput,
+                            width: "100%",
+                            background: "#fafafa",
+                            color: "#71717a",
+                          }}
                         />
                       ) : (
                         <select
                           value={item.unit}
-                          onChange={(event) => onUpdate(item._row_key, "unit", event.target.value)}
-                          style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
+                          onChange={(event) =>
+                            onUpdate(item._row_key, "unit", event.target.value)
+                          }
+                          style={{
+                            ...cellInput,
+                            ...readOnlyFieldStyle(readOnly),
+                            width: "100%",
+                          }}
                           disabled={readOnly}
                         >
                           {UNIT_OPTIONS.map((unit) => (
-                            <option key={unit} value={unit}>{unit}</option>
+                            <option key={unit} value={unit}>
+                              {unit}
+                            </option>
                           ))}
                         </select>
                       )}
@@ -1066,8 +1178,18 @@ function EstimateTable({
                         min={isAreaUnit(item.unit) ? "0.0001" : "0.01"}
                         step={isAreaUnit(item.unit) ? "0.0001" : "0.01"}
                         value={item.quantity}
-                        onChange={(event) => onUpdate(item._row_key, "quantity", event.target.value)}
-                        style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
+                        onChange={(event) =>
+                          onUpdate(
+                            item._row_key,
+                            "quantity",
+                            event.target.value,
+                          )
+                        }
+                        style={{
+                          ...cellInput,
+                          ...readOnlyFieldStyle(readOnly),
+                          width: "100%",
+                        }}
                         disabled={readOnly}
                       />
                     </td>
@@ -1086,7 +1208,13 @@ function EstimateTable({
                           <div style={{ fontSize: 11, fontWeight: 800 }}>
                             {availability.label}
                           </div>
-                          <div style={{ fontSize: 10, marginTop: 2, lineHeight: 1.35 }}>
+                          <div
+                            style={{
+                              fontSize: 10,
+                              marginTop: 2,
+                              lineHeight: 1.35,
+                            }}
+                          >
                             {availability.detail}
                           </div>
                         </div>
@@ -1099,24 +1227,46 @@ function EstimateTable({
                           min="0"
                           step="0.01"
                           value={item.unit_cost}
-                          onChange={(event) => onUpdate(item._row_key, "unit_cost", event.target.value)}
-                          style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
+                          onChange={(event) =>
+                            onUpdate(
+                              item._row_key,
+                              "unit_cost",
+                              event.target.value,
+                            )
+                          }
+                          style={{
+                            ...cellInput,
+                            ...readOnlyFieldStyle(readOnly),
+                            width: "100%",
+                          }}
                           placeholder="0.00"
                           disabled={readOnly}
                         />
                       </td>
                     )}
                     {(!isInventory || showInventoryPricing) && (
-                      <td style={{ ...td, fontWeight: 800, whiteSpace: "nowrap" }}>
+                      <td
+                        style={{ ...td, fontWeight: 800, whiteSpace: "nowrap" }}
+                      >
                         {formatMoney(getItemAmount(item))}
                       </td>
                     )}
                     <td style={td}>
                       <input
                         value={item.note}
-                        onChange={(event) => onUpdate(item._row_key, "note", event.target.value)}
-                        style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
-                        placeholder={isInventory ? "Size, thickness, finish..." : "Reference photo, inclusions, details..."}
+                        onChange={(event) =>
+                          onUpdate(item._row_key, "note", event.target.value)
+                        }
+                        style={{
+                          ...cellInput,
+                          ...readOnlyFieldStyle(readOnly),
+                          width: "100%",
+                        }}
+                        placeholder={
+                          isInventory
+                            ? "Size, thickness, finish..."
+                            : "Reference photo, inclusions, details..."
+                        }
                         maxLength={500}
                         disabled={readOnly}
                       />
@@ -1141,7 +1291,10 @@ function EstimateTable({
           <tfoot>
             {isInventory && inventoryTrackingOnly ? (
               <tr style={tableFooterRow}>
-                <td colSpan={columnCount} style={{ ...td, padding: "14px 16px" }}>
+                <td
+                  colSpan={columnCount}
+                  style={{ ...td, padding: "14px 16px" }}
+                >
                   {shortageChecks.length > 0 ? (
                     <div
                       style={{
@@ -1155,16 +1308,32 @@ function EstimateTable({
                       <div style={{ fontWeight: 800 }}>
                         Inventory shortage detected
                       </div>
-                      {shortageChecks.map(({ item, material, availability }) => (
-                        <div key={item._row_key} style={{ fontSize: 12, marginTop: 4 }}>
-                          {material?.name || item.name}: required {formatInventoryQuantity(availability.required)} {availability.unit}, available {formatInventoryQuantity(availability.available)} {availability.unit}, shortage {formatInventoryQuantity(availability.shortage)} {availability.unit}.
-                        </div>
-                      ))}
-                      <div style={{ fontSize: 11, marginTop: 7, color: "#7f1d1d" }}>
-                        The estimate may still be saved or sent. This phase only reports availability; stock is not reserved or deducted yet.
+                      {shortageChecks.map(
+                        ({ item, material, availability }) => (
+                          <div
+                            key={item._row_key}
+                            style={{ fontSize: 12, marginTop: 4 }}
+                          >
+                            {material?.name || item.name}: required{" "}
+                            {formatInventoryQuantity(availability.required)}{" "}
+                            {availability.unit}, available{" "}
+                            {formatInventoryQuantity(availability.available)}{" "}
+                            {availability.unit}, shortage{" "}
+                            {formatInventoryQuantity(availability.shortage)}{" "}
+                            {availability.unit}.
+                          </div>
+                        ),
+                      )}
+                      <div
+                        style={{ fontSize: 11, marginTop: 7, color: "#7f1d1d" }}
+                      >
+                        The estimate may still be saved or sent. This phase only
+                        reports availability; stock is not reserved or deducted
+                        yet.
                       </div>
                     </div>
-                  ) : rows.length > 0 && completedChecks.length === rows.length ? (
+                  ) : rows.length > 0 &&
+                    completedChecks.length === rows.length ? (
                     <div
                       style={{
                         padding: "12px 14px",
@@ -1175,11 +1344,13 @@ function EstimateTable({
                         fontWeight: 700,
                       }}
                     >
-                      All selected inventory materials are currently sufficient. Stock is not reserved or deducted yet.
+                      All selected inventory materials are currently sufficient.
+                      Stock is not reserved or deducted yet.
                     </div>
                   ) : (
                     <div style={{ color: "#52525b", fontWeight: 700 }}>
-                      Internal stock requirement only. These materials are not charged again in the quotation.
+                      Internal stock requirement only. These materials are not
+                      charged again in the quotation.
                     </div>
                   )}
                 </td>
@@ -1192,7 +1363,14 @@ function EstimateTable({
                 >
                   {title} Subtotal
                 </td>
-                <td style={{ ...td, fontWeight: 800, fontSize: 15, whiteSpace: "nowrap" }}>
+                <td
+                  style={{
+                    ...td,
+                    fontWeight: 800,
+                    fontSize: 15,
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   {formatMoney(subtotal)}
                 </td>
                 <td colSpan={2} />
@@ -1204,7 +1382,6 @@ function EstimateTable({
     </div>
   );
 }
-
 
 function ProductionSnapshotPanel({ snapshot }) {
   const parts = Array.isArray(snapshot?.parts) ? snapshot.parts : [];
@@ -1220,9 +1397,9 @@ function ProductionSnapshotPanel({ snapshot }) {
             Blueprint Production Requirements
           </h3>
           <p style={{ ...helperText, maxWidth: 850 }}>
-            Use the saved Blueprint details as a production guide. Admin manually
-            selects the actual Required Inventory Materials. Nothing in this panel
-            reserves, deducts, or automatically matches inventory.
+            Use the saved Blueprint details as a production guide. Admin
+            manually selects the actual Required Inventory Materials. Nothing in
+            this panel reserves, deducts, or automatically matches inventory.
           </p>
         </div>
         <div
@@ -1254,24 +1431,24 @@ function ProductionSnapshotPanel({ snapshot }) {
 
       {!parts.length ? (
         <div style={productionEmpty}>
-          No saved Blueprint production parts are available yet. Save the Blueprint
-          design first, then return to Project Estimate.
+          No saved Blueprint production parts are available yet. Save the
+          Blueprint design first, then return to Project Estimate.
         </div>
       ) : (
         <>
           {Number(summary.incompletePartCount || 0) > 0 && (
             <div style={productionReviewNotice}>
               Review {summary.incompletePartCount} part
-              {summary.incompletePartCount === 1 ? "" : "s"} with missing production
-              identity data before finalizing the quotation.
+              {summary.incompletePartCount === 1 ? "" : "s"} with missing
+              production identity data before finalizing the quotation.
             </div>
           )}
 
           <div style={productionGuide}>
             <strong>Inventory selection is manual.</strong>
             <span>
-              Review the requirements below, then choose the actual stock items and
-              quantities in Required Inventory Materials.
+              Review the requirements below, then choose the actual stock items
+              and quantities in Required Inventory Materials.
             </span>
           </div>
 
@@ -1284,7 +1461,9 @@ function ProductionSnapshotPanel({ snapshot }) {
                   <th style={{ ...productionTh, width: "18%" }}>Cut Size</th>
                   <th style={{ ...productionTh, width: "20%" }}>Material</th>
                   <th style={{ ...productionTh, width: "14%" }}>Grain</th>
-                  <th style={{ ...productionTh, width: "24%" }}>Production Details</th>
+                  <th style={{ ...productionTh, width: "24%" }}>
+                    Production Details
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -1362,9 +1541,9 @@ function ProductionSnapshotPanel({ snapshot }) {
           </div>
 
           <div style={productionFooterNote}>
-            This production reference does not change pricing. Quotation amounts still
-            come from Blueprint Components, Additional Items, Labor, Logistics, and
-            the existing quotation fields.
+            This production reference does not change pricing. Quotation amounts
+            still come from Blueprint Components, Additional Items, Labor,
+            Logistics, and the existing quotation fields.
           </div>
         </>
       )}
@@ -1387,14 +1566,16 @@ const readOversizedDeliveryDraft = (blueprintId) => {
 };
 
 export default function EstimationPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
 
   const [blueprint, setBlueprint] = useState(null);
   const [estimation, setEstimation] = useState(null);
-  const [oversizedDeliveryDraft, setOversizedDeliveryDraft] =
-    useState(null);
+  const [oversizedDeliveryDraft, setOversizedDeliveryDraft] = useState(null);
   const [items, setItems] = useState([]);
   const [rawMaterials, setRawMaterials] = useState([]);
   const [discussion, setDiscussion] = useState([]);
@@ -1410,7 +1591,10 @@ export default function EstimationPage() {
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
 
-  const parsedDesign = useMemo(() => parseBlueprintDesignData(blueprint), [blueprint]);
+  const parsedDesign = useMemo(
+    () => parseBlueprintDesignData(blueprint),
+    [blueprint],
+  );
   const productionSnapshot = useMemo(
     () => buildEstimateProductionSnapshot(parsedDesign),
     [parsedDesign],
@@ -1426,14 +1610,15 @@ export default function EstimationPage() {
     const load = async () => {
       setLoading(true);
       try {
-        const [blueprintResponse, estimationResponse, materialsResponse] = await Promise.all([
-          api.get(`/blueprints/${id}`),
-          api.get(`/blueprints/${id}/estimation`).catch((error) => {
-            if (error?.response?.status === 404) return { data: null };
-            throw error;
-          }),
-          api.get("/inventory/raw", { params: { page: 1, limit: 1000 } }),
-        ]);
+        const [blueprintResponse, estimationResponse, materialsResponse] =
+          await Promise.all([
+            api.get(`/blueprints/${id}`),
+            api.get(`/blueprints/${id}/estimation`).catch((error) => {
+              if (error?.response?.status === 404) return { data: null };
+              throw error;
+            }),
+            api.get("/inventory/raw", { params: { page: 1, limit: 1000 } }),
+          ]);
 
         if (cancelled) return;
         const loadedBlueprint = blueprintResponse.data;
@@ -1463,15 +1648,20 @@ export default function EstimationPage() {
           });
         } else {
           const draftCandidates = [];
-          if (location.state?.estimateDraft) draftCandidates.push(location.state.estimateDraft);
+          if (location.state?.estimateDraft)
+            draftCandidates.push(location.state.estimateDraft);
           try {
-            const stored = JSON.parse(localStorage.getItem("wisdom_estimate_draft") || "null");
+            const stored = JSON.parse(
+              localStorage.getItem("wisdom_estimate_draft") || "null",
+            );
             if (stored) draftCandidates.push(stored);
           } catch {
             // Ignore malformed local draft.
           }
           const matchedDraft = draftCandidates.find(
-            (draft) => String(draft?.blueprintId ?? draft?.blueprint_id ?? "") === String(id),
+            (draft) =>
+              String(draft?.blueprintId ?? draft?.blueprint_id ?? "") ===
+              String(id),
           );
           const draftRows = getDraftRows(matchedDraft);
           setItems(
@@ -1481,11 +1671,14 @@ export default function EstimationPage() {
           );
         }
 
-        const orderId = loadedBlueprint?.order_id || loadedBlueprint?.order_context?.order_id;
+        const orderId =
+          loadedBlueprint?.order_id || loadedBlueprint?.order_context?.order_id;
         if (orderId) {
           setDiscussionLoading(true);
           try {
-            const discussionResponse = await api.get(`/orders/${orderId}/discussion`);
+            const discussionResponse = await api.get(
+              `/orders/${orderId}/discussion`,
+            );
             if (!cancelled) {
               setDiscussion(
                 Array.isArray(discussionResponse.data?.discussion)
@@ -1502,7 +1695,9 @@ export default function EstimationPage() {
         }
       } catch (error) {
         console.error(error);
-        toast.error(error?.response?.data?.message || "Failed to load estimation.");
+        toast.error(
+          error?.response?.data?.message || "Failed to load estimation.",
+        );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -1515,20 +1710,14 @@ export default function EstimationPage() {
   }, [id, location.state]);
 
   useEffect(() => {
-    setOversizedDeliveryDraft(
-      readOversizedDeliveryDraft(id),
-    );
+    setOversizedDeliveryDraft(readOversizedDeliveryDraft(id));
 
     const handleDraftChange = (event) => {
-      if (
-        String(event?.detail?.blueprintId || "") !== String(id)
-      ) {
+      if (String(event?.detail?.blueprintId || "") !== String(id)) {
         return;
       }
 
-      setOversizedDeliveryDraft(
-        event?.detail?.oversized_delivery || null,
-      );
+      setOversizedDeliveryDraft(event?.detail?.oversized_delivery || null);
     };
 
     window.addEventListener(
@@ -1548,9 +1737,7 @@ export default function EstimationPage() {
     const handleOversizedDeliveryUpdate = (event) => {
       const detail = event?.detail || {};
 
-      if (
-        String(detail.blueprintId || "") !== String(id)
-      ) {
+      if (String(detail.blueprintId || "") !== String(id)) {
         return;
       }
 
@@ -1565,9 +1752,7 @@ export default function EstimationPage() {
         ...(current || {}),
         ...nextEstimation,
         additional_delivery_fee:
-          Number.isFinite(nextFee) && nextFee > 0
-            ? nextFee
-            : 0,
+          Number.isFinite(nextFee) && nextFee > 0 ? nextFee : 0,
       }));
     };
 
@@ -1584,7 +1769,10 @@ export default function EstimationPage() {
     };
   }, [id]);
 
-  const blueprintItems = useMemo(() => items.filter(isBlueprintPartItem), [items]);
+  const blueprintItems = useMemo(
+    () => items.filter(isBlueprintPartItem),
+    [items],
+  );
   const inventoryItems = useMemo(() => items.filter(isInventoryItem), [items]);
   const otherItems = useMemo(() => items.filter(isOtherItem), [items]);
 
@@ -1594,18 +1782,25 @@ export default function EstimationPage() {
       : "tracking_only";
   const inventoryTrackingOnly = inventoryPricingMode === "tracking_only";
 
-  const blueprintSubtotal = blueprintItems.reduce((sum, item) => sum + getItemAmount(item), 0);
-  const inventorySubtotal = inventoryItems.reduce((sum, item) => sum + getItemAmount(item), 0);
-  const otherSubtotal = otherItems.reduce((sum, item) => sum + getItemAmount(item), 0);
+  const blueprintSubtotal = blueprintItems.reduce(
+    (sum, item) => sum + getItemAmount(item),
+    0,
+  );
+  const inventorySubtotal = inventoryItems.reduce(
+    (sum, item) => sum + getItemAmount(item),
+    0,
+  );
+  const otherSubtotal = otherItems.reduce(
+    (sum, item) => sum + getItemAmount(item),
+    0,
+  );
   const quoteItemsSubtotal =
     blueprintSubtotal +
     otherSubtotal +
     (inventoryTrackingOnly ? 0 : inventorySubtotal);
   const laborCost = Number(costs.labor_cost || 0);
   const logisticsCost = Number(costs.overhead_cost || 0);
-  const draftDeliveryDecision = String(
-    oversizedDeliveryDraft?.decision || "",
-  )
+  const draftDeliveryDecision = String(oversizedDeliveryDraft?.decision || "")
     .trim()
     .toLowerCase();
   const additionalDeliveryFee = Math.max(
@@ -1619,32 +1814,39 @@ export default function EstimationPage() {
     ),
   );
   const subtotal =
-    quoteItemsSubtotal +
-    laborCost +
-    logisticsCost +
-    additionalDeliveryFee;
+    quoteItemsSubtotal + laborCost + logisticsCost + additionalDeliveryFee;
   const discountRate = Math.max(0, Math.min(100, Number(costs.discount || 0)));
   const discountAmount = subtotal * (discountRate / 100);
   const afterDiscount = Math.max(0, subtotal - discountAmount);
-  const taxAmount = afterDiscount * (Math.max(0, Number(costs.tax_rate || 0)) / 100);
+  const taxAmount =
+    afterDiscount * (Math.max(0, Number(costs.tax_rate || 0)) / 100);
   const grandTotal = afterDiscount + taxAmount;
 
   const status = formatEstimateStatus(estimation?.status);
-  const isApproved = String(estimation?.status || "").toLowerCase() === "approved";
+  const isApproved =
+    String(estimation?.status || "").toLowerCase() === "approved";
   const isSent = String(estimation?.status || "").toLowerCase() === "sent";
   const isReadOnly = isApproved || isSent;
-  const validUntil = new Date(estimation?.updated_at || estimation?.created_at || Date.now());
+  const validUntil = new Date(
+    estimation?.updated_at || estimation?.created_at || Date.now(),
+  );
   validUntil.setDate(validUntil.getDate() + 30);
 
   const customerMessages = useMemo(
     () =>
       discussion
-        .filter((entry) => String(entry?.sender_role || "").toLowerCase() === "customer")
+        .filter(
+          (entry) =>
+            String(entry?.sender_role || "").toLowerCase() === "customer",
+        )
         .slice(-6),
     [discussion],
   );
   const discussionAttachments = useMemo(
-    () => discussion.flatMap((entry) => (Array.isArray(entry.attachments) ? entry.attachments : [])),
+    () =>
+      discussion.flatMap((entry) =>
+        Array.isArray(entry.attachments) ? entry.attachments : [],
+      ),
     [discussion],
   );
   const blueprintReferenceFiles = useMemo(
@@ -1667,7 +1869,11 @@ export default function EstimationPage() {
       seen.add(key);
       return true;
     });
-  }, [blueprintReferenceFiles, customizationReferenceFiles, discussionAttachments]);
+  }, [
+    blueprintReferenceFiles,
+    customizationReferenceFiles,
+    discussionAttachments,
+  ]);
   const customizationEntries = useMemo(
     () => getCustomizationEntries(blueprint?.order_context),
     [blueprint],
@@ -1691,8 +1897,10 @@ export default function EstimationPage() {
             source_type: "inventory_material",
           };
         }
-        if (field === "name") return { ...item, name: String(value).slice(0, 255) };
-        if (field === "note") return { ...item, note: String(value).slice(0, 500) };
+        if (field === "name")
+          return { ...item, name: String(value).slice(0, 255) };
+        if (field === "note")
+          return { ...item, note: String(value).slice(0, 500) };
         return { ...item, [field]: value };
       }),
     );
@@ -1752,12 +1960,12 @@ export default function EstimationPage() {
 
     const mergedAuto = mergeAutoRows(preferredAutoItems, blueprintItems, []);
     setItems([...mergedAuto, ...inventoryItems, ...otherItems]);
-    toast.success("Blueprint components refreshed. Required materials and additional items were preserved.");
+    toast.success(
+      "Blueprint components refreshed. Required materials and additional items were preserved.",
+    );
   };
 
-  const buildPayload = (
-    deliveryDraft = oversizedDeliveryDraft,
-  ) => {
+  const buildPayload = (deliveryDraft = oversizedDeliveryDraft) => {
     const filledItems = items.filter(isFilledItem).map(serializeItem);
     return {
       items: filledItems,
@@ -1788,8 +1996,7 @@ export default function EstimationPage() {
     if (showFirstValidationError(validationErrors)) return;
 
     const currentDeliveryDraft =
-      readOversizedDeliveryDraft(id) ||
-      oversizedDeliveryDraft;
+      readOversizedDeliveryDraft(id) || oversizedDeliveryDraft;
 
     if (
       currentDeliveryDraft?.assessment_status === "oversized" &&
@@ -1811,37 +2018,24 @@ export default function EstimationPage() {
       );
 
       let saved = response.data?.estimation || null;
-      estimationSaved = Boolean(
-        saved?.id || response.data?.id,
-      );
+      estimationSaved = Boolean(saved?.id || response.data?.id);
 
-      if (
-        currentDeliveryDraft?.assessment_status === "oversized"
-      ) {
+      if (currentDeliveryDraft?.assessment_status === "oversized") {
         const deliveryResponse = await api.patch(
           `/oversized-delivery/blueprints/${id}/decision`,
           {
             decision: currentDeliveryDraft.decision,
             additional_delivery_fee:
               currentDeliveryDraft.decision === "fee_required"
-                ? Number(
-                    currentDeliveryDraft.additional_delivery_fee ||
-                      0,
-                  )
+                ? Number(currentDeliveryDraft.additional_delivery_fee || 0)
                 : 0,
-            reason: String(
-              currentDeliveryDraft.reason || "",
-            ).trim(),
-            truck_type: String(
-              currentDeliveryDraft.truck_type || "",
-            ).trim(),
+            reason: String(currentDeliveryDraft.reason || "").trim(),
+            truck_type: String(currentDeliveryDraft.truck_type || "").trim(),
           },
         );
 
-        const deliveryEstimation =
-          deliveryResponse.data?.estimation || {};
-        const nextDecision =
-          deliveryEstimation?.decision || {};
+        const deliveryEstimation = deliveryResponse.data?.estimation || {};
+        const nextDecision = deliveryEstimation?.decision || {};
 
         saved = {
           ...(saved || {}),
@@ -1855,38 +2049,26 @@ export default function EstimationPage() {
         };
 
         window.dispatchEvent(
-          new CustomEvent(
-            "wisdom:oversized-delivery-updated",
-            {
-              detail: {
-                blueprintId: String(id),
-                estimation: saved,
-              },
+          new CustomEvent("wisdom:oversized-delivery-updated", {
+            detail: {
+              blueprintId: String(id),
+              estimation: saved,
             },
-          ),
+          }),
         );
       }
 
       if (saved) {
         setEstimation(saved);
-        setItems(
-          reconcileLoadedItems(
-            saved.items || [],
-            preferredAutoItems,
-          ),
-        );
+        setItems(reconcileLoadedItems(saved.items || [], preferredAutoItems));
         setCosts((current) => ({
           ...current,
-          discount: Number(
-            saved.discount ?? current.discount,
-          ),
+          discount: Number(saved.discount ?? current.discount),
         }));
       }
 
       setBlueprint((current) =>
-        current
-          ? { ...current, stage: "estimation" }
-          : current,
+        current ? { ...current, stage: "estimation" } : current,
       );
 
       window.dispatchEvent(
@@ -1906,8 +2088,7 @@ export default function EstimationPage() {
     } catch (error) {
       console.error(error);
 
-      const serverMessage =
-        error?.response?.data?.message || "";
+      const serverMessage = error?.response?.data?.message || "";
 
       toast.error(
         estimationSaved
@@ -1937,11 +2118,15 @@ export default function EstimationPage() {
         ...(response.data?.estimation || {}),
         status: "sent",
       }));
-      setBlueprint((current) => (current ? { ...current, stage: "approval" } : current));
+      setBlueprint((current) =>
+        current ? { ...current, stage: "approval" } : current,
+      );
       toast.success("Quotation sent to the customer for approval.");
     } catch (error) {
       console.error(error);
-      toast.error(error?.response?.data?.message || "Failed to send quotation.");
+      toast.error(
+        error?.response?.data?.message || "Failed to send quotation.",
+      );
     } finally {
       setApproving(false);
     }
@@ -1949,7 +2134,9 @@ export default function EstimationPage() {
 
   const handleGenerateContract = () => {
     if (!isApproved || !blueprint?.order_id) {
-      toast.error("Only a customer-approved quotation linked to an order can generate a contract.");
+      toast.error(
+        "Only a customer-approved quotation linked to an order can generate a contract.",
+      );
       return;
     }
     navigate("/admin/contracts", {
@@ -1963,7 +2150,11 @@ export default function EstimationPage() {
   };
 
   const exportPDF = () => {
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    });
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 14;
     const money = (value) =>
@@ -1985,7 +2176,12 @@ export default function EstimationPage() {
     doc.text(`Customer: ${getCustomerDisplayName(blueprint)}`, margin, 33);
     doc.text(`Order: ${blueprint?.order_number || "—"}`, margin, 38);
     doc.text(`Status: ${status}`, pageWidth - margin, 28, { align: "right" });
-    doc.text(`Date: ${new Date().toLocaleDateString("en-PH")}`, pageWidth - margin, 33, { align: "right" });
+    doc.text(
+      `Date: ${new Date().toLocaleDateString("en-PH")}`,
+      pageWidth - margin,
+      33,
+      { align: "right" },
+    );
     doc.line(margin, 43, pageWidth - margin, 43);
 
     const addSection = (title, sectionRows, startY) => {
@@ -2084,12 +2280,19 @@ export default function EstimationPage() {
     <div style={pageShell}>
       <div style={pageHeader}>
         <div style={titleBlock}>
-          <button type="button" onClick={() => navigate(-1)} style={btnBack}>← Back</button>
+          <button type="button" onClick={() => navigate(-1)} style={btnBack}>
+            ← Back
+          </button>
           <div>
-            <h1 style={pageTitle}>Project Estimate — {getBlueprintDisplayTitle(blueprint)}</h1>
+            <h1 style={pageTitle}>
+              Project Estimate — {getBlueprintDisplayTitle(blueprint)}
+            </h1>
             <p style={pageSubTitle}>
-              Blueprint #{String(id).padStart(5, "0")} · Customer: {getCustomerDisplayName(blueprint)}
-              {blueprint.order_number ? ` · Order: ${blueprint.order_number}` : ""}
+              Blueprint #{String(id).padStart(5, "0")} · Customer:{" "}
+              {getCustomerDisplayName(blueprint)}
+              {blueprint.order_number
+                ? ` · Order: ${blueprint.order_number}`
+                : ""}
             </p>
           </div>
         </div>
@@ -2099,17 +2302,27 @@ export default function EstimationPage() {
             type="button"
             onClick={handleRegenerate}
             disabled={isReadOnly || !preferredAutoItems.length}
-            style={isReadOnly || !preferredAutoItems.length ? { ...btnGhost, ...btnDisabled } : btnGhost}
+            style={
+              isReadOnly || !preferredAutoItems.length
+                ? { ...btnGhost, ...btnDisabled }
+                : btnGhost
+            }
           >
             Refresh Components
           </button>
-          <button type="button" onClick={exportPDF} style={btnGhost}>Export PDF</button>
+          <button type="button" onClick={exportPDF} style={btnGhost}>
+            Export PDF
+          </button>
           {isApproved ? (
             <button
               type="button"
               onClick={handleGenerateContract}
               disabled={!blueprint?.order_id}
-              style={!blueprint?.order_id ? { ...btnPrimary, ...btnDisabled } : btnPrimary}
+              style={
+                !blueprint?.order_id
+                  ? { ...btnPrimary, ...btnDisabled }
+                  : btnPrimary
+              }
             >
               Generate Contract
             </button>
@@ -2118,16 +2331,28 @@ export default function EstimationPage() {
               type="button"
               onClick={handleSendQuote}
               disabled={!estimation?.id || approving || isSent}
-              style={!estimation?.id || approving || isSent ? { ...btnGhost, ...btnDisabled } : btnPrimary}
+              style={
+                !estimation?.id || approving || isSent
+                  ? { ...btnGhost, ...btnDisabled }
+                  : btnPrimary
+              }
             >
-              {isSent ? "Quotation Sent" : approving ? "Sending..." : "Send Quotation"}
+              {isSent
+                ? "Quotation Sent"
+                : approving
+                  ? "Sending..."
+                  : "Send Quotation"}
             </button>
           )}
           <button
             type="button"
             onClick={handleSave}
             disabled={saving || isReadOnly}
-            style={saving || isReadOnly ? { ...btnPrimary, ...btnDisabled } : btnPrimary}
+            style={
+              saving || isReadOnly
+                ? { ...btnPrimary, ...btnDisabled }
+                : btnPrimary
+            }
           >
             {saving ? "Saving..." : "Save Estimate"}
           </button>
@@ -2135,9 +2360,18 @@ export default function EstimationPage() {
       </div>
 
       <div style={metaGrid}>
-        <div style={metaCard}><span style={metaLabel}>Quotation Status</span><span style={statusValue}>{status}</span></div>
-        <div style={metaCard}><span style={metaLabel}>Valid Until</span><span style={metaValue}>{formatDateDisplay(validUntil)}</span></div>
-        <div style={metaCard}><span style={metaLabel}>Prepared By</span><span style={metaValue}>Spiral Wood Services</span></div>
+        <div style={metaCard}>
+          <span style={metaLabel}>Quotation Status</span>
+          <span style={statusValue}>{status}</span>
+        </div>
+        <div style={metaCard}>
+          <span style={metaLabel}>Valid Until</span>
+          <span style={metaValue}>{formatDateDisplay(validUntil)}</span>
+        </div>
+        <div style={metaCard}>
+          <span style={metaLabel}>Prepared By</span>
+          <span style={metaValue}>Spiral Wood Services</span>
+        </div>
       </div>
 
       {isReadOnly && (
@@ -2152,7 +2386,8 @@ export default function EstimationPage() {
         <div style={sectionHeaderSmall}>
           <h3 style={sectionTitle}>Customer Request</h3>
           <p style={helperText}>
-            Review the order request, design specifications, messages, and reference files before preparing the quotation.
+            Review the order request, design specifications, messages, and
+            reference files before preparing the quotation.
           </p>
         </div>
         <div style={{ padding: 20 }}>
@@ -2165,7 +2400,8 @@ export default function EstimationPage() {
               )}
               {blueprint.order_context?.delivery_request_notes && (
                 <p style={requestText}>
-                  Delivery note: {blueprint.order_context.delivery_request_notes}
+                  Delivery note:{" "}
+                  {blueprint.order_context.delivery_request_notes}
                 </p>
               )}
               {!blueprint.order_context?.order_notes &&
@@ -2179,26 +2415,35 @@ export default function EstimationPage() {
                 <div style={{ display: "grid", gap: 6 }}>
                   {customizationEntries.map((entry, index) => (
                     <div key={`${entry.label}-${index}`} style={detailRow}>
-                      <span>{entry.label}</span><strong>{entry.value}</strong>
+                      <span>{entry.label}</span>
+                      <strong>{entry.value}</strong>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p style={mutedText}>No structured customization details recorded.</p>
+                <p style={mutedText}>
+                  No structured customization details recorded.
+                </p>
               )}
             </div>
           </div>
 
           <div style={{ marginTop: 18 }}>
-            <div style={{ ...metaLabel, marginBottom: 8 }}>Customer Messages</div>
+            <div style={{ ...metaLabel, marginBottom: 8 }}>
+              Customer Messages
+            </div>
             {discussionLoading ? (
               <p style={mutedText}>Loading customer discussion...</p>
             ) : customerMessages.length ? (
               <div style={messageList}>
                 {customerMessages.map((entry) => (
                   <div key={entry.id} style={messageCard}>
-                    <div style={{ fontWeight: 700 }}>{entry.message || "Attachment uploaded."}</div>
-                    <div style={{ fontSize: 11, color: "#71717a", marginTop: 5 }}>
+                    <div style={{ fontWeight: 700 }}>
+                      {entry.message || "Attachment uploaded."}
+                    </div>
+                    <div
+                      style={{ fontSize: 11, color: "#71717a", marginTop: 5 }}
+                    >
                       {formatDateTime(entry.created_at)}
                     </div>
                   </div>
@@ -2210,19 +2455,33 @@ export default function EstimationPage() {
           </div>
 
           <div style={{ marginTop: 18 }}>
-            <div style={{ ...metaLabel, marginBottom: 8 }}>Customer References</div>
+            <div style={{ ...metaLabel, marginBottom: 8 }}>
+              Customer References
+            </div>
             {referenceFiles.length ? (
               <div style={attachmentGrid}>
                 {referenceFiles.map((file) => {
                   const href = resolveAttachmentUrl(file.file_url || file.url);
                   return (
-                    <a key={file.id || href} href={href} target="_blank" rel="noreferrer" style={attachmentCard}>
+                    <a
+                      key={file.id || href}
+                      href={href}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={attachmentCard}
+                    >
                       {isImageAttachment(file) ? (
-                        <img src={href} alt={file.file_name || "Reference"} style={attachmentImage} />
+                        <img
+                          src={href}
+                          alt={file.file_name || "Reference"}
+                          style={attachmentImage}
+                        />
                       ) : (
                         <div style={filePlaceholder}>FILE</div>
                       )}
-                      <div style={attachmentLabel}>{file.file_name || "Reference file"}</div>
+                      <div style={attachmentLabel}>
+                        {file.file_name || "Reference file"}
+                      </div>
                     </a>
                   );
                 })}
@@ -2279,30 +2538,108 @@ export default function EstimationPage() {
         <div style={card}>
           <div style={sectionHeaderSmall}>
             <h3 style={sectionTitle}>Quotation Details</h3>
-            <p style={helperText}>Enter the service charges, adjustments, tax, and quotation notes.</p>
+            <p style={helperText}>
+              Enter the service charges, adjustments, tax, and quotation notes.
+            </p>
           </div>
           <div style={{ padding: "20px 24px" }}>
             <div style={{ marginBottom: 16 }}>
               <label style={labelSm}>Labor Cost (₱)</label>
-              <input type="number" min="0" step="0.01" value={costs.labor_cost} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, labor_cost: event.target.value }))} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }} disabled={isReadOnly} />
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={costs.labor_cost}
+                onChange={(event) =>
+                  !isReadOnly &&
+                  setCosts((current) => ({
+                    ...current,
+                    labor_cost: event.target.value,
+                  }))
+                }
+                style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }}
+                disabled={isReadOnly}
+              />
             </div>
             <div style={{ marginBottom: 16 }}>
               <label style={labelSm}>Logistics Cost (₱)</label>
-              <input type="number" min="0" step="0.01" value={costs.overhead_cost} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, overhead_cost: event.target.value }))} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }} disabled={isReadOnly} />
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={costs.overhead_cost}
+                onChange={(event) =>
+                  !isReadOnly &&
+                  setCosts((current) => ({
+                    ...current,
+                    overhead_cost: event.target.value,
+                  }))
+                }
+                style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }}
+                disabled={isReadOnly}
+              />
             </div>
             <div style={dualFieldGrid}>
               <div>
                 <label style={labelSm}>Discount (%)</label>
-                <input type="number" min="0" max="100" step="0.01" value={costs.discount} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, discount: event.target.value }))} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }} disabled={isReadOnly} />
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={costs.discount}
+                  onChange={(event) =>
+                    !isReadOnly &&
+                    setCosts((current) => ({
+                      ...current,
+                      discount: event.target.value,
+                    }))
+                  }
+                  style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }}
+                  disabled={isReadOnly}
+                />
               </div>
               <div>
                 <label style={labelSm}>VAT (%)</label>
-                <input type="number" min="0" max="100" step="0.01" value={costs.tax_rate} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, tax_rate: event.target.value }))} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }} disabled={isReadOnly} />
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={costs.tax_rate}
+                  onChange={(event) =>
+                    !isReadOnly &&
+                    setCosts((current) => ({
+                      ...current,
+                      tax_rate: event.target.value,
+                    }))
+                  }
+                  style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly) }}
+                  disabled={isReadOnly}
+                />
               </div>
             </div>
             <div>
               <label style={labelSm}>Quotation Notes</label>
-              <textarea value={costs.notes} onChange={(event) => !isReadOnly && setCosts((current) => ({ ...current, notes: event.target.value.slice(0, 500) }))} rows={5} style={{ ...inputFull, ...readOnlyFieldStyle(isReadOnly), resize: "vertical" }} maxLength={500} disabled={isReadOnly} placeholder="Add terms, inclusions, exclusions, or delivery notes..." />
+              <textarea
+                value={costs.notes}
+                onChange={(event) =>
+                  !isReadOnly &&
+                  setCosts((current) => ({
+                    ...current,
+                    notes: event.target.value.slice(0, 500),
+                  }))
+                }
+                rows={5}
+                style={{
+                  ...inputFull,
+                  ...readOnlyFieldStyle(isReadOnly),
+                  resize: "vertical",
+                }}
+                maxLength={500}
+                disabled={isReadOnly}
+                placeholder="Add terms, inclusions, exclusions, or delivery notes..."
+              />
             </div>
           </div>
         </div>
@@ -2310,7 +2647,10 @@ export default function EstimationPage() {
         <div style={{ ...card, alignSelf: "start" }}>
           <div style={sectionHeaderSmall}>
             <h3 style={sectionTitle}>Quotation Summary</h3>
-            <p style={helperText}>Confirm the quotation breakdown before saving or sending it to the customer.</p>
+            <p style={helperText}>
+              Confirm the quotation breakdown before saving or sending it to the
+              customer.
+            </p>
           </div>
           <div style={{ padding: 24 }}>
             {[
@@ -2341,15 +2681,34 @@ export default function EstimationPage() {
               </div>
             )}
             <div style={{ borderTop: "1px solid #e4e4e7", margin: "16px 0" }} />
-            <div style={summaryRow}><strong>Subtotal</strong><strong>{formatMoney(subtotal)}</strong></div>
+            <div style={summaryRow}>
+              <strong>Subtotal</strong>
+              <strong>{formatMoney(subtotal)}</strong>
+            </div>
             {discountRate > 0 && (
-              <div style={summaryRow}><span style={{ ...summaryLabel, color: "#dc2626" }}>Discount ({discountRate}%)</span><strong style={{ color: "#dc2626" }}>({formatMoney(discountAmount)})</strong></div>
+              <div style={summaryRow}>
+                <span style={{ ...summaryLabel, color: "#dc2626" }}>
+                  Discount ({discountRate}%)
+                </span>
+                <strong style={{ color: "#dc2626" }}>
+                  ({formatMoney(discountAmount)})
+                </strong>
+              </div>
             )}
-            <div style={summaryRow}><span style={summaryLabel}>VAT ({costs.tax_rate}%)</span><strong>{formatMoney(taxAmount)}</strong></div>
-            <div style={grandTotalBox}><span>Total Quotation</span><strong>{formatMoney(grandTotal)}</strong></div>
+            <div style={summaryRow}>
+              <span style={summaryLabel}>VAT ({costs.tax_rate}%)</span>
+              <strong>{formatMoney(taxAmount)}</strong>
+            </div>
+            <div style={grandTotalBox}>
+              <span>Total Quotation</span>
+              <strong>{formatMoney(grandTotal)}</strong>
+            </div>
             {estimation && (
               <div style={savedInfo}>
-                Last saved {formatDateDisplay(estimation.updated_at || estimation.created_at)}
+                Last saved{" "}
+                {formatDateDisplay(
+                  estimation.updated_at || estimation.created_at,
+                )}
               </div>
             )}
           </div>
@@ -2698,7 +3057,8 @@ const productionPartReview = {
 };
 
 const productionMono = {
-  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  fontFamily:
+    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
   fontSize: 10,
   fontWeight: 700,
   color: "#18181b",

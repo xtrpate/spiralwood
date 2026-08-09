@@ -10,6 +10,9 @@ import SummaryCard from "../../components/support/SummaryCard";
 import TicketConversation from "../../components/support/TicketConversation";
 
 export default function SupportPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [activeTab, setActiveTab] = useState("details");

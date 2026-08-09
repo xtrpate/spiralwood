@@ -74,6 +74,9 @@ const getSenderMeta = (entry = {}) => {
 };
 
 export default function OrderDiscussionPanel({ orderId, enabled = true }) {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const [discussion, setDiscussion] = useState([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");

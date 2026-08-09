@@ -38,7 +38,6 @@ const getGoogleMapsHref = (lat, lng) => {
   return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
 };
 
-
 const STATUS_STYLE = {
   pending: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
   confirmed: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
@@ -417,6 +416,9 @@ const buildCustomRequestPreviewBlueprint = (item) => {
 };
 
 export default function OrderDetailPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -434,7 +436,10 @@ export default function OrderDetailPage() {
   // though the update itself worked correctly.
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const paymentReviewLockRef = useRef(false);
-  const [reviewingPayment, setReviewingPayment] = useState({ id: null, action: "" });
+  const [reviewingPayment, setReviewingPayment] = useState({
+    id: null,
+    action: "",
+  });
   const [recordingCashPayment, setRecordingCashPayment] = useState(false);
   const [cashPaymentError, setCashPaymentError] = useState("");
   const [customCashAmount, setCustomCashAmount] = useState("");
@@ -623,9 +628,6 @@ export default function OrderDetailPage() {
     }
   };
 
-
-
-
   const verifyPayment = async (paymentId, action) => {
     if (paymentReviewLockRef.current) return;
     paymentReviewLockRef.current = true;
@@ -645,7 +647,8 @@ export default function OrderDetailPage() {
       // shown to the admin twice.
       if (err?.response?.status === 404) {
         toast.error(
-          err?.response?.data?.message || `Failed to mark payment as ${action}.`,
+          err?.response?.data?.message ||
+            `Failed to mark payment as ${action}.`,
         );
       }
     } finally {
@@ -733,10 +736,9 @@ export default function OrderDetailPage() {
 
     setRecordingCashPayment(true);
     try {
-      const { data } = await api.post(
-        `/pos/blueprint-cash-payments/${id}`,
-        { amount: trimmedAmount },
-      );
+      const { data } = await api.post(`/pos/blueprint-cash-payments/${id}`, {
+        amount: trimmedAmount,
+      });
       setCashPaymentError("");
       toast.success(data?.message || "Cash payment recorded successfully.");
       setCustomCashAmount("");
@@ -750,8 +752,6 @@ export default function OrderDetailPage() {
       setRecordingCashPayment(false);
     }
   };
-
-
 
   const openProofPreview = (url) => {
     const resolvedUrl = buildAssetUrl(url);
@@ -799,8 +799,6 @@ export default function OrderDetailPage() {
     if (!order?.id) return;
 
     let payload = {};
-
-
 
     if (action === "reject") {
       const reason = window.prompt("Enter rejection reason:");
@@ -880,7 +878,9 @@ export default function OrderDetailPage() {
       const { data } = await api.patch(`/orders/${id}/reassign-staff`, {
         staff_id: Number(reassignStaffId),
       });
-      toast.success(data?.message || "Production staff reassigned successfully.");
+      toast.success(
+        data?.message || "Production staff reassigned successfully.",
+      );
       setReassignModal(false);
       load();
     } catch (err) {
@@ -1186,9 +1186,7 @@ export default function OrderDetailPage() {
 
   const isCancelOnlyModal = statusModalMode === "cancel";
   const statusModalStatuses = isCancelOnlyModal
-    ? allowedNextStatuses.filter(
-        (status) => normalize(status) === "cancelled",
-      )
+    ? allowedNextStatuses.filter((status) => normalize(status) === "cancelled")
     : selectableNextStatuses;
   const hasVerifiedCustomerPayment = verifiedPaymentTotal > 0;
 
@@ -1412,20 +1410,17 @@ export default function OrderDetailPage() {
             </p>
           </div>
 
-
-
           <div style={heroActions}>
-            {normalizedOrderStatus === "pending" &&
-              isOnlineStandardOrder && (
-                <>
-                  <button onClick={handleAccept} style={btnAccept}>
-                    Accept
-                  </button>
-                  <button onClick={handleDecline} style={btnDecline}>
-                    Decline
-                  </button>
-                </>
-              )}
+            {normalizedOrderStatus === "pending" && isOnlineStandardOrder && (
+              <>
+                <button onClick={handleAccept} style={btnAccept}>
+                  Accept
+                </button>
+                <button onClick={handleDecline} style={btnDecline}>
+                  Decline
+                </button>
+              </>
+            )}
 
             {isBlueprintOrder &&
               normalizedOrderStatus === "confirmed" &&
@@ -1810,8 +1805,6 @@ export default function OrderDetailPage() {
                         : "Approve for Estimation"}
                     </button>
 
-
-
                     <button
                       onClick={() => handleCustomRequestAction("reject")}
                       disabled={customRequestActionLoading === "reject"}
@@ -2137,9 +2130,7 @@ export default function OrderDetailPage() {
                           inputMode="decimal"
                           placeholder="0.00"
                           value={customCashAmount}
-                          onChange={(e) =>
-                            setCustomCashAmount(e.target.value)
-                          }
+                          onChange={(e) => setCustomCashAmount(e.target.value)}
                           style={inputFull}
                           disabled={recordingCashPayment}
                         />
@@ -3017,10 +3008,7 @@ export default function OrderDetailPage() {
               <button
                 onClick={handleStatusUpdate}
                 style={isCancelOnlyModal ? btnDecline : btnPrimary}
-                disabled={
-                  !statusModalStatuses.length ||
-                  updatingStatus
-                }
+                disabled={!statusModalStatuses.length || updatingStatus}
               >
                 {updatingStatus
                   ? "Updating…"
@@ -3059,8 +3047,8 @@ export default function OrderDetailPage() {
 
             {hasInProgressOrBlockedTask && (
               <div style={{ ...alertWarning, marginTop: 16 }}>
-                Active or blocked production steps must be resolved before
-                staff can be reassigned.
+                Active or blocked production steps must be resolved before staff
+                can be reassigned.
               </div>
             )}
 
@@ -3096,8 +3084,8 @@ export default function OrderDetailPage() {
             )}
 
             <div style={{ marginTop: 12, fontSize: 12, color: "#71717a" }}>
-              Completed steps remain attributed to their original staff
-              member. Due dates are unchanged.
+              Completed steps remain attributed to their original staff member.
+              Due dates are unchanged.
             </div>
 
             <div style={modalActions}>
@@ -3106,7 +3094,9 @@ export default function OrderDetailPage() {
               </button>
               <button
                 onClick={handleReassignStaff}
-                disabled={reassigning || hasInProgressOrBlockedTask || !reassignStaffId}
+                disabled={
+                  reassigning || hasInProgressOrBlockedTask || !reassignStaffId
+                }
                 style={btnPrimary}
               >
                 {reassigning ? "Reassigning..." : "Reassign Staff"}

@@ -77,6 +77,9 @@ const CREATE_TEMPLATE_TYPE_MAP = {
 };
 
 export default function BlueprintDesign() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const { id } = useParams();
   const navigate = useNavigate();
 
@@ -173,7 +176,9 @@ export default function BlueprintDesign() {
 
   const hasUnsavedDesignChanges = useMemo(() => {
     if (savedDesignComponentSignature === null) {
-      return components.some((component) => component?.type !== "reference_proxy");
+      return components.some(
+        (component) => component?.type !== "reference_proxy",
+      );
     }
 
     return currentDesignComponentSignature !== savedDesignComponentSignature;
@@ -213,13 +218,7 @@ export default function BlueprintDesign() {
         worldDimensions: { w: WORLD_W, h: WORLD_H, d: WORLD_D },
         hasUnsavedChanges: hasUnsavedDesignChanges,
       }),
-    [
-      components,
-      hasUnsavedDesignChanges,
-      WORLD_W,
-      WORLD_H,
-      WORLD_D,
-    ],
+    [components, hasUnsavedDesignChanges, WORLD_W, WORLD_H, WORLD_D],
   );
 
   const [newTraceType, setNewTraceType] = useState("door");
@@ -301,12 +300,7 @@ export default function BlueprintDesign() {
         depth: selectedBounds3D.depth,
       },
     };
-  }, [
-    selectedBounds3D,
-    selectedComponents,
-    selectedMaterialText,
-    isLocked,
-  ]);
+  }, [selectedBounds3D, selectedComponents, selectedMaterialText, isLocked]);
 
   useBlueprintLoader({
     id,
@@ -489,7 +483,9 @@ export default function BlueprintDesign() {
         return;
       }
 
-      const currentById = new Map(components.map((component) => [component.id, component]));
+      const currentById = new Map(
+        components.map((component) => [component.id, component]),
+      );
       const entries = Object.entries(changesById).filter(([id, attrs]) => {
         if (!attrs || !Object.keys(attrs).length) return false;
 

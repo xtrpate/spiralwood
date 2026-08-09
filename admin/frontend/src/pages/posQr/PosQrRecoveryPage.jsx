@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import api from "../../services/api";
@@ -234,9 +240,14 @@ function ReservedItemsTable({ items, fallbackNames = [] }) {
         </thead>
         <tbody>
           {normalized.map((item) => (
-            <tr key={item.product_id} style={{ borderTop: "1px solid #e4e4e7" }}>
+            <tr
+              key={item.product_id}
+              style={{ borderTop: "1px solid #e4e4e7" }}
+            >
               <td style={{ padding: 9, fontWeight: 700 }}>
-                {item.product_name || namesByProductId.get(item.product_id) || "Product"}
+                {item.product_name ||
+                  namesByProductId.get(item.product_id) ||
+                  "Product"}
               </td>
               <td style={{ padding: 9 }}>{item.product_id}</td>
               <td style={{ padding: 9, textAlign: "right", fontWeight: 800 }}>
@@ -317,7 +328,9 @@ function CompletionResult({ result, onClose }) {
           )}
         </div>
         <div>
-          <div style={{ fontSize: 11, color: "#4d7c0f" }}>Payment Transaction</div>
+          <div style={{ fontSize: 11, color: "#4d7c0f" }}>
+            Payment Transaction
+          </div>
           <div style={{ fontSize: 14, fontWeight: 800 }}>
             {result.payment_transaction_id || "—"}
           </div>
@@ -348,6 +361,9 @@ function CompletionResult({ result, onClose }) {
 }
 
 export default function PosQrRecoveryPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const [attempts, setAttempts] = useState([]);
   const [statusFilter, setStatusFilter] = useState("all");
   const [limit, setLimit] = useState(50);
@@ -578,7 +594,11 @@ export default function PosQrRecoveryPage() {
     }, 1000);
 
     return () => window.clearInterval(timer);
-  }, [manualRelease.confirmationToken, manualRelease.expiresAt, clearManualToken]);
+  }, [
+    manualRelease.confirmationToken,
+    manualRelease.expiresAt,
+    clearManualToken,
+  ]);
 
   const handleSelectAttempt = async (attemptId) => {
     if (selectedAttemptId === attemptId && detail?.id === attemptId) {
@@ -595,7 +615,9 @@ export default function PosQrRecoveryPage() {
 
     const providerSessionId = String(attachSessionIds[attemptId] || "").trim();
     if (!/^cs_[A-Za-z0-9]{8,80}$/.test(providerSessionId)) {
-      toast.error("Enter a valid PayMongo Checkout Session ID beginning with cs_.");
+      toast.error(
+        "Enter a valid PayMongo Checkout Session ID beginning with cs_.",
+      );
       return;
     }
 
@@ -609,7 +631,11 @@ export default function PosQrRecoveryPage() {
       const outcome = await reconcileAttempt(attemptId);
       if (outcome.kind === "not_found") {
         const payload = response.data || {};
-        if (payload.order_id || payload.receipt_id || payload.payment_transaction_id) {
+        if (
+          payload.order_id ||
+          payload.receipt_id ||
+          payload.payment_transaction_id
+        ) {
           setCompletionResult(payload);
         }
         setAttachSessionIds((current) => {
@@ -639,7 +665,11 @@ export default function PosQrRecoveryPage() {
 
       if (outcome.kind === "not_found") {
         const payload = response.data || {};
-        if (payload.order_id || payload.receipt_id || payload.payment_transaction_id) {
+        if (
+          payload.order_id ||
+          payload.receipt_id ||
+          payload.payment_transaction_id
+        ) {
           setCompletionResult(payload);
         }
       }
@@ -702,7 +732,11 @@ export default function PosQrRecoveryPage() {
       );
       const payload = response.data || {};
 
-      if (payload.order_id || payload.receipt_id || payload.payment_transaction_id) {
+      if (
+        payload.order_id ||
+        payload.receipt_id ||
+        payload.payment_transaction_id
+      ) {
         setCompletionResult(payload);
       }
 
@@ -734,7 +768,9 @@ export default function PosQrRecoveryPage() {
     if (isAttemptBusy(attemptId) || !recoveryActionsEnabled) return;
 
     const preliminaryFromCurrentDetail =
-      detail?.id === attemptId ? normalizeReservedItems(detail.reserved_items) : [];
+      detail?.id === attemptId
+        ? normalizeReservedItems(detail.reserved_items)
+        : [];
 
     setManualRelease({
       ...EMPTY_MANUAL_RELEASE,
@@ -754,7 +790,10 @@ export default function PosQrRecoveryPage() {
       return;
     }
 
-    if (outcome.kind !== "found" || outcome.attempt?.status !== "provider_unknown") {
+    if (
+      outcome.kind !== "found" ||
+      outcome.attempt?.status !== "provider_unknown"
+    ) {
       setManualRelease((current) => ({
         ...current,
         loadingPreliminary: false,
@@ -808,7 +847,9 @@ export default function PosQrRecoveryPage() {
 
       // Deliberately read only these three approved fields. Any other
       // response field, including checkout_token, is ignored.
-      const reservedItems = normalizeReservedItems(response.data?.reserved_items);
+      const reservedItems = normalizeReservedItems(
+        response.data?.reserved_items,
+      );
       const confirmationToken = response.data?.confirmation_token;
       const expiresAt = Number(response.data?.expires_at);
 
@@ -819,7 +860,9 @@ export default function PosQrRecoveryPage() {
         !Number.isSafeInteger(expiresAt) ||
         expiresAt * 1000 - Date.now() <= 0
       ) {
-        throw new Error("The confirmation response was incomplete or already expired.");
+        throw new Error(
+          "The confirmation response was incomplete or already expired.",
+        );
       }
 
       const changed = !quantitiesMatch(
@@ -929,9 +972,10 @@ export default function PosQrRecoveryPage() {
                 lineHeight: 1.55,
               }}
             >
-              Review unresolved POS QR payments. Attach only an existing PayMongo
-              Checkout Session, verify an attached payment, safely release a
-              provider-unknown reservation, or cancel an expired unpaid attempt.
+              Review unresolved POS QR payments. Attach only an existing
+              PayMongo Checkout Session, verify an attached payment, safely
+              release a provider-unknown reservation, or cancel an expired
+              unpaid attempt.
             </p>
           </div>
           <button
@@ -963,9 +1007,9 @@ export default function PosQrRecoveryPage() {
           }}
           role="status"
         >
-          Recovery actions are disabled. You can still inspect unresolved attempts,
-          but Attach Session, Verify Payment, Cancel & Release Stock, and Manual
-          Release are unavailable.
+          Recovery actions are disabled. You can still inspect unresolved
+          attempts, but Attach Session, Verify Payment, Cancel & Release Stock,
+          and Manual Release are unavailable.
         </div>
       )}
 
@@ -1069,7 +1113,9 @@ export default function PosQrRecoveryPage() {
                         background: isSelected ? "#fafafa" : "#ffffff",
                       }}
                     >
-                      <td style={{ padding: 12, fontWeight: 800 }}>#{attempt.id}</td>
+                      <td style={{ padding: 12, fontWeight: 800 }}>
+                        #{attempt.id}
+                      </td>
                       <td style={{ padding: 12 }}>
                         <StatusBadge status={attempt.status} />
                       </td>
@@ -1091,7 +1137,13 @@ export default function PosQrRecoveryPage() {
                             : `${attempt.item_count} item${attempt.item_count === 1 ? "" : "s"}`}
                         </div>
                       </td>
-                      <td style={{ padding: 12, textAlign: "right", fontWeight: 800 }}>
+                      <td
+                        style={{
+                          padding: 12,
+                          textAlign: "right",
+                          fontWeight: 800,
+                        }}
+                      >
                         {attempt.total === null
                           ? "Unavailable"
                           : formatCurrency(attempt.total)}
@@ -1099,7 +1151,9 @@ export default function PosQrRecoveryPage() {
                       <td style={{ padding: 12 }}>
                         {attempt.session_attached ? "Attached" : "Not attached"}
                       </td>
-                      <td style={{ padding: 12 }}>{formatDateTime(attempt.updated_at)}</td>
+                      <td style={{ padding: 12 }}>
+                        {formatDateTime(attempt.updated_at)}
+                      </td>
                       <td style={{ padding: 12 }}>
                         <div
                           style={{
@@ -1145,7 +1199,9 @@ export default function PosQrRecoveryPage() {
                               <>
                                 <button
                                   type="button"
-                                  onClick={() => handleVerifyPayment(attempt.id)}
+                                  onClick={() =>
+                                    handleVerifyPayment(attempt.id)
+                                  }
                                   disabled={busy || !recoveryActionsEnabled}
                                   style={{
                                     ...pageStyles.button,
@@ -1191,7 +1247,12 @@ export default function PosQrRecoveryPage() {
                     </tr>
 
                     {attempt.status === "provider_unknown" && (
-                      <tr style={{ background: "#fafafa", borderTop: "1px solid #e4e4e7" }}>
+                      <tr
+                        style={{
+                          background: "#fafafa",
+                          borderTop: "1px solid #e4e4e7",
+                        }}
+                      >
                         <td colSpan={8} style={{ padding: "10px 12px 14px" }}>
                           <div
                             style={{
@@ -1245,9 +1306,16 @@ export default function PosQrRecoveryPage() {
                               {busy ? "Working…" : "Attach Session"}
                             </button>
                           </div>
-                          <div style={{ marginTop: 6, color: "#71717a", fontSize: 11 }}>
-                            Use only a Checkout Session already found in the PayMongo
-                            Dashboard. This page never creates a new session.
+                          <div
+                            style={{
+                              marginTop: 6,
+                              color: "#71717a",
+                              fontSize: 11,
+                            }}
+                          >
+                            Use only a Checkout Session already found in the
+                            PayMongo Dashboard. This page never creates a new
+                            session.
                           </div>
                         </td>
                       </tr>
@@ -1262,7 +1330,14 @@ export default function PosQrRecoveryPage() {
         {!listLoading && attempts.length === 0 && !listError && (
           <div style={{ padding: 34, textAlign: "center", color: "#71717a" }}>
             <div style={{ fontSize: 28 }}>✓</div>
-            <div style={{ marginTop: 8, fontSize: 14, fontWeight: 800, color: "#3f3f46" }}>
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 14,
+                fontWeight: 800,
+                color: "#3f3f46",
+              }}
+            >
               No unresolved POS QR attempts
             </div>
             <div style={{ marginTop: 4, fontSize: 12 }}>
@@ -1344,9 +1419,15 @@ export default function PosQrRecoveryPage() {
                 {[
                   ["Cashier", detail.cashier?.name || "Unknown"],
                   ["Customer", detail.checkout_summary?.customer_name || "—"],
-                  ["Customer phone", detail.checkout_summary?.customer_phone || "—"],
+                  [
+                    "Customer phone",
+                    detail.checkout_summary?.customer_phone || "—",
+                  ],
                   ["Total", formatCurrency(detail.checkout_summary?.total)],
-                  ["Session", detail.session_attached ? "Attached" : "Not attached"],
+                  [
+                    "Session",
+                    detail.session_attached ? "Attached" : "Not attached",
+                  ],
                   ["Updated", formatDateTime(detail.updated_at)],
                 ].map(([label, value]) => (
                   <div
@@ -1357,8 +1438,12 @@ export default function PosQrRecoveryPage() {
                       padding: 11,
                     }}
                   >
-                    <div style={{ fontSize: 11, color: "#71717a" }}>{label}</div>
-                    <div style={{ marginTop: 4, fontSize: 13, fontWeight: 800 }}>
+                    <div style={{ fontSize: 11, color: "#71717a" }}>
+                      {label}
+                    </div>
+                    <div
+                      style={{ marginTop: 4, fontSize: 13, fontWeight: 800 }}
+                    >
                       {value}
                     </div>
                   </div>
@@ -1366,7 +1451,9 @@ export default function PosQrRecoveryPage() {
               </div>
 
               <div>
-                <h3 style={{ fontSize: 14, margin: "0 0 9px" }}>Checkout items</h3>
+                <h3 style={{ fontSize: 14, margin: "0 0 9px" }}>
+                  Checkout items
+                </h3>
                 <div style={{ overflowX: "auto" }}>
                   <table
                     style={{
@@ -1378,21 +1465,40 @@ export default function PosQrRecoveryPage() {
                   >
                     <thead>
                       <tr style={{ background: "#f4f4f5" }}>
-                        <th style={{ padding: 9, textAlign: "left" }}>Product</th>
+                        <th style={{ padding: 9, textAlign: "left" }}>
+                          Product
+                        </th>
                         <th style={{ padding: 9, textAlign: "right" }}>Qty</th>
-                        <th style={{ padding: 9, textAlign: "right" }}>Unit price</th>
-                        <th style={{ padding: 9, textAlign: "right" }}>Subtotal</th>
+                        <th style={{ padding: 9, textAlign: "right" }}>
+                          Unit price
+                        </th>
+                        <th style={{ padding: 9, textAlign: "right" }}>
+                          Subtotal
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {(detail.checkout_summary?.items || []).map((item) => (
-                        <tr key={item.product_id} style={{ borderTop: "1px solid #e4e4e7" }}>
-                          <td style={{ padding: 9, fontWeight: 700 }}>{item.product_name}</td>
-                          <td style={{ padding: 9, textAlign: "right" }}>{item.quantity}</td>
+                        <tr
+                          key={item.product_id}
+                          style={{ borderTop: "1px solid #e4e4e7" }}
+                        >
+                          <td style={{ padding: 9, fontWeight: 700 }}>
+                            {item.product_name}
+                          </td>
+                          <td style={{ padding: 9, textAlign: "right" }}>
+                            {item.quantity}
+                          </td>
                           <td style={{ padding: 9, textAlign: "right" }}>
                             {formatCurrency(item.unit_price)}
                           </td>
-                          <td style={{ padding: 9, textAlign: "right", fontWeight: 800 }}>
+                          <td
+                            style={{
+                              padding: 9,
+                              textAlign: "right",
+                              fontWeight: 800,
+                            }}
+                          >
                             {formatCurrency(item.subtotal)}
                           </td>
                         </tr>
@@ -1419,10 +1525,12 @@ export default function PosQrRecoveryPage() {
                     lineHeight: 1.55,
                   }}
                 >
-                  <strong>Delivery:</strong> {detail.checkout_summary.delivery.address}
+                  <strong>Delivery:</strong>{" "}
+                  {detail.checkout_summary.delivery.address}
                   <br />
                   <strong>Requested date:</strong>{" "}
-                  {detail.checkout_summary.delivery.requested_date || "Not specified"}
+                  {detail.checkout_summary.delivery.requested_date ||
+                    "Not specified"}
                 </div>
               )}
             </div>
@@ -1466,8 +1574,12 @@ export default function PosQrRecoveryPage() {
               }}
             >
               <div>
-                <h2 id="unpaid-cancel-title" style={{ margin: 0, fontSize: 19 }}>
-                  Cancel Attempt & Release Stock — Attempt #{unpaidCancel.attemptId}
+                <h2
+                  id="unpaid-cancel-title"
+                  style={{ margin: 0, fontSize: 19 }}
+                >
+                  Cancel Attempt & Release Stock — Attempt #
+                  {unpaidCancel.attemptId}
                 </h2>
                 <p
                   style={{
@@ -1659,7 +1771,10 @@ export default function PosQrRecoveryPage() {
               }}
             >
               <div>
-                <h2 id="manual-release-title" style={{ margin: 0, fontSize: 19 }}>
+                <h2
+                  id="manual-release-title"
+                  style={{ margin: 0, fontSize: 19 }}
+                >
                   Manual Release — Attempt #{manualRelease.attemptId}
                 </h2>
                 <p
@@ -1670,8 +1785,8 @@ export default function PosQrRecoveryPage() {
                     lineHeight: 1.5,
                   }}
                 >
-                  Use this only after confirming that no usable PayMongo Checkout
-                  Session can complete this payment.
+                  Use this only after confirming that no usable PayMongo
+                  Checkout Session can complete this payment.
                 </p>
               </div>
               <button
@@ -1801,7 +1916,9 @@ export default function PosQrRecoveryPage() {
                         }))
                       }
                     />
-                    <span>I reviewed the refreshed reservation quantities.</span>
+                    <span>
+                      I reviewed the refreshed reservation quantities.
+                    </span>
                   </label>
                 )}
               </div>

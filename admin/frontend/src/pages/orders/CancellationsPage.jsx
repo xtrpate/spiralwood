@@ -92,6 +92,9 @@ const getDecisionStatus = (row) => {
 };
 
 export default function CancellationsPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const navigate = useNavigate();
 
   const [rows, setRows] = useState([]);
@@ -190,8 +193,7 @@ export default function CancellationsPage() {
       // that case here to avoid a duplicate toast.
       if (err?.response?.status === 404) {
         toast.error(
-          err?.response?.data?.message ||
-            "Cancellation request was not found.",
+          err?.response?.data?.message || "Cancellation request was not found.",
         );
       }
     } finally {

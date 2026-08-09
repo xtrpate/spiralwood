@@ -19,6 +19,9 @@ const EMAIL_VERIFY_STYLE = {
 };
 
 export default function CustomersPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoad] = useState(true);
@@ -52,7 +55,8 @@ export default function CustomersPage() {
     const labels = {
       activate: "Activate this account?",
       deactivate: "Deactivate this account?",
-      delete: "Deactivate and remove this customer from active use? Their order/warranty history will be kept, and the account can be reactivated later if needed.",
+      delete:
+        "Deactivate and remove this customer from active use? Their order/warranty history will be kept, and the account can be reactivated later if needed.",
     };
 
     if (!window.confirm(labels[action])) return;

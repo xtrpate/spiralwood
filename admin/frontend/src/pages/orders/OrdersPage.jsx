@@ -136,6 +136,9 @@ const needsCustomRequestReview = (order) =>
   isBlueprintOrder(order) && normalize(order?.status) === "pending";
 
 export default function OrdersPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const navigate = useNavigate();
 
   const [orders, setOrders] = useState([]);

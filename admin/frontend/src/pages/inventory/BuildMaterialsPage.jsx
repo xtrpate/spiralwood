@@ -4,6 +4,9 @@ import api from "../../services/api";
 import toast from "react-hot-toast";
 
 export default function BuildMaterialsPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null); // for BOM view
@@ -186,8 +189,8 @@ function BOMPanel({ product, onClose }) {
       {bom.length === 0 ? (
         <div>
           <p style={{ color: "#71717a", fontSize: 13, marginBottom: 12 }}>
-            No bill of materials defined. Add or edit BOM from the Product
-            Edit page before using Product Stock-In.
+            No bill of materials defined. Add or edit BOM from the Product Edit
+            page before using Product Stock-In.
           </p>
           <button
             onClick={() => navigate(`/admin/products/${product.id}/edit`)}
@@ -572,6 +575,9 @@ export function StockMovementPage() {
 // Suppliers Page
 // ────────────────────────────────────────────────────────────────────────────
 export function SuppliersPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const [suppliers, setSuppliers] = useState([]);
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({

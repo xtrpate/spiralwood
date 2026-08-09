@@ -25,6 +25,9 @@ const PAGE_META = {
 };
 
 export default function StaticPagesPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const [pages, setPages] = useState({}); // slug → page object
   const [active, setActive] = useState("about_us");
   const [form, setForm] = useState({

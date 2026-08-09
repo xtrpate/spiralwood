@@ -98,6 +98,9 @@ function SummaryCard({ label, value, note }) {
 }
 
 export default function SalesReportPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const [tab, setTab] = useState("");
   const [period, setPeriod] = useState("monthly");
   const [from, setFrom] = useState("");

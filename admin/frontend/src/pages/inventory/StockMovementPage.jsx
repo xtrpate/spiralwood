@@ -53,6 +53,9 @@ const formatDateTime = (value) => {
 };
 
 export default function StockMovementPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
@@ -99,7 +102,9 @@ export default function StockMovementPage() {
 
   useEffect(() => {
     api
-      .get("/inventory/raw", { params: { limit: 1000, archive_status: "active" } })
+      .get("/inventory/raw", {
+        params: { limit: 1000, archive_status: "active" },
+      })
       .then((r) => setRawMats(r.data.rows || []));
     api
       .get("/products", { params: { limit: 1000 } })
@@ -179,8 +184,7 @@ export default function StockMovementPage() {
       Math.max(0, selectedOnHand - selectedReserved),
   );
   const protectsReservedStock =
-    isMaterialTarget &&
-    (form.type === "out" || form.type === "adjustment");
+    isMaterialTarget && (form.type === "out" || form.type === "adjustment");
 
   const helperMessage =
     isProductTarget && form.type === "in"
@@ -262,7 +266,9 @@ export default function StockMovementPage() {
         {summaryCards.map(([label, value]) => (
           <div key={label} style={summaryCard}>
             <div style={summaryLabel}>{label}</div>
-            <div style={summaryValue}>{Number(value || 0).toLocaleString("en-PH")}</div>
+            <div style={summaryValue}>
+              {Number(value || 0).toLocaleString("en-PH")}
+            </div>
           </div>
         ))}
       </div>
@@ -293,7 +299,9 @@ export default function StockMovementPage() {
           <option value="">All Sources</option>
           <option value="blueprint_production">Blueprint Production</option>
           <option value="build_production">BOM Material Use</option>
-          <option value="product_production">Finished Product Production</option>
+          <option value="product_production">
+            Finished Product Production
+          </option>
           <option value="order_fulfillment">Order Fulfillment</option>
           <option value="manual">Manual Movement</option>
         </select>
@@ -317,7 +325,9 @@ export default function StockMovementPage() {
       </div>
 
       <div style={tableCard}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <table
+          style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
+        >
           <thead>
             <tr style={{ background: "#fafafa" }}>
               {[
@@ -340,7 +350,9 @@ export default function StockMovementPage() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} style={emptyCell}>Loading stock movements...</td>
+                <td colSpan={9} style={emptyCell}>
+                  Loading stock movements...
+                </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
@@ -358,12 +370,19 @@ export default function StockMovementPage() {
                 const unit = row.material_unit ? ` ${row.material_unit}` : "";
 
                 return (
-                  <tr key={row.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                    <td style={{ ...td, color: "#71717a", whiteSpace: "nowrap" }}>
+                  <tr
+                    key={row.id}
+                    style={{ borderBottom: "1px solid #f4f4f5" }}
+                  >
+                    <td
+                      style={{ ...td, color: "#71717a", whiteSpace: "nowrap" }}
+                    >
                       {formatDateTime(row.created_at)}
                     </td>
                     <td style={td}>
-                      <span style={typeBadge}>{String(row.type || "").replaceAll("_", " ")}</span>
+                      <span style={typeBadge}>
+                        {String(row.type || "").replaceAll("_", " ")}
+                      </span>
                     </td>
                     <td style={td}>
                       <span
@@ -378,12 +397,15 @@ export default function StockMovementPage() {
                       </span>
                       {row.reservation_status && (
                         <div style={subMeta}>
-                          Reservation: {String(row.reservation_status).replaceAll("_", " ")}
+                          Reservation:{" "}
+                          {String(row.reservation_status).replaceAll("_", " ")}
                         </div>
                       )}
                     </td>
                     <td style={{ ...td, minWidth: 190 }}>
-                      <div style={{ fontWeight: 700, color: "#0a0a0a" }}>{itemName}</div>
+                      <div style={{ fontWeight: 700, color: "#0a0a0a" }}>
+                        {itemName}
+                      </div>
                       {row.product_name && row.material_name && (
                         <div style={subMeta}>For: {row.product_name}</div>
                       )}
@@ -397,12 +419,15 @@ export default function StockMovementPage() {
                       }}
                     >
                       {isPositive ? "+" : "-"}
-                      {formatQuantity(row.quantity)}{unit}
+                      {formatQuantity(row.quantity)}
+                      {unit}
                     </td>
                     <td style={{ ...td, minWidth: 150 }}>
                       {row.order_id ? (
                         <button
-                          onClick={() => navigate(`/admin/orders/${row.order_id}`)}
+                          onClick={() =>
+                            navigate(`/admin/orders/${row.order_id}`)
+                          }
                           style={orderLink}
                         >
                           {row.order_number || `Order #${row.order_id}`}
@@ -410,10 +435,13 @@ export default function StockMovementPage() {
                       ) : (
                         "—"
                       )}
-                      {row.customer_name && <div style={subMeta}>{row.customer_name}</div>}
+                      {row.customer_name && (
+                        <div style={subMeta}>{row.customer_name}</div>
+                      )}
                       {row.order_status && (
                         <div style={subMeta}>
-                          {row.order_status} · {row.payment_status || "payment unknown"}
+                          {row.order_status} ·{" "}
+                          {row.payment_status || "payment unknown"}
                         </div>
                       )}
                     </td>
@@ -428,7 +456,9 @@ export default function StockMovementPage() {
                     <td style={{ ...td, minWidth: 240, color: "#52525b" }}>
                       {row.notes || "—"}
                     </td>
-                    <td style={{ ...td, color: "#71717a", whiteSpace: "nowrap" }}>
+                    <td
+                      style={{ ...td, color: "#71717a", whiteSpace: "nowrap" }}
+                    >
                       {row.created_by_name || "—"}
                     </td>
                   </tr>
@@ -441,7 +471,8 @@ export default function StockMovementPage() {
 
       <div style={paginationRow}>
         <span style={{ fontSize: 12, color: "#71717a" }}>
-          Page {filters.page} of {pageCount} · {total.toLocaleString("en-PH")} records
+          Page {filters.page} of {pageCount} · {total.toLocaleString("en-PH")}{" "}
+          records
         </span>
         <div style={{ display: "flex", gap: 8 }}>
           <button
@@ -476,13 +507,18 @@ export default function StockMovementPage() {
                   required
                   value={form.type}
                   onChange={(event) =>
-                    setForm((current) => ({ ...current, type: event.target.value }))
+                    setForm((current) => ({
+                      ...current,
+                      type: event.target.value,
+                    }))
                   }
                   style={inputFull}
                 >
                   <option value="in">In – Delivery / Production</option>
                   <option value="out">Out – Sales / Usage</option>
-                  <option value="adjustment">Adjustment – Downward stock correction</option>
+                  <option value="adjustment">
+                    Adjustment – Downward stock correction
+                  </option>
                   <option value="return">Return – Stock returned</option>
                 </select>
               </div>
@@ -520,7 +556,8 @@ export default function StockMovementPage() {
                   <div>
                     <span style={availabilityLabel}>Available</span>
                     <strong>
-                      {formatQuantity(selectedAvailable)} {selectedMaterial.unit}
+                      {formatQuantity(selectedAvailable)}{" "}
+                      {selectedMaterial.unit}
                     </strong>
                   </div>
                 </div>
@@ -558,7 +595,10 @@ export default function StockMovementPage() {
                   }
                   value={form.quantity}
                   onChange={(event) =>
-                    setForm((current) => ({ ...current, quantity: event.target.value }))
+                    setForm((current) => ({
+                      ...current,
+                      quantity: event.target.value,
+                    }))
                   }
                   style={inputFull}
                 />
@@ -569,7 +609,10 @@ export default function StockMovementPage() {
                 <input
                   value={form.reference}
                   onChange={(event) =>
-                    setForm((current) => ({ ...current, reference: event.target.value }))
+                    setForm((current) => ({
+                      ...current,
+                      reference: event.target.value,
+                    }))
                   }
                   placeholder="PO number, delivery receipt, adjustment reference..."
                   maxLength={100}
@@ -582,7 +625,10 @@ export default function StockMovementPage() {
                 <textarea
                   value={form.notes}
                   onChange={(event) =>
-                    setForm((current) => ({ ...current, notes: event.target.value }))
+                    setForm((current) => ({
+                      ...current,
+                      notes: event.target.value,
+                    }))
                   }
                   rows={3}
                   style={{ ...inputFull, resize: "vertical" }}

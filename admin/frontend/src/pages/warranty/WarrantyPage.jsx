@@ -76,6 +76,9 @@ const getStatusCount = (rows, status) =>
     .length;
 
 export default function WarrantyPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const navigate = useNavigate();
 
   const [rows, setRows] = useState([]);
@@ -364,7 +367,7 @@ export default function WarrantyPage() {
                                 ? row.updated_at
                                   ? `Cancelled by customer ${formatDateTime(row.updated_at)}`
                                   : "Cancelled by customer"
-                              : "Awaiting admin action"}
+                                : "Awaiting admin action"}
                         </div>
                       </td>
 

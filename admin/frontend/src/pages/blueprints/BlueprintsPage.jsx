@@ -108,9 +108,13 @@ function getStageLabel(stage = "") {
 }
 
 export default function BlueprintsPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const navigate = useNavigate();
 
   const [tab, setTab] = useState("my");
+  const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
@@ -133,7 +137,17 @@ export default function BlueprintsPage() {
   const [archiveTarget, setArchiveTarget] = useState(null);
 
   const [imageErrors, setImageErrors] = useState({});
+
+  // Targets the <main> container in AdminLayout and scrolls it to the top whenever the tab changes!
+  useEffect(() => {
+    const mainContainer = document.querySelector("main");
+    if (mainContainer) {
+      mainContainer.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }
+  }, [tab]);
+
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const { data } = await api.get("/blueprints", {
         params: { tab, search, limit: 20 },
@@ -143,6 +157,8 @@ export default function BlueprintsPage() {
       setTotal(Number(data?.total) || 0);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to load blueprints.");
+    } finally {
+      setLoading(false);
     }
   }, [tab, search]);
 
@@ -471,7 +487,93 @@ export default function BlueprintsPage() {
         style={{ ...inputSm, marginBottom: 20, minWidth: 300 }}
       />
 
-      {items.length === 0 ? (
+      {loading ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+            gap: 16,
+          }}
+        >
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              style={{
+                background: "#fff",
+                borderRadius: 16,
+                border: "1px solid #e4e4e7",
+                boxShadow: "0 1px 2px rgba(0,0,0,.02)",
+                overflow: "hidden",
+                display: "flex",
+                flexDirection: "column",
+                minHeight: 280,
+              }}
+            >
+              <div
+                style={{
+                  height: 140,
+                  background: "#f4f4f5",
+                  borderBottom: "1px solid #e4e4e7",
+                }}
+              />
+              <div
+                style={{
+                  padding: 16,
+                  display: "flex",
+                  flexDirection: "column",
+                  flex: 1,
+                }}
+              >
+                <div
+                  style={{
+                    width: "70%",
+                    height: 20,
+                    background: "#f4f4f5",
+                    borderRadius: 4,
+                    marginBottom: 8,
+                  }}
+                />
+                <div
+                  style={{
+                    width: "40%",
+                    height: 14,
+                    background: "#f4f4f5",
+                    borderRadius: 4,
+                    marginBottom: 16,
+                  }}
+                />
+
+                <div
+                  style={{
+                    marginTop: "auto",
+                    paddingTop: 14,
+                    borderTop: "1px solid #f4f4f5",
+                    display: "flex",
+                    gap: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 70,
+                      height: 32,
+                      background: "#f4f4f5",
+                      borderRadius: 6,
+                    }}
+                  />
+                  <div
+                    style={{
+                      width: 90,
+                      height: 32,
+                      background: "#f4f4f5",
+                      borderRadius: 6,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : items.length === 0 ? (
         <div
           style={{
             background: "#fff",
@@ -1036,12 +1138,15 @@ export default function BlueprintsPage() {
                   lineHeight: 1.6,
                 }}
               >
-                <div style={{ fontWeight: 800, color: "#18181b", marginBottom: 4 }}>
+                <div
+                  style={{ fontWeight: 800, color: "#18181b", marginBottom: 4 }}
+                >
                   Blank editable workspace · MM units
                 </div>
                 <div>
-                  The blueprint will open directly in the design editor. Publish it
-                  to the customer customize gallery only after the design is complete.
+                  The blueprint will open directly in the design editor. Publish
+                  it to the customer customize gallery only after the design is
+                  complete.
                 </div>
               </div>
 

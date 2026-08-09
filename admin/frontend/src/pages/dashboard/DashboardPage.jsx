@@ -208,6 +208,9 @@ function TypeBadge({ type }) {
 }
 
 export default function DashboardPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);

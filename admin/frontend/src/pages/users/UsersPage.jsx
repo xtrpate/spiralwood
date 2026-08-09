@@ -54,6 +54,9 @@ const BLANK_FORM = {
 };
 
 export default function UsersPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const { user: me } = useAuthStore();
   const [users, setUsers] = useState([]);
   const [loading, setLoad] = useState(true);

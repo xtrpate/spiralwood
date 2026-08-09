@@ -166,6 +166,9 @@ function isPositiveIntegerString(value) {
 }
 
 export default function ContractsPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -1097,14 +1100,14 @@ export default function ContractsPage() {
     }
 
     if (!(orderTotalAmount > 0)) {
-      toast.error("Order total must be finalized before generating a contract.");
+      toast.error(
+        "Order total must be finalized before generating a contract.",
+      );
       return;
     }
 
     if (!totalsMatch) {
-      toast.error(
-        "Order total does not match the approved estimation total.",
-      );
+      toast.error("Order total does not match the approved estimation total.");
       return;
     }
 
@@ -1408,7 +1411,11 @@ export default function ContractsPage() {
                         : "Select an order to load its linked blueprint"
                   }
                   readOnly
-                  style={{ ...inputFull, background: "#f4f4f5", color: "#52525b" }}
+                  style={{
+                    ...inputFull,
+                    background: "#f4f4f5",
+                    color: "#52525b",
+                  }}
                 />
                 <p
                   style={{
@@ -1465,7 +1472,10 @@ export default function ContractsPage() {
                           value={
                             formatPersonName(
                               selectedOrderInfo?.customer_name,
-                            ) || (hasCustomerId ? "Linked" : "Missing customer on order")
+                            ) ||
+                            (hasCustomerId
+                              ? "Linked"
+                              : "Missing customer on order")
                           }
                         />
                         <EligibilityItem
@@ -1518,7 +1528,8 @@ export default function ContractsPage() {
                               ? "Entered ID does not match order's blueprint"
                               : manualBlueprintInvalid
                                 ? "Invalid manual blueprint ID"
-                                : canonicalBlueprintId && !canonicalBlueprintValid
+                                : canonicalBlueprintId &&
+                                    !canonicalBlueprintValid
                                   ? "Invalid canonical blueprint ID on order"
                                   : canonicalBlueprintId
                                     ? `BP-${String(canonicalBlueprintId).padStart(5, "0")}`
@@ -1596,8 +1607,10 @@ export default function ContractsPage() {
 
                       {!lifecycleIntegrityWarning && orderStatusBlocked && (
                         <div style={{ ...errorBox, marginTop: 16 }}>
-                          This order is no longer eligible because it is
-                          already {titleCase(currentOrderStatus) || "in an unknown status"}.
+                          This order is no longer eligible because it is already{" "}
+                          {titleCase(currentOrderStatus) ||
+                            "in an unknown status"}
+                          .
                         </div>
                       )}
 

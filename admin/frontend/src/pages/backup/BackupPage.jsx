@@ -4,6 +4,9 @@ import api from "../../services/api";
 import toast from "react-hot-toast";
 
 export default function BackupPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [triggering, setTrigger] = useState(false);

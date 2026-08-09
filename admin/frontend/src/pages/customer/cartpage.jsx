@@ -240,7 +240,7 @@ export default function CartPage() {
         className="fm-cart-hero-btn"
         onClick={() => navigate("/catalog")}
       >
-        ← Continue Shopping
+        Continue Shopping
       </button>
     </div>
   );

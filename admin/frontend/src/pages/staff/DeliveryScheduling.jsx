@@ -81,6 +81,9 @@ const getStatusStyle = (s) => {
 };
 
 export default function DeliveryScheduling() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const [deliveries, setDeliveries] = useState([]);
   const [eligibleOrders, setEligibleOrders] = useState([]);
   const [riders, setRiders] = useState([]);
@@ -504,7 +507,9 @@ export default function DeliveryScheduling() {
 
               {form.requested_date && (
                 <div>
-                  <label style={labelStyle}>Requested Delivery Date & Time</label>
+                  <label style={labelStyle}>
+                    Requested Delivery Date & Time
+                  </label>
                   <input
                     type="datetime-local"
                     value={form.requested_date}

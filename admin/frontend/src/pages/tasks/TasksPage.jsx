@@ -71,6 +71,9 @@ const PRODUCTION_ASSIGN_BLANK = {
 };
 
 export default function TasksPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const { user: me } = useAuthStore();
   const isAdmin = me?.role === "admin";
   const navigate = useNavigate();
@@ -89,11 +92,14 @@ export default function TasksPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [focusedTaskId, setFocusedTaskId] = useState(null);
   const [productionAssignModal, setProductionAssignModal] = useState(false);
-  const [productionOrderPickerOpen, setProductionOrderPickerOpen] = useState(false);
+  const [productionOrderPickerOpen, setProductionOrderPickerOpen] =
+    useState(false);
   const [productionOrderSelection, setProductionOrderSelection] = useState("");
   const [productionOrderId, setProductionOrderId] = useState(null);
   const [productionBlueprintId, setProductionBlueprintId] = useState(null);
-  const [productionAssignableStaff, setProductionAssignableStaff] = useState([]);
+  const [productionAssignableStaff, setProductionAssignableStaff] = useState(
+    [],
+  );
   const [productionAssignLoading, setProductionAssignLoading] = useState(false);
   const [productionAssigning, setProductionAssigning] = useState(false);
   const [productionAssignForm, setProductionAssignForm] = useState(
@@ -862,7 +868,11 @@ export default function TasksPage() {
                     <>
                       {!REQUIRED_PRODUCTION_ROLES.includes(t.task_role) && (
                         <button
-                          style={{ ...S.btn, ...S.btnGray, padding: "7px 14px" }}
+                          style={{
+                            ...S.btn,
+                            ...S.btnGray,
+                            padding: "7px 14px",
+                          }}
                           onClick={() => openEdit(t)}
                         >
                           Edit
@@ -947,7 +957,9 @@ export default function TasksPage() {
                     {order.order_number
                       ? `#${order.order_number}`
                       : `Order #${String(order.id).padStart(5, "0")}`}
-                    {order.status ? ` — ${String(order.status).replace(/_/g, " ")}` : ""}
+                    {order.status
+                      ? ` — ${String(order.status).replace(/_/g, " ")}`
+                      : ""}
                   </option>
                 ))}
               </select>
@@ -1006,7 +1018,9 @@ export default function TasksPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ marginBottom: 22 }}>
-              <div style={S.mTitle}>Assign Indoor Staff to Production Order</div>
+              <div style={S.mTitle}>
+                Assign Indoor Staff to Production Order
+              </div>
               <div
                 style={{
                   display: "flex",
@@ -1024,7 +1038,8 @@ export default function TasksPage() {
                   <>
                     <span>•</span>
                     <span>
-                      Blueprint BP-{String(productionBlueprintId).padStart(5, "0")}
+                      Blueprint BP-
+                      {String(productionBlueprintId).padStart(5, "0")}
                     </span>
                   </>
                 )}
@@ -1062,7 +1077,8 @@ export default function TasksPage() {
                       <option value="">Select indoor staff…</option>
                       {productionAssignableStaff.map((person) => (
                         <option key={person.id} value={person.id}>
-                          {person.name} — {person.active_task_count} active production
+                          {person.name} — {person.active_task_count} active
+                          production
                           {Number(person.active_task_count) === 1 ? "" : "s"}
                         </option>
                       ))}
@@ -1107,10 +1123,12 @@ export default function TasksPage() {
                   >
                     Production workflow packet
                   </div>
-                  <div style={{ fontSize: 13, color: "#52525b", lineHeight: 1.7 }}>
+                  <div
+                    style={{ fontSize: 13, color: "#52525b", lineHeight: 1.7 }}
+                  >
                     The selected indoor staff will receive five linked tasks:
-                    Cutting Machine, Edge Banding, Horizontal Drilling, Retouching,
-                    and Packing.
+                    Cutting Machine, Edge Banding, Horizontal Drilling,
+                    Retouching, and Packing.
                   </div>
                 </div>
 
@@ -1141,7 +1159,8 @@ export default function TasksPage() {
                       fontWeight: 600,
                     }}
                   >
-                    No active indoor staff are currently available for assignment.
+                    No active indoor staff are currently available for
+                    assignment.
                   </div>
                 )}
 
@@ -1158,7 +1177,9 @@ export default function TasksPage() {
                   <button
                     type="button"
                     style={{ ...S.btn, ...S.btnGray }}
-                    onClick={() => navigate(`/admin/orders/${productionOrderId}`)}
+                    onClick={() =>
+                      navigate(`/admin/orders/${productionOrderId}`)
+                    }
                   >
                     Open Order
                   </button>
@@ -1324,8 +1345,11 @@ export default function TasksPage() {
                     </select>
                   )}
                   {isEditingRequiredProductionTask && (
-                    <div style={{ fontSize: 11, color: "#71717a", marginTop: 4 }}>
-                      Production step and order are managed through Orders → Blueprint.
+                    <div
+                      style={{ fontSize: 11, color: "#71717a", marginTop: 4 }}
+                    >
+                      Production step and order are managed through Orders →
+                      Blueprint.
                     </div>
                   )}
                 </div>
@@ -1456,7 +1480,6 @@ export default function TasksPage() {
             </div>
           );
         })()}
-
     </div>
   );
 }
