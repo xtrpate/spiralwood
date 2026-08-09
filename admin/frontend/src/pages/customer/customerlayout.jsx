@@ -26,7 +26,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
-import logoImg from "../assets/logo.png";
+import logoImg from "../assets/logo1.png";
 import brandHeaderImg from "../assets/spiral-wood-services-header-logo.png";
 import LandingPage from "./LandingPage";
 import "./customerlayout.css";
@@ -496,13 +496,65 @@ export default function CustomerLayout() {
     if (!footer) {
       return (
         <div
-          className={`cust-brand-image-wrap ${compact ? "compact" : ""}`}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: compact ? "16px" : "5px",
+          }}
         >
           <img
-            src={brandHeaderImg}
+            src={logoImg}
             alt="Spiral Wood Services"
-            className="cust-brand-header-image"
+            style={{
+              width: compact ? "38px" : "48px",
+              height: compact ? "38px" : "48px",
+              objectFit: "contain",
+            }}
           />
+          <div
+            className="cust-brand-copy"
+            style={{ alignItems: "center", margin: 0 }}
+          >
+            <span
+              className="cust-brand-name"
+              style={{
+                fontSize: compact ? "1.2rem" : "1.5rem",
+                color: "#111111",
+                letterSpacing: "0.15em",
+                fontWeight: 800,
+              }}
+            >
+              SPIRAL WOOD
+            </span>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                width: "100%",
+                gap: "8px",
+                marginTop: "4px",
+              }}
+            >
+              <div
+                style={{ flex: 1, height: "1px", background: "#a1a1aa" }}
+              ></div>
+              <span
+                className="cust-brand-sub"
+                style={{
+                  fontSize: compact ? "0.65rem" : "0.75rem",
+                  color: "#777777",
+                  letterSpacing: "0.15em",
+                  textTransform: "uppercase",
+                  margin: 0,
+                }}
+              >
+                SERVICES
+              </span>
+              <div
+                style={{ flex: 1, height: "1px", background: "#a1a1aa" }}
+              ></div>
+            </div>
+          </div>
         </div>
       );
     }
@@ -1151,12 +1203,12 @@ export default function CustomerLayout() {
                 <div className="cust-mini-cart-summary-row cust-mini-cart-summary-muted">
                   <span>Shipping</span>
                   <span>
-                  {isMixedCart
-                    ? "Varies by order type"
-                    : hasBlueprintItems
-                      ? "Calculated for custom order"
-                      : "Free"}
-                </span>
+                    {isMixedCart
+                      ? "Varies by order type"
+                      : hasBlueprintItems
+                        ? "Calculated for custom order"
+                        : "Free"}
+                  </span>
                 </div>
 
                 <div className="cust-mini-cart-summary-divider" />

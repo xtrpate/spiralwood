@@ -832,6 +832,10 @@ a {
   .cust-header-search {
     display: none;
   }
+
+  .cust-brand .cust-brand-copy {
+    display: none !important;
+  }
 }
 
 /* Auth overlay (login/register/forgot-password/etc.) — the fixed padding
