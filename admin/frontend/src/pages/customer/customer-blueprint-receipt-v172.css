@@ -1,0 +1,220 @@
+/* WISDOM CUSTOMER BLUEPRINT PAYMENT RECEIPT V1.7.2 */
+
+.customer-receipt-page-v172 {
+  font-family: Inter, Arial, Helvetica, sans-serif;
+  color: #111111;
+}
+
+/* Page buttons: consistent customer UI. */
+.customer-receipt-page-v172 .page-header button {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-weight: 600 !important;
+}
+
+/* Receipt is a document, not a rounded ecommerce card. */
+.customer-receipt-page-v172 .receipt {
+  width: min(430px, calc(100vw - 32px));
+  max-width: 430px;
+  padding: 28px 26px;
+  border: 1px solid #d7d7d7 !important;
+  border-radius: 0 !important;
+  background: #ffffff;
+  box-shadow: none !important;
+  font-family: Inter, Arial, Helvetica, sans-serif !important;
+  color: #111111;
+}
+
+.customer-receipt-page-v172 .receipt * {
+  font-family: Inter, Arial, Helvetica, sans-serif !important;
+}
+
+/* New full brand logo. */
+.customer-receipt-page-v172 .receipt-logo-customer-v172 {
+  display: block;
+  width: min(255px, 88%);
+  height: auto;
+  margin: 0 auto 14px;
+  object-fit: contain;
+  border-radius: 0 !important;
+}
+
+.customer-receipt-page-v172 .biz-info {
+  margin: 2px 0 !important;
+  color: #666d75 !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  line-height: 1.45 !important;
+  letter-spacing: 0 !important;
+}
+
+.customer-receipt-page-v172 .receipt-title {
+  margin: 14px 0 !important;
+  color: #111111 !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em !important;
+}
+
+/* Metadata: labels regular, customer values semibold. */
+.customer-receipt-page-v172 .meta-row {
+  gap: 14px;
+  padding: 3px 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.customer-receipt-page-v172 .meta-row > span:first-child {
+  color: #5e656d !important;
+  font-weight: 400 !important;
+}
+
+.customer-receipt-page-v172 .meta-row > span:last-child {
+  color: #111111;
+  font-weight: 600 !important;
+  text-align: right;
+}
+
+/* Payment values */
+.customer-receipt-page-v172 .total-row {
+  gap: 14px;
+  padding: 4px 0;
+  font-size: 12.5px;
+}
+
+.customer-receipt-page-v172 .total-row > span:first-child {
+  color: #5e656d;
+  font-weight: 400 !important;
+}
+
+.customer-receipt-page-v172 .total-row > span:last-child {
+  color: #111111;
+  font-weight: 600 !important;
+}
+
+.customer-receipt-page-v172 .customer-payment-received-v172 {
+  margin-top: 4px;
+  padding-top: 7px;
+}
+
+.customer-receipt-page-v172 .customer-payment-received-v172 > span:last-child {
+  font-weight: 700 !important;
+}
+
+/* Remaining balance is the main financial takeaway on partial receipts. */
+.customer-receipt-page-v172 .customer-remaining-balance-v172 {
+  margin-top: 9px !important;
+  padding-top: 11px !important;
+  border-top: 1px solid #dedede !important;
+}
+
+.customer-receipt-page-v172
+  .customer-remaining-balance-v172
+  > span:first-child {
+  color: #111111;
+  font-size: 14px;
+  font-weight: 600 !important;
+}
+
+.customer-receipt-page-v172
+  .customer-remaining-balance-v172
+  > span:last-child {
+  font-size: 18px;
+  font-weight: 700 !important;
+}
+
+.customer-receipt-page-v172 .receipt-divider {
+  border-color: #dedede !important;
+}
+
+.customer-receipt-page-v172 .customer-receipt-thanks-v172 {
+  margin: 0;
+  color: #111111;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* Print must match the screen version. */
+@media print {
+  .customer-receipt-page-v172 .page-header {
+    display: none !important;
+  }
+
+  .customer-receipt-page-v172 .receipt {
+    width: 100% !important;
+    max-width: 430px !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .customer-receipt-page-v172 .receipt {
+    width: calc(100vw - 24px);
+    padding: 22px 18px;
+  }
+
+  .customer-receipt-page-v172 .receipt-logo-customer-v172 {
+    width: min(235px, 90%);
+  }
+}
+/* WISDOM RECEIPT FONT + LOGO POLISH V1.7.4 */
+
+/*
+  Match the receipt to the existing WISDOM customer typography.
+  Do not force Inter/Arial here; inherit the font already used by the site.
+*/
+.customer-receipt-page-v172,
+.customer-receipt-page-v172 .receipt,
+.customer-receipt-page-v172 .receipt *,
+.customer-receipt-page-v172 button {
+  font-family: inherit !important;
+}
+
+/*
+  ReceiptPage.css has .receipt-logo { max-width: 80px; }.
+  Override that shared staff style for the customer receipt so the approved
+  full Spiral Wood logo displays at an appropriate document size.
+*/
+.customer-receipt-page-v172 .receipt-logo-customer-v172 {
+  width: 210px !important;
+  max-width: 210px !important;
+  height: auto !important;
+  margin: 0 auto 14px !important;
+  object-fit: contain !important;
+  filter: none !important;
+  border-radius: 0 !important;
+}
+
+/* Preserve the current controlled font hierarchy; sizes do not change. */
+.customer-receipt-page-v172 .receipt-title {
+  font-weight: 700 !important;
+}
+
+.customer-receipt-page-v172 .meta-row > span:first-child,
+.customer-receipt-page-v172 .total-row > span:first-child {
+  font-weight: 400 !important;
+}
+
+.customer-receipt-page-v172 .meta-row > span:last-child,
+.customer-receipt-page-v172 .total-row > span:last-child {
+  font-weight: 600 !important;
+}
+
+.customer-receipt-page-v172 .customer-payment-received-v172 > span:last-child {
+  font-weight: 700 !important;
+}
+
+.customer-receipt-page-v172
+  .customer-remaining-balance-v172
+  > span:last-child {
+  font-weight: 700 !important;
+}
+
+@media print {
+  .customer-receipt-page-v172 .receipt-logo-customer-v172 {
+    width: 55mm !important;
+    max-width: 55mm !important;
+  }
+}

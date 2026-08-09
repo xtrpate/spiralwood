@@ -847,3 +847,535 @@
   color: #6b7280;
   font-weight: 500;
 }
+/* WISDOM CUSTOMER SUPPORT PROFESSIONAL UI V2 */
+
+.support-page {
+  width: 100%;
+  padding: 0 0 64px;
+  background: #f6f6f6;
+  font-family: inherit;
+}
+
+.support-page,
+.support-page button,
+.support-page input,
+.support-page textarea,
+.support-page select {
+  font-family: inherit;
+}
+
+.support-shell {
+  width: 100%;
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 0 28px;
+  box-sizing: border-box;
+}
+
+.support-page-head {
+  margin: 0;
+  padding: 34px 0 24px;
+  border-bottom: 1px solid #dedede;
+}
+
+.support-header-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.support-page-copy h1 {
+  margin: 0 0 8px;
+  font-size: 30px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #111111;
+}
+
+.support-page-copy p {
+  max-width: 700px;
+  margin: 0;
+  color: #62676e;
+  font-size: 14px;
+  line-height: 1.65;
+  font-weight: 400;
+}
+
+.support-open-btn,
+.support-submit-btn,
+.support-close-btn,
+.support-reply-send-btn,
+.support-empty-action-v2 {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.support-open-btn {
+  min-width: 170px;
+  min-height: 42px;
+  padding: 0 16px;
+  background: #111111;
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.support-open-btn:hover,
+.support-submit-btn:hover,
+.support-close-btn:hover,
+.support-empty-action-v2:hover {
+  background: #000000;
+  color: #ffffff;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Three useful customer states; remove dashboard-style colored decoration. */
+.support-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0 16px;
+}
+
+.support-summary-card {
+  min-height: 108px;
+  padding: 17px 18px;
+  border: 1px solid #dcdfe4;
+  border-radius: 0;
+  background: #ffffff;
+  overflow: visible;
+  transition: none;
+}
+
+.support-summary-card::before {
+  display: none !important;
+}
+
+.support-summary-card:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.support-summary-label {
+  margin-bottom: 7px;
+  color: #666d75;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.support-summary-value {
+  margin-bottom: 5px;
+  color: #111111;
+  font-size: 22px;
+  line-height: 1.1;
+  font-weight: 700;
+}
+
+.support-summary-subtitle {
+  color: #72787f;
+  font-size: 11.5px;
+  line-height: 1.45;
+  font-weight: 400;
+}
+
+/* Form */
+.support-create-ticket {
+  margin-bottom: 16px;
+}
+
+.support-form-card {
+  border: 1px solid #dedede;
+  border-radius: 0 !important;
+  background: #ffffff;
+  padding: 20px;
+}
+
+.support-form-card h2 {
+  margin-bottom: 16px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.support-field {
+  margin-bottom: 16px;
+}
+
+.support-field label {
+  margin-bottom: 6px;
+  color: #282828;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.support-input,
+.support-textarea {
+  border-radius: 0 !important;
+  font-size: 13px;
+}
+
+.support-submit-btn {
+  width: auto;
+  min-width: 170px;
+  min-height: 42px;
+  padding: 0 18px;
+  margin-bottom: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* Ticket list + conversation */
+.support-main-grid {
+  grid-template-columns: minmax(300px, 350px) minmax(0, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.support-ticket-list,
+.support-conversation-section {
+  border: 1px solid #dedede;
+  border-radius: 0;
+  background: #ffffff;
+}
+
+.support-ticket-list,
+.support-conversation-section {
+  padding: 20px;
+}
+
+.support-main-grid-v2.is-empty {
+  grid-template-columns: 1fr;
+}
+
+.support-main-grid-v2.is-empty .support-ticket-list {
+  grid-column: 1 / -1;
+  min-height: 300px;
+}
+
+.support-main-grid-v2.is-empty .support-conversation-section {
+  display: none;
+}
+
+.support-ticket-head {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ececec;
+}
+
+.support-ticket-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.support-ticket-head > span {
+  display: none !important;
+}
+
+.support-ticket-scroll {
+  gap: 8px;
+  max-height: 620px;
+  padding: 0;
+}
+
+.support-ticket-card {
+  padding: 14px;
+  border: 1px solid #dedede;
+  border-radius: 0;
+  transition: none;
+}
+
+.support-ticket-card:hover {
+  border-color: #111111;
+  background: #fafafa;
+  transform: none;
+  box-shadow: none;
+}
+
+.support-ticket-card.active {
+  border-color: #111111;
+  background: #fafafa;
+  box-shadow: inset 3px 0 0 #111111;
+}
+
+.support-ticket-header {
+  margin-bottom: 8px;
+}
+
+.support-ticket-subject {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.support-ticket-category {
+  margin-bottom: 6px;
+  color: #555c63;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.support-ticket-order,
+.support-ticket-footer {
+  color: #7a8087;
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+/* Status badges: neutral by default; action-needed state is emphasized. */
+.support-badge {
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid #d7dbe0;
+  border-radius: 0;
+  background: #f7f7f7;
+  color: #33383d;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.support-badge-open,
+.support-badge-assigned,
+.support-badge-progress,
+.support-badge-resolved,
+.support-badge-closed {
+  border-color: #d7dbe0;
+  background: #f7f7f7;
+  color: #33383d;
+}
+
+.support-badge-awaiting {
+  border-color: #111111;
+  background: #111111;
+  color: #ffffff;
+}
+
+/* Empty state */
+.support-empty {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 52px 20px;
+  color: #676d74;
+}
+
+.support-empty svg {
+  color: #8a9096;
+}
+
+.support-empty h3 {
+  margin: 14px 0 7px;
+  color: #111111;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.support-empty p {
+  max-width: 520px;
+  margin: 0 auto;
+  font-size: 12.5px;
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+.support-empty-action-v2 {
+  min-height: 40px;
+  margin-top: 18px;
+  padding: 0 16px;
+  border: 1px solid #111111;
+  background: #111111;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Conversation */
+.support-conversation-header {
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+}
+
+.support-conversation-header h2 {
+  margin-bottom: 5px;
+  color: #111111;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.support-conversation-header p {
+  color: #697078;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.support-close-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.support-conversation-name {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.support-conversation-role,
+.support-conversation-time {
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.support-conversation-bubble {
+  max-width: 72%;
+  padding: 10px 13px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.support-conversation-bubble.support {
+  border-color: #dedede;
+  background: #f7f7f7;
+  color: #222222;
+}
+
+.support-conversation-bubble.customer {
+  border-color: #111111;
+  background: #111111;
+  color: #ffffff;
+}
+
+.support-reply-form {
+  padding-top: 16px;
+}
+
+.support-reply-box {
+  min-height: 52px;
+  border-radius: 0;
+  padding: 7px 7px 7px 13px;
+}
+
+.support-reply-send-btn {
+  flex-basis: 38px;
+  width: 38px;
+  height: 38px;
+  background: #111111;
+}
+
+.support-reply-footer {
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+/* The empty conversation prompt should be quiet, not oversized. */
+.support-conversation-empty {
+  padding: 70px 20px;
+}
+
+.support-conversation-empty h3 {
+  color: #222222;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.support-conversation-empty p {
+  color: #72787f;
+  font-size: 12.5px;
+  line-height: 1.55;
+  font-weight: 400;
+}
+
+@media (max-width: 900px) {
+  .support-shell {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .support-header-top {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .support-open-btn {
+    align-self: flex-start;
+  }
+
+  .support-main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .support-ticket-scroll {
+    max-height: 420px;
+  }
+}
+
+@media (max-width: 720px) {
+  .support-shell {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .support-page-head {
+    padding-top: 24px;
+  }
+
+  .support-page-copy h1 {
+    font-size: 26px;
+  }
+
+  .support-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .support-open-btn,
+  .support-submit-btn,
+  .support-empty-action-v2 {
+    width: 100%;
+  }
+
+  .support-ticket-list,
+  .support-conversation-section,
+  .support-form-card {
+    padding: 15px;
+  }
+
+  .support-conversation-bubble {
+    max-width: 86%;
+  }
+}
+/* WISDOM CUSTOMER SUPPORT SUMMARY CARDS BLACK V2.1 */
+
+/* All three support summary cards use one consistent black accent. */
+.support-summary-card {
+  border: 1px solid #dcdfe4 !important;
+  border-top: 3px solid #111111 !important;
+  border-radius: 0 !important;
+}
+
+/* Remove any older blue/orange/purple pseudo accent completely. */
+.support-summary-card::before,
+.support-summary-card:nth-child(1)::before,
+.support-summary-card:nth-child(2)::before,
+.support-summary-card:nth-child(3)::before,
+.support-summary-card:nth-child(4)::before {
+  display: none !important;
+  background: #111111 !important;
+}
+
+/* Override any older per-card colored top-border rules. */
+.support-summary-card:nth-child(1),
+.support-summary-card:nth-child(2),
+.support-summary-card:nth-child(3),
+.support-summary-card:nth-child(4) {
+  border-top-color: #111111 !important;
+  border-radius: 0 !important;
+}

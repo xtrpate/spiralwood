@@ -438,22 +438,9 @@ export default function CustomCheckoutPage() {
 
   return (
     <div>
-      <div
-        className="page-hero"
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-        }}
-      >
-        <div>
-          <h1>Custom Request Checkout</h1>
-          <p>Review your custom items and submit them for admin quotation</p>
-        </div>
-
-        <button className="btn btn-secondary" onClick={() => navigate("/cart")}>
-          ← Back to Cart
-        </button>
+      <div className="page-hero">
+        <h1>Custom Request Checkout</h1>
+        <p>Review your custom items and submit them for admin quotation</p>
       </div>
 
       <div className="checkout-layout">
@@ -770,10 +757,19 @@ export default function CustomCheckoutPage() {
           </div>
         </div>
 
-        <div className="checkout-summary">
-          <div className="checkout-summary-header">
-            <h3>Custom Request Summary</h3>
-          </div>
+        <div className="wisdom-custom-request-summary-column-v14">
+          <button
+            type="button"
+            className="wisdom-custom-request-back-nav-v15"
+            onClick={() => navigate("/cart")}
+          >
+            {"\u2190"} Back to Cart
+          </button>
+
+          <div className="checkout-summary">
+            <div className="checkout-summary-header">
+              <h3>Custom Request Summary</h3>
+            </div>
 
           <div className="checkout-summary-items">
             {checkoutItems.map((item) => (
@@ -843,6 +839,7 @@ export default function CustomCheckoutPage() {
               </>
             )}
           </button>
+          </div>
         </div>
       </div>
     </div>

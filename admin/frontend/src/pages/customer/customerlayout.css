@@ -2510,3 +2510,26 @@ a {
 }
 
 /* WISDOM NOTIFICATIONS ACCOUNT RADIUS ONLY V3 END */
+/* WISDOM CUSTOMER READABILITY + SEARCH BARS V1 */
+
+/* Main Search furniture textbox: stronger box outline only. */
+.cust-header-search {
+  border: 1.5px solid #aeb4bb !important;
+  box-shadow: none !important;
+}
+
+.cust-header-search:hover {
+  border-color: #8f969e !important;
+}
+
+.cust-header-search:focus-within {
+  border-color: #111111 !important;
+}
+
+.cust-header-search button {
+  border-left: 1.5px solid #c2c6ca !important;
+}
+
+.cust-header-search input::placeholder {
+  font-weight: 400 !important;
+}

@@ -1928,3 +1928,45 @@
 }
 
 /* WISDOM PRODUCT VIEW CATEGORY STOCK ONLY HOTFIX END */
+/* WISDOM PRODUCT CATALOG HEADER TYPOGRAPHY V1 */
+
+/*
+  Match the Product Catalog header to the current customer-page system
+  used by Appointments and Warranty & Claims.
+*/
+.catalog-page-copy h1 {
+  margin: 0 0 8px !important;
+  font-size: 30px !important;
+  line-height: 1.15 !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+  color: #111111 !important;
+}
+
+.catalog-page-copy p {
+  margin: 0 !important;
+  max-width: 700px !important;
+  font-size: 14px !important;
+  line-height: 1.65 !important;
+  font-weight: 400 !important;
+  color: #62676e !important;
+}
+/* WISDOM CUSTOMER READABILITY + SEARCH BARS V1 */
+
+/* Product search textbox: clearer outline without changing placeholder weight. */
+.catalog-search input {
+  border: 1.5px solid #b5bac0 !important;
+  box-shadow: none !important;
+}
+
+.catalog-search input:hover {
+  border-color: #8f969e !important;
+}
+
+.catalog-search input:focus {
+  border-color: #111111 !important;
+}
+
+.catalog-search input::placeholder {
+  font-weight: 400 !important;
+}

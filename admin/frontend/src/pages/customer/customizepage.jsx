@@ -174,7 +174,7 @@ const TEMPLATE_PROFILES = {
     showDoorStyle: true,
     showHardware: true,
     shortNote:
-      "Core cabinet structure is fixed. Only admin-approved dimensions, materials, finish, and accessories can be changed.",
+      "The main cabinet structure stays fixed. You can adjust the available size, material, finish, and accessory options.",
   },
 
   shelf: {
@@ -228,7 +228,7 @@ const TEMPLATE_PROFILES = {
     showDoorStyle: true,
     showHardware: true,
     shortNote:
-      "Only approved customer-editable values can be changed. The main structure remains based on the admin template.",
+      "The main furniture structure stays fixed. You can adjust the available customization options.",
   },
 };
 
@@ -773,11 +773,11 @@ function SkeletonCard() {
   );
 }
 
-function ModalShell({ title, subtitle, onClose, children, wide = false }) {
+function ModalShell({ title, subtitle, onClose, children, wide = false, variant = "" }) {
   return (
     <div className="cust-modal-backdrop" onClick={onClose}>
       <div
-        className={`cust-modal ${wide ? "cust-modal-wide" : ""}`}
+        className={`cust-modal ${wide ? "cust-modal-wide" : ""} ${variant === "customize" ? "cust-modal-customize" : ""}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="cust-modal-head">
@@ -899,39 +899,21 @@ function ViewModal({ product, onClose, onCustomize }) {
 
   return (
     <ModalShell
-      title={blueprint.title || "Template Preview"}
-      subtitle="Preview the approved furniture template before customizing."
+      title={blueprint.title || "Design Preview"}
+      subtitle="Review the design and dimensions before customizing."
       onClose={onClose}
       wide
     >
       {loading ? (
-        <div className="cust-modal-state">Loading template preview…</div>
+        <div className="cust-modal-state">Loading design preview…</div>
       ) : error ? (
         <div className="cust-modal-error">{error}</div>
       ) : (
-        <div style={{ display: "grid", gap: 14 }}>
-          <CustomerTemplateWorkbench blueprint={blueprint} readOnly />
-
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: 10,
-            }}
-          >
-            <button type="button" className="cust-view-btn" onClick={onClose}>
-              Close
-            </button>
-
-            <button
-              type="button"
-              className="cust-customize-btn"
-              onClick={() => onCustomize?.(blueprint)}
-            >
-              Customize
-            </button>
-          </div>
-        </div>
+        <CustomerTemplateWorkbench
+          blueprint={blueprint}
+          readOnly
+          onViewCustomize={() => onCustomize?.(blueprint)}
+        />
       )}
     </ModalShell>
   );
@@ -946,20 +928,21 @@ function CustomizeModal({ product, onClose, onAdd }) {
 
   return (
     <ModalShell
-      title={blueprint.title || "Customize Template"}
-      subtitle="Customer configurator with approved editable options only."
+      title={blueprint.title || "Customize Design"}
+      subtitle="Adjust the available options to match your space and preferences."
       onClose={onClose}
       wide
+      variant="customize"
     >
       {loading ? (
-        <div className="cust-modal-state">Loading customization workspace…</div>
+        <div className="cust-modal-state">Loading customization options…</div>
       ) : error ? (
         <div className="cust-modal-error">{error}</div>
       ) : (
         <CustomerTemplateWorkbench
           blueprint={blueprint}
           readOnly={false}
-          confirmLabel="Add to Custom Cart"
+          confirmLabel="Add to Cart"
           onConfirm={(draft) => onAdd(blueprint, draft)}
         />
       )}
@@ -1013,21 +996,17 @@ function ProductCard({ product, onView, onCustomize }) {
       </div>
 
       <div className="cust-product-meta">
-        <div className="cust-category">{profile.category}</div>
+        <div className="cust-category">{String(profile.category || "").replace(" Template", " Design")}</div>
 
         <h3 className="cust-product-title">{product.title}</h3>
 
         <p className="cust-product-desc">
           {product.description ||
-            "Customizable template from the admin blueprint gallery."}
+            "Custom furniture design available for customization."}
         </p>
 
         <div className="cust-tag-row">
           <span className="custom-spec-tag">Made to Order</span>
-          <span className="custom-spec-tag">Admin Blueprint</span>
-          <span className="custom-spec-tag">
-            {product.has_saved_3d ? "Admin 3D Ready" : "Thumbnail Only"}
-          </span>
         </div>
 
         <div className="cust-dim-summary">
@@ -1368,17 +1347,17 @@ export default function CustomizePage() {
 
       <div className="cust-page-head">
         <div className="cust-page-copy">
-          <h1>Customize Your Order</h1>
+          <h1>Customize Your Furniture</h1>
           <p>
-            Choose an admin-approved furniture template, preview it, then
-            customize only the values allowed by the admin blueprint rules.
+            Choose a design, review the details, and customize the available
+            options to match your space and preferences.
           </p>
         </div>
 
         <div className="cust-page-meta">
           {!loading && (
             <div className="cust-results-info">
-              Showing {total} template{total !== 1 ? "s" : ""}
+              {total} design{total !== 1 ? "s" : ""} available
             </div>
           )}
         </div>
@@ -1390,7 +1369,7 @@ export default function CustomizePage() {
             <Search size={16} />
             <input
               type="text"
-              placeholder="Search templates..."
+              placeholder="Search designs..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />

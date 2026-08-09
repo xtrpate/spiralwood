@@ -1432,3 +1432,444 @@
     padding: 8px;
   }
 }
+
+/* WISDOM CUSTOMER CUSTOMIZE TARGETED UI START */
+
+/*
+  Customer Customize page polish.
+  Business logic is unchanged.
+  Desktop gallery = 4 cards per row.
+  Search remains the only discovery control for the current gallery size.
+*/
+
+/* ---------- Page heading ---------- */
+
+.cust-page-head {
+  align-items: flex-end;
+  gap: 20px;
+  margin-bottom: 20px;
+  padding: 22px 36px 16px;
+}
+
+.cust-page-copy h1 {
+  margin: 0 0 7px;
+  font-size: 1.85rem;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #111111;
+}
+
+.cust-page-copy p {
+  max-width: 720px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  font-weight: 400;
+  color: #606060;
+}
+
+.cust-results-info {
+  font-size: 0.76rem;
+  line-height: 1.3;
+  font-weight: 500;
+  color: #777777;
+}
+
+.cust-toolbar {
+  padding: 0 36px;
+  margin-bottom: 22px;
+}
+
+.cust-search-shell {
+  max-width: 480px;
+}
+
+.cust-search input {
+  height: 44px;
+  border-radius: 0 !important;
+  font-size: 0.82rem;
+}
+
+/* ---------- Gallery ---------- */
+
+.cust-products-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  padding: 0 36px 48px;
+}
+
+.cust-product-card,
+.product-skeleton {
+  border: 1px solid #dedede;
+  border-radius: 0 !important;
+  box-shadow: none;
+}
+
+.cust-product-image-wrap {
+  height: 220px;
+}
+
+.cust-product-meta {
+  gap: 10px;
+  padding: 14px;
+}
+
+.cust-category {
+  padding: 4px 8px;
+  border-radius: 0 !important;
+  background: #f5f5f5;
+  border-color: #e1e1e1;
+  font-size: 0.66rem;
+  line-height: 1.2;
+  font-weight: 600;
+  color: #454545;
+}
+
+.cust-product-title {
+  margin: 0;
+  font-size: 1.04rem;
+  line-height: 1.32;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #111111;
+}
+
+.cust-product-desc {
+  min-height: 58px;
+  margin: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #626262;
+}
+
+.cust-tag-row {
+  gap: 6px;
+}
+
+.custom-spec-tag {
+  padding: 4px 8px;
+  border-radius: 0 !important;
+  background: #f8f8f8;
+  border-color: #dfdfdf;
+  font-size: 0.66rem;
+  line-height: 1.2;
+  font-weight: 600;
+  color: #333333;
+}
+
+.cust-dim-summary {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  font-weight: 500;
+  color: #666666;
+}
+
+/* ---------- Compact card actions ---------- */
+
+.cust-card-actions {
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  gap: 8px;
+  margin-top: auto;
+}
+
+.cust-view-btn,
+.cust-customize-btn {
+  width: 100%;
+  min-height: 40px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 0 !important;
+  font-size: 0.74rem;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.cust-view-btn {
+  background: #ffffff;
+  color: #111111;
+}
+
+.cust-customize-btn {
+  background: #111111;
+  color: #ffffff;
+}
+
+/* ---------- Empty/loading/customer modal surfaces ---------- */
+
+.cust-empty-state,
+.product-skeleton,
+.skeleton-line,
+.premium-toast,
+.cust-modal,
+.cust-panel,
+.cust-note-box,
+.cust-info-card,
+.cust-pill {
+  border-radius: 0 !important;
+}
+
+.cust-modal {
+  box-shadow: 0 18px 52px rgba(15, 23, 42, 0.18);
+}
+
+.cust-modal-head {
+  padding: 16px 18px 13px;
+}
+
+.cust-modal-head h2 {
+  font-size: 1.25rem;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.cust-modal-head p {
+  margin-top: 5px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #6d6d6d;
+}
+
+.cust-panel h3 {
+  font-size: 1rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: #111111;
+}
+
+.cust-panel p {
+  font-size: 0.78rem;
+  line-height: 1.55;
+  font-weight: 400;
+  color: #626262;
+}
+
+.cust-info-label,
+.cust-label {
+  font-weight: 600;
+}
+
+.cust-info-value {
+  font-weight: 600;
+}
+
+/* ---------- Responsive card counts ---------- */
+
+@media (max-width: 1180px) {
+  .cust-products-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 840px) {
+  .cust-page-head {
+    align-items: flex-start;
+  }
+
+  .cust-products-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+@media (max-width: 560px) {
+  .cust-page-head,
+  .cust-toolbar,
+  .cust-products-grid {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .cust-products-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cust-card-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* WISDOM CUSTOMER CUSTOMIZE TARGETED UI END */
+/* =========================================================
+   WISDOM ZERO-SCROLL CUSTOMIZE V3
+   Customize-only desktop workspace override
+   ========================================================= */
+.cust-modal-customize {
+  width: min(calc(100vw - 20px), 1580px);
+  max-height: calc(100vh - 10px);
+  border-radius: 0;
+}
+
+.cust-modal-customize .cust-modal-head {
+  padding: 12px 15px 10px;
+}
+
+.cust-modal-customize .cust-modal-head h2 {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.cust-modal-customize .cust-modal-head p {
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.cust-modal-customize .cust-modal-content {
+  min-height: 0;
+  overflow: hidden;
+  padding: 7px;
+}
+
+.cust-modal-customize .cust-modal-inner-content {
+  min-height: 0;
+}
+
+@media (max-width: 1180px) {
+  .cust-modal-customize {
+    width: min(calc(100vw - 16px), 1360px);
+  }
+
+  .cust-modal-customize .cust-modal-content {
+    overflow: auto;
+  }
+}
+
+@media (max-height: 760px) {
+  .cust-modal-customize .cust-modal-content {
+    overflow: auto;
+  }
+}
+/* WISDOM CUSTOM REQUEST BACK NAV RIGHT COLUMN V1.4 */
+.wisdom-custom-request-summary-column-v14 {
+  position: sticky;
+  top: 96px;
+  align-self: start;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.wisdom-custom-request-summary-column-v14 .checkout-summary {
+  position: static;
+  top: auto;
+  width: 100%;
+}
+
+.wisdom-custom-request-back-nav-v14 {
+  justify-self: start;
+  width: auto;
+  min-width: 0;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  margin: 0;
+  border: 1px solid #111111;
+  border-radius: 0;
+  background: #ffffff;
+  color: #111111;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.wisdom-custom-request-back-nav-v14:hover {
+  background: #f7f7f7;
+}
+
+@media (max-width: 1180px) {
+  .wisdom-custom-request-summary-column-v14 {
+    position: static;
+    top: auto;
+  }
+}
+/* WISDOM CUSTOM REQUEST SUMMARY ALIGN V1.5 */
+.wisdom-custom-request-summary-column-v14 {
+  position: sticky;
+  top: 96px;
+  align-self: start;
+  display: block;
+  min-width: 0;
+}
+
+.wisdom-custom-request-summary-column-v14 .checkout-summary {
+  position: static;
+  top: auto;
+  width: 100%;
+  margin: 0;
+}
+
+.wisdom-custom-request-back-nav-v15 {
+  position: absolute;
+  left: 0;
+  top: -46px;
+  z-index: 2;
+  width: auto;
+  min-width: 0;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  margin: 0;
+  border: 1px solid #111111;
+  border-radius: 0 !important;
+  background: #ffffff;
+  color: #111111;
+  box-shadow: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.wisdom-custom-request-back-nav-v15:hover {
+  background: #f7f7f7;
+}
+
+@media (max-width: 1180px) {
+  .wisdom-custom-request-summary-column-v14 {
+    position: relative;
+    top: auto;
+    margin-top: 46px;
+  }
+
+  .wisdom-custom-request-back-nav-v15 {
+    top: -46px;
+  }
+}
+/* WISDOM CUSTOMER READABILITY + SEARCH BARS V1 */
+
+/* Give Search designs a little breathing room below the page divider. */
+.cust-toolbar {
+  margin-top: 10px !important;
+}
+
+/* Make the textbox itself more visible; placeholder text remains normal. */
+.cust-search input {
+  border: 1.5px solid #b5bac0 !important;
+  box-shadow: none !important;
+}
+
+.cust-search input:hover {
+  border-color: #8f969e !important;
+}
+
+.cust-search input:focus {
+  border-color: #111111 !important;
+}
+
+.cust-search input::placeholder {
+  font-weight: 400 !important;
+}

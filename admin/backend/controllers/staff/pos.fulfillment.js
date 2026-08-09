@@ -730,9 +730,11 @@ exports.updateDeliveryStatus = async (req, res) => {
         0,
         orderTotalCentsBlueprint - verifiedCentsBlueprint,
       );
+      // Cash on Delivery is the default remaining-balance method.
+      // A null value means the customer did not opt into Online Payment.
       const remainingMethod =
         normalizeText(order.remaining_payment_method || "").toLowerCase() ||
-        null;
+        "cash";
 
       if (remainingCentsBlueprint > 0) {
         if (!remainingMethod) {
