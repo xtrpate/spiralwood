@@ -210,6 +210,10 @@ const hasExactAdmin3DSource = (blueprint = {}) => {
 
   if (extractDirect3DItems(rawView3d).length > 0) return true;
 
+  // WISDOM CUSTOMER BLUEPRINT VIEWER DETECTION V1
+  if (extractDirect3DItems(rawDesign).length > 0) return true;
+  if (extractDirect3DItems(blueprint).length > 0) return true;
+
   const nestedDesignSources = [
     rawDesign?.scene,
     rawDesign?.sceneData,
@@ -272,6 +276,7 @@ export default function CustomerBlueprintViewer({
   const [viewPreset, setViewPreset] = useState(defaultPreset);
   const [humanHeightMm, setHumanHeightMm] = useState(1700);
   const [humanBuild, setHumanBuild] = useState(1);
+  const [fallbackImageError, setFallbackImageError] = useState(false);
 
   useEffect(() => {
     setViewPreset(defaultPreset);
@@ -285,6 +290,10 @@ export default function CustomerBlueprintViewer({
     () => extractCustomerBlueprintScene(blueprint),
     [blueprint],
   );
+
+  useEffect(() => {
+    setFallbackImageError(false);
+  }, [blueprint?.id, sceneData?.thumbnail_url]);
 
   const displayBounds = useMemo(() => {
     const base = sceneData?.defaultDimensions || {};
@@ -681,7 +690,7 @@ export default function CustomerBlueprintViewer({
             className="cust-viewer-canvas"
             style={compact ? { height: 240 } : undefined}
           />
-        ) : sceneData?.thumbnail_url ? (
+        ) : sceneData?.thumbnail_url && !fallbackImageError ? (
           <div
             className="cust-viewer-fallback"
             style={compact ? { minHeight: 240, padding: 0 } : undefined}
@@ -691,6 +700,7 @@ export default function CustomerBlueprintViewer({
               alt={sceneData.title}
               className="cust-viewer-fallback-img"
               style={compact ? { height: 240, borderRadius: 0 } : undefined}
+              onError={() => setFallbackImageError(true)}
             />
             {!compact ? (
               <div className="cust-viewer-fallback-note">
