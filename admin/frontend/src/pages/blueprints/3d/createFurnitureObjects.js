@@ -3,6 +3,7 @@ import * as THREE from "three";
 import {
   getMaterialPalette,
   createMaterial,
+  createFurnitureMaterial,
   addEdgeHighlight,
   addBoxPart,
   addRoundedPanel,
@@ -23,6 +24,8 @@ import { addCircleShape } from "../shapes/circleShape";
 import { addTriangleShape } from "../shapes/triangleShape";
 import { addCubeShape } from "../shapes/cubeShape";
 import { addTrapezoidShape } from "../shapes/trapezoidShape";
+import { addWoodworkingProfile3D } from "../shapes/woodworkingProfile3D";
+import { isWoodworkingProfileComponent } from "../data/woodworkingProfile";
 import { CASEWORK_SET, TABLE_SET, BENCH_SET } from "../data/furnitureTypes";
 import { createDiningChairTemplateComponents } from "../data/templateComponents";
 
@@ -36,6 +39,7 @@ const WARDROBE_PART_SET = new Set([
   "wr_bottom_panel",
   "wr_top_shelf",
   "wr_shelf",
+  "wr_door",
   "wr_base_top",
   "wr_drawer_front",
   "wr_drawer_side",
@@ -46,6 +50,12 @@ const WARDROBE_PART_SET = new Set([
   "wr_support_panel",
   "wr_table",
 ]);
+
+// Visual-only overlay clearance. Wardrobe shelves and carcass panels can end
+// on the same front plane as door components in saved template geometry.
+// Moving only the rendered door/front mesh slightly outward prevents
+// depth-buffer competition while preserving all saved component coordinates.
+const WARDROBE_DOOR_VISUAL_CLEARANCE = 3;
 
 function toneColor(color, amount = 0) {
   const c = new THREE.Color(color || "#c08a5a");
@@ -59,15 +69,24 @@ function toneColor(color, amount = 0) {
   return c;
 }
 
-function makeWardrobeMaterial(color, overrides = {}) {
-  return new THREE.MeshPhysicalMaterial({
-    color: toneColor(color, 0),
-    roughness: 0.48,
-    metalness: 0.03,
-    clearcoat: 0.18,
-    clearcoatRoughness: 0.34,
-    ...overrides,
-  });
+function makeWardrobeMaterial(
+  comp,
+  color,
+  role = "front",
+  overrides = {},
+) {
+  return createFurnitureMaterial(
+    comp,
+    toneColor(color, 0),
+    role,
+    {
+      roughness: 0.48,
+      metalness: 0.03,
+      clearcoat: 0.18,
+      clearcoatRoughness: 0.34,
+      ...overrides,
+    },
+  );
 }
 
 function buildWardrobePart3D(root, selectableMeshes, comp, palette, r = 0) {
@@ -77,42 +96,43 @@ function buildWardrobePart3D(root, selectableMeshes, comp, palette, r = 0) {
 
   const base = comp.fill || palette.front || "#bc8756";
 
-  const faceMat = makeWardrobeMaterial(base, {
+  const faceMat = makeWardrobeMaterial(comp, base, "front", {
     roughness: 0.42,
     clearcoat: 0.24,
   });
 
-  const carcassMat = makeWardrobeMaterial(base, {
-    color: toneColor(base, -0.14),
-    roughness: 0.58,
-    clearcoat: 0.12,
-  });
+  const carcassMat = makeWardrobeMaterial(
+    comp,
+    toneColor(base, -0.14),
+    "carcass",
+    { roughness: 0.58, clearcoat: 0.12 },
+  );
 
-  const edgeMat = makeWardrobeMaterial(base, {
-    color: toneColor(base, 0.18),
-    roughness: 0.38,
-    clearcoat: 0.28,
-  });
+  const backMat = makeWardrobeMaterial(
+    comp,
+    toneColor(base, -0.08),
+    "inside",
+    { roughness: 0.78, clearcoat: 0.04 },
+  );
 
-  const backMat = new THREE.MeshStandardMaterial({
-    color: toneColor(base, -0.08),
-    roughness: 0.92,
-    metalness: 0.02,
-  });
+  const drawerBoxMat = makeWardrobeMaterial(
+    comp,
+    toneColor(base, -0.24),
+    "inside",
+    { roughness: 0.76, clearcoat: 0.04 },
+  );
 
-  const drawerBoxMat = new THREE.MeshStandardMaterial({
-    color: toneColor(base, -0.24),
-    roughness: 0.88,
-    metalness: 0.02,
-  });
-
-  const metalMat = new THREE.MeshPhysicalMaterial({
-    color: toneColor(comp.fill || "#c9ced6", 0),
-    roughness: 0.22,
-    metalness: 0.92,
-    clearcoat: 0.48,
-    clearcoatRoughness: 0.12,
-  });
+  const metalMat = createFurnitureMaterial(
+    { ...comp, material: "Brushed Metal", grainDirection: "none" },
+    comp.fill || "#c9ced6",
+    "metal",
+    {
+      roughness: 0.22,
+      metalness: 0.92,
+      clearcoat: 0.38,
+      clearcoatRoughness: 0.16,
+    },
+  );
   const FACE_GAP = 0.8;
 
   if (comp.type === "wr_rod") {
@@ -205,6 +225,21 @@ function buildWardrobePart3D(root, selectableMeshes, comp, palette, r = 0) {
     return true;
   }
 
+  if (comp.type === "wr_door") {
+    addBoxPart(
+      root,
+      selectableMeshes,
+      [w, h, d],
+      [0, 0, WARDROBE_DOOR_VISUAL_CLEARANCE],
+      faceMat,
+      comp.id,
+      true,
+      Math.min(r, 3),
+    );
+
+    return true;
+  }
+
   if (
     comp.type === "wr_side_panel" ||
     comp.type === "wr_divider" ||
@@ -267,7 +302,7 @@ function buildWardrobePart3D(root, selectableMeshes, comp, palette, r = 0) {
       root,
       selectableMeshes,
       [w, h, Math.max(18, d)],
-      [0, 0, 0],
+      [0, 0, WARDROBE_DOOR_VISUAL_CLEARANCE],
       faceMat,
       comp.id,
       true,
@@ -321,26 +356,47 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
   const r = Number(comp.cornerRadius) || 0;
   const palette = getMaterialPalette(comp);
 
-  const frontMat = createMaterial(palette.front, selected, editing);
-  const carcassMat = new THREE.MeshPhysicalMaterial({
-    color: palette.carcass,
-    roughness: 0.62,
-    metalness: 0.03,
-    clearcoat: 0.1,
-    clearcoatRoughness: 0.55,
-  });
-  const insideMat = new THREE.MeshStandardMaterial({
-    color: palette.inside,
-    roughness: 0.92,
-    metalness: 0,
-  });
-  const countertopMat = new THREE.MeshPhysicalMaterial({
-    color: palette.front,
-    roughness: 0.24,
-    metalness: 0.03,
-    clearcoat: 0.4,
-    clearcoatRoughness: 0.22,
-  });
+  const frontMat = createMaterial(
+    palette.front,
+    selected,
+    editing,
+    comp,
+    "front",
+  );
+  const carcassMat = createFurnitureMaterial(
+    comp,
+    palette.carcass,
+    "carcass",
+    { roughness: 0.58, clearcoat: 0.1, clearcoatRoughness: 0.52 },
+  );
+  const insideMat = createFurnitureMaterial(
+    comp,
+    palette.inside,
+    "inside",
+    { roughness: 0.74, clearcoat: 0.04, clearcoatRoughness: 0.72 },
+  );
+  const countertopMat = createFurnitureMaterial(
+    comp,
+    palette.front,
+    "countertop",
+    { roughness: 0.26, clearcoat: 0.38, clearcoatRoughness: 0.22 },
+  );
+
+  if (isWoodworkingProfileComponent(comp)) {
+    const profileMesh = addWoodworkingProfile3D(
+      root,
+      selectableMeshes,
+      comp,
+      frontMat,
+      comp.id,
+    );
+
+    if (profileMesh) {
+      addEdgeHighlight(root, profileMesh, palette.edge, 0.07);
+    }
+
+    return root;
+  }
 
   if (WARDROBE_PART_SET.has(comp.type)) {
     buildWardrobePart3D(root, selectableMeshes, comp, palette, r);
@@ -503,12 +559,12 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
   }
 
   if (comp.type === "hardware") {
-    const knobMat = new THREE.MeshPhysicalMaterial({
-      color: 0x1f2937,
-      metalness: 0.96,
-      roughness: 0.12,
-      clearcoat: 0.45,
-    });
+    const knobMat = createFurnitureMaterial(
+      { ...comp, material: "Brushed Metal", grainDirection: "none" },
+      "#1f2937",
+      "metal",
+      { metalness: 0.94, roughness: 0.2, clearcoat: 0.34 },
+    );
 
     const knob = new THREE.Mesh(
       new THREE.CylinderGeometry(w * 0.18, w * 0.18, Math.max(8, d), 28),

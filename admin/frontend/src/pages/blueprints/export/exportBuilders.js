@@ -5,6 +5,7 @@ import {
   shouldMirrorView,
   getMirroredBox,
   getViewSheetCode,
+  resolveProductionPartCode,
 } from "../data/componentUtils";
 import {
   getScaledExportItems,
@@ -61,6 +62,13 @@ import {
   resolveExportFocusLabel,
   formatDimsForTitleBlock,
 } from "./exportSheetUtils";
+import { buildWoodworkingDetailsPages } from "./woodworkingDetailsExport";
+import { buildWoodworkingVisualCallouts } from "./woodworkingVisualCallouts";
+import {
+  EXPLODED_PARTS_SHEET_CODE,
+  buildExplodedPartScheduleRows,
+  buildExplodedPartsSchedulePages,
+} from "./explodedPartsSchedule";
 
 const GRID_SIZE = 20;
 const BOARD = 18;
@@ -69,6 +77,8 @@ const TITLE_BLOCK_H = 96;
 const DRAWING_PADDING = 56;
 const EXPORT_PAGE_W = 1200;
 const EXPORT_PAGE_H = 820;
+const PROFESSIONAL_DRAWING_STATUS = "FOR REVIEW";
+const PROFESSIONAL_DRAWING_NOTE = "DO NOT SCALE DRAWING";
 
 function buildExplodedLabelMarkup({ comp, screenBox, idx, drawingArea }) {
   const labelText = String(idx + 1);
@@ -280,9 +290,28 @@ function buildSvgPaperMarkup(pageW, pageH) {
       PAPER_MARGIN + 8,
       pageW - PAPER_MARGIN * 2 - 16,
       pageH - PAPER_MARGIN * 2 - 16,
-      `fill="none" stroke="#94a3b8" stroke-width="0.8"`,
+      `fill="none" stroke="#94a3b8" stroke-width="0.65"`,
     )}
     ${refs.join("")}
+  `;
+}
+
+function buildSvgSheetMetaMarkup({ pageW, unit }) {
+  const unitText = String(unit || "mm").toUpperCase();
+
+  return `
+    ${svgText(
+      pageW - PAPER_MARGIN - 12,
+      PAPER_MARGIN + 20,
+      `${PROFESSIONAL_DRAWING_STATUS}  |  ${PROFESSIONAL_DRAWING_NOTE}`,
+      `font-size="9" font-weight="700" fill="#334155" text-anchor="end"`,
+    )}
+    ${svgText(
+      pageW - PAPER_MARGIN - 12,
+      PAPER_MARGIN + 36,
+      `ALL WRITTEN DIMENSIONS IN ${unitText}`,
+      `font-size="8.5" fill="#64748b" text-anchor="end"`,
+    )}
   `;
 }
 
@@ -307,21 +336,24 @@ function buildSvgTitleBlockMarkup({
   const objectText = truncateText(objectLabel || "No Selection", 30);
   const viewText = truncateText(viewLabel || "View", 18);
   const unitText = truncateText(String(unit || "mm").toUpperCase(), 8);
-  const materialValue = truncateText(materialText || "—", 28);
-  const dimsValue = truncateText(dimsText || "—", 26);
+  const rawMaterialValue = String(materialText || "—").trim();
+  const materialValue = rawMaterialValue.includes(",")
+    ? "MULTIPLE MATERIALS"
+    : truncateText(rawMaterialValue, 20);
+  const dimsValue = truncateText(dimsText || "—", 18);
   const scaleValue = truncateText(scaleText || "NTS", 8);
   const sheetValue = truncateText(sheetCode || "A-101", 10);
 
   const projectFont = fitFontSize(projectText, 15, 34, 11);
   const objectFont = fitFontSize(objectText, 12, 20, 9);
-  const materialFont = fitFontSize(materialValue, 10, 18, 8);
-  const dimsFont = fitFontSize(dimsValue, 10, 22, 8);
+  const materialFont = fitFontSize(materialValue, 9.5, 18, 8);
+  const dimsFont = fitFontSize(dimsValue, 9.5, 18, 8);
 
   return `
     ${svgRect(x, y, w, h, `fill="#ffffff" stroke="#0f172a" stroke-width="1.4"`)}
-    ${svgLine(x + w - 390, y, x + w - 390, y + h, `stroke="#0f172a" stroke-width="1"`)}
-    ${svgLine(x + w - 230, y, x + w - 230, y + h, `stroke="#0f172a" stroke-width="1"`)}
-    ${svgLine(x + w - 120, y, x + w - 120, y + h, `stroke="#0f172a" stroke-width="1"`)}
+    ${svgLine(x + w - 410, y, x + w - 410, y + h, `stroke="#0f172a" stroke-width="1"`)}
+    ${svgLine(x + w - 205, y, x + w - 205, y + h, `stroke="#0f172a" stroke-width="1"`)}
+    ${svgLine(x + w - 95, y, x + w - 95, y + h, `stroke="#0f172a" stroke-width="1"`)}
     ${svgLine(x, y + 32, x + w, y + 32, `stroke="#0f172a" stroke-width="1"`)}
     ${svgLine(x + w - 390, y + 54, x + w, y + 54, `stroke="#0f172a" stroke-width="1"`)}
     ${svgLine(x + w - 390, y + 76, x + w, y + 76, `stroke="#0f172a" stroke-width="1"`)}
@@ -333,37 +365,51 @@ function buildSvgTitleBlockMarkup({
       projectText,
       `font-size="${projectFont}" font-weight="700" fill="#0f172a"`,
     )}
-    ${svgText(x + w - 380, y + 16, "OBJECT", `font-size="9" fill="#64748b"`)}
+    ${svgText(x + w - 400, y + 16, "OBJECT", `font-size="9" fill="#64748b"`)}
     ${svgText(
-      x + w - 380,
+      x + w - 400,
       y + 48,
       objectText,
       `font-size="${objectFont}" font-weight="700" fill="#0f172a"`,
     )}
-    ${svgText(x + w - 220, y + 16, "VIEW", `font-size="9" fill="#64748b"`)}
-    ${svgText(x + w - 220, y + 48, viewText, `font-size="12" font-weight="700" fill="#0f172a"`)}
-    ${svgText(x + w - 110, y + 16, "UNIT", `font-size="9" fill="#64748b"`)}
-    ${svgText(x + w - 110, y + 48, unitText, `font-size="12" font-weight="700" fill="#0f172a"`)}
-    ${svgText(x + w - 380, y + 68, "MATERIAL / FINISH", `font-size="9" fill="#64748b"`)}
+    ${svgText(x + w - 195, y + 16, "VIEW", `font-size="9" fill="#64748b"`)}
+    ${svgText(x + w - 195, y + 48, viewText, `font-size="12" font-weight="700" fill="#0f172a"`)}
+    ${svgText(x + w - 85, y + 16, "UNIT", `font-size="9" fill="#64748b"`)}
+    ${svgText(x + w - 85, y + 48, unitText, `font-size="12" font-weight="700" fill="#0f172a"`)}
+    ${svgText(x + w - 400, y + 68, "MATERIAL / FINISH", `font-size="9" fill="#64748b"`)}
     ${svgText(
-      x + w - 380,
+      x + w - 400,
       y + 90,
       materialValue,
       `font-size="${materialFont}" fill="#0f172a"`,
     )}
-    ${svgText(x + w - 220, y + 68, "DIMENSIONS", `font-size="9" fill="#64748b"`)}
+    ${svgText(x + w - 195, y + 68, "DIMENSIONS", `font-size="9" fill="#64748b"`)}
     ${svgText(
-      x + w - 220,
+      x + w - 195,
       y + 90,
       dimsValue,
       `font-size="${dimsFont}" fill="#0f172a"`,
     )}
-    ${svgText(x + w - 110, y + 68, "SCALE", `font-size="9" fill="#64748b"`)}
-    ${svgText(x + w - 110, y + 90, scaleValue, `font-size="10" fill="#0f172a"`)}
+    ${svgText(x + w - 85, y + 68, "SCALE", `font-size="9" fill="#64748b"`)}
+    ${svgText(x + w - 85, y + 90, scaleValue, `font-size="10" fill="#0f172a"`)}
     ${svgText(x + 10, y + 68, "DATE", `font-size="9" fill="#64748b"`)}
     ${svgText(x + 10, y + 90, getNowStamp(), `font-size="10" fill="#0f172a"`)}
     ${svgText(x + 120, y + 68, "SHEET", `font-size="9" fill="#64748b"`)}
     ${svgText(x + 120, y + 90, sheetValue, `font-size="10" fill="#0f172a"`)}
+    ${svgText(x + 220, y + 68, "STATUS", `font-size="9" fill="#64748b"`)}
+    ${svgText(
+      x + 220,
+      y + 90,
+      PROFESSIONAL_DRAWING_STATUS,
+      `font-size="10" font-weight="700" fill="#0f172a"`,
+    )}
+    ${svgText(x + 350, y + 68, "DRAWN BY", `font-size="9" fill="#64748b"`)}
+    ${svgText(
+      x + 350,
+      y + 90,
+      "WISDOM",
+      `font-size="10" font-weight="700" fill="#0f172a"`,
+    )}
   `;
 }
 
@@ -723,12 +769,15 @@ function build2DViewPageSvg({
         )}
       `
       : "";
-  const technicalNotes = buildOrthographicTechnicalNotes({
-    view,
-    selectedComponents,
-    drawingArea,
-    unit,
-  });
+  const technicalNotes =
+    view === "exploded"
+      ? ""
+      : buildOrthographicTechnicalNotes({
+          view,
+          selectedComponents,
+          drawingArea,
+          unit,
+        });
 
   const partCallouts = buildOrthographicPartCallouts({
     view,
@@ -737,7 +786,23 @@ function build2DViewPageSvg({
     unit,
   });
 
-  const explodedNotes = "";
+  const woodworkingVisualCallouts = buildWoodworkingVisualCallouts({
+    view,
+    selectedComponents,
+    scaledItems,
+    drawingArea,
+    selectedCompId: selectedComp?.id ?? null,
+  });
+
+  const explodedNotes =
+    view === "exploded"
+      ? svgText(
+          PAPER_MARGIN + 12,
+          pageH - PAPER_MARGIN - TITLE_BLOCK_H - 12,
+          `BALLOON NUMBERS REFER TO EXPLODED PARTS SCHEDULE — SHEET ${EXPLODED_PARTS_SHEET_CODE}`,
+          `font-size="8.5" font-weight="700" fill="#475569"`,
+        )
+      : "";
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="${pageW}" height="${pageH}" viewBox="0 0 ${pageW} ${pageH}">
@@ -748,6 +813,7 @@ function build2DViewPageSvg({
         getPageHeaderTitle(view, rawViewLabel),
         `font-size="12" font-weight="700" fill="#0f172a"`,
       )}
+      ${buildSvgSheetMetaMarkup({ pageW, unit })}
       ${svgText(
         PAPER_MARGIN + 12,
         PAPER_MARGIN + 40,
@@ -758,6 +824,7 @@ function build2DViewPageSvg({
       ${itemsMarkup}
       ${dimMarkup}
       ${partCallouts}
+      ${woodworkingVisualCallouts}
       ${technicalNotes}
       ${explodedNotes}
       ${buildSvgTitleBlockMarkup({
@@ -859,7 +926,7 @@ function build3DViewPageSvg({
   const rawW = Math.max(1, maxPx - minPx);
   const rawH = Math.max(1, maxPy - minPy);
 
-  const scale = Math.min(drawingArea.w / rawW, drawingArea.h / rawH) * 0.9;
+  const scale = Math.min(drawingArea.w / rawW, drawingArea.h / rawH) * 0.96;
 
   const offsetX =
     drawingArea.x + (drawingArea.w - rawW * scale) / 2 - minPx * scale;
@@ -908,7 +975,10 @@ function build3DViewPageSvg({
         comp.z + comp.depth / 2,
       );
 
-      const labelText = truncateText(comp.partCode || `P${idx + 1}`, 12);
+      const labelText = truncateText(
+        resolveProductionPartCode(comp) || `P${idx + 1}`,
+        12,
+      );
       const placement = get3DCalloutPlacement(
         comp,
         selectedComponents,
@@ -939,6 +1009,7 @@ function build3DViewPageSvg({
         "TECHNICAL BLUEPRINT — 3D ISOMETRIC VIEW",
         `font-size="12" font-weight="700" fill="#0f172a"`,
       )}
+      ${buildSvgSheetMetaMarkup({ pageW, unit })}
       ${svgText(
         PAPER_MARGIN + 12,
         PAPER_MARGIN + 40,
@@ -1079,10 +1150,12 @@ function formatCurrency(value = 0) {
 function getMaterialsSummary(components) {
   const byMaterial = new Map();
   const byComponent = [];
+  const productionRows = buildExplodedPartScheduleRows(components);
   let totalQty = 0;
   let grandTotal = 0;
 
-  components.forEach((c) => {
+  components.forEach((c, index) => {
+    const productionRow = productionRows[index] || null;
     const key = c.material || "Unspecified";
     const resolvedPrice = getResolvedComponentPrice(c, components);
     const qty = Number(c.qty || 1);
@@ -1104,11 +1177,17 @@ function getMaterialsSummary(components) {
     grandTotal += resolvedPrice;
 
     byComponent.push({
-      partCode: c.partCode || "—",
-      label: c.label || "Part",
-      material: c.material || "—",
+      partCode:
+        productionRow?.partCode ||
+        resolveProductionPartCode(c) ||
+        "—",
+      label: productionRow?.partName || c.label || "Part",
+      material: productionRow?.material || c.material || "—",
+      grain: productionRow?.grain || "No Grain",
       qty,
-      size: formatDims(c.width, c.height, c.depth, "mm"),
+      size:
+        productionRow?.cutSize ||
+        formatDims(c.width, c.height, c.depth, "mm"),
       unitCost,
       price: resolvedPrice,
     });
@@ -1180,12 +1259,13 @@ function buildMaterialsPageHtml({
     <table class="bp-table">
       <thead>
         <tr>
-          <th>Item</th>
+          <th>Item No.</th>
           <th>Part Code</th>
-          <th>Description</th>
-          <th>Material</th>
+          <th>Part Name</th>
           <th>Qty</th>
           <th>Cut Size</th>
+          <th>Material</th>
+          <th>Grain</th>
         </tr>
       </thead>
       <tbody>
@@ -1194,19 +1274,20 @@ function buildMaterialsPageHtml({
             (row, index) => `
         <tr>
           <td>${index + 1}</td>
-          <td>${escapeHtml(row.partCode)}</td>
+          <td><b>${escapeHtml(row.partCode)}</b></td>
           <td>${escapeHtml(row.label)}</td>
-          <td>${escapeHtml(row.material)}</td>
           <td>${row.qty}</td>
           <td>${escapeHtml(row.size)}</td>
+          <td>${escapeHtml(row.material)}</td>
+          <td>${escapeHtml(row.grain)}</td>
         </tr>
       `,
           )
           .join("")}
         <tr class="table-total">
-          <td colspan="4"><b>Total</b></td>
+          <td colspan="3"><b>Total</b></td>
           <td><b>${totalQty}</b></td>
-          <td></td>
+          <td colspan="3"></td>
         </tr>
       </tbody>
     </table>
@@ -1221,6 +1302,7 @@ function buildMaterialsPageHtml({
             <div class="sheet-subtitle">${escapeHtml(selectedLabel || "No Selection")}</div>
           </div>
           <div class="sheet-meta">
+            <div><b>Production Status:</b> ${PROFESSIONAL_DRAWING_STATUS}</div>
             <div><b>Unit:</b> ${escapeHtml(unit.toUpperCase())}</div>
             <div><b>Sheet:</b> ${getExportSheetCode("materials")}</div>
             <div><b>Date:</b> ${escapeHtml(getNowStamp())}</div>
@@ -1230,13 +1312,13 @@ function buildMaterialsPageHtml({
         <div class="info-grid">
           <div><b>Project:</b> ${escapeHtml(resolvedProjectTitle || "Blueprint Design")}</div>
           <div><b>Object:</b> ${escapeHtml(selectedLabel || "No Selection")}</div>
-          <div><b>Dimensions:</b> ${escapeHtml(selectedDimsText || "—")}</div>
+          <div><b>Overall Dimensions:</b> ${escapeHtml(selectedDimsText || "—")}</div>
           <div><b>Material / Finish:</b> ${escapeHtml(selectedMaterialText || "—")}</div>
         </div>
 
         <div class="summary-strip">
           <div class="summary-card">
-            <span class="summary-label">Parts</span>
+            <span class="summary-label">Production Parts</span>
             <strong>${selectedComponents.length}</strong>
           </div>
           <div class="summary-card">
@@ -1249,10 +1331,16 @@ function buildMaterialsPageHtml({
           </div>
         </div>
 
+        <div class="drawing-note">
+          <b>PRODUCTION NOTES</b>
+          <span>Verify written cut sizes and material specifications before production.</span>
+          <span>Written dimensions control. Do not scale the drawing from screen or print.</span>
+        </div>
+
         <h3 class="section-head">Materials Summary</h3>
         ${materialTable}
 
-        <h3 class="section-head">Parts / Cut List</h3>
+        <h3 class="section-head">Parts and Cut List</h3>
         ${partTable}
       </div>
     </div>
@@ -1310,7 +1398,7 @@ function buildBlueprintDocumentHtml(pages) {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            padding: 30px 34px 12px;
+            padding: 26px 34px 12px;
             border-bottom: 2px solid #0f172a;
           }
           .sheet-title {
@@ -1331,8 +1419,8 @@ function buildBlueprintDocumentHtml(pages) {
           .info-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px 20px;
-            padding: 16px 34px;
+            gap: 8px 20px;
+            padding: 14px 34px;
             font-size: 12px;
             border-bottom: 1px solid #cbd5e1;
           }
@@ -1340,7 +1428,7 @@ function buildBlueprintDocumentHtml(pages) {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 12px;
-            padding: 16px 34px 4px;
+            padding: 14px 34px 4px;
           }
           .summary-card {
             border: 1px solid #cbd5e1;
@@ -1354,6 +1442,21 @@ function buildBlueprintDocumentHtml(pages) {
             margin-bottom: 6px;
             text-transform: uppercase;
             letter-spacing: .6px;
+          }
+          .drawing-note {
+            margin: 16px 34px 4px;
+            padding: 10px 12px;
+            border: 1px solid #94a3b8;
+            border-left: 4px solid #0f172a;
+            background: #f8fafc;
+            display: grid;
+            gap: 4px;
+            font-size: 11px;
+            line-height: 1.45;
+          }
+          .drawing-note b {
+            font-size: 10px;
+            letter-spacing: .8px;
           }
           .section-head {
             margin: 18px 34px 8px;
@@ -1377,9 +1480,214 @@ function buildBlueprintDocumentHtml(pages) {
           .bp-table th {
             background: #e2e8f0;
             text-align: left;
+            font-size: 11px;
+            letter-spacing: .15px;
           }
           .bp-table .table-total td {
             background: #f8fafc;
+          }
+          .ww-summary-strip {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+            padding: 14px 34px 4px;
+          }
+          .ww-summary-strip > div {
+            border: 1px solid #cbd5e1;
+            background: #f8fafc;
+            padding: 10px 12px;
+            display: grid;
+            gap: 4px;
+          }
+          .ww-summary-strip span {
+            color: #64748b;
+            font-size: 9.5px;
+            font-weight: 700;
+            letter-spacing: .5px;
+            text-transform: uppercase;
+          }
+          .ww-summary-strip b {
+            font-size: 14px;
+          }
+          .ww-page-note {
+            margin: 12px 34px 10px;
+            border: 1px solid #94a3b8;
+            border-left: 4px solid #0f172a;
+            background: #f8fafc;
+            padding: 8px 10px;
+            display: grid;
+            gap: 3px;
+            font-size: 9.5px;
+            line-height: 1.35;
+          }
+          .ww-page-note b {
+            font-size: 9px;
+            letter-spacing: .7px;
+          }
+          .ww-cards {
+            padding: 0 34px 24px;
+            display: grid;
+            gap: 10px;
+          }
+          .ww-compact-part {
+            border: 1px solid #94a3b8;
+            background: #fff;
+            display: grid;
+            grid-template-columns: 1.15fr .35fr 1.45fr 1.35fr 1fr 1.65fr auto;
+            align-items: center;
+            min-height: 48px;
+          }
+          .ww-compact-part > div {
+            min-width: 0;
+            padding: 6px 8px;
+            border-right: 1px solid #e2e8f0;
+            font-size: 8.8px;
+            overflow-wrap: anywhere;
+          }
+          .ww-compact-part > div:last-child {
+            border-right: 0;
+          }
+          .ww-compact-id {
+            display: grid;
+            gap: 2px;
+          }
+          .ww-compact-id b {
+            font-size: 9px;
+            letter-spacing: .45px;
+          }
+          .ww-compact-id span {
+            font-size: 9.2px;
+            font-weight: 700;
+          }
+          .ww-compact-label {
+            display: block;
+            color: #64748b;
+            font-size: 7.5px;
+            text-transform: uppercase;
+            letter-spacing: .4px;
+            margin-bottom: 2px;
+          }
+          .ww-compact-note {
+            color: #64748b;
+            font-size: 8px !important;
+            line-height: 1.25;
+          }
+          .ww-part-card {
+            border: 1.2px solid #64748b;
+            background: #fff;
+          }
+          .ww-part-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: center;
+            padding: 8px 10px;
+            border-bottom: 1px solid #cbd5e1;
+            background: #f8fafc;
+          }
+          .ww-part-code {
+            font-size: 9px;
+            color: #64748b;
+            font-weight: 700;
+            letter-spacing: .6px;
+          }
+          .ww-part-name {
+            font-size: 13px;
+            font-weight: 800;
+            margin-top: 2px;
+          }
+          .ww-status {
+            min-width: 54px;
+            padding: 4px 8px;
+            border: 1px solid #475569;
+            font-size: 9px;
+            font-weight: 800;
+            text-align: center;
+            letter-spacing: .6px;
+          }
+          .ww-status.is-ok {
+            background: #f8fafc;
+          }
+          .ww-status.is-check {
+            background: #fff7ed;
+            border-color: #c2410c;
+            color: #9a3412;
+          }
+          .ww-core-grid {
+            display: grid;
+            grid-template-columns: .5fr 1.15fr 1.15fr 1fr;
+            border-bottom: 1px solid #cbd5e1;
+          }
+          .ww-core-grid > div {
+            padding: 6px 8px;
+            border-right: 1px solid #e2e8f0;
+            min-width: 0;
+          }
+          .ww-core-grid > div:nth-child(4) {
+            border-right: 0;
+          }
+          .ww-core-grid .ww-wide {
+            grid-column: 1 / -1;
+            border-top: 1px solid #e2e8f0;
+            border-right: 0;
+          }
+          .ww-core-grid span {
+            display: block;
+            color: #64748b;
+            font-size: 8px;
+            text-transform: uppercase;
+            letter-spacing: .5px;
+            margin-bottom: 2px;
+          }
+          .ww-core-grid b {
+            font-size: 9.5px;
+            overflow-wrap: anywhere;
+          }
+          .ww-detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+          }
+          .ww-section {
+            padding: 7px 9px;
+            border-right: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e2e8f0;
+            min-height: 50px;
+          }
+          .ww-section:nth-child(even) {
+            border-right: 0;
+          }
+          .ww-section-title {
+            font-size: 8.5px;
+            font-weight: 800;
+            letter-spacing: .55px;
+            text-transform: uppercase;
+            color: #334155;
+            margin-bottom: 4px;
+          }
+          .ww-list {
+            margin: 0;
+            padding-left: 14px;
+            display: grid;
+            gap: 2px;
+            font-size: 8.8px;
+            line-height: 1.25;
+          }
+          .ww-empty {
+            color: #94a3b8;
+            font-size: 8.8px;
+          }
+          .ww-span-2 {
+            grid-column: 1 / -1;
+          }
+          .ww-span-2 .ww-section {
+            border-right: 0;
+          }
+          .ww-check-note {
+            padding: 6px 9px;
+            background: #fff7ed;
+            color: #9a3412;
+            border-top: 1px solid #fdba74;
+            font-size: 8.8px;
           }
           @page {
             size: ${EXPORT_PAGE_W}px ${EXPORT_PAGE_H}px;
@@ -1455,6 +1763,16 @@ function buildAllExportPages({
   });
 
   pages.push(
+    ...buildExplodedPartsSchedulePages({
+      selectedComponents: exportComponents,
+      selectedLabel: resolvedObjectLabel,
+      selectedDimsText,
+      selectedMaterialText,
+      blueprintTitle,
+    }),
+  );
+
+  pages.push(
     buildMaterialsPageHtml({
       selectedComponents: exportComponents,
       selectedLabel: resolvedObjectLabel,
@@ -1462,6 +1780,14 @@ function buildAllExportPages({
       selectedMaterialText,
       blueprintTitle,
       unit,
+    }),
+  );
+
+  pages.push(
+    ...buildWoodworkingDetailsPages({
+      selectedComponents: exportComponents,
+      selectedLabel: resolvedObjectLabel,
+      blueprintTitle,
     }),
   );
 

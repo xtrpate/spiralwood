@@ -321,6 +321,56 @@ export default function CheckoutPage() {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
+      /* WISDOM ORDER CONFIRMATION SNAPSHOT START */
+      const confirmationOrderNumber = String(
+        res?.data?.order_number ||
+          res?.data?.order?.order_number ||
+          res?.data?.data?.order_number ||
+          "",
+      ).trim();
+
+      const confirmationOrderId =
+        res?.data?.order_id ||
+        res?.data?.order?.id ||
+        res?.data?.data?.order_id ||
+        res?.data?.data?.id ||
+        null;
+
+      const confirmationItems = checkoutItems.map((item) => ({
+        product_name: item.product_name || "Product",
+        quantity: Math.max(1, Number(item.quantity || 1)),
+        unit_price: Number(item.unit_price || 0),
+        image_src: resolveCartImageSrc(
+          item.image_url || item.preview_image_url || "",
+        ),
+      }));
+
+      const confirmationPayload = {
+        order_number:
+          confirmationOrderNumber ||
+          (confirmationOrderId ? String(confirmationOrderId) : ""),
+        customer_name: String(form.name || "").trim(),
+        payment_method: String(form.payment_method || "").trim(),
+        placed_at:
+          res?.data?.created_at ||
+          res?.data?.order?.created_at ||
+          res?.data?.data?.created_at ||
+          new Date().toISOString(),
+        items: confirmationItems,
+        subtotal: Number(subtotal || 0),
+        shipping_fee: 0,
+        total: Number(total || 0),
+      };
+
+      try {
+        sessionStorage.setItem(
+          "wisdom_last_order_confirmation",
+          JSON.stringify(confirmationPayload),
+        );
+      } catch {
+        // Order submission should still succeed even if browser storage is unavailable.
+      }
+      /* WISDOM ORDER CONFIRMATION SNAPSHOT END */
       const submittedKeys = payloadItems
         .map((item) => item.key)
         .filter(Boolean);
@@ -351,7 +401,7 @@ export default function CheckoutPage() {
     <div className="fm-cart-page-hero">
       <div>
         <h1>Checkout</h1>
-        <p>Review your ready-made items and place your order</p>
+        <p>Review your order details and complete your purchase</p>
       </div>
       <button
         type="button"
@@ -522,14 +572,10 @@ export default function CheckoutPage() {
           <div className="checkout-form-panel">
             <div className="checkout-section">
               <div className="checkout-section-header">
-                <div className="checkout-section-num">🛒</div>
-                <h3>Your Ready-Made Items</h3>
-                <span
-                  style={{ marginLeft: "auto", fontSize: 12, color: "#111111" }}
-                >
+                <h3>Order Items</h3>
+                <span className="checkout-items-count">
                   {checkoutItems.length} item
-                  {checkoutItems.length !== 1 ? "s" : ""} • {totalUnits} unit
-                  {totalUnits !== 1 ? "s" : ""}
+                  {checkoutItems.length !== 1 ? "s" : ""}
                 </span>
               </div>
 
@@ -587,7 +633,7 @@ export default function CheckoutPage() {
                           fontWeight: 500,
                         }}
                       >
-                        Ready-Made Product
+
                       </div>
 
                       {item.stock_status ? (
@@ -600,9 +646,7 @@ export default function CheckoutPage() {
                       ) : null}
                     </div>
 
-                    <div className="checkout-item-qty">
-                      ×{item.quantity || 1}
-                    </div>
+                    <div className="checkout-item-qty">Qty {item.quantity || 1}</div>
 
                     <div className="checkout-item-price">
                       {formatPeso(
@@ -617,7 +661,6 @@ export default function CheckoutPage() {
 
             <div className="checkout-section">
               <div className="checkout-section-header">
-                <div className="checkout-section-num">1</div>
                 <h3>Contact Information</h3>
               </div>
 
@@ -767,7 +810,6 @@ export default function CheckoutPage() {
 
             <div className="checkout-section">
               <div className="checkout-section-header">
-                <div className="checkout-section-num">2</div>
                 <h3>Payment Method</h3>
               </div>
 
@@ -805,8 +847,7 @@ export default function CheckoutPage() {
 
             <div className="checkout-section">
               <div className="checkout-section-header">
-                <div className="checkout-section-num">3</div>
-                <h3>Additional Notes</h3>
+                <h3>Additional Notes <span className="checkout-optional-label">(Optional)</span></h3>
               </div>
 
               <div className="checkout-section-body">
@@ -835,9 +876,7 @@ export default function CheckoutPage() {
                     <div className="checkout-summary-item-name">
                       {item.product_name}
                     </div>
-                    <div className="checkout-summary-item-qty">
-                      ×{item.quantity || 1}
-                    </div>
+                    <div className="checkout-summary-item-qty">Qty {item.quantity || 1}</div>
                   </div>
 
                   <div className="checkout-summary-item-price">
@@ -859,7 +898,7 @@ export default function CheckoutPage() {
               <div className="summary-row">
                 <span>Shipping</span>
                 <span style={{ color: "#111111", fontWeight: 700 }}>
-                  Calculated by store
+                  Free
                 </span>
               </div>
 
@@ -871,7 +910,7 @@ export default function CheckoutPage() {
               </div>
 
               <p className="summary-note" style={{ marginTop: 10 }}>
-                This checkout is for ready-made products only.
+                Free delivery applies to ready-made products.
               </p>
             </div>
 

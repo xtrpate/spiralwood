@@ -406,14 +406,10 @@ export default function ProductCatalog() {
   const detailRows = selected
     ? [
         { label: "CATEGORY", value: selected.category || "—" },
-        { label: "TYPE", value: formatTypeLabel(selected.type) },
         {
           label: "STOCK",
           value: `${Number(selected.stock || 0).toLocaleString("en-PH")} units`,
         },
-        ...(selected.barcode
-          ? [{ label: "BARCODE", value: selected.barcode }]
-          : []),
       ]
     : [];
 

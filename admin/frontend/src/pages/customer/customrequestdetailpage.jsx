@@ -66,6 +66,94 @@ const PAY_STATUS_META = {
   paid: { label: "Paid", color: "#111111", bg: "#f3f4f6" },
 };
 
+const getRequestLifecycleMessage = ({
+  orderStatus = "",
+  estimationStatus = "",
+  paymentStatus = "",
+} = {}) => {
+  const order = String(orderStatus || "").trim().toLowerCase();
+  const estimation = String(estimationStatus || "").trim().toLowerCase();
+  const payment = String(paymentStatus || "").trim().toLowerCase();
+
+  if (order === "completed") {
+    return "This order has been completed successfully. Thank you for choosing Spiral Wood Services.";
+  }
+
+  if (order === "delivered") {
+    return payment === "paid"
+      ? "Your furniture has been delivered and payment is complete."
+      : "Your furniture has been delivered. Review the remaining payment details below.";
+  }
+
+  if (order === "shipping") {
+    return "Your furniture is on the way. Review the delivery and remaining payment details below.";
+  }
+
+  if (order === "production") {
+    return "Your approved furniture is now in production. You can review payment and project updates below.";
+  }
+
+  if (order === "contract_released") {
+    return "Your quotation is approved and the contract has been released. Review the payment and project details below.";
+  }
+
+  if (order === "cancelled") {
+    return "This request has been cancelled. Review the order details below for the latest recorded information.";
+  }
+
+  if (order === "confirmed") {
+    if (estimation === "sent") {
+      return "Your quotation is ready for review. Approve it, request a revision, or reject it below.";
+    }
+
+    if (estimation === "approved") {
+      if (payment === "unpaid") {
+        return "Your quotation is approved. Complete the required down payment to continue.";
+      }
+
+      if (payment === "partial") {
+        return "Your quotation is approved and the down payment is verified. Your project is ready for the next production step.";
+      }
+
+      if (payment === "paid") {
+        return "Your quotation is approved and payment is complete. Your project is ready for production.";
+      }
+
+      return "Your quotation is approved. Review the next payment and project steps below.";
+    }
+
+    if (estimation === "rejected") {
+      return "A quotation revision is needed. Review the quotation and discussion updates below.";
+    }
+
+    return "Your request is confirmed. The admin is preparing the quotation and project details.";
+  }
+
+  return "Your request has been received. The admin will review the submitted design and project details before preparing the quotation.";
+};
+
+const getSubmittedItemProgressLabel = ({
+  orderStatus = "",
+  estimationStatus = "",
+} = {}) => {
+  const order = String(orderStatus || "").trim().toLowerCase();
+  const estimation = String(estimationStatus || "").trim().toLowerCase();
+
+  if (order === "completed") return "Completed";
+  if (order === "delivered") return "Delivered";
+  if (order === "shipping") return "Shipping";
+  if (order === "production") return "In production";
+  if (order === "cancelled") return "Cancelled";
+  if (order === "contract_released") return "Contract ready";
+
+  if (estimation === "approved") return "Approved";
+  if (estimation === "sent") return "Quotation ready";
+  if (estimation === "rejected") return "Revision needed";
+  if (estimation === "draft") return "Quote in progress";
+
+  return "Quote needed";
+};
+
 const resolveImageSrc = (src) => {
   const raw = String(src || "").trim();
   if (!raw) return "";
@@ -649,6 +737,17 @@ export default function CustomRequestDetailPage() {
   const estimationStatusKey = String(latestEstimation?.status || "")
     .trim()
     .toLowerCase();
+
+  const requestLifecycleMessage = getRequestLifecycleMessage({
+    orderStatus: orderStatusKey,
+    estimationStatus: estimationStatusKey,
+    paymentStatus: requestData?.payment_status,
+  });
+
+  const submittedItemProgressLabel = getSubmittedItemProgressLabel({
+    orderStatus: orderStatusKey,
+    estimationStatus: estimationStatusKey,
+  });
 
   // Quotation action buttons (approve / request revision / reject) may
   // appear only when every one of these is true — mirrored exactly
@@ -1946,7 +2045,7 @@ export default function CustomRequestDetailPage() {
                         </div>
 
                         <div className="checkout-item-price crd-quote-note">
-                          Quote needed
+                          {submittedItemProgressLabel}
                         </div>
                       </div>
                     );
@@ -2189,9 +2288,7 @@ export default function CustomRequestDetailPage() {
                 </div>
 
                 <p className="summary-note" style={{ marginTop: 12 }}>
-                  Your request has been received. The admin will review your
-                  submitted design, dimensions, finish, and notes before sending
-                  the quotation.
+                  {requestLifecycleMessage}
                 </p>
               </div>
             </div>

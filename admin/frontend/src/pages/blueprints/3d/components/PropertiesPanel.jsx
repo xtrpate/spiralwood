@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { WOOD_FINISHES } from "../../data/furnitureTypes";
 import { applyWoodFinish, isWoodLikeMaterial } from "../../data/componentUtils";
 import {
@@ -15,7 +15,2639 @@ import {
 import { displayToMm, formatDim, formatDims, mmToDisplay } from "../../data/utils";
 import S from "../../styles/blueprintStyles";
 import { VIEWER_UI } from "../viewerUi";
+import {
+  MAX_WOODWORKING_OPERATIONS,
+  WOODWORKING_OPERATION_TYPES,
+  getOperationLabel,
+  getOperationProfileDimensions,
+  normalizeWoodworkingOperations,
+  createWoodworkingOperation,
+  updateWoodworkingOperation,
+  deleteWoodworkingOperation,
+  getWoodworkingOperationFootprint,
+  getWoodworkingOperationStatus,
+} from "../../data/woodworkingOperations";
+import {
+  isWoodworkingProfileComponent,
+  supportsProfileFillet,
+  getWoodworkingProfileDescriptor,
+  updateContourPointMm,
+  insertContourPointAfter,
+  deleteContourPointAt,
+  resetContourPointRatios,
+  getContourCurvePathPointsMm,
+  getContourEdgeCurveInfo,
+  updateContourEdgeBulgeMm,
+  updateContourEdgeRadiusMm,
+  insertContourCurveAfter,
+  deleteContourCurveAt,
+  resetContourCurvesAroundPoint,
+  resetContourCurveRatios,
+  MAX_PROFILE_CUTOUTS,
+  createProfileCutout,
+  updateProfileCutout,
+  deleteProfileCutout,
+  getProfileCutoutLocalPoints,
+  getProfileCutoutStatus,
+  getWoodworkingProfileLocalPoints,
+  MAX_PROFILE_EDGE_NOTCHES,
+  createProfileEdgeNotch,
+  updateProfileEdgeNotch,
+  deleteProfileEdgeNotch,
+  getProfileEdgeNotchStatus,
+} from "../../data/woodworkingProfile";
 
+function ContourEditorCard({
+  selectedComp,
+  woodworkingProfile,
+  editorMode,
+  isLocked,
+  onChange,
+  inputStyle,
+}) {
+  const svgRef = useRef(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeEdgeIndex, setActiveEdgeIndex] = useState(0);
+  const [activeNotchId, setActiveNotchId] = useState("");
+
+  useEffect(() => {
+    setActiveIndex(0);
+    setActiveEdgeIndex(0);
+    setActiveNotchId("");
+  }, [selectedComp?.id]);
+
+  const points = Array.isArray(woodworkingProfile?.contourPointsMm)
+    ? woodworkingProfile.contourPointsMm
+    : [];
+
+  const safeIndex = Math.max(
+    0,
+    Math.min(points.length - 1, activeIndex),
+  );
+  const safeEdgeIndex = Math.max(
+    0,
+    Math.min(points.length - 1, activeEdgeIndex),
+  );
+
+  const activePoint = points[safeIndex] || [0, 0];
+  const activeEdgeInfo = getContourEdgeCurveInfo(
+    selectedComp,
+    safeEdgeIndex,
+    18,
+  );
+  const allEdgeNotches = Array.isArray(
+    woodworkingProfile?.profileEdgeNotches,
+  )
+    ? woodworkingProfile.profileEdgeNotches
+    : [];
+  const activeEdgeNotches = allEdgeNotches.filter(
+    (item) => Number(item.edgeIndex) === safeEdgeIndex,
+  );
+  const activeNotch =
+    activeEdgeNotches.find(
+      (item) => item.id === activeNotchId,
+    ) ||
+    activeEdgeNotches[0] ||
+    null;
+  const activeNotchStatus = activeNotch
+    ? getProfileEdgeNotchStatus(selectedComp, activeNotch)
+    : null;
+
+  const disabled =
+    editorMode !== "editable" || isLocked(selectedComp);
+
+  const viewWidth = 240;
+  const viewHeight = 160;
+  const padding = 18;
+  const usableWidth = viewWidth - padding * 2;
+  const usableHeight = viewHeight - padding * 2;
+
+  const toScreen = ([u, v]) => [
+    padding +
+      (u / Math.max(1, woodworkingProfile.u) + 0.5) *
+        usableWidth,
+    padding +
+      (0.5 - v / Math.max(1, woodworkingProfile.v)) *
+        usableHeight,
+  ];
+
+  const pointerToLocal = (event) => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+
+    const x =
+      ((event.clientX - rect.left) / rect.width) * viewWidth;
+    const y =
+      ((event.clientY - rect.top) / rect.height) * viewHeight;
+
+    const normalizedU = Math.max(
+      0,
+      Math.min(1, (x - padding) / usableWidth),
+    );
+    const normalizedV = Math.max(
+      0,
+      Math.min(1, (y - padding) / usableHeight),
+    );
+
+    return [
+      (normalizedU - 0.5) * woodworkingProfile.u,
+      (0.5 - normalizedV) * woodworkingProfile.v,
+    ];
+  };
+
+  const screenPoints = points.map(toScreen);
+  const curvePathPoints = getContourCurvePathPointsMm(
+    selectedComp,
+    18,
+  );
+  const curveScreenPoints = curvePathPoints.map(toScreen);
+
+  const edgeInfos = points.map((_, index) =>
+    getContourEdgeCurveInfo(selectedComp, index, 18),
+  );
+
+  const commitContour = ({
+    nextPoints = null,
+    nextCurves = null,
+    nextNotches = null,
+    resetFilletForCurves = false,
+    resetFilletForNotches = false,
+  }) => {
+    const attrs = {};
+
+    if (Array.isArray(nextPoints)) {
+      attrs.profileContourPoints = nextPoints;
+    }
+
+    if (Array.isArray(nextCurves)) {
+      attrs.profileContourBulges = nextCurves;
+
+      if (
+        resetFilletForCurves &&
+        nextCurves.some(
+          (value) => Math.abs(Number(value) || 0) > 1e-6,
+        )
+      ) {
+        // V3 keeps circular edges mathematically clean. Corner fillet remains
+        // available whenever all custom contour edges are straight.
+        attrs.profileFilletRadius = 0;
+      }
+    }
+
+    if (Array.isArray(nextNotches)) {
+      attrs.profileEdgeNotches = nextNotches;
+
+      if (
+        resetFilletForNotches &&
+        nextNotches.length > 0
+      ) {
+        // V4B boundary notches define their own hard inside corners.
+        attrs.profileFilletRadius = 0;
+      }
+    }
+
+    onChange(selectedComp.id, attrs);
+  };
+
+  const commitPointMm = (index, nextU, nextV) => {
+    const nextPoints = updateContourPointMm(
+      selectedComp,
+      index,
+      nextU,
+      nextV,
+    );
+    const nextCurves = resetContourCurvesAroundPoint(
+      selectedComp,
+      index,
+    );
+
+    commitContour({
+      nextPoints,
+      nextCurves,
+    });
+  };
+
+  const handlePointPointerMove = (event, index) => {
+    if (disabled) return;
+    if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      return;
+    }
+
+    const local = pointerToLocal(event);
+    if (!local) return;
+
+    commitPointMm(index, local[0], local[1]);
+  };
+
+  const commitEdgeBulge = (nextBulgeMm) => {
+    const nextCurves = updateContourEdgeBulgeMm(
+      selectedComp,
+      safeEdgeIndex,
+      nextBulgeMm,
+    );
+    const willCurve =
+      Math.abs(Number(nextBulgeMm) || 0) > 0.01;
+    const nextNotches = willCurve
+      ? allEdgeNotches.filter(
+          (item) => Number(item.edgeIndex) !== safeEdgeIndex,
+        )
+      : null;
+
+    commitContour({
+      nextCurves,
+      nextNotches,
+      resetFilletForCurves: true,
+    });
+
+    if (willCurve) {
+      setActiveNotchId("");
+    }
+  };
+
+  const commitEdgeRadius = (nextRadiusMm) => {
+    const nextCurves = updateContourEdgeRadiusMm(
+      selectedComp,
+      safeEdgeIndex,
+      nextRadiusMm,
+      activeEdgeInfo?.side || 1,
+    );
+
+    commitContour({
+      nextCurves,
+      resetFilletForCurves: true,
+    });
+  };
+
+  const addEdgeNotch = () => {
+    if (
+      disabled ||
+      activeEdgeInfo?.isCurved ||
+      allEdgeNotches.length >= MAX_PROFILE_EDGE_NOTCHES
+    ) {
+      return;
+    }
+
+    const created = createProfileEdgeNotch(
+      selectedComp,
+      safeEdgeIndex,
+    );
+    if (!created) return;
+
+    const nextNotches = [...allEdgeNotches, created];
+    commitContour({
+      nextNotches,
+      resetFilletForNotches: true,
+    });
+    setActiveNotchId(created.id);
+  };
+
+  const updateActiveNotch = (attrs) => {
+    if (!activeNotch) return;
+
+    const nextNotches = updateProfileEdgeNotch(
+      selectedComp,
+      activeNotch.id,
+      attrs,
+    );
+
+    commitContour({
+      nextNotches,
+      resetFilletForNotches: true,
+    });
+  };
+
+  const deleteActiveNotch = () => {
+    if (!activeNotch) return;
+
+    const nextNotches = deleteProfileEdgeNotch(
+      selectedComp,
+      activeNotch.id,
+    );
+
+    commitContour({ nextNotches });
+    setActiveNotchId("");
+  };
+
+  const handleCurvePointerMove = (event) => {
+    if (disabled || !activeEdgeInfo) return;
+    if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      return;
+    }
+
+    const local = pointerToLocal(event);
+    if (!local) return;
+
+    const [startU, startV] = activeEdgeInfo.start;
+    const [endU, endV] = activeEdgeInfo.end;
+    const dx = endU - startU;
+    const dy = endV - startV;
+    const chord = Math.max(0.001, Math.hypot(dx, dy));
+    const midpoint = [
+      (startU + endU) / 2,
+      (startV + endV) / 2,
+    ];
+    const normal = [-dy / chord, dx / chord];
+
+    const signedDistance =
+      (local[0] - midpoint[0]) * normal[0] +
+      (local[1] - midpoint[1]) * normal[1];
+
+    commitEdgeBulge(signedDistance);
+  };
+
+  const insertAfterActive = () => {
+    const nextPoints = insertContourPointAfter(
+      selectedComp,
+      safeIndex,
+    );
+    const nextCurves = insertContourCurveAfter(
+      selectedComp,
+      safeIndex,
+    );
+
+    if (!Array.isArray(nextPoints)) return;
+
+    commitContour({
+      nextPoints,
+      nextCurves,
+      nextNotches: [],
+    });
+    setActiveNotchId("");
+
+    const nextIndex = Math.min(
+      safeIndex + 1,
+      nextPoints.length - 1,
+    );
+    setActiveIndex(nextIndex);
+    setActiveEdgeIndex(nextIndex);
+  };
+
+  const deleteActive = () => {
+    const nextPoints = deleteContourPointAt(
+      selectedComp,
+      safeIndex,
+    );
+    const nextCurves = deleteContourCurveAt(
+      selectedComp,
+      safeIndex,
+    );
+
+    if (!Array.isArray(nextPoints)) return;
+
+    commitContour({
+      nextPoints,
+      nextCurves,
+      nextNotches: [],
+    });
+    setActiveNotchId("");
+
+    const nextIndex = Math.max(
+      0,
+      Math.min(safeIndex, nextPoints.length - 1),
+    );
+    setActiveIndex(nextIndex);
+    setActiveEdgeIndex(
+      Math.max(0, Math.min(safeEdgeIndex, nextPoints.length - 1)),
+    );
+  };
+
+  const resetContour = () => {
+    const nextPoints = resetContourPointRatios();
+
+    commitContour({
+      nextPoints,
+      nextCurves: resetContourCurveRatios(nextPoints.length),
+      nextNotches: [],
+    });
+
+    setActiveNotchId("");
+    setActiveIndex(0);
+    setActiveEdgeIndex(0);
+  };
+
+  const activeCurveHandle = activeEdgeInfo
+    ? toScreen(activeEdgeInfo.sagittaPoint)
+    : null;
+
+  const edgeLabel = activeEdgeInfo
+    ? `P${activeEdgeInfo.index + 1} → P${
+        activeEdgeInfo.nextIndex + 1
+      }`
+    : "—";
+
+  const radiusValue =
+    activeEdgeInfo?.radiusMm == null
+      ? 0
+      : Math.round(activeEdgeInfo.radiusMm);
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <div
+        style={{
+          marginBottom: 6,
+          color: "#e5eefc",
+          fontSize: 10,
+          fontWeight: 850,
+        }}
+      >
+        Contour Editor
+      </div>
+
+      <div
+        style={{
+          marginBottom: 7,
+          color: "#8fa3bd",
+          fontSize: 8,
+          lineHeight: 1.45,
+        }}
+      >
+        Drag blue points for straight contour geometry. Click an edge, then
+        drag the purple arc handle to curve that edge. Exact point, bulge,
+        and radius values remain available below.
+      </div>
+
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${viewWidth} ${viewHeight}`}
+        preserveAspectRatio="none"
+        style={{
+          width: "100%",
+          height: 160,
+          display: "block",
+          marginBottom: 8,
+          border: "1px solid #334155",
+          borderRadius: 0,
+          background: "#08111f",
+          touchAction: "none",
+        }}
+      >
+        <line
+          x1={viewWidth / 2}
+          y1={padding}
+          x2={viewWidth / 2}
+          y2={viewHeight - padding}
+          stroke="#1e293b"
+          strokeWidth="1"
+          strokeDasharray="4 4"
+        />
+        <line
+          x1={padding}
+          y1={viewHeight / 2}
+          x2={viewWidth - padding}
+          y2={viewHeight / 2}
+          stroke="#1e293b"
+          strokeWidth="1"
+          strokeDasharray="4 4"
+        />
+
+        {curveScreenPoints.length >= 3 ? (
+          <polygon
+            points={curveScreenPoints
+              .map(([x, y]) => `${x},${y}`)
+              .join(" ")}
+            fill="rgba(96, 165, 250, 0.13)"
+            stroke="#93c5fd"
+            strokeWidth="1.6"
+          />
+        ) : null}
+
+        {edgeInfos.map((info, index) => {
+          if (!info) return null;
+
+          const active = index === safeEdgeIndex;
+          const arcScreen = info.arcPoints.map(toScreen);
+          const polylinePoints = arcScreen
+            .map(([x, y]) => `${x},${y}`)
+            .join(" ");
+
+          return (
+            <g key={`contour-edge-${index}`}>
+              <polyline
+                points={polylinePoints}
+                fill="none"
+                stroke="rgba(255,255,255,0.001)"
+                strokeWidth="12"
+                style={{
+                  cursor: disabled ? "not-allowed" : "pointer",
+                }}
+                onPointerDown={() => {
+                  if (disabled) return;
+                  setActiveEdgeIndex(index);
+                }}
+              />
+              {active ? (
+                <polyline
+                  points={polylinePoints}
+                  fill="none"
+                  stroke="#a78bfa"
+                  strokeWidth="2.6"
+                  pointerEvents="none"
+                />
+              ) : null}
+            </g>
+          );
+        })}
+
+        {screenPoints.map(([x, y], index) => {
+          const active = index === safeIndex;
+
+          return (
+            <circle
+              key={`contour-point-${index}`}
+              cx={x}
+              cy={y}
+              r={active ? 5.2 : 4.2}
+              fill={active ? "#ffffff" : "#3b82f6"}
+              stroke={active ? "#3b82f6" : "#bfdbfe"}
+              strokeWidth="1.5"
+              style={{
+                cursor: disabled ? "not-allowed" : "grab",
+              }}
+              onPointerDown={(event) => {
+                if (disabled) return;
+
+                setActiveIndex(index);
+                setActiveEdgeIndex(index);
+                event.currentTarget.setPointerCapture?.(
+                  event.pointerId,
+                );
+              }}
+              onPointerMove={(event) =>
+                handlePointPointerMove(event, index)
+              }
+              onPointerUp={(event) =>
+                event.currentTarget.releasePointerCapture?.(
+                  event.pointerId,
+                )
+              }
+              onPointerCancel={(event) =>
+                event.currentTarget.releasePointerCapture?.(
+                  event.pointerId,
+                )
+              }
+            />
+          );
+        })}
+
+        {activeCurveHandle ? (
+          <circle
+            cx={activeCurveHandle[0]}
+            cy={activeCurveHandle[1]}
+            r="5.4"
+            fill="#c4b5fd"
+            stroke="#7c3aed"
+            strokeWidth="1.8"
+            style={{
+              cursor: disabled ? "not-allowed" : "ns-resize",
+            }}
+            onPointerDown={(event) => {
+              if (disabled) return;
+              event.currentTarget.setPointerCapture?.(
+                event.pointerId,
+              );
+            }}
+            onPointerMove={handleCurvePointerMove}
+            onPointerUp={(event) =>
+              event.currentTarget.releasePointerCapture?.(
+                event.pointerId,
+              )
+            }
+            onPointerCancel={(event) =>
+              event.currentTarget.releasePointerCapture?.(
+                event.pointerId,
+              )
+            }
+          />
+        ) : null}
+      </svg>
+
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 4,
+          marginBottom: 7,
+        }}
+      >
+        {points.map((_, index) => (
+          <button
+            key={`point-select-${index}`}
+            type="button"
+            disabled={disabled}
+            onClick={() => {
+              setActiveIndex(index);
+              setActiveEdgeIndex(index);
+            }}
+            style={{
+              minWidth: 34,
+              height: 26,
+              padding: "0 7px",
+              border: `1px solid ${
+                index === safeIndex ? "#60a5fa" : "#334155"
+              }`,
+              borderRadius: 0,
+              background:
+                index === safeIndex ? "#172554" : "#0f172a",
+              color:
+                index === safeIndex ? "#dbeafe" : "#94a3b8",
+              fontSize: 8,
+              fontWeight: 800,
+              cursor: disabled ? "not-allowed" : "pointer",
+            }}
+          >
+            P{index + 1}
+          </button>
+        ))}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 6,
+          marginBottom: 9,
+        }}
+      >
+        <div>
+          <label style={{ fontSize: 8, color: "#94a3b8" }}>
+            U Position (mm)
+          </label>
+          <input
+            type="number"
+            step="1"
+            value={Math.round(activePoint[0])}
+            min={Math.round(-woodworkingProfile.u / 2)}
+            max={Math.round(woodworkingProfile.u / 2)}
+            disabled={disabled}
+            onChange={(event) =>
+              commitPointMm(
+                safeIndex,
+                Number(event.target.value) || 0,
+                activePoint[1],
+              )
+            }
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <label style={{ fontSize: 8, color: "#94a3b8" }}>
+            V Position (mm)
+          </label>
+          <input
+            type="number"
+            step="1"
+            value={Math.round(activePoint[1])}
+            min={Math.round(-woodworkingProfile.v / 2)}
+            max={Math.round(woodworkingProfile.v / 2)}
+            disabled={disabled}
+            onChange={(event) =>
+              commitPointMm(
+                safeIndex,
+                activePoint[0],
+                Number(event.target.value) || 0,
+              )
+            }
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          paddingTop: 8,
+          marginTop: 3,
+          marginBottom: 9,
+          borderTop: "1px solid #243247",
+        }}
+      >
+        <div
+          style={{
+            marginBottom: 5,
+            color: "#ddd6fe",
+            fontSize: 9,
+            fontWeight: 850,
+          }}
+        >
+          Arc Edge · {edgeLabel}
+        </div>
+
+        <div
+          style={{
+            marginBottom: 6,
+            color: "#7f8ea3",
+            fontSize: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          Positive / negative bulge chooses which side of the selected
+          edge curves outward. Purple handle = draggable arc control.
+        </div>
+
+        <label style={{ fontSize: 8, color: "#94a3b8" }}>
+          Curve Bulge (mm) — current:{" "}
+          {Math.round(activeEdgeInfo?.bulgeMm || 0)}mm
+        </label>
+        <input
+          type="range"
+          min={Math.round(-(activeEdgeInfo?.maxBulgeMm || 1))}
+          max={Math.round(activeEdgeInfo?.maxBulgeMm || 1)}
+          step="1"
+          value={Math.round(activeEdgeInfo?.bulgeMm || 0)}
+          disabled={disabled || !activeEdgeInfo}
+          onChange={(event) =>
+            commitEdgeBulge(Number(event.target.value) || 0)
+          }
+          style={{
+            width: "100%",
+            accentColor: "#8b5cf6",
+          }}
+        />
+        <input
+          type="number"
+          step="1"
+          min={Math.round(-(activeEdgeInfo?.maxBulgeMm || 1))}
+          max={Math.round(activeEdgeInfo?.maxBulgeMm || 1)}
+          value={Math.round(activeEdgeInfo?.bulgeMm || 0)}
+          disabled={disabled || !activeEdgeInfo}
+          onChange={(event) =>
+            commitEdgeBulge(Number(event.target.value) || 0)
+          }
+          style={inputStyle}
+        />
+
+        <div style={{ marginTop: 6 }}>
+          <label style={{ fontSize: 8, color: "#94a3b8" }}>
+            Arc Radius (mm)
+          </label>
+          <input
+            type="number"
+            step="1"
+            min={Math.ceil(activeEdgeInfo?.minRadiusMm || 1)}
+            value={radiusValue}
+            disabled={disabled || !activeEdgeInfo}
+            onChange={(event) =>
+              commitEdgeRadius(Number(event.target.value) || 0)
+            }
+            style={inputStyle}
+          />
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: 6,
+            marginTop: 6,
+          }}
+        >
+          <button
+            type="button"
+            disabled={disabled || !activeEdgeInfo}
+            onClick={() =>
+              commitEdgeBulge(
+                Math.max(
+                  10,
+                  Math.min(
+                    60,
+                    activeEdgeInfo?.maxBulgeMm || 10,
+                  ),
+                ),
+              )
+            }
+            style={{
+              height: 28,
+              border: "1px solid #4c3d75",
+              borderRadius: 0,
+              background: "#16112a",
+              color: "#ddd6fe",
+              fontSize: 8,
+              fontWeight: 800,
+            }}
+          >
+            Curve +
+          </button>
+
+          <button
+            type="button"
+            disabled={disabled || !activeEdgeInfo}
+            onClick={() => commitEdgeBulge(0)}
+            style={{
+              height: 28,
+              border: "1px solid #334155",
+              borderRadius: 0,
+              background: "#111827",
+              color: "#cbd5e1",
+              fontSize: 8,
+              fontWeight: 800,
+            }}
+          >
+            Straight
+          </button>
+
+          <button
+            type="button"
+            disabled={disabled || !activeEdgeInfo}
+            onClick={() =>
+              commitEdgeBulge(
+                -Math.max(
+                  10,
+                  Math.min(
+                    60,
+                    activeEdgeInfo?.maxBulgeMm || 10,
+                  ),
+                ),
+              )
+            }
+            style={{
+              height: 28,
+              border: "1px solid #4c3d75",
+              borderRadius: 0,
+              background: "#16112a",
+              color: "#ddd6fe",
+              fontSize: 8,
+              fontWeight: 800,
+            }}
+          >
+            Curve -
+          </button>
+        </div>
+
+        <div
+          style={{
+            marginTop: 6,
+            color: "#64748b",
+            fontSize: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          Chord {Math.round(activeEdgeInfo?.chordMm || 0)}mm ·{" "}
+          {activeEdgeInfo?.isCurved
+            ? `radius ${Math.round(activeEdgeInfo.radiusMm)}mm`
+            : "straight edge"}.
+          Adding an arc resets Custom Contour corner fillet to 0 and removes
+          any notch on that same edge.
+        </div>
+      </div>
+
+      <div
+        style={{
+          paddingTop: 8,
+          marginTop: 3,
+          marginBottom: 9,
+          borderTop: "1px solid #243247",
+        }}
+      >
+        <div
+          style={{
+            marginBottom: 5,
+            color: "#fde68a",
+            fontSize: 9,
+            fontWeight: 850,
+          }}
+        >
+          Edge Notch · {edgeLabel}
+        </div>
+
+        <div
+          style={{
+            marginBottom: 7,
+            color: "#7f8ea3",
+            fontSize: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          Rectangular boundary cut from the selected straight contour edge.
+          Offset is measured from P{safeEdgeIndex + 1} toward P{
+            activeEdgeInfo?.nextIndex + 1 || 1
+          }.
+        </div>
+
+        {activeEdgeInfo?.isCurved ? (
+          <div
+            style={{
+              padding: 7,
+              border: "1px solid #78350f",
+              borderRadius: 0,
+              background: "rgba(120, 53, 15, 0.15)",
+              color: "#fde68a",
+              fontSize: 8,
+              lineHeight: 1.4,
+            }}
+          >
+            Straighten this edge before adding an edge notch.
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled={
+                disabled ||
+                allEdgeNotches.length >= MAX_PROFILE_EDGE_NOTCHES
+              }
+              onClick={addEdgeNotch}
+              style={{
+                width: "100%",
+                height: 30,
+                border: "1px solid #854d0e",
+                borderRadius: 0,
+                background: "#211b0b",
+                color: "#fef3c7",
+                fontSize: 8,
+                fontWeight: 800,
+                cursor:
+                  disabled ||
+                  allEdgeNotches.length >= MAX_PROFILE_EDGE_NOTCHES
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              + Edge Notch
+            </button>
+
+            {activeEdgeNotches.length ? (
+              <>
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 4,
+                    marginTop: 7,
+                    marginBottom: 7,
+                  }}
+                >
+                  {activeEdgeNotches.map((notch, index) => (
+                    <button
+                      key={notch.id}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => setActiveNotchId(notch.id)}
+                      style={{
+                        minWidth: 40,
+                        height: 25,
+                        padding: "0 6px",
+                        border: `1px solid ${
+                          activeNotch?.id === notch.id
+                            ? "#f59e0b"
+                            : "#334155"
+                        }`,
+                        borderRadius: 0,
+                        background:
+                          activeNotch?.id === notch.id
+                            ? "#451a03"
+                            : "#0f172a",
+                        color:
+                          activeNotch?.id === notch.id
+                            ? "#fef3c7"
+                            : "#94a3b8",
+                        fontSize: 8,
+                        fontWeight: 800,
+                      }}
+                    >
+                      N{index + 1}
+                    </button>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    marginBottom: 7,
+                    padding: 7,
+                    border: `1px solid ${
+                      activeNotchStatus?.valid
+                        ? "#365314"
+                        : "#7f1d1d"
+                    }`,
+                    borderRadius: 0,
+                    background: activeNotchStatus?.valid
+                      ? "rgba(54, 83, 20, 0.12)"
+                      : "rgba(127, 29, 29, 0.12)",
+                    color: activeNotchStatus?.valid
+                      ? "#d9f99d"
+                      : "#fecaca",
+                    fontSize: 8,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {activeNotchStatus?.valid ? "VALID" : "CHECK"} ·{" "}
+                  {activeNotchStatus?.message}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    gap: 6,
+                    marginBottom: 7,
+                  }}
+                >
+                  <div>
+                    <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                      Offset From Start (mm)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={Math.round(activeNotch?.offset || 0)}
+                      disabled={disabled}
+                      onChange={(event) =>
+                        updateActiveNotch({
+                          offset: Math.max(
+                            0,
+                            Number(event.target.value) || 0,
+                          ),
+                        })
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                      Width (mm)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={Math.round(activeNotch?.width || 1)}
+                      disabled={disabled}
+                      onChange={(event) =>
+                        updateActiveNotch({
+                          width: Math.max(
+                            1,
+                            Number(event.target.value) || 1,
+                          ),
+                        })
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: 7 }}>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Depth Into Board (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={Math.round(activeNotch?.depth || 1)}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActiveNotch({
+                        depth: Math.max(
+                          1,
+                          Number(event.target.value) || 1,
+                        ),
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  disabled={disabled || !activeNotch}
+                  onClick={deleteActiveNotch}
+                  style={{
+                    width: "100%",
+                    height: 28,
+                    border: "1px solid #7f1d1d",
+                    borderRadius: 0,
+                    background: "#1f1115",
+                    color: "#fca5a5",
+                    fontSize: 8,
+                    fontWeight: 800,
+                  }}
+                >
+                  Delete Selected Edge Notch
+                </button>
+              </>
+            ) : (
+              <div
+                style={{
+                  marginTop: 7,
+                  padding: 7,
+                  border: "1px solid #243247",
+                  borderRadius: 0,
+                  color: "#64748b",
+                  fontSize: 8,
+                  lineHeight: 1.4,
+                }}
+              >
+                No notch on this selected edge.
+              </div>
+            )}
+          </>
+        )}
+
+        <div
+          style={{
+            marginTop: 6,
+            color: "#64748b",
+            fontSize: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          {allEdgeNotches.length}/{MAX_PROFILE_EDGE_NOTCHES} boundary notches.
+          Point insert/delete/reset clears indexed notches to avoid attaching
+          a saved notch to the wrong contour edge.
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr 1fr",
+          gap: 6,
+        }}
+      >
+        <button
+          type="button"
+          disabled={disabled || points.length >= 24}
+          onClick={insertAfterActive}
+          style={{
+            height: 30,
+            border: "1px solid #334155",
+            borderRadius: 0,
+            background: "#111827",
+            color: "#dbeafe",
+            fontSize: 8,
+            fontWeight: 800,
+            cursor:
+              disabled || points.length >= 24
+                ? "not-allowed"
+                : "pointer",
+          }}
+        >
+          + Point
+        </button>
+
+        <button
+          type="button"
+          disabled={disabled || points.length <= 3}
+          onClick={deleteActive}
+          style={{
+            height: 30,
+            border: "1px solid #334155",
+            borderRadius: 0,
+            background: "#111827",
+            color: "#fca5a5",
+            fontSize: 8,
+            fontWeight: 800,
+            cursor:
+              disabled || points.length <= 3
+                ? "not-allowed"
+                : "pointer",
+          }}
+        >
+          Delete
+        </button>
+
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={resetContour}
+          style={{
+            height: 30,
+            border: "1px solid #334155",
+            borderRadius: 0,
+            background: "#111827",
+            color: "#cbd5e1",
+            fontSize: 8,
+            fontWeight: 800,
+            cursor: disabled ? "not-allowed" : "pointer",
+          }}
+        >
+          Reset
+        </button>
+      </div>
+
+      <div
+        style={{
+          marginTop: 6,
+          color: "#64748b",
+          fontSize: 8,
+          lineHeight: 1.4,
+        }}
+      >
+        {points.length} contour points · minimum 3 · maximum 24.
+        Moving a point straightens its two adjacent curved edges.
+        Invalid self-crossing arc edits are ignored.
+      </div>
+    </div>
+  );
+}
+
+function CutoutEditorCard({
+  selectedComp,
+  woodworkingProfile,
+  editorMode,
+  isLocked,
+  onChange,
+  inputStyle,
+}) {
+  const svgRef = useRef(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const cutouts = Array.isArray(woodworkingProfile?.profileCutouts)
+    ? woodworkingProfile.profileCutouts
+    : [];
+
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [selectedComp?.id]);
+
+  const safeIndex = Math.max(
+    0,
+    Math.min(cutouts.length - 1, activeIndex),
+  );
+  const activeCutout = cutouts[safeIndex] || null;
+  const activeStatus = activeCutout
+    ? getProfileCutoutStatus(selectedComp, activeCutout)
+    : null;
+
+  const disabled =
+    editorMode !== "editable" || isLocked(selectedComp);
+
+  const viewWidth = 240;
+  const viewHeight = 160;
+  const padding = 18;
+  const usableWidth = viewWidth - padding * 2;
+  const usableHeight = viewHeight - padding * 2;
+
+  const toScreen = ([u, v]) => [
+    padding +
+      (u / Math.max(1, woodworkingProfile.u) + 0.5) *
+        usableWidth,
+    padding +
+      (0.5 - v / Math.max(1, woodworkingProfile.v)) *
+        usableHeight,
+  ];
+
+  const pointerToLocal = (event) => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+
+    const rect = svg.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
+
+    const x =
+      ((event.clientX - rect.left) / rect.width) * viewWidth;
+    const y =
+      ((event.clientY - rect.top) / rect.height) * viewHeight;
+
+    const normalizedU = Math.max(
+      0,
+      Math.min(1, (x - padding) / usableWidth),
+    );
+    const normalizedV = Math.max(
+      0,
+      Math.min(1, (y - padding) / usableHeight),
+    );
+
+    return [
+      (normalizedU - 0.5) * woodworkingProfile.u,
+      (0.5 - normalizedV) * woodworkingProfile.v,
+    ];
+  };
+
+  const outerPoints = (
+    getWoodworkingProfileLocalPoints(selectedComp, {
+      curveSegments: 48,
+      cornerSegments: 10,
+      filletSegments: 10,
+    }) || []
+  ).map(toScreen);
+
+  const commitCutouts = (nextCutouts) => {
+    if (!Array.isArray(nextCutouts)) return;
+    onChange(selectedComp.id, {
+      profileCutouts: nextCutouts,
+    });
+  };
+
+  const updateActive = (attrs) => {
+    if (!activeCutout) return;
+
+    commitCutouts(
+      updateProfileCutout(
+        selectedComp,
+        activeCutout.id,
+        attrs,
+      ),
+    );
+  };
+
+  const addCutout = (type) => {
+    if (cutouts.length >= MAX_PROFILE_CUTOUTS) return;
+
+    const created = createProfileCutout(selectedComp, type);
+    if (!created) return;
+
+    const nextCutouts = [...cutouts, created];
+    commitCutouts(nextCutouts);
+    setActiveIndex(nextCutouts.length - 1);
+  };
+
+  const removeActive = () => {
+    if (!activeCutout) return;
+
+    const nextCutouts = deleteProfileCutout(
+      selectedComp,
+      activeCutout.id,
+    );
+
+    commitCutouts(nextCutouts);
+    setActiveIndex(
+      Math.max(0, Math.min(safeIndex, nextCutouts.length - 1)),
+    );
+  };
+
+  const handleCutoutPointerMove = (event, index) => {
+    if (disabled) return;
+    if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      return;
+    }
+
+    const local = pointerToLocal(event);
+    if (!local) return;
+
+    const target = cutouts[index];
+    if (!target) return;
+
+    const nextCutouts = updateProfileCutout(
+      selectedComp,
+      target.id,
+      {
+        u: Math.round(local[0]),
+        v: Math.round(local[1]),
+      },
+    );
+
+    commitCutouts(nextCutouts);
+  };
+
+  const maxRoundDiameter = Math.max(
+    10,
+    Math.floor(Math.min(woodworkingProfile.u, woodworkingProfile.v) * 0.9),
+  );
+  const maxRectWidth = Math.max(
+    10,
+    Math.floor(woodworkingProfile.u * 0.9),
+  );
+  const maxRectHeight = Math.max(
+    10,
+    Math.floor(woodworkingProfile.v * 0.9),
+  );
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        paddingTop: 10,
+        borderTop: "1px solid #243247",
+      }}
+    >
+      <div
+        style={{
+          marginBottom: 5,
+          color: "#e5eefc",
+          fontSize: 10,
+          fontWeight: 850,
+        }}
+      >
+        Internal Holes & Cutouts
+      </div>
+
+      <div
+        style={{
+          marginBottom: 7,
+          color: "#8fa3bd",
+          fontSize: 8,
+          lineHeight: 1.45,
+        }}
+      >
+        Add real through-holes to this board. Drag a cutout in the preview
+        or type exact local U / V millimeter positions. Invalid cutouts stay
+        saved for correction but are not cut from the 3D board.
+      </div>
+
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${viewWidth} ${viewHeight}`}
+        preserveAspectRatio="none"
+        style={{
+          width: "100%",
+          height: 160,
+          display: "block",
+          marginBottom: 8,
+          border: "1px solid #334155",
+          borderRadius: 0,
+          background: "#08111f",
+          touchAction: "none",
+        }}
+      >
+        {outerPoints.length >= 3 ? (
+          <polygon
+            points={outerPoints
+              .map(([x, y]) => `${x},${y}`)
+              .join(" ")}
+            fill="rgba(148, 163, 184, 0.12)"
+            stroke="#94a3b8"
+            strokeWidth="1.5"
+          />
+        ) : null}
+
+        {cutouts.map((cutout, index) => {
+          const status = getProfileCutoutStatus(
+            selectedComp,
+            cutout,
+          );
+          const points = getProfileCutoutLocalPoints(
+            cutout,
+            cutout.type === "round" ? 36 : 4,
+          ).map(toScreen);
+          const active = index === safeIndex;
+
+          return (
+            <polygon
+              key={cutout.id}
+              points={points
+                .map(([x, y]) => `${x},${y}`)
+                .join(" ")}
+              fill={
+                status.valid
+                  ? active
+                    ? "rgba(56, 189, 248, 0.38)"
+                    : "rgba(56, 189, 248, 0.18)"
+                  : "rgba(248, 113, 113, 0.28)"
+              }
+              stroke={
+                status.valid
+                  ? active
+                    ? "#38bdf8"
+                    : "#7dd3fc"
+                  : "#f87171"
+              }
+              strokeWidth={active ? 2.4 : 1.5}
+              style={{
+                cursor: disabled ? "not-allowed" : "move",
+              }}
+              onPointerDown={(event) => {
+                if (disabled) return;
+                setActiveIndex(index);
+                event.currentTarget.setPointerCapture?.(
+                  event.pointerId,
+                );
+              }}
+              onPointerMove={(event) =>
+                handleCutoutPointerMove(event, index)
+              }
+              onPointerUp={(event) =>
+                event.currentTarget.releasePointerCapture?.(
+                  event.pointerId,
+                )
+              }
+              onPointerCancel={(event) =>
+                event.currentTarget.releasePointerCapture?.(
+                  event.pointerId,
+                )
+              }
+            />
+          );
+        })}
+      </svg>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 6,
+          marginBottom: 8,
+        }}
+      >
+        <button
+          type="button"
+          disabled={disabled || cutouts.length >= MAX_PROFILE_CUTOUTS}
+          onClick={() => addCutout("round")}
+          style={{
+            height: 30,
+            border: "1px solid #334155",
+            borderRadius: 0,
+            background: "#111827",
+            color: "#dbeafe",
+            fontSize: 8,
+            fontWeight: 800,
+            cursor:
+              disabled || cutouts.length >= MAX_PROFILE_CUTOUTS
+                ? "not-allowed"
+                : "pointer",
+          }}
+        >
+          + Round Hole
+        </button>
+
+        <button
+          type="button"
+          disabled={disabled || cutouts.length >= MAX_PROFILE_CUTOUTS}
+          onClick={() => addCutout("rect")}
+          style={{
+            height: 30,
+            border: "1px solid #334155",
+            borderRadius: 0,
+            background: "#111827",
+            color: "#dbeafe",
+            fontSize: 8,
+            fontWeight: 800,
+            cursor:
+              disabled || cutouts.length >= MAX_PROFILE_CUTOUTS
+                ? "not-allowed"
+                : "pointer",
+          }}
+        >
+          + Rect Cutout
+        </button>
+      </div>
+
+      {cutouts.length ? (
+        <>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 4,
+              marginBottom: 8,
+            }}
+          >
+            {cutouts.map((cutout, index) => (
+              <button
+                key={`cutout-select-${cutout.id}`}
+                type="button"
+                disabled={disabled}
+                onClick={() => setActiveIndex(index)}
+                style={{
+                  minWidth: 42,
+                  height: 26,
+                  padding: "0 7px",
+                  border: `1px solid ${
+                    index === safeIndex ? "#38bdf8" : "#334155"
+                  }`,
+                  borderRadius: 0,
+                  background:
+                    index === safeIndex ? "#0c4a6e" : "#0f172a",
+                  color:
+                    index === safeIndex ? "#e0f2fe" : "#94a3b8",
+                  fontSize: 8,
+                  fontWeight: 800,
+                  cursor: disabled ? "not-allowed" : "pointer",
+                }}
+              >
+                {cutout.type === "round" ? "○" : "□"} C{index + 1}
+              </button>
+            ))}
+          </div>
+
+          <div
+            style={{
+              marginBottom: 7,
+              padding: 7,
+              border: `1px solid ${
+                activeStatus?.valid ? "#164e63" : "#7f1d1d"
+              }`,
+              borderRadius: 0,
+              background: activeStatus?.valid
+                ? "rgba(8, 145, 178, 0.08)"
+                : "rgba(127, 29, 29, 0.12)",
+              color: activeStatus?.valid ? "#a5f3fc" : "#fecaca",
+              fontSize: 8,
+              lineHeight: 1.4,
+            }}
+          >
+            {activeStatus?.valid ? "VALID" : "CHECK"} ·{" "}
+            {activeStatus?.message || "Select a cutout."}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 6,
+              marginBottom: 8,
+            }}
+          >
+            <div>
+              <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                Center U (mm)
+              </label>
+              <input
+                type="number"
+                step="1"
+                value={Math.round(activeCutout?.u || 0)}
+                disabled={disabled}
+                onChange={(event) =>
+                  updateActive({
+                    u: Number(event.target.value) || 0,
+                  })
+                }
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                Center V (mm)
+              </label>
+              <input
+                type="number"
+                step="1"
+                value={Math.round(activeCutout?.v || 0)}
+                disabled={disabled}
+                onChange={(event) =>
+                  updateActive({
+                    v: Number(event.target.value) || 0,
+                  })
+                }
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          {activeCutout?.type === "round" ? (
+            <div style={{ marginBottom: 8 }}>
+              <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                Diameter (mm) — current:{" "}
+                {Math.round(activeCutout.diameter)}mm
+              </label>
+              <input
+                type="range"
+                min="1"
+                max={maxRoundDiameter}
+                step="1"
+                value={Math.min(
+                  maxRoundDiameter,
+                  Math.round(activeCutout.diameter),
+                )}
+                disabled={disabled}
+                onChange={(event) =>
+                  updateActive({
+                    diameter: Number(event.target.value) || 1,
+                  })
+                }
+                style={{
+                  width: "100%",
+                  accentColor: "#0ea5e9",
+                }}
+              />
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={Math.round(activeCutout.diameter)}
+                disabled={disabled}
+                onChange={(event) =>
+                  updateActive({
+                    diameter: Math.max(
+                      1,
+                      Number(event.target.value) || 1,
+                    ),
+                  })
+                }
+                style={inputStyle}
+              />
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 6,
+                marginBottom: 8,
+              }}
+            >
+              <div>
+                <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                  Width (mm)
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max={maxRectWidth}
+                  step="1"
+                  value={Math.min(
+                    maxRectWidth,
+                    Math.round(activeCutout?.width || 1),
+                  )}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      width: Number(event.target.value) || 1,
+                    })
+                  }
+                  style={{
+                    width: "100%",
+                    accentColor: "#0ea5e9",
+                  }}
+                />
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={Math.round(activeCutout?.width || 1)}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      width: Math.max(
+                        1,
+                        Number(event.target.value) || 1,
+                      ),
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                  Height (mm)
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max={maxRectHeight}
+                  step="1"
+                  value={Math.min(
+                    maxRectHeight,
+                    Math.round(activeCutout?.height || 1),
+                  )}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      height: Number(event.target.value) || 1,
+                    })
+                  }
+                  style={{
+                    width: "100%",
+                    accentColor: "#0ea5e9",
+                  }}
+                />
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={Math.round(activeCutout?.height || 1)}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      height: Math.max(
+                        1,
+                        Number(event.target.value) || 1,
+                      ),
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={disabled || !activeCutout}
+            onClick={removeActive}
+            style={{
+              width: "100%",
+              height: 30,
+              border: "1px solid #7f1d1d",
+              borderRadius: 0,
+              background: "#1f1115",
+              color: "#fca5a5",
+              fontSize: 8,
+              fontWeight: 800,
+              cursor:
+                disabled || !activeCutout
+                  ? "not-allowed"
+                  : "pointer",
+            }}
+          >
+            Delete Selected Cutout
+          </button>
+        </>
+      ) : (
+        <div
+          style={{
+            padding: 8,
+            border: "1px solid #243247",
+            borderRadius: 0,
+            color: "#64748b",
+            fontSize: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          No internal holes yet. Add a round or rectangular through-cutout.
+        </div>
+      )}
+
+      <div
+        style={{
+          marginTop: 6,
+          color: "#64748b",
+          fontSize: 8,
+          lineHeight: 1.4,
+        }}
+      >
+        {cutouts.length}/{MAX_PROFILE_CUTOUTS} cutouts. Dimensions are stored
+        in exact millimeters; resizing the board does not silently change hole
+        diameter or cutout size.
+      </div>
+    </div>
+  );
+}
+
+function WoodworkingOperationsCard({
+  selectedComp,
+  editorMode,
+  isLocked,
+  onChange,
+  inputStyle,
+}) {
+  const [draftType, setDraftType] = useState("dado");
+  const [activeId, setActiveId] = useState("");
+
+  useEffect(() => {
+    setActiveId("");
+    setDraftType("dado");
+  }, [selectedComp?.id]);
+
+  const operations = normalizeWoodworkingOperations(
+    selectedComp?.woodworkingOperations,
+  );
+  const active =
+    operations.find((item) => item.id === activeId) ||
+    operations[0] ||
+    null;
+  const dims = getOperationProfileDimensions(selectedComp);
+  const operationOuterPoints =
+    getWoodworkingProfileLocalPoints(selectedComp, {
+      curveSegments: 56,
+      cornerSegments: 10,
+      filletSegments: 10,
+    }) || [];
+  const operationCutoutPolygons = (
+    Array.isArray(selectedComp?.profileCutouts)
+      ? selectedComp.profileCutouts
+      : []
+  )
+    .filter(
+      (cutout) =>
+        getProfileCutoutStatus(selectedComp, cutout).valid,
+    )
+    .map((cutout) =>
+      getProfileCutoutLocalPoints(
+        cutout,
+        cutout.type === "round" ? 48 : 4,
+      ),
+    );
+  const status = active
+    ? getWoodworkingOperationStatus(
+        selectedComp,
+        active,
+        {
+          outerPoints: operationOuterPoints,
+          cutoutPolygons: operationCutoutPolygons,
+        },
+      )
+    : null;
+  const disabled =
+    editorMode !== "editable" || isLocked(selectedComp);
+
+  const commit = (nextOperations) => {
+    onChange(selectedComp.id, {
+      woodworkingOperations: normalizeWoodworkingOperations(
+        nextOperations,
+      ),
+    });
+  };
+
+  const addOperation = () => {
+    if (
+      disabled ||
+      operations.length >= MAX_WOODWORKING_OPERATIONS
+    ) {
+      return;
+    }
+
+    const created = createWoodworkingOperation(
+      selectedComp,
+      draftType,
+    );
+    const next = [...operations, created];
+    commit(next);
+    setActiveId(created.id);
+  };
+
+  const updateActive = (attrs) => {
+    if (!active) return;
+    commit(
+      updateWoodworkingOperation(
+        operations,
+        active.id,
+        attrs,
+      ),
+    );
+  };
+
+  const removeActive = () => {
+    if (!active) return;
+    const next = deleteWoodworkingOperation(
+      operations,
+      active.id,
+    );
+    commit(next);
+    setActiveId(next[0]?.id || "");
+  };
+
+  const toScreen = (u, v) => {
+    const width = 240;
+    const height = 150;
+    const padding = 16;
+    const usableW = width - padding * 2;
+    const usableH = height - padding * 2;
+
+    return [
+      padding + (u / Math.max(1, dims.u) + 0.5) * usableW,
+      padding + (0.5 - v / Math.max(1, dims.v)) * usableH,
+    ];
+  };
+
+  const preview = (() => {
+    if (!active) return null;
+
+    const footprint = getWoodworkingOperationFootprint(
+      selectedComp,
+      active,
+    );
+
+    if (footprint.shape === "circle") {
+      const [cx, cy] = toScreen(
+        footprint.centerU,
+        footprint.centerV,
+      );
+      const [rx] = toScreen(
+        footprint.centerU + footprint.radius,
+        footprint.centerV,
+      );
+      const [, ry] = toScreen(
+        footprint.centerU,
+        footprint.centerV + footprint.radius,
+      );
+
+      return (
+        <ellipse
+          cx={cx}
+          cy={cy}
+          rx={Math.max(2, Math.abs(rx - cx))}
+          ry={Math.max(2, Math.abs(ry - cy))}
+          fill="rgba(245, 158, 11, 0.30)"
+          stroke="#f59e0b"
+          strokeWidth="2"
+        />
+      );
+    }
+
+    const [left, top] = toScreen(
+      footprint.minU,
+      footprint.maxV,
+    );
+    const [right, bottom] = toScreen(
+      footprint.maxU,
+      footprint.minV,
+    );
+
+    return (
+      <rect
+        x={Math.min(left, right)}
+        y={Math.min(top, bottom)}
+        width={Math.max(2, Math.abs(right - left))}
+        height={Math.max(2, Math.abs(bottom - top))}
+        fill="rgba(245, 158, 11, 0.30)"
+        stroke="#f59e0b"
+        strokeWidth="2"
+      />
+    );
+  })();
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        paddingTop: 10,
+        borderTop: "1px solid #243247",
+      }}
+    >
+      <div
+        style={{
+          color: "#f8fafc",
+          fontSize: 10,
+          fontWeight: 850,
+          marginBottom: 4,
+        }}
+      >
+        Woodworking Operations · V5B
+      </div>
+
+      <div
+        style={{
+          color: "#8fa3bd",
+          fontSize: 8,
+          lineHeight: 1.45,
+          marginBottom: 8,
+        }}
+      >
+        Dado, rabbet, groove, recess/pocket, and bore/drill now remove
+        material from the actual 3D Custom Shape Part. CHECK operations stay
+        saved for correction but are intentionally not cut in 3D.
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr auto",
+          gap: 6,
+          marginBottom: 8,
+        }}
+      >
+        <select
+          value={draftType}
+          disabled={disabled}
+          onChange={(event) =>
+            setDraftType(event.target.value)
+          }
+          style={inputStyle}
+        >
+          {WOODWORKING_OPERATION_TYPES.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+
+        <button
+          type="button"
+          disabled={
+            disabled ||
+            operations.length >= MAX_WOODWORKING_OPERATIONS
+          }
+          onClick={addOperation}
+          style={{
+            minWidth: 70,
+            border: "1px solid #854d0e",
+            borderRadius: 0,
+            background: "#211b0b",
+            color: "#fef3c7",
+            fontSize: 8,
+            fontWeight: 800,
+          }}
+        >
+          + Add
+        </button>
+      </div>
+
+      {operations.length ? (
+        <>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 4,
+              marginBottom: 8,
+            }}
+          >
+            {operations.map((item, index) => (
+              <button
+                key={item.id}
+                type="button"
+                disabled={disabled}
+                onClick={() => setActiveId(item.id)}
+                style={{
+                  minWidth: 44,
+                  height: 26,
+                  padding: "0 6px",
+                  border: `1px solid ${
+                    active?.id === item.id
+                      ? "#f59e0b"
+                      : "#334155"
+                  }`,
+                  borderRadius: 0,
+                  background:
+                    active?.id === item.id
+                      ? "#451a03"
+                      : "#0f172a",
+                  color:
+                    active?.id === item.id
+                      ? "#fef3c7"
+                      : "#94a3b8",
+                  fontSize: 8,
+                  fontWeight: 800,
+                }}
+              >
+                O{index + 1}
+              </button>
+            ))}
+          </div>
+
+          <svg
+            viewBox="0 0 240 150"
+            preserveAspectRatio="none"
+            style={{
+              width: "100%",
+              height: 150,
+              display: "block",
+              border: "1px solid #334155",
+              borderRadius: 0,
+              background: "#08111f",
+              marginBottom: 8,
+            }}
+          >
+            <rect
+              x="16"
+              y="16"
+              width="208"
+              height="118"
+              fill="rgba(148, 163, 184, 0.10)"
+              stroke="#64748b"
+              strokeWidth="1.5"
+            />
+            {preview}
+          </svg>
+
+          <div
+            style={{
+              padding: 7,
+              marginBottom: 8,
+              border: `1px solid ${
+                status?.valid ? "#365314" : "#7f1d1d"
+              }`,
+              borderRadius: 0,
+              background: status?.valid
+                ? "rgba(54,83,20,0.12)"
+                : "rgba(127,29,29,0.12)",
+              color: status?.valid
+                ? "#d9f99d"
+                : "#fecaca",
+              fontSize: 8,
+              lineHeight: 1.4,
+            }}
+          >
+            {status?.valid ? "VALID" : "CHECK"} ·{" "}
+            {status?.message}
+          </div>
+
+          <div
+            style={{
+              marginBottom: 7,
+              color: "#fde68a",
+              fontSize: 9,
+              fontWeight: 850,
+            }}
+          >
+            {getOperationLabel(active?.type)} ·{" "}
+            {active?.surface === "face_b"
+              ? "Face B"
+              : "Face A"}
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 6,
+              marginBottom: 7,
+            }}
+          >
+            <div>
+              <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                Surface
+              </label>
+              <select
+                value={active?.surface || "face_a"}
+                disabled={disabled}
+                onChange={(event) =>
+                  updateActive({
+                    surface: event.target.value,
+                  })
+                }
+                style={inputStyle}
+              >
+                <option value="face_a">Face A</option>
+                <option value="face_b">Face B</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                Depth (mm)
+              </label>
+              <input
+                type="number"
+                min="0.1"
+                step="0.5"
+                value={active?.depth ?? 1}
+                disabled={disabled}
+                onChange={(event) =>
+                  updateActive({
+                    depth: Math.max(
+                      0.1,
+                      Number(event.target.value) || 0.1,
+                    ),
+                  })
+                }
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          {active?.type === "rabbet" ? (
+            <>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 6,
+                  marginBottom: 7,
+                }}
+              >
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Edge
+                  </label>
+                  <select
+                    value={active.edge}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        edge: event.target.value,
+                      })
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="top">Top</option>
+                    <option value="right">Right</option>
+                    <option value="bottom">Bottom</option>
+                    <option value="left">Left</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Width Into Board (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={active.width}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        width: Math.max(
+                          1,
+                          Number(event.target.value) || 1,
+                        ),
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 6,
+                  marginBottom: 7,
+                }}
+              >
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    {active.edge === "left" ||
+                    active.edge === "right"
+                      ? "Offset From Bottom (mm)"
+                      : "Offset From Left (mm)"}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={active.offset || 0}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        offset: Math.max(
+                          0,
+                          Number(event.target.value) || 0,
+                        ),
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Length Along Edge (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={active.length}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        length: Math.max(
+                          1,
+                          Number(event.target.value) || 1,
+                        ),
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginBottom: 7,
+                  color: "#64748b",
+                  fontSize: 8,
+                  lineHeight: 1.4,
+                }}
+              >
+                Top/Bottom offset starts from the left side. Left/Right offset
+                starts from the bottom side. Length now controls the exact
+                segment along the selected edge.
+              </div>
+            </>
+          ) : active?.type === "bore" ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 6,
+                marginBottom: 7,
+              }}
+            >
+              <div>
+                <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                  Center U (mm)
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  value={active.u}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      u: Number(event.target.value) || 0,
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                  Center V (mm)
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  value={active.v}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      v: Number(event.target.value) || 0,
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+              <div style={{ gridColumn: "1 / span 2" }}>
+                <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                  Diameter (mm)
+                </label>
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.5"
+                  value={active.diameter}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      diameter: Math.max(
+                        0.1,
+                        Number(event.target.value) || 0.1,
+                      ),
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 6,
+                  marginBottom: 7,
+                }}
+              >
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Center U (mm)
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={active.u}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        u: Number(event.target.value) || 0,
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Center V (mm)
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={active.v}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        v: Number(event.target.value) || 0,
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 6,
+                  marginBottom: 7,
+                }}
+              >
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Direction
+                  </label>
+                  <select
+                    value={active.direction}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        direction: event.target.value,
+                      })
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="u">
+                      Along {dims.uAxis}
+                    </option>
+                    <option value="v">
+                      Along {dims.vAxis}
+                    </option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                    Width (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={active.width}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateActive({
+                        width: Math.max(
+                          1,
+                          Number(event.target.value) || 1,
+                        ),
+                      })
+                    }
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 7 }}>
+                <label style={{ fontSize: 8, color: "#94a3b8" }}>
+                  Length (mm)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={active.length}
+                  disabled={disabled}
+                  onChange={(event) =>
+                    updateActive({
+                      length: Math.max(
+                        1,
+                        Number(event.target.value) || 1,
+                      ),
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+            </>
+          )}
+
+          <div style={{ marginBottom: 7 }}>
+            <label style={{ fontSize: 8, color: "#94a3b8" }}>
+              Production Note
+            </label>
+            <input
+              type="text"
+              maxLength="240"
+              value={active?.note || ""}
+              disabled={disabled}
+              onChange={(event) =>
+                updateActive({
+                  note: event.target.value,
+                })
+              }
+              style={inputStyle}
+            />
+          </div>
+
+          <button
+            type="button"
+            disabled={disabled || !active}
+            onClick={removeActive}
+            style={{
+              width: "100%",
+              height: 28,
+              border: "1px solid #7f1d1d",
+              borderRadius: 0,
+              background: "#1f1115",
+              color: "#fca5a5",
+              fontSize: 8,
+              fontWeight: 800,
+            }}
+          >
+            Delete Selected Operation
+          </button>
+        </>
+      ) : (
+        <div
+          style={{
+            padding: 8,
+            border: "1px solid #243247",
+            borderRadius: 0,
+            color: "#64748b",
+            fontSize: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          No woodworking operations yet.
+        </div>
+      )}
+
+      <div
+        style={{
+          marginTop: 6,
+          color: "#64748b",
+          fontSize: 8,
+          lineHeight: 1.4,
+        }}
+      >
+        {operations.length}/{MAX_WOODWORKING_OPERATIONS} operations · profile{" "}
+        {dims.plane.toUpperCase()} · thickness {Math.round(dims.thickness)}mm.
+      </div>
+    </div>
+  );
+}
 export function PropertiesPanel({
   selectedComp: committedSelectedComp,
   liveSelectedComp = null,
@@ -138,6 +2770,10 @@ export function PropertiesPanel({
   const unitLabel = unit === "inch" ? "in" : "mm";
 
   const isRoundedBox = selectedComp?.type === "rounded_box";
+  const isWoodworkingProfile = isWoodworkingProfileComponent(selectedComp);
+  const woodworkingProfile = isWoodworkingProfile
+    ? getWoodworkingProfileDescriptor(selectedComp)
+    : null;
   const boxWallMax = selectedComp
     ? Math.max(
         20,
@@ -280,21 +2916,22 @@ export function PropertiesPanel({
   };
 
   const inspectorSectionStyle = {
-    marginBottom: 12,
+    marginBottom: 10,
     padding: 10,
-    border: "1px solid rgba(71,85,105,.62)",
-    borderRadius: 8,
-    background: "rgba(11,20,36,.72)",
+    border: "1px solid rgba(71,85,105,.58)",
+    borderLeft: "2px solid rgba(96,165,250,.28)",
+    borderRadius: 2,
+    background: "#091321",
     boxSizing: "border-box",
   };
 
   const inspectorSectionTitleStyle = {
     marginBottom: 8,
-    fontSize: 9,
-    fontWeight: 800,
-    letterSpacing: "0.12em",
+    fontSize: 10,
+    fontWeight: 850,
+    letterSpacing: "0.08em",
     textTransform: "uppercase",
-    color: "#8fa4c0",
+    color: "#b9c8db",
   };
 
   const inspectorFieldGridStyle = {
@@ -434,7 +3071,7 @@ export function PropertiesPanel({
                         alignItems: "center",
                         padding: "0 9px",
                         border: "1px solid rgba(71,85,105,.62)",
-                        borderRadius: 6,
+                        borderRadius: 0,
                         background: "rgba(15,23,42,.62)",
                         color: "#dbeafe",
                         fontSize: 10,
@@ -575,7 +3212,7 @@ export function PropertiesPanel({
                     letterSpacing: ".08em",
                   }}
                 >
-                  TECHNICAL ID · {selectedComp.partCode}
+                  PART CODE | {selectedComp.partCode}
                 </div>
               ) : null}
 
@@ -593,7 +3230,7 @@ export function PropertiesPanel({
                     letterSpacing: ".08em",
                   }}
                 >
-                  PART ROLE:{" "}
+                  ROLE |{" "}
                   {String(selectedComp.partRole)
                     .replace(/_/g, " ")
                     .replace(/\b\w/g, (char) => char.toUpperCase())}
@@ -630,7 +3267,7 @@ export function PropertiesPanel({
             </div>
 
             <div style={inspectorSectionStyle}>
-              <div style={inspectorSectionTitleStyle}>Dimensions</div>
+              <div style={inspectorSectionTitleStyle}>Size</div>
               <div style={inspectorFieldGridStyle}>
                 {[
                   ["Width", "width"],
@@ -658,7 +3295,7 @@ export function PropertiesPanel({
             </div>
 
             <div style={inspectorSectionStyle}>
-              <div style={inspectorSectionTitleStyle}>Resize Side</div>
+              <div style={inspectorSectionTitleStyle}>Resize From</div>
               <div
                 style={{
                   marginBottom: 9,
@@ -667,7 +3304,7 @@ export function PropertiesPanel({
                   lineHeight: 1.45,
                 }}
               >
-                Choose which side will move when the dimension changes.
+                Choose the side that moves when you change the size.
               </div>
 
               {[
@@ -745,7 +3382,7 @@ export function PropertiesPanel({
                             border: isActive
                               ? "1px solid rgba(96,165,250,.9)"
                               : "1px solid rgba(71,85,105,.72)",
-                            borderRadius: 6,
+                            borderRadius: 0,
                             background: isActive
                               ? "rgba(37,99,235,.24)"
                               : "rgba(15,23,42,.55)",
@@ -795,44 +3432,639 @@ export function PropertiesPanel({
 
             <div style={inspectorSectionTitleStyle}>Geometry</div>
 
-            <div style={{ marginBottom: 6 }}>
-              <label style={S.floatingLabel}>
-                Corner Radius (mm) — current: {selectedComp.cornerRadius ?? 0}mm
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="500"
-                step="5"
-                value={selectedComp.cornerRadius ?? 0}
-                disabled={editorMode !== "editable" || isLocked(selectedComp)}
-                onChange={(e) =>
-                  applySelectionChange({
-                    cornerRadius: Number(e.target.value),
-                  })
-                }
-                style={{ width: "100%", accentColor: "#3b82f6" }}
-              />
-              <input
-                type="number"
-                min="0"
-                max="500"
-                step="5"
-                value={selectedComp.cornerRadius ?? 0}
-                disabled={editorMode !== "editable" || isLocked(selectedComp)}
-                onChange={(e) =>
-                  applySelectionChange({
-                    cornerRadius: Math.max(
-                      0,
-                      Math.min(500, Number(e.target.value) || 0),
-                    ),
-                  })
-                }
-                style={inputStyle}
-              />
-            </div>
+            {isWoodworkingProfile && woodworkingProfile ? (
+              <div
+                style={{
+                  ...infoCardStyle,
+                  marginBottom: 10,
+                  padding: 10,
+                  color: "#c8d5e8",
+                  fontSize: 9,
+                  lineHeight: 1.5,
+                }}
+              >
+                <div
+                  style={{
+                    marginBottom: 8,
+                    color: "#e5eefc",
+                    fontSize: 10,
+                    fontWeight: 850,
+                  }}
+                >
+                  {woodworkingProfile.label}
+                </div>
 
-            {isRoundedBox && (
+                <div style={{ marginBottom: 8 }}>
+                  <label style={S.floatingLabel}>Profile Face</label>
+                  <select
+                    value={selectedComp.profilePlane || "auto"}
+                    disabled={editorMode !== "editable" || isLocked(selectedComp)}
+                    onChange={(e) =>
+                      onChange(selectedComp.id, {
+                        profilePlane: e.target.value,
+                      })
+                    }
+                    style={inputStyle}
+                  >
+                    <option value="auto">Auto - thinnest dimension is thickness</option>
+                    <option value="xy">Front / Back profile (Width × Height)</option>
+                    <option value="xz">Top / Bottom profile (Width × Depth)</option>
+                    <option value="yz">Left / Right profile (Depth × Height)</option>
+                  </select>
+                </div>
+
+                <div
+                  style={{
+                    marginBottom: 8,
+                    color: "#8fa3bd",
+                    fontSize: 9,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  Active profile: {woodworkingProfile.plane.toUpperCase()} ·
+                  thickness {Math.round(woodworkingProfile.thickness)} mm.
+                  2D and 3D use this same saved profile.
+                </div>
+
+                {supportsProfileFillet(woodworkingProfile.kind) ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={S.floatingLabel}>
+                      Corner Fillet Radius (mm) — current:{" "}
+                      {Math.round(
+                        woodworkingProfile.profileFilletRadius || 0,
+                      )}
+                      mm
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max={Math.max(
+                        0,
+                        Math.floor(
+                          woodworkingProfile.limits.filletRadiusMax,
+                        ),
+                      )}
+                      step="1"
+                      value={Math.round(
+                        woodworkingProfile.profileFilletRadius || 0,
+                      )}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) => {
+                        const maxRadius = Math.max(
+                          0,
+                          Math.floor(
+                            woodworkingProfile.limits.filletRadiusMax,
+                          ),
+                        );
+
+                        onChange(selectedComp.id, {
+                          profileFilletRadius: Math.max(
+                            0,
+                            Math.min(
+                              maxRadius,
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        });
+                      }}
+                      style={{
+                        width: "100%",
+                        accentColor: "#3b82f6",
+                      }}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max={Math.max(
+                        0,
+                        Math.floor(
+                          woodworkingProfile.limits.filletRadiusMax,
+                        ),
+                      )}
+                      step="1"
+                      value={Math.round(
+                        woodworkingProfile.profileFilletRadius || 0,
+                      )}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) => {
+                        const maxRadius = Math.max(
+                          0,
+                          Math.floor(
+                            woodworkingProfile.limits.filletRadiusMax,
+                          ),
+                        );
+
+                        onChange(selectedComp.id, {
+                          profileFilletRadius: Math.max(
+                            0,
+                            Math.min(
+                              maxRadius,
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        });
+                      }}
+                      style={inputStyle}
+                    />
+                  </div>
+                ) : null}
+
+                {woodworkingProfile.kind === "rounded" ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={S.floatingLabel}>
+                      Profile Corner Radius (mm) — current:{" "}
+                      {Math.round(woodworkingProfile.radius)}mm
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max={Math.max(
+                        0,
+                        Math.floor(woodworkingProfile.limits.radiusMax),
+                      )}
+                      step="1"
+                      value={Math.round(woodworkingProfile.radius)}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          profileRadius: Math.max(
+                            0,
+                            Math.min(
+                              Math.floor(
+                                woodworkingProfile.limits.radiusMax,
+                              ),
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        accentColor: "#3b82f6",
+                      }}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max={Math.max(
+                        0,
+                        Math.floor(woodworkingProfile.limits.radiusMax),
+                      )}
+                      step="1"
+                      value={Math.round(woodworkingProfile.radius)}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          profileRadius: Math.max(
+                            0,
+                            Math.min(
+                              Math.floor(
+                                woodworkingProfile.limits.radiusMax,
+                              ),
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        })
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+                ) : null}
+
+                {woodworkingProfile.kind === "chamfer" ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={S.floatingLabel}>
+                      Chamfer Size (mm) — current:{" "}
+                      {Math.round(woodworkingProfile.chamferSize)}mm
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max={Math.max(
+                        0,
+                        Math.floor(
+                          woodworkingProfile.limits.chamferMax,
+                        ),
+                      )}
+                      step="1"
+                      value={Math.round(woodworkingProfile.chamferSize)}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          chamferSize: Math.max(
+                            0,
+                            Math.min(
+                              Math.floor(
+                                woodworkingProfile.limits.chamferMax,
+                              ),
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        accentColor: "#3b82f6",
+                      }}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max={Math.max(
+                        0,
+                        Math.floor(
+                          woodworkingProfile.limits.chamferMax,
+                        ),
+                      )}
+                      step="1"
+                      value={Math.round(woodworkingProfile.chamferSize)}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          chamferSize: Math.max(
+                            0,
+                            Math.min(
+                              Math.floor(
+                                woodworkingProfile.limits.chamferMax,
+                              ),
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        })
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+                ) : null}
+
+                {woodworkingProfile.kind === "notch" ? (
+                  <>
+                    <div style={{ marginBottom: 8 }}>
+                      <label style={S.floatingLabel}>Notch Edge</label>
+                      <select
+                        value={woodworkingProfile.notchEdge}
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
+                        onChange={(e) =>
+                          onChange(selectedComp.id, {
+                            notchEdge: e.target.value,
+                          })
+                        }
+                        style={inputStyle}
+                      >
+                        <option value="top">Top</option>
+                        <option value="right">Right</option>
+                        <option value="bottom">Bottom</option>
+                        <option value="left">Left</option>
+                      </select>
+                    </div>
+
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={S.floatingLabel}>
+                        Notch Width (mm) — current:{" "}
+                        {Math.round(woodworkingProfile.notchWidth)}mm
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max={Math.max(
+                          1,
+                          Math.floor(
+                            woodworkingProfile.limits.notchSpanMax,
+                          ),
+                        )}
+                        step="1"
+                        value={Math.round(woodworkingProfile.notchWidth)}
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
+                        onChange={(e) =>
+                          onChange(selectedComp.id, {
+                            notchWidth: Math.max(
+                              1,
+                              Math.min(
+                                Math.floor(
+                                  woodworkingProfile.limits.notchSpanMax,
+                                ),
+                                Number(e.target.value) || 1,
+                              ),
+                            ),
+                          })
+                        }
+                        style={{
+                          width: "100%",
+                          accentColor: "#3b82f6",
+                        }}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        max={Math.max(
+                          1,
+                          Math.floor(
+                            woodworkingProfile.limits.notchSpanMax,
+                          ),
+                        )}
+                        step="1"
+                        value={Math.round(woodworkingProfile.notchWidth)}
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
+                        onChange={(e) =>
+                          onChange(selectedComp.id, {
+                            notchWidth: Math.max(
+                              1,
+                              Math.min(
+                                Math.floor(
+                                  woodworkingProfile.limits.notchSpanMax,
+                                ),
+                                Number(e.target.value) || 1,
+                              ),
+                            ),
+                          })
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={S.floatingLabel}>
+                        Notch Depth (mm) — current:{" "}
+                        {Math.round(woodworkingProfile.notchDepth)}mm
+                      </label>
+                      <input
+                        type="range"
+                        min="1"
+                        max={Math.max(
+                          1,
+                          Math.floor(
+                            woodworkingProfile.limits.notchDepthMax,
+                          ),
+                        )}
+                        step="1"
+                        value={Math.round(woodworkingProfile.notchDepth)}
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
+                        onChange={(e) =>
+                          onChange(selectedComp.id, {
+                            notchDepth: Math.max(
+                              1,
+                              Math.min(
+                                Math.floor(
+                                  woodworkingProfile.limits.notchDepthMax,
+                                ),
+                                Number(e.target.value) || 1,
+                              ),
+                            ),
+                          })
+                        }
+                        style={{
+                          width: "100%",
+                          accentColor: "#3b82f6",
+                        }}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        max={Math.max(
+                          1,
+                          Math.floor(
+                            woodworkingProfile.limits.notchDepthMax,
+                          ),
+                        )}
+                        step="1"
+                        value={Math.round(woodworkingProfile.notchDepth)}
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
+                        onChange={(e) =>
+                          onChange(selectedComp.id, {
+                            notchDepth: Math.max(
+                              1,
+                              Math.min(
+                                Math.floor(
+                                  woodworkingProfile.limits.notchDepthMax,
+                                ),
+                                Number(e.target.value) || 1,
+                              ),
+                            ),
+                          })
+                        }
+                        style={inputStyle}
+                      />
+                    </div>
+                  </>
+                ) : null}
+
+                {woodworkingProfile.kind === "oval" ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={S.floatingLabel}>
+                      Oval Roundness (%) — current:{" "}
+                      {Math.round(
+                        woodworkingProfile.profileOvalRoundness ?? 100,
+                      )}
+                      %
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={Math.round(
+                        woodworkingProfile.profileOvalRoundness ?? 100,
+                      )}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          profileOvalRoundness: Math.max(
+                            0,
+                            Math.min(
+                              100,
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        accentColor: "#3b82f6",
+                      }}
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={Math.round(
+                        woodworkingProfile.profileOvalRoundness ?? 100,
+                      )}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          profileOvalRoundness: Math.max(
+                            0,
+                            Math.min(
+                              100,
+                              Number(e.target.value) || 0,
+                            ),
+                          ),
+                        })
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+                ) : null}
+
+                {woodworkingProfile.kind === "contour" ? (
+                  <ContourEditorCard
+                    selectedComp={selectedComp}
+                    woodworkingProfile={woodworkingProfile}
+                    editorMode={editorMode}
+                    isLocked={isLocked}
+                    onChange={onChange}
+                    inputStyle={inputStyle}
+                  />
+                ) : null}
+
+                {woodworkingProfile.kind === "trapezoid" ? (
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={S.floatingLabel}>
+                      Top Width (%) — current:{" "}
+                      {Math.round(
+                        woodworkingProfile.profileTopRatio * 100,
+                      )}
+                      %
+                    </label>
+                    <input
+                      type="range"
+                      min="5"
+                      max="100"
+                      step="1"
+                      value={Math.round(
+                        woodworkingProfile.profileTopRatio * 100,
+                      )}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          profileTopRatio: Math.max(
+                            0.05,
+                            Math.min(
+                              1,
+                              (Number(e.target.value) || 5) / 100,
+                            ),
+                          ),
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        accentColor: "#3b82f6",
+                      }}
+                    />
+                    <input
+                      type="number"
+                      min="5"
+                      max="100"
+                      step="1"
+                      value={Math.round(
+                        woodworkingProfile.profileTopRatio * 100,
+                      )}
+                      disabled={
+                        editorMode !== "editable" || isLocked(selectedComp)
+                      }
+                      onChange={(e) =>
+                        onChange(selectedComp.id, {
+                          profileTopRatio: Math.max(
+                            0.05,
+                            Math.min(
+                              1,
+                              (Number(e.target.value) || 5) / 100,
+                            ),
+                          ),
+                        })
+                      }
+                      style={inputStyle}
+                    />
+                  </div>
+                ) : null}
+
+                <CutoutEditorCard
+                  selectedComp={selectedComp}
+                  woodworkingProfile={woodworkingProfile}
+                  editorMode={editorMode}
+                  isLocked={isLocked}
+                  onChange={onChange}
+                  inputStyle={inputStyle}
+                />
+
+                <WoodworkingOperationsCard
+                  selectedComp={selectedComp}
+                  editorMode={editorMode}
+                  isLocked={isLocked}
+                  onChange={onChange}
+                  inputStyle={inputStyle}
+                />
+              </div>
+            ) : null}
+
+            {!isWoodworkingProfile && (
+              <div style={{ marginBottom: 6 }}>
+                <label style={S.floatingLabel}>
+                  Corner Radius (mm) — current: {selectedComp.cornerRadius ?? 0}mm
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="500"
+                  step="5"
+                  value={selectedComp.cornerRadius ?? 0}
+                  disabled={editorMode !== "editable" || isLocked(selectedComp)}
+                  onChange={(e) =>
+                    applySelectionChange({
+                      cornerRadius: Number(e.target.value),
+                    })
+                  }
+                  style={{ width: "100%", accentColor: "#3b82f6" }}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="500"
+                  step="5"
+                  value={selectedComp.cornerRadius ?? 0}
+                  disabled={editorMode !== "editable" || isLocked(selectedComp)}
+                  onChange={(e) =>
+                    applySelectionChange({
+                      cornerRadius: Math.max(
+                        0,
+                        Math.min(500, Number(e.target.value) || 0),
+                      ),
+                    })
+                  }
+                  style={inputStyle}
+                />
+              </div>
+            )}
+{isRoundedBox && (
               <>
                 <div style={infoCardStyle}>
                   <div>
@@ -1225,7 +4457,7 @@ export function PropertiesPanel({
               </div>
             )}
 
-            <div style={inspectorSectionTitleStyle}>Identity & Rotation</div>
+            <div style={inspectorSectionTitleStyle}>Part Details</div>
 
             <div style={{ marginBottom: 6 }}>
               <label style={S.floatingLabel}>Rotation Y (°)</label>
@@ -1255,7 +4487,7 @@ export function PropertiesPanel({
             </div>
 
             <div style={inspectorSectionTitleStyle}>
-              Material / Grain / Edge
+              Material & Finish
             </div>
 
             <div style={{ marginBottom: 6 }}>
@@ -1411,12 +4643,11 @@ export function PropertiesPanel({
                 lineHeight: 1.45,
               }}
             >
-              Material, grain, and edge treatment are Blueprint production
-              metadata only. They do not reserve or deduct live inventory.
-              Actual inventory deduction remains in Create Estimation.
+              Blueprint production details only. Inventory is handled later in
+              Create Estimation.
             </div>
 
-            <div style={inspectorSectionTitleStyle}>Hardware Requirements</div>
+            <div style={inspectorSectionTitleStyle}>Hardware</div>
 
             <div
               style={{
@@ -1427,8 +4658,7 @@ export function PropertiesPanel({
                 lineHeight: 1.45,
               }}
             >
-              Add hardware needed by this selected part. Related Part is
-              automatically this object:
+              Hardware saved on this part:
               {" "}
               <b>{selectedComp.partCode || selectedComp.label || "Selected Part"}</b>.
             </div>
@@ -1749,7 +4979,7 @@ export function PropertiesPanel({
                   width: "100%",
                   minHeight: 32,
                   border: "1px solid rgba(96,165,250,.55)",
-                  borderRadius: 6,
+                  borderRadius: 0,
                   background: "rgba(37,99,235,.22)",
                   color: "#dbeafe",
                   fontSize: 9,
@@ -1779,10 +5009,8 @@ export function PropertiesPanel({
                 lineHeight: 1.45,
               }}
             >
-              Hardware entries are Blueprint production requirements only.
-              They do not deduct inventory or calculate price. Automatic
-              suggestions will be added in a later batch after manual
-              assignment is stable.
+              Hardware requirements only. No inventory deduction or pricing is
+              performed here.
             </div>
 
             <div style={{ marginBottom: 6 }}>

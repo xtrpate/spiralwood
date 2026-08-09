@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import api, { buildAssetUrl } from "../../services/api";
+import { buildEstimateProductionSnapshot } from "./data/estimateProductionSummary";
 
 const UNIT_OPTIONS = [
   "pc",
@@ -713,6 +714,56 @@ const formatInventoryQuantity = (value) => {
   });
 };
 
+// WISDOM Project Estimate Physical Specs V1
+const INVENTORY_MATERIAL_FORM_LABELS = {
+  sheet: "Sheet / Board",
+  linear: "Linear Material",
+  piece: "Solid / Stock Piece",
+  hardware: "Hardware / Counted Item",
+  other: "Other / Not Dimension-Based",
+};
+
+const formatPhysicalDimension = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  return number.toLocaleString("en-PH", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+};
+
+const getInventoryPhysicalSpec = (material = null) => {
+  if (!material) return "";
+
+  const form = String(material.material_form || "other")
+    .trim()
+    .toLowerCase();
+  const formLabel =
+    INVENTORY_MATERIAL_FORM_LABELS[form] || "Other / Not Dimension-Based";
+  const length = formatPhysicalDimension(material.length_mm);
+  const width = formatPhysicalDimension(material.width_mm);
+  const thickness = formatPhysicalDimension(material.thickness_mm);
+
+  if (form === "sheet") {
+    if (length && width && thickness) {
+      return `${formLabel} · ${length} × ${width} × ${thickness} mm`;
+    }
+    return `${formLabel} · Physical size not set`;
+  }
+
+  if (form === "linear" || form === "piece") {
+    const parts = [
+      length ? `L ${length} mm` : null,
+      width ? `W ${width} mm` : null,
+      thickness ? `T ${thickness} mm` : null,
+    ].filter(Boolean);
+
+    return parts.length ? `${formLabel} · ${parts.join(" · ")}` : formLabel;
+  }
+
+  return formLabel;
+};
+
 const getInventoryAvailability = (item = {}, material = null) => {
   const unit = String(material?.unit || item?.unit || "").trim();
 
@@ -871,7 +922,9 @@ function EstimateTable({
               </th>
               {isInventory && <th style={{ ...th, width: "13%" }}>Available Stock</th>}
               <th style={{ ...th, width: "10%" }}>Unit</th>
-              <th style={{ ...th, width: "10%" }}>Quantity</th>
+              <th style={{ ...th, width: "10%" }}>
+                {isInventory ? "Required Qty" : "Quantity"}
+              </th>
               {isInventory && <th style={{ ...th, width: "18%" }}>Stock Status</th>}
               {(!isInventory || showInventoryPricing) && (
                 <th style={{ ...th, width: "12%" }}>Unit Rate</th>
@@ -918,21 +971,45 @@ function EstimateTable({
                     </td>
                     <td style={td}>
                       {isInventory ? (
-                        <select
-                          value={item.raw_material_id || ""}
-                          onChange={(event) =>
-                            onUpdate(item._row_key, "raw_material_id", event.target.value)
-                          }
-                          style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
-                          disabled={readOnly}
-                        >
-                          <option value="">Select material...</option>
-                          {rawMaterials.map((material) => (
-                            <option key={material.id} value={material.id}>
-                              {material.name}
-                            </option>
-                          ))}
-                        </select>
+                        <>
+                          {/* WISDOM Project Estimate Physical Specs V1 Syntax Hotfix */}
+                          <select
+                            value={item.raw_material_id || ""}
+                            onChange={(event) =>
+                              onUpdate(item._row_key, "raw_material_id", event.target.value)
+                            }
+                            style={{ ...cellInput, ...readOnlyFieldStyle(readOnly), width: "100%" }}
+                            disabled={readOnly}
+                          >
+                            <option value="">Select material...</option>
+                            {rawMaterials.map((material) => (
+                              <option key={material.id} value={material.id}>
+                                {material.name}
+                                {getInventoryPhysicalSpec(material)
+                                  ? ` — ${getInventoryPhysicalSpec(material)}`
+                                  : ""}
+                              </option>
+                            ))}
+                          </select>
+                          {selectedMaterial && (
+                            <div
+                              style={{
+                                marginTop: 5,
+                                padding: "5px 7px",
+                                border: "1px solid #e4e4e7",
+                                background: "#fafafa",
+                                color: "#52525b",
+                                fontSize: 10,
+                                lineHeight: 1.35,
+                              }}
+                            >
+                              <strong style={{ color: "#27272a" }}>
+                                Stock specification:
+                              </strong>{" "}
+                              {getInventoryPhysicalSpec(selectedMaterial)}
+                            </div>
+                          )}
+                        </>
                       ) : (
                         <input
                           value={item.name}
@@ -1129,6 +1206,172 @@ function EstimateTable({
 }
 
 
+function ProductionSnapshotPanel({ snapshot }) {
+  const parts = Array.isArray(snapshot?.parts) ? snapshot.parts : [];
+  const summary = snapshot?.summary || {};
+  const isReady = summary.handoffStatus === "READY";
+
+  return (
+    <div style={productionSnapshotCard}>
+      <div style={productionSnapshotHeader}>
+        <div>
+          <div style={productionEyebrow}>Production Reference</div>
+          <h3 style={{ ...sectionTitle, marginTop: 5 }}>
+            Blueprint Production Requirements
+          </h3>
+          <p style={{ ...helperText, maxWidth: 850 }}>
+            Use the saved Blueprint details as a production guide. Admin manually
+            selects the actual Required Inventory Materials. Nothing in this panel
+            reserves, deducts, or automatically matches inventory.
+          </p>
+        </div>
+        <div
+          style={{
+            ...productionStatus,
+            ...(isReady ? productionStatusReady : productionStatusReview),
+          }}
+        >
+          <span style={productionStatusLabel}>Production Status</span>
+          <strong>{summary.handoffStatus || "REVIEW"}</strong>
+        </div>
+      </div>
+
+      <div style={productionSummaryGrid}>
+        {[
+          ["Production Parts", summary.productionParts || 0],
+          ["Material Types", summary.materialTypes || 0],
+          ["Edge-Treated Parts", summary.edgeTreatedParts || 0],
+          ["Hardware Items", summary.hardwareQty || 0],
+          ["Custom Profiles", summary.customProfiles || 0],
+          ["Machining Steps", summary.machiningOps || 0],
+        ].map(([label, value]) => (
+          <div key={label} style={productionMetricCard}>
+            <span style={productionMetricLabel}>{label}</span>
+            <strong style={productionMetricValue}>{value}</strong>
+          </div>
+        ))}
+      </div>
+
+      {!parts.length ? (
+        <div style={productionEmpty}>
+          No saved Blueprint production parts are available yet. Save the Blueprint
+          design first, then return to Project Estimate.
+        </div>
+      ) : (
+        <>
+          {Number(summary.incompletePartCount || 0) > 0 && (
+            <div style={productionReviewNotice}>
+              Review {summary.incompletePartCount} part
+              {summary.incompletePartCount === 1 ? "" : "s"} with missing production
+              identity data before finalizing the quotation.
+            </div>
+          )}
+
+          <div style={productionGuide}>
+            <strong>Inventory selection is manual.</strong>
+            <span>
+              Review the requirements below, then choose the actual stock items and
+              quantities in Required Inventory Materials.
+            </span>
+          </div>
+
+          <div style={{ overflowX: "auto" }}>
+            <table style={productionTable}>
+              <thead>
+                <tr style={productionTableHead}>
+                  <th style={{ ...productionTh, width: "18%" }}>Part</th>
+                  <th style={{ ...productionTh, width: "6%" }}>Qty</th>
+                  <th style={{ ...productionTh, width: "18%" }}>Cut Size</th>
+                  <th style={{ ...productionTh, width: "20%" }}>Material</th>
+                  <th style={{ ...productionTh, width: "14%" }}>Grain</th>
+                  <th style={{ ...productionTh, width: "24%" }}>Production Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {parts.map((part) => {
+                  const detailLines = [
+                    ...part.edgeLines,
+                    ...part.hardwareLines,
+                    ...part.cutoutLines,
+                    ...part.notchLines,
+                    ...part.operationLines,
+                  ];
+
+                  return (
+                    <tr key={part.id} style={productionRow}>
+                      <td style={productionTd}>
+                        <div style={productionPartCode}>{part.code}</div>
+                        <div style={productionPartName}>{part.name}</div>
+                        {part.completenessIssues.length > 0 && (
+                          <div style={productionPartReview}>
+                            Review: {part.completenessIssues.join(", ")}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ ...productionTd, fontWeight: 850 }}>
+                        {part.quantity}
+                      </td>
+                      <td style={productionTd}>
+                        <span style={productionMono}>{part.cutSize}</span>
+                      </td>
+                      <td style={productionTd}>
+                        <div style={{ fontWeight: 800 }}>{part.material}</div>
+                      </td>
+                      <td style={productionTd}>
+                        <div style={productionGrain}>{part.grain}</div>
+                      </td>
+                      <td style={productionTd}>
+                        {part.hasSpecialDetails ? (
+                          <>
+                            {part.productionTags.length > 0 && (
+                              <div style={productionTagWrap}>
+                                {part.productionTags.map((tag) => (
+                                  <span
+                                    key={`${part.id}-${tag}`}
+                                    style={productionTag}
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {detailLines.length > 0 ? (
+                              <div style={productionDetailList}>
+                                {detailLines.map((line, index) => (
+                                  <div key={`${part.id}-detail-${index}`}>
+                                    • {line}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div style={productionSecondary}>
+                                Custom profile saved.
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span style={productionStandard}>Standard part</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={productionFooterNote}>
+            This production reference does not change pricing. Quotation amounts still
+            come from Blueprint Components, Additional Items, Labor, Logistics, and
+            the existing quotation fields.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 const getOversizedDeliveryDraftStorageKey = (blueprintId) =>
   `wisdom_oversized_delivery_draft:${blueprintId}`;
 
@@ -1168,6 +1411,10 @@ export default function EstimationPage() {
   const [approving, setApproving] = useState(false);
 
   const parsedDesign = useMemo(() => parseBlueprintDesignData(blueprint), [blueprint]);
+  const productionSnapshot = useMemo(
+    () => buildEstimateProductionSnapshot(parsedDesign),
+    [parsedDesign],
+  );
   const preferredAutoItems = useMemo(
     () => buildPreferredAutoItems(parsedDesign),
     [parsedDesign],
@@ -1987,6 +2234,8 @@ export default function EstimationPage() {
         </div>
       </div>
 
+      <ProductionSnapshotPanel snapshot={productionSnapshot} />
+
       <EstimateTable
         title="Blueprint Components"
         helper="Generated from the latest blueprint design. Confirm each component, quantity, unit rate, and note."
@@ -2271,6 +2520,250 @@ const helperText = {
   maxWidth: 760,
 };
 
+const productionSnapshotCard = {
+  ...card,
+  marginBottom: 20,
+  overflow: "hidden",
+};
+
+const productionSnapshotHeader = {
+  padding: "20px 22px",
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 20,
+  flexWrap: "wrap",
+  borderBottom: "1px solid #e4e4e7",
+  background: "#fff",
+};
+
+const productionEyebrow = {
+  fontSize: 9,
+  fontWeight: 900,
+  color: "#52525b",
+  textTransform: "uppercase",
+  letterSpacing: "0.14em",
+};
+
+const productionStatus = {
+  minWidth: 126,
+  padding: "10px 12px",
+  display: "grid",
+  gap: 3,
+  textAlign: "right",
+  borderRadius: 0,
+};
+
+const productionStatusReady = {
+  background: "#ecfdf5",
+  color: "#166534",
+  borderLeft: "3px solid #22c55e",
+};
+
+const productionStatusReview = {
+  background: "#fff7ed",
+  color: "#9a3412",
+  borderLeft: "3px solid #f97316",
+};
+
+const productionStatusLabel = {
+  fontSize: 8,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: "0.12em",
+  opacity: 0.78,
+};
+
+const productionSummaryGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))",
+  gap: 0,
+  borderBottom: "1px solid #e4e4e7",
+  background: "#fafafa",
+};
+
+const productionMetricCard = {
+  minHeight: 72,
+  padding: "14px 16px",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "space-between",
+  gap: 8,
+  borderRight: "1px solid #e4e4e7",
+  background: "#fafafa",
+};
+
+const productionMetricLabel = {
+  fontSize: 8,
+  fontWeight: 900,
+  color: "#71717a",
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
+};
+
+const productionMetricValue = {
+  fontSize: 20,
+  lineHeight: 1,
+  color: "#18181b",
+};
+
+const productionGuide = {
+  margin: "16px 18px 0",
+  padding: "12px 14px",
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 6,
+  fontSize: 11,
+  lineHeight: 1.5,
+  color: "#3f3f46",
+  background: "#f4f4f5",
+  borderLeft: "3px solid #18181b",
+};
+
+const productionReviewNotice = {
+  margin: "16px 18px 0",
+  padding: "11px 13px",
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#9a3412",
+  background: "#fff7ed",
+  borderLeft: "3px solid #f97316",
+};
+
+const productionEmpty = {
+  padding: 28,
+  color: "#71717a",
+  textAlign: "center",
+  fontSize: 12,
+  lineHeight: 1.6,
+  background: "#fcfcfd",
+};
+
+const productionTable = {
+  width: "100%",
+  minWidth: 1080,
+  marginTop: 14,
+  borderCollapse: "separate",
+  borderSpacing: 0,
+  tableLayout: "fixed",
+  fontSize: 11,
+};
+
+const productionTableHead = {
+  background: "#18181b",
+};
+
+const productionTh = {
+  padding: "11px 12px",
+  textAlign: "left",
+  color: "#fff",
+  fontSize: 8,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: "0.1em",
+  borderRight: "1px solid #3f3f46",
+};
+
+const productionRow = {
+  background: "#fff",
+};
+
+const productionTd = {
+  padding: "10px 12px",
+  verticalAlign: "middle",
+  borderBottom: "1px solid #e4e4e7",
+  color: "#27272a",
+  lineHeight: 1.4,
+};
+
+const productionPartCode = {
+  fontSize: 10,
+  fontWeight: 900,
+  color: "#18181b",
+  letterSpacing: "0.04em",
+};
+
+const productionPartName = {
+  marginTop: 3,
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#3f3f46",
+};
+
+const productionPartReview = {
+  marginTop: 6,
+  fontSize: 9,
+  fontWeight: 750,
+  color: "#c2410c",
+};
+
+const productionMono = {
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  fontSize: 10,
+  fontWeight: 700,
+  color: "#18181b",
+};
+
+const productionSecondary = {
+  marginTop: 4,
+  fontSize: 9,
+  color: "#71717a",
+  lineHeight: 1.4,
+};
+
+const productionGrain = {
+  fontSize: 9,
+  fontWeight: 750,
+  color: "#52525b",
+};
+
+const productionStandard = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: 20,
+  padding: "3px 6px",
+  background: "#fafafa",
+  color: "#71717a",
+  fontSize: 8,
+  fontWeight: 750,
+  borderRadius: 0,
+};
+
+const productionTagWrap = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 5,
+  marginBottom: 5,
+};
+
+const productionTag = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: 22,
+  padding: "4px 7px",
+  background: "#f4f4f5",
+  color: "#3f3f46",
+  fontSize: 8,
+  fontWeight: 800,
+  borderRadius: 0,
+};
+
+const productionDetailList = {
+  display: "grid",
+  gap: 3,
+  fontSize: 9,
+  color: "#52525b",
+  lineHeight: 1.45,
+};
+
+const productionFooterNote = {
+  padding: "12px 18px 16px",
+  color: "#71717a",
+  fontSize: 9,
+  lineHeight: 1.5,
+  background: "#fff",
+};
+
 const estimateTableStyle = {
   width: "100%",
   borderCollapse: "separate",
@@ -2518,8 +3011,8 @@ const btnPrimary = {
   padding: "9px 16px",
   background: "#18181b",
   color: "#fff",
-  border: "1px solid #18181b",
-  borderRadius: 9,
+  border: "none",
+  borderRadius: 0,
   cursor: "pointer",
   fontSize: 12,
   fontWeight: 800,
@@ -2529,10 +3022,10 @@ const btnPrimary = {
 const btnGhost = {
   minHeight: 38,
   padding: "9px 14px",
-  background: "#fff",
+  background: "#f4f4f5",
   color: "#27272a",
-  border: "1px solid #d4d4d8",
-  borderRadius: 9,
+  border: "none",
+  borderRadius: 0,
   cursor: "pointer",
   fontSize: 12,
   fontWeight: 750,
@@ -2542,10 +3035,10 @@ const btnGhost = {
 const btnBack = {
   minWidth: 72,
   padding: "8px 11px",
-  background: "#fff",
+  background: "#f4f4f5",
   color: "#52525b",
-  border: "1px solid #d4d4d8",
-  borderRadius: 9,
+  border: "none",
+  borderRadius: 0,
   cursor: "pointer",
   fontSize: 12,
   fontWeight: 750,
@@ -2556,8 +3049,8 @@ const btnAdd = {
   padding: "8px 13px",
   background: "#18181b",
   color: "#fff",
-  border: "1px solid #18181b",
-  borderRadius: 8,
+  border: "none",
+  borderRadius: 0,
   cursor: "pointer",
   fontSize: 11,
   fontWeight: 800,
@@ -2568,10 +3061,10 @@ const btnRemove = {
   width: 32,
   height: 32,
   padding: 0,
-  background: "#fff",
+  background: "#fef2f2",
   color: "#b91c1c",
-  border: "1px solid #fecaca",
-  borderRadius: 8,
+  border: "none",
+  borderRadius: 0,
   cursor: "pointer",
   fontSize: 12,
   fontWeight: 800,

@@ -4,8 +4,8 @@ import {
   clamp,
   getMaterialPalette,
   createMaterial,
+  createFurnitureMaterial,
   addEdgeHighlight,
-  addInnerShadowPanel,
   addShelfLine,
   addHandle,
   addBoxPart,
@@ -16,6 +16,13 @@ import { addSmartBox, addSmartPanel } from "../shapes/roundedBox";
 import { OPEN_SHELF_SET } from "../data/furnitureTypes";
 
 const BOARD = 18;
+
+// Visual-only offsets for overlay doors and drawer fronts.
+// The old front panel placement made the front face land exactly on the
+// carcass front plane, causing z-fighting / flickering as the camera moved.
+// These values do not change saved component dimensions or coordinates.
+const CASEWORK_FRONT_PANEL_DEPTH = 4;
+const CASEWORK_FRONT_CLEARANCE = 1.5;
 
 function buildCasework3D(
   root,
@@ -46,6 +53,12 @@ function buildCasework3D(
   const toeKick = isBaseLike ? Math.max(30, Math.min(100, h * 0.08)) : 0;
   const bodyH = h - toeKick;
   const yOffset = toeKick / 2;
+  const frontPanelCenterZ =
+    d / 2 +
+    CASEWORK_FRONT_CLEARANCE +
+    CASEWORK_FRONT_PANEL_DEPTH / 2;
+  const frontSurfaceZ =
+    frontPanelCenterZ + CASEWORK_FRONT_PANEL_DEPTH / 2;
 
   const top = addSmartBox(
     root,
@@ -99,11 +112,12 @@ function buildCasework3D(
       selectableMeshes,
       [w - t * 2, toeKick, d * 0.68],
       [0, -h / 2 + toeKick / 2, d * 0.08],
-      new THREE.MeshStandardMaterial({
-        color: 0x5b4632,
-        roughness: 0.9,
-        metalness: 0,
-      }),
+      createFurnitureMaterial(
+        comp,
+        "#5b4632",
+        "carcass",
+        { roughness: 0.82, clearcoat: 0.02 },
+      ),
       comp.id,
       r,
     );
@@ -169,7 +183,15 @@ function buildCasework3D(
     const shelves = 4;
     for (let i = 1; i <= shelves; i += 1) {
       const y = yOffset + bodyH / 2 - (bodyH / (shelves + 1)) * i;
-      addShelfLine(root, selectableMeshes, w - t * 2 - 10, d - 14, y, comp.id);
+      addShelfLine(
+        root,
+        selectableMeshes,
+        w - t * 2 - 10,
+        d - 14,
+        y,
+        comp.id,
+        insideMat,
+      );
     }
   } else if (isDrawerType) {
     const rows =
@@ -184,15 +206,23 @@ function buildCasework3D(
         selectableMeshes,
         w - 10,
         rowH - 10,
-        4,
+        CASEWORK_FRONT_PANEL_DEPTH,
         0,
         y,
-        d / 2 - 2,
+        frontPanelCenterZ,
         frontMat,
         comp.id,
         r,
       );
-      addHandle(root, selectableMeshes, 0, y, d / 2, true, comp.id);
+      addHandle(
+        root,
+        selectableMeshes,
+        0,
+        y,
+        frontSurfaceZ,
+        true,
+        comp.id,
+      );
     }
   } else {
     const doorW = w / 2 - 6;
@@ -201,10 +231,10 @@ function buildCasework3D(
       selectableMeshes,
       doorW,
       bodyH - 10,
-      4,
+      CASEWORK_FRONT_PANEL_DEPTH,
       -w / 4,
       yOffset,
-      d / 2 - 2,
+      frontPanelCenterZ,
       frontMat,
       comp.id,
       r,
@@ -214,28 +244,35 @@ function buildCasework3D(
       selectableMeshes,
       doorW,
       bodyH - 10,
-      4,
+      CASEWORK_FRONT_PANEL_DEPTH,
       w / 4,
       yOffset,
-      d / 2 - 2,
+      frontPanelCenterZ,
       frontMat,
       comp.id,
       r,
     );
-    addHandle(root, selectableMeshes, -8, yOffset, d / 2, false, comp.id);
-    addHandle(root, selectableMeshes, 8, yOffset, d / 2, false, comp.id);
+    addHandle(
+      root,
+      selectableMeshes,
+      -8,
+      yOffset,
+      frontSurfaceZ,
+      false,
+      comp.id,
+    );
+    addHandle(
+      root,
+      selectableMeshes,
+      8,
+      yOffset,
+      frontSurfaceZ,
+      false,
+      comp.id,
+    );
   }
 
-  addInnerShadowPanel(
-    root,
-    w - t * 2 - 4,
-    bodyH - t * 2 - 4,
-    d - 18,
-    0,
-    yOffset,
-    -4,
-    comp.id,
-  );
+
   [top, bottom, left, right, back].forEach((m) =>
     addEdgeHighlight(root, m, palette.edge, 0.1),
   );
@@ -293,11 +330,12 @@ function buildTable3D(
     ),
   );
 
-  const apronMat = new THREE.MeshStandardMaterial({
-    color: palette.carcass,
-    roughness: 0.7,
-    metalness: 0.03,
-  });
+  const apronMat = createFurnitureMaterial(
+    comp,
+    palette.carcass,
+    "carcass",
+    { roughness: 0.62, clearcoat: 0.06 },
+  );
   addSmartBox(
     root,
     selectableMeshes,
@@ -439,19 +477,19 @@ function buildSofa3D(root, selectableMeshes, comp, palette, r = 0) {
   const backH = Math.max(260, h * 0.34);
   const armW = Math.max(140, w * 0.12);
 
-  const frameMat = new THREE.MeshPhysicalMaterial({
-    color: palette.accent,
-    roughness: 0.75,
-    metalness: 0.02,
-    clearcoat: 0.08,
-  });
+  const frameMat = createFurnitureMaterial(
+    { ...comp, material: "Wood Frame" },
+    palette.accent,
+    "frame",
+    { roughness: 0.64, clearcoat: 0.06 },
+  );
 
-  const fabricMat = new THREE.MeshPhysicalMaterial({
-    color: palette.fabric,
-    roughness: 0.9,
-    metalness: 0,
-    clearcoat: 0.02,
-  });
+  const fabricMat = createFurnitureMaterial(
+    { ...comp, material: "Upholstery Fabric", grainDirection: "none" },
+    palette.fabric,
+    "fabric",
+    { roughness: 0.94, clearcoat: 0 },
+  );
 
   addSmartPanel(
     root,
@@ -576,11 +614,12 @@ function buildBed3D(
     r,
   );
 
-  const mattressMat = new THREE.MeshPhysicalMaterial({
-    color: 0xf5f5f4,
-    roughness: 0.95,
-    metalness: 0,
-  });
+  const mattressMat = createFurnitureMaterial(
+    { material: "Upholstery Fabric", grainDirection: "none" },
+    "#f5f5f4",
+    "mattress",
+    { roughness: 0.96, clearcoat: 0 },
+  );
   addSmartPanel(
     root,
     selectableMeshes,
@@ -601,18 +640,19 @@ function buildOfficeChair3D(root, selectableMeshes, comp, palette) {
   const h = comp.height;
   const d = comp.depth;
 
-  const frameMat = new THREE.MeshPhysicalMaterial({
-    color: palette.accent,
-    roughness: 0.3,
-    metalness: 0.92,
-    clearcoat: 0.4,
-  });
+  const frameMat = createFurnitureMaterial(
+    { ...comp, material: "Brushed Metal", grainDirection: "none" },
+    palette.accent,
+    "metal",
+    { roughness: 0.24, metalness: 0.92, clearcoat: 0.34 },
+  );
 
-  const fabricMat = new THREE.MeshPhysicalMaterial({
-    color: palette.fabric,
-    roughness: 0.9,
-    metalness: 0,
-  });
+  const fabricMat = createFurnitureMaterial(
+    { ...comp, material: "Upholstery Fabric", grainDirection: "none" },
+    palette.fabric,
+    "fabric",
+    { roughness: 0.94, clearcoat: 0 },
+  );
 
   addRoundedPanel(
     root,
@@ -794,11 +834,12 @@ function buildPatioSet3D(
     r,
   );
 
-  const chairMat = new THREE.MeshPhysicalMaterial({
-    color: palette.front,
-    roughness: 0.7,
-    metalness: 0.02,
-  });
+  const chairMat = createFurnitureMaterial(
+    comp,
+    palette.front,
+    "front",
+    { roughness: 0.58, clearcoat: 0.08 },
+  );
 
   const positions = [
     [-comp.width * 0.34, -comp.height * 0.1, -comp.depth * 0.26],

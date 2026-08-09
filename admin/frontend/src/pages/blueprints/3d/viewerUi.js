@@ -1,13 +1,16 @@
 // Shared layout and library configuration for the 3D blueprint editor.
 export const LIBRARY_TABS = [
   { key: "all", label: "All" },
-  { key: "templates", label: "Templates" },
+  { key: "templates", label: "Furniture" },
   { key: "parts", label: "Parts" },
+  { key: "custom", label: "Custom" },
 ];
 
 export const getLibraryBucket = (groupLabel = "") => {
   const text = groupLabel.toLowerCase();
 
+  // Custom Shape Parts must be checked before the generic "part" bucket.
+  if (text.includes("custom shape")) return "custom";
   if (text.includes("part")) return "parts";
   if (text.includes("template")) return "templates";
 
@@ -25,12 +28,12 @@ export const VIEWER_UI = {
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-    background: "rgba(7, 14, 26, 0.96)",
-    border: "1px solid rgba(112, 140, 176, 0.24)",
-    borderRadius: 10,
-    padding: 12,
-    backdropFilter: "blur(8px)",
-    boxShadow: "0 18px 42px rgba(0,0,0,.30)",
+    background: "rgba(7, 14, 26, 0.985)",
+    border: "1px solid rgba(100, 124, 155, 0.46)",
+    borderRadius: 2,
+    padding: 10,
+    backdropFilter: "blur(6px)",
+    boxShadow: "0 10px 24px rgba(0,0,0,.24)",
     boxSizing: "border-box",
     zIndex: 9,
   },
@@ -47,18 +50,18 @@ export const VIEWER_UI = {
     position: "absolute",
     top: 14,
     right: 14,
-    width: 352,
+    width: 364,
     maxWidth: "calc(100% - 28px)",
     maxHeight: "calc(100% - 28px)",
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
-    background: "rgba(7, 14, 26, 0.96)",
-    border: "1px solid rgba(112, 140, 176, 0.24)",
-    borderRadius: 10,
-    padding: 12,
-    backdropFilter: "blur(8px)",
-    boxShadow: "0 18px 42px rgba(0,0,0,.30)",
+    background: "rgba(7, 14, 26, 0.985)",
+    border: "1px solid rgba(100, 124, 155, 0.46)",
+    borderRadius: 2,
+    padding: 10,
+    backdropFilter: "blur(6px)",
+    boxShadow: "0 10px 24px rgba(0,0,0,.24)",
     boxSizing: "border-box",
     zIndex: 9,
   },
@@ -66,35 +69,34 @@ export const VIEWER_UI = {
   inspectorTabsRow: {
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 8,
+    gap: 0,
     marginBottom: 10,
     position: "sticky",
     top: 0,
     zIndex: 2,
-    background: "rgba(7, 14, 26, 0.96)",
+    background: "rgba(7, 14, 26, 0.985)",
     paddingBottom: 2,
   },
 
   inspectorTabBtn: {
-    height: 36,
+    height: 34,
     padding: "0 10px",
-    borderRadius: 7,
-    border: "1px solid rgba(89, 112, 143, 0.72)",
-    background: "rgba(11,20,36,.92)",
-    color: "#b7c5da",
+    borderRadius: 0,
+    border: "1px solid rgba(71,85,105,.72)",
+    background: "#0b1424",
+    color: "#aebdd1",
     cursor: "pointer",
     fontSize: 11,
-    fontWeight: 700,
+    fontWeight: 750,
     minWidth: 0,
     boxSizing: "border-box",
   },
 
   inspectorTabBtnActive: {
-    border: "1px solid rgba(96,165,250,.65)",
-    background:
-      "linear-gradient(180deg, rgba(37,99,235,.28) 0%, rgba(29,78,216,.2) 100%)",
-    color: "#eef4ff",
-    boxShadow: "inset 0 0 0 1px rgba(147,197,253,.08)",
+    border: "1px solid rgba(96,165,250,.72)",
+    background: "#172844",
+    color: "#f1f6ff",
+    boxShadow: "none",
   },
 
   inspectorTabBody: {

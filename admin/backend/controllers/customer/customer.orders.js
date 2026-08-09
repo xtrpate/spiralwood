@@ -411,7 +411,8 @@ exports.getOrders = async (req, res) => {
     const [orders] = await db.query(
       `SELECT id, order_number, status, payment_method,
               payment_status, subtotal, total, payment_url,
-              delivery_address, walkin_customer_name AS recipient_name,
+              delivery_address, order_type, blueprint_id,
+              walkin_customer_name AS recipient_name,
               notes, created_at
        FROM orders
        WHERE customer_id = ?
@@ -420,14 +421,36 @@ exports.getOrders = async (req, res) => {
     );
 
     for (const order of orders) {
-      // ── FIXED: Switched to .query ──
       const [items] = await db.query(
-        `SELECT COUNT(*) AS cnt, SUM(quantity) AS qty
-         FROM order_items WHERE order_id = ?`,
+        `SELECT oi.product_name, oi.quantity, oi.unit_price, p.image_url
+         FROM order_items oi
+         LEFT JOIN products p ON p.id = oi.product_id
+         WHERE oi.order_id = ?
+         ORDER BY oi.id ASC`,
         [order.id],
       );
-      order.item_count = items[0].cnt;
-      order.total_qty = items[0].qty;
+
+      order.item_count = items.length;
+      order.total_qty = items.reduce(
+        (sum, item) => sum + Number(item.quantity || 0),
+        0,
+      );
+
+      // Compact My Orders cards only need a small preview.
+      // Full item details still come from GET /customer/orders/:id.
+      order.items_preview = items.slice(0, 2);
+      order.blueprint_preview = null;
+      if (order.blueprint_id) {
+        const [blueprintRows] = await db.query(
+          `SELECT title, thumbnail_url, source, file_url, file_type
+           FROM blueprints
+           WHERE id = ?
+           LIMIT 1`,
+          [order.blueprint_id],
+        );
+
+        order.blueprint_preview = blueprintRows[0] || null;
+      }
     }
 
     res.json(orders);
@@ -450,6 +473,18 @@ exports.getOrderById = async (req, res) => {
       return res.status(404).json({ message: "Order not found." });
 
     const order = rows[0];
+    order.blueprint_detail_preview = null;
+    if (order.blueprint_id) {
+      const [blueprintRows] = await db.query(
+        `SELECT title, thumbnail_url, source, file_url, file_type
+         FROM blueprints
+         WHERE id = ?
+         LIMIT 1`,
+        [order.blueprint_id],
+      );
+
+      order.blueprint_detail_preview = blueprintRows[0] || null;
+    }
     // ── FIXED: Switched to .query ──
     const [items] = await db.query(
       `SELECT oi.*, p.image_url

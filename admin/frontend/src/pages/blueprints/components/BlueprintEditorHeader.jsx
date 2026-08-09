@@ -18,12 +18,18 @@ export function BlueprintEditorHeader({
   handleRedo,
   canRedo = false,
   openExportSheets,
+  openProjectEstimate,
   saveDesign,
   saving,
   setPublishForm,
   setPublishModal,
   handleUnpublishProduct,
 }) {
+  const headerToolBtn = {
+    ...S.toolBtn,
+    borderRadius: 0,
+  };
+
   return (
     <div
       style={{
@@ -48,7 +54,7 @@ export function BlueprintEditorHeader({
         <button
           onClick={() => navigate("/admin/blueprints")}
           style={{
-            ...S.toolBtn,
+            ...headerToolBtn,
             background: "#ffffff",
             color: "#18181b",
             border: "1px solid #d7dce2",
@@ -92,7 +98,7 @@ export function BlueprintEditorHeader({
             padding: 3,
             border: "1px solid #dfe3e8",
             background: "#f7f8fa",
-            borderRadius: 8,
+            borderRadius: 0,
             overflowX: "auto",
             maxWidth: "100%",
           }}
@@ -102,7 +108,7 @@ export function BlueprintEditorHeader({
               key={v.key}
               onClick={() => setView(v.key)}
               style={{
-                ...S.toolBtn,
+                ...headerToolBtn,
                 background: view === v.key ? "#111827" : "transparent",
                 color: view === v.key ? "#ffffff" : "#52525b",
                 fontWeight: view === v.key ? 800 : 600,
@@ -138,7 +144,7 @@ export function BlueprintEditorHeader({
               fontSize: 11,
               fontWeight: 800,
               letterSpacing: "0.08em",
-              borderRadius: 7,
+              borderRadius: 0,
             }}
           >
             MM
@@ -206,7 +212,7 @@ export function BlueprintEditorHeader({
                 padding: 3,
                 border: "1px solid #dfe3e8",
                 background: "#ffffff",
-                borderRadius: 8,
+                borderRadius: 0,
               }}
             >
               {["reference", "editable"].map((mode) => (
@@ -217,7 +223,7 @@ export function BlueprintEditorHeader({
                     else switchToEditableMode();
                   }}
                   style={{
-                    ...S.toolBtn,
+                    ...headerToolBtn,
                     background:
                       editorMode === mode ? "#111827" : "transparent",
                     color: editorMode === mode ? "#ffffff" : "#52525b",
@@ -256,7 +262,7 @@ export function BlueprintEditorHeader({
               <button
                 onClick={() => setShowGrid((g) => !g)}
                 style={{
-                  ...S.toolBtn,
+                  ...headerToolBtn,
                   background: "#ffffff",
                   color: "#18181b",
                   border: "1px solid #dfe3e8",
@@ -271,7 +277,7 @@ export function BlueprintEditorHeader({
               title="Undo (Ctrl+Z)"
               disabled={!canUndo}
               style={{
-                ...S.toolBtn,
+                ...headerToolBtn,
                 background: "#ffffff",
                 color: "#18181b",
                 border: "1px solid #dfe3e8",
@@ -286,7 +292,7 @@ export function BlueprintEditorHeader({
               title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
               disabled={!canRedo}
               style={{
-                ...S.toolBtn,
+                ...headerToolBtn,
                 background: "#ffffff",
                 color: "#18181b",
                 border: "1px solid #dfe3e8",
@@ -331,7 +337,7 @@ export function BlueprintEditorHeader({
             <button
               onClick={() => openExportSheets(false)}
               style={{
-                ...S.toolBtn,
+                ...headerToolBtn,
                 background: "#ffffff",
                 color: "#18181b",
                 border: "1px solid #dfe3e8",
@@ -343,7 +349,7 @@ export function BlueprintEditorHeader({
             <button
               onClick={() => openExportSheets(true)}
               style={{
-                ...S.toolBtn,
+                ...headerToolBtn,
                 background: "#ffffff",
                 color: "#18181b",
                 border: "1px solid #dfe3e8",
@@ -373,10 +379,26 @@ export function BlueprintEditorHeader({
             </span>
 
             <button
+              type="button"
+              onClick={openProjectEstimate}
+              title="Open Project Estimate for this Blueprint"
+              style={{
+                ...headerToolBtn,
+                minWidth: 112,
+                background: "#ffffff",
+                color: "#111827",
+                border: "1px solid #111827",
+                fontWeight: 800,
+              }}
+            >
+              Project Estimate
+            </button>
+
+            <button
               onClick={saveDesign}
               disabled={saving}
               style={{
-                ...S.toolBtn,
+                ...headerToolBtn,
                 minWidth: 72,
                 background: "#111827",
                 color: "#ffffff",
@@ -398,7 +420,7 @@ export function BlueprintEditorHeader({
                 setPublishModal(true);
               }}
               style={{
-                ...S.toolBtn,
+                ...headerToolBtn,
                 background: "#ffffff",
                 color: "#18181b",
                 border: "1px solid #bfc5cd",
@@ -410,7 +432,7 @@ export function BlueprintEditorHeader({
             <button
               onClick={handleUnpublishProduct}
               style={{
-                ...S.toolBtn,
+                ...headerToolBtn,
                 background: "#fffafa",
                 color: "#991b1b",
                 border: "1px solid #fecaca",

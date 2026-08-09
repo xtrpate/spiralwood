@@ -211,7 +211,7 @@ export default function CartPage() {
     ? "You selected both ready-made and custom items. Please separate them before continuing."
     : hasBlueprintSelected
       ? "Custom / blueprint items follow quotation-based checkout."
-      : "Shipping and final totals will be confirmed during checkout.";
+      : "Free delivery applies to ready-made products.";
 
   const toastNotification = (
     <div className="premium-toast-container">
@@ -543,19 +543,12 @@ export default function CartPage() {
                           {item.base_blueprint_title || item.product_name}
                         </h3>
 
-                        <div className="fm-cart-meta-line status">
-                          {blueprint ? (
-                            <>
-                              <Scissors size={14} />
-                              <span>Custom / Blueprint Request</span>
-                            </>
-                          ) : (
-                            <>
-                              <Package size={14} />
-                              <span>Ready-Made Product</span>
-                            </>
-                          )}
-                        </div>
+                        {blueprint ? (
+                          <div className="fm-cart-meta-line status">
+                            <Scissors size={14} />
+                            <span>Custom / Blueprint Request</span>
+                          </div>
+                        ) : null}
 
                         {item.wood_type ? (
                           <div className="fm-cart-meta-line">
@@ -670,16 +663,6 @@ export default function CartPage() {
               {cart.length !== 1 ? "s" : ""} selected
             </div>
           )}
-
-          <div className="fm-cart-bottom-actions">
-            <button
-              type="button"
-              className="fm-cart-secondary-btn"
-              onClick={() => navigate("/catalog")}
-            >
-              ← Continue shopping
-            </button>
-          </div>
         </section>
 
         <aside className="fm-cart-summary">
@@ -687,17 +670,14 @@ export default function CartPage() {
             <h2>Cart Totals</h2>
 
             <div className="fm-cart-summary-row">
-              <span>
-                Selected ({selectedLineCount} line
-                {selectedLineCount !== 1 ? "s" : ""} • {selectedUnits} unit
-                {selectedUnits !== 1 ? "s" : ""})
-              </span>
-              <strong>{formatPeso(selectedPricedSubtotal)}</strong>
-            </div>
-
-            <div className="fm-cart-summary-row">
               <span>Shipping</span>
-              <strong className="green">Calculated at checkout</strong>
+              <strong className="green">
+                {isMixedSelection
+                  ? "Varies by order type"
+                  : hasBlueprintSelected
+                    ? "Calculated for custom order"
+                    : "Free"}
+              </strong>
             </div>
 
             <div className="fm-cart-summary-divider" />

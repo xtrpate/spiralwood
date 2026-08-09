@@ -1219,3 +1219,1290 @@ a {
   color: #0f172a; /* Turns dark on hover */
   text-decoration: underline;
 }
+
+/* WISDOM CART DRAWER UI V3 START */
+.cust-mini-cart-drawer {
+  width: min(480px, 94vw);
+  background: #ffffff;
+}
+
+.cust-mini-cart-head {
+  min-height: 84px;
+  padding: 22px 24px 16px;
+  align-items: flex-start;
+}
+
+.cust-mini-cart-title span {
+  font-size: 1.38rem;
+  letter-spacing: 0;
+}
+
+.cust-mini-cart-title small {
+  margin-top: 5px;
+  font-size: 0.78rem;
+}
+
+.cust-mini-cart-close {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #d8d8d8;
+  border-radius: 0;
+  background: #ffffff;
+}
+
+.cust-mini-cart-list {
+  padding: 6px 24px 18px;
+}
+
+.cust-mini-cart-item {
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 15px;
+  padding: 18px 0;
+  align-items: start;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.cust-mini-cart-thumb {
+  width: 84px;
+  height: 84px;
+  border-radius: 0;
+  background: #f4f4f4;
+}
+
+.cust-mini-cart-copy {
+  gap: 7px;
+}
+
+.cust-mini-cart-item-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+}
+
+.cust-mini-cart-item-top strong {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.42;
+  font-weight: 700;
+}
+
+.cust-mini-cart-line-total {
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1.42;
+  font-weight: 700;
+  color: #111111;
+  white-space: nowrap;
+}
+
+.cust-mini-cart-meta {
+  font-size: 11px;
+  line-height: 1.4;
+  color: #777777;
+}
+
+.cust-mini-cart-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.cust-mini-cart-qty {
+  height: 34px;
+  display: inline-grid;
+  grid-template-columns: 34px 42px 34px;
+  align-items: stretch;
+  border: 1px solid #cfcfcf;
+  border-radius: 0;
+  background: #ffffff;
+}
+
+.cust-mini-cart-qty button,
+.cust-mini-cart-qty span {
+  min-width: 0;
+  border-radius: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.cust-mini-cart-qty button {
+  border: 0;
+  background: #ffffff;
+  color: #111111;
+  cursor: pointer;
+}
+
+.cust-mini-cart-qty button:first-child {
+  border-right: 1px solid #e0e0e0;
+}
+
+.cust-mini-cart-qty button:last-child {
+  border-left: 1px solid #e0e0e0;
+}
+
+.cust-mini-cart-qty button:hover:not(:disabled) {
+  background: #f3f3f3;
+}
+
+.cust-mini-cart-qty button:disabled {
+  color: #b5b5b5;
+  cursor: not-allowed;
+  background: #fafafa;
+}
+
+.cust-mini-cart-qty span {
+  font-weight: 600;
+  color: #111111;
+}
+
+.cust-mini-cart-blueprint-qty {
+  min-height: 34px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #d8d8d8;
+  border-radius: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #555555;
+}
+
+.cust-mini-cart-remove {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #d6d6d6;
+  border-radius: 0;
+  background: #ffffff;
+  color: #666666;
+}
+
+.cust-mini-cart-remove:hover {
+  border-color: #111111;
+  color: #111111;
+  background: #f7f7f7;
+}
+
+.cust-mini-cart-foot {
+  padding: 18px 24px 22px;
+  background: #ffffff;
+}
+
+.cust-mini-cart-summary {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.cust-mini-cart-summary-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 13px;
+  color: #111111;
+}
+
+.cust-mini-cart-summary-row strong {
+  font-size: 14px;
+  color: #111111;
+}
+
+.cust-mini-cart-summary-muted {
+  font-size: 11px;
+  color: #777777;
+}
+
+.cust-mini-cart-summary-muted span:last-child {
+  text-align: right;
+}
+
+.cust-mini-cart-summary-divider {
+  height: 1px;
+  background: #dedede;
+  margin: 3px 0;
+}
+
+.cust-mini-cart-summary-total {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.cust-mini-cart-summary-total strong {
+  font-size: 17px;
+}
+
+.cust-mini-cart-note {
+  margin-bottom: 15px;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.cust-mini-cart-actions {
+  gap: 9px;
+}
+
+.cust-mini-cart-view,
+.cust-mini-cart-checkout,
+.cust-mini-cart-shop-btn,
+.cust-mini-cart-close,
+.cust-mini-cart-remove,
+.cust-mini-cart-qty button {
+  border-radius: 0 !important;
+}
+
+.cust-mini-cart-view,
+.cust-mini-cart-checkout,
+.cust-mini-cart-shop-btn {
+  min-height: 48px;
+}
+
+@media (max-width: 680px) {
+  .cust-mini-cart-drawer {
+    width: min(100vw, 480px);
+  }
+
+  .cust-mini-cart-head {
+    padding: 19px 18px 14px;
+  }
+
+  .cust-mini-cart-list {
+    padding: 4px 18px 14px;
+  }
+
+  .cust-mini-cart-foot {
+    padding: 16px 18px 18px;
+  }
+
+  .cust-mini-cart-item {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .cust-mini-cart-thumb {
+    width: 72px;
+    height: 72px;
+  }
+
+  .cust-mini-cart-item-top {
+    gap: 8px;
+  }
+}
+/* WISDOM CART DRAWER UI V3 END */
+
+/* WISDOM CART DRAWER COMPACT POLISH V2 START */
+
+.cust-mini-cart-drawer {
+  width: min(445px, 94vw);
+}
+
+.cust-mini-cart-head {
+  min-height: 76px;
+  padding: 18px 20px 13px;
+}
+
+.cust-mini-cart-title span {
+  font-size: 1.16rem;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.cust-mini-cart-title small {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #737373;
+}
+
+.cust-mini-cart-close {
+  width: 35px;
+  height: 35px;
+  border: 1px solid #d8d8d8;
+  border-radius: 0 !important;
+  background: #ffffff;
+}
+
+.cust-mini-cart-list {
+  padding: 5px 20px 13px;
+}
+
+.cust-mini-cart-item {
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 12px;
+  padding: 15px 0;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.cust-mini-cart-thumb {
+  width: 68px;
+  height: 68px;
+  border-radius: 0;
+}
+
+.cust-mini-cart-copy {
+  gap: 4px;
+}
+
+.cust-mini-cart-item-top {
+  gap: 9px;
+}
+
+.cust-mini-cart-item-top strong {
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.cust-mini-cart-line-total {
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.cust-mini-cart-meta {
+  font-size: 10px;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #777777;
+}
+
+.cust-mini-cart-item-actions {
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.cust-mini-cart-qty {
+  height: 28px;
+  grid-template-columns: 27px 32px 27px;
+  border: 1px solid #d2d2d2;
+  border-radius: 0;
+}
+
+.cust-mini-cart-qty button,
+.cust-mini-cart-qty span {
+  font-size: 10.5px;
+  line-height: 1;
+  border-radius: 0 !important;
+}
+
+.cust-mini-cart-qty button {
+  font-weight: 400;
+}
+
+.cust-mini-cart-qty span {
+  font-weight: 500;
+}
+
+.cust-mini-cart-qty button:first-child {
+  border-right: 1px solid #e2e2e2;
+}
+
+.cust-mini-cart-qty button:last-child {
+  border-left: 1px solid #e2e2e2;
+}
+
+.cust-mini-cart-remove {
+  width: 25px;
+  height: 28px;
+  padding: 0;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  color: #8a8a8a;
+}
+
+.cust-mini-cart-remove:hover {
+  border: none !important;
+  background: transparent !important;
+  color: #111111;
+}
+
+.cust-mini-cart-remove svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cust-mini-cart-blueprint-qty {
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 0;
+}
+
+.cust-mini-cart-foot {
+  padding: 15px 20px 18px;
+}
+
+.cust-mini-cart-summary {
+  gap: 7px;
+  margin-bottom: 9px;
+}
+
+.cust-mini-cart-summary-row {
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.cust-mini-cart-summary-row strong {
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.cust-mini-cart-summary-muted {
+  font-size: 10px;
+  font-weight: 400;
+  color: #777777;
+}
+
+.cust-mini-cart-summary-divider {
+  margin: 3px 0;
+}
+
+.cust-mini-cart-summary-total {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.cust-mini-cart-summary-total strong {
+  font-size: 14.5px;
+  font-weight: 700;
+}
+
+.cust-mini-cart-note {
+  margin-bottom: 12px;
+  font-size: 10px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #777777;
+}
+
+.cust-mini-cart-actions {
+  gap: 8px;
+}
+
+.cust-mini-cart-view,
+.cust-mini-cart-checkout,
+.cust-mini-cart-shop-btn {
+  min-height: 44px;
+  border-radius: 0 !important;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.cust-mini-cart-close,
+.cust-mini-cart-remove,
+.cust-mini-cart-qty button {
+  border-radius: 0 !important;
+}
+
+@media (max-width: 680px) {
+  .cust-mini-cart-drawer {
+    width: min(100vw, 445px);
+  }
+
+  .cust-mini-cart-head {
+    padding: 16px 15px 12px;
+  }
+
+  .cust-mini-cart-list {
+    padding: 4px 15px 11px;
+  }
+
+  .cust-mini-cart-foot {
+    padding: 14px 15px 16px;
+  }
+
+  .cust-mini-cart-item {
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .cust-mini-cart-thumb {
+    width: 64px;
+    height: 64px;
+  }
+}
+
+/* WISDOM CART DRAWER COMPACT POLISH V2 END */
+
+/* WISDOM CART DRAWER DUPLICATE PRICE FIX START */
+
+/* Product row: cleaner single-price display */
+.cust-mini-cart-item-top {
+  display: block;
+}
+
+.cust-mini-cart-item-top strong {
+  display: block;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0;
+  margin: 0;
+}
+
+/* Slightly larger, cleaner one-row quantity control like the reference */
+.cust-mini-cart-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.cust-mini-cart-qty {
+  height: 32px;
+  grid-template-columns: 31px 38px 31px;
+  border: 1px solid #d1d1d1;
+  border-radius: 0;
+  background: #ffffff;
+}
+
+.cust-mini-cart-qty button,
+.cust-mini-cart-qty span {
+  font-size: 11px;
+  line-height: 1;
+  border-radius: 0 !important;
+}
+
+.cust-mini-cart-qty button {
+  font-weight: 400;
+}
+
+.cust-mini-cart-qty span {
+  font-weight: 500;
+}
+
+.cust-mini-cart-qty button:first-child {
+  border-right: 1px solid #e2e2e2;
+}
+
+.cust-mini-cart-qty button:last-child {
+  border-left: 1px solid #e2e2e2;
+}
+
+.cust-mini-cart-qty button:hover:not(:disabled) {
+  background: #f5f5f5;
+}
+
+/* Keep the trash icon subtle and borderless */
+.cust-mini-cart-remove {
+  width: 24px;
+  height: 32px;
+  padding: 0;
+  border: none !important;
+  background: transparent !important;
+  color: #8a8a8a;
+  border-radius: 0 !important;
+}
+
+.cust-mini-cart-remove:hover {
+  border: none !important;
+  background: transparent !important;
+  color: #111111;
+}
+
+.cust-mini-cart-remove svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Meta stays under the name; only one visible price line remains in the row */
+.cust-mini-cart-meta {
+  font-size: 10px;
+  line-height: 1.45;
+  font-weight: 400;
+  color: #777777;
+}
+
+@media (max-width: 680px) {
+  .cust-mini-cart-qty {
+    height: 31px;
+    grid-template-columns: 30px 36px 30px;
+  }
+
+  .cust-mini-cart-remove {
+    height: 31px;
+  }
+}
+
+/* WISDOM CART DRAWER DUPLICATE PRICE FIX END */
+
+/* WISDOM CART DRAWER PRICE PLACEMENT CORRECTION V5 START */
+
+/* Reference layout: product name on the left, ONE price on the right */
+.cust-mini-cart-item-top {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  align-items: start;
+  gap: 12px;
+}
+
+.cust-mini-cart-item-top strong {
+  min-width: 0;
+  display: block;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.cust-mini-cart-line-total {
+  display: block !important;
+  justify-self: end;
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: #111111;
+  white-space: nowrap;
+}
+
+/* Standard items should not show a second unit-price line under the name */
+.cust-mini-cart-meta {
+  font-size: 10px;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #777777;
+}
+
+/* Preserve the approved square/0-radius controls */
+.cust-mini-cart-view,
+.cust-mini-cart-checkout,
+.cust-mini-cart-shop-btn,
+.cust-mini-cart-close,
+.cust-mini-cart-remove,
+.cust-mini-cart-qty,
+.cust-mini-cart-qty button {
+  border-radius: 0 !important;
+}
+
+/* WISDOM CART DRAWER PRICE PLACEMENT CORRECTION V5 END */
+
+/* WISDOM CART DRAWER QUANTITY PILL FIX START */
+
+/*
+  Quantity selector only:
+  - rounded outer pill like the approved reference
+  - no visible inner column boxes/dividers
+  - slightly larger, but still compact
+  - other cart buttons remain square / 0 radius
+*/
+.cust-mini-cart-qty {
+  width: 92px !important;
+  height: 30px !important;
+  display: inline-flex !important;
+  grid-template-columns: none !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  border: 1px solid #bfbfbf !important;
+  border-radius: 10px !important;
+  background: #ffffff !important;
+  overflow: hidden !important;
+}
+
+.cust-mini-cart-qty button,
+.cust-mini-cart-qty span {
+  width: auto !important;
+  min-width: 30px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+  box-shadow: none !important;
+}
+
+.cust-mini-cart-qty button {
+  cursor: pointer;
+  font-weight: 400 !important;
+  color: #111111 !important;
+}
+
+.cust-mini-cart-qty span {
+  font-weight: 500 !important;
+  color: #111111 !important;
+}
+
+.cust-mini-cart-qty button:first-child,
+.cust-mini-cart-qty button:last-child {
+  border: none !important;
+}
+
+.cust-mini-cart-qty button:hover:not(:disabled) {
+  background: #f5f5f5 !important;
+}
+
+.cust-mini-cart-qty button:disabled {
+  color: #b8b8b8 !important;
+  background: transparent !important;
+  cursor: not-allowed;
+}
+
+/* Keep ONLY the quantity selector rounded.
+   Other cart drawer action buttons stay 0 radius. */
+.cust-mini-cart-view,
+.cust-mini-cart-checkout,
+.cust-mini-cart-shop-btn,
+.cust-mini-cart-close,
+.cust-mini-cart-remove {
+  border-radius: 0 !important;
+}
+
+@media (max-width: 680px) {
+  .cust-mini-cart-qty {
+    width: 90px !important;
+    height: 30px !important;
+  }
+
+  .cust-mini-cart-qty button,
+  .cust-mini-cart-qty span {
+    min-width: 29px !important;
+    height: 28px !important;
+  }
+}
+
+/* WISDOM CART DRAWER QUANTITY PILL FIX END */
+
+/* WISDOM CUSTOMER HEADER BRAND IMAGE START */
+
+/*
+  The full Spiral Wood Services lockup is a single image asset.
+  No duplicate visible brand text is rendered beside it.
+  The existing .cust-brand button remains the clickable Home control.
+*/
+
+.cust-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  cursor: pointer;
+  justify-self: center;
+}
+
+.cust-brand-image-wrap {
+  width: 305px;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.cust-brand-header-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  object-position: center;
+  user-select: none;
+  pointer-events: none;
+}
+
+.cust-brand:hover .cust-brand-header-image,
+.cust-side-brand-home:hover .cust-brand-header-image {
+  opacity: 0.82;
+}
+
+.cust-brand:focus-visible,
+.cust-side-brand-home:focus-visible {
+  outline: 2px solid #111111;
+  outline-offset: 4px;
+}
+
+/* Drawer version: same exact image, just slightly smaller. */
+.cust-side-brand .cust-brand-image-wrap.compact {
+  width: 230px;
+  height: 50px;
+  justify-content: flex-start;
+}
+
+@media (max-width: 1100px) {
+  .cust-brand-image-wrap {
+    width: 260px;
+    height: 52px;
+  }
+}
+
+@media (max-width: 760px) {
+  .cust-brand-image-wrap {
+    width: 205px;
+    height: 46px;
+  }
+
+  .cust-side-brand .cust-brand-image-wrap.compact {
+    width: 195px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 520px) {
+  .cust-brand-image-wrap {
+    width: 170px;
+    height: 40px;
+  }
+}
+
+/* WISDOM CUSTOMER HEADER BRAND IMAGE END */
+
+/* WISDOM CUSTOMER HEADER LOGO CENTER SIZE HOTFIX START */
+
+/*
+  Keep the brand in the true middle grid column and make the lockup
+  slightly more visible without making the header oversized.
+*/
+
+.cust-brand {
+  grid-column: 2 !important;
+  justify-self: center !important;
+  align-self: center !important;
+  margin-inline: auto !important;
+}
+
+.cust-brand-image-wrap {
+  width: 345px !important;
+  height: 62px !important;
+}
+
+.cust-brand-header-image {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+  object-position: center center !important;
+}
+
+@media (max-width: 1100px) {
+  .cust-brand-image-wrap {
+    width: 290px !important;
+    height: 56px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .cust-brand-image-wrap {
+    width: 215px !important;
+    height: 48px !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .cust-brand-image-wrap {
+    width: 175px !important;
+    height: 42px !important;
+  }
+}
+
+/* WISDOM CUSTOMER HEADER LOGO CENTER SIZE HOTFIX END */
+
+/* WISDOM CUSTOMER MENU DRAWER PROFESSIONAL UI START */
+
+/*
+  Scope: customer side menu only.
+  - close button is hidden while drawer is closed
+  - close button sits inside the drawer at the top-right when opened
+  - summary cards use square WISDOM styling
+  - typography/icon hierarchy is cleaner and more consistent
+  - navigation/business logic is untouched
+*/
+
+.cust-side-drawer {
+  width: min(380px, 92vw);
+  border-right: 1px solid #dedede;
+  box-shadow: 16px 0 42px rgba(17, 17, 17, 0.13);
+  overflow: hidden;
+}
+
+/* Prevent the close button from peeking out while the drawer is closed. */
+.cust-side-drawer:not(.open) .cust-side-close {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+.cust-side-drawer.open .cust-side-close {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+.cust-side-head {
+  position: relative;
+  min-height: 92px;
+  padding: 14px 58px 12px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #eeeeee;
+}
+
+.cust-side-brand,
+.cust-side-brand-home {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+.cust-side-brand .cust-brand-image-wrap.compact {
+  width: 235px !important;
+  height: 52px !important;
+  justify-content: center !important;
+}
+
+.cust-side-close {
+  position: absolute !important;
+  top: 16px !important;
+  right: 14px !important;
+  left: auto !important;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #cfcfcf;
+  border-radius: 0 !important;
+  background: #ffffff;
+  color: #111111;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    opacity 160ms ease;
+}
+
+.cust-side-close:hover {
+  background: #f2f2f2;
+  border-color: #111111;
+}
+
+.cust-side-close svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.8;
+}
+
+/* Summary */
+.cust-side-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px 18px 14px;
+}
+
+.cust-side-summary-card {
+  min-height: 78px;
+  padding: 13px 14px;
+  gap: 7px;
+  justify-content: center;
+  border: 1px solid #dedede;
+  border-radius: 0 !important;
+  background: #fafafa;
+  box-shadow: none;
+}
+
+.cust-side-summary-card span {
+  font-size: 0.72rem;
+  line-height: 1.2;
+  font-weight: 500;
+  color: #747474;
+  letter-spacing: 0;
+}
+
+.cust-side-summary-card strong {
+  font-size: 1.05rem;
+  line-height: 1;
+  font-weight: 700;
+  color: #111111;
+}
+
+/* Main menu */
+.cust-side-nav {
+  padding: 4px 14px 18px;
+}
+
+.cust-side-link {
+  position: relative;
+  min-height: 50px;
+  padding: 0 12px;
+  border-radius: 0 !important;
+  font-size: 0.94rem;
+  line-height: 1.2;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: #202020;
+}
+
+.cust-side-link:hover {
+  background: #f6f6f6;
+}
+
+.cust-side-link.active {
+  background: #f1f1f1;
+  color: #111111;
+  font-weight: 700;
+}
+
+.cust-side-link.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 11px;
+  bottom: 11px;
+  width: 2px;
+  background: #111111;
+}
+
+.cust-side-link-left {
+  gap: 12px;
+  min-width: 0;
+}
+
+.cust-side-link-left svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  stroke-width: 1.8;
+  color: #202020;
+}
+
+.cust-side-link.active .cust-side-link-left svg {
+  color: #111111;
+  stroke-width: 2;
+}
+
+.cust-side-link-left span {
+  font-weight: inherit;
+}
+
+.cust-side-link-right {
+  gap: 8px;
+  color: #555555;
+}
+
+.cust-side-link-right > svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.8;
+}
+
+.cust-mini-pill {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+/* Bottom utility links */
+.cust-side-footer-links {
+  padding: 16px 20px 20px;
+  border-top: 1px solid #eeeeee;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cust-side-footer-link {
+  width: fit-content;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  font-weight: 500;
+  color: #747474;
+  text-decoration: none;
+}
+
+.cust-side-footer-link:hover {
+  color: #111111;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 520px) {
+  .cust-side-drawer {
+    width: min(360px, 94vw);
+  }
+
+  .cust-side-head {
+    min-height: 86px;
+    padding: 12px 52px 10px 14px;
+  }
+
+  .cust-side-brand .cust-brand-image-wrap.compact {
+    width: 205px !important;
+    height: 46px !important;
+  }
+
+  .cust-side-close {
+    top: 14px !important;
+    right: 12px !important;
+    width: 34px;
+    height: 34px;
+  }
+
+  .cust-side-summary {
+    padding: 14px 14px 12px;
+  }
+
+  .cust-side-nav {
+    padding-inline: 10px;
+  }
+
+  .cust-side-link {
+    min-height: 48px;
+  }
+
+  .cust-side-footer-links {
+    padding: 14px 18px 18px;
+  }
+}
+
+/* WISDOM CUSTOMER MENU DRAWER PROFESSIONAL UI END */
+
+/* WISDOM CUSTOMER MENU COMPANY HELP SECTION START */
+
+/*
+  Secondary menu section:
+  more visible than plain footer text, but quieter than the main navigation.
+*/
+
+.cust-side-footer-links {
+  margin-top: auto;
+  padding: 16px 14px 18px;
+  border-top: 1px solid #e6e6e6;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cust-side-footer-title {
+  margin: 0 8px 6px;
+  font-size: 0.64rem;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #777777;
+}
+
+.cust-side-footer-link {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 0 !important;
+  color: #3f3f3f;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  font-weight: 500;
+  text-decoration: none !important;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.cust-side-footer-link svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  stroke-width: 1.8;
+  color: #555555;
+}
+
+.cust-side-footer-link:hover {
+  background: #eeeeee;
+  color: #111111;
+  text-decoration: none !important;
+}
+
+.cust-side-footer-link:hover svg {
+  color: #111111;
+}
+
+@media (max-width: 520px) {
+  .cust-side-footer-links {
+    padding: 14px 12px 16px;
+  }
+
+  .cust-side-footer-link {
+    min-height: 38px;
+    font-size: 0.78rem;
+  }
+}
+
+/* WISDOM CUSTOMER MENU COMPANY HELP SECTION END */
+
+/* WISDOM NOTIFICATIONS ACCOUNT RADIUS ONLY V3 START */
+
+/*
+  RADIUS ONLY.
+  Do not change font size, font weight, spacing, dimensions or content.
+*/
+
+/* Notification header trigger */
+.cust-notification-trigger-radius-only {
+  border-radius: 0 !important;
+}
+
+/* Notification popup */
+.cust-notification-panel-radius-only {
+  border-radius: 0 !important;
+}
+
+/* Mark all read */
+.cust-notification-mark-radius-only {
+  border-radius: 0 !important;
+}
+
+/* Every notification card/row */
+.cust-notification-item-radius-only {
+  border-radius: 0 !important;
+}
+
+/* Customer account trigger */
+.cust-account-wrap > .cust-icon-btn {
+  border-radius: 0 !important;
+}
+
+/* Account popup + actions */
+.cust-account-dropdown,
+.cust-dropdown-item {
+  border-radius: 0 !important;
+}
+
+/* Semantic circles stay round */
+.cust-account-avatar,
+.cust-avatar-shell {
+  border-radius: 50% !important;
+}
+
+.cust-count-badge {
+  border-radius: 999px !important;
+}
+
+/* WISDOM NOTIFICATIONS ACCOUNT RADIUS ONLY V3 END */

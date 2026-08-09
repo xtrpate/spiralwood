@@ -10,10 +10,14 @@ import {
   ShoppingCart,
   Package,
   Shield,
-  LifeBuoy,
+  Headphones,
+  Info,
+  CircleHelp,
+  Mail,
   LogOut,
   Menu,
   X,
+  Trash2,
   Settings,
   UserPlus,
   LogIn,
@@ -23,6 +27,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import logoImg from "../assets/logo.png";
+import brandHeaderImg from "../assets/spiral-wood-services-header-logo.png";
 import LandingPage from "./LandingPage";
 import "./customerlayout.css";
 import "./profile.css";
@@ -36,7 +41,7 @@ const navItems = [
   { to: "/cart", icon: ShoppingCart, label: "Cart" },
   { to: "/orders", icon: Package, label: "My Orders" },
   { to: "/warranty", icon: Shield, label: "Warranty" },
-  { to: "/support", icon: LifeBuoy, label: "Support" },
+  { to: "/support", icon: Headphones, label: "Support" },
 ];
 
 export default function CustomerLayout() {
@@ -122,6 +127,8 @@ export default function CustomerLayout() {
     cart,
     cartCount,
     cartTotal,
+
+    updateQty,
     removeItem,
     miniCartOpen,
     openMiniCart,
@@ -485,26 +492,38 @@ export default function CustomerLayout() {
     navigate("/checkout");
   };
 
-  const BrandBlock = ({ compact = false, footer = false }) => (
-    <div
-      className={`cust-brand-block ${compact ? "compact" : ""} ${
-        footer ? "footer" : ""
-      }`}
-    >
-      <div className={`cust-brand-badge ${footer ? "footer" : "header"}`}>
-        <img
-          src={logoImg}
-          alt="Spiral Wood Services logo"
-          className="cust-brand-logo"
-        />
-      </div>
+  const BrandBlock = ({ compact = false, footer = false }) => {
+    if (!footer) {
+      return (
+        <div
+          className={`cust-brand-image-wrap ${compact ? "compact" : ""}`}
+        >
+          <img
+            src={brandHeaderImg}
+            alt="Spiral Wood Services"
+            className="cust-brand-header-image"
+          />
+        </div>
+      );
+    }
 
-      <div className="cust-brand-copy">
-        <span className="cust-brand-name">SPIRAL WOOD</span>
-        <span className="cust-brand-sub">Services</span>
+    return (
+      <div className="cust-brand-block compact footer">
+        <div className="cust-brand-badge footer">
+          <img
+            src={logoImg}
+            alt="Spiral Wood Services logo"
+            className="cust-brand-logo"
+          />
+        </div>
+
+        <div className="cust-brand-copy">
+          <span className="cust-brand-name">SPIRAL WOOD</span>
+          <span className="cust-brand-sub">Services</span>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="cust-root">
@@ -945,16 +964,17 @@ export default function CustomerLayout() {
             </NavLink>
           ))}
         </nav>
-
-        {/* 👉 THE NEW STEALTHY BOTTOM LINKS */}
         <div className="cust-side-footer-links">
+          <div className="cust-side-footer-title">Company & Help</div>
+
           {isTrue(siteSettings?.display?.show_about_section) && (
             <NavLink
               to="/about"
               className="cust-side-footer-link"
               onClick={() => setMenuOpen(false)}
             >
-              About Us
+              <Info size={16} />
+              <span>About Us</span>
             </NavLink>
           )}
 
@@ -964,7 +984,8 @@ export default function CustomerLayout() {
               className="cust-side-footer-link"
               onClick={() => setMenuOpen(false)}
             >
-              FAQ's
+              <CircleHelp size={16} />
+              <span>FAQs</span>
             </NavLink>
           )}
 
@@ -973,7 +994,8 @@ export default function CustomerLayout() {
             className="cust-side-footer-link"
             onClick={() => setMenuOpen(false)}
           >
-            Contact Us
+            <Mail size={16} />
+            <span>Contact Us</span>
           </NavLink>
         </div>
       </aside>
@@ -1029,62 +1051,128 @@ export default function CustomerLayout() {
                 const imageSrc = resolveCartImage(
                   item.image_url || item.preview_image_url,
                 );
+                const quantity = Number(item.quantity || 1);
+                const lineTotal = Number(item.unit_price || 0) * quantity;
+                const atMaxStock =
+                  !blueprint &&
+                  item.max_stock &&
+                  quantity >= Number(item.max_stock);
 
                 return (
                   <div className="cust-mini-cart-item" key={item.key}>
                     <div className="cust-mini-cart-thumb">
                       {imageSrc ? (
-                        <img src={imageSrc} alt={item.product_name} />
+                        <img
+                          src={imageSrc}
+                          alt={item.base_blueprint_title || item.product_name}
+                        />
                       ) : (
                         <div className="cust-mini-cart-thumb-fallback">
-                          {blueprint ? "📐" : "🪵"}
+                          {blueprint ? "ðŸ“" : "ðŸªµ"}
                         </div>
                       )}
                     </div>
 
                     <div className="cust-mini-cart-copy">
-                      <strong>
-                        {item.base_blueprint_title || item.product_name}
-                      </strong>
+                      <div className="cust-mini-cart-item-top">
+                        <strong>
+                          {item.base_blueprint_title || item.product_name}
+                        </strong>
+                        <span className="cust-mini-cart-line-total">
+                          {blueprint ? "For quotation" : formatPeso(lineTotal)}
+                        </span>
+                      </div>
 
-                      <span className="cust-mini-cart-meta">
-                        {blueprint
-                          ? "Custom / Blueprint item"
-                          : `Qty ${item.quantity}`}
-                      </span>
+                      {blueprint ? (
+                        <span className="cust-mini-cart-meta">
+                          Custom / Blueprint item
+                        </span>
+                      ) : null}
 
-                      <span className="cust-mini-cart-price">
-                        {blueprint
-                          ? "Price to be quoted"
-                          : `${item.quantity} × ${formatPeso(item.unit_price)}`}
-                      </span>
+                      <div className="cust-mini-cart-item-actions">
+                        {blueprint ? (
+                          <span className="cust-mini-cart-blueprint-qty">
+                            Qty {quantity}
+                          </span>
+                        ) : (
+                          <div
+                            className="cust-mini-cart-qty"
+                            aria-label={`Quantity for ${item.product_name}`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (quantity > 1) updateQty(item.key, -1);
+                              }}
+                              disabled={quantity <= 1}
+                              aria-label={`Decrease ${item.product_name} quantity`}
+                            >
+                              {String.fromCharCode(8722)}
+                            </button>
+
+                            <span>{quantity}</span>
+
+                            <button
+                              type="button"
+                              onClick={() => updateQty(item.key, 1)}
+                              disabled={Boolean(atMaxStock)}
+                              aria-label={`Increase ${item.product_name} quantity`}
+                            >
+                              +
+                            </button>
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          className="cust-mini-cart-remove"
+                          onClick={() => setItemToRemove(item)}
+                          aria-label={`Remove ${
+                            item.base_blueprint_title || item.product_name
+                          }`}
+                          title="Remove item"
+                        >
+                          <Trash2 size={16} strokeWidth={1.8} />
+                        </button>
+                      </div>
                     </div>
-
-                    <button
-                      type="button"
-                      className="cust-mini-cart-remove"
-                      onClick={() => setItemToRemove(item)}
-                      aria-label={`Remove ${item.product_name}`}
-                    >
-                      ×
-                    </button>
                   </div>
                 );
               })}
             </div>
 
             <div className="cust-mini-cart-foot">
-              <div className="cust-mini-cart-row">
-                <span>Subtotal</span>
-                <strong>{formatPeso(cartTotal)}</strong>
+              <div className="cust-mini-cart-summary">
+                <div className="cust-mini-cart-summary-row">
+                  <span>Subtotal</span>
+                  <strong>{formatPeso(cartTotal)}</strong>
+                </div>
+
+                <div className="cust-mini-cart-summary-row cust-mini-cart-summary-muted">
+                  <span>Shipping</span>
+                  <span>
+                  {isMixedCart
+                    ? "Varies by order type"
+                    : hasBlueprintItems
+                      ? "Calculated for custom order"
+                      : "Free"}
+                </span>
+                </div>
+
+                <div className="cust-mini-cart-summary-divider" />
+
+                <div className="cust-mini-cart-summary-row cust-mini-cart-summary-total">
+                  <span>Estimated total</span>
+                  <strong>{formatPeso(cartTotal)}</strong>
+                </div>
               </div>
 
               <div className="cust-mini-cart-note">
                 {isMixedCart
-                  ? "Mixed ready-made and custom items detected. Finish selection in the cart page."
+                  ? "Ready-made items include free delivery. Custom orders may have a separate delivery fee."
                   : hasBlueprintItems
-                    ? "Custom / blueprint items continue through quotation-based checkout."
-                    : "Shipping and final totals will be calculated at checkout."}
+                    ? "Custom orders may include a delivery fee."
+                    : "Free delivery applies to ready-made products."}
               </div>
 
               <div className="cust-mini-cart-actions">

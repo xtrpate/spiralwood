@@ -18,6 +18,20 @@ const PAYMENT_LABEL_TEXT = {
   full_payment: "Full Payment",
 };
 
+const RECEIPT_LOGO_FALLBACK = `${process.env.PUBLIC_URL || ""}/logo192.png`;
+
+const handleReceiptLogoError = (event) => {
+  const image = event.currentTarget;
+
+  if (image.dataset.receiptFallbackApplied === "true") {
+    image.style.display = "none";
+    return;
+  }
+
+  image.dataset.receiptFallbackApplied = "true";
+  image.src = RECEIPT_LOGO_FALLBACK;
+};
+
 const formatMoney = (value) =>
   `₱${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
@@ -142,13 +156,15 @@ export default function CustomerBlueprintReceiptPage() {
         <div className="receipt" id="receipt-print">
           {/* Header */}
           <div className="receipt-header">
-            {receipt.business?.site_logo && (
-              <img
-                src={buildAssetUrl(receipt.business.site_logo)}
-                alt="logo"
-                className="receipt-logo"
-              />
-            )}
+            <img
+              src={
+                buildAssetUrl(receipt.business?.site_logo) ||
+                RECEIPT_LOGO_FALLBACK
+              }
+              alt="Spiral Wood Services logo"
+              className="receipt-logo"
+              onError={handleReceiptLogoError}
+            />
             <h2 className="biz-name">
               {receipt.business?.business_name || "Spiral Wood Services"}
             </h2>

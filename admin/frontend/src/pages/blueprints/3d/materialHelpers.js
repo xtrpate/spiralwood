@@ -1,5 +1,6 @@
 // 3d/materialHelpers.js — Three.js geometry and material helper functions
 import * as THREE from "three";
+import { createProceduralFurnitureMaterial } from "./proceduralMaterialFactory";
 import {
   addRoundedBox,
   addSmartBox,
@@ -95,25 +96,32 @@ function getMaterialPalette(comp) {
   };
 }
 
-function createMaterial(fill) {
-  return new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(fill || "#d9c2a5"),
-    roughness: 0.38,
-    metalness: 0.04,
-    clearcoat: 0.34,
-    clearcoatRoughness: 0.28,
-    reflectivity: 0.52,
-    sheen: 0.32,
-    sheenRoughness: 0.42,
-    transparent: false,
-    opacity: 1,
+function createFurnitureMaterial(
+  comp,
+  fill,
+  role = "front",
+  overrides = {},
+) {
+  return createProceduralFurnitureMaterial(
+    comp || {},
+    fill || "#d9c2a5",
+    role,
+    overrides,
+  );
+}
 
-    // Selection and edit state are already shown by the blue outline and
-    // transform gizmo. Tinting the material here changed brown wood into a
-    // pink/blue shade after the component was rebuilt at drag end.
-    emissive: new THREE.Color("#000000"),
-    emissiveIntensity: 0,
-  });
+function createMaterial(fill, selected, editing, comp = null, role = "front") {
+  return createFurnitureMaterial(
+    comp || {},
+    fill || "#d9c2a5",
+    role,
+    {
+      // Selection and edit state are already shown by the blue outline and
+      // transform gizmo. Never tint the material during rebuilds.
+      emissive: new THREE.Color("#000000"),
+      emissiveIntensity: 0,
+    },
+  );
 }
 
 function addEdgeHighlight(root, targetMesh, color = 0xf3e6d6, opacity = 0.1) {
@@ -230,12 +238,16 @@ function addCylinderPart(
 }
 
 function addHandle(root, selectableMeshes, x, y, z, horizontal, rootId) {
-  const mat = new THREE.MeshPhysicalMaterial({
-    color: 0x111827,
-    metalness: 0.95,
-    roughness: 0.14,
-    clearcoat: 0.4,
-  });
+  const mat = createFurnitureMaterial(
+    { material: "Brushed Metal", grainDirection: "none" },
+    "#1f2937",
+    "metal",
+    {
+      metalness: 0.94,
+      roughness: 0.2,
+      clearcoat: 0.3,
+    },
+  );
 
   const len = horizontal ? 18 : 14;
   const bar = new THREE.Mesh(
@@ -279,12 +291,22 @@ function addHandle(root, selectableMeshes, x, y, z, horizontal, rootId) {
   });
 }
 
-function addShelfLine(root, selectableMeshes, w, d, y, rootId) {
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xefe3d6,
-    roughness: 0.84,
-    metalness: 0,
-  });
+function addShelfLine(
+  root,
+  selectableMeshes,
+  w,
+  d,
+  y,
+  rootId,
+  material = null,
+) {
+  const mat = material
+    ? material.clone()
+    : createFurnitureMaterial(
+        { material: "Marine Plywood", grainDirection: "width" },
+        "#efe3d6",
+        "inside",
+      );
 
   const shelf = new THREE.Mesh(new THREE.BoxGeometry(w, 2, d), mat);
   shelf.position.set(0, y, 0);
@@ -317,6 +339,7 @@ export {
   clamp,
   getMaterialPalette,
   createMaterial,
+  createFurnitureMaterial,
   addEdgeHighlight,
   addInnerShadowPanel,
   addShelfLine,

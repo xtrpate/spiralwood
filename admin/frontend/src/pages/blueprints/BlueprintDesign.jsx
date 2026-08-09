@@ -183,6 +183,29 @@ export default function BlueprintDesign() {
     savedDesignComponentSignature,
   ]);
 
+  const openProjectEstimate = useCallback(() => {
+    if (!id || id === "new") {
+      toast.error(
+        "Create and save the Blueprint record before opening Project Estimate.",
+      );
+      return;
+    }
+
+    if (saving) {
+      toast.error("Wait for the current Blueprint save to finish.");
+      return;
+    }
+
+    if (hasUnsavedDesignChanges) {
+      toast.error(
+        "Save the Blueprint first so Project Estimate uses the latest parts.",
+      );
+      return;
+    }
+
+    navigate(`/admin/blueprints/${id}/estimation`);
+  }, [hasUnsavedDesignChanges, id, navigate, saving]);
+
   const designValidationReport = useMemo(
     () =>
       buildDesignValidationReport({
@@ -1882,7 +1905,41 @@ export default function BlueprintDesign() {
   }, [selectedComponents]);
 
   return (
-    <div style={{ ...S.fullScreenWrapper, fontFamily: "'Inter', sans-serif" }}>
+    <div
+      className="wisdom-blueprint-editor"
+      style={{ ...S.fullScreenWrapper, fontFamily: "'Inter', sans-serif" }}
+    >
+      <style>{`
+        .wisdom-blueprint-editor button {
+          border-radius: 0 !important;
+          box-shadow: none !important;
+          transition:
+            background-color .12s ease,
+            border-color .12s ease,
+            color .12s ease,
+            opacity .12s ease,
+            filter .12s ease;
+        }
+
+        .wisdom-blueprint-editor button:not(:disabled):hover {
+          filter: brightness(1.08);
+        }
+
+        .wisdom-blueprint-editor button:focus-visible,
+        .wisdom-blueprint-editor input:focus-visible,
+        .wisdom-blueprint-editor select:focus-visible,
+        .wisdom-blueprint-editor textarea:focus-visible {
+          outline: 2px solid rgba(96,165,250,.75);
+          outline-offset: 1px;
+        }
+
+        .wisdom-blueprint-editor input:not([type="range"]):not([type="checkbox"]):not([type="color"]),
+        .wisdom-blueprint-editor select,
+        .wisdom-blueprint-editor textarea {
+          border-radius: 2px !important;
+        }
+      `}</style>
+
       <BlueprintEditorHeader
         navigate={navigate}
         blueprint={blueprint}
@@ -1899,6 +1956,7 @@ export default function BlueprintDesign() {
         handleRedo={handleRedo}
         canRedo={editorMode === "editable" && canRedo}
         openExportSheets={openExportSheets}
+        openProjectEstimate={openProjectEstimate}
         saveDesign={saveDesign}
         saving={saving}
         setPublishForm={setPublishForm}
