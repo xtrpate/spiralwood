@@ -699,7 +699,7 @@ export default function CustomRequestDetailPage() {
   // PHASE 5 — Blueprint Rider Final Cash Collection. The backend
   // (selectRemainingPaymentMethod / getCustomOrderById) re-derives and
   // locks every one of these conditions itself; these are display-only.
-  const remainingPaymentMethod = String(
+  const storedRemainingPaymentMethod = String(
     paymentSummary.remaining_payment_method || "",
   )
     .trim()
@@ -715,8 +715,15 @@ export default function CustomRequestDetailPage() {
   const remainingPaymentMethodLocked = Boolean(
     paymentSummary.remaining_payment_method_locked,
   );
+  const remainingPaymentMethod =
+    storedRemainingPaymentMethod ||
+    (canSelectRemainingPaymentMethod ? "cash" : "");
+  const remainingPaymentMethodDefaulted =
+    !storedRemainingPaymentMethod &&
+    canSelectRemainingPaymentMethod &&
+    remainingPaymentMethod === "cash";
   const REMAINING_METHOD_LABELS = {
-    cash: "Cash",
+    cash: "Cash on Delivery",
     paymongo: "Online Payment",
   };
 
@@ -738,6 +745,13 @@ export default function CustomRequestDetailPage() {
   const estimationStatusKey = String(latestEstimation?.status || "")
     .trim()
     .toLowerCase();
+
+  const showPaymentTab =
+    quotationAvailable &&
+    !quotationActionBlocked &&
+    !quotationIntegrityWarning &&
+    Boolean(latestEstimation) &&
+    estimationStatusKey === "approved";
 
   const customerQuotationItemsV141 = useMemo(
     () =>
@@ -1006,6 +1020,48 @@ export default function CustomRequestDetailPage() {
     }
   };
 
+  const handlePayRemainingBalanceOnlineInstead = async () => {
+    if (
+      !requestData?.id ||
+      selectingRemainingMethod ||
+      payingRemainingBalance
+    ) {
+      return;
+    }
+
+    setSelectingRemainingMethod(true);
+    setPayingRemainingBalance(true);
+    setRemainingMethodError("");
+
+    try {
+      if (storedRemainingPaymentMethod !== "paymongo") {
+        await api.post(
+          `/customer/custom-orders/${requestData.id}/remaining-payment-method`,
+          { remaining_payment_method: "paymongo" },
+        );
+      }
+
+      const res = await api.post(
+        `/customer/custom-orders/${requestData.id}/remaining-balance/pay`,
+      );
+
+      if (!res.data?.payment_url) {
+        setRemainingMethodError("Unable to launch online payment.");
+        return;
+      }
+
+      window.location.href = res.data.payment_url;
+    } catch (err) {
+      setRemainingMethodError(
+        err.response?.data?.message ||
+          err.response?.data?.error ||
+          "Unable to start online payment for the remaining balance.",
+      );
+    } finally {
+      setSelectingRemainingMethod(false);
+      setPayingRemainingBalance(false);
+    }
+  };
   return (
     <div className="crd-page">
       <div className="page-hero">
@@ -1100,8 +1156,24 @@ export default function CustomRequestDetailPage() {
                   }
                   onClick={() => setActiveRequestTab("quotation")}
                 >
-                  Quotation &amp; Payment
+                  Quotation
                 </button>
+
+                {showPaymentTab ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeRequestTab === "payment"}
+                    className={
+                      activeRequestTab === "payment"
+                        ? "wisdom-request-tab-btn-v12 is-active"
+                        : "wisdom-request-tab-btn-v12"
+                    }
+                    onClick={() => setActiveRequestTab("payment")}
+                  >
+                    Payment
+                  </button>
+                ) : null}
 
                 <button
                   type="button"
@@ -1327,7 +1399,7 @@ export default function CustomRequestDetailPage() {
                 <div className="checkout-section wisdom-request-quotation-v11">
                   <div className="checkout-section-header">
                     <div className="checkout-section-num">02</div>
-                    <h3>Quotation &amp; payment</h3>
+                    <h3>Quotation</h3>
                   </div>
 
                   <div className="checkout-section-body">
@@ -1752,118 +1824,128 @@ export default function CustomRequestDetailPage() {
               ) : null}
 
               {/* PHASE 5 — Blueprint Rider Final Cash Collection */}
-              {remainingPaymentMethodLocked ? (
-                <div className="checkout-section">
+              {(canSelectRemainingPaymentMethod ||
+                remainingPaymentMethodLocked) &&
+              balanceDue > 0 ? (
+                <div className="checkout-section wisdom-request-remaining-payment-v184">
                   <div className="checkout-section-header">
                     <div className="checkout-section-num">03B</div>
-                    <h3>Remaining Balance Payment Method</h3>
-                  </div>
-                  <div style={{ padding: "0 4px 4px" }}>
-                    <p>
-                      Locked for this delivery:{" "}
-                      <strong>
-                        {REMAINING_METHOD_LABELS[remainingPaymentMethod] ||
-                          "Not set"}
-                      </strong>
-                    </p>
-                    <p className="crd-mini-meta">
-                      This can no longer be changed for this order.
-                    </p>
-                  </div>
-                </div>
-              ) : canSelectRemainingPaymentMethod ? (
-                <div className="checkout-section">
-                  <div className="checkout-section-header">
-                    <div className="checkout-section-num">03B</div>
-                    <h3>Choose Payment Method for Remaining Balance</h3>
+                    <h3>Remaining balance payment</h3>
                   </div>
 
-                  {remainingMethodError ? (
-                    <div className="crd-alert crd-alert-error">
-                      {remainingMethodError}
-                    </div>
-                  ) : null}
-
-                  <div className="crd-payment-method-grid">
-                    <div className="crd-payment-method-card">
-                      <h4>Cash</h4>
-                      <p>
-                        Pay the exact remaining balance to the assigned
-                        rider upon delivery.
-                      </p>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        disabled={
-                          selectingRemainingMethod ||
-                          remainingPaymentMethod === "cash"
-                        }
-                        onClick={() =>
-                          handleSelectRemainingPaymentMethod("cash")
-                        }
-                      >
-                        {remainingPaymentMethod === "cash"
-                          ? "Selected: Cash"
-                          : "Choose Cash"}
-                      </button>
-                    </div>
-
-                    <div className="crd-payment-method-card">
-                      <h4>Online Payment</h4>
-                      <p>Pay the exact remaining balance online.</p>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        disabled={
-                          selectingRemainingMethod ||
-                          remainingPaymentMethod === "paymongo"
-                        }
-                        onClick={() =>
-                          handleSelectRemainingPaymentMethod("paymongo")
-                        }
-                      >
-                        {remainingPaymentMethod === "paymongo"
-                          ? "Selected: Online Payment"
-                          : "Choose Online Payment"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {/* PHASE 5B — Blueprint Remaining Balance Online Payment */}
-              {canPayRemainingBalanceOnline ? (
-                <div className="checkout-section">
-                  <div className="checkout-section-header">
-                    <div className="checkout-section-num">03C</div>
-                    <h3>Pay Remaining Balance Online</h3>
-                  </div>
-                  <div style={{ padding: "0 4px 4px" }}>
-                    <div className="summary-row">
-                      <span>Remaining Balance</span>
-                      <strong>{formatMoney(balanceDue)}</strong>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-primary crd-paymongo-btn"
-                      disabled={payingRemainingBalance}
-                      onClick={handlePayRemainingBalanceOnline}
-                    >
-                      <div>
-                        {payingRemainingBalance
-                          ? "Redirecting..."
-                          : "Pay Remaining Balance Online"}
+                  <div className="checkout-section-body">
+                    {remainingMethodError ? (
+                      <div className="crd-info-box pending wisdom-remaining-error-v184">
+                        {remainingMethodError}
                       </div>
-                      <strong>{formatMoney(balanceDue)}</strong>
-                    </button>
-                    <div className="crd-help-text">
-                      You will be redirected to our secure checkout page to
-                      complete your payment.
+                    ) : null}
+
+                    <div className="wisdom-remaining-current-v184">
+                      <div>
+                        <div className="wisdom-remaining-method-line-v184">
+                          <h4>
+                            {REMAINING_METHOD_LABELS[remainingPaymentMethod] ||
+                              "Cash on Delivery"}
+                          </h4>
+
+                          <span className="wisdom-remaining-method-badge-v184">
+                            {remainingPaymentMethodDefaulted
+                              ? "Default method"
+                              : remainingPaymentMethodLocked
+                                ? "Confirmed method"
+                                : "Current method"}
+                          </span>
+                        </div>
+
+                        <p>
+                          {remainingPaymentMethod === "paymongo"
+                            ? "Pay the remaining balance securely online."
+                            : "Pay the remaining balance directly to the rider upon delivery."}
+                        </p>
+                      </div>
+
+                      <div className="wisdom-remaining-amount-v184">
+                        <span>Remaining balance</span>
+                        <strong>{formatMoney(balanceDue)}</strong>
+                      </div>
                     </div>
+
+                    {!remainingPaymentMethodLocked &&
+                    remainingPaymentMethod !== "paymongo" ? (
+                      <div className="wisdom-remaining-online-option-v184">
+                        <div>
+                          <h4>Prefer to pay online?</h4>
+                          <p>
+                            Pay the exact remaining balance through secure
+                            online payment instead.
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          disabled={
+                            selectingRemainingMethod || payingRemainingBalance
+                          }
+                          onClick={handlePayRemainingBalanceOnlineInstead}
+                        >
+                          {selectingRemainingMethod || payingRemainingBalance
+                            ? "Opening online payment..."
+                            : "Pay online instead"}
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {remainingPaymentMethod === "paymongo" ? (
+                      <div className="wisdom-remaining-online-option-v184 is-selected">
+                        <div>
+                          <h4>Online payment</h4>
+                          <p>
+                            Complete the remaining balance using secure online
+                            checkout.
+                          </p>
+                        </div>
+
+                        <div className="wisdom-remaining-online-actions-v184">
+                          {canPayRemainingBalanceOnline ? (
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={payingRemainingBalance}
+                              onClick={handlePayRemainingBalanceOnline}
+                            >
+                              {payingRemainingBalance
+                                ? "Opening online payment..."
+                                : "Continue online payment"}
+                            </button>
+                          ) : null}
+
+                          {canSelectRemainingPaymentMethod &&
+                          !remainingPaymentMethodLocked ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              disabled={selectingRemainingMethod}
+                              onClick={() =>
+                                handleSelectRemainingPaymentMethod("cash")
+                              }
+                            >
+                              Use Cash on Delivery instead
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {remainingPaymentMethodLocked ? (
+                      <p className="wisdom-remaining-locked-note-v184">
+                        This payment method can no longer be changed for this
+                        delivery.
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
-
               {requestData &&
               (historyLoading || historyError || paymentHistory.length > 0) ? (
                 <div className="checkout-section wisdom-request-payment-history-v11">

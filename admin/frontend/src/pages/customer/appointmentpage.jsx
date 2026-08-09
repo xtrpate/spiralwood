@@ -143,9 +143,9 @@ const parseNotes = (notes) => {
     .map((line) => line.trim())
     .filter(Boolean)
     .forEach((line) => {
-      if (line.startsWith("Project Description:")) {
+      if (line.startsWith("Project description:")) {
         details.projectDescription = line
-          .replace("Project Description:", "")
+          .replace("Project description:", "")
           .trim();
       } else if (line.startsWith("Contact:")) {
         details.contact = line.replace("Contact:", "").trim();
@@ -179,6 +179,7 @@ export default function AppointmentPage() {
   const [error, setError] = useState("");
 
   const [appointments, setAppointments] = useState([]);
+  const [appointmentView, setAppointmentView] = useState("book");
   const [loadingAppts, setLoadingAppts] = useState(true);
   const [initialLoad, setInitialLoad] = useState(true);
 
@@ -367,17 +368,17 @@ export default function AppointmentPage() {
     <div className="appt-page">
       <div className="cust-page-head">
         <div className="cust-page-copy">
-          <h1>Request an Appointment</h1>
+          <h1>Appointments</h1>
           <p>
-            Book a consultation or site measurement. Our team will review your
-            request and confirm the final schedule.
+            Book a consultation or site measurement and track your appointment
+            requests in one place.
           </p>
         </div>
       </div>
 
       {initialLoad ? (
         /* 👉 SKELETON LAYOUT - NOW USING SHIMMER ANIMATION */
-        <div className="appt-layout">
+        <div className="appt-layout appt-layout-v2 appt-loading-layout-v2">
           <div className="appt-form-col">
             <div
               className="appt-card"
@@ -499,7 +500,51 @@ export default function AppointmentPage() {
         </div>
       ) : (
         /* 👉 REAL FORM LAYOUT - SHOWS WHEN LOADED */
-        <div className="appt-layout">
+        <div
+          className={`appt-layout appt-layout-v2 ${
+            appointmentView === "history" ? "show-history" : "show-book"
+          }`}
+        >
+          <div className="appt-center-head-v2">
+            <div>
+              <h2>Appointment center</h2>
+              <p>Book a new appointment or review your existing requests.</p>
+            </div>
+
+            <div
+              className="appt-center-tabs-v2"
+              role="tablist"
+              aria-label="Appointment center"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={appointmentView === "book"}
+                className={
+                  appointmentView === "book"
+                    ? "appt-center-tab-v2 is-active"
+                    : "appt-center-tab-v2"
+                }
+                onClick={() => setAppointmentView("book")}
+              >
+                Book appointment
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={appointmentView === "history"}
+                className={
+                  appointmentView === "history"
+                    ? "appt-center-tab-v2 is-active"
+                    : "appt-center-tab-v2"
+                }
+                onClick={() => setAppointmentView("history")}
+              >
+                My appointments ({appointments.length})
+              </button>
+            </div>
+          </div>
           <div className="appt-form-col">
             <div className="appt-card">
               {submitted ? (
@@ -510,7 +555,7 @@ export default function AppointmentPage() {
 
                   <div className="appt-success-copy">
                     <span className="appt-success-eyebrow">
-                      Request Submitted
+                      Request sent
                     </span>
                     <h2>Appointment request sent successfully</h2>
                     <p>
@@ -550,27 +595,26 @@ export default function AppointmentPage() {
                     className="appt-btn-secondary"
                     onClick={resetForm}
                   >
-                    Submit Another Request
+                    Book another appointment
                   </button>
                 </div>
               ) : (
                 <>
                   <div className="appt-card-header">
                     <span className="appt-section-kicker">
-                      Appointment Form
+                      Book appointment
                     </span>
-                    <h2>Appointment Request Details</h2>
+                    <h2>Appointment details</h2>
                     <p>
-                      Consultation and site measurement requests can be
-                      submitted online. Installation scheduling is arranged by
-                      staff after order confirmation.
+                      Choose the service you need, add your project details, and select an
+                      available schedule.
                     </p>
                   </div>
 
                   <form onSubmit={handleSubmit} className="appt-form">
                     <section className="appt-form-section">
                       <div className="appt-section-head">
-                        <h3>Appointment Type</h3>
+                        <h3>Appointment type</h3>
                         <p>Select one option.</p>
                       </div>
 
@@ -600,7 +644,7 @@ export default function AppointmentPage() {
 
                     <section className="appt-form-section">
                       <div className="appt-section-head">
-                        <h3>Project Details</h3>
+                        <h3>Project details</h3>
                         <p>
                           Describe the furniture or service you need so our
                           staff can review it properly.
@@ -609,7 +653,7 @@ export default function AppointmentPage() {
 
                       <div className="appt-field">
                         <label className="appt-label">
-                          <FileText size={14} /> Project Description{" "}
+                          <FileText size={14} /> Project description{" "}
                           <span className="appt-required">*</span>
                         </label>
                         <textarea
@@ -647,7 +691,7 @@ export default function AppointmentPage() {
                     <section className="appt-form-section">
                       <div className="appt-section-head weekly-section-head">
                         <div>
-                          <h3>Preferred Schedule</h3>
+                          <h3>Choose a schedule</h3>
                           <p>Select an available time slot below.</p>
                         </div>
                         <div className="weekly-nav-controls">
@@ -758,7 +802,7 @@ export default function AppointmentPage() {
                       </div>
                       {preferred_date && preferred_time && (
                         <div className="weekly-selection-feedback">
-                          Selected Schedule:{" "}
+                          Selected:{" "}
                           <strong>
                             {new Date(preferred_date).toLocaleDateString(
                               "en-US",
@@ -776,7 +820,7 @@ export default function AppointmentPage() {
 
                     <section className="appt-form-section">
                       <div className="appt-section-head">
-                        <h3>Contact Information</h3>
+                        <h3>Contact information</h3>
                         <p>
                           We will use this information to confirm the
                           appointment or suggest an adjustment if needed.
@@ -785,7 +829,7 @@ export default function AppointmentPage() {
 
                       <div className="appt-field">
                         <label className="appt-label">
-                          <Phone size={14} /> Contact Number{" "}
+                          <Phone size={14} /> Contact number{" "}
                           <span className="appt-required">*</span>
                         </label>
                         <input
@@ -831,7 +875,7 @@ export default function AppointmentPage() {
                       {purpose === "site_measurement" && (
                         <div className="appt-field">
                           <label className="appt-label">
-                            <MapPin size={14} /> Site Address{" "}
+                            <MapPin size={14} /> Site address{" "}
                             <span className="appt-required">*</span>
                           </label>
                           <textarea
@@ -859,7 +903,7 @@ export default function AppointmentPage() {
                             <span className="appt-spinner" /> Submitting…
                           </>
                         ) : (
-                          "Submit Request"
+                          "Request appointment"
                         )}
                       </button>
                     </div>
@@ -879,7 +923,7 @@ export default function AppointmentPage() {
               <div className="appt-steps">
                 <div className="appt-step">
                   <div>
-                    <strong>1. Submit Request</strong>
+                    <strong>1. Request appointment</strong>
                     <p>
                       Choose the appointment type, add your project details, and
                       send your preferred schedule.
@@ -934,7 +978,7 @@ export default function AppointmentPage() {
             <div className="appt-card">
               <div className="appt-side-header">
                 <span className="appt-section-kicker">History</span>
-                <h3 className="appt-my-title">My Appointments</h3>
+                <h3 className="appt-my-title">Appointment history</h3>
               </div>
 
               {loadingAppts ? (
@@ -979,7 +1023,7 @@ export default function AppointmentPage() {
 
                         {a.assigned_to_name && (
                           <div className="appt-item-assigned">
-                            Assigned Staff: {a.assigned_to_name}
+                            Assigned staff: {a.assigned_to_name}
                           </div>
                         )}
 
@@ -991,7 +1035,7 @@ export default function AppointmentPage() {
                             className="appt-btn-cancel"
                             onClick={() => handleCancel(a.id)}
                           >
-                            <X size={12} /> Cancel Request
+                            <X size={12} /> Cancel request
                           </button>
                         )}
                       </div>

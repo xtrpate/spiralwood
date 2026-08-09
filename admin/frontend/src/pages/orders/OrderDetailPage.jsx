@@ -490,12 +490,32 @@ export default function OrderDetailPage() {
     }
   }, [activeTab, canUseDiscussion]);
 
+  // WISDOM ADMIN STATUS FIRST-CLICK FIX V1
+  // A freshly opened controlled <select> can visually show its first option
+  // for one render while newStatus still contains the previous/current order
+  // status. Resolve against the actual selectable modal options so the first
+  // submit always uses the same valid status the admin sees on screen.
   const handleStatusUpdate = async () => {
     if (updatingStatus) return;
 
-    const nextStatus = normalize(newStatus);
+    const normalizedModalStatuses = statusModalStatuses.map((status) =>
+      normalize(status),
+    );
+    const selectedStatus = normalize(newStatus);
+    const fallbackStatus = normalize(statusModalStatuses[0] || "");
 
-    if (!nextStatus || nextStatus === currentOrderStatus) {
+    const nextStatus =
+      selectedStatus &&
+      selectedStatus !== currentOrderStatus &&
+      normalizedModalStatuses.includes(selectedStatus)
+        ? selectedStatus
+        : fallbackStatus;
+
+    if (
+      !nextStatus ||
+      nextStatus === currentOrderStatus ||
+      !normalizedModalStatuses.includes(nextStatus)
+    ) {
       toast.error("Select a valid next status first.");
       return;
     }
@@ -566,8 +586,8 @@ export default function OrderDetailPage() {
 
     setUpdatingStatus(true);
     try {
-      await api.patch(`/orders/${id}/status`, { status: newStatus });
-      toast.success(`Status updated to "${titleCase(newStatus)}".`);
+      await api.patch(`/orders/${id}/status`, { status: nextStatus });
+      toast.success(`Status updated to "${titleCase(nextStatus)}".`);
       setStatusModal(false);
       setStatusModalMode("general");
       load();
@@ -1169,7 +1189,7 @@ export default function OrderDetailPage() {
     ? allowedNextStatuses.filter(
         (status) => normalize(status) === "cancelled",
       )
-    : allowedNextStatuses;
+    : selectableNextStatuses;
   const hasVerifiedCustomerPayment = verifiedPaymentTotal > 0;
 
   const shouldShowMissingDeliverySection =
@@ -2999,7 +3019,6 @@ export default function OrderDetailPage() {
                 style={isCancelOnlyModal ? btnDecline : btnPrimary}
                 disabled={
                   !statusModalStatuses.length ||
-                  !newStatus ||
                   updatingStatus
                 }
               >

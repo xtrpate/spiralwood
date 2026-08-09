@@ -1849,3 +1849,27 @@
     top: -46px;
   }
 }
+/* WISDOM CUSTOMER READABILITY + SEARCH BARS V1 */
+
+/* Give Search designs a little breathing room below the page divider. */
+.cust-toolbar {
+  margin-top: 10px !important;
+}
+
+/* Make the textbox itself more visible; placeholder text remains normal. */
+.cust-search input {
+  border: 1.5px solid #b5bac0 !important;
+  box-shadow: none !important;
+}
+
+.cust-search input:hover {
+  border-color: #8f969e !important;
+}
+
+.cust-search input:focus {
+  border-color: #111111 !important;
+}
+
+.cust-search input::placeholder {
+  font-weight: 400 !important;
+}

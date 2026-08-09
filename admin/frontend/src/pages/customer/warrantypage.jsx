@@ -113,7 +113,8 @@ export default function WarrantyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState("");
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(true);
+  const [warrantyCenterTab, setWarrantyCenterTab] = useState("file");
 
   const [claims, setClaims] = useState([]);
   const [loadingClaims, setLoadingClaims] = useState(true);
@@ -279,7 +280,8 @@ export default function WarrantyPage() {
     setProofFile(null);
     setSubmitted(false);
     setFormError("");
-    setShowForm(false);
+    setShowForm(true);
+    setWarrantyCenterTab("file");
 
     await Promise.all([fetchClaims(), fetchOrders()]);
   };
@@ -319,27 +321,16 @@ export default function WarrantyPage() {
     <div className="warranty-page">
       <div className="warranty-shell">
         {/* 👉 STATIC HEADER - ALWAYS VISIBLE */}
-        <section className="warranty-page-head">
+                <section className="warranty-page-head">
           <div className="warranty-page-copy">
             <h1>Warranty & Claims</h1>
             <p>
-              Submit a warranty request for eligible completed and paid orders.
-              We review claims carefully and coordinate approved repairs with
-              clear status updates.
+              Get help with eligible furniture issues covered by your warranty.
+              Review the coverage below, then submit and track your claim in one
+              place.
             </p>
           </div>
-
-          <div className="warranty-hero-panel">
-            <div className="warranty-hero-panel-title">Service Overview</div>
-            <div className="warranty-hero-panel-list">
-              <div>✓ 1-year warranty coverage</div>
-              <div>✓ Completed and paid orders only</div>
-              <div>✓ Review within 3–5 days</div>
-              <div>✓ Approved repairs at no added cost</div>
-            </div>
-          </div>
         </section>
-
         {loading ? (
           /* 👉 SKELETON BODY (Header is no longer hidden!) */
           <div
@@ -351,7 +342,7 @@ export default function WarrantyPage() {
               className="warranty-summary-grid"
               style={{ marginBottom: "40px" }}
             >
-              {[1, 2, 3, 4].map((i) => (
+              {[1, 2].map((i) => (
                 <div
                   key={i}
                   className="warranty-summary-card"
@@ -431,33 +422,30 @@ export default function WarrantyPage() {
           </div>
         ) : (
           <>
-            <section className="warranty-summary-grid">
-              <SummaryStat label="Warranty Period" value="1 Year" />
-              <SummaryStat
-                label="Eligible Orders"
-                value={hasEligibleOrders ? String(visibleOrders.length) : "0"}
-              />
-              <SummaryStat
-                label="Submitted Claims"
-                value={String(claims.length)}
-              />
-              <SummaryStat label="Review Window" value="3–5 Days" />
-            </section>
+            <section className="warranty-glance-v2" aria-label="Warranty at a glance">
+              <div className="warranty-glance-card-v2">
+                <div className="warranty-glance-label-v2">Warranty coverage</div>
+                <div className="warranty-glance-value-v2">1 year</div>
+                <p>Coverage starts from the completed order date.</p>
+              </div>
 
+              <div className="warranty-glance-card-v2">
+                <div className="warranty-glance-label-v2">Claim review</div>
+                <div className="warranty-glance-value-v2">3-5 business days</div>
+                <p>Track updates anytime from your claims list.</p>
+              </div>
+            </section>
             <section className="warranty-section">
               <div className="warranty-section-head">
-                <h2>Coverage Summary</h2>
-                <p>
-                  Clear information first, before the customer fills out the
-                  form.
-                </p>
+                <h2>Warranty coverage</h2>
+                <p>Check what is covered before filing a claim.</p>
               </div>
 
               <div className="warranty-policy-grid">
                 <div className="wpolicy-card">
                   <div className="wpolicy-card-title">
                     <CheckCircle size={18} />
-                    <span>What's Covered</span>
+                    <span>What's covered</span>
                   </div>
                   <ul>
                     <li>Manufacturing defects in materials or workmanship</li>
@@ -469,14 +457,12 @@ export default function WarrantyPage() {
                 <div className="wpolicy-card">
                   <div className="wpolicy-card-title">
                     <AlertCircle size={18} />
-                    <span>What's Not Covered</span>
+                    <span>What's not covered</span>
                   </div>
                   <ul>
                     <li>Misuse, accidents, negligence, or improper handling</li>
                     <li>Normal wear and tear over time</li>
-                    <li>
-                      Unauthorized modifications by customer or third parties
-                    </li>
+                    <li>Unauthorized modifications by the customer or third parties</li>
                     <li>Damage from improper cleaning or maintenance</li>
                   </ul>
                 </div>
@@ -484,43 +470,39 @@ export default function WarrantyPage() {
                 <div className="wpolicy-card wpolicy-highlight">
                   <div className="wpolicy-card-title">
                     <Clock size={18} />
-                    <span>Claim Conditions</span>
+                    <span>Claim conditions</span>
                   </div>
-                  <div className="wpolicy-period">1 Year</div>
-                  <p>Claims must be filed within the active warranty period.</p>
-                  <p>
-                    Only completed and paid orders are eligible for a new claim.
-                  </p>
+                  <ul className="wpolicy-condition-list-v2">
+                    <li>File the claim within the active 1-year warranty period.</li>
+                    <li>The order must be completed and fully paid.</li>
+                    <li>Approved warranty repairs are completed at no added cost.</li>
+                  </ul>
                 </div>
               </div>
             </section>
-
-            <section className="warranty-section">
+            <section className="warranty-section warranty-process-section-v2">
               <div className="warranty-section-head">
-                <h2>How the Process Works</h2>
-                <p>
-                  Keep the flow obvious so the customer understands what happens
-                  next.
-                </p>
+                <h2>How to file a claim</h2>
+                <p>Four simple steps from submission to review.</p>
               </div>
 
               <div className="warranty-process-grid">
                 {[
                   {
-                    title: "1. Check Eligibility",
-                    desc: "Choose a completed and paid order that is still within the warranty period.",
+                    title: "1. Choose your order",
+                    desc: "Select an eligible completed and paid order.",
                   },
                   {
-                    title: "2. Submit Details",
-                    desc: "Provide the product name, issue description, defect photo, and proof of purchase.",
+                    title: "2. Describe the issue",
+                    desc: "Tell us what happened and which item is affected.",
                   },
                   {
-                    title: "3. Claim Review",
-                    desc: "Our team reviews your submission and may contact you if more details are needed.",
+                    title: "3. Add supporting files",
+                    desc: "Upload a clear defect photo and your proof of purchase.",
                   },
                   {
-                    title: "4. Repair Coordination",
-                    desc: "Approved claims move forward to repair scheduling and service completion.",
+                    title: "4. Track your claim",
+                    desc: "Follow the review status and service updates from this page.",
                   },
                 ].map((step) => (
                   <div key={step.title} className="warranty-process-card">
@@ -530,31 +512,62 @@ export default function WarrantyPage() {
                 ))}
               </div>
             </section>
-
-            <section className="warranty-main-grid">
-              <div className="warranty-left-column">
-                <div className="warranty-requirements-card">
-                  <div className="warranty-requirements-head">
-                    <ShieldCheck size={18} />
-                    <span>Before You Submit</span>
-                  </div>
-                  <ul>
-                    <li>Select an eligible completed and paid order.</li>
-                    <li>Prepare one clear photo showing the defect.</li>
-                    <li>Prepare your receipt or proof of purchase.</li>
-                    <li>Describe the issue clearly so review is faster.</li>
-                  </ul>
+            <section className="warranty-main-grid warranty-center-v21">
+              <div className="warranty-center-head-v21">
+                <div>
+                  <h2>Warranty center</h2>
+                  <p>Submit a new claim or review your existing warranty requests.</p>
                 </div>
 
+                <div
+                  className="warranty-center-tabs-v21"
+                  role="tablist"
+                  aria-label="Warranty center"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={warrantyCenterTab === "file"}
+                    className={
+                      warrantyCenterTab === "file"
+                        ? "warranty-center-tab-v21 is-active"
+                        : "warranty-center-tab-v21"
+                    }
+                    onClick={() => {
+                      setWarrantyCenterTab("file");
+                      if (!submitted) setShowForm(true);
+                    }}
+                  >
+                    File a claim
+                  </button>
+
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={warrantyCenterTab === "claims"}
+                    className={
+                      warrantyCenterTab === "claims"
+                        ? "warranty-center-tab-v21 is-active"
+                        : "warranty-center-tab-v21"
+                    }
+                    onClick={() => setWarrantyCenterTab("claims")}
+                  >
+                    Your claims ({claims.length})
+                  </button>
+                </div>
+              </div>
+
+              {warrantyCenterTab === "file" && (
+                <div className="warranty-left-column">
                 <div className="warranty-form-wrap">
                   {!showForm && !submitted && hasEligibleOrders && (
                     <button
                       type="button"
-                      className="warranty-open-btn"
+                      className="warranty-open-btn warranty-open-btn-v21"
                       onClick={() => setShowForm(true)}
                     >
                       <ShieldCheck size={18} />
-                      <span>File a Warranty Claim</span>
+                      <span>File a warranty claim</span>
                     </button>
                   )}
 
@@ -578,25 +591,19 @@ export default function WarrantyPage() {
                     <div className="warranty-form-card">
                       <div className="warranty-form-header">
                         <div>
-                          <h2>Submit Warranty Claim</h2>
+                          <h2>Submit a warranty claim</h2>
                           <p className="warranty-form-subtext">
-                            Complete the required details below.
+                            Tell us about the issue and add the required files.
                           </p>
                         </div>
 
-                        <button
-                          type="button"
-                          className="warranty-form-close"
-                          onClick={() => setShowForm(false)}
-                        >
-                          <X size={18} />
-                        </button>
+
                       </div>
 
                       <form onSubmit={handleSubmit} className="warranty-form">
                         <div className="wfield">
                           <label className="wlabel">
-                            Eligible Order <span className="wrequired">*</span>
+                            Eligible order <span className="wrequired">*</span>
                           </label>
 
                           {hasEligibleOrders ? (
@@ -632,7 +639,7 @@ export default function WarrantyPage() {
 
                         <div className="wfield">
                           <label className="wlabel">
-                            Product / Item Name{" "}
+                            Affected product{" "}
                             <span className="wrequired">*</span>
                           </label>
                           <div className="wselect-wrap">
@@ -661,7 +668,7 @@ export default function WarrantyPage() {
 
                         <div className="wfield">
                           <label className="wlabel">
-                            Issue Description{" "}
+                            Describe the issue{" "}
                             <span className="wrequired">*</span>
                           </label>
                           <textarea
@@ -681,7 +688,7 @@ export default function WarrantyPage() {
                           <FileUpload
                             label={
                               <>
-                                Photo of Defect{" "}
+                                Photo of the issue{" "}
                                 <span className="wrequired">*</span>
                               </>
                             }
@@ -698,7 +705,7 @@ export default function WarrantyPage() {
                           <FileUpload
                             label={
                               <>
-                                Proof of Purchase{" "}
+                                Proof of purchase{" "}
                                 <span className="wrequired">*</span>
                               </>
                             }
@@ -728,7 +735,7 @@ export default function WarrantyPage() {
                           ) : (
                             <>
                               <ShieldCheck size={16} />
-                              <span>Submit Claim</span>
+                              <span>Submit claim</span>
                             </>
                           )}
                         </button>
@@ -739,7 +746,7 @@ export default function WarrantyPage() {
                   {submitted && (
                     <div className="warranty-success">
                       <CheckCircle size={52} strokeWidth={1.5} />
-                      <h2>Claim Submitted</h2>
+                      <h2>Claim submitted</h2>
                       <p>
                         Your warranty request has been received. Our team will
                         review it within 3–5 business days and contact you for
@@ -751,22 +758,24 @@ export default function WarrantyPage() {
                         style={{ maxWidth: 260 }}
                         onClick={resetForm}
                       >
-                        Submit Another Claim
+                        Submit another claim
                       </button>
                     </div>
                   )}
                 </div>
-              </div>
+                </div>
+              )}
 
-              <aside className="warranty-claims-wrap">
+              {warrantyCenterTab === "claims" && (
+                <aside className="warranty-claims-wrap">
                 <div className="warranty-claims-head">
                   <div>
-                    <h2 className="warranty-claims-title">Submitted Claims</h2>
+                    <h2 className="warranty-claims-title">Your claims</h2>
                     <p className="warranty-claims-subtitle">
-                      Track your claim status and review uploaded files.
+                      View the latest status, files, and service updates for your warranty requests.
                     </p>
                   </div>
-                  <div className="warranty-claims-count">{claims.length}</div>
+
                 </div>
 
                 {loadingClaims ? (
@@ -823,7 +832,8 @@ export default function WarrantyPage() {
                     ))}
                   </div>
                 )}
-              </aside>
+                </aside>
+              )}
             </section>
           </>
         )}
@@ -883,7 +893,7 @@ export default function WarrantyPage() {
                 onClick={closeCancelModal}
                 disabled={cancelBusy}
               >
-                Keep Claim
+                Keep claim
               </button>
               <button
                 type="button"
@@ -891,7 +901,7 @@ export default function WarrantyPage() {
                 onClick={handleCancelClaim}
                 disabled={cancelBusy}
               >
-                {cancelBusy ? "Cancelling…" : "Cancel Claim"}
+                {cancelBusy ? "Cancelling…" : "Cancel claim"}
               </button>
             </div>
           </div>
@@ -940,7 +950,7 @@ function ClaimCard({ claim, onCancel }) {
             </div>
 
             <div className="wclaim-info-card">
-              <div className="wclaim-info-label">Warranty Valid Until</div>
+              <div className="wclaim-info-label">Warranty valid until</div>
               <div className="wclaim-info-value">
                 {formatDate(claim.warranty_expiry)}
               </div>
@@ -950,7 +960,7 @@ function ClaimCard({ claim, onCancel }) {
           {claim.admin_note && (
             <div className="wclaim-admin-note">
               <strong>
-                {isRejected ? "Rejection Reason:" : "Admin Note:"}
+                {isRejected ? "Reason:" : "Service update:"}
               </strong>{" "}
               {claim.admin_note}
             </div>
@@ -964,7 +974,7 @@ function ClaimCard({ claim, onCancel }) {
                 rel="noreferrer"
                 className="wclaim-file-link"
               >
-                View Defect Photo
+                View issue photo
               </a>
             )}
 
@@ -975,7 +985,7 @@ function ClaimCard({ claim, onCancel }) {
                 rel="noreferrer"
                 className="wclaim-file-link"
               >
-                View Proof of Purchase
+                View Proof of purchase
               </a>
             )}
 
@@ -986,7 +996,7 @@ function ClaimCard({ claim, onCancel }) {
                 rel="noreferrer"
                 className="wclaim-file-link"
               >
-                View Replacement Receipt
+                View service receipt
               </a>
             )}
           </div>
@@ -1010,7 +1020,7 @@ function ClaimCard({ claim, onCancel }) {
                 className="wclaim-cancel-btn"
                 onClick={() => onCancel(claim)}
               >
-                Cancel Claim
+                Cancel claim
               </button>
             </div>
           )}

@@ -104,9 +104,9 @@ export default function SupportPage() {
                 <h1>Customer Support</h1>
 
                 <p>
-                  Need assistance with your order, blueprint, or another
-                  concern? Create a support ticket and communicate directly with
-                  our team.
+                  Get help with an order, blueprint, payment, or another
+                  concern. Create a support ticket and continue the conversation
+                  with our team in one place.
                 </p>
               </div>
 
@@ -116,7 +116,7 @@ export default function SupportPage() {
               >
                 <Plus size={18} />
 
-                {showForm ? "Cancel" : "New Support Ticket"}
+                {showForm ? "Cancel" : "New support ticket"}
               </button>
             </div>
           </div>
@@ -126,26 +126,22 @@ export default function SupportPage() {
           <SummaryCard
             label="Open"
             value={stats.open}
-            subtitle="Currently Active"
+            subtitle="Active requests"
           />
 
           <SummaryCard
-            label="Awaiting"
+            label="Waiting for you"
             value={stats.awaiting}
-            subtitle="Waiting for You"
+            subtitle="Needs your reply"
           />
 
           <SummaryCard
             label="Resolved"
             value={stats.resolved}
-            subtitle="Completed"
+            subtitle="Finished requests"
           />
 
-          <SummaryCard
-            label="Total Tickets"
-            value={stats.total}
-            subtitle="All Requests"
-          />
+
         </section>
 
         {showForm && (
@@ -160,23 +156,40 @@ export default function SupportPage() {
           </section>
         )}
 
-        <section className="support-main-grid">
+        <section
+          className={`support-main-grid support-main-grid-v2 ${
+            !loading && tickets.length === 0 ? "is-empty" : ""
+          }`}
+        >
           <aside className="support-ticket-list">
             <div className="support-ticket-head">
-              <h2>My Support Tickets</h2>
-
-              <span>{tickets.length}</span>
+              <h2>
+                Your support tickets
+                {tickets.length > 0 ? ` (${tickets.length})` : ""}
+              </h2>
             </div>
 
             {loading ? (
               <div className="support-loading">Loading tickets...</div>
             ) : tickets.length === 0 ? (
               <div className="support-empty">
-                <LifeBuoy size={42} />
+                <LifeBuoy size={36} />
 
-                <h3>No Support Tickets</h3>
+                <h3>No support tickets yet</h3>
 
-                <p>You haven't created any support tickets yet.</p>
+                <p>
+                  If you need help with an order, blueprint, payment, or another
+                  concern, create a ticket and our team will assist you.
+                </p>
+
+                <button
+                  type="button"
+                  className="support-empty-action-v2"
+                  onClick={() => setShowForm(true)}
+                >
+                  <Plus size={16} />
+                  Create support ticket
+                </button>
               </div>
             ) : (
               <div className="support-ticket-scroll">

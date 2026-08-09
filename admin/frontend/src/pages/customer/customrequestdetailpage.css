@@ -2236,3 +2236,184 @@
     min-height: 0;
   }
 }
+/* WISDOM REQUEST TABS + DEFAULT CASH V1.8.4 */
+
+.wisdom-request-tab-quotation-v12 > .checkout-section {
+  display: none !important;
+}
+
+.wisdom-request-tab-quotation-v12 > .wisdom-request-quotation-v11 {
+  display: block !important;
+  margin-top: 0 !important;
+}
+
+.wisdom-request-tab-payment-v12 > .wisdom-request-payment-v11,
+.wisdom-request-tab-payment-v12 > .wisdom-request-remaining-payment-v184,
+.wisdom-request-tab-payment-v12 > .wisdom-request-payment-history-v11 {
+  display: block !important;
+}
+
+.wisdom-request-tab-payment-v12 > .wisdom-request-payment-v11 {
+  margin-top: 0 !important;
+}
+
+.wisdom-request-tab-payment-v12 > .wisdom-request-overview-v11,
+.wisdom-request-tab-payment-v12 > .wisdom-request-items-v11,
+.wisdom-request-tab-payment-v12 > .wisdom-request-project-v11,
+.wisdom-request-tab-payment-v12 > .wisdom-request-quotation-v11,
+.wisdom-request-tab-payment-v12 > .wisdom-request-messages-v11 {
+  display: none !important;
+}
+
+/* Payment activity already contains transaction history, so the older
+   duplicate Latest Transaction detail is not needed in this tab. */
+.wisdom-request-tab-payment-v12
+  .wisdom-payment-summary-v16
+  > .crd-info-box {
+  display: none !important;
+}
+
+.wisdom-request-remaining-payment-v184 .checkout-section-body {
+  padding: 16px !important;
+}
+
+.wisdom-remaining-error-v184 {
+  margin: 0 0 12px !important;
+}
+
+.wisdom-remaining-current-v184 {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  padding: 15px;
+  border: 1px solid #dedede;
+  border-radius: 0;
+  background: #fafafa;
+}
+
+.wisdom-remaining-method-line-v184 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wisdom-remaining-method-line-v184 h4,
+.wisdom-remaining-online-option-v184 h4 {
+  margin: 0;
+  color: #111111;
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.wisdom-remaining-method-badge-v184 {
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  padding: 0 8px;
+  border: 1px solid #d5d5d5;
+  border-radius: 0;
+  background: #ffffff;
+  color: #626971;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.wisdom-remaining-current-v184 p,
+.wisdom-remaining-online-option-v184 p {
+  margin: 6px 0 0;
+  color: #666d75;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.wisdom-remaining-amount-v184 {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 3px;
+  text-align: right;
+}
+
+.wisdom-remaining-amount-v184 span {
+  color: #666d75;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.wisdom-remaining-amount-v184 strong {
+  color: #111111;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.wisdom-remaining-online-option-v184 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-top: 12px;
+  padding: 15px;
+  border: 1px solid #dedede;
+  border-radius: 0;
+  background: #ffffff;
+}
+
+.wisdom-remaining-online-option-v184.is-selected {
+  align-items: flex-start;
+}
+
+.wisdom-remaining-online-option-v184 .btn,
+.wisdom-remaining-online-actions-v184 .btn,
+.wisdom-request-tab-payment-v12
+  .wisdom-request-payment-history-v11
+  .btn {
+  min-height: 38px !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+
+.wisdom-remaining-online-actions-v184 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.wisdom-remaining-locked-note-v184 {
+  margin: 10px 0 0;
+  color: #777e86;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.wisdom-request-tab-payment-v12
+  .wisdom-request-payment-history-v11 th {
+  font-weight: 600 !important;
+}
+
+.wisdom-request-tab-payment-v12
+  .wisdom-request-payment-history-v11 td {
+  font-weight: 400;
+}
+
+@media (max-width: 720px) {
+  .wisdom-remaining-current-v184,
+  .wisdom-remaining-online-option-v184 {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .wisdom-remaining-amount-v184 {
+    text-align: left;
+  }
+
+  .wisdom-remaining-online-option-v184 .btn,
+  .wisdom-remaining-online-actions-v184 .btn {
+    width: 100%;
+  }
+}
