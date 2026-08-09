@@ -75,7 +75,7 @@ export default function CustomerTemplateWorkbench({
   blueprint,
   readOnly = false,
   onConfirm,
-  confirmLabel = "Add to Custom Cart",
+  confirmLabel = "Add to Cart",
 }) {
   const [referencePhotos, setReferencePhotos] = useState([]);
   const [uploadError, setUploadError] = useState("");
@@ -342,8 +342,8 @@ export default function CustomerTemplateWorkbench({
       isCustomizable={!readOnly}
       readOnly={readOnly}
       applyLabel={confirmLabel}
-      commentsLabel="Initial Message to Admin"
-      commentsPlaceholder="Describe your preferred look, space, inspiration, or important requests..."
+      commentsLabel="Project Notes"
+      commentsPlaceholder="Tell us about your preferred look, space, or special requests (optional)."
       referencePhotos={referencePhotos}
       uploadError={uploadError}
       onPickReferencePhotos={handleReferencePhotosChange}

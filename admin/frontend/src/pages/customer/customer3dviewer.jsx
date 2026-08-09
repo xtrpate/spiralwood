@@ -1412,7 +1412,7 @@ export default function Customer3DViewer({
                     }}
                   />
                   <span style={selectionMode ? styles.inlineCheckActive : null}>
-                    Select Parts
+                    Customize Individual Parts
                   </span>
                 </label>
               </div>
@@ -1420,7 +1420,7 @@ export default function Customer3DViewer({
               {selectionMode ? (
                 <>
                   <div style={styles.helperText}>
-                    Tap a part in the 3D view, or use the quick-select buttons
+                    Select a part in the 3D preview, or choose one from the options
                     below.
                   </div>
 
@@ -1458,7 +1458,7 @@ export default function Customer3DViewer({
               <section style={styles.sidebarSection}>
                 <div style={styles.sectionRow}>
                   <label style={styles.label}>
-                    Editing {selectedGroup.length} Identical Part(s)
+                    Selected Parts: {selectedGroup.length}
                   </label>
 
                   <button
@@ -1551,9 +1551,9 @@ export default function Customer3DViewer({
               <section style={styles.sidebarSection}>
                 <div style={styles.sectionRow}>
                   <label style={styles.label}>
-                    Overall Dimensions ({unit})
+                    Furniture Size ({unit})
                   </label>
-                  <span style={styles.pill}>Proportional</span>
+                  <span style={styles.pill}>Keeps proportions</span>
                 </div>
 
                 <div style={styles.dimensionGrid}>
@@ -1668,7 +1668,7 @@ export default function Customer3DViewer({
 
             <section style={styles.sidebarSection}>
               <div style={styles.sectionRow}>
-                <label style={styles.label}>Human Scale Reference</label>
+                <label style={styles.label}>Size Reference</label>
 
                 <label style={styles.inlineCheck}>
                   <input

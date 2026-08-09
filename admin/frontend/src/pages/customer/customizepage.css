@@ -1432,3 +1432,268 @@
     padding: 8px;
   }
 }
+
+/* WISDOM CUSTOMER CUSTOMIZE TARGETED UI START */
+
+/*
+  Customer Customize page polish.
+  Business logic is unchanged.
+  Desktop gallery = 4 cards per row.
+  Search remains the only discovery control for the current gallery size.
+*/
+
+/* ---------- Page heading ---------- */
+
+.cust-page-head {
+  align-items: flex-end;
+  gap: 20px;
+  margin-bottom: 20px;
+  padding: 22px 36px 16px;
+}
+
+.cust-page-copy h1 {
+  margin: 0 0 7px;
+  font-size: 1.85rem;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #111111;
+}
+
+.cust-page-copy p {
+  max-width: 720px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  font-weight: 400;
+  color: #606060;
+}
+
+.cust-results-info {
+  font-size: 0.76rem;
+  line-height: 1.3;
+  font-weight: 500;
+  color: #777777;
+}
+
+.cust-toolbar {
+  padding: 0 36px;
+  margin-bottom: 22px;
+}
+
+.cust-search-shell {
+  max-width: 480px;
+}
+
+.cust-search input {
+  height: 44px;
+  border-radius: 0 !important;
+  font-size: 0.82rem;
+}
+
+/* ---------- Gallery ---------- */
+
+.cust-products-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px;
+  padding: 0 36px 48px;
+}
+
+.cust-product-card,
+.product-skeleton {
+  border: 1px solid #dedede;
+  border-radius: 0 !important;
+  box-shadow: none;
+}
+
+.cust-product-image-wrap {
+  height: 220px;
+}
+
+.cust-product-meta {
+  gap: 10px;
+  padding: 14px;
+}
+
+.cust-category {
+  padding: 4px 8px;
+  border-radius: 0 !important;
+  background: #f5f5f5;
+  border-color: #e1e1e1;
+  font-size: 0.66rem;
+  line-height: 1.2;
+  font-weight: 600;
+  color: #454545;
+}
+
+.cust-product-title {
+  margin: 0;
+  font-size: 1.04rem;
+  line-height: 1.32;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: #111111;
+}
+
+.cust-product-desc {
+  min-height: 58px;
+  margin: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #626262;
+}
+
+.cust-tag-row {
+  gap: 6px;
+}
+
+.custom-spec-tag {
+  padding: 4px 8px;
+  border-radius: 0 !important;
+  background: #f8f8f8;
+  border-color: #dfdfdf;
+  font-size: 0.66rem;
+  line-height: 1.2;
+  font-weight: 600;
+  color: #333333;
+}
+
+.cust-dim-summary {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  font-weight: 500;
+  color: #666666;
+}
+
+/* ---------- Compact card actions ---------- */
+
+.cust-card-actions {
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+  gap: 8px;
+  margin-top: auto;
+}
+
+.cust-view-btn,
+.cust-customize-btn {
+  width: 100%;
+  min-height: 40px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 0 !important;
+  font-size: 0.74rem;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.cust-view-btn {
+  background: #ffffff;
+  color: #111111;
+}
+
+.cust-customize-btn {
+  background: #111111;
+  color: #ffffff;
+}
+
+/* ---------- Empty/loading/customer modal surfaces ---------- */
+
+.cust-empty-state,
+.product-skeleton,
+.skeleton-line,
+.premium-toast,
+.cust-modal,
+.cust-panel,
+.cust-note-box,
+.cust-info-card,
+.cust-pill {
+  border-radius: 0 !important;
+}
+
+.cust-modal {
+  box-shadow: 0 18px 52px rgba(15, 23, 42, 0.18);
+}
+
+.cust-modal-head {
+  padding: 16px 18px 13px;
+}
+
+.cust-modal-head h2 {
+  font-size: 1.25rem;
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.cust-modal-head p {
+  margin-top: 5px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #6d6d6d;
+}
+
+.cust-panel h3 {
+  font-size: 1rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: #111111;
+}
+
+.cust-panel p {
+  font-size: 0.78rem;
+  line-height: 1.55;
+  font-weight: 400;
+  color: #626262;
+}
+
+.cust-info-label,
+.cust-label {
+  font-weight: 600;
+}
+
+.cust-info-value {
+  font-weight: 600;
+}
+
+/* ---------- Responsive card counts ---------- */
+
+@media (max-width: 1180px) {
+  .cust-products-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 840px) {
+  .cust-page-head {
+    align-items: flex-start;
+  }
+
+  .cust-products-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+@media (max-width: 560px) {
+  .cust-page-head,
+  .cust-toolbar,
+  .cust-products-grid {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .cust-products-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cust-card-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* WISDOM CUSTOMER CUSTOMIZE TARGETED UI END */
