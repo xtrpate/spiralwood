@@ -1467,7 +1467,8 @@ export default function CustomerLayout() {
         <div className="cust-footer-inner">
           <div className="cust-footer-grid">
             <div className="cust-footer-col">
-              <h4>PICKUP LOCATION ADDRESS</h4>
+              {/* WISDOM FOOTER LOCATION WORDING V1 */}
+              <h4>LOCATION</h4>
               <p>{footerInfo.address}</p>
               <a
                 href={footerInfo.mapUrl}
@@ -1475,7 +1476,7 @@ export default function CustomerLayout() {
                 rel="noreferrer"
                 className="cust-footer-link"
               >
-                Map / Navigation Link
+                View on Google Maps
               </a>
             </div>
 
