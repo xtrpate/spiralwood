@@ -1436,3 +1436,1613 @@
   animation: btnSpin 0.7s linear infinite;
   margin-right: 6px;
 }
+
+/* WISDOM VIEW CART CUSTOMER PROFESSIONAL UI START */
+
+/* ---------- Page / hero ---------- */
+.fm-cart-shell {
+  padding-bottom: 36px;
+}
+
+.fm-cart-page-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px 32px 20px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid #e7e7e7;
+}
+
+.fm-cart-page-hero h1 {
+  margin: 0 0 7px;
+  font-size: 1.72rem;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #111111;
+}
+
+.fm-cart-page-hero p {
+  margin: 0;
+  max-width: 620px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  font-weight: 400;
+  color: #6f6f6f;
+}
+
+.fm-cart-hero-btn {
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid #111111;
+  border-radius: 0 !important;
+  background: #ffffff;
+  color: #111111;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.fm-cart-hero-btn:hover {
+  background: #f6f6f6;
+}
+
+/* ---------- Checkout progress ---------- */
+.fm-cart-progress {
+  gap: 11px;
+  padding: 8px 0 26px;
+}
+
+.fm-cart-step {
+  gap: 8px;
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: #a5a5a5;
+}
+
+.fm-cart-step.active {
+  color: #111111;
+  font-weight: 600;
+}
+
+.fm-cart-step-num {
+  width: 25px;
+  height: 25px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+/* ---------- Main grid ---------- */
+.fm-cart-grid {
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 26px;
+  padding: 0 32px;
+}
+
+.fm-cart-main,
+.fm-cart-summary-card {
+  border-color: #e4e4e4;
+  box-shadow: none;
+}
+
+/* ---------- Table header ---------- */
+.fm-cart-head-row {
+  grid-template-columns: minmax(0, 1fr) 126px 132px 132px;
+  gap: 14px;
+  padding: 13px 20px;
+  background: #ffffff;
+}
+
+.fm-cart-head-col {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #555555;
+}
+
+/* ---------- Select all toolbar ---------- */
+.fm-cart-toolbar {
+  padding: 12px 20px;
+  background: #fafafa;
+}
+
+.fm-cart-select-all {
+  gap: 7px;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: #555555;
+}
+
+.fm-cart-select-all input,
+.fm-cart-item-check {
+  accent-color: #111111;
+}
+
+.fm-cart-clear-btn {
+  color: #666666;
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.fm-cart-clear-btn:hover {
+  color: #a11b1b;
+  text-decoration: none;
+}
+
+/* ---------- Product rows ---------- */
+.fm-cart-item {
+  grid-template-columns: minmax(0, 1fr) 126px 132px 132px;
+  gap: 14px;
+  padding: 17px 20px;
+}
+
+.fm-cart-product-top {
+  grid-template-columns: 24px 18px 72px minmax(0, 1fr);
+  gap: 11px;
+}
+
+.fm-cart-remove-circle {
+  width: 24px;
+  height: 28px;
+  padding: 0;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #8a8a8a;
+}
+
+.fm-cart-remove-circle:hover {
+  border: none !important;
+  background: transparent !important;
+  color: #111111;
+}
+
+.fm-cart-remove-circle svg {
+  width: 14px;
+  height: 14px;
+}
+
+.fm-cart-thumb {
+  width: 72px;
+  height: 72px;
+  border: 1px solid #ececec;
+}
+
+.fm-cart-product-copy h3 {
+  margin: 0 0 5px;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: #111111;
+}
+
+.fm-cart-meta-line {
+  gap: 5px;
+  margin-bottom: 3px;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  font-weight: 400;
+  color: #777777;
+}
+
+.fm-cart-meta-line.status {
+  color: #6f6f6f;
+}
+
+.fm-cart-meta-line svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Price is important, but not visually louder than the product name */
+.fm-cart-price-cell {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.fm-cart-subtotal-cell {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+/* ---------- Quantity selector: customer-facing pill ---------- */
+.fm-cart-qty-box {
+  width: 96px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #c9c9c9;
+  border-radius: 10px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.fm-cart-qty-btn {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent;
+  color: #555555;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fm-cart-qty-btn:hover {
+  background: #f5f5f5;
+  color: #111111;
+}
+
+.fm-cart-qty-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
+.fm-cart-qty-value {
+  width: 34px !important;
+  min-width: 34px !important;
+  height: 30px !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  text-align: center !important;
+  font-size: 0.78rem !important;
+  font-weight: 500 !important;
+  color: #111111 !important;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.fm-cart-qty-value::-webkit-inner-spin-button,
+.fm-cart-qty-value::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ---------- Selection notice ---------- */
+.fm-cart-selection-note {
+  padding: 10px 20px;
+  background: #fafafa;
+  border-top: 1px solid #eeeeee;
+  color: #666666;
+  font-size: 0.74rem;
+  font-weight: 500;
+}
+
+/* Duplicate bottom Continue shopping was removed from JSX */
+.fm-cart-bottom-actions {
+  display: none !important;
+}
+
+/* ---------- Cart totals ---------- */
+.fm-cart-summary {
+  top: 92px;
+}
+
+.fm-cart-summary-card {
+  padding: 22px 20px;
+}
+
+.fm-cart-summary-card h2 {
+  margin: 0 0 18px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #111111;
+}
+
+.fm-cart-summary-row {
+  gap: 12px;
+  margin-bottom: 13px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  font-weight: 400;
+  color: #555555;
+}
+
+.fm-cart-summary-row strong {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #111111;
+}
+
+.fm-cart-summary-row strong.green {
+  color: #3f6f43;
+  font-weight: 600;
+}
+
+.fm-cart-summary-divider {
+  margin: 15px 0;
+}
+
+.fm-cart-summary-total {
+  margin-bottom: 8px;
+}
+
+.fm-cart-summary-total span {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.fm-cart-summary-total strong {
+  font-size: 1.16rem;
+  font-weight: 700;
+}
+
+.fm-cart-summary-note {
+  margin-bottom: 16px;
+  font-size: 0.74rem;
+  line-height: 1.55;
+  font-weight: 400;
+  color: #737373;
+}
+
+/* Primary customer action */
+.fm-cart-checkout-btn {
+  min-height: 48px;
+  border: 1px solid #111111;
+  border-radius: 0 !important;
+  background: #111111;
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  transform: none;
+}
+
+.fm-cart-checkout-btn:hover {
+  background: #000000;
+  color: #ffffff;
+  transform: none;
+}
+
+.fm-cart-checkout-btn svg {
+  color: currentColor;
+}
+
+.fm-cart-checkout-btn:disabled {
+  background: #efefef;
+  color: #9a9a9a;
+  border-color: #d7d7d7;
+  opacity: 1;
+}
+
+/* Guest version remains visually secondary until sign-in */
+.fm-cart-checkout-btn.guest {
+  background: #ffffff;
+  color: #111111;
+  border-color: #111111;
+}
+
+.fm-cart-checkout-btn.guest:hover {
+  background: #f6f6f6;
+  color: #111111;
+}
+
+/* Keep every non-quantity cart action square */
+.fm-cart-hero-btn,
+.fm-cart-checkout-btn,
+.fm-cart-primary-btn,
+.fm-cart-secondary-btn,
+.fm-modal-btn {
+  border-radius: 0 !important;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1180px) {
+  .fm-cart-grid {
+    grid-template-columns: 1fr;
+    padding: 0 24px;
+  }
+
+  .fm-cart-summary-card {
+    max-width: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .fm-cart-page-hero {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
+  .fm-cart-grid {
+    padding: 0 20px;
+  }
+
+  .fm-cart-item {
+    padding-top: 16px;
+    padding-bottom: 16px;
+  }
+
+  .fm-cart-price-cell,
+  .fm-cart-qty-cell,
+  .fm-cart-subtotal-cell {
+    font-size: 0.8rem;
+  }
+
+  .fm-cart-price-cell::before,
+  .fm-cart-qty-cell::before,
+  .fm-cart-subtotal-cell::before {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #666666;
+  }
+}
+
+@media (max-width: 640px) {
+  .fm-cart-page-hero {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 18px 16px 16px;
+  }
+
+  .fm-cart-page-hero h1 {
+    font-size: 1.45rem;
+  }
+
+  .fm-cart-page-hero p {
+    font-size: 0.8rem;
+  }
+
+  .fm-cart-hero-btn {
+    width: 100%;
+  }
+
+  .fm-cart-grid {
+    padding: 0 16px;
+  }
+
+  .fm-cart-product-top {
+    grid-template-columns: 22px 18px 64px minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .fm-cart-thumb {
+    width: 64px;
+    height: 64px;
+  }
+
+  .fm-cart-product-copy h3 {
+    font-size: 0.82rem;
+  }
+
+  .fm-cart-summary-card {
+    padding: 20px 16px;
+  }
+}
+
+/* WISDOM VIEW CART CUSTOMER PROFESSIONAL UI END */
+
+/* WISDOM VIEW CART CUSTOMER CLEANUP FINAL START */
+
+/* Slightly larger overall scale: customer-friendly, still professional */
+.fm-cart-page-hero h1 {
+  font-size: 1.84rem !important;
+  font-weight: 700 !important;
+}
+
+.fm-cart-page-hero p {
+  font-size: 0.94rem !important;
+  font-weight: 400 !important;
+}
+
+.fm-cart-hero-btn {
+  min-height: 44px !important;
+  font-size: 0.86rem !important;
+  font-weight: 600 !important;
+}
+
+/* Progress remains secondary, just easier to read */
+.fm-cart-step {
+  font-size: 0.9rem !important;
+  font-weight: 500 !important;
+}
+
+.fm-cart-step.active {
+  font-weight: 600 !important;
+}
+
+.fm-cart-step-num {
+  width: 27px !important;
+  height: 27px !important;
+  font-size: 0.76rem !important;
+}
+
+/* Table headers are labels, not heavy headings */
+.fm-cart-head-col {
+  font-size: 0.76rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.07em !important;
+}
+
+/* Product row scale */
+.fm-cart-item {
+  padding-top: 19px !important;
+  padding-bottom: 19px !important;
+}
+
+.fm-cart-product-top {
+  grid-template-columns: 24px 18px 82px minmax(0, 1fr) !important;
+  gap: 12px !important;
+}
+
+.fm-cart-thumb {
+  width: 82px !important;
+  height: 82px !important;
+}
+
+.fm-cart-product-copy h3 {
+  margin-bottom: 4px !important;
+  font-size: 0.96rem !important;
+  line-height: 1.4 !important;
+  font-weight: 600 !important;
+}
+
+.fm-cart-meta-line {
+  font-size: 0.76rem !important;
+  font-weight: 400 !important;
+}
+
+/* Price / subtotal are important but not as strong as Total */
+.fm-cart-price-cell {
+  font-size: 0.9rem !important;
+  font-weight: 600 !important;
+}
+
+.fm-cart-subtotal-cell {
+  font-size: 0.92rem !important;
+  font-weight: 600 !important;
+}
+
+/* Quantity selector: same visual language as mini-cart */
+.fm-cart-qty-box {
+  width: 102px !important;
+  height: 34px !important;
+  border-radius: 10px !important;
+}
+
+.fm-cart-qty-btn {
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 32px !important;
+}
+
+.fm-cart-qty-value {
+  width: 36px !important;
+  min-width: 36px !important;
+  height: 32px !important;
+  font-size: 0.82rem !important;
+  font-weight: 500 !important;
+}
+
+/* Cart Totals: only useful customer information */
+.fm-cart-summary-card h2 {
+  font-size: 0.92rem !important;
+  font-weight: 700 !important;
+}
+
+.fm-cart-summary-row {
+  font-size: 0.86rem !important;
+  font-weight: 400 !important;
+  margin-bottom: 14px !important;
+}
+
+.fm-cart-summary-row strong {
+  font-size: 0.88rem !important;
+  font-weight: 600 !important;
+}
+
+/* Total is the strongest financial information */
+.fm-cart-summary-total span {
+  font-size: 1.08rem !important;
+  font-weight: 600 !important;
+}
+
+.fm-cart-summary-total strong {
+  font-size: 1.26rem !important;
+  font-weight: 700 !important;
+}
+
+.fm-cart-summary-note {
+  font-size: 0.79rem !important;
+  font-weight: 400 !important;
+}
+
+.fm-cart-checkout-btn {
+  min-height: 50px !important;
+  font-size: 0.88rem !important;
+  font-weight: 600 !important;
+  border-radius: 0 !important;
+}
+
+/* Non-quantity cart actions remain square */
+.fm-cart-hero-btn,
+.fm-cart-checkout-btn,
+.fm-cart-primary-btn,
+.fm-cart-secondary-btn,
+.fm-modal-btn,
+.fm-cart-remove-circle {
+  border-radius: 0 !important;
+}
+
+@media (max-width: 640px) {
+  .fm-cart-page-hero h1 {
+    font-size: 1.55rem !important;
+  }
+
+  .fm-cart-product-top {
+    grid-template-columns: 22px 18px 70px minmax(0, 1fr) !important;
+  }
+
+  .fm-cart-thumb {
+    width: 70px !important;
+    height: 70px !important;
+  }
+
+  .fm-cart-product-copy h3 {
+    font-size: 0.88rem !important;
+  }
+}
+
+/* WISDOM VIEW CART CUSTOMER CLEANUP FINAL END */
+
+/* WISDOM CHECKOUT CUSTOMER FRIENDLY FINAL V3 START */
+
+/* Page hierarchy */
+.checkout-page .fm-cart-page-hero h1 {
+  font-size: 1.8rem !important;
+  line-height: 1.15 !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+}
+
+.checkout-page .fm-cart-page-hero p {
+  font-size: 0.92rem !important;
+  line-height: 1.55 !important;
+  font-weight: 400 !important;
+  color: #6f6f6f !important;
+}
+
+/* Keep only the top 3-step progress indicator */
+.checkout-page .fm-cart-progress {
+  margin-bottom: 22px !important;
+}
+
+.checkout-page .fm-cart-step {
+  font-size: 0.86rem !important;
+  font-weight: 400 !important;
+  color: #999999 !important;
+}
+
+.checkout-page .fm-cart-step.active {
+  font-weight: 600 !important;
+  color: #111111 !important;
+}
+
+.checkout-page .fm-cart-step-num {
+  font-weight: 600 !important;
+}
+
+/* Cards */
+.checkout-layout {
+  gap: 22px !important;
+}
+
+.checkout-form-panel {
+  gap: 16px !important;
+}
+
+.checkout-section {
+  border: 1px solid #e8e8e8 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04) !important;
+}
+
+.checkout-section-header {
+  min-height: 56px !important;
+  padding: 15px 20px !important;
+  gap: 10px !important;
+}
+
+.checkout-section-header h3 {
+  margin: 0 !important;
+  font-size: 0.98rem !important;
+  line-height: 1.35 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  color: #111111 !important;
+}
+
+/* Inner 1/2/3 circles are intentionally removed */
+.checkout-section-num {
+  display: none !important;
+}
+
+.checkout-optional-label {
+  font-size: 0.76rem !important;
+  font-weight: 400 !important;
+  color: #888888 !important;
+}
+
+.checkout-items-count {
+  margin-left: auto !important;
+  font-size: 0.76rem !important;
+  font-weight: 400 !important;
+  color: #777777 !important;
+}
+
+/* Product review */
+.checkout-item-row {
+  padding: 16px 20px !important;
+}
+
+.checkout-item-thumb {
+  width: 62px !important;
+  height: 62px !important;
+  border-radius: 6px !important;
+  overflow: hidden !important;
+}
+
+.checkout-item-thumb img {
+  border-radius: 6px !important;
+}
+
+.checkout-item-details > div:empty {
+  display: none !important;
+}
+
+.checkout-item-name {
+  font-size: 0.92rem !important;
+  line-height: 1.4 !important;
+  font-weight: 600 !important;
+  color: #111111 !important;
+}
+
+.checkout-item-sub {
+  font-size: 0.74rem !important;
+  line-height: 1.4 !important;
+  font-weight: 400 !important;
+  color: #777777 !important;
+}
+
+.checkout-item-qty {
+  font-size: 0.76rem !important;
+  font-weight: 400 !important;
+  color: #666666 !important;
+  background: #f5f5f5 !important;
+}
+
+.checkout-item-price {
+  font-size: 0.9rem !important;
+  font-weight: 600 !important;
+  color: #111111 !important;
+}
+
+/* Form labels and values */
+.checkout-section-body {
+  padding: 20px !important;
+}
+
+.form-field label {
+  font-size: 0.8rem !important;
+  line-height: 1.4 !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  color: #333333 !important;
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  font-size: 0.88rem !important;
+  font-weight: 400 !important;
+  border-radius: 6px !important;
+}
+
+/* Delivery address option should not look like a section heading */
+.checkout-section-body .form-field.full > label {
+  font-size: 0.82rem !important;
+  font-weight: 500 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+
+/* Payment methods */
+.payment-method-card {
+  padding: 15px 16px !important;
+  border-radius: 7px !important;
+}
+
+.payment-method-name {
+  font-size: 0.88rem !important;
+  font-weight: 600 !important;
+  color: #111111 !important;
+}
+
+.payment-method-desc {
+  margin-top: 3px !important;
+  font-size: 0.76rem !important;
+  line-height: 1.45 !important;
+  font-weight: 400 !important;
+  color: #777777 !important;
+}
+
+.order-notes {
+  min-height: 96px !important;
+  font-weight: 400 !important;
+}
+
+/* Order Summary */
+.checkout-summary {
+  border-radius: 8px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05) !important;
+  overflow: hidden !important;
+}
+
+.checkout-summary-header {
+  padding: 16px 18px !important;
+}
+
+.checkout-summary-header h3 {
+  margin: 0 !important;
+  font-size: 0.96rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+}
+
+.checkout-summary-item {
+  padding-top: 14px !important;
+  padding-bottom: 14px !important;
+}
+
+.checkout-summary-item-name {
+  font-size: 0.84rem !important;
+  line-height: 1.4 !important;
+  font-weight: 600 !important;
+}
+
+.checkout-summary-item-qty {
+  margin-top: 4px !important;
+  font-size: 0.74rem !important;
+  font-weight: 400 !important;
+  color: #777777 !important;
+}
+
+.checkout-summary-item-price {
+  font-size: 0.86rem !important;
+  font-weight: 600 !important;
+}
+
+.checkout-summary-totals .summary-row {
+  font-size: 0.86rem !important;
+  font-weight: 400 !important;
+}
+
+/* Normal summary values stay medium, not bold */
+.checkout-summary-totals .summary-row span:last-child {
+  font-weight: 500 !important;
+}
+
+/* Total alone is strongest */
+.checkout-summary-totals .summary-row:last-of-type {
+  margin-top: 4px !important;
+  padding-top: 14px !important;
+  border-top: 1px solid #ececec !important;
+  font-size: 0.98rem !important;
+  font-weight: 600 !important;
+}
+
+.checkout-summary-totals .summary-row:last-of-type span:last-child {
+  font-size: 1.1rem !important;
+  font-weight: 700 !important;
+}
+
+.summary-note {
+  font-size: 0.76rem !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+  color: #777777 !important;
+}
+
+/* Main actions stay square */
+.place-order-btn {
+  min-height: 48px !important;
+  border-radius: 0 !important;
+  font-size: 0.88rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+}
+
+.checkout-page .fm-cart-hero-btn {
+  border-radius: 0 !important;
+  font-size: 0.84rem !important;
+  font-weight: 500 !important;
+}
+
+@media (max-width: 760px) {
+  .checkout-section-header {
+    padding: 14px 16px !important;
+  }
+
+  .checkout-section-body,
+  .checkout-item-row {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  .checkout-item-thumb {
+    width: 54px !important;
+    height: 54px !important;
+  }
+
+  .checkout-item-name {
+    font-size: 0.84rem !important;
+  }
+}
+
+/* WISDOM CHECKOUT CUSTOMER FRIENDLY FINAL V3 END */
+
+/* WISDOM CHECKOUT ZERO RADIUS FINAL START */
+
+/*
+  Final checkout visual rule:
+  - cards / panels / inputs / payment choices / product thumbnails = 0 radius
+  - top progress circles remain circular because they are step indicators
+  - payment radio controls remain circular because they are radio controls
+  - typography stays balanced and customer-facing
+*/
+
+.checkout-section,
+.checkout-summary,
+.checkout-item-thumb,
+.checkout-item-thumb img,
+.form-field input,
+.form-field select,
+.form-field textarea,
+.payment-method-card,
+.order-notes {
+  border-radius: 0 !important;
+}
+
+/* Keep the product review clean and close to Shopping Cart proportions */
+.checkout-item-row {
+  min-height: 92px !important;
+  padding: 16px 20px !important;
+}
+
+.checkout-item-thumb {
+  width: 64px !important;
+  height: 64px !important;
+}
+
+.checkout-item-name {
+  font-size: 0.94rem !important;
+  line-height: 1.4 !important;
+  font-weight: 600 !important;
+}
+
+.checkout-item-price {
+  font-size: 0.9rem !important;
+  font-weight: 600 !important;
+}
+
+.checkout-item-qty {
+  padding: 5px 9px !important;
+  border-radius: 0 !important;
+  font-size: 0.76rem !important;
+  font-weight: 400 !important;
+}
+
+/* Section headings should guide the eye without looking heavy */
+.checkout-section-header h3,
+.checkout-summary-header h3 {
+  font-weight: 600 !important;
+}
+
+/* Form labels: readable, professional, not overly bold */
+.form-field label {
+  font-size: 0.82rem !important;
+  font-weight: 500 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+
+/* Normal field values */
+.form-field input,
+.form-field select,
+.form-field textarea {
+  min-height: 46px !important;
+  font-size: 0.9rem !important;
+  font-weight: 400 !important;
+}
+
+/* Payment cards */
+.payment-method-card {
+  min-height: 78px !important;
+  padding: 15px 16px !important;
+}
+
+.payment-method-name {
+  font-size: 0.9rem !important;
+  font-weight: 600 !important;
+}
+
+.payment-method-desc {
+  font-size: 0.78rem !important;
+  font-weight: 400 !important;
+}
+
+/* Order summary hierarchy */
+.checkout-summary-item-name {
+  font-weight: 600 !important;
+}
+
+.checkout-summary-item-price {
+  font-weight: 600 !important;
+}
+
+.checkout-summary-totals .summary-row {
+  font-weight: 400 !important;
+}
+
+.checkout-summary-totals .summary-row span:last-child {
+  font-weight: 500 !important;
+}
+
+.checkout-summary-totals .summary-row:last-of-type,
+.checkout-summary-totals .summary-row:last-of-type span:last-child {
+  font-weight: 700 !important;
+}
+
+/* Main customer actions stay square */
+.place-order-btn,
+.checkout-page .fm-cart-hero-btn {
+  border-radius: 0 !important;
+}
+
+@media (max-width: 760px) {
+  .checkout-item-thumb {
+    width: 58px !important;
+    height: 58px !important;
+  }
+
+  .checkout-item-name {
+    font-size: 0.88rem !important;
+  }
+}
+
+/* WISDOM CHECKOUT ZERO RADIUS FINAL END */
+
+/* WISDOM ORDER COMPLETE CUSTOMER UI V2 START */
+
+/* Compact customer confirmation - no unnecessary empty-space feel */
+.order-success-customer {
+  width: min(620px, calc(100% - 32px));
+  min-height: 0 !important;
+  margin: 34px auto 44px !important;
+  padding: 28px 24px 30px !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: #ffffff;
+  border: 1px solid #e8e8e8;
+  border-radius: 0 !important;
+  box-shadow: none;
+}
+
+/* Confirmation icon stays circular because it communicates success state */
+.order-success-icon-customer {
+  width: 64px !important;
+  height: 64px !important;
+  margin: 0 auto 18px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50% !important;
+  background: #111111 !important;
+  color: #ffffff !important;
+}
+
+.order-success-customer h2 {
+  margin: 0 0 9px !important;
+  font-size: 1.55rem !important;
+  line-height: 1.25 !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+  color: #111111 !important;
+}
+
+.order-success-customer > p {
+  max-width: 500px;
+  margin: 0 auto !important;
+  font-size: 0.88rem !important;
+  line-height: 1.65 !important;
+  font-weight: 400 !important;
+  color: #707070 !important;
+}
+
+/* Two useful next actions only */
+.order-success-actions {
+  width: 100%;
+  margin-top: 24px !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.order-success-primary-btn,
+.order-success-secondary-btn {
+  min-width: 170px;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.86rem;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.order-success-primary-btn {
+  border: 1px solid #111111;
+  background: #111111;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.order-success-primary-btn:hover {
+  background: #000000;
+  color: #ffffff;
+}
+
+.order-success-secondary-btn {
+  border: 1px solid #111111;
+  background: #ffffff;
+  color: #111111;
+  font-weight: 500;
+}
+
+.order-success-secondary-btn:hover {
+  background: #f5f5f5;
+}
+
+/* Keep step tracker balanced on completion page */
+.fm-cart-shell > .fm-cart-progress {
+  padding-top: 14px;
+  padding-bottom: 8px;
+}
+
+@media (max-width: 640px) {
+  .order-success-customer {
+    width: calc(100% - 24px);
+    margin-top: 24px !important;
+    margin-bottom: 32px !important;
+    padding: 24px 16px 26px !important;
+  }
+
+  .order-success-customer h2 {
+    font-size: 1.35rem !important;
+  }
+
+  .order-success-customer > p {
+    font-size: 0.82rem !important;
+  }
+
+  .order-success-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .order-success-primary-btn,
+  .order-success-secondary-btn {
+    width: 100%;
+    max-width: 320px;
+  }
+}
+
+/* WISDOM ORDER COMPLETE CUSTOMER UI V2 END */
+
+/* WISDOM ORDER COMPLETE PROFESSIONAL SUMMARY START */
+
+.order-complete-page {
+  padding-bottom: 48px;
+}
+
+.order-complete-progress {
+  margin-bottom: 0 !important;
+}
+
+.order-complete-content {
+  width: min(640px, calc(100% - 32px));
+  margin: 30px auto 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.order-complete-success-icon {
+  width: 66px;
+  height: 66px;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #4fba78;
+  color: #ffffff;
+}
+
+.order-complete-content > h1 {
+  margin: 0;
+  font-size: 1.72rem;
+  line-height: 1.22;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: #111111;
+}
+
+.order-complete-lead {
+  max-width: 500px;
+  margin: 9px auto 0;
+  font-size: 0.89rem;
+  line-height: 1.6;
+  font-weight: 400;
+  color: #6d6d6d;
+}
+
+.order-complete-number {
+  margin: 8px 0 0;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #777777;
+}
+
+.order-complete-number strong {
+  font-weight: 600;
+  color: #111111;
+}
+
+.order-complete-summary-card {
+  width: 100%;
+  margin-top: 24px;
+  background: #ffffff;
+  border: 1px solid #e4e4e4;
+  border-radius: 0 !important;
+  text-align: left;
+}
+
+.order-complete-summary-header {
+  padding: 16px 18px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.order-complete-summary-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.35;
+  font-weight: 600;
+  color: #111111;
+}
+
+.order-complete-meta {
+  padding: 12px 18px;
+  background: #fafafa;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.order-complete-meta-row {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.order-complete-meta-row > span {
+  font-weight: 400;
+  color: #777777;
+}
+
+.order-complete-meta-row > strong {
+  max-width: 65%;
+  font-weight: 500;
+  color: #222222;
+  text-align: right;
+}
+
+.order-complete-items {
+  padding: 0 18px;
+}
+
+.order-complete-item {
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #eeeeee;
+}
+
+.order-complete-item:last-child {
+  border-bottom: 0;
+}
+
+.order-complete-item-image {
+  width: 54px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 0 !important;
+  background: #f3f3f3;
+  font-size: 18px;
+}
+
+.order-complete-item-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 0 !important;
+}
+
+.order-complete-item-copy {
+  min-width: 0;
+}
+
+.order-complete-item-name {
+  font-size: 0.86rem;
+  line-height: 1.38;
+  font-weight: 600;
+  color: #111111;
+}
+
+.order-complete-item-qty {
+  margin-top: 3px;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  font-weight: 400;
+  color: #858585;
+}
+
+.order-complete-item-price {
+  padding-left: 10px;
+  white-space: nowrap;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #111111;
+}
+
+.order-complete-totals {
+  padding: 13px 18px 15px;
+  border-top: 1px solid #e8e8e8;
+}
+
+.order-complete-total-row {
+  min-height: 29px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #555555;
+}
+
+.order-complete-total-row.final {
+  min-height: 42px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid #e6e6e6;
+  color: #111111;
+}
+
+.order-complete-total-row.final strong:first-child {
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
+.order-complete-total-row.final strong:last-child {
+  font-size: 1.08rem;
+  font-weight: 700;
+}
+
+.order-complete-simple-note {
+  width: 100%;
+  margin-top: 24px;
+  padding: 16px 18px;
+  border: 1px solid #e4e4e4;
+  border-radius: 0 !important;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #666666;
+  background: #ffffff;
+}
+
+.order-complete-actions {
+  width: 100%;
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.order-complete-primary,
+.order-complete-secondary {
+  min-width: 175px;
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.86rem;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.order-complete-primary {
+  border: 1px solid #111111;
+  background: #111111;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.order-complete-primary:hover {
+  background: #000000;
+  color: #ffffff;
+}
+
+.order-complete-secondary {
+  border: 1px solid #111111;
+  background: #ffffff;
+  color: #111111;
+  font-weight: 500;
+}
+
+.order-complete-secondary:hover {
+  background: #f5f5f5;
+}
+
+@media (max-width: 640px) {
+  .order-complete-content {
+    width: calc(100% - 24px);
+    margin-top: 24px;
+    margin-bottom: 32px;
+  }
+
+  .order-complete-success-icon {
+    width: 58px;
+    height: 58px;
+  }
+
+  .order-complete-content > h1 {
+    font-size: 1.42rem;
+  }
+
+  .order-complete-lead {
+    font-size: 0.83rem;
+  }
+
+  .order-complete-meta-row {
+    align-items: flex-start;
+  }
+
+  .order-complete-item {
+    grid-template-columns: 48px minmax(0, 1fr) auto;
+  }
+
+  .order-complete-item-image {
+    width: 48px;
+    height: 48px;
+  }
+
+  .order-complete-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .order-complete-primary,
+  .order-complete-secondary {
+    width: 100%;
+  }
+}
+
+/* WISDOM ORDER COMPLETE PROFESSIONAL SUMMARY END */
+
+/* WISDOM ORDER COMPLETE HEADING TYPOGRAPHY HOTFIX START */
+
+/* Success icon: WISDOM black-and-white theme */
+.order-complete-success-icon {
+  background: #111111 !important;
+  color: #ffffff !important;
+}
+
+/* Main confirmation heading: larger, like the approved reference */
+.order-complete-content > h1 {
+  margin-top: 0 !important;
+  margin-bottom: 10px !important;
+  font-size: 2rem !important;
+  line-height: 1.18 !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.02em !important;
+  color: #111111 !important;
+}
+
+/* Supporting message: readable but not bold */
+.order-complete-lead {
+  max-width: 560px !important;
+  margin-top: 0 !important;
+  font-size: 1rem !important;
+  line-height: 1.55 !important;
+  font-weight: 400 !important;
+  color: #666666 !important;
+}
+
+/* Order number: larger than supporting text, ID gets emphasis */
+.order-complete-number {
+  margin-top: 9px !important;
+  font-size: 0.95rem !important;
+  line-height: 1.45 !important;
+  font-weight: 400 !important;
+  color: #666666 !important;
+}
+
+.order-complete-number strong {
+  font-size: 0.97rem !important;
+  font-weight: 600 !important;
+  color: #111111 !important;
+}
+
+/* Slightly more breathing room before the summary card */
+.order-complete-summary-card {
+  margin-top: 26px !important;
+}
+
+@media (max-width: 640px) {
+  .order-complete-content > h1 {
+    font-size: 1.6rem !important;
+  }
+
+  .order-complete-lead {
+    font-size: 0.9rem !important;
+  }
+
+  .order-complete-number {
+    font-size: 0.86rem !important;
+  }
+
+  .order-complete-number strong {
+    font-size: 0.88rem !important;
+  }
+}
+
+/* WISDOM ORDER COMPLETE HEADING TYPOGRAPHY HOTFIX END */

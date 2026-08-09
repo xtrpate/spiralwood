@@ -404,17 +404,23 @@ export default function ProductCatalog() {
     ((normalizedMax - sliderMin) / (safeSliderMax - sliderMin)) * 100;
 
   const detailRows = selected
-    ? [
-        { label: "CATEGORY", value: selected.category || "—" },
-        { label: "TYPE", value: formatTypeLabel(selected.type) },
-        {
-          label: "STOCK",
-          value: `${Number(selected.stock || 0).toLocaleString("en-PH")} units`,
-        },
-        ...(selected.barcode
-          ? [{ label: "BARCODE", value: selected.barcode }]
-          : []),
-      ]
+    ? (() => {
+        const stockCount = Number(selected.stock || 0);
+        const stockStatus = String(selected.stock_status || "").toLowerCase();
+
+        let availability = `In Stock · ${stockCount.toLocaleString("en-PH")} available`;
+
+        if (stockStatus === "out_of_stock" || stockCount <= 0) {
+          availability = "Out of Stock";
+        } else if (stockStatus === "low_stock") {
+          availability = `Only ${stockCount.toLocaleString("en-PH")} left`;
+        }
+
+        return [
+          { label: "CATEGORY", value: selected.category || "—" },
+          { label: "AVAILABILITY", value: availability },
+        ];
+      })()
     : [];
 
   return (

@@ -9,22 +9,22 @@ const STATUS_META = {
     badge: "Pending",
     title: "Order received",
     short: "Waiting for confirmation",
-    desc: "We received your order and it is waiting for confirmation.",
+    desc: "Your order has been received and is awaiting confirmation.",
   },
   confirmed: {
     badge: "Confirmed",
     title: "Confirmed",
     short: "Preparing your order",
-    desc: "Your order has been confirmed and is now being prepared.",
+    desc: "Your order has been confirmed and is being prepared.",
   },
   production: {
-    badge: "Production",
+    badge: "In Production",
     title: "In production",
     short: "Furniture is being prepared",
     desc: "Your furniture is currently being built or prepared.",
   },
   shipping: {
-    badge: "Shipping",
+    badge: "Out for Delivery",
     title: "Out for delivery",
     short: "On the way to your address",
     desc: "Your order is already on the way to your address.",
@@ -68,7 +68,7 @@ const TRACKING_STEPS = [
   {
     key: "pending",
     label: "Order received",
-    desc: "We received your order and are waiting to confirm it.",
+    desc: "Your order has been received and is awaiting confirmation.",
   },
   {
     key: "confirmed",
@@ -163,13 +163,6 @@ function TrackingList({ order }) {
             Cancelled on {fmtDate(order.cancelled_at)}
           </div>
         )}
-
-        {order.refund_status && order.refund_status !== "none" && (
-          <div className="tl-cancel-copy">
-            Refund status:{" "}
-            {order.refund_status === "pending" ? "Pending" : "Processed"}
-          </div>
-        )}
       </div>
     );
   }
@@ -224,7 +217,6 @@ function OrderModal({
   onClose,
   onConfirmOrder,
   onCancelOrder,
-  onReviewOrder,
 }) {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -286,7 +278,7 @@ function OrderModal({
                 width: "150px",
                 background: "#f3f4f6",
                 marginBottom: "8px",
-                borderRadius: "4px",
+                borderRadius: "0px",
               }}
             />
             <div
@@ -295,7 +287,7 @@ function OrderModal({
                 width: "100px",
                 background: "#f3f4f6",
                 marginBottom: "32px",
-                borderRadius: "4px",
+                borderRadius: "0px",
               }}
             />
             <div
@@ -304,7 +296,7 @@ function OrderModal({
                 width: "100%",
                 background: "#f3f4f6",
                 marginBottom: "24px",
-                borderRadius: "8px",
+                borderRadius: "0px",
               }}
             />
             <div
@@ -318,14 +310,14 @@ function OrderModal({
                 style={{
                   height: "200px",
                   background: "#f3f4f6",
-                  borderRadius: "8px",
+                  borderRadius: "0px",
                 }}
               />
               <div
                 style={{
                   height: "200px",
                   background: "#f3f4f6",
-                  borderRadius: "8px",
+                  borderRadius: "0px",
                 }}
               />
             </div>
@@ -352,7 +344,7 @@ function OrderModal({
             </div>
 
             <div className="om-status-card">
-              <div className="om-section-kicker">Current status</div>
+              <div className="om-section-kicker">Status</div>
               <div className="om-status-title">{sm.title}</div>
               <div className="om-status-desc">{sm.desc}</div>
 
@@ -373,7 +365,7 @@ function OrderModal({
             <div className="om-grid">
               <div className="om-main">
                 <div className="om-section">
-                  <div className="om-section-title">Order timeline</div>
+                  <div className="om-section-title">Order Timeline</div>
                   <TrackingList order={order} />
                 </div>
 
@@ -386,8 +378,50 @@ function OrderModal({
                           {item.image_url ? (
                             <img
                               src={buildAssetUrl(item.image_url)}
-                              alt={item.product_name}
+                              alt={item.product_name || "Order item"}
                             />
+                          ) : order.blueprint_detail_preview?.thumbnail_url ? (
+                            <img
+                              src={buildAssetUrl(
+                                order.blueprint_detail_preview.thumbnail_url,
+                              )}
+                              alt={
+                                order.blueprint_detail_preview.title ||
+                                "Blueprint preview"
+                              }
+                            />
+                          ) : order.blueprint_detail_preview?.file_url &&
+                            ["jpg", "jpeg", "png", "webp"].includes(
+                              String(
+                                order.blueprint_detail_preview.file_type || "",
+                              ).toLowerCase(),
+                            ) ? (
+                            <img
+                              src={buildAssetUrl(
+                                order.blueprint_detail_preview.file_url,
+                              )}
+                              alt={
+                                order.blueprint_detail_preview.title ||
+                                "Imported blueprint preview"
+                              }
+                            />
+                          ) : order.blueprint_id ? (
+                            <div className="om-blueprint-placeholder">
+                              <svg
+                                viewBox="0 0 48 48"
+                                aria-hidden="true"
+                                focusable="false"
+                              >
+                                <rect
+                                  x="8"
+                                  y="5"
+                                  width="32"
+                                  height="38"
+                                />
+                                <path d="M14 14h20M14 20h20M14 26h9M27 26h7M14 32h20M18 10v28M31 10v28" />
+                              </svg>
+                              <span>Blueprint</span>
+                            </div>
                           ) : (
                             <div className="om-item-img-placeholder">Item</div>
                           )}
@@ -395,17 +429,18 @@ function OrderModal({
 
                         <div className="om-item-info">
                           <div className="om-item-name">
-                            {item.product_name}
+                            {order.blueprint_id
+                              ? order.blueprint_detail_preview?.title
+                                ? `Custom Blueprint – ${order.blueprint_detail_preview.title}`
+                                : "Custom Blueprint Order"
+                              : item.product_name}
                           </div>
                           <div className="om-item-qty">
-                            Quantity: {item.quantity}
+                            Qty {item.quantity}
                           </div>
                         </div>
 
                         <div className="om-item-price">
-                          <div className="om-item-unit">
-                            {fmt(item.unit_price)} each
-                          </div>
                           <div className="om-item-subtotal">
                             {fmt(getItemSubtotal(item))}
                           </div>
@@ -418,7 +453,7 @@ function OrderModal({
 
               <aside className="om-side">
                 <div className="om-side-card">
-                  <div className="om-section-title">Order summary</div>
+                  <div className="om-section-title">Order Summary</div>
 
                   <div className="om-total-row">
                     <span>Subtotal</span>
@@ -432,16 +467,16 @@ function OrderModal({
                 </div>
 
                 <div className="om-side-card">
-                  <div className="om-section-title">Order details</div>
+                  <div className="om-section-title">Order Details</div>
 
                   <div className="om-detail-list">
                     <div className="om-detail-row">
-                      <span>Delivery address</span>
+                      <span>Delivery Address</span>
                       <strong>{order.delivery_address || "—"}</strong>
                     </div>
 
                     <div className="om-detail-row">
-                      <span>Payment method</span>
+                      <span>Payment Method</span>
                       <strong>
                         {PAY_METHOD_LABELS[
                           String(order.payment_method).toLowerCase()
@@ -452,12 +487,12 @@ function OrderModal({
                     </div>
 
                     <div className="om-detail-row">
-                      <span>Payment status</span>
+                      <span>Payment Status</span>
                       <strong>{pm.label}</strong>
                     </div>
 
                     <div className="om-detail-row">
-                      <span>Order date</span>
+                      <span>Order Date</span>
                       <strong>{fmtDate(order.created_at)}</strong>
                     </div>
                   </div>
@@ -483,7 +518,7 @@ function OrderModal({
 
                 {(order.status === "pending" || canCustomerConfirm) && (
                   <div className="om-side-card">
-                    <div className="om-section-title">Available actions</div>
+                    <div className="om-section-title">Actions</div>
 
                     <div className="om-action-stack">
                       {canPayNow && (
@@ -506,25 +541,15 @@ function OrderModal({
                         <button
                           className="order-inline-btn order-inline-btn-outline om-action-btn"
                           onClick={() => onCancelOrder(order.id)}
-                        >
-                          Cancel order
-                        </button>
+                        >Cancel Order</button>
                       )}
 
                       {canCustomerConfirm && (
                         <>
                           <button
-                            className="order-inline-btn order-inline-btn-outline om-action-btn"
-                            onClick={() => onReviewOrder(order.id)}
-                          >
-                            Review
-                          </button>
-                          <button
                             className="order-inline-btn order-inline-btn-primary om-action-btn"
                             onClick={() => onConfirmOrder(order.id)}
-                          >
-                            Confirm receipt
-                          </button>
+                          >Confirm Received</button>
                         </>
                       )}
                     </div>
@@ -632,10 +657,6 @@ export default function OrdersPage() {
     }
   };
 
-  const reviewOrderById = () => {
-    alert("Review feature coming soon!");
-  };
-
   const cancelOrderById = async (orderId) => {
     const reason = window.prompt("Please provide a reason for cancellation:");
     if (reason === null) return;
@@ -705,11 +726,11 @@ export default function OrdersPage() {
   }, [searchParams, loading, orders]);
 
   const STATUS_TABS = [
-    { key: "all", label: "All orders" },
-    { key: "pending", label: "Pending" },
+    { key: "all", label: "All" },
+    { key: "pending", label: "To Confirm" },
     { key: "confirmed", label: "Confirmed" },
-    { key: "production", label: "Production" },
-    { key: "shipping", label: "Shipping" },
+    { key: "production", label: "In Production" },
+    { key: "shipping", label: "Out for Delivery" },
     { key: "delivered", label: "Delivered" },
     { key: "completed", label: "Completed" },
     { key: "cancelled", label: "Cancelled" },
@@ -727,9 +748,9 @@ export default function OrdersPage() {
     <div className="orders-page">
       <div className="orders-hero">
         <div>
-          <h1>My orders</h1>
+          <h1>My Orders</h1>
           <p>
-            Review your order history and check the latest status of each order.
+            Track your orders, payments, and delivery status.
           </p>
         </div>
 
@@ -737,7 +758,7 @@ export default function OrdersPage() {
           className="orders-shop-btn"
           onClick={() => navigate("/catalog")}
         >
-          Continue shopping
+          Continue Shopping
         </button>
       </div>
 
@@ -861,15 +882,15 @@ export default function OrdersPage() {
               <div
                 key={order.id}
                 id={`order-card-${order.id}`}
-                className="order-card"
+                className="order-card wisdom-order-card-exact"
                 onClick={() => handleOpenOrder(order)}
                 style={
                   focusedOrderId === order.id
-                    ? { boxShadow: "0 0 0 3px #0a0a0a" }
+                    ? { boxShadow: "0 0 0 2px #111111" }
                     : undefined
                 }
               >
-                <div className="order-card-top">
+                <div className="wisdom-order-head">
                   <div>
                     <div className="order-card-num">{order.order_number}</div>
                     <div className="order-card-date">
@@ -877,76 +898,140 @@ export default function OrdersPage() {
                     </div>
                   </div>
 
-                  <div className="order-card-badges">
-                    <span className="order-badge order-badge-dark">
-                      {sm.badge}
-                    </span>
-                    <span className="order-badge order-badge-light">
-                      {pm.label}
-                    </span>
-                  </div>
+                  <span className="order-badge order-badge-dark">
+                    {sm.badge}
+                  </span>
                 </div>
 
-                <div className="order-card-main">
-                  <div className="order-card-status-panel">
-                    <div className="order-card-status-label">
-                      Current status
+                <div className="wisdom-order-items">
+                  {Array.isArray(order.items_preview) &&
+                  order.items_preview.length > 0 ? (
+                    <>
+                      {order.items_preview.map((item, index) => (
+                        <div
+                          key={`${order.id}-item-${index}`}
+                          className="wisdom-order-item"
+                        >
+                          <div className="wisdom-order-item-image">
+                            {item.image_url ? (
+                              <img
+                                src={buildAssetUrl(item.image_url)}
+                                alt={item.product_name || "Order item"}
+                              />
+                            ) : order.blueprint_preview?.thumbnail_url ? (
+                              <img
+                                src={buildAssetUrl(
+                                  order.blueprint_preview.thumbnail_url,
+                                )}
+                                alt={
+                                  order.blueprint_preview.title ||
+                                  "Blueprint preview"
+                                }
+                              />
+                            ) : order.blueprint_preview?.file_url &&
+                              ["jpg", "jpeg", "png", "webp"].includes(
+                                String(
+                                  order.blueprint_preview.file_type || "",
+                                ).toLowerCase(),
+                              ) ? (
+                              <img
+                                src={buildAssetUrl(
+                                  order.blueprint_preview.file_url,
+                                )}
+                                alt={
+                                  order.blueprint_preview.title ||
+                                  "Imported blueprint preview"
+                                }
+                              />
+                            ) : order.blueprint_id ? (
+                              <div className="wisdom-order-blueprint-placeholder">
+                                <svg
+                                  viewBox="0 0 48 48"
+                                  aria-hidden="true"
+                                  focusable="false"
+                                >
+                                  <rect
+                                    x="8"
+                                    y="5"
+                                    width="32"
+                                    height="38"
+                                  />
+                                  <path d="M14 14h20M14 20h20M14 26h9M27 26h7M14 32h20M18 10v28M31 10v28" />
+                                </svg>
+                                <span>Blueprint</span>
+                              </div>
+                            ) : (
+                              <div className="wisdom-order-item-placeholder">
+                                Item
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="wisdom-order-item-copy">
+                            <div className="wisdom-order-item-name">
+                              {order.blueprint_id
+                                ? order.blueprint_preview?.title
+                                  ? `Custom Blueprint – ${order.blueprint_preview.title}`
+                                  : "Custom Blueprint Order"
+                                : item.product_name || "Order item"}
+                            </div>
+                          </div>
+
+                          <div className="wisdom-order-item-qty">
+                            Qty {item.quantity || 0}
+                          </div>
+
+                          <div className="wisdom-order-item-price">
+                            {fmt(
+                              Number(item.unit_price || 0) *
+                                Number(item.quantity || 0),
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {Number(order.item_count || 0) >
+                        order.items_preview.length && (
+                        <div className="wisdom-order-more">
+                          +
+                          {Number(order.item_count || 0) -
+                            order.items_preview.length}{" "}
+                          more item
+                          {Number(order.item_count || 0) -
+                            order.items_preview.length !==
+                          1
+                            ? "s"
+                            : ""}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="wisdom-order-items-fallback">
+                      {order.total_qty || 0} item
+                      {(order.total_qty || 0) !== 1 ? "s" : ""} in this order
                     </div>
-                    <div className="order-card-status-title">{sm.title}</div>
-                    <div className="order-card-status-desc">{sm.desc}</div>
+                  )}
+                </div>
+
+                <div className="wisdom-order-bottom">
+                  <div className="wisdom-order-status">
+                    <div className="wisdom-order-status-title">{sm.title}</div>
+                    <div className="wisdom-order-status-desc">{sm.desc}</div>
                   </div>
 
-                  <div className="order-card-facts">
-                    <div className="order-fact-card">
-                      <div className="order-fact-label">Items</div>
-                      <div className="order-fact-value">
-                        {order.total_qty || 0} item
-                        {(order.total_qty || 0) !== 1 ? "s" : ""}
-                      </div>
+                  <div className="wisdom-order-bottom-right">
+                    <div className="wisdom-order-total">
+                      <span>Total</span>
+                      <strong>{fmt(order.total)}</strong>
                     </div>
 
-                    <div className="order-fact-card">
-                      <div className="order-fact-label">Payment method</div>
-                      <div className="order-fact-value">
-                        {PAY_METHOD_LABELS[
-                          String(order.payment_method).toLowerCase()
-                        ] ||
-                          order.payment_method ||
-                          "—"}
-                      </div>
-                    </div>
-
-                    <div className="order-fact-card">
-                      <div className="order-fact-label">Payment status</div>
-                      <div className="order-fact-value">{pm.label}</div>
-                    </div>
-
-                    <div className="order-fact-card">
-                      <div className="order-fact-label">Delivery address</div>
-                      <div className="order-fact-value order-fact-value-address">
-                        {order.delivery_address || "No delivery address yet"}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="order-card-side">
-                    <div className="order-total-box">
-                      <div className="order-card-total-label">Total</div>
-                      <div className="order-card-total">{fmt(order.total)}</div>
-                    </div>
-
-                    <div className="order-card-actions">
+                    <div className="wisdom-order-actions">
                       {canPayNow && (
                         <button
                           className="order-inline-btn order-inline-btn-primary"
                           onClick={(e) => {
-                            e.stopPropagation(); // Prevents the modal from opening
+                            e.stopPropagation();
                             window.location.assign(order.payment_url);
-                          }}
-                          style={{
-                            background: "#2563eb",
-                            borderColor: "#2563eb",
-                            color: "#ffffff",
                           }}
                         >
                           Pay Now
@@ -961,19 +1046,19 @@ export default function OrdersPage() {
                             cancelOrderById(order.id);
                           }}
                         >
-                          Cancel order
+                          Cancel Order
                         </button>
                       )}
 
                       {canCustomerConfirm && (
                         <button
-                          className="order-inline-btn order-inline-btn-primary"
+                          className="order-inline-btn order-inline-btn-outline"
                           onClick={(e) => {
                             e.stopPropagation();
                             confirmOrderById(order.id);
                           }}
                         >
-                          Confirm receipt
+                          Confirm Received
                         </button>
                       )}
 
@@ -984,14 +1069,13 @@ export default function OrdersPage() {
                           handleOpenOrder(order);
                         }}
                       >
-                        {isCustomRequest ? "View request" : "View order"}
+                        View Details
                       </button>
                     </div>
                   </div>
                 </div>
               </div>
-            );
-          })}
+            );          })}
         </div>
       )}
 
@@ -1001,7 +1085,6 @@ export default function OrdersPage() {
           onClose={() => setSelectedId(null)}
           onConfirmOrder={confirmOrderById}
           onCancelOrder={cancelOrderById}
-          onReviewOrder={reviewOrderById}
         />
       )}
     </div>
