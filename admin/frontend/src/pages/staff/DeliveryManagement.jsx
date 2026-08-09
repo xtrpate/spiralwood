@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import useAuthStore from "../../store/authStore";
+import "./RiderScreen.css";
 
 const normalize = (value) => String(value || "").toLowerCase();
 
@@ -36,7 +37,6 @@ const getGoogleMapsHref = (lat, lng) => {
 
   return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
 };
-
 
 const formatDateTime = (value) => {
   if (!value) return "—";
@@ -362,7 +362,9 @@ export default function DeliveryManagement() {
     // FRESH photo — an old deliveries.signed_receipt from an earlier
     // in_transit upload never satisfies this, unlike the generic path.
     if (isBlueprintDelivery && targetStatus === "delivered" && !selectedFile) {
-      setError("Please upload a fresh Proof of Delivery photo to complete this delivery.");
+      setError(
+        "Please upload a fresh Proof of Delivery photo to complete this delivery.",
+      );
       setSuccess("");
       return;
     }
@@ -480,8 +482,8 @@ export default function DeliveryManagement() {
   }, [deliveries, search, statusFilter]);
 
   return (
-    <div style={pageShell}>
-      <div style={heroCard}>
+    <div className="rider-page-shell">
+      <div className="rider-card" style={{ padding: "16px" }}>
         <div>
           <h2 style={pageTitle}>
             {isDeliveryRider ? "My Deliveries" : "Delivery Management"}
@@ -494,7 +496,10 @@ export default function DeliveryManagement() {
         </div>
       </div>
 
-      <div style={searchCard}>
+      <div
+        className="rider-card"
+        style={{ padding: "16px", marginBottom: "16px" }}
+      >
         <input
           type="text"
           placeholder="Search by order, customer, address, driver, or status"
@@ -620,10 +625,22 @@ export default function DeliveryManagement() {
               <div
                 key={delivery.id}
                 id={`delivery-card-${delivery.id}`}
+                className="rider-card"
                 style={{
-                  ...deliveryCard,
-                  borderColor: statusMeta.border,
-                  background: "#ffffff",
+                  padding: "16px",
+                  border: `2px solid ${
+                    status === "delivered"
+                      ? "#0a0a0a"
+                      : status === "completed"
+                        ? "#0a0a0a"
+                        : status === "scheduled"
+                          ? "#0a0a0a"
+                          : status === "in_transit"
+                            ? "#0a0a0a"
+                            : status === "failed"
+                              ? "#ef4444"
+                              : statusMeta.border
+                  }`,
                   ...(focusedDeliveryId === delivery.id
                     ? { boxShadow: "0 0 0 3px #0a0a0a" }
                     : null),
@@ -657,7 +674,7 @@ export default function DeliveryManagement() {
                   </span>
                 </div>
 
-                <div style={detailsGrid}>
+                <div className="rider-details-grid">
                   <InfoCard
                     label="Address"
                     value={
@@ -737,7 +754,7 @@ export default function DeliveryManagement() {
                       leave the shop.
                     </div>
 
-                    <div style={buttonRow}>
+                    <div className="rider-button-row">
                       <button
                         onClick={() =>
                           saveDeliveryUpdate({
@@ -748,7 +765,7 @@ export default function DeliveryManagement() {
                           })
                         }
                         disabled={savingId === delivery.id}
-                        style={btnPrimary}
+                        className="rider-btn rider-btn-primary"
                       >
                         {savingId === delivery.id
                           ? "Saving..."
@@ -773,7 +790,8 @@ export default function DeliveryManagement() {
                           <div style={sectionTitle}>
                             Remaining Balance — Blueprint Order
                           </div>
-                          {blueprintMethodRequired || blueprintAwaitingOnline ? (
+                          {blueprintMethodRequired ||
+                          blueprintAwaitingOnline ? (
                             <span
                               style={{
                                 fontSize: 11,
@@ -789,8 +807,7 @@ export default function DeliveryManagement() {
                         {blueprintMethodRequired ? (
                           <div style={helperText}>
                             The customer has not yet chosen how to pay the
-                            remaining balance. Delivery cannot be completed
-                            yet.
+                            remaining balance. Delivery cannot be completed yet.
                           </div>
                         ) : remainingPaymentMethod === "paymongo" ? (
                           <>
@@ -809,9 +826,7 @@ export default function DeliveryManagement() {
                               }}
                             >
                               <div>
-                                <label style={infoLabel}>
-                                  Cash to Collect
-                                </label>
+                                <label style={infoLabel}>Cash to Collect</label>
                                 <input
                                   type="text"
                                   value="₱0.00"
@@ -867,9 +882,7 @@ export default function DeliveryManagement() {
                                 />
                               </div>
                               <div>
-                                <label style={infoLabel}>
-                                  Payment Method
-                                </label>
+                                <label style={infoLabel}>Payment Method</label>
                                 <input
                                   type="text"
                                   value="Cash"
@@ -1077,7 +1090,7 @@ export default function DeliveryManagement() {
                       ) : null}
                     </div>
 
-                    <div style={buttonRow}>
+                    <div className="rider-button-row">
                       <button
                         onClick={() =>
                           saveDeliveryUpdate({
@@ -1089,9 +1102,7 @@ export default function DeliveryManagement() {
                           })
                         }
                         disabled={completeDeliveryDisabled}
-                        style={
-                          completeDeliveryDisabled ? btnDisabled : btnPrimary
-                        }
+                        className={`rider-btn ${completeDeliveryDisabled ? "rider-btn-disabled" : "rider-btn-primary"}`}
                       >
                         {savingId === delivery.id
                           ? "Saving..."
@@ -1103,14 +1114,14 @@ export default function DeliveryManagement() {
 
                 {canCompleteDelivery && (
                   <div style={{ ...actionSection, marginTop: "8px" }}>
-                    <div style={buttonRow}>
+                    <div className="rider-button-row">
                       <button
                         onClick={() => {
                           setFailureModal(delivery);
                           setFailureReasonInput("");
                         }}
                         disabled={savingId === delivery.id}
-                        style={btnUndo}
+                        className="rider-btn rider-btn-undo"
                       >
                         {savingId === delivery.id
                           ? "Saving..."
@@ -1200,7 +1211,7 @@ export default function DeliveryManagement() {
                               </div>
                             ) : null}
 
-                            <div style={buttonRow}>
+                            <div className="rider-button-row">
                               <button
                                 onClick={() =>
                                   saveDeliveryUpdate({
@@ -1215,11 +1226,7 @@ export default function DeliveryManagement() {
                                 disabled={
                                   savingId === delivery.id || !selectedFile
                                 }
-                                style={
-                                  savingId === delivery.id || !selectedFile
-                                    ? btnDisabled
-                                    : btnSecondary
-                                }
+                                className={`rider-btn ${savingId === delivery.id || !selectedFile ? "rider-btn-disabled" : "rider-btn-secondary"}`}
                               >
                                 {savingId === delivery.id
                                   ? "Saving..."
@@ -1243,7 +1250,7 @@ export default function DeliveryManagement() {
                               can undo it to correct the collection amount or
                               proof of delivery.
                             </div>
-                            <div style={buttonRow}>
+                            <div className="rider-button-row">
                               <button
                                 onClick={() => {
                                   if (
@@ -1260,11 +1267,7 @@ export default function DeliveryManagement() {
                                   }
                                 }}
                                 disabled={savingId === delivery.id}
-                                style={
-                                  savingId === delivery.id
-                                    ? btnDisabled
-                                    : btnUndo
-                                }
+                                className={`rider-btn ${savingId === delivery.id ? "rider-btn-disabled" : "rider-btn-undo"}`}
                               >
                                 {savingId === delivery.id
                                   ? "Undoing..."
@@ -1334,7 +1337,11 @@ export default function DeliveryManagement() {
               Mark Delivery as Failed
             </div>
             <div
-              style={{ fontSize: "13px", color: "#71717a", marginBottom: "16px" }}
+              style={{
+                fontSize: "13px",
+                color: "#71717a",
+                marginBottom: "16px",
+              }}
             >
               {failureModal.order_number || "—"}
             </div>
@@ -1433,7 +1440,10 @@ export default function DeliveryManagement() {
 
 function InfoCard({ label, value, tone }) {
   return (
-    <div style={infoCard}>
+    <div
+      className="rider-card"
+      style={{ padding: "12px", background: "#fafafa" }}
+    >
       <div style={infoLabel}>{label}</div>
       <div style={{ ...infoValue, color: tone || "#18181b" }}>{value}</div>
     </div>
@@ -1511,7 +1521,7 @@ const statusFilterButton = {
 const statusFilterButtonActive = {
   ...statusFilterButton,
   background: "#0a0a0a",
-  borderColor: "#0a0a0a",
+  border: "1px solid #0a0a0a",
   color: "#ffffff",
 };
 
@@ -1580,12 +1590,6 @@ const deliveryCustomer = {
   fontSize: "14px",
   color: "#52525b",
   fontWeight: 600,
-};
-
-const detailsGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: "12px",
 };
 
 const infoCard = {
@@ -1690,59 +1694,7 @@ const selectedFileText = {
   fontWeight: 600,
 };
 
-const buttonRow = {
-  display: "flex",
-  gap: "10px",
-  flexWrap: "wrap",
-  marginTop: "16px",
-};
-
-const btnPrimary = {
-  padding: "10px 20px",
-  borderRadius: "8px",
-  border: "1px solid #18181b",
-  background: "#18181b",
-  color: "#ffffff",
-  cursor: "pointer",
-  fontSize: "13px",
-  fontWeight: 700,
-  transition: "background 0.2s",
-};
-
-const btnSecondary = {
-  padding: "10px 20px",
-  borderRadius: "8px",
-  border: "1px solid #e4e4e7",
-  background: "#f4f4f5",
-  color: "#18181b",
-  cursor: "pointer",
-  fontSize: "13px",
-  fontWeight: 700,
-  transition: "background 0.2s",
-};
-
-const btnUndo = {
-  padding: "10px 20px",
-  borderRadius: "8px",
-  border: "1px solid #fecaca",
-  background: "#fef2f2",
-  color: "#991b1b",
-  cursor: "pointer",
-  fontSize: "13px",
-  fontWeight: 700,
-  transition: "background 0.2s",
-};
-
-const btnDisabled = {
-  padding: "10px 20px",
-  borderRadius: "8px",
-  border: "none",
-  background: "#e4e4e7",
-  color: "#a1a1aa",
-  cursor: "not-allowed",
-  fontSize: "13px",
-  fontWeight: 700,
-};
+// 👉 NOTE: We removed the hardcoded button styles here because they are now controlled dynamically by RiderScreen.css!
 
 const summaryRow = {
   display: "grid",

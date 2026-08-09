@@ -21,9 +21,11 @@ const {
   centsToAmount,
 } = require("../../utils/paymentAmounts");
 const { parseStrictPositiveInt } = require("../../utils/validators");
+const { createNotificationSafe } = require("../../utils/notificationHelper");
 const {
-  createNotificationSafe,
-} = require("../../utils/notificationHelper");
+  getGlobalEmailFooter,
+  sendBrevoEmail,
+} = require("../../utils/emailHelper");
 
 const customRequestAssetsDir = path.join(
   __dirname,
@@ -92,7 +94,7 @@ const toSafeReferencePhotos = (value) => {
   if (!Array.isArray(value)) return [];
 
   return value
-    .slice(0, 5)
+    .slice(0, 4)
     .map((item) => ({
       name: String(item?.name || "").trim(),
       type: String(item?.type || "")
@@ -181,126 +183,8 @@ const saveBase64ReferencePhoto = async (fileLike = {}) => {
     file_url: `/uploads/custom-request-assets/${filename}`,
     file_name: slugifyFilename(fileLike?.name || filename),
     mime_type: mimeType,
-    file_size: Number(fileLike?.size || 0) || fileBuffer.length || null,
-    absolute_path: absolutePath,
+    file_size: Number(fileLike?.size || 0) || null,
   };
-};
-
-const saveUploadedReferencePhoto = async (file = {}) => {
-  const originalName = String(file?.originalname || "reference-photo").trim();
-  const ext = path.extname(originalName).toLowerCase();
-  const mimeType = String(file?.mimetype || "").trim().toLowerCase();
-  const buffer = file?.buffer;
-
-  if (
-    !Buffer.isBuffer(buffer) ||
-    ![".jpg", ".jpeg", ".png", ".webp"].includes(ext) ||
-    !["image/jpeg", "image/png", "image/webp"].includes(mimeType) ||
-    !verifyBufferSignature(buffer, ext)
-  ) {
-    throw new ReferencePhotoValidationError(
-      "One of the uploaded reference photos is invalid.",
-    );
-  }
-
-  const filename = `custom_ref_${Date.now()}_${Math.random()
-    .toString(36)
-    .slice(2, 10)}${ext === ".jpeg" ? ".jpg" : ext}`;
-  const absolutePath = path.join(customRequestAssetsDir, filename);
-
-  await fs.promises.writeFile(absolutePath, buffer, { flag: "wx" });
-
-  return {
-    file_url: `/uploads/custom-request-assets/${filename}`,
-    file_name: slugifyFilename(originalName),
-    mime_type: mimeType,
-    file_size: Number(file?.size || buffer.length || 0) || null,
-    absolute_path: absolutePath,
-  };
-};
-
-const cleanupSavedReferenceFiles = async (filePaths = []) => {
-  await Promise.all(
-    (Array.isArray(filePaths) ? filePaths : [])
-      .filter(Boolean)
-      .map((filePath) =>
-        fs.promises.unlink(filePath).catch((error) => {
-          if (error?.code !== "ENOENT") {
-            console.error(
-              "[customer.customorders] Failed to remove orphaned reference photo:",
-              error,
-            );
-          }
-        }),
-      ),
-  );
-};
-
-const parseCreateOrderBody = (req) => {
-  if (typeof req?.body?.payload !== "string") {
-    return req?.body || {};
-  }
-
-  try {
-    const parsed = JSON.parse(req.body.payload);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      throw new Error("Payload must be an object.");
-    }
-    return parsed;
-  } catch {
-    throw new ReferencePhotoValidationError(
-      "The custom request payload is invalid.",
-    );
-  }
-};
-
-const groupUploadedReferencePhotos = (req, itemCount) => {
-  const files = Array.isArray(req?.files) ? req.files : [];
-  if (!files.length) return new Map();
-
-  let manifest;
-  try {
-    manifest = JSON.parse(
-      String(req?.body?.reference_photo_manifest || "[]"),
-    );
-  } catch {
-    throw new ReferencePhotoValidationError(
-      "The reference photo manifest is invalid.",
-    );
-  }
-
-  if (!Array.isArray(manifest) || manifest.length !== files.length) {
-    throw new ReferencePhotoValidationError(
-      "Reference photo metadata does not match the uploaded files.",
-    );
-  }
-
-  const grouped = new Map();
-
-  manifest.forEach((entry, fileIndex) => {
-    const itemIndex = Number(entry?.item_index);
-    if (
-      !Number.isInteger(itemIndex) ||
-      itemIndex < 0 ||
-      itemIndex >= itemCount
-    ) {
-      throw new ReferencePhotoValidationError(
-        "A reference photo is linked to an invalid custom item.",
-      );
-    }
-
-    const current = grouped.get(itemIndex) || [];
-    if (current.length >= 5) {
-      throw new ReferencePhotoValidationError(
-        "A custom item can contain up to 5 reference photos only.",
-      );
-    }
-
-    current.push(files[fileIndex]);
-    grouped.set(itemIndex, current);
-  });
-
-  return grouped;
 };
 
 const sanitizeEditorSnapshotForStorage = (snapshot = null) => {
@@ -560,24 +444,17 @@ const normalizeCustomOrderItem = (row = {}) => {
 
 /* ── Submit Custom Order / Request ── */
 exports.createCustomOrder = async (req, res) => {
-  let requestBody;
-  let uploadedReferencePhotosByItem;
-
-  try {
-    requestBody = parseCreateOrderBody(req);
-    uploadedReferencePhotosByItem = groupUploadedReferencePhotos(
-      req,
-      Array.isArray(requestBody?.items) ? requestBody.items.length : 0,
-    );
-  } catch (error) {
-    if (error instanceof ReferencePhotoValidationError) {
-      return res.status(400).json({ message: error.message });
+  // 👉 THE FIX: Unwrap the 'payload' string sent by React's FormData
+  let parsedBody = req.body;
+  if (req.body && typeof req.body.payload === "string") {
+    try {
+      parsedBody = JSON.parse(req.body.payload);
+    } catch (e) {
+      return res.status(400).json({ message: "Invalid payload format." });
     }
-
-    console.error("[customer.customorders PARSE CREATE ORDER]", error);
-    return res.status(500).json({ message: "Server error." });
   }
 
+  // 👉 Read from parsedBody instead of req.body
   const {
     items,
     name,
@@ -586,7 +463,7 @@ exports.createCustomOrder = async (req, res) => {
     delivery_lat,
     delivery_lng,
     notes,
-  } = requestBody;
+  } = parsedBody;
 
   if (!Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: "No items in custom order." });
@@ -638,10 +515,7 @@ exports.createCustomOrder = async (req, res) => {
   }
 
   const cleanedItems = items
-    .map((item, sourceIndex) => ({
-      source_index: sourceIndex,
-      uploaded_reference_photos:
-        uploadedReferencePhotosByItem.get(sourceIndex) || [],
+    .map((item) => ({
       product_id: toPositiveInt(item.product_id, 0) || null,
       blueprint_id: toPositiveInt(item.blueprint_id, 0) || null,
       product_name: String(
@@ -700,9 +574,6 @@ exports.createCustomOrder = async (req, res) => {
   const primaryBlueprintId = blueprintIds[0];
 
   let conn;
-  let committed = false;
-  const savedReferenceFilePaths = [];
-
   try {
     conn = await db.getConnection();
     await conn.beginTransaction();
@@ -805,16 +676,9 @@ exports.createCustomOrder = async (req, res) => {
       const orderItemId = itemResult.insertId;
 
       let linkedMessageId = null;
-      const legacyReferencePhotos = Array.isArray(item.reference_photos)
-        ? item.reference_photos
-        : [];
-      const uploadedReferencePhotos = Array.isArray(
-        item.uploaded_reference_photos,
-      )
-        ? item.uploaded_reference_photos
-        : [];
       const hasReferencePhotos =
-        legacyReferencePhotos.length > 0 || uploadedReferencePhotos.length > 0;
+        Array.isArray(item.reference_photos) &&
+        item.reference_photos.length > 0;
 
       if (item.initial_message || hasReferencePhotos) {
         linkedMessageId = await insertCustomOrderMessage(conn, {
@@ -826,28 +690,19 @@ exports.createCustomOrder = async (req, res) => {
         });
       }
 
-      for (const photo of legacyReferencePhotos) {
-        const saved = await saveBase64ReferencePhoto(photo);
+      for (const photo of item.reference_photos || []) {
+        let saved;
+        try {
+          saved = await saveBase64ReferencePhoto(photo);
+        } catch (photoErr) {
+          if (photoErr instanceof ReferencePhotoValidationError) {
+            await conn.rollback();
+            return res.status(400).json({ message: photoErr.message });
+          }
+          throw photoErr;
+        }
+
         if (!saved) continue;
-
-        savedReferenceFilePaths.push(saved.absolute_path);
-
-        await insertCustomOrderAttachment(conn, {
-          orderId: order_id,
-          orderItemId,
-          messageId: linkedMessageId,
-          uploadedBy: req.user.id,
-          fileUrl: saved.file_url,
-          fileName: saved.file_name,
-          mimeType: saved.mime_type,
-          fileSize: saved.file_size,
-          attachmentType: "reference_photo",
-        });
-      }
-
-      for (const photo of uploadedReferencePhotos) {
-        const saved = await saveUploadedReferencePhoto(photo);
-        savedReferenceFilePaths.push(saved.absolute_path);
 
         await insertCustomOrderAttachment(conn, {
           orderId: order_id,
@@ -864,7 +719,39 @@ exports.createCustomOrder = async (req, res) => {
     }
 
     await conn.commit();
-    committed = true;
+
+    try {
+      const [[adminEmailSetting]] = await conn.execute(
+        "SELECT content FROM website_content WHERE content_key = 'admin_alert_email' LIMIT 1",
+      );
+      const adminAlertEmail = adminEmailSetting?.content?.trim();
+      if (adminAlertEmail) {
+        const footerHtml = await getGlobalEmailFooter(conn);
+        await sendBrevoEmail({
+          toEmail: adminAlertEmail,
+          toName: "System Admin",
+          subject: `New Custom Request: ${order_number}`,
+          htmlContent: `
+            <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:20px;">
+              <h2 style="color:#8B4513">New Custom Request Alert</h2>
+              <p>A customer has submitted a new custom blueprint request for quotation.</p>
+              <p><strong>Request Number:</strong> ${order_number}</p>
+              <p><strong>Customer Name:</strong> ${name}</p>
+              <p><strong>Phone:</strong> ${phone}</p>
+              <p>Log in to the Admin Dashboard to review the request and provide an estimation.</p>
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;margin-top:20px;">
+                ${footerHtml}
+              </table>
+            </div>
+          `,
+        });
+      }
+    } catch (alertErr) {
+      console.error(
+        "[Admin Alert Email Error - Custom Request]",
+        alertErr.message,
+      );
+    }
 
     return res.status(201).json({
       message: "Custom request submitted successfully.",
@@ -873,18 +760,10 @@ exports.createCustomOrder = async (req, res) => {
       detail_url: `/custom-requests/${order_id}`,
     });
   } catch (err) {
-    if (conn && !committed) {
+    if (conn) {
       try {
         await conn.rollback();
       } catch {}
-    }
-
-    if (!committed) {
-      await cleanupSavedReferenceFiles(savedReferenceFilePaths);
-    }
-
-    if (err instanceof ReferencePhotoValidationError) {
-      return res.status(400).json({ message: err.message });
     }
 
     console.error("[customer.customorders POST]", err);
@@ -1176,7 +1055,8 @@ exports.getCustomOrderById = async (req, res) => {
     // online session is active, order closed, etc.) — never tied to
     // in_transit specifically.
     const remainingPaymentMethodLocked =
-      Boolean(order.remaining_payment_method) && !canSelectRemainingPaymentMethod;
+      Boolean(order.remaining_payment_method) &&
+      !canSelectRemainingPaymentMethod;
     const isFullyPaid =
       quotedTotal > 0 && totalVerifiedPayments + 0.0001 >= quotedTotal;
 
@@ -1434,25 +1314,12 @@ const normalizeLifecycleEstimation = async (conn, estimation) => {
     [estimation.id],
   );
 
-  const storedItems = Array.isArray(estimationData.items)
-    ? estimationData.items
-    : [];
-  const inventoryPricingMode =
-    normalize(estimationData.inventory_pricing_mode) === "tracking_only"
-      ? "tracking_only"
-      : "legacy_billable";
-  const customerItemRows = itemRows.filter((row, index) => {
-    if (inventoryPricingMode !== "tracking_only") return true;
-    return normalize(storedItems[index]?.source_type) !== "inventory_material";
-  });
-
   return {
     id: estimation.id,
     blueprint_id: estimation.blueprint_id,
     version: estimation.version,
     status: normalize(estimation.status),
     material_cost: Number(estimation.material_cost || 0),
-    inventory_pricing_mode: inventoryPricingMode,
     labor_cost: Number(estimation.labor_cost || 0),
     overhead_cost: Number(estimationData.overhead_cost || 0),
     tax: Number(estimation.tax || 0),
@@ -1469,7 +1336,7 @@ const normalizeLifecycleEstimation = async (conn, estimation) => {
     approved_at: estimation.approved_at || null,
     created_at: estimation.created_at || null,
     updated_at: estimation.updated_at || null,
-    items: customerItemRows.map((row) => ({
+    items: itemRows.map((row) => ({
       id: row.id,
       component_id: row.component_id || null,
       raw_material_id: row.raw_material_id || null,
@@ -3395,7 +3262,9 @@ exports.selectPaymentMethod = async (req, res) => {
       }
     }
     console.error("[customer.customorders selectPaymentMethod]", err);
-    return res.status(500).json({ message: "Failed to update payment method." });
+    return res
+      .status(500)
+      .json({ message: "Failed to update payment method." });
   } finally {
     if (conn) conn.release();
   }
@@ -3427,10 +3296,9 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       return res.status(400).json({ message: "Invalid custom request ID." });
     }
 
-    const normalizedMethod = normalize(req.body?.remaining_payment_method).replace(
-      /\s+/g,
-      "_",
-    );
+    const normalizedMethod = normalize(
+      req.body?.remaining_payment_method,
+    ).replace(/\s+/g, "_");
 
     if (!["cash", "paymongo"].includes(normalizedMethod)) {
       return res.status(400).json({
@@ -3460,7 +3328,8 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "A delivery must be scheduled before choosing the remaining payment method.",
+        message:
+          "A delivery must be scheduled before choosing the remaining payment method.",
       });
     }
 
@@ -3526,21 +3395,26 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
     if (normalize(order.order_type) !== "blueprint") {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "This order does not support this action." });
+      return res
+        .status(400)
+        .json({ message: "This order does not support this action." });
     }
 
     if (["cancelled", "completed"].includes(normalize(order.status))) {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "This order is closed and no further payment action is available.",
+        message:
+          "This order is closed and no further payment action is available.",
       });
     }
 
     if (normalize(order.payment_status) === "paid") {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "This order has already been fully paid." });
+      return res
+        .status(400)
+        .json({ message: "This order has already been fully paid." });
     }
 
     // 3) payment_transactions rows FOR UPDATE — locked third, after both
@@ -3574,7 +3448,8 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(409).json({
-        message: "This order's payment records are inconsistent. Please contact support.",
+        message:
+          "This order's payment records are inconsistent. Please contact support.",
       });
     }
 
@@ -3582,7 +3457,8 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "At least one verified payment is required before choosing the remaining payment method.",
+        message:
+          "At least one verified payment is required before choosing the remaining payment method.",
       });
     }
 
@@ -3608,7 +3484,9 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
     if (remainingCents <= 0) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "This order has already been fully paid." });
+      return res
+        .status(400)
+        .json({ message: "This order has already been fully paid." });
     }
 
     const hasActivePaymongoSession = Boolean(
@@ -3681,7 +3559,9 @@ exports.selectRemainingPaymentMethod = async (req, res) => {
       }
     }
     console.error("[customer.customorders selectRemainingPaymentMethod]", err);
-    return res.status(500).json({ message: "Failed to update the remaining payment method." });
+    return res
+      .status(500)
+      .json({ message: "Failed to update the remaining payment method." });
   } finally {
     if (conn) conn.release();
   }
@@ -3724,7 +3604,8 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "A delivery must be scheduled before paying the remaining balance online.",
+        message:
+          "A delivery must be scheduled before paying the remaining balance online.",
       });
     }
 
@@ -3768,28 +3649,34 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
     if (normalize(order.order_type) !== "blueprint") {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "This order does not support this action." });
+      return res
+        .status(400)
+        .json({ message: "This order does not support this action." });
     }
 
     if (["cancelled", "completed"].includes(normalize(order.status))) {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "This order is closed and no further payment action is available.",
+        message:
+          "This order is closed and no further payment action is available.",
       });
     }
 
     if (normalize(order.payment_status) === "paid") {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "This order has already been fully paid." });
+      return res
+        .status(400)
+        .json({ message: "This order has already been fully paid." });
     }
 
     if (normalize(order.remaining_payment_method) !== "paymongo") {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "Select Online Payment for the remaining balance before creating a payment session.",
+        message:
+          "Select Online Payment for the remaining balance before creating a payment session.",
       });
     }
 
@@ -3822,7 +3709,8 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(409).json({
-        message: "This order's payment records are inconsistent. Please contact support.",
+        message:
+          "This order's payment records are inconsistent. Please contact support.",
       });
     }
 
@@ -3848,7 +3736,9 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
     if (remainingCents <= 0) {
       await conn.rollback();
       transactionActive = false;
-      return res.status(400).json({ message: "This order has already been fully paid." });
+      return res
+        .status(400)
+        .json({ message: "This order has already been fully paid." });
     }
 
     const hasSessionId = Boolean(order.paymongo_session_id);
@@ -3859,7 +3749,8 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(409).json({
-        message: "This order's payment state is inconsistent. Please contact support.",
+        message:
+          "This order's payment state is inconsistent. Please contact support.",
       });
     }
 
@@ -4004,7 +3895,9 @@ exports.createRemainingBalancePayMongoCheckout = async (req, res) => {
       "[customer.customorders createRemainingBalancePayMongoCheckout]",
       err.response?.data || err,
     );
-    return res.status(500).json({ message: "Failed to create the online payment session." });
+    return res
+      .status(500)
+      .json({ message: "Failed to create the online payment session." });
   } finally {
     if (conn) conn.release();
   }
@@ -4051,13 +3944,18 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
 
     if (normalize(fastOrder.order_type) !== "blueprint") {
       conn.release();
-      return res.status(400).json({ message: "This order does not support this action." });
+      return res
+        .status(400)
+        .json({ message: "This order does not support this action." });
     }
 
     if (!fastOrder.paymongo_session_id) {
       conn.release();
       if (normalize(fastOrder.payment_status) === "paid") {
-        return res.json({ success: true, message: "Payment already verified." });
+        return res.json({
+          success: true,
+          message: "Payment already verified.",
+        });
       }
       return res
         .status(400)
@@ -4065,7 +3963,9 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
     }
 
     // 2. NETWORK CALL — no DB connection held idle during this wait.
-    const session = await retrieveCheckoutSession(fastOrder.paymongo_session_id);
+    const session = await retrieveCheckoutSession(
+      fastOrder.paymongo_session_id,
+    );
     const payments = session.attributes?.payments || [];
     const paymentIntent = session.attributes?.payment_intent;
 
@@ -4080,14 +3980,16 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
       conn.release();
       return res.status(400).json({
         success: false,
-        message: "Payment is still processing. Please wait a moment and refresh the page.",
+        message:
+          "Payment is still processing. Please wait a moment and refresh the page.",
       });
     }
 
     // PayMongo amounts are already integer centavos on their side — no
     // conversion needed, only strict parsing of whatever they report.
     const rawPaidAmountCents = Number(
-      successfulPayment?.attributes?.amount ?? paymentIntent?.attributes?.amount,
+      successfulPayment?.attributes?.amount ??
+        paymentIntent?.attributes?.amount,
     );
 
     // 3. SECURE WRITE — lock and re-verify everything fresh.
@@ -4113,7 +4015,10 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
     if (!order.paymongo_session_id) {
       await conn.rollback();
       transactionActive = false;
-      return res.json({ success: true, message: "Payment was already verified." });
+      return res.json({
+        success: true,
+        message: "Payment was already verified.",
+      });
     }
 
     if (order.paymongo_session_id !== fastOrder.paymongo_session_id) {
@@ -4122,7 +4027,8 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(409).json({
-        message: "This order's payment session changed. Please refresh and try again.",
+        message:
+          "This order's payment session changed. Please refresh and try again.",
       });
     }
 
@@ -4151,7 +4057,8 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(409).json({
-        message: "This order's payment records are inconsistent. Please contact support.",
+        message:
+          "This order's payment records are inconsistent. Please contact support.",
       });
     }
 
@@ -4176,10 +4083,16 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
       );
       await conn.commit();
       transactionActive = false;
-      return res.json({ success: true, message: "This order has already been fully paid." });
+      return res.json({
+        success: true,
+        message: "This order has already been fully paid.",
+      });
     }
 
-    if (!Number.isSafeInteger(rawPaidAmountCents) || rawPaidAmountCents !== remainingCents) {
+    if (
+      !Number.isSafeInteger(rawPaidAmountCents) ||
+      rawPaidAmountCents !== remainingCents
+    ) {
       await conn.rollback();
       transactionActive = false;
       console.error("[verifyRemainingBalancePayment] amount mismatch", {
@@ -4267,7 +4180,10 @@ exports.verifyRemainingBalancePayment = async (req, res) => {
 
     req.auditRecord = preparedAuditRecord;
 
-    return res.json({ success: true, message: "Payment verified successfully." });
+    return res.json({
+      success: true,
+      message: "Payment verified successfully.",
+    });
   } catch (err) {
     req.auditRecord = null;
 

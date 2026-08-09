@@ -1,26 +1,20 @@
 import { useState, useEffect } from "react";
 import api from "../../services/api";
 import { Package, Truck, CheckCircle, MapPin } from "lucide-react";
+import "./RiderScreen.css";
 
 const parseMapCoordinate = (value) => {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
-  }
-
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value !== "string") return null;
-
   const trimmed = value.trim();
   if (!trimmed) return null;
-
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-// Blueprint orders are coordinates-only. Never fall back to a text search.
 const getBlueprintMapsHref = (lat, lng) => {
   const latitude = parseMapCoordinate(lat);
   const longitude = parseMapCoordinate(lng);
-
   if (
     latitude === null ||
     longitude === null ||
@@ -28,18 +22,14 @@ const getBlueprintMapsHref = (lat, lng) => {
     latitude > 90 ||
     longitude < -180 ||
     longitude > 180
-  ) {
+  )
     return null;
-  }
-
   return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
 };
 
-// Ready-to-Ship / standard orders keep their existing text-address fallback.
 const getStandardMapsHref = (lat, lng, address) => {
   const coordinateHref = getBlueprintMapsHref(lat, lng);
   if (coordinateHref) return coordinateHref;
-
   const trimmedAddress = String(address || "").trim();
   return trimmedAddress
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trimmedAddress)}`
@@ -47,7 +37,9 @@ const getStandardMapsHref = (lat, lng, address) => {
 };
 
 const isBlueprintOrderType = (orderType) =>
-  String(orderType || "").trim().toLowerCase() === "blueprint";
+  String(orderType || "")
+    .trim()
+    .toLowerCase() === "blueprint";
 
 const getGoogleMapsHref = (lat, lng, address, orderType) =>
   isBlueprintOrderType(orderType)
@@ -59,7 +51,6 @@ export default function RiderDashboard() {
   const [activeDeliveries, setActiveDeliveries] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Get formatted date like "Saturday, April 18, 2026"
   const todayDateString = new Date().toLocaleDateString("en-PH", {
     weekday: "long",
     month: "long",
@@ -68,15 +59,12 @@ export default function RiderDashboard() {
   });
 
   useEffect(() => {
-    // Fetch both the dashboard stats AND the active deliveries list at the same time
     Promise.all([
       api.get("/pos/deliveries/dashboard"),
-      api.get("/pos/deliveries"), // Reusing your existing endpoint from DeliveryManagement
+      api.get("/pos/deliveries"),
     ])
       .then(([statsRes, deliveriesRes]) => {
         setStats(statsRes.data);
-
-        // Filter only active deliveries (scheduled or in_transit) for the table, max 5
         const active = (
           Array.isArray(deliveriesRes.data) ? deliveriesRes.data : []
         )
@@ -96,8 +84,6 @@ export default function RiderDashboard() {
           textAlign: "center",
           color: "#71717a",
           fontWeight: 600,
-          fontSize: 13,
-          fontFamily: "'Inter', sans-serif",
         }}
       >
         Loading dashboard...
@@ -105,106 +91,142 @@ export default function RiderDashboard() {
     );
 
   return (
-    <div
-      style={{
-        padding: "32px 40px",
-        maxWidth: "1400px",
-        margin: "0 auto",
-        display: "flex",
-        flexDirection: "column",
-        gap: "24px",
-        fontFamily: "'Inter', sans-serif",
-      }}
-    >
-      {/* ── Header ── */}
+    <div className="rider-page-shell">
       <div>
-        <h2
-          style={{
-            margin: 0,
-            fontSize: "24px",
-            color: "#0a0a0a",
-            fontWeight: 800,
-            letterSpacing: "-0.02em",
-          }}
-        >
-          Driver Dashboard
-        </h2>
-        <p
-          style={{
-            margin: "6px 0 0",
-            color: "#52525b",
-            fontSize: "13px",
-            lineHeight: 1.5,
-          }}
-        >
+        <h2 className="rider-header-title">Driver Dashboard</h2>
+        <p className="rider-header-subtitle">
           Today's overview — {todayDateString}
         </p>
       </div>
 
-      {/* ── Summary Cards (Matching Cashier UI) ── */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-          gap: "16px",
-        }}
-      >
-        {/* Card 1: Total Assigned */}
-        <div style={statCard}>
+      <div className="rider-stats-grid">
+        <div className="rider-stat-card">
           <div
-            style={{ ...iconWrapper, background: "#f4f4f5", color: "#18181b" }}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#f4f4f5",
+              color: "#18181b",
+            }}
           >
             <Package size={24} strokeWidth={2.5} />
           </div>
           <div>
-            <div style={statNumber}>{stats?.total_deliveries || 0}</div>
-            <div style={statLabel}>Total Assigned Today</div>
+            <div
+              style={{
+                fontSize: 24,
+                fontWeight: 800,
+                color: "#0a0a0a",
+                lineHeight: 1,
+              }}
+            >
+              {stats?.total_deliveries || 0}
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                color: "#71717a",
+                fontWeight: 800,
+                marginTop: 6,
+                textTransform: "uppercase",
+              }}
+            >
+              Total Assigned Today
+            </div>
           </div>
         </div>
 
-        {/* Card 2: In Transit / Pending */}
-        <div style={statCard}>
+        <div className="rider-stat-card">
           <div
-            style={{ ...iconWrapper, background: "#18181b", color: "#ffffff" }}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#18181b",
+              color: "#ffffff",
+            }}
           >
             <Truck size={24} strokeWidth={2.5} />
           </div>
           <div>
-            <div style={statNumber}>{stats?.pending_today || 0}</div>
-            <div style={statLabel}>Pending / In Transit</div>
+            <div
+              style={{
+                fontSize: 24,
+                fontWeight: 800,
+                color: "#0a0a0a",
+                lineHeight: 1,
+              }}
+            >
+              {stats?.pending_today || 0}
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                color: "#71717a",
+                fontWeight: 800,
+                marginTop: 6,
+                textTransform: "uppercase",
+              }}
+            >
+              Pending / In Transit
+            </div>
           </div>
         </div>
 
-        {/* Card 3: Completed */}
-        <div style={statCard}>
+        <div className="rider-stat-card">
           <div
-            style={{ ...iconWrapper, background: "#f4f4f5", color: "#18181b" }}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "#f4f4f5",
+              color: "#18181b",
+            }}
           >
             <CheckCircle size={24} strokeWidth={2.5} />
           </div>
           <div>
-            <div style={statNumber}>{stats?.completed_today || 0}</div>
-            <div style={statLabel}>Successfully Delivered</div>
+            <div
+              style={{
+                fontSize: 24,
+                fontWeight: 800,
+                color: "#0a0a0a",
+                lineHeight: 1,
+              }}
+            >
+              {stats?.completed_today || 0}
+            </div>
+            <div
+              style={{
+                fontSize: 10,
+                color: "#71717a",
+                fontWeight: 800,
+                marginTop: 6,
+                textTransform: "uppercase",
+              }}
+            >
+              Successfully Delivered
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ── Today's Itinerary Table (Matching Cashier UI) ── */}
-      <div
-        style={{
-          background: "#ffffff",
-          borderRadius: "16px",
-          border: "1px solid #e4e4e7",
-          padding: "0",
-          boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-          overflow: "hidden",
-        }}
-      >
+      <div className="rider-card">
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "10px",
+            gap: 10,
             padding: "20px 24px",
             borderBottom: "1px solid #f4f4f5",
             background: "#fafafa",
@@ -214,7 +236,7 @@ export default function RiderDashboard() {
           <h3
             style={{
               margin: 0,
-              fontSize: "16px",
+              fontSize: 16,
               color: "#0a0a0a",
               fontWeight: 800,
             }}
@@ -227,7 +249,7 @@ export default function RiderDashboard() {
           <div
             style={{
               color: "#71717a",
-              padding: "40px",
+              padding: 40,
               textAlign: "center",
               fontSize: 13,
               fontWeight: 600,
@@ -236,59 +258,48 @@ export default function RiderDashboard() {
             No pending deliveries right now. You're all caught up!
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                whiteSpace: "nowrap",
-                textAlign: "left",
-              }}
-            >
-              <thead>
-                <tr style={{ background: "#ffffff" }}>
-                  <th style={thStyle}>Order #</th>
-                  <th style={thStyle}>Customer</th>
-                  <th style={thStyle}>Destination</th>
-                  <th style={thStyle}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeDeliveries.map((delivery) => {
-                  const mapsHref = getGoogleMapsHref(
-                    delivery.delivery_lat,
-                    delivery.delivery_lng,
-                    delivery.address,
-                    delivery.order_type,
-                  );
-                  const isBlueprintDelivery = isBlueprintOrderType(
-                    delivery.order_type,
-                  );
-                  return (
-                  <tr
-                    key={delivery.id}
-                    style={{ borderBottom: "1px solid #f4f4f5" }}
-                  >
+          <table className="rider-table rider-mobile-table">
+            <thead>
+              <tr>
+                <th>Order #</th>
+                <th>Customer</th>
+                <th>Destination</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeDeliveries.map((delivery) => {
+                const mapsHref = getGoogleMapsHref(
+                  delivery.delivery_lat,
+                  delivery.delivery_lng,
+                  delivery.address,
+                  delivery.order_type,
+                );
+                const isBlueprintDelivery = isBlueprintOrderType(
+                  delivery.order_type,
+                );
+                return (
+                  <tr key={delivery.id}>
+                    {/* 👉 ADDED data-label attributes for mobile cards */}
                     <td
-                      style={{ ...tdStyle, fontWeight: 800, color: "#0a0a0a" }}
+                      data-label="Order #"
+                      style={{ fontWeight: 800, color: "#0a0a0a" }}
                     >
                       {delivery.order_number}
                     </td>
-                    <td style={{ ...tdStyle, fontWeight: 600 }}>
+                    <td data-label="Customer" style={{ fontWeight: 600 }}>
                       {delivery.customer_name}
                     </td>
                     <td
-                      style={{
-                        ...tdStyle,
-                        color: "#52525b",
-                        maxWidth: "300px",
-                      }}
+                      data-label="Destination"
+                      style={{ color: "#52525b", maxWidth: 300 }}
                     >
                       <div
                         style={{
                           display: "flex",
                           alignItems: "center",
                           gap: 6,
+                          justifyContent: "flex-end",
                         }}
                       >
                         <span
@@ -307,7 +318,6 @@ export default function RiderDashboard() {
                             target="_blank"
                             rel="noopener noreferrer"
                             title="Open in Google Maps"
-                            style={{ flexShrink: 0, lineHeight: 0 }}
                           >
                             <MapPin size={14} color="#2563eb" />
                           </a>
@@ -317,34 +327,29 @@ export default function RiderDashboard() {
                               display: "inline-flex",
                               alignItems: "center",
                               gap: 4,
-                              flexShrink: 0,
                               color: "#a1a1aa",
                               fontSize: 11,
                               fontWeight: 700,
                             }}
                           >
-                            <MapPin size={14} color="#a1a1aa" />
-                            Location pin unavailable
+                            <MapPin size={14} color="#a1a1aa" /> Location pin
+                            unavailable
                           </span>
                         ) : (
-                          <span
-                            title="Location unavailable"
-                            style={{ flexShrink: 0, lineHeight: 0 }}
-                          >
+                          <span title="Location unavailable">
                             <MapPin size={14} color="#d4d4d8" />
                           </span>
                         )}
                       </div>
                     </td>
-                    <td style={tdStyle}>
+                    <td data-label="Status">
                       <span
                         style={{
                           padding: "4px 10px",
-                          borderRadius: "999px",
-                          fontSize: "10px",
-                          fontWeight: "800",
+                          borderRadius: 999,
+                          fontSize: 10,
+                          fontWeight: 800,
                           textTransform: "uppercase",
-                          letterSpacing: "1px",
                           background:
                             delivery.status === "in_transit"
                               ? "#18181b"
@@ -353,78 +358,18 @@ export default function RiderDashboard() {
                             delivery.status === "in_transit"
                               ? "#ffffff"
                               : "#18181b",
-                          border:
-                            delivery.status === "in_transit"
-                              ? "1px solid #18181b"
-                              : "1px solid #e4e4e7",
                         }}
                       >
                         {delivery.status.replace("_", " ")}
                       </span>
                     </td>
                   </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
   );
 }
-
-// Reusable Styles matching the Cashier Dashboard Theme
-const statCard = {
-  background: "#ffffff",
-  borderRadius: "16px",
-  border: "1px solid #e4e4e7",
-  padding: "20px 24px",
-  display: "flex",
-  alignItems: "center",
-  gap: "16px",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-};
-
-const iconWrapper = {
-  width: "44px",
-  height: "44px",
-  borderRadius: "12px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-const statNumber = {
-  fontSize: "24px",
-  fontWeight: 800,
-  color: "#0a0a0a",
-  lineHeight: 1,
-  letterSpacing: "-0.02em",
-};
-
-const statLabel = {
-  fontSize: "10px",
-  color: "#71717a",
-  fontWeight: 800,
-  marginTop: "6px",
-  textTransform: "uppercase",
-  letterSpacing: "1px",
-};
-
-const thStyle = {
-  padding: "14px 24px",
-  textAlign: "left",
-  fontSize: "10px",
-  fontWeight: "800",
-  color: "#71717a",
-  textTransform: "uppercase",
-  letterSpacing: "1px",
-  borderBottom: "1px solid #e4e4e7",
-};
-
-const tdStyle = {
-  padding: "16px 24px",
-  fontSize: "13px",
-  color: "#18181b",
-};

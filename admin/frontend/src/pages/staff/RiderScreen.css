@@ -1,0 +1,205 @@
+/* src/pages/staff/RiderScreen.css */
+
+.rider-page-shell {
+  padding: 32px 40px;
+  max-width: 1400px;
+  margin: 0 auto;
+  font-family: "Inter", sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.rider-header-title {
+  margin: 0;
+  font-size: 24px;
+  color: #0a0a0a;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.rider-header-subtitle {
+  margin: 6px 0 0;
+  color: #52525b;
+  font-size: 13px;
+  lineheight: 1.5;
+}
+
+/* Dashboard Stat Cards */
+.rider-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.rider-stat-card {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e4e4e7;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+/* Common Container Card */
+.rider-card {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e4e4e7;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  overflow: hidden;
+}
+
+/* Delivery Management Details Grid */
+.rider-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+/* Buttons */
+.rider-button-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.rider-btn {
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.rider-btn-primary {
+  background: #18181b;
+  color: #ffffff;
+  border: 1px solid #18181b;
+}
+
+.rider-btn-secondary {
+  background: #f4f4f5;
+  color: #18181b;
+  border: 1px solid #e4e4e7;
+}
+
+.rider-btn-undo {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.rider-btn-disabled {
+  background: #e4e4e7;
+  color: #a1a1aa;
+  border: none;
+  cursor: not-allowed;
+}
+
+/* Table Base Styles */
+.rider-table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.rider-table th {
+  padding: 14px 24px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid #e4e4e7;
+  background: #ffffff;
+}
+
+.rider-table td {
+  padding: 16px 24px;
+  font-size: 13px;
+  color: #18181b;
+  border-bottom: 1px solid #f4f4f5;
+}
+
+/* 📱 MOBILE RESPONSIVENESS */
+@media (max-width: 768px) {
+  .rider-page-shell {
+    padding: 20px 16px;
+  }
+
+  .rider-stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .rider-details-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Make buttons chunky and 100% width on mobile */
+  .rider-button-row {
+    flex-direction: column;
+  }
+
+  .rider-btn {
+    width: 100%;
+    padding: 14px 20px; /* Taller tap target */
+    font-size: 14px;
+  }
+
+  /* Table-to-Card Magic Transformation */
+  .rider-mobile-table thead {
+    display: none; /* Hide standard headers */
+  }
+
+  .rider-mobile-table tbody {
+    display: block;
+    padding: 12px;
+  }
+
+  .rider-mobile-table tr {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e4e4e7;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    padding: 12px;
+    background: #fafafa;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  }
+
+  .rider-mobile-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px dashed #e4e4e7;
+    padding: 10px 0;
+    white-space: normal;
+    text-align: right;
+  }
+
+  .rider-mobile-table td:last-child {
+    border-bottom: none;
+  }
+
+  /* Reads the data-label attribute we will add to our JSX */
+  .rider-mobile-table td::before {
+    content: attr(data-label);
+    font-weight: 800;
+    font-size: 10px;
+    color: #71717a;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: 16px;
+    text-align: left;
+  }
+}

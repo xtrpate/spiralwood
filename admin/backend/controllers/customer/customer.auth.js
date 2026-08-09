@@ -14,9 +14,41 @@ const RESET_TOKEN_EXPIRY = "10m";
 const generateOtp = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
 
+/* ── Helper: Fetch Global Email Footer ── */
+const getGlobalEmailFooter = async () => {
+  try {
+    const [rows] = await db.query(
+      "SELECT setting_value FROM website_settings WHERE setting_key = 'email_footer' LIMIT 1",
+    );
+    return rows.length > 0 && rows[0].setting_value
+      ? rows[0].setting_value
+      : "";
+  } catch (err) {
+    console.error("Failed to fetch email footer:", err.message);
+    return ""; // Fails safely so emails still send even if the setting is missing!
+  }
+};
+
+/* ── Formatter: Creates the HTML block for the footer ── */
+const buildFooterHtml = (footerText) => {
+  if (!footerText) return "";
+  return `
+    <tr>
+      <td style="background:#fff3e0;padding:20px 40px;text-align:center;border-top:2px dashed #D2691E;">
+        <p style="font-size:13px;color:#8B4513;margin:0;line-height:1.6;font-weight:600;">
+          ${footerText.replace(/\n/g, "<br/>")}
+        </p>
+      </td>
+    </tr>
+  `;
+};
+
 /* ── Brevo API Setup for Registration OTP ── */
 const sendOtpEmail = async (email, otp, name) => {
   try {
+    const footerText = await getGlobalEmailFooter();
+    const dynamicFooterHtml = buildFooterHtml(footerText);
+
     const payload = {
       sender: { name: "Spiral Wood Services", email: process.env.MAIL_USER },
       to: [{ email: email, name: name }],
@@ -72,6 +104,9 @@ const sendOtpEmail = async (email, otp, name) => {
                         </p>
                       </td>
                     </tr>
+
+                    ${dynamicFooterHtml}
+
                     <tr>
                       <td style="background:#f7f8fa;padding:20px 40px;text-align:center;
                                  border-top:1px solid #eee;">
@@ -116,6 +151,9 @@ const sendOtpEmail = async (email, otp, name) => {
 /* ── Brevo API Setup for Password Reset OTP ── */
 const sendResetOtpEmail = async (email, otp, name) => {
   try {
+    const footerText = await getGlobalEmailFooter();
+    const dynamicFooterHtml = buildFooterHtml(footerText);
+
     const payload = {
       sender: { name: "Spiral Wood Services", email: process.env.MAIL_USER },
       to: [{ email: email, name: name }],
@@ -171,6 +209,9 @@ const sendResetOtpEmail = async (email, otp, name) => {
                         </p>
                       </td>
                     </tr>
+
+                    ${dynamicFooterHtml}
+
                     <tr>
                       <td style="background:#f7f8fa;padding:20px 40px;text-align:center;
                                  border-top:1px solid #eee;">

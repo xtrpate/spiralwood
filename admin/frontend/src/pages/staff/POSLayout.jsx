@@ -115,16 +115,19 @@ export default function POSLayout() {
       className={`pos-root ${sidebarOpen ? "sidebar-open" : "sidebar-closed"}`}
     >
       <aside className="pos-sidebar">
-        <div className="sidebar-header">
-          <div className="sidebar-logo">
-            <div className="logo-icon">W</div>
-            {sidebarOpen && (
+        <div
+          className="sidebar-header"
+          style={{ justifyContent: sidebarOpen ? "space-between" : "center" }}
+        >
+          {sidebarOpen && (
+            <div className="sidebar-logo">
+              <div className="logo-icon">W</div>
               <div className="logo-text">
                 <span className="logo-name">WISDOM</span>
                 <span className="logo-sub">POS System</span>
               </div>
-            )}
-          </div>
+            </div>
+          )}
           <button
             className="sidebar-toggle"
             onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -149,9 +152,32 @@ export default function POSLayout() {
           ))}
         </nav>
 
-        <div className="sidebar-footer">
-          <div className="user-info">
-            <div className="user-avatar">
+        <div
+          className="sidebar-footer"
+          style={{
+            flexDirection: sidebarOpen ? "row" : "column",
+            justifyContent: sidebarOpen ? "flex-start" : "center",
+            alignItems: "center",
+            padding: sidebarOpen ? "16px 12px" : "16px 0",
+            gap: sidebarOpen ? "8px" : "16px",
+          }}
+        >
+          {!sidebarOpen && (isCashier || isIndoorStaff || isDeliveryRider) && (
+            <NotificationBell compact />
+          )}
+
+          <div
+            className="user-info"
+            style={{
+              flex: sidebarOpen ? 1 : "none",
+              justifyContent: sidebarOpen ? "flex-start" : "center",
+              width: sidebarOpen ? "auto" : "100%",
+            }}
+          >
+            <div
+              className="user-avatar"
+              style={{ margin: sidebarOpen ? "0" : "0 auto" }}
+            >
               {user?.name?.charAt(0)?.toUpperCase() || "U"}
             </div>
             {sidebarOpen && (
@@ -161,12 +187,20 @@ export default function POSLayout() {
               </div>
             )}
           </div>
-          {(isCashier || isIndoorStaff || isDeliveryRider) && (
+
+          {sidebarOpen && (isCashier || isIndoorStaff || isDeliveryRider) && (
             <NotificationBell compact />
           )}
-          <button className="logout-btn" onClick={handleLogout} title="Logout">
-            <LogOut size={18} />
-          </button>
+
+          {sidebarOpen && (
+            <button
+              className="logout-btn"
+              onClick={handleLogout}
+              title="Logout"
+            >
+              <LogOut size={18} />
+            </button>
+          )}
         </div>
       </aside>
 

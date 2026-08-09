@@ -1,26 +1,20 @@
 import { useState, useEffect, useMemo } from "react";
 import api from "../../services/api";
 import { Calendar, MapPin } from "lucide-react";
+import "./RiderScreen.css";
 
 const parseMapCoordinate = (value) => {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
-  }
-
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value !== "string") return null;
-
   const trimmed = value.trim();
   if (!trimmed) return null;
-
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-// Blueprint orders are coordinates-only. Never fall back to a text search.
 const getBlueprintMapsHref = (lat, lng) => {
   const latitude = parseMapCoordinate(lat);
   const longitude = parseMapCoordinate(lng);
-
   if (
     latitude === null ||
     longitude === null ||
@@ -28,18 +22,14 @@ const getBlueprintMapsHref = (lat, lng) => {
     latitude > 90 ||
     longitude < -180 ||
     longitude > 180
-  ) {
+  )
     return null;
-  }
-
   return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
 };
 
-// Ready-to-Ship / standard orders keep their existing text-address fallback.
 const getStandardMapsHref = (lat, lng, address) => {
   const coordinateHref = getBlueprintMapsHref(lat, lng);
   if (coordinateHref) return coordinateHref;
-
   const trimmedAddress = String(address || "").trim();
   return trimmedAddress
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trimmedAddress)}`
@@ -47,18 +37,32 @@ const getStandardMapsHref = (lat, lng, address) => {
 };
 
 const isBlueprintOrderType = (orderType) =>
-  String(orderType || "").trim().toLowerCase() === "blueprint";
+  String(orderType || "")
+    .trim()
+    .toLowerCase() === "blueprint";
 
 const getGoogleMapsHref = (lat, lng, address, orderType) =>
   isBlueprintOrderType(orderType)
     ? getBlueprintMapsHref(lat, lng)
     : getStandardMapsHref(lat, lng, address);
 
+const formatDateTime = (value) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
 export default function RiderHistory() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Date filter state
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
@@ -70,14 +74,11 @@ export default function RiderHistory() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Filter the history based on the selected dates
   const filteredHistory = useMemo(() => {
     return history.filter((h) => {
       if (!startDate && !endDate) return true;
-
       const itemDate = new Date(h.updated_at);
       itemDate.setHours(0, 0, 0, 0);
-
       if (startDate) {
         const sDate = new Date(startDate);
         sDate.setHours(0, 0, 0, 0);
@@ -100,8 +101,6 @@ export default function RiderHistory() {
           textAlign: "center",
           color: "#71717a",
           fontWeight: 600,
-          fontSize: 13,
-          fontFamily: "'Inter', sans-serif",
         }}
       >
         Loading history...
@@ -109,60 +108,32 @@ export default function RiderHistory() {
     );
 
   return (
-    <div
-      style={{
-        padding: "32px 40px",
-        maxWidth: "1200px",
-        margin: "0 auto",
-        fontFamily: "'Inter', sans-serif",
-      }}
-    >
-      {/* ── Header & Date Filter ── */}
+    <div className="rider-page-shell">
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "flex-start",
-          marginBottom: "24px",
           flexWrap: "wrap",
-          gap: "16px",
+          gap: 16,
         }}
       >
         <div>
-          <h2
-            style={{
-              margin: "0 0 4px 0",
-              fontSize: "24px",
-              color: "#0a0a0a",
-              fontWeight: 800,
-              letterSpacing: "-0.02em",
-            }}
-          >
-            Delivery History
-          </h2>
-          <p
-            style={{
-              margin: 0,
-              color: "#52525b",
-              fontSize: "13px",
-              lineHeight: 1.5,
-            }}
-          >
+          <h2 className="rider-header-title">Delivery History</h2>
+          <p className="rider-header-subtitle">
             Review past deliveries and customer details.
           </p>
         </div>
 
-        {/* Date Range Picker matching the Cashier UI */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "12px",
+            gap: 12,
             background: "#ffffff",
             padding: "8px 14px",
-            borderRadius: "12px",
+            borderRadius: 12,
             border: "1px solid #e4e4e7",
-            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
             flexWrap: "wrap",
           }}
         >
@@ -173,15 +144,14 @@ export default function RiderHistory() {
             onChange={(e) => setStartDate(e.target.value)}
             style={{
               border: "1px solid #e4e4e7",
-              borderRadius: "8px",
+              borderRadius: 8,
               padding: "6px 10px",
               outline: "none",
               color: "#18181b",
-              fontSize: "13px",
-              background: "#fff",
+              fontSize: 13,
             }}
           />
-          <span style={{ color: "#71717a", fontSize: "13px", fontWeight: 600 }}>
+          <span style={{ color: "#71717a", fontSize: 13, fontWeight: 600 }}>
             to
           </span>
           <input
@@ -190,234 +160,195 @@ export default function RiderHistory() {
             onChange={(e) => setEndDate(e.target.value)}
             style={{
               border: "1px solid #e4e4e7",
-              borderRadius: "8px",
+              borderRadius: 8,
               padding: "6px 10px",
               outline: "none",
               color: "#18181b",
-              fontSize: "13px",
-              background: "#fff",
+              fontSize: 13,
             }}
           />
         </div>
       </div>
 
-      {/* ── Data Table ── */}
       {filteredHistory.length === 0 ? (
         <div
           style={{
-            padding: "40px",
+            padding: 40,
             background: "#fff",
-            borderRadius: "16px",
+            borderRadius: 16,
             border: "1px solid #e4e4e7",
             color: "#71717a",
             textAlign: "center",
-            fontSize: "13px",
+            fontSize: 13,
             fontWeight: 600,
-            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
           }}
         >
           No completed or failed deliveries found for this date range.
         </div>
       ) : (
-        <div
-          style={{
-            background: "#fff",
-            borderRadius: "16px",
-            border: "1px solid #e4e4e7",
-            overflowX: "auto",
-            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-          }}
-        >
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              whiteSpace: "nowrap",
-              textAlign: "left",
-            }}
-          >
-            <thead
-              style={{
-                background: "#fafafa",
-                borderBottom: "1px solid #e4e4e7",
-              }}
-            >
-              <tr>
-                <th style={thStyle}>Date & Time</th>
-                <th style={thStyle}>Order #</th>
-                <th style={thStyle}>Customer</th>
-                <th style={thStyle}>Total</th>
-                <th style={thStyle}>Payment</th>
-                <th style={thStyle}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredHistory.map((h) => {
-                const mapsHref = getGoogleMapsHref(
-                  h.delivery_lat,
-                  h.delivery_lng,
-                  h.address,
-                  h.order_type,
-                );
-                const isBlueprintDelivery = isBlueprintOrderType(h.order_type);
-                return (
-                <tr
-                  key={h.delivery_id}
-                  style={{ borderBottom: "1px solid #f4f4f5" }}
+        <div style={{ display: "grid", gap: "16px" }}>
+          {filteredHistory.map((h) => {
+            const mapsHref = getGoogleMapsHref(
+              h.delivery_lat,
+              h.delivery_lng,
+              h.address,
+              h.order_type,
+            );
+            const isBlueprintDelivery = isBlueprintOrderType(h.order_type);
+            return (
+              <div
+                key={h.delivery_id}
+                className="rider-card"
+                style={{
+                  padding: "16px",
+                  border: `2px solid ${h.status === "delivered" ? "#0a0a0a" : "#ef4444"}`,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    gap: "12px",
+                    marginBottom: "16px",
+                    flexWrap: "wrap",
+                  }}
                 >
-                  <td style={tdStyle}>
-                    <div style={{ color: "#52525b", fontWeight: 500 }}>
-                      {new Date(h.updated_at).toLocaleDateString("en-PH", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })}
+                  <div>
+                    <div
+                      style={{
+                        fontSize: "18px",
+                        fontWeight: 800,
+                        color: "#0a0a0a",
+                        marginBottom: "4px",
+                        letterSpacing: "-0.01em",
+                      }}
+                    >
+                      {h.order_number}
                     </div>
                     <div
                       style={{
-                        color: "#71717a",
-                        fontSize: "12px",
-                        marginTop: "2px",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {new Date(h.updated_at).toLocaleTimeString("en-PH", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </div>
-                  </td>
-
-                  <td
-                    style={{ ...tdStyle, fontWeight: "800", color: "#0a0a0a" }}
-                  >
-                    {h.order_number}
-                  </td>
-
-                  <td style={tdStyle}>
-                    <div style={{ fontWeight: "700", color: "#18181b" }}>
-                      {h.customer_name}
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        fontSize: "12px",
-                        color: "#71717a",
-                        maxWidth: "200px",
-                        marginTop: "2px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {h.address || "No address provided"}
-                      </span>
-                      {mapsHref ? (
-                        <a
-                          href={mapsHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Open in Google Maps"
-                          style={{ flexShrink: 0, lineHeight: 0 }}
-                        >
-                          <MapPin size={12} color="#2563eb" />
-                        </a>
-                      ) : isBlueprintDelivery ? (
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 4,
-                            flexShrink: 0,
-                            color: "#a1a1aa",
-                            fontSize: 11,
-                            fontWeight: 700,
-                          }}
-                        >
-                          <MapPin size={12} color="#a1a1aa" />
-                          Location pin unavailable
-                        </span>
-                      ) : (
-                        <span
-                          title="Location unavailable"
-                          style={{ flexShrink: 0, lineHeight: 0 }}
-                        >
-                          <MapPin size={12} color="#d4d4d8" />
-                        </span>
-                      )}
-                    </div>
-                  </td>
-
-                  <td
-                    style={{ ...tdStyle, fontWeight: "800", color: "#0a0a0a" }}
-                  >
-                    ₱
-                    {Number(h.total || 0).toLocaleString("en-PH", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </td>
-
-                  <td style={tdStyle}>
-                    <span
-                      style={{
+                        fontSize: "14px",
                         color: "#52525b",
-                        textTransform: "capitalize",
                         fontWeight: 600,
                       }}
                     >
-                      {h.payment_status || "Pending"}
-                    </span>
-                  </td>
+                      {h.customer_name}
+                    </div>
+                  </div>
 
-                  <td style={tdStyle}>
-                    <span
-                      style={{
-                        padding: "4px 10px",
-                        borderRadius: "999px",
-                        fontSize: "10px",
-                        fontWeight: "800",
-                        textTransform: "uppercase",
-                        letterSpacing: "1px",
-                        background:
-                          h.status === "delivered" ? "#0a0a0a" : "#fef2f2",
-                        color: h.status === "delivered" ? "#ffffff" : "#991b1b",
-                        border: `1px solid ${h.status === "delivered" ? "#0a0a0a" : "#fecaca"}`,
-                      }}
-                    >
-                      {h.status}
-                    </span>
-                  </td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                  <span
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "1px",
+                      background:
+                        h.status === "delivered" ? "#0a0a0a" : "#fef2f2",
+                      color: h.status === "delivered" ? "#ffffff" : "#991b1b",
+                      border: `1px solid ${h.status === "delivered" ? "#0a0a0a" : "#fecaca"}`,
+                    }}
+                  >
+                    {h.status}
+                  </span>
+                </div>
+
+                <div className="rider-details-grid">
+                  <InfoCard
+                    label="Date & Time"
+                    value={formatDateTime(h.updated_at)}
+                  />
+                  <InfoCard
+                    label="Address"
+                    value={
+                      <>
+                        {h.address || "—"}
+                        {mapsHref ? (
+                          <a
+                            href={mapsHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: "block",
+                              marginTop: 4,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: "#2563eb",
+                            }}
+                          >
+                            Open in Google Maps ↗
+                          </a>
+                        ) : isBlueprintDelivery ? (
+                          <span
+                            style={{
+                              display: "block",
+                              marginTop: 4,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: "#a1a1aa",
+                            }}
+                          >
+                            Location pin unavailable
+                          </span>
+                        ) : null}
+                      </>
+                    }
+                  />
+                  <InfoCard
+                    label="Total"
+                    value={`₱${Number(h.total || 0).toLocaleString("en-PH", {
+                      minimumFractionDigits: 2,
+                    })}`}
+                  />
+                  <InfoCard
+                    label="Payment"
+                    value={
+                      <span style={{ textTransform: "capitalize" }}>
+                        {h.payment_status || "Pending"}
+                      </span>
+                    }
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-// Reusable styles to keep the JSX clean
-const thStyle = {
-  padding: "14px 20px",
-  textAlign: "left",
-  fontSize: "10px",
-  fontWeight: "800",
-  color: "#71717a",
-  textTransform: "uppercase",
-  letterSpacing: "1px",
-};
-
-const tdStyle = {
-  padding: "16px 20px",
-  fontSize: "13px",
-  color: "#18181b",
-  verticalAlign: "middle",
-};
+function InfoCard({ label, value }) {
+  return (
+    <div
+      className="rider-card"
+      style={{ padding: "12px", background: "#fafafa" }}
+    >
+      <div
+        style={{
+          fontSize: "10px",
+          fontWeight: 800,
+          color: "#71717a",
+          textTransform: "uppercase",
+          letterSpacing: "1px",
+          marginBottom: "6px",
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: "14px",
+          fontWeight: 700,
+          color: "#18181b",
+          lineHeight: 1.5,
+          wordBreak: "break-word",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}

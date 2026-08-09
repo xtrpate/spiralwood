@@ -47,6 +47,10 @@ const SETTING_KEY_GROUPS = {
   bank_account_number: "payment",
   email_footer: "email",
   checkout_note: "email",
+  admin_alert_email: "email",
+  email_order_confirmed: "email",
+  email_production_started: "email",
+  email_out_for_delivery: "email",
   warranty_period_days: "policy",
   cancellation_fee_pct: "policy",
   standard_truck_limit_width_mm: "delivery",
@@ -251,7 +255,14 @@ exports.updateSettings = async (req, res) => {
             PAYMENT_SETTING_KEYS.includes(k),
           ),
           message_settings_changed: changedKeys.some((k) =>
-            MESSAGE_SETTING_KEYS.includes(k),
+            [
+              "email_footer",
+              "checkout_note",
+              "admin_alert_email",
+              "email_order_confirmed",
+              "email_production_started",
+              "email_out_for_delivery",
+            ].includes(k),
           ),
           policy_settings_changed: changedKeys.some((k) =>
             POLICY_SETTING_KEYS.includes(k),

@@ -5,6 +5,10 @@ const {
   retrieveCheckoutSession,
 } = require("../../services/paymongoService");
 const { isValidPositiveInteger } = require("../../utils/validators");
+const {
+  getGlobalEmailFooter,
+  sendBrevoEmail,
+} = require("../../utils/emailHelper");
 
 /* ── Standard checkout constants ── */
 const ALLOWED_PAYMENT_METHODS = ["cod", "cop", "paymongo"];
@@ -257,8 +261,6 @@ exports.createOrder = async (req, res) => {
 
     const order_id = orderRes.insertId;
 
-    /* Insert order items + deduct stock — only reached after every item
-       above passed product/variation/stock validation. */
     for (const item of validatedItems) {
       await conn.query(
         `INSERT INTO order_items
@@ -296,6 +298,37 @@ exports.createOrder = async (req, res) => {
     }
 
     await conn.commit();
+
+    // 👉 D. Admin Alert Routing
+    try {
+      const [[adminEmailSetting]] = await conn.query(
+        "SELECT content FROM website_content WHERE content_key = 'admin_alert_email' LIMIT 1",
+      );
+      const adminAlertEmail = adminEmailSetting?.content?.trim();
+      if (adminAlertEmail) {
+        const footerHtml = await getGlobalEmailFooter(conn);
+        await sendBrevoEmail({
+          toEmail: adminAlertEmail,
+          toName: "System Admin",
+          subject: `New Order Received: ${order_number}`,
+          htmlContent: `
+            <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:20px;">
+              <h2 style="color:#8B4513">New Order Alert</h2>
+              <p>A new order has been placed on the storefront.</p>
+              <p><strong>Order Number:</strong> ${order_number}</p>
+              <p><strong>Customer Name:</strong> ${name}</p>
+              <p><strong>Phone:</strong> ${phone}</p>
+              <p><strong>Total Amount:</strong> ₱${Number(total).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</p>
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;">
+                ${footerHtml}
+              </table>
+            </div>
+          `,
+        });
+      }
+    } catch (alertErr) {
+      console.error("[Admin Alert Email Error]", alertErr.message);
+    }
 
     if (normalizedPaymentMethod === "paymongo") {
       try {

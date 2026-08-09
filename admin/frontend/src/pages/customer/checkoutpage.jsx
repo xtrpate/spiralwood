@@ -17,6 +17,12 @@ const PAYMENT_METHODS = [
     desc: "Pay when the order is delivered.",
   },
   {
+    value: "cop",
+    icon: "🏪",
+    label: "Cash on Pick-up",
+    desc: "Pay when the order is picked up.",
+  },
+  {
     value: "paymongo",
     icon: "💳",
     label: "Pay Online",
@@ -66,6 +72,18 @@ export default function CheckoutPage() {
   const [checkoutItems, setCheckoutItems] = useState([]);
   const [selectionReady, setSelectionReady] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const [checkoutNote, setCheckoutNote] = useState("");
+  useEffect(() => {
+    api
+      .get("/website/settings")
+      .then((res) => {
+        const note =
+          res.data?.email?.checkout_note || res.data?.checkout_note || "";
+        setCheckoutNote(note);
+      })
+      .catch((err) => console.error("Could not load checkout note:", err));
+  }, []);
 
   const [isPageLoading, setIsPageLoading] = useState(true);
 
@@ -856,6 +874,25 @@ export default function CheckoutPage() {
                 This checkout is for ready-made products only.
               </p>
             </div>
+
+            {checkoutNote && (
+              <div
+                style={{
+                  background: "#fefce8",
+                  border: "1px solid #fde047",
+                  padding: "12px",
+                  borderRadius: "8px",
+                  marginBottom: "16px",
+                  fontSize: "13px",
+                  color: "#a16207",
+                  lineHeight: "1.5",
+                }}
+              >
+                <strong>📌 Important Note:</strong>
+                <br />
+                <span style={{ whiteSpace: "pre-wrap" }}>{checkoutNote}</span>
+              </div>
+            )}
 
             <button
               className="place-order-btn"

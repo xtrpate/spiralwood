@@ -24,6 +24,11 @@ const {
   createNotification,
   createNotificationSafe,
 } = require("../../utils/notificationHelper");
+const {
+  isSettingEnabled,
+  getGlobalEmailFooter,
+  sendBrevoEmail,
+} = require("../../utils/emailHelper");
 
 const normalize = (value) =>
   String(value || "")
@@ -1287,22 +1292,26 @@ exports.updateStatus = async (req, res) => {
     let materialReleaseResult = null;
 
     if (isBlueprintOrder && nextStatus === "production") {
-      materialConsumptionResult =
-        await consumeBlueprintMaterialsForProduction(conn, {
+      materialConsumptionResult = await consumeBlueprintMaterialsForProduction(
+        conn,
+        {
           orderId: parseInt(req.params.id),
           actorUserId: req.user.id,
-        });
+        },
+      );
     }
 
     if (isBlueprintOrder && nextStatus === "cancelled") {
-      materialReleaseResult =
-        await releaseBlueprintMaterialsForCancellation(conn, {
+      materialReleaseResult = await releaseBlueprintMaterialsForCancellation(
+        conn,
+        {
           orderId: parseInt(req.params.id),
           actorUserId: req.user.id,
           releaseReason:
             cancellationReason ||
             `Order cancelled by admin from ${currentStatus}.`,
-        });
+        },
+      );
     }
 
     const [statusUpdateResult] = await conn.query(
@@ -1354,6 +1363,75 @@ exports.updateStatus = async (req, res) => {
 
     await conn.commit();
 
+    // 👉 C. Automated Customer Triggers (Toggles)
+    if (order.customer_id) {
+      try {
+        const [userRows] = await conn.query(
+          "SELECT email, name FROM users WHERE id = ? LIMIT 1",
+          [order.customer_id],
+        );
+        const customer = userRows[0];
+        if (customer?.email) {
+          const footerHtml = await getGlobalEmailFooter(conn);
+          let sendEmail = false;
+          let subject = "";
+          let messageBody = "";
+
+          if (nextStatus === "confirmed") {
+            const enabled = await isSettingEnabled(
+              conn,
+              "email_order_confirmed",
+            );
+            if (enabled) {
+              sendEmail = true;
+              subject = `Order Confirmed: ${order.order_number || `#${order.id}`}`;
+              messageBody = `Great news! Your order <strong>${order.order_number || `#${order.id}`}</strong> has been confirmed and is being prepared.`;
+            }
+          } else if (nextStatus === "production") {
+            const enabled = await isSettingEnabled(
+              conn,
+              "email_production_started",
+            );
+            if (enabled) {
+              sendEmail = true;
+              subject = `Production Started: ${order.order_number || `#${order.id}`}`;
+              messageBody = `Your custom blueprint order <strong>${order.order_number || `#${order.id}`}</strong> has entered the workshop production phase.`;
+            }
+          } else if (nextStatus === "shipping") {
+            const enabled = await isSettingEnabled(
+              conn,
+              "email_out_for_delivery",
+            );
+            if (enabled) {
+              sendEmail = true;
+              subject = `Out for Delivery: ${order.order_number || `#${order.id}`}`;
+              messageBody = `Your order <strong>${order.order_number || `#${order.id}`}</strong> is out for delivery with our rider.`;
+            }
+          }
+
+          if (sendEmail) {
+            await sendBrevoEmail({
+              toEmail: customer.email,
+              toName: customer.name || "Customer",
+              subject,
+              htmlContent: `
+                <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:20px;">
+                  <h2 style="color:#8B4513">Spiral Wood Services</h2>
+                  <p>Hi ${customer.name || "Customer"},</p>
+                  <p>${messageBody}</p>
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    ${footerHtml}
+                  </table>
+                </div>
+              `,
+            });
+          }
+        }
+      } catch (toggleEmailErr) {
+        console.error("[Customer Trigger Email Error]", toggleEmailErr.message);
+      }
+    }
+
     req.auditRecord = {
       id: parseInt(req.params.id),
       old: { status: currentStatus },
@@ -1361,14 +1439,12 @@ exports.updateStatus = async (req, res) => {
         status: nextStatus,
         ...(materialConsumptionResult
           ? {
-              material_consumption_reason:
-                materialConsumptionResult.reason,
+              material_consumption_reason: materialConsumptionResult.reason,
               material_reservation_ids:
                 materialConsumptionResult.reservation_ids || [],
               stock_movement_ids:
                 materialConsumptionResult.stock_movement_ids || [],
-              materials_consumed:
-                materialConsumptionResult.consumed_count || 0,
+              materials_consumed: materialConsumptionResult.consumed_count || 0,
             }
           : {}),
         ...(materialReleaseResult
@@ -1376,8 +1452,7 @@ exports.updateStatus = async (req, res) => {
               material_release_reason: materialReleaseResult.reason,
               released_material_reservation_ids:
                 materialReleaseResult.reservation_ids || [],
-              materials_released:
-                materialReleaseResult.released_count || 0,
+              materials_released: materialReleaseResult.released_count || 0,
             }
           : {}),
       },
@@ -2234,8 +2309,7 @@ exports.assignStaff = async (req, res) => {
         material_consumption_reason: materialConsumptionResult.reason,
         material_reservation_ids:
           materialConsumptionResult.reservation_ids || [],
-        stock_movement_ids:
-          materialConsumptionResult.stock_movement_ids || [],
+        stock_movement_ids: materialConsumptionResult.stock_movement_ids || [],
         materials_consumed: materialConsumptionResult.consumed_count || 0,
         ...(orderStatusChanged ? { status: "production" } : {}),
       },

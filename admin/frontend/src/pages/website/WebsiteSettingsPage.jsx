@@ -125,6 +125,26 @@ const KEY_META = {
   },
 
   // email
+  admin_alert_email: {
+    label: "Admin Alert Routing",
+    type: "text",
+    hint: "The email address where you want to receive alerts for new orders and blueprint requests.",
+  },
+  email_order_confirmed: {
+    label: "Order Confirmed Email",
+    type: "toggle",
+    hint: "Send an automated email to the customer when an order is approved/confirmed.",
+  },
+  email_production_started: {
+    label: "Production Started Email",
+    type: "toggle",
+    hint: "Send an automated email to the customer when their custom blueprint enters production.",
+  },
+  email_out_for_delivery: {
+    label: "Out for Delivery Email",
+    type: "toggle",
+    hint: "Send an automated email when a rider is dispatched for delivery.",
+  },
   email_footer: {
     label: "Email Footer Text",
     type: "textarea",
@@ -291,7 +311,14 @@ export default function WebsiteSettingsPage() {
               "paymongo_public_key",
               "paymongo_secret_key",
             ],
-            email: ["email_footer", "checkout_note"],
+            email: [
+              "admin_alert_email",
+              "email_order_confirmed",
+              "email_production_started",
+              "email_out_for_delivery",
+              "email_footer",
+              "checkout_note",
+            ],
             policy: ["warranty_period_days", "cancellation_fee_pct"],
             delivery: DELIVERY_LIMIT_KEYS,
           }).find(([, keys]) => keys.includes(key))?.[0];
@@ -400,7 +427,14 @@ export default function WebsiteSettingsPage() {
         "bank_account_name",
         "bank_account_number",
       ],
-      email: ["email_footer", "checkout_note"],
+      email: [
+        "admin_alert_email",
+        "email_order_confirmed",
+        "email_production_started",
+        "email_out_for_delivery",
+        "email_footer",
+        "checkout_note",
+      ],
       policy: ["warranty_period_days", "cancellation_fee_pct"],
       delivery: DELIVERY_LIMIT_KEYS,
     }).find(([, keys]) => keys.includes(key));

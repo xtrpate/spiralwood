@@ -136,6 +136,19 @@ export default function CustomCheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [checkoutNote, setCheckoutNote] = useState("");
+
+  useEffect(() => {
+    api
+      .get("/website/settings")
+      .then((res) => {
+        const note =
+          res.data?.email?.checkout_note || res.data?.checkout_note || "";
+        setCheckoutNote(note);
+      })
+      .catch((err) => console.error("Could not load checkout note:", err));
+  }, []);
+
   // PHASE 6A — Blueprint Address and Map Fix.
   // useDefaultAddress: whether this request is currently using the saved
   //   profile address/pin as a shortcut (checkbox state).
@@ -183,9 +196,7 @@ export default function CustomCheckoutPage() {
     setUseDefaultAddress(checked);
     if (checked) {
       set("delivery_address", user?.address || "");
-      setDeliveryPin(
-        getValidCoordPair(user?.address_lat, user?.address_lng),
-      );
+      setDeliveryPin(getValidCoordPair(user?.address_lat, user?.address_lng));
       setLocationPickerKey((current) => current + 1);
     }
   };
@@ -210,7 +221,10 @@ export default function CustomCheckoutPage() {
 
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem("cust_selected_custom_checkout");
+      // 1. Grab the correct sessionStorage key used by your cart
+      const raw =
+        sessionStorage.getItem("cust_selected_custom_checkout") ||
+        sessionStorage.getItem("cust_selected_keys");
       const parsed = raw ? JSON.parse(raw) : [];
 
       if (!Array.isArray(parsed) || !parsed.length) {
@@ -218,6 +232,7 @@ export default function CustomCheckoutPage() {
         return;
       }
 
+      // 2. Safely extract the keys
       const selectedKeys = parsed
         .map((entry) =>
           typeof entry === "string" ? entry : entry?.key || null,
@@ -225,18 +240,26 @@ export default function CustomCheckoutPage() {
         .filter(Boolean);
 
       if (!selectedKeys.length) {
-        sessionStorage.removeItem("cust_selected_custom_checkout");
         navigate("/cart");
         return;
       }
 
+      // 3. Match against customCart OR fallback to the parsed payload itself
       const keySet = new Set(selectedKeys);
-      const matchedItems = (customCart || []).filter((item) =>
+      let matchedItems = (customCart || []).filter((item) =>
         keySet.has(item.key),
       );
 
+      // 4. Fallback: If customCart isn't loaded yet, use the parsed payload objects
+      if (
+        !matchedItems.length &&
+        parsed.length > 0 &&
+        typeof parsed[0] === "object"
+      ) {
+        matchedItems = parsed;
+      }
+
       if (!matchedItems.length) {
-        sessionStorage.removeItem("cust_selected_custom_checkout");
         navigate("/cart");
         return;
       }
@@ -244,7 +267,6 @@ export default function CustomCheckoutPage() {
       setCheckoutItems(matchedItems);
       setSelectionReady(true);
     } catch {
-      sessionStorage.removeItem("cust_selected_custom_checkout");
       navigate("/cart");
     }
   }, [customCart, navigate]);
@@ -252,10 +274,7 @@ export default function CustomCheckoutPage() {
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   const hasDefaultAddress = Boolean(String(user?.address || "").trim());
-  const hasDefaultPin = isValidCoordPair(
-    user?.address_lat,
-    user?.address_lng,
-  );
+  const hasDefaultPin = isValidCoordPair(user?.address_lat, user?.address_lng);
 
   const totalUnits = useMemo(
     () =>
@@ -313,7 +332,11 @@ export default function CustomCheckoutPage() {
       const formData = new FormData();
       const referencePhotoManifest = [];
 
-      for (let itemIndex = 0; itemIndex < checkoutItems.length; itemIndex += 1) {
+      for (
+        let itemIndex = 0;
+        itemIndex < checkoutItems.length;
+        itemIndex += 1
+      ) {
         const item = checkoutItems[itemIndex];
         const expectedPhotoCount = Array.isArray(item?.reference_photos)
           ? item.reference_photos.length
@@ -653,9 +676,7 @@ export default function CustomCheckoutPage() {
                             border: useDefaultAddress
                               ? "2px solid #1d4ed8"
                               : "2px solid #999",
-                            background: useDefaultAddress
-                              ? "#1d4ed8"
-                              : "#fff",
+                            background: useDefaultAddress ? "#1d4ed8" : "#fff",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -701,9 +722,9 @@ export default function CustomCheckoutPage() {
                               fontWeight: 600,
                             }}
                           >
-                            Your default address has no saved map pin.
-                            Location pin unavailable — please select a
-                            location on the map below to continue.
+                            Your default address has no saved map pin. Location
+                            pin unavailable — please select a location on the
+                            map below to continue.
                           </div>
                         )}
                       </div>
@@ -789,6 +810,25 @@ export default function CustomCheckoutPage() {
               final paid order.
             </p>
           </div>
+
+          {checkoutNote && (
+            <div
+              style={{
+                background: "#fefce8",
+                border: "1px solid #fde047",
+                padding: "12px",
+                borderRadius: "8px",
+                marginBottom: "16px",
+                fontSize: "13px",
+                color: "#a16207",
+                lineHeight: "1.5",
+              }}
+            >
+              <strong>📌 Important Note:</strong>
+              <br />
+              <span style={{ whiteSpace: "pre-wrap" }}>{checkoutNote}</span>
+            </div>
+          )}
 
           <button
             className="place-order-btn"
