@@ -31,6 +31,66 @@ const formatQuantityForMessage = (value) =>
     maximumFractionDigits: 4,
   });
 
+// WISDOM Material Physical Specs V1.1
+const MATERIAL_FORMS = new Set([
+  "sheet",
+  "linear",
+  "piece",
+  "hardware",
+  "other",
+]);
+
+const normalizeOptionalPositiveDimension = (value) => {
+  if (value === undefined || value === null || value === "") return null;
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return Number.NaN;
+  return number;
+};
+
+const buildRawMaterialPhysicalSpec = ({
+  material_form,
+  length_mm,
+  width_mm,
+  thickness_mm,
+} = {}) => {
+  const materialForm = String(material_form || "other")
+    .trim()
+    .toLowerCase();
+
+  if (!MATERIAL_FORMS.has(materialForm)) {
+    return { error: "Material form is invalid." };
+  }
+
+  const lengthMm = normalizeOptionalPositiveDimension(length_mm);
+  const widthMm = normalizeOptionalPositiveDimension(width_mm);
+  const thicknessMm = normalizeOptionalPositiveDimension(thickness_mm);
+
+  if ([lengthMm, widthMm, thicknessMm].some((value) => Number.isNaN(value))) {
+    return {
+      error:
+        "Length, width, and thickness must be greater than 0 when provided.",
+    };
+  }
+
+  if (
+    materialForm === "sheet" &&
+    [lengthMm, widthMm, thicknessMm].some((value) => value === null)
+  ) {
+    return {
+      error:
+        "Sheet / Board materials require length, width, and thickness in millimeters.",
+    };
+  }
+
+  return {
+    materialForm,
+    lengthMm,
+    widthMm,
+    thicknessMm,
+    error: null,
+  };
+};
+
 const lockActiveBlueprintReservations = async (connection, materialIds) => {
   const ids = [
     ...new Set(
@@ -349,6 +409,10 @@ exports.createRawMaterial = async (req, res) => {
       name,
       category_id = null,
       unit,
+      material_form = "other",
+      length_mm = null,
+      width_mm = null,
+      thickness_mm = null,
       quantity = 0,
       reorder_point = 0,
       unit_cost = 0,
@@ -358,6 +422,12 @@ exports.createRawMaterial = async (req, res) => {
     const qty = Number(quantity);
     const reorderPoint = Number(reorder_point);
     const unitCost = Number(unit_cost);
+    const physicalSpec = buildRawMaterialPhysicalSpec({
+      material_form,
+      length_mm,
+      width_mm,
+      thickness_mm,
+    });
 
     if (!name || !String(name).trim()) {
       await conn.rollback();
@@ -374,6 +444,11 @@ exports.createRawMaterial = async (req, res) => {
       return res.status(400).json({
         message: "Unit must be a valid text label such as pcs, kg, meter, or sheet.",
       });
+    }
+
+    if (physicalSpec.error) {
+      await conn.rollback();
+      return res.status(400).json({ message: physicalSpec.error });
     }
 
     if (
@@ -416,12 +491,17 @@ exports.createRawMaterial = async (req, res) => {
 
     const [materialResult] = await conn.query(
       `INSERT INTO raw_materials
-         (name, category_id, unit, quantity, reorder_point, unit_cost, supplier_id, stock_status)
-       VALUES (?,?,?,?,?,?,?,?)`,
+         (name, category_id, unit, material_form, length_mm, width_mm, thickness_mm,
+          quantity, reorder_point, unit_cost, supplier_id, stock_status)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         String(name).trim(),
         category_id ? parseInt(category_id, 10) : null,
         String(unit).trim(),
+        physicalSpec.materialForm,
+        physicalSpec.lengthMm,
+        physicalSpec.widthMm,
+        physicalSpec.thicknessMm,
         qty,
         reorderPoint,
         unitCost,
@@ -450,8 +530,8 @@ exports.createRawMaterial = async (req, res) => {
     }
 
     const [[savedMaterial]] = await conn.query(
-      `SELECT id, name, category_id, unit, quantity, reorder_point, unit_cost,
-              supplier_id, stock_status
+      `SELECT id, name, category_id, unit, material_form, length_mm, width_mm,
+              thickness_mm, quantity, reorder_point, unit_cost, supplier_id, stock_status
        FROM raw_materials
        WHERE id = ?
        LIMIT 1`,
@@ -493,6 +573,10 @@ exports.updateRawMaterial = async (req, res) => {
       name,
       category_id = null,
       unit,
+      material_form = "other",
+      length_mm = null,
+      width_mm = null,
+      thickness_mm = null,
       quantity,
       reorder_point = 0,
       unit_cost = 0,
@@ -502,6 +586,12 @@ exports.updateRawMaterial = async (req, res) => {
     const materialId = parseInt(req.params.id, 10);
     const reorderPoint = Number(reorder_point);
     const unitCost = Number(unit_cost);
+    const physicalSpec = buildRawMaterialPhysicalSpec({
+      material_form,
+      length_mm,
+      width_mm,
+      thickness_mm,
+    });
 
     if (!Number.isInteger(materialId) || materialId <= 0) {
       return res.status(400).json({ message: "Invalid raw material ID." });
@@ -519,6 +609,10 @@ exports.updateRawMaterial = async (req, res) => {
       return res.status(400).json({
         message: "Unit must be a valid text label such as pcs, kg, meter, or sheet.",
       });
+    }
+
+    if (physicalSpec.error) {
+      return res.status(400).json({ message: physicalSpec.error });
     }
 
     if (
@@ -555,8 +649,8 @@ exports.updateRawMaterial = async (req, res) => {
     }
 
     const [[before]] = await pool.query(
-      `SELECT id, name, category_id, unit, quantity, reorder_point, unit_cost,
-              supplier_id, stock_status
+      `SELECT id, name, category_id, unit, material_form, length_mm, width_mm,
+              thickness_mm, quantity, reorder_point, unit_cost, supplier_id, stock_status
        FROM raw_materials
        WHERE id = ?
        LIMIT 1`,
@@ -592,13 +686,17 @@ exports.updateRawMaterial = async (req, res) => {
 
     const [updateResult] = await pool.query(
       `UPDATE raw_materials
-       SET name=?, category_id=?, unit=?, reorder_point=?, unit_cost=?,
-           supplier_id=?, stock_status=?
+       SET name=?, category_id=?, unit=?, material_form=?, length_mm=?, width_mm=?,
+           thickness_mm=?, reorder_point=?, unit_cost=?, supplier_id=?, stock_status=?
        WHERE id=?`,
       [
         String(name).trim(),
         category_id ? parseInt(category_id, 10) : null,
         String(unit).trim(),
+        physicalSpec.materialForm,
+        physicalSpec.lengthMm,
+        physicalSpec.widthMm,
+        physicalSpec.thicknessMm,
         reorderPoint,
         unitCost,
         supplier_id ? parseInt(supplier_id, 10) : null,
@@ -614,8 +712,8 @@ exports.updateRawMaterial = async (req, res) => {
     }
 
     const [[after]] = await pool.query(
-      `SELECT id, name, category_id, unit, quantity, reorder_point, unit_cost,
-              supplier_id, stock_status
+      `SELECT id, name, category_id, unit, material_form, length_mm, width_mm,
+              thickness_mm, quantity, reorder_point, unit_cost, supplier_id, stock_status
        FROM raw_materials
        WHERE id = ?
        LIMIT 1`,

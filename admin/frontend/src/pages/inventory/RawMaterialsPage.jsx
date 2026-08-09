@@ -36,6 +36,46 @@ const formatStatus = (value) =>
     .replaceAll("_", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
+// WISDOM Material Physical Specs V1.1
+const MATERIAL_FORM_OPTIONS = [
+  ["other", "Other / Not Dimension-Based"],
+  ["sheet", "Sheet / Board"],
+  ["linear", "Linear Material"],
+  ["piece", "Solid / Stock Piece"],
+  ["hardware", "Hardware / Counted Item"],
+];
+
+const MATERIAL_FORM_LABELS = Object.fromEntries(MATERIAL_FORM_OPTIONS);
+
+const formatDimension = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  return number.toLocaleString("en-PH", { maximumFractionDigits: 2 });
+};
+
+const formatMaterialPhysicalSpec = (item = {}) => {
+  const form = String(item.material_form || "other").toLowerCase();
+  const label = MATERIAL_FORM_LABELS[form] || "Other";
+  const length = formatDimension(item.length_mm);
+  const width = formatDimension(item.width_mm);
+  const thickness = formatDimension(item.thickness_mm);
+
+  if (form === "hardware" || form === "other") return label;
+
+  if (length && width && thickness) {
+    return `${label} · ${length} × ${width} × ${thickness} mm`;
+  }
+
+  const partial = [
+    length ? `L ${length} mm` : null,
+    width ? `W ${width} mm` : null,
+    thickness ? `T ${thickness} mm` : null,
+  ].filter(Boolean);
+
+  if (partial.length) return `${label} · ${partial.join(" · ")}`;
+  return form === "sheet" ? `${label} · Size not set` : label;
+};
+
 const RESERVATION_FILTERS = [
   ["all", "All"],
   ["pending_stock", "Pending Stock"],
@@ -89,6 +129,10 @@ export default function RawMaterialsPage() {
       data: {
         name: "",
         unit: "",
+        material_form: "other",
+        length_mm: "",
+        width_mm: "",
+        thickness_mm: "",
         quantity: 0,
         reorder_point: 0,
         unit_cost: 0,
@@ -219,6 +263,14 @@ export default function RawMaterialsPage() {
     (row) => reservationFilter === "all" || row.status === reservationFilter,
   );
 
+  const currentMaterialForm = String(
+    modal?.data?.material_form || "other",
+  ).toLowerCase();
+  const showPhysicalDimensions = ["sheet", "linear", "piece"].includes(
+    currentMaterialForm,
+  );
+  const requiresCompletePhysicalSize = currentMaterialForm === "sheet";
+
   return (
     <div>
       <div style={header}>
@@ -226,7 +278,8 @@ export default function RawMaterialsPage() {
           <h1 style={title}>Raw Materials Inventory</h1>
           <div style={subtitle}>
             On hand is physical stock. Reserved stock is allocated to paid blueprint orders,
-            while available stock can still be assigned to new work.
+            while available stock can still be assigned to new work. Add physical size for
+            sheet and board materials so Blueprint material requirements can use real stock dimensions.
           </div>
         </div>
         <button onClick={openAdd} style={btnPrimary}>
@@ -340,6 +393,17 @@ export default function RawMaterialsPage() {
                       <strong style={{ color: isActive ? "#0a0a0a" : "#71717a" }}>
                         {item.name}
                       </strong>
+                      <div
+                        style={{
+                          marginTop: 3,
+                          color: "#71717a",
+                          fontSize: 10.5,
+                          lineHeight: 1.35,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {formatMaterialPhysicalSpec(item)}
+                      </div>
                     </td>
                     <td style={{ ...td, color: "#52525b" }}>
                       {item.supplier_name || "—"}
@@ -524,6 +588,99 @@ export default function RawMaterialsPage() {
                   </div>
                 );
               })}
+              <div
+                style={{
+                  marginBottom: 14,
+                  padding: "12px 13px",
+                  border: "1px solid #e4e4e7",
+                  background: "#fafafa",
+                }}
+              >
+                <label style={labelSm}>Material Form</label>
+                <select
+                  value={currentMaterialForm}
+                  onChange={(e) => {
+                    const nextForm = e.target.value;
+                    setModal((current) => ({
+                      ...current,
+                      data: {
+                        ...current.data,
+                        material_form: nextForm,
+                        ...(["hardware", "other"].includes(nextForm)
+                          ? {
+                              length_mm: "",
+                              width_mm: "",
+                              thickness_mm: "",
+                            }
+                          : {}),
+                      },
+                    }));
+                  }}
+                  style={inputFull}
+                >
+                  {MATERIAL_FORM_OPTIONS.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+
+                <div style={{ ...fieldHelp, marginTop: 6 }}>
+                  This describes how one stock unit is physically measured. It
+                  does not change the on-hand quantity.
+                </div>
+
+                {showPhysicalDimensions && (
+                  <>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                        gap: 10,
+                        marginTop: 12,
+                      }}
+                    >
+                      {[
+                        ["Length (mm)", "length_mm"],
+                        ["Width (mm)", "width_mm"],
+                        ["Thickness (mm)", "thickness_mm"],
+                      ].map(([label, key]) => (
+                        <div key={key}>
+                          <label style={labelSm}>
+                            {label}
+                            {requiresCompletePhysicalSize ? " *" : ""}
+                          </label>
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            required={requiresCompletePhysicalSize}
+                            value={modal.data[key] ?? ""}
+                            onChange={(e) => setField(key, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (
+                                e.key.toLowerCase() === "e" ||
+                                e.key === "-" ||
+                                e.key === "+"
+                              ) {
+                                e.preventDefault();
+                              }
+                            }}
+                            style={inputFull}
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ ...fieldHelp, marginTop: 8 }}>
+                      {currentMaterialForm === "sheet"
+                        ? "Example: standard plywood may be 2440 × 1220 × 18 mm."
+                        : "Optional stock size. Use millimeters when a standard physical size applies."}
+                    </div>
+                  </>
+                )}
+              </div>
+
               <div style={{ marginBottom: 12 }}>
                 <label style={labelSm}>Supplier</label>
                 <select
