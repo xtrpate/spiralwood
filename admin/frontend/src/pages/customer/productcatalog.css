@@ -1880,3 +1880,51 @@
   color: #333333;
   font-weight: 700;
 }
+
+/* WISDOM PRODUCT VIEW CATEGORY STOCK ONLY HOTFIX START */
+
+/* Product View: only Category and Stock, in simple vertical rows. */
+.detail-info-table {
+  display: block !important;
+  border-top: 1px solid #ececec !important;
+}
+
+.detail-info-row {
+  display: grid !important;
+  grid-template-columns: 120px minmax(0, 1fr) !important;
+  gap: 16px !important;
+  align-items: center !important;
+  min-height: 52px !important;
+  padding: 0 !important;
+  border-bottom: 1px solid #ececec !important;
+  background: transparent !important;
+}
+
+.detail-info-row span {
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.06em !important;
+  color: #7c7c7c !important;
+}
+
+.detail-info-row strong {
+  font-size: 0.97rem !important;
+  line-height: 1.3 !important;
+  font-weight: 600 !important;
+  color: #111111 !important;
+}
+
+/* Keep the requested thin border around the large product picture only. */
+.detail-main-image {
+  border: 1px solid #e3e3e3 !important;
+  background: #ffffff !important;
+}
+
+@media (max-width: 780px) {
+  .detail-info-row {
+    grid-template-columns: 105px minmax(0, 1fr) !important;
+  }
+}
+
+/* WISDOM PRODUCT VIEW CATEGORY STOCK ONLY HOTFIX END */

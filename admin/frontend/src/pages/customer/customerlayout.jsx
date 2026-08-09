@@ -10,7 +10,10 @@ import {
   ShoppingCart,
   Package,
   Shield,
-  LifeBuoy,
+  Headphones,
+  Info,
+  CircleHelp,
+  Mail,
   LogOut,
   Menu,
   X,
@@ -38,7 +41,7 @@ const navItems = [
   { to: "/cart", icon: ShoppingCart, label: "Cart" },
   { to: "/orders", icon: Package, label: "My Orders" },
   { to: "/warranty", icon: Shield, label: "Warranty" },
-  { to: "/support", icon: LifeBuoy, label: "Support" },
+  { to: "/support", icon: Headphones, label: "Support" },
 ];
 
 export default function CustomerLayout() {
@@ -961,16 +964,17 @@ export default function CustomerLayout() {
             </NavLink>
           ))}
         </nav>
-
-        {/* 👉 THE NEW STEALTHY BOTTOM LINKS */}
         <div className="cust-side-footer-links">
+          <div className="cust-side-footer-title">Company & Help</div>
+
           {isTrue(siteSettings?.display?.show_about_section) && (
             <NavLink
               to="/about"
               className="cust-side-footer-link"
               onClick={() => setMenuOpen(false)}
             >
-              About Us
+              <Info size={16} />
+              <span>About Us</span>
             </NavLink>
           )}
 
@@ -980,7 +984,8 @@ export default function CustomerLayout() {
               className="cust-side-footer-link"
               onClick={() => setMenuOpen(false)}
             >
-              FAQ's
+              <CircleHelp size={16} />
+              <span>FAQs</span>
             </NavLink>
           )}
 
@@ -989,7 +994,8 @@ export default function CustomerLayout() {
             className="cust-side-footer-link"
             onClick={() => setMenuOpen(false)}
           >
-            Contact Us
+            <Mail size={16} />
+            <span>Contact Us</span>
           </NavLink>
         </div>
       </aside>

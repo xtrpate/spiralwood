@@ -97,7 +97,7 @@ export default function CustomerNotificationBell() {
           );
         }
       } catch {
-        // Best-effort — a failed mark-as-read must never block navigation
+        // Best-effort ΓÇö a failed mark-as-read must never block navigation
         // or surface an error to the customer.
       } finally {
         markingInFlightRef.current.delete(id);
@@ -123,7 +123,7 @@ export default function CustomerNotificationBell() {
     <div style={{ position: "relative" }}>
       <button
         type="button"
-        className="cust-icon-btn"
+        className="cust-icon-btn cust-notification-trigger-radius-only"
         onClick={() => setOpen((v) => !v)}
         aria-label="Notifications"
         title="Notifications"
@@ -143,6 +143,7 @@ export default function CustomerNotificationBell() {
             onClick={() => setOpen(false)}
           />
           <div
+            className="cust-notification-panel-radius-only"
             style={{
               position: "absolute",
               top: "calc(100% + 8px)",
@@ -173,6 +174,7 @@ export default function CustomerNotificationBell() {
               {unreadCount > 0 && (
                 <button
                   type="button"
+                  className="cust-notification-mark-radius-only"
                   onClick={markAllRead}
                   style={{
                     fontSize: 12,
@@ -205,6 +207,7 @@ export default function CustomerNotificationBell() {
               notifications.map((n) => (
                 <div
                   key={n.id}
+                  className="cust-notification-item-radius-only"
                   onClick={() => handleNotificationClick(n)}
                   style={{
                     padding: "10px 12px",
