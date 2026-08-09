@@ -331,16 +331,17 @@ export default function CustomerLayout() {
       ? getAvatarUrl(customerUser.profile_photo)
       : "";
 
+  // WISDOM OFFICIAL PICKUP LOCATION V1
   const dynamicAddress =
-    siteSettings?.display?.business_address ||
-    "8 Sitio Laot, Prenza 1, Marilao, Bulacan";
+    "8 Laot Street, Near Gavino, Prenza I, Marilao, 3019 Bulacan";
   const dynamicName =
     siteSettings?.display?.site_name || "Spiral Wood Services";
 
   const footerInfo = {
     address: dynamicAddress,
     phone: siteSettings?.display?.business_phone || "09530695310",
-    mapUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(dynamicAddress)}`,
+    mapUrl:
+      "https://www.google.com/maps/place/Spiral+Wood+Services+-+OPC/@14.7888541,120.9870085,776m/data=!3m1!1e3!4m6!3m5!1s0x3397addb7edab011:0x678a2a229260ef47!8m2!3d14.7888214!4d120.9863363!16s%2Fg%2F11p_84h115?entry=ttu&g_ep=EgoyMDI2MDgwNS4xIKXMDSoASAFQAw%3D%3D",
     email: "spiralwood@gmail.com", // (You can add an email field to your Admin settings later!)
     facebookName: dynamicName,
     facebookUrl: "https://www.facebook.com/",
