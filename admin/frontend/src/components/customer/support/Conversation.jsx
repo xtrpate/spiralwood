@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { SendHorizontal } from "lucide-react";
+import { SendHorizontal, Ticket } from "lucide-react";
 
 export default function Conversation({
   ticket,
@@ -13,6 +13,7 @@ export default function Conversation({
   if (!ticket) {
     return (
       <div className="support-conversation-empty">
+        <Ticket size={56} strokeWidth={1.5} color="#71717a" />
         <h3>Select a Support Ticket</h3>
         <p>Choose a ticket from the list to view its conversation.</p>
       </div>

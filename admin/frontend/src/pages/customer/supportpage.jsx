@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { LifeBuoy, Clock, CheckCircle, Plus } from "lucide-react";
+import { LifeBuoy, Clock, CheckCircle, Plus, Ticket } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
 import "./supportpage.css";
@@ -30,6 +30,15 @@ export default function SupportPage() {
   const [showForm, setShowForm] = useState(false);
 
   const location = useLocation();
+
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const filteredTickets = useMemo(() => {
+    if (statusFilter === "all") {
+      return tickets.filter((t) => t.status !== "closed");
+    }
+    return tickets.filter((t) => t.status === statusFilter);
+  }, [tickets, statusFilter]);
 
   useEffect(() => {
     window.scrollTo({
@@ -140,8 +149,6 @@ export default function SupportPage() {
             value={stats.resolved}
             subtitle="Finished requests"
           />
-
-
         </section>
 
         {showForm && (
@@ -162,18 +169,47 @@ export default function SupportPage() {
           }`}
         >
           <aside className="support-ticket-list">
-            <div className="support-ticket-head">
+            <div
+              className="support-ticket-head"
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
               <h2>
                 Your support tickets
                 {tickets.length > 0 ? ` (${tickets.length})` : ""}
               </h2>
+              {tickets.length > 0 && (
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  style={{
+                    padding: "6px 10px",
+                    fontSize: "12px",
+                    fontWeight: "600",
+                    border: "1px solid #dedede",
+                    background: "#ffffff",
+                    color: "#111111",
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="all">All Tickets</option>
+                  <option value="open">Open</option>
+                  <option value="awaiting_customer">Needs Reply</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="closed">Closed</option>
+                </select>
+              )}
             </div>
 
             {loading ? (
               <div className="support-loading">Loading tickets...</div>
             ) : tickets.length === 0 ? (
               <div className="support-empty">
-                <LifeBuoy size={36} />
+                <Ticket size={56} strokeWidth={1.5} color="#71717a" />
 
                 <h3>No support tickets yet</h3>
 
@@ -191,9 +227,19 @@ export default function SupportPage() {
                   Create support ticket
                 </button>
               </div>
+            ) : filteredTickets.length === 0 ? (
+              <div className="support-empty" style={{ padding: "40px 20px" }}>
+                <Ticket size={36} strokeWidth={1.5} color="#71717a" />
+                <h3>No tickets found</h3>
+                <p>
+                  {statusFilter === "all"
+                    ? "You have no tickets."
+                    : "You have no tickets with this status."}
+                </p>
+              </div>
             ) : (
               <div className="support-ticket-scroll">
-                {tickets.map((ticket) => (
+                {filteredTickets.map((ticket) => (
                   <TicketCard
                     key={ticket.id}
                     ticket={ticket}
@@ -206,6 +252,7 @@ export default function SupportPage() {
               </div>
             )}
           </aside>
+
           <section className="support-conversation-section">
             <Conversation
               ticket={selectedTicket}

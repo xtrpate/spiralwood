@@ -170,8 +170,10 @@ export default function AppointmentPage() {
   const [project_description, setProjectDescription] = useState("");
   const [preferred_date, setPreferredDate] = useState("");
   const [preferred_time, setPreferredTime] = useState("");
-  const [contact_number, setContactNumber] = useState("");
-  const [address, setAddress] = useState("");
+  const [contact_number, setContactNumber] = useState(
+    user?.phone || user?.contact_number || "",
+  );
+  const [address, setAddress] = useState(user?.address || "");
   const [notes, setNotes] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
@@ -199,7 +201,7 @@ export default function AppointmentPage() {
 
   useEffect(() => {
     setAddress(user?.address || "");
-    setContactNumber(user?.phone || "");
+    setContactNumber(user?.phone || user?.contact_number || "");
   }, [user]);
 
   useEffect(() => {
@@ -328,7 +330,7 @@ export default function AppointmentPage() {
     setProjectDescription("");
     setPreferredDate("");
     setPreferredTime("");
-    setContactNumber("");
+    setContactNumber(user?.phone || user?.contact_number || "");
     setAddress(user?.address || "");
     setNotes("");
     setSubmitted(false);
@@ -554,9 +556,7 @@ export default function AppointmentPage() {
                   </div>
 
                   <div className="appt-success-copy">
-                    <span className="appt-success-eyebrow">
-                      Request sent
-                    </span>
+                    <span className="appt-success-eyebrow">Request sent</span>
                     <h2>Appointment request sent successfully</h2>
                     <p>
                       Our staff will review your request, assign the appropriate
@@ -606,8 +606,8 @@ export default function AppointmentPage() {
                     </span>
                     <h2>Appointment details</h2>
                     <p>
-                      Choose the service you need, add your project details, and select an
-                      available schedule.
+                      Choose the service you need, add your project details, and
+                      select an available schedule.
                     </p>
                   </div>
 
@@ -878,13 +878,14 @@ export default function AppointmentPage() {
                             <MapPin size={14} /> Site address{" "}
                             <span className="appt-required">*</span>
                           </label>
-                          <textarea
-                            className="appt-textarea"
-                            placeholder="Enter the full address where the measurement will take place."
+                          <input
+                            type="text"
+                            className="appt-input"
+                            placeholder="Enter the full address..."
                             value={address}
                             onChange={(e) => setAddress(e.target.value)}
-                            rows={3}
                             maxLength={300}
+                            style={{ maxWidth: "320px" }}
                           />
                         </div>
                       )}
