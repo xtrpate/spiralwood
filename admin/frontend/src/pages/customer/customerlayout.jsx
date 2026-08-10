@@ -342,9 +342,10 @@ export default function CustomerLayout() {
     phone: siteSettings?.display?.business_phone || "09530695310",
     mapUrl:
       "https://www.google.com/maps/place/Spiral+Wood+Services+-+OPC/@14.7888541,120.9870085,776m/data=!3m1!1e3!4m6!3m5!1s0x3397addb7edab011:0x678a2a229260ef47!8m2!3d14.7888214!4d120.9863363!16s%2Fg%2F11p_84h115?entry=ttu&g_ep=EgoyMDI2MDgwNS4xIKXMDSoASAFQAw%3D%3D",
-    email: "spiralwood@gmail.com", // (You can add an email field to your Admin settings later!)
+    email: siteSettings?.display?.business_email || "spiralwood@gmail.com",
     facebookName: dynamicName,
-    facebookUrl: "https://www.facebook.com/",
+    facebookUrl:
+      siteSettings?.display?.social_facebook || "https://www.facebook.com/",
   };
 
   const handleLogout = () => {
@@ -1482,13 +1483,21 @@ export default function CustomerLayout() {
 
             <div className="cust-footer-col">
               <h4>BUSINESS HOURS</h4>
-              <p>MONDAY - FRIDAY</p>
-              <strong>8:00 AM - 5:00 PM</strong>
+              {siteSettings?.display?.operating_hours ? (
+                <p style={{ whiteSpace: "pre-wrap" }}>
+                  {siteSettings.display.operating_hours}
+                </p>
+              ) : (
+                <>
+                  <p>MONDAY - FRIDAY</p>
+                  <strong>8:00 AM - 5:00 PM</strong>
 
-              <div className="cust-footer-spacer" />
+                  <div className="cust-footer-spacer" />
 
-              <p>WEEKEND PRODUCTION</p>
-              <strong>By schedule / ongoing production</strong>
+                  <p>WEEKEND PRODUCTION</p>
+                  <strong>By schedule / ongoing production</strong>
+                </>
+              )}
 
               <div className="cust-footer-spacer" />
 
