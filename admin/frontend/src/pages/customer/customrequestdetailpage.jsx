@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api, { buildAssetUrl } from "../../services/api";
@@ -66,72 +66,197 @@ const PAY_STATUS_META = {
   paid: { label: "Paid", color: "#111111", bg: "#f3f4f6" },
 };
 
-const getRequestLifecycleMessage = ({
+const CUSTOMER_JOURNEY_STEPS = [
+  {
+    key: "submitted",
+    label: "Request submitted",
+    description: "We received your furniture request.",
+  },
+  {
+    key: "review",
+    label: "Design review",
+    description: "We check your design, size, materials, and delivery details.",
+  },
+  {
+    key: "quotation",
+    label: "Quotation",
+    description: "You review the project price and details.",
+  },
+  {
+    key: "approval-payment",
+    label: "Approval & payment",
+    description: "You approve the quotation and complete the required payment.",
+  },
+  {
+    key: "production",
+    label: "Production",
+    description: "Your approved furniture is made by our team.",
+  },
+  {
+    key: "delivery",
+    label: "Delivery",
+    description: "Your finished furniture is scheduled and delivered.",
+  },
+];
+
+const getCustomerJourneyState = ({
   orderStatus = "",
   estimationStatus = "",
   paymentStatus = "",
+  deliveryStatus = "",
+  balanceDue = 0,
+  verifiedPaymentTotal = 0,
 } = {}) => {
   const order = String(orderStatus || "").trim().toLowerCase();
   const estimation = String(estimationStatus || "").trim().toLowerCase();
   const payment = String(paymentStatus || "").trim().toLowerCase();
+  const delivery = String(deliveryStatus || "").trim().toLowerCase();
+  const remainingBalance = Math.max(0, Number(balanceDue) || 0);
+  const verifiedTotal = Math.max(0, Number(verifiedPaymentTotal) || 0);
 
-  if (order === "completed") {
-    return "This order has been completed successfully. Thank you for choosing Spiral Wood Services.";
-  }
-
-  if (order === "delivered") {
-    return payment === "paid"
-      ? "Your furniture has been delivered and payment is complete."
-      : "Your furniture has been delivered. Review the remaining payment details below.";
-  }
-
-  if (order === "shipping") {
-    return "Your furniture is on the way. Review the delivery and remaining payment details below.";
-  }
-
-  if (order === "production") {
-    return "Your approved furniture is now in production. You can review payment and project updates below.";
-  }
-
-  if (order === "contract_released") {
-    return "Your quotation is approved and the contract has been released. Review the payment and project details below.";
-  }
+  let currentIndex = 1;
+  let title = "We are reviewing your design";
+  let description =
+    "We received your furniture request. Our team is checking your design, size, materials, and delivery details before preparing your quotation.";
+  let actionTitle = "No action needed";
+  let actionText =
+    "You do not need to do anything right now. We will notify you when your quotation is ready.";
+  let isComplete = false;
+  let isCancelled = false;
 
   if (order === "cancelled") {
-    return "This request has been cancelled. Review the order details below for the latest recorded information.";
+    currentIndex = 0;
+    title = "This request was cancelled";
+    description =
+      "This furniture request is no longer moving forward. You can review the saved request details below or start a new request.";
+    actionTitle = "Request closed";
+    actionText = "No further action is required for this request.";
+    isCancelled = true;
+  } else if (order === "completed") {
+    currentIndex = CUSTOMER_JOURNEY_STEPS.length - 1;
+    title = "Your project is complete";
+    description =
+      "Your furniture has been delivered and this project is complete. Thank you for choosing Spiral Wood Services.";
+    actionTitle = "Completed";
+    actionText = "No further action is needed for this project.";
+    isComplete = true;
+  } else if (order === "delivered") {
+    currentIndex = 5;
+    title = "Your furniture has been delivered";
+    description =
+      "Your furniture has arrived. You can review your payment and project records below.";
+    if (payment !== "paid" && remainingBalance > 0) {
+      actionTitle = "Payment action needed";
+      actionText =
+        "Please follow the remaining balance instructions shown below to complete your payment.";
+    } else {
+      actionTitle = "Delivery complete";
+      actionText = "No action is needed from you right now.";
+    }
+  } else if (order === "shipping" || delivery === "in_transit") {
+    currentIndex = 5;
+    title = "Your furniture is on the way";
+    description =
+      "Your furniture is in the delivery stage. Please make sure someone is available to receive it.";
+    actionTitle = remainingBalance > 0 ? "Prepare for delivery" : "No action needed";
+    actionText =
+      remainingBalance > 0
+        ? "Please review the remaining balance instructions below and prepare for delivery."
+        : "No action is needed right now. We will update you when delivery is completed.";
+  } else if (order === "production") {
+    currentIndex = 4;
+    title = "Your furniture is in production";
+    description =
+      "Your approved furniture is now being made by our team. We will update you when it is ready for delivery.";
+    actionTitle = "No action needed";
+    actionText = "You do not need to do anything right now.";
+  } else if (order === "contract_released") {
+    currentIndex = 3;
+    title = "Your project is preparing for production";
+    description =
+      "Your quotation has been approved and your project details are being finalized before production.";
+    if (payment === "unpaid") {
+      actionTitle = "Payment action needed";
+      actionText =
+        "Complete the required down payment below so your project can continue.";
+    } else {
+      actionTitle = "No action needed";
+      actionText =
+        "Your verified payment is recorded. We will update you when production begins.";
+    }
+  } else if (estimation === "sent") {
+    currentIndex = 2;
+    title = "Your quotation is ready";
+    description =
+      "Review the project price and details below. You can approve the quotation, request changes, or reject it.";
+    actionTitle = "Action needed";
+    actionText = "Review your quotation below and choose how you want to continue.";
+  } else if (estimation === "rejected") {
+    currentIndex = 2;
+    title = "Your quotation needs an update";
+    description =
+      "A quotation change has been requested. Our team will review the request and prepare the next update.";
+    actionTitle = "No action needed";
+    actionText =
+      "You can use Message our team below if you need to add more details.";
+  } else if (estimation === "approved") {
+    currentIndex = 3;
+    title =
+      verifiedTotal > 0
+        ? "Your payment has been recorded"
+        : "Your quotation is approved";
+    description =
+      verifiedTotal > 0
+        ? "Your approved quotation and verified payment are recorded. We will continue preparing your project for production."
+        : "Your quotation is approved. Complete the required down payment so your project can continue.";
+    if (payment === "unpaid" || verifiedTotal <= 0) {
+      actionTitle = "Action needed";
+      actionText =
+        "Choose a payment method and complete the required down payment below.";
+    } else {
+      actionTitle = "No action needed";
+      actionText =
+        "Your payment is recorded. We will update you when the next project stage begins.";
+    }
+  } else {
+    currentIndex = 1;
+    title =
+      estimation === "draft"
+        ? "Your quotation is being prepared"
+        : "We are reviewing your design";
+    description =
+      "We received your furniture request. Our team is checking your design, materials, and delivery requirements before preparing your quotation.";
+    actionTitle = "No action needed";
+    actionText =
+      "You do not need to do anything right now. We will notify you when your quotation is ready.";
   }
 
-  if (order === "confirmed") {
-    if (estimation === "sent") {
-      return "Your quotation is ready for review. Approve it, request a revision, or reject it below.";
-    }
+  const steps = CUSTOMER_JOURNEY_STEPS.map((step, index) => {
+    let state = "upcoming";
+    if (isComplete || index < currentIndex) state = "complete";
+    else if (index === currentIndex) state = "current";
 
-    if (estimation === "approved") {
-      if (payment === "unpaid") {
-        return "Your quotation is approved. Complete the required down payment to continue.";
-      }
+    if (isCancelled && index === 0) state = "complete";
+    if (isCancelled && index > 0) state = "upcoming";
 
-      if (payment === "partial") {
-        return "Your quotation is approved and the down payment is verified. Your project is ready for the next production step.";
-      }
+    return { ...step, state };
+  });
 
-      if (payment === "paid") {
-        return "Your quotation is approved and payment is complete. Your project is ready for production.";
-      }
-
-      return "Your quotation is approved. Review the next payment and project steps below.";
-    }
-
-    if (estimation === "rejected") {
-      return "A quotation revision is needed. Review the quotation and discussion updates below.";
-    }
-
-    return "Your request is confirmed. The admin is preparing the quotation and project details.";
-  }
-
-  return "Your request has been received. The admin will review the submitted design and project details before preparing the quotation.";
+  return {
+    title,
+    description,
+    actionTitle,
+    actionText,
+    currentStageLabel: isCancelled
+      ? "Request cancelled"
+      : isComplete
+        ? "Completed"
+        : CUSTOMER_JOURNEY_STEPS[currentIndex]?.label || "Design review",
+    steps,
+    isCancelled,
+    isComplete,
+  };
 };
-
 const getSubmittedItemProgressLabel = ({
   orderStatus = "",
   estimationStatus = "",
@@ -428,27 +553,27 @@ const getSenderMeta = (entry = {}) => {
 
   if (role === "admin") {
     return {
-      label: entry?.sender_name || "Admin",
+      label: "Spiral Wood Services",
       roleClass: "is-admin",
     };
   }
 
   if (role === "staff") {
     return {
-      label: entry?.sender_name || "Staff",
+      label: "Spiral Wood Services",
       roleClass: "is-staff",
     };
   }
 
   if (role === "system") {
     return {
-      label: "System",
+      label: "Spiral Wood Services",
       roleClass: "is-system",
     };
   }
 
   return {
-    label: entry?.sender_name || "You",
+    label: "You",
     roleClass: "is-you",
   };
 };
@@ -473,6 +598,9 @@ export default function CustomRequestDetailPage() {
   const [discussionMessage, setDiscussionMessage] = useState("");
   const [discussionFiles, setDiscussionFiles] = useState([]);
   const [discussionSubmitting, setDiscussionSubmitting] = useState(false);
+  const discussionFileInputRef = useRef(null);
+  const discussionInputRef = useRef(null);
+  const discussionThreadRef = useRef(null);
   const [selectingMethod, setSelectingMethod] = useState(false);
   const [selectionError, setSelectionError] = useState("");
   const [selectingRemainingMethod, setSelectingRemainingMethod] = useState(false);
@@ -482,7 +610,6 @@ export default function CustomRequestDetailPage() {
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
-  const [activeRequestTab, setActiveRequestTab] = useState("overview");
 
   const loadPaymentHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -746,13 +873,6 @@ export default function CustomRequestDetailPage() {
     .trim()
     .toLowerCase();
 
-  const showPaymentTab =
-    quotationAvailable &&
-    !quotationActionBlocked &&
-    !quotationIntegrityWarning &&
-    Boolean(latestEstimation) &&
-    estimationStatusKey === "approved";
-
   const customerQuotationItemsV141 = useMemo(
     () =>
       (Array.isArray(latestEstimation?.items) ? latestEstimation.items : [])
@@ -760,10 +880,13 @@ export default function CustomRequestDetailPage() {
     [latestEstimation],
   );
 
-  const requestLifecycleMessage = getRequestLifecycleMessage({
+  const customerJourney = getCustomerJourneyState({
     orderStatus: orderStatusKey,
     estimationStatus: estimationStatusKey,
     paymentStatus: requestData?.payment_status,
+    deliveryStatus: deliveryStatusForRemainingMethod,
+    balanceDue,
+    verifiedPaymentTotal,
   });
 
   const submittedItemProgressLabel = getSubmittedItemProgressLabel({
@@ -805,6 +928,20 @@ export default function CustomRequestDetailPage() {
       Array.isArray(requestData?.discussion) ? requestData.discussion : [],
     [requestData],
   );
+
+  useEffect(() => {
+    const thread = discussionThreadRef.current;
+    if (!thread) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      thread.scrollTo({
+        top: thread.scrollHeight,
+        behavior: discussionThread.length > 0 ? "smooth" : "auto",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [discussionThread.length]);
 
   const handleEstimationDecision = async (action) => {
     if (!requestData?.id || !latestEstimation?.id) return;
@@ -866,12 +1003,67 @@ export default function CustomRequestDetailPage() {
 
   const handleDiscussionFilesChange = (e) => {
     const picked = Array.from(e.target.files || []);
-    setDiscussionFiles((prev) => [...prev, ...picked].slice(0, 5));
+    const allowedExtensions = [".jpg", ".jpeg", ".jfif", ".png", ".webp", ".pdf"];
+    const maxSize = 8 * 1024 * 1024;
+    const accepted = [];
+
+    picked.forEach((file) => {
+      const lowerName = String(file?.name || "").toLowerCase();
+      const hasAllowedExtension = allowedExtensions.some((ext) =>
+        lowerName.endsWith(ext),
+      );
+
+      if (!hasAllowedExtension) {
+        toast.error(
+          `${file.name || "Attachment"} is not supported. Use JPG, JPEG, JFIF, PNG, WEBP, or PDF.`,
+        );
+        return;
+      }
+
+      if (Number(file?.size || 0) > maxSize) {
+        toast.error(`${file.name} is larger than 8MB.`);
+        return;
+      }
+
+      accepted.push(file);
+    });
+
+    setDiscussionFiles((prev) => {
+      const next = [...prev, ...accepted].slice(0, 5);
+      if (prev.length + accepted.length > 5) {
+        toast.error("You can attach up to 5 files per message.");
+      }
+      return next;
+    });
+
     e.target.value = "";
   };
 
   const handleRemoveDiscussionFile = (index) => {
     setDiscussionFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const resizeDiscussionInput = (element) => {
+    if (!element) return;
+    element.style.height = "38px";
+    const nextHeight = Math.min(Math.max(element.scrollHeight, 38), 116);
+    element.style.height = `${nextHeight}px`;
+    element.style.overflowY = element.scrollHeight > 116 ? "auto" : "hidden";
+  };
+
+  const handleDiscussionMessageChange = (e) => {
+    setDiscussionMessage(e.target.value);
+    resizeDiscussionInput(e.currentTarget);
+  };
+
+  const handleDiscussionKeyDown = (e) => {
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent?.isComposing) return;
+
+    e.preventDefault();
+    if (discussionSubmitting) return;
+
+    const form = e.currentTarget.form;
+    if (form) form.requestSubmit();
   };
 
   const handleSendDiscussionMessage = async (e) => {
@@ -905,8 +1097,16 @@ export default function CustomRequestDetailPage() {
 
       setDiscussionMessage("");
       setDiscussionFiles([]);
+      if (discussionInputRef.current) {
+        discussionInputRef.current.style.height = "38px";
+        discussionInputRef.current.style.overflowY = "hidden";
+      }
       await loadRequestDetail(false);
-      toast.success("Message sent successfully.");
+      toast.success(
+        discussionFiles.length
+          ? "Message and attachment sent."
+          : "Message sent.",
+      );
     } catch (err) {
       toast.error(
         err.response?.data?.message ||
@@ -1122,73 +1322,51 @@ export default function CustomRequestDetailPage() {
         </div>
       ) : (
         <>
+          <section
+            className={`crd-journey-hero-v2 ${
+              customerJourney.isCancelled ? "is-cancelled" : ""
+            }`}
+            aria-labelledby="crd-current-stage-title"
+          >
+            <div className="crd-journey-current-v2">
+              <div className="crd-journey-eyebrow-v2">Current stage</div>
+              <h2 id="crd-current-stage-title">{customerJourney.title}</h2>
+              <p>{customerJourney.description}</p>
+
+              <div className="crd-journey-action-v2">
+                <strong>{customerJourney.actionTitle}</strong>
+                <span>{customerJourney.actionText}</span>
+              </div>
+            </div>
+
+            <div className="crd-journey-process-v2">
+              <div className="crd-journey-process-title-v2">
+                What happens next
+              </div>
+              <ol className="crd-journey-steps-v2">
+                {customerJourney.steps.map((step, index) => (
+                  <li
+                    key={step.key}
+                    className={`crd-journey-step-v2 is-${step.state}`}
+                    aria-current={step.state === "current" ? "step" : undefined}
+                  >
+                    <div className="crd-journey-step-marker-v2">
+                      {step.state === "complete" ? "✓" : index + 1}
+                    </div>
+                    <div className="crd-journey-step-copy-v2">
+                      <strong>{step.label}</strong>
+                      <span>{step.description}</span>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </section>
+
           <div className="checkout-layout crd-layout">
             <div
-              className={`checkout-form-panel wisdom-request-details-main-v11 wisdom-request-tab-${activeRequestTab}-v12`}
+              className="checkout-form-panel wisdom-request-details-main-v11 crd-customer-journey-v2"
             >
-              <div
-                className="wisdom-request-tabs-v12"
-                role="tablist"
-                aria-label="Request details sections"
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeRequestTab === "overview"}
-                  className={
-                    activeRequestTab === "overview"
-                      ? "wisdom-request-tab-btn-v12 is-active"
-                      : "wisdom-request-tab-btn-v12"
-                  }
-                  onClick={() => setActiveRequestTab("overview")}
-                >
-                  Overview
-                </button>
-
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeRequestTab === "quotation"}
-                  className={
-                    activeRequestTab === "quotation"
-                      ? "wisdom-request-tab-btn-v12 is-active"
-                      : "wisdom-request-tab-btn-v12"
-                  }
-                  onClick={() => setActiveRequestTab("quotation")}
-                >
-                  Quotation
-                </button>
-
-                {showPaymentTab ? (
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeRequestTab === "payment"}
-                    className={
-                      activeRequestTab === "payment"
-                        ? "wisdom-request-tab-btn-v12 is-active"
-                        : "wisdom-request-tab-btn-v12"
-                    }
-                    onClick={() => setActiveRequestTab("payment")}
-                  >
-                    Payment
-                  </button>
-                ) : null}
-
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={activeRequestTab === "messages"}
-                  className={
-                    activeRequestTab === "messages"
-                      ? "wisdom-request-tab-btn-v12 is-active"
-                      : "wisdom-request-tab-btn-v12"
-                  }
-                  onClick={() => setActiveRequestTab("messages")}
-                >
-                  Messages
-                </button>
-              </div>
               <div className="checkout-section wisdom-request-overview-v11">
                 <div className="checkout-section-header">
                   <div className="checkout-section-num">01</div>
@@ -1256,7 +1434,7 @@ export default function CustomRequestDetailPage() {
                 <div className="checkout-section wisdom-request-quotation-v11">
                   <div className="checkout-section-header">
                     <div className="checkout-section-num">02</div>
-                    <h3>Quotation breakdown</h3>
+                    <h3>Your quotation</h3>
 
                     <span
                       className="crd-status-pill"
@@ -1395,7 +1573,7 @@ export default function CustomRequestDetailPage() {
                     </div>
                   </div>
                 </div>
-              ) : quotationMessage ? (
+              ) : (
                 <div className="checkout-section wisdom-request-quotation-v11">
                   <div className="checkout-section-header">
                     <div className="checkout-section-num">02</div>
@@ -1403,18 +1581,33 @@ export default function CustomRequestDetailPage() {
                   </div>
 
                   <div className="checkout-section-body">
-                    <div
-                      className={
-                        quotationActionBlocked || quotationIntegrityWarning
-                          ? "crd-info-box pending"
-                          : "crd-info-box muted"
-                      }
-                    >
-                      {quotationMessage}
-                    </div>
+                    {quotationActionBlocked || quotationIntegrityWarning ? (
+                      <div className="crd-info-box pending">
+                        {quotationMessage ||
+                          "Your quotation cannot be shown right now. Please check again later or message our team if you need help."}
+                      </div>
+                    ) : (
+                      <div className="crd-quotation-waiting-v2">
+                        <div className="crd-quotation-waiting-label-v2">
+                          Quotation status
+                        </div>
+                        <h4>Quotation is being prepared</h4>
+                        <p>
+                          Our team is reviewing your furniture design and
+                          checking the materials and delivery requirements.
+                        </p>
+                        <div className="crd-quotation-waiting-action-v2">
+                          <strong>No action needed from you right now.</strong>
+                          <span>
+                            We will notify you when your quotation is ready to
+                            review.
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              ) : null}
+              )}
 
               {quotationAvailable &&
               latestEstimation &&
@@ -2075,7 +2268,7 @@ export default function CustomRequestDetailPage() {
               <div className="checkout-section wisdom-request-items-v11">
                 <div className="checkout-section-header">
                   <div className="checkout-section-num">04</div>
-                  <h3>Submitted design</h3>
+                  <h3>Your furniture request</h3>
 
                   <span className="crd-mini-meta">
                     {requestData.total_items || 0} design
@@ -2092,7 +2285,39 @@ export default function CustomRequestDetailPage() {
 
                     return (
                       <div key={item.id} className="checkout-item-row">
-                        <div className="checkout-item-thumb">
+                        <div
+                          className={`checkout-item-thumb crd-design-thumb-v2 ${
+                            canPreview ? "is-clickable" : ""
+                          }`}
+                          onClick={
+                            canPreview ? () => setPreviewItem(item) : undefined
+                          }
+                          onKeyDown={
+                            canPreview
+                              ? (event) => {
+                                  if (
+                                    event.key === "Enter" ||
+                                    event.key === " "
+                                  ) {
+                                    event.preventDefault();
+                                    setPreviewItem(item);
+                                  }
+                                }
+                              : undefined
+                          }
+                          role={canPreview ? "button" : undefined}
+                          tabIndex={canPreview ? 0 : undefined}
+                          aria-label={
+                            canPreview
+                              ? `View your submitted design for ${getDisplayTitle(item)}`
+                              : undefined
+                          }
+                          title={
+                            canPreview
+                              ? "Open your submitted blueprint and 3D design"
+                              : undefined
+                          }
+                        >
                           {item.image_url || item.preview_image_url ? (
                             <img
                               src={resolveImageSrc(
@@ -2120,6 +2345,12 @@ export default function CustomRequestDetailPage() {
                           >
                             Item
                           </div>
+
+                          {canPreview ? (
+                            <span className="crd-design-thumb-hint-v2">
+                              View design
+                            </span>
+                          ) : null}
                         </div>
 
                         <div className="checkout-item-details">
@@ -2143,13 +2374,45 @@ export default function CustomRequestDetailPage() {
                             </div>
 
                             {canPreview ? (
-                              <button
-                                type="button"
-                                className="btn btn-secondary crd-small-btn"
-                                onClick={() => setPreviewItem(item)}
-                              >
-                                View design
-                              </button>
+                              <div className="crd-design-access-v2">
+                                <div className="crd-design-access-copy-v2">
+                                  <span className="crd-design-access-label-v2">
+                                    Your submitted design
+                                  </span>
+                                  <span className="crd-design-access-help-v2">
+                                    Open the blueprint and 3D design you submitted.
+                                  </span>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  className="crd-design-view-btn-v2"
+                                  onClick={() => setPreviewItem(item)}
+                                >
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    width="16"
+                                    height="16"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden="true"
+                                  >
+                                    <path d="M3 7.5 12 3l9 4.5-9 4.5-9-4.5Z" />
+                                    <path d="m3 12 9 4.5 9-4.5" />
+                                    <path d="m3 16.5 9 4.5 9-4.5" />
+                                  </svg>
+                                  <span>View your design</span>
+                                  <span
+                                    className="crd-design-view-arrow-v2"
+                                    aria-hidden="true"
+                                  >
+                                    →
+                                  </span>
+                                </button>
+                              </div>
                             ) : null}
                           </div>
 
@@ -2242,7 +2505,7 @@ export default function CustomRequestDetailPage() {
               <div className="checkout-section wisdom-request-project-v11">
                 <div className="checkout-section-header">
                   <div className="checkout-section-num">05</div>
-                  <h3>Project details</h3>
+                  <h3>Delivery details</h3>
                 </div>
 
                 <div className="checkout-section-body">
@@ -2269,21 +2532,53 @@ export default function CustomRequestDetailPage() {
                 </div>
               </div>
 
-              <div className="checkout-section wisdom-request-messages-v11">
-                <div className="checkout-section-header">
+              <div className="checkout-section wisdom-request-messages-v11 crd-messenger-v2">
+                <div className="checkout-section-header crd-messenger-section-head-v2">
                   <div className="checkout-section-num">06</div>
-                  <h3>Messages</h3>
+                  <div>
+                    <h3>Message our team</h3>
+                    <p>Ask about your quotation, payment, production, delivery, or request details.</p>
+                  </div>
                 </div>
 
-                <div className="checkout-section-body">
-                  <div className="crd-chat-wrap wisdom-request-chat-v13">
+                <div className="checkout-section-body crd-messenger-body-v2">
+                  <div className="crd-chat-wrap wisdom-request-chat-v13 crd-messenger-shell-v2">
                     <div className="crd-chat-card">
-                      <div className="crd-chat-card-head">Conversation</div>
+                      <div className="crd-chat-card-head crd-messenger-head-v2">
+                        <div>
+                          <strong>Spiral Wood Services</strong>
+                          <span>Project conversation</span>
+                        </div>
+                      </div>
 
-                      <div className="crd-chat-thread">
+                      <div
+                        ref={discussionThreadRef}
+                        className={`crd-chat-thread ${
+                          discussionThread.length ? "has-messages" : "is-empty"
+                        }`}
+                      >
                         {!discussionThread.length ? (
-                          <div className="crd-chat-empty">
-                            No messages yet. Send a message to our team below.
+                          <div className="crd-chat-empty crd-messenger-empty-v2">
+                            <div className="crd-messenger-empty-icon-v2" aria-hidden="true">
+                              <svg
+                                viewBox="0 0 24 24"
+                                width="22"
+                                height="22"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.7"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+                              </svg>
+                            </div>
+                            <strong>No conversation yet</strong>
+                            <span>
+                              You can message us if you have a question, want
+                              to clarify your furniture request, or need to send
+                              an update.
+                            </span>
                           </div>
                         ) : (
                           discussionThread.map((entry) => {
@@ -2363,70 +2658,124 @@ export default function CustomRequestDetailPage() {
 
                     <form
                       onSubmit={handleSendDiscussionMessage}
-                      className="crd-chat-form wisdom-request-chat-form-v13"
+                      className="crd-chat-form wisdom-request-chat-form-v13 crd-messenger-composer-v2"
                     >
-                      <div className="crd-chat-form-title">Send message</div>
-
-                      <textarea
-                        rows={4}
-                        value={discussionMessage}
-                        onChange={(e) => setDiscussionMessage(e.target.value)}
-                        placeholder="Write your clarification, concern, or request update here."
-                        className="crd-control crd-textarea wisdom-chat-input-v13"
-                      />
-
-                      <div>
-                        <label className="crd-field-label wisdom-chat-attachments-label-v13">Attach files</label>
-
-                        <input
-                          type="file"
-                          multiple
-                          accept=".jpg,.jpeg,.png,.webp,.pdf"
-                          onChange={handleDiscussionFilesChange}
-                          className="crd-file-input wisdom-chat-file-input-v13"
-                        />
-
-                        <div className="crd-help-text">
-                          Up to 5 JPG, PNG, WEBP, or PDF files.
-                        </div>
-                      </div>
-
                       {discussionFiles.length ? (
-                        <div className="crd-file-list">
+                        <div className="crd-messenger-file-chips-v2">
                           {discussionFiles.map((file, index) => (
                             <div
                               key={`${file.name}_${index}`}
-                              className="crd-file-row"
+                              className="crd-messenger-file-chip-v2"
                             >
-                              <div className="crd-file-meta">
-                                <div className="crd-file-name">{file.name}</div>
-                                <div className="crd-file-size">
-                                  {Math.round((file.size || 0) / 1024)} KB
-                                </div>
-                              </div>
-
+                              <span className="crd-messenger-file-icon-v2" aria-hidden="true">
+                                <svg
+                                  viewBox="0 0 24 24"
+                                  width="14"
+                                  height="14"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.8"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                  <path d="M14 2v6h6" />
+                                </svg>
+                              </span>
+                              <span className="crd-messenger-file-name-v2">
+                                {file.name}
+                              </span>
                               <button
                                 type="button"
-                                onClick={() =>
-                                  handleRemoveDiscussionFile(index)
-                                }
-                                className="crd-remove-btn"
+                                onClick={() => handleRemoveDiscussionFile(index)}
+                                className="crd-messenger-file-remove-v2"
+                                aria-label={`Remove ${file.name}`}
+                                title="Remove attachment"
                               >
-                                Remove
+                                ×
                               </button>
                             </div>
                           ))}
                         </div>
                       ) : null}
 
-                      <div className="crd-chat-form-actions wisdom-chat-send-v13">
+                      <div className="crd-messenger-compose-row-v2">
+                        <input
+                          ref={discussionFileInputRef}
+                          type="file"
+                          multiple
+                          accept=".jpg,.jpeg,.jfif,.png,.webp,.pdf"
+                          onChange={handleDiscussionFilesChange}
+                          className="crd-messenger-hidden-file-v2"
+                          tabIndex={-1}
+                        />
+
+                        <button
+                          type="button"
+                          className="crd-messenger-icon-btn-v2 crd-messenger-attach-v2"
+                          onClick={() => discussionFileInputRef.current?.click()}
+                          aria-label="Attach files"
+                          title="Attach files"
+                          disabled={discussionSubmitting || discussionFiles.length >= 5}
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            width="18"
+                            height="18"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                          </svg>
+                        </button>
+
+                        <textarea
+                          ref={discussionInputRef}
+                          rows={1}
+                          value={discussionMessage}
+                          onChange={handleDiscussionMessageChange}
+                          onKeyDown={handleDiscussionKeyDown}
+                          placeholder="Type a message..."
+                          className="crd-control crd-textarea crd-messenger-input-v2"
+                          aria-label="Message our team"
+                        />
+
                         <button
                           type="submit"
-                          className="btn btn-primary"
-                          disabled={discussionSubmitting}
+                          className="crd-messenger-send-v2"
+                          disabled={
+                            discussionSubmitting ||
+                            (!discussionMessage.trim() && !discussionFiles.length)
+                          }
+                          aria-label="Send message"
+                          title="Send message"
                         >
-                          {discussionSubmitting ? "Sending..." : "Send message"}
+                          {discussionSubmitting ? (
+                            <span className="crd-messenger-sending-v2">…</span>
+                          ) : (
+                            <svg
+                              viewBox="0 0 24 24"
+                              width="18"
+                              height="18"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M22 2 11 13" />
+                              <path d="m22 2-7 20-4-9-9-4Z" />
+                            </svg>
+                          )}
                         </button>
+                      </div>
+
+                      <div className="crd-messenger-helper-v2">
+                        <span>Enter to send · Shift + Enter for a new line</span>
+                        <span>Up to 5 images or PDFs · 8MB each</span>
                       </div>
                     </form>
                   </div>
@@ -2434,47 +2783,36 @@ export default function CustomRequestDetailPage() {
               </div>
             </div>
 
-            <div className="checkout-summary wisdom-request-status-v11">
+            <div className="checkout-summary wisdom-request-status-v11 crd-project-summary-v2">
               <div className="checkout-summary-header">
-                <h3>Request status</h3>
+                <h3>Your project</h3>
               </div>
 
               <div className="checkout-summary-totals">
                 <div className="summary-row">
-                  <span>Current status</span>
-                  <span style={{ color: statusMeta.color, fontWeight: 700 }}>
-                    {statusMeta.label}
+                  <span>Current stage</span>
+                  <span className="crd-current-stage-value-v2">
+                    {customerJourney.currentStageLabel}
+                  </span>
+                </div>
+
+                <div className="summary-row">
+                  <span>Quotation</span>
+                  <span className="crd-summary-total">
+                    {quotedTotal > 0 ? formatMoney(quotedTotal) : "Not ready yet"}
                   </span>
                 </div>
 
                 {showPaymentInStatus ? (
-                  <>
-                    <div className="summary-row">
-                      <span>Payment</span>
-                      <span style={{ color: payMeta.color, fontWeight: 700 }}>
-                        {payMeta.label}
-                      </span>
-                    </div>
-
-                    <div className="summary-row">
-                      <span>{paymentMethodFieldLabel}</span>
-                      <span>{displayPaymentMethod}</span>
-                    </div>
-                  </>
+                  <div className="summary-row">
+                    <span>Payment</span>
+                    <span>{payMeta.label}</span>
+                  </div>
                 ) : null}
 
-                <div className="summary-row">
-                  <span>Total</span>
-                  <span className="crd-summary-total">
-                    {quotedTotal > 0
-                      ? formatMoney(quotedTotal)
-                      : "Pending quotation"}
-                  </span>
-                </div>
-
-                <div className="crd-whats-next-v12">What's next</div>
-                <p className="summary-note" style={{ marginTop: 6 }}>
-                  {requestLifecycleMessage}
+                <div className="crd-whats-next-v12">Your next step</div>
+                <p className="summary-note crd-next-step-copy-v2">
+                  {customerJourney.actionText}
                 </p>
               </div>
             </div>

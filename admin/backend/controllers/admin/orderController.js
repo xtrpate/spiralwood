@@ -3,6 +3,10 @@
 const pool = require("../../config/db");
 const { signUploadPath } = require("../../utils/signedUrl");
 const {
+  storeUploadBuffer,
+  cleanupStoredUpload,
+} = require("../../utils/adaptiveUpload");
+const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const { parseStrictPositiveInt } = require("../../utils/validators");
@@ -3113,11 +3117,15 @@ exports.postOrderDiscussionMessage = async (req, res) => {
   }
 
   let conn;
+  let transactionActive = false;
+  let committed = false;
+  const storedAssets = [];
+
   try {
     conn = await pool.getConnection();
     await conn.beginTransaction();
+    transactionActive = true;
 
-    // ── FIXED: Switched to .query ──
     const [orders] = await conn.query(
       `SELECT id, order_number, customer_id, order_type
        FROM orders
@@ -3128,6 +3136,7 @@ exports.postOrderDiscussionMessage = async (req, res) => {
 
     if (!orders.length) {
       await conn.rollback();
+      transactionActive = false;
       return res.status(404).json({ message: "Order not found." });
     }
 
@@ -3139,10 +3148,19 @@ exports.postOrderDiscussionMessage = async (req, res) => {
         .toLowerCase() !== "blueprint"
     ) {
       await conn.rollback();
+      transactionActive = false;
       return res.status(400).json({
         message:
           "Discussion thread is available for blueprint custom orders only.",
       });
+    }
+
+    for (const file of files) {
+      const stored = await storeUploadBuffer({
+        file,
+        folder: "custom-request-assets",
+      });
+      storedAssets.push(stored);
     }
 
     const senderRole =
@@ -3152,7 +3170,6 @@ exports.postOrderDiscussionMessage = async (req, res) => {
         ? "admin"
         : "staff";
 
-    // ── FIXED: Switched to .query ──
     const [messageResult] = await conn.query(
       `INSERT INTO custom_order_messages
         (order_id, order_item_id, sender_id, sender_role, message)
@@ -3167,8 +3184,7 @@ exports.postOrderDiscussionMessage = async (req, res) => {
 
     const messageId = messageResult.insertId;
 
-    for (const file of files) {
-      // ── FIXED: Switched to .query ──
+    for (const asset of storedAssets) {
       await conn.query(
         `INSERT INTO custom_order_attachments
           (order_id, order_item_id, message_id, uploaded_by, file_url, file_name, mime_type, file_size, attachment_type)
@@ -3177,41 +3193,56 @@ exports.postOrderDiscussionMessage = async (req, res) => {
           order.id,
           messageId,
           req.user?.id || null,
-          `/uploads/custom-request-assets/${file.filename}`,
-          String(file.originalname || file.filename).trim() || file.filename,
-          String(file.mimetype || "").trim() || null,
-          Number(file.size || 0) || null,
+          asset.file_url,
+          asset.file_name,
+          asset.mime_type,
+          asset.file_size,
         ],
       );
     }
 
     await adminInsertDiscussionNotificationSafe(conn, order.customer_id, {
       type: "custom_request_admin_reply",
-      title: "New Admin Reply",
-      message: `Admin sent a new discussion reply for ${order.order_number}.`,
+      title: "New Team Reply",
+      message: `Spiral Wood Services sent a new discussion reply for ${order.order_number}.`,
       targetType: "custom_request",
       targetId: order.id,
       targetOrderId: order.id,
     });
 
     await conn.commit();
+    transactionActive = false;
+    committed = true;
 
     return res.json({
-      message: "Discussion reply sent successfully.",
+      message: files.length
+        ? "Discussion reply and attachment sent successfully."
+        : "Discussion reply sent successfully.",
     });
   } catch (err) {
-    if (conn) {
+    if (conn && transactionActive) {
       try {
         await conn.rollback();
+        transactionActive = false;
       } catch {}
     }
 
     console.error("[admin.order postOrderDiscussionMessage]", err);
-    return res.status(500).json({
-      message: "Failed to send discussion reply.",
-      error: err.message,
+    const status = Number(err.status) || 500;
+    return res.status(status).json({
+      message:
+        status === 502
+          ? "Attachment storage is unavailable right now. Please try again."
+          : status < 500
+            ? err.message
+            : "Failed to send discussion reply.",
     });
   } finally {
+    if (!committed && storedAssets.length) {
+      await Promise.allSettled(
+        storedAssets.map((asset) => cleanupStoredUpload(asset)),
+      );
+    }
     if (conn) conn.release();
   }
 };

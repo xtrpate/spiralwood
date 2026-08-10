@@ -180,9 +180,10 @@ export default function DeliveryManagement() {
       if (!["scheduled", "in_transit"].includes(normalize(d.status))) {
         return false;
       }
-      const method = normalize(d.remaining_payment_method);
+      // Cash is the default remaining-balance method. A null/blank DB
+      // value means the customer did not opt into Online Payment.
+      const method = normalize(d.remaining_payment_method) || "cash";
       const balance = Number(d.payment_balance || 0);
-      if (!method) return true;
       if (method === "paymongo" && balance > 0.009) return true;
       return false;
     });
@@ -561,9 +562,10 @@ export default function DeliveryManagement() {
             // original standard/walk-in/COD/COP behavior when false.
             const isBlueprintDelivery =
               normalize(delivery.order_type) === "blueprint";
-            const remainingPaymentMethod = normalize(
-              delivery.remaining_payment_method,
-            );
+            // Keep rider UI consistent with backend completion logic:
+            // NULL/blank means the default Cash on Delivery method.
+            const remainingPaymentMethod =
+              normalize(delivery.remaining_payment_method) || "cash";
             const pendingPaymentCount = Number(
               delivery.pending_payment_count || 0,
             );
@@ -573,6 +575,8 @@ export default function DeliveryManagement() {
               isBlueprintDelivery &&
               remainingPaymentMethod === "paymongo" &&
               paymentBalance > 0.009;
+            // Defensive only. With the default-Cash rule above, a normal
+            // NULL value is never treated as a missing customer choice.
             const blueprintMethodRequired =
               isBlueprintDelivery &&
               !remainingPaymentMethod &&
@@ -849,8 +853,9 @@ export default function DeliveryManagement() {
                         ) : blueprintReadyForCashConfirm ? (
                           <>
                             <div style={helperText}>
-                              Payment Method: Cash. Collect the exact amount
-                              below from the customer and confirm.
+                              Payment Method: Cash on Delivery. Collect the exact
+                              remaining balance below from the customer, then
+                              complete the delivery.
                             </div>
                             <div
                               style={{

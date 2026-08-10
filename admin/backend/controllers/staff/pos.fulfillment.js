@@ -3,6 +3,10 @@ const fs = require("fs");
 const db = require("../../config/db");
 const { signUploadPath } = require("../../utils/signedUrl");
 const {
+  storeUploadBuffer,
+  cleanupStoredUpload,
+} = require("../../utils/adaptiveUpload");
+const {
   parseDecimalToCentsStrict,
   centsToDecimalString,
   centsToAmount,
@@ -19,7 +23,19 @@ const {
 // failure without throwing — cleanup must never replace or mask the
 // original HTTP error already being returned.
 const cleanupFreshUpload = (file) => {
-  if (!file || !file.path) return;
+  if (!file) return;
+
+  if (file.storedUpload) {
+    cleanupStoredUpload(file.storedUpload).catch((err) => {
+      console.error(
+        "[updateDeliveryStatus] failed to remove orphaned upload:",
+        err,
+      );
+    });
+    return;
+  }
+
+  if (!file.path || /^https?:\/\//i.test(file.path)) return;
   fs.unlink(file.path, (err) => {
     if (err && err.code !== "ENOENT") {
       console.error(
@@ -528,7 +544,30 @@ exports.updateDeliveryStatus = async (req, res) => {
       ? undefined
       : normalizeText(req.body.notes) || null;
 
-  const uploadedReceiptPath = buildSignedReceiptPath(req.file);
+  let uploadedReceiptPath = null;
+
+  if (req.file) {
+    try {
+      const storedReceipt = await storeUploadBuffer({
+        file: req.file,
+        folder: "deliveries",
+      });
+      req.file.storedUpload = storedReceipt;
+      req.file.path = storedReceipt.file_url;
+      uploadedReceiptPath = buildSignedReceiptPath(req.file);
+    } catch (uploadErr) {
+      console.error(
+        "[updateDeliveryStatus] Proof of Delivery upload failed:",
+        uploadErr?.message || uploadErr,
+      );
+      return res.status(Number(uploadErr?.status) || 502).json({
+        message:
+          Number(uploadErr?.status) === 400
+            ? uploadErr.message
+            : "Proof of Delivery upload is unavailable right now. Please try again.",
+      });
+    }
+  }
 
   const collectedAmount = toPositiveAmount(req.body.collected_amount);
   const collectedPaymentMethod = normalizeText(

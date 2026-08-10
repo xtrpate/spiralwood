@@ -3,7 +3,10 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
-const { verifyFileSignature } = require("../utils/verifyFileSignature");
+const {
+  verifyFileSignature,
+  verifyBufferSignature,
+} = require("../utils/verifyFileSignature");
 const router = express.Router();
 
 const { authenticate, authorize } = require("../middleware/auth");
@@ -49,18 +52,92 @@ const replacementUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 }).single("replacement_receipt");
 
-const customDiscussionStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: "wisdom_uploads/custom-request-assets",
-    allowed_formats: ["jpg", "jpeg", "png", "webp", "pdf"],
+const CUSTOM_DISCUSSION_EXTENSIONS = new Set([
+  ".jpg",
+  ".jpeg",
+  ".jfif",
+  ".png",
+  ".webp",
+  ".pdf",
+]);
+
+const CUSTOM_DISCUSSION_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]);
+
+const customDiscussionUploadRaw = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024, files: 5 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    const mime = String(file.mimetype || "").trim().toLowerCase();
+
+    if (
+      CUSTOM_DISCUSSION_EXTENSIONS.has(ext) &&
+      CUSTOM_DISCUSSION_MIME_TYPES.has(mime)
+    ) {
+      cb(null, true);
+      return;
+    }
+
+    const error = new Error(
+      "Attachments must be JPG, JPEG, JFIF, PNG, WEBP, or PDF files.",
+    );
+    error.status = 400;
+    cb(error);
   },
 });
 
-const customDiscussionUpload = multer({
-  storage: customDiscussionStorage,
-  limits: { fileSize: 8 * 1024 * 1024 },
-}).array("attachments", 5);
+const customDiscussionUpload = (req, res, next) => {
+  customDiscussionUploadRaw.array("attachments", 5)(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({
+            message: "Each attachment must be 8MB or smaller.",
+          });
+        }
+        if (
+          err.code === "LIMIT_FILE_COUNT" ||
+          err.code === "LIMIT_UNEXPECTED_FILE"
+        ) {
+          return res.status(400).json({
+            message: "You can attach up to 5 files per message.",
+          });
+        }
+      }
+      if (Number(err.status) === 400) {
+        return res.status(400).json({ message: err.message });
+      }
+      return next(err);
+    }
+
+    for (const file of req.files || []) {
+      const ext = path.extname(file.originalname || "").toLowerCase();
+      const mime = String(file.mimetype || "").trim().toLowerCase();
+      const extensionMatchesMime =
+        ([".jpg", ".jpeg", ".jfif"].includes(ext) && mime === "image/jpeg") ||
+        (ext === ".png" && mime === "image/png") ||
+        (ext === ".webp" && mime === "image/webp") ||
+        (ext === ".pdf" && mime === "application/pdf");
+
+      if (
+        !extensionMatchesMime ||
+        !verifyBufferSignature(file.buffer, ext)
+      ) {
+        return res.status(400).json({
+          message:
+            "One of the attachments does not match its real file type.",
+        });
+      }
+    }
+
+    next();
+  });
+};
 
 // ══════════════════════════════════════════════════════════════════════════════
 // AUTH

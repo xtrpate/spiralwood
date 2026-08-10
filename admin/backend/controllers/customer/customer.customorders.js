@@ -10,6 +10,10 @@ const { authenticate, requireCustomer } = require("../../middleware/auth");
 const { signUploadPath } = require("../../utils/signedUrl");
 const { verifyBufferSignature } = require("../../utils/verifyFileSignature");
 const {
+  storeUploadBuffer,
+  cleanupStoredUpload,
+} = require("../../utils/adaptiveUpload");
+const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const {
@@ -176,6 +180,22 @@ const saveBase64ReferencePhoto = async (fileLike = {}) => {
   };
 };
 
+const uploadChatAttachmentToCloudinary = async (file = {}) =>
+  storeUploadBuffer({
+    file,
+    folder: "custom-request-assets",
+  });
+
+const cleanupChatCloudinaryAsset = async (asset = {}) => {
+  try {
+    await cleanupStoredUpload(asset);
+  } catch (cleanupErr) {
+    console.error(
+      "[customer.customorders POST MESSAGE] Upload cleanup failed:",
+      cleanupErr.message || cleanupErr,
+    );
+  }
+};
 const sanitizeEditorSnapshotForStorage = (snapshot = null) => {
   if (!snapshot || typeof snapshot !== "object") return null;
 
@@ -2628,7 +2648,7 @@ exports.submitRemainingBalancePayment = async (req, res) => {
 };
 
 exports.postCustomOrderMessage = async (req, res) => {
-  const orderId = toPositiveInt(req.params.id, 0);
+  const orderId = parseStrictPositiveInt(req.params.id);
   const message = String(req.body?.message || "").trim();
   const files = Array.isArray(req.files) ? req.files : [];
 
@@ -2638,16 +2658,18 @@ exports.postCustomOrderMessage = async (req, res) => {
 
   if (!message && !files.length) {
     return res.status(400).json({
-      message: "Write a message or upload at least one attachment.",
+      message: "Write a message or attach at least one file.",
     });
   }
 
-  let conn;
-  try {
-    conn = await db.getConnection();
-    await conn.beginTransaction();
+  let conn = null;
+  let transactionActive = false;
+  let committed = false;
+  const uploadedAssets = [];
 
-    const [orders] = await conn.execute(
+  try {
+    // Confirm ownership before doing any external upload work.
+    const [ownedOrders] = await db.execute(
       `SELECT id, order_number, customer_id, blueprint_id
        FROM orders
        WHERE id = ?
@@ -2657,31 +2679,73 @@ exports.postCustomOrderMessage = async (req, res) => {
       [orderId, req.user.id],
     );
 
-    if (!orders.length) {
-      await conn.rollback();
+    if (!ownedOrders.length) {
       return res.status(404).json({ message: "Custom request not found." });
     }
 
-    const order = orders[0];
+    // Explicit upload step: middleware only validates and keeps the file
+    // in memory. This lets us return a useful attachment error instead of
+    // an uncaught Cloudinary/Multer 500.
+    for (const file of files) {
+      try {
+        const uploaded = await uploadChatAttachmentToCloudinary(file);
+        uploadedAssets.push(uploaded);
+      } catch (uploadErr) {
+        console.error(
+          "[customer.customorders POST MESSAGE] Attachment upload failed:",
+          uploadErr.message || uploadErr,
+        );
+
+        const cleanError = new Error(
+          "We could not upload one of your attachments. Please try again with the original JPG, PNG, WEBP, JFIF, or PDF file.",
+        );
+        cleanError.status = 502;
+        throw cleanError;
+      }
+    }
+
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    // Re-check ownership under lock before writing the message.
+    const [lockedOrders] = await conn.execute(
+      `SELECT id, order_number, customer_id, blueprint_id
+       FROM orders
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId, req.user.id],
+    );
+
+    if (!lockedOrders.length) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Custom request not found." });
+    }
+
+    const order = lockedOrders[0];
 
     const messageId = await insertCustomOrderMessage(conn, {
       orderId: order.id,
       orderItemId: null,
       senderId: req.user.id,
       senderRole: "customer",
-      message: message || "Uploaded attachment.",
+      message: message || "Sent an attachment.",
     });
 
-    for (const file of files) {
+    for (const asset of uploadedAssets) {
       await insertCustomOrderAttachment(conn, {
         orderId: order.id,
         orderItemId: null,
         messageId,
         uploadedBy: req.user.id,
-        fileUrl: file.path, // Use the Cloudinary URL directly
-        fileName: slugifyFilename(file.originalname || file.filename),
-        mimeType: toTrimmedStringOrNull(file.mimetype),
-        fileSize: Number(file.size || 0) || null,
+        fileUrl: asset.file_url,
+        fileName: asset.file_name,
+        mimeType: asset.mime_type,
+        fileSize: asset.file_size,
         attachmentType: "chat_attachment",
       });
     }
@@ -2706,27 +2770,50 @@ exports.postCustomOrderMessage = async (req, res) => {
     });
 
     await conn.commit();
+    transactionActive = false;
+    committed = true;
 
     return res.json({
-      message: "Discussion message sent successfully.",
+      message: files.length
+        ? "Message and attachment sent successfully."
+        : "Message sent successfully.",
+      message_id: messageId,
+      attachments_uploaded: uploadedAssets.length,
     });
   } catch (err) {
-    if (conn) {
+    if (conn && transactionActive) {
       try {
         await conn.rollback();
-      } catch {}
+        transactionActive = false;
+      } catch (rollbackErr) {
+        console.error(
+          "[customer.customorders POST MESSAGE] rollback failed:",
+          rollbackErr.message || rollbackErr,
+        );
+      }
     }
 
     console.error("[customer.customorders POST MESSAGE]", err);
-    return res.status(500).json({
-      message: "Failed to send discussion message.",
-      error: err.message,
+
+    const status = Number(err.status) || 500;
+    return res.status(status).json({
+      message:
+        status < 500
+          ? err.message
+          : status === 502
+            ? err.message
+            : "We could not send your message right now. Please try again.",
     });
   } finally {
     if (conn) conn.release();
+
+    if (!committed && uploadedAssets.length) {
+      await Promise.allSettled(
+        uploadedAssets.map((asset) => cleanupChatCloudinaryAsset(asset)),
+      );
+    }
   }
 };
-
 exports.verifyPayment = async (req, res) => {
   let conn = null;
   let transactionActive = false;
