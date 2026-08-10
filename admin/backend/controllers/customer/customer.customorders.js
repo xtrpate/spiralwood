@@ -5,6 +5,7 @@ const {
 } = require("../../services/paymongoService");
 const fs = require("fs");
 const path = require("path");
+const { v2: cloudinary } = require("cloudinary");
 const { authenticate, requireCustomer } = require("../../middleware/auth");
 const { signUploadPath } = require("../../utils/signedUrl");
 const { verifyBufferSignature } = require("../../utils/verifyFileSignature");
@@ -159,31 +160,19 @@ const saveBase64ReferencePhoto = async (fileLike = {}) => {
 
   const ext = getExtFromMime(mimeType) || ".jpg";
 
-  // Decode first, then verify the REAL bytes match the declared image
-  // type before anything touches disk. Buffer.from never throws on
-  // malformed base64 — a corrupted/truncated string just decodes to a
-  // shorter or garbled buffer, which safely fails the signature check
-  // below instead of crashing the server.
-  const fileBuffer = Buffer.from(base64Body, "base64");
-
-  if (!verifyBufferSignature(fileBuffer, ext)) {
-    throw new ReferencePhotoValidationError(
-      "One of the uploaded reference photos does not match its declared image type.",
-    );
-  }
-
-  const filename = `custom_ref_${Date.now()}_${Math.random()
-    .toString(36)
-    .slice(2, 10)}${ext}`;
-
-  const absolutePath = path.join(customRequestAssetsDir, filename);
-  await fs.promises.writeFile(absolutePath, fileBuffer);
+  // Upload the base64 string directly to your Cloudinary folder!
+  const uploadResult = await cloudinary.uploader.upload(
+    `data:${mimeType};base64,${base64Body}`,
+    {
+      folder: "wisdom_uploads/custom-request-assets",
+    },
+  );
 
   return {
-    file_url: `/uploads/custom-request-assets/${filename}`,
-    file_name: slugifyFilename(fileLike?.name || filename),
+    file_url: uploadResult.secure_url, // Get the live HTTPS link
+    file_name: slugifyFilename(fileLike?.name || uploadResult.public_id),
     mime_type: mimeType,
-    file_size: Number(fileLike?.size || 0) || null,
+    file_size: uploadResult.bytes || null,
   };
 };
 
@@ -1995,7 +1984,7 @@ exports.submitDownPayment = async (req, res) => {
   );
   const txPaymentMethod = toPaymentTransactionMethod(req.body?.payment_method);
   const submittedAmount = roundMoney(req.body?.amount || 0);
-  const proofUrl = req.file ? `/uploads/proofs/${req.file.filename}` : null;
+  const proofUrl = req.file ? req.file.path : null;
 
   let conn = null;
   let transactionActive = false;
@@ -2291,7 +2280,7 @@ exports.submitRemainingBalancePayment = async (req, res) => {
   );
   const txPaymentMethod = toPaymentTransactionMethod(req.body?.payment_method);
   const submittedAmount = roundMoney(req.body?.amount || 0);
-  const proofUrl = req.file ? `/uploads/proofs/${req.file.filename}` : null;
+  const proofUrl = req.file ? req.file.path : null; // Use the Cloudinary URL
 
   let conn = null;
   let transactionActive = false;
@@ -2689,7 +2678,7 @@ exports.postCustomOrderMessage = async (req, res) => {
         orderItemId: null,
         messageId,
         uploadedBy: req.user.id,
-        fileUrl: `/uploads/custom-request-assets/${file.filename}`,
+        fileUrl: file.path, // Use the Cloudinary URL directly
         fileName: slugifyFilename(file.originalname || file.filename),
         mimeType: toTrimmedStringOrNull(file.mimetype),
         fileSize: Number(file.size || 0) || null,

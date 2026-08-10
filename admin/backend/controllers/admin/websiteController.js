@@ -181,7 +181,8 @@ exports.updateSettings = async (req, res) => {
       changedKeys.push(key);
     }
     if (req.file) {
-      const logoUrl = `/uploads/settings/${req.file.filename}`;
+      const logoUrl = req.file.path;
+
       await conn.query(
         `INSERT INTO website_content
            (content_key, content_type, content, group_name, is_visible, updated_by)
@@ -194,33 +195,6 @@ exports.updateSettings = async (req, res) => {
            updated_by = VALUES(updated_by)`,
         [logoUrl, parseInt(req.user.id)],
       );
-
-      // ── THE SWAP & SWEEP LOGIC ──
-      // If a previous logo exists, locate it on the hard drive and delete it.
-      if (hasLogoBefore && existingLogo.value) {
-        try {
-          // existingLogo.value looks like "/uploads/settings/old-logo.png"
-          // We resolve this to an absolute server path based on your folder structure
-          const oldFilePath = path.join(
-            __dirname,
-            "../../",
-            existingLogo.value,
-          );
-
-          if (fs.existsSync(oldFilePath)) {
-            fs.unlinkSync(oldFilePath);
-            console.log(
-              `[SWAP & SWEEP] Successfully deleted old logo: ${oldFilePath}`,
-            );
-          }
-        } catch (unlinkErr) {
-          // We catch the error so it doesn't roll back the successful database transaction
-          console.error(
-            "[SWAP & SWEEP ERROR] Failed to delete old logo:",
-            unlinkErr.message,
-          );
-        }
-      }
     }
 
     const [[updatedLogo]] = await conn.query(

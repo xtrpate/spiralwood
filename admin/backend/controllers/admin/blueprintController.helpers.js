@@ -1,13 +1,12 @@
 // controllers/blueprintController.js
 const path = require("path");
 const pool = require("../../config/db");
+const { v2: cloudinary } = require("cloudinary");
 const {
   resolveLifecycleByBlueprint,
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
-const {
-  createNotificationSafe,
-} = require("../../utils/notificationHelper");
+const { createNotificationSafe } = require("../../utils/notificationHelper");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function safeJsonParse(value, fallback = {}) {
@@ -105,11 +104,15 @@ function validateEstimationItems(items = []) {
   }
 
   if (!items.length) {
-    throw createValidationError("Add at least one estimate item before saving.");
+    throw createValidationError(
+      "Add at least one estimate item before saving.",
+    );
   }
 
   if (items.length > 250) {
-    throw createValidationError("An estimate cannot contain more than 250 items.");
+    throw createValidationError(
+      "An estimate cannot contain more than 250 items.",
+    );
   }
 
   const seenInventoryMaterialIds = new Set();
@@ -181,13 +184,18 @@ function validateEstimationItems(items = []) {
       );
     }
 
-    if (requestedSourceType && !ESTIMATION_ITEM_SOURCE_TYPES.has(requestedSourceType)) {
+    if (
+      requestedSourceType &&
+      !ESTIMATION_ITEM_SOURCE_TYPES.has(requestedSourceType)
+    ) {
       throw createValidationError(`${rowLabel}: Invalid estimate item type.`);
     }
 
     if (rawMaterialId !== null) {
       if (!Number.isInteger(rawMaterialId) || rawMaterialId <= 0) {
-        throw createValidationError(`${rowLabel}: Invalid raw material selection.`);
+        throw createValidationError(
+          `${rowLabel}: Invalid raw material selection.`,
+        );
       }
 
       if (sourceType === "inventory_material") {
@@ -251,7 +259,9 @@ function groupDraftItems(items = []) {
         unit_cost: unitCost,
         note: String(raw.note || "").trim(),
         source_key: String(raw.source_key || raw.sourceKey || "").trim(),
-        source_type: String(raw.source_type || raw.sourceType || "blueprint_part")
+        source_type: String(
+          raw.source_type || raw.sourceType || "blueprint_part",
+        )
           .trim()
           .toLowerCase(),
         subtotal: Number((quantity * unitCost).toFixed(2)),
@@ -337,10 +347,7 @@ function computeEstimationTotals({
   const taxRate = Math.max(0, Math.min(100, Number(tax_rate) || 0));
 
   const subtotal =
-    material_cost +
-    laborCost +
-    overheadCost +
-    additionalDeliveryFee;
+    material_cost + laborCost + overheadCost + additionalDeliveryFee;
   const discount_amount = subtotal * (discountRate / 100);
   const afterDiscount = Math.max(0, subtotal - discount_amount);
   const tax_amount = afterDiscount * (taxRate / 100);
@@ -709,7 +716,8 @@ async function buildAutoEstimationDraft(conn, blueprintId) {
           unit: matchedMaterial?.unit || "pc",
           unit_cost: Number(matchedMaterial?.unit_cost || 0),
           note,
-          source_key: row?.id || `component:${index}:${row?.type || row?.name || "item"}`,
+          source_key:
+            row?.id || `component:${index}:${row?.type || row?.name || "item"}`,
           source_type: "component",
           subtotal: quantity * Number(matchedMaterial?.unit_cost || 0),
         };
@@ -765,7 +773,7 @@ function getBlueprintFileMeta(file) {
     throw err;
   }
 
-  const file_url = `/uploads/blueprints/${file.filename}`;
+  const file_url = file.path; // Grab the live Cloudinary URL!
   const default_thumbnail_url = ["png", "jpg", "jpeg", "svg"].includes(ext)
     ? file_url
     : null;

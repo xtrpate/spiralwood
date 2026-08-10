@@ -232,7 +232,7 @@ exports.createOrder = async (req, res) => {
       ? "unpaid"
       : "partial";
 
-    const proof_path = req.file ? `uploads/proofs/${req.file.filename}` : null;
+    const proof_path = req.file ? req.file.path : null; // Use the Cloudinary URL
     /* Insert order */
     const [orderRes] = await conn.query(
       `INSERT INTO orders

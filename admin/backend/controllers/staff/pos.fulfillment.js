@@ -108,8 +108,8 @@ const normalizeConfirmedScheduleDateOnly = (value) => {
 };
 
 const buildSignedReceiptPath = (file) => {
-  if (!file || !file.filename) return null;
-  return `/uploads/delivery-receipts/${file.filename}`.replace(/\\/g, "/");
+  if (!file || !file.path) return null;
+  return file.path; // Returns the live Cloudinary URL!
 };
 
 const DELIVERY_COLLECTION_METHODS = ["cash", "gcash", "bank_transfer"];
@@ -289,7 +289,8 @@ exports.getDeliveries = async (req, res) => {
 
     const [rows] = await db.query(sql, params);
     rows.forEach((row) => {
-      if (row.signed_receipt) row.signed_receipt = signUploadPath(row.signed_receipt);
+      if (row.signed_receipt)
+        row.signed_receipt = signUploadPath(row.signed_receipt);
     });
     res.json(rows);
   } catch (err) {
@@ -493,7 +494,9 @@ exports.createDelivery = async (req, res) => {
       await createNotificationSafe(db, {
         userId: order.customer_id,
         type: "delivery_update",
-        title: isRedeliverySchedule ? "Redelivery Scheduled" : "Delivery Scheduled",
+        title: isRedeliverySchedule
+          ? "Redelivery Scheduled"
+          : "Delivery Scheduled",
         message: isRedeliverySchedule
           ? `A new delivery schedule for your order ${order.order_number} has been arranged for ${scheduledDate}.`
           : `Your order ${order.order_number} has been scheduled for delivery on ${scheduledDate}.`,
@@ -544,9 +547,7 @@ exports.updateDeliveryStatus = async (req, res) => {
 
   if (requestedStatus === "failed") {
     if (!failureReason) {
-      return res
-        .status(400)
-        .json({ message: "A failure reason is required." });
+      return res.status(400).json({ message: "A failure reason is required." });
     }
     if (failureReason.length > 500) {
       return res.status(400).json({
@@ -658,7 +659,9 @@ exports.updateDeliveryStatus = async (req, res) => {
       // falls through to a normal delivery completion with no new
       // transaction) — this only blocks orders whose lifecycle has
       // already ended.
-      const orderStatusNormalized = normalizeText(order.status || "").toLowerCase();
+      const orderStatusNormalized = normalizeText(
+        order.status || "",
+      ).toLowerCase();
 
       if (["cancelled", "completed"].includes(orderStatusNormalized)) {
         await conn.rollback();
@@ -1269,8 +1272,7 @@ exports.updateDeliveryStatus = async (req, res) => {
         delivered_date: updated?.delivered_date ?? deliveredDate,
         notes_present_before: Boolean(existing.notes),
         notes_present_after: Boolean(updated?.notes),
-        notes_changed:
-          (existing.notes ?? null) !== (updated?.notes ?? null),
+        notes_changed: (existing.notes ?? null) !== (updated?.notes ?? null),
         signed_receipt_present: Boolean(nextSignedReceipt),
         receipt_uploaded_this_update: Boolean(uploadedReceiptPath),
         order_id: existing.order_id,

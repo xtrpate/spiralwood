@@ -12,123 +12,52 @@ const { authenticate, requireCustomer } = require("../middleware/auth");
 const { logAction } = require("../middleware/auditLog");
 const customOrderController = require("../controllers/customer/customer.customorders");
 const customerReceiptsController = require("../controllers/customer/customer.receipts");
-const customerDeliveryAssessmentController = require(
-  "../controllers/customer/customer.deliveryAssessment",
-);
+const customerDeliveryAssessmentController = require("../controllers/customer/customer.deliveryAssessment");
 
 /* ──────────────────────────────────────────────────────────
    Upload dirs
 ────────────────────────────────────────────────────────── */
-const proofsDir = path.join(__dirname, "../uploads/proofs");
-const customAssetsDir = path.join(
-  __dirname,
-  "../uploads/custom-request-assets",
-);
+const { v2: cloudinary } = require("cloudinary");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
-if (!fs.existsSync(proofsDir)) fs.mkdirSync(proofsDir, { recursive: true });
-if (!fs.existsSync(customAssetsDir))
-  fs.mkdirSync(customAssetsDir, { recursive: true });
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-const ALLOWED_ASSET_EXT = [".jpg", ".jpeg", ".jfif", ".png", ".webp", ".pdf"];
-
-function fileFilter(req, file, cb) {
-  const ext = path.extname(file.originalname || "").toLowerCase();
-  if (ALLOWED_ASSET_EXT.includes(ext)) {
-    cb(null, true);
-    return;
-  }
-  const err = new Error(
-    "Only JPG, PNG, JFIF, WEBP, and PDF files are allowed.",
-  );
-  err.status = 400;
-  cb(err);
-}
-
-/* ──────────────────────────────────────────────────────────
-   Down payment proof upload
-────────────────────────────────────────────────────────── */
-const proofStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, proofsDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const name = `proof_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`;
-    cb(null, name);
+const proofStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "wisdom_uploads/proofs",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "pdf"],
   },
 });
 
-const proofUploadRaw = multer({
+const proofUpload = multer({
   storage: proofStorage,
   limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter,
-});
+}).single("proof");
 
-const proofUpload = (req, res, next) => {
-  proofUploadRaw.single("proof")(req, res, (err) => {
-    if (err) return next(err);
-    if (req.file) {
-      const ext = path.extname(req.file.originalname || "").toLowerCase();
-      if (!verifyFileSignature(req.file.path, ext)) {
-        fs.unlink(req.file.path, () => {});
-        return res.status(400).json({
-          message:
-            "Proof content does not match its file extension. Upload rejected.",
-        });
-      }
-    }
-    next();
-  });
-};
-
-/* ──────────────────────────────────────────────────────────
-   Chat attachment upload
-────────────────────────────────────────────────────────── */
-const assetStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, customAssetsDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname || "");
-    const safeOriginal = String(file.originalname || "file")
-      .replace(/\s+/g, "_")
-      .replace(/[^a-zA-Z0-9._-]/g, "");
-    cb(
-      null,
-      `custom_asset_${Date.now()}_${Math.random().toString(36).slice(2)}_${safeOriginal || "file"}${ext && !safeOriginal.endsWith(ext) ? "" : ""}`,
-    );
+const assetStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "wisdom_uploads/custom-request-assets",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "pdf"],
   },
 });
 
-const assetUploadRaw = multer({
+const assetUpload = multer({
   storage: assetStorage,
   limits: { fileSize: 8 * 1024 * 1024 },
-  fileFilter,
-});
+}).array("attachments", 5);
 
-const assetUpload = (req, res, next) => {
-  assetUploadRaw.array("attachments", 5)(req, res, (err) => {
-    if (err) return next(err);
-    for (const file of req.files || []) {
-      const ext = path.extname(file.originalname || "").toLowerCase();
-      if (!verifyFileSignature(file.path, ext)) {
-        fs.unlink(file.path, () => {});
-        return res.status(400).json({
-          message:
-            "One of the attachments does not match its file extension. Upload rejected.",
-        });
-      }
-    }
-    next();
-  });
-};
 /* ──────────────────────────────────────────────────────────
    Initial custom-request reference photo upload
    - memory storage: files are written only after order validation starts
    - maximum 5 photos per custom item, 25 photos per request
 ────────────────────────────────────────────────────────── */
-const REFERENCE_PHOTO_EXTENSIONS = new Set([
-  ".jpg",
-  ".jpeg",
-  ".png",
-  ".webp",
-]);
+const REFERENCE_PHOTO_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 
 const REFERENCE_PHOTO_MIME_TYPES = new Set([
   "image/jpeg",
@@ -144,7 +73,9 @@ const referencePhotoUploadRaw = multer({
   },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || "").toLowerCase();
-    const mimeType = String(file.mimetype || "").trim().toLowerCase();
+    const mimeType = String(file.mimetype || "")
+      .trim()
+      .toLowerCase();
 
     if (
       REFERENCE_PHOTO_EXTENSIONS.has(ext) &&
@@ -163,51 +94,46 @@ const referencePhotoUploadRaw = multer({
 });
 
 const referencePhotoUpload = (req, res, next) => {
-  referencePhotoUploadRaw.array("reference_photos", 25)(
-    req,
-    res,
-    (err) => {
-      if (err) {
-        if (err instanceof multer.MulterError) {
-          if (err.code === "LIMIT_FILE_SIZE") {
-            return res.status(400).json({
-              message: "Each reference photo must be 5MB or smaller.",
-            });
-          }
-
-          if (err.code === "LIMIT_FILE_COUNT") {
-            return res.status(400).json({
-              message: "Too many reference photos were uploaded.",
-            });
-          }
+  referencePhotoUploadRaw.array("reference_photos", 25)(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({
+            message: "Each reference photo must be 5MB or smaller.",
+          });
         }
 
-        return next(err);
-      }
-
-      for (const file of req.files || []) {
-        const ext = path.extname(file.originalname || "").toLowerCase();
-        const mimeType = String(file.mimetype || "").trim().toLowerCase();
-
-        const extensionMatchesMime =
-          ([".jpg", ".jpeg"].includes(ext) && mimeType === "image/jpeg") ||
-          (ext === ".png" && mimeType === "image/png") ||
-          (ext === ".webp" && mimeType === "image/webp");
-
-        if (
-          !extensionMatchesMime ||
-          !verifyBufferSignature(file.buffer, ext)
-        ) {
+        if (err.code === "LIMIT_FILE_COUNT") {
           return res.status(400).json({
-            message:
-              "One of the reference photos does not match its file extension. Upload rejected.",
+            message: "Too many reference photos were uploaded.",
           });
         }
       }
 
-      next();
-    },
-  );
+      return next(err);
+    }
+
+    for (const file of req.files || []) {
+      const ext = path.extname(file.originalname || "").toLowerCase();
+      const mimeType = String(file.mimetype || "")
+        .trim()
+        .toLowerCase();
+
+      const extensionMatchesMime =
+        ([".jpg", ".jpeg"].includes(ext) && mimeType === "image/jpeg") ||
+        (ext === ".png" && mimeType === "image/png") ||
+        (ext === ".webp" && mimeType === "image/webp");
+
+      if (!extensionMatchesMime || !verifyBufferSignature(file.buffer, ext)) {
+        return res.status(400).json({
+          message:
+            "One of the reference photos does not match its file extension. Upload rejected.",
+        });
+      }
+    }
+
+    next();
+  });
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -282,12 +208,17 @@ router.post(
 // is logged. customOrderController.submitRemainingBalancePayment is kept
 // in the controller file only as inert dead code; it is no longer wired
 // to any route.
-router.post("/:id/remaining-balance", authenticate, requireCustomer, (req, res) => {
-  return res.status(410).json({
-    message:
-      "This remaining-balance payment flow has been retired. Choose Cash or Online Payment from the order page.",
-  });
-});
+router.post(
+  "/:id/remaining-balance",
+  authenticate,
+  requireCustomer,
+  (req, res) => {
+    return res.status(410).json({
+      message:
+        "This remaining-balance payment flow has been retired. Choose Cash or Online Payment from the order page.",
+    });
+  },
+);
 
 router.post(
   "/:id/messages",
@@ -340,7 +271,10 @@ router.post(
   "/:id/remaining-balance/verify-payment",
   authenticate,
   requireCustomer,
-  logAction("verify_blueprint_remaining_balance_payment", "payment_transactions"),
+  logAction(
+    "verify_blueprint_remaining_balance_payment",
+    "payment_transactions",
+  ),
   customOrderController.verifyRemainingBalancePayment,
 );
 

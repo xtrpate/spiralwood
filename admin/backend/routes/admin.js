@@ -27,114 +27,40 @@ const supportController = require("../controllers/admin/supportController");
 const adminOnly = [authenticate, authorize("admin")];
 const adminStaff = [authenticate, authorize("admin", "staff")];
 
-// ── Warranty replacement upload config ────────────────────────────────────────
-const replacementDir = path.join(__dirname, "../uploads/warranty-replacements");
+const { v2: cloudinary } = require("cloudinary");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
-if (!fs.existsSync(replacementDir)) {
-  fs.mkdirSync(replacementDir, { recursive: true });
-}
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-const replacementStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, replacementDir),
-  filename: (req, file, cb) => {
-    const safeOriginal = String(file.originalname || "file")
-      .replace(/\s+/g, "_")
-      .replace(/[^a-zA-Z0-9._-]/g, "");
-    cb(null, `replacement_${Date.now()}_${safeOriginal}`);
+const replacementStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "wisdom_uploads/warranty-replacements",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "pdf"],
   },
 });
 
-const allowedReplacementMimeTypes = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "application/pdf",
-]);
-
-const replacementUploadRaw = multer({
+const replacementUpload = multer({
   storage: replacementStorage,
   limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (allowedReplacementMimeTypes.has(file.mimetype)) {
-      return cb(null, true);
-    }
-    const err = new Error("Only JPG, PNG, WEBP, and PDF files are allowed.");
-    err.status = 400;
-    cb(err);
+}).single("replacement_receipt");
+
+const customDiscussionStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "wisdom_uploads/custom-request-assets",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "pdf"],
   },
 });
 
-const replacementUpload = (req, res, next) => {
-  replacementUploadRaw.single("replacement_receipt")(req, res, (err) => {
-    if (err) return next(err);
-    if (req.file) {
-      const ext = path.extname(req.file.originalname || "").toLowerCase();
-      if (!verifyFileSignature(req.file.path, ext)) {
-        fs.unlink(req.file.path, () => {});
-        return res.status(400).json({
-          message:
-            "Replacement receipt content does not match its file extension.",
-        });
-      }
-    }
-    next();
-  });
-};
-
-const customDiscussionDir = path.join(
-  __dirname,
-  "../uploads/custom-request-assets",
-);
-
-if (!fs.existsSync(customDiscussionDir)) {
-  fs.mkdirSync(customDiscussionDir, { recursive: true });
-}
-
-const customDiscussionStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, customDiscussionDir),
-  filename: (req, file, cb) => {
-    const safeOriginal = String(file.originalname || "file")
-      .replace(/\s+/g, "_")
-      .replace(/[^a-zA-Z0-9._-]/g, "");
-    cb(null, `discussion_${Date.now()}_${safeOriginal}`);
-  },
-});
-
-const allowedDiscussionMimeTypes = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "application/pdf",
-]);
-
-const customDiscussionUploadRaw = multer({
+const customDiscussionUpload = multer({
   storage: customDiscussionStorage,
   limits: { fileSize: 8 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (allowedDiscussionMimeTypes.has(file.mimetype)) {
-      return cb(null, true);
-    }
-    const err = new Error("Only JPG, PNG, WEBP, and PDF files are allowed.");
-    err.status = 400;
-    cb(err);
-  },
-});
-
-const customDiscussionUpload = (req, res, next) => {
-  customDiscussionUploadRaw.array("attachments", 5)(req, res, (err) => {
-    if (err) return next(err);
-    for (const file of req.files || []) {
-      const ext = path.extname(file.originalname || "").toLowerCase();
-      if (!verifyFileSignature(file.path, ext)) {
-        fs.unlink(file.path, () => {});
-        return res.status(400).json({
-          message: "One of the attachments does not match its file extension.",
-        });
-      }
-    }
-    next();
-  });
-};
+}).array("attachments", 5);
 
 // ══════════════════════════════════════════════════════════════════════════════
 // AUTH

@@ -17,65 +17,27 @@ const posFulfillmentController = require("../controllers/staff/pos.fulfillment")
 const adminOnly = [authenticate, authorize("admin")];
 const deliveryAccess = [authenticate, requireDeliveryRiderOrAdmin];
 
-const receiptUploadDir = path.join(
-  __dirname,
-  "..",
-  "uploads",
-  "delivery-receipts",
-);
+const { v2: cloudinary } = require("cloudinary");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
-fs.mkdirSync(receiptUploadDir, { recursive: true });
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-const receiptStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, receiptUploadDir),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || "").toLowerCase() || ".bin";
-    cb(null, `delivery-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+const receiptStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "wisdom_uploads/delivery-receipts",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "pdf"],
   },
 });
 
-const ALLOWED_RECEIPT_EXT = [".jpg", ".jpeg", ".jfif", ".png", ".webp", ".pdf"];
-
-const receiptUpload = multer({
+const handleReceiptUpload = multer({
   storage: receiptStorage,
-  limits: {
-    fileSize: 5 * 1024 * 1024,
-  },
-  fileFilter: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || "").toLowerCase();
-    if (ALLOWED_RECEIPT_EXT.includes(ext)) {
-      cb(null, true);
-      return;
-    }
-    cb(
-      new Error(
-        "Only image or PDF files are allowed for signed receipt upload.",
-      ),
-    );
-  },
-});
-
-const handleReceiptUpload = (req, res, next) => {
-  receiptUpload.single("receipt")(req, res, (err) => {
-    if (err) {
-      return res.status(400).json({
-        message: err.message || "Invalid receipt upload.",
-      });
-    }
-
-    if (req.file) {
-      const ext = path.extname(req.file.originalname || "").toLowerCase();
-      if (!verifyFileSignature(req.file.path, ext)) {
-        fs.unlink(req.file.path, () => {});
-        return res.status(400).json({
-          message: "Receipt content does not match its file extension. Upload rejected.",
-        });
-      }
-    }
-
-    next();
-  });
-};
+  limits: { fileSize: 5 * 1024 * 1024 },
+}).single("receipt");
 
 /* ══════════════════════════════════════════════════════════════
    DELIVERIES ONLY

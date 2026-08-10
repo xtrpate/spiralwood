@@ -178,9 +178,7 @@ exports.create = async (req, res) => {
       );
     }
 
-    const image_url = req.file
-      ? `/uploads/products/${req.file.filename}`
-      : null;
+    const image_url = req.file ? req.file.path : null;
 
     const numOnlinePrice = online_price ? parseFloat(online_price) : 0;
     const numWalkinPrice = walkin_price ? parseFloat(walkin_price) : 0;
@@ -397,7 +395,7 @@ exports.update = async (req, res) => {
     });
 
     if (req.file) {
-      updateData.image_url = `/uploads/products/${req.file.filename}`;
+      updateData.image_url = req.file.path;
     }
 
     const keys = Object.keys(updateData);

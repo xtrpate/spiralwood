@@ -4,6 +4,7 @@ require("dotenv").config();
 process.env.TZ = process.env.TZ || "Asia/Manila";
 
 const express = require("express");
+const compression = require("compression");
 const helmet = require("helmet");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
@@ -19,6 +20,8 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.set("trust proxy", 1);
+
+app.use(compression());
 
 app.use(
   helmet({
@@ -101,10 +104,7 @@ app.use(
 );
 app.use("/api/public", require("./routes/public"));
 
-app.use(
-  "/api",
-  require("./routes/admin.oversized-delivery-guard"),
-);
+app.use("/api", require("./routes/admin.oversized-delivery-guard"));
 app.use("/api", adminRoutes);
 app.use(
   "/api/oversized-delivery",

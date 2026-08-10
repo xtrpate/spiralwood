@@ -66,8 +66,7 @@ exports.updateStatus = async (req, res) => {
     if (status === "fulfilled") {
       update.fulfilled_by = req.user.id;
       update.fulfilled_at = new Date();
-      if (req.file)
-        update.replacement_receipt = `/uploads/warranty/${req.file.filename}`;
+      if (req.file) update.replacement_receipt = req.file.path;
     }
     const sets = Object.keys(update)
       .map((k) => `${k} = ?`)
@@ -111,7 +110,10 @@ exports.getContracts = async (req, res) => {
 
 // Small local normalization helper, scoped to this file only — matches the
 // same pattern already used in orderController.js/blueprintController.js.
-const normalize = (value) => String(value || "").trim().toLowerCase();
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 exports.generateContract = async (req, res) => {
   // ── Strict order_id validation — reuses the same strict positive-int
@@ -638,7 +640,14 @@ exports.updateUser = async (req, res) => {
     req.auditRecord = {
       id: targetId,
       old: before || null,
-      new: { name, email, role, staff_type: normalizedStaffType, phone, is_active: is_active ? 1 : 0 },
+      new: {
+        name,
+        email,
+        role,
+        staff_type: normalizedStaffType,
+        phone,
+        is_active: is_active ? 1 : 0,
+      },
     };
     res.json({ message: "User updated." });
   } catch (err) {
@@ -685,7 +694,11 @@ exports.deleteUser = async (req, res) => {
       [targetId],
     );
 
-    req.auditRecord = { id: targetId, old: before || null, new: { is_active: 0 } };
+    req.auditRecord = {
+      id: targetId,
+      old: before || null,
+      new: { is_active: 0 },
+    };
     res.json({ message: "User deactivated." });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -793,7 +806,13 @@ exports.getAuditLogs = async (req, res) => {
         where.push(
           "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ? OR al.record_id = ?)",
         );
-        params.push(likeValue, likeValue, likeValue, likeValue, parseInt(rawSearch, 10));
+        params.push(
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          parseInt(rawSearch, 10),
+        );
       } else {
         where.push(
           "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ?)",

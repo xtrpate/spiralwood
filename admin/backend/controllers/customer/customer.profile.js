@@ -23,21 +23,16 @@ const avatarDir = path.join(__dirname, "../../uploads/avatars");
 exports.uploadAvatar = async (req, res) => {
   if (!req.file) return res.status(400).json({ message: "No file uploaded." });
   try {
-    /* Delete old avatar */
-    // ── FIXED: Switched to .query ──
     const [rows] = await db.query(
       "SELECT profile_photo FROM users WHERE id=?",
       [req.user.id],
     );
-    if (rows[0]?.profile_photo) {
-      const old = path.join(avatarDir, rows[0].profile_photo);
-      if (fs.existsSync(old)) fs.unlinkSync(old);
-    }
 
-    // ── FIXED: Switched to .query ──
+    const avatarUrl = req.file.path; // Grab the live Cloudinary URL!
+
     const [updateResult] = await db.query(
       "UPDATE users SET profile_photo=? WHERE id=?",
-      [req.file.filename, req.user.id],
+      [avatarUrl, req.user.id],
     );
 
     if (updateResult?.affectedRows === 1) {
@@ -52,7 +47,7 @@ exports.uploadAvatar = async (req, res) => {
       };
     }
 
-    res.json({ profile_photo: req.file.filename });
+    res.json({ profile_photo: avatarUrl });
   } catch (err) {
     console.error("[profile/avatar]", err);
     res.status(500).json({ message: "Upload failed." });

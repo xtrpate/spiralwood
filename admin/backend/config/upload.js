@@ -1,118 +1,52 @@
-// config/upload.js – Multer file upload configuration
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const { verifyFileSignature } = require('./../utils/verifyFileSignature');
+const multer = require("multer");
+const { v2: cloudinary } = require("cloudinary");
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
-const ALLOWED_IMAGES = ['.jpg', '.jpeg', '.jfif', '.png', '.webp'];
-const ALLOWED_DOCS = ['.pdf', '.jpg', '.jpeg', '.jfif', '.png'];
-const ALLOWED_BLUEPRINTS = ['.pdf', '.png', '.jpg', '.jpeg', '.jfif', '.svg'];
+// 1. Configure Cloudinary with your .env keys
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
-const MAX_MB = parseInt(process.env.MAX_FILE_SIZE_MB || '15', 10);
+const ALLOWED_IMAGES = ["jpg", "jpeg", "png", "webp"];
+const ALLOWED_DOCS = ["pdf", "jpg", "jpeg", "png"];
+const ALLOWED_BLUEPRINTS = ["pdf", "png", "jpg", "jpeg", "svg"];
+const MAX_MB = parseInt(process.env.MAX_FILE_SIZE_MB || "15", 10);
 
-function ensureDir(dir) {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
-
-function diskStorage(subFolder) {
-  return multer.diskStorage({
-    destination(req, file, cb) {
-      const dest = path.join(process.env.UPLOAD_DIR || './uploads', subFolder);
-      ensureDir(dest);
-      cb(null, dest);
-    },
-    filename(req, file, cb) {
-      const ext = path.extname(file.originalname).toLowerCase();
-      const name = `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`;
-      cb(null, name);
+// 2. Helper function to route files to specific Cloudinary folders
+function cloudStorage(subFolder, allowedFormats) {
+  return new CloudinaryStorage({
+    cloudinary: cloudinary,
+    params: {
+      folder: `wisdom_uploads/${subFolder}`,
+      allowed_formats: allowedFormats,
     },
   });
 }
 
-function fileFilter(allowed, label = 'File') {
-  return (req, file, cb) => {
-    const ext = path.extname(file.originalname || '').toLowerCase();
+// 3. Export our specific uploaders (now powered by Cloudinary!)
+exports.uploadProductImage = multer({
+  storage: cloudStorage("products", ALLOWED_IMAGES),
+  limits: { fileSize: MAX_MB * 1024 * 1024 },
+}).single("image");
 
-    if (allowed.includes(ext)) {
-      cb(null, true);
-      return;
-    }
-
-    const err = new Error(
-      `${label} type not allowed. Allowed: ${allowed.join(', ')}`
-    );
-    err.status = 400;
-    cb(err);
-  };
-}
-
-// After multer saves the file, verify its actual content (magic bytes)
-// matches the extension it claims to be — not just the extension/mimetype
-// the client sent. Deletes and rejects the file if it's a mismatch.
-function withSignatureCheck(multerMiddleware, label = 'File') {
-  return (req, res, next) => {
-    multerMiddleware(req, res, (err) => {
-      if (err) return next(err);
-
-      const files = [];
-      if (req.file) files.push(req.file);
-      if (req.files) {
-        const list = Array.isArray(req.files)
-          ? req.files
-          : Object.values(req.files).flat();
-        files.push(...list);
-      }
-
-      for (const file of files) {
-        const ext = path.extname(file.originalname || '').toLowerCase();
-        const isValid = verifyFileSignature(file.path, ext);
-        if (!isValid) {
-          fs.unlink(file.path, () => {});
-          return res.status(400).json({
-            message: `${label} content does not match its file extension. Upload rejected.`,
-          });
-        }
-      }
-
-      next();
-    });
-  };
-}
-
-// ── Specific uploaders ────────────────────────────────────────────────────────
-exports.uploadProductImage = withSignatureCheck(
-  multer({
-    storage: diskStorage('products'),
-    fileFilter: fileFilter(ALLOWED_IMAGES, 'Product image'),
-    limits: { fileSize: MAX_MB * 1024 * 1024 },
-  }).single('image'),
-  'Product image',
-);
-
-const blueprintUpload = withSignatureCheck(
-  multer({
-    storage: diskStorage('blueprints'),
-    fileFilter: fileFilter(ALLOWED_BLUEPRINTS, 'Blueprint file'),
-    limits: { fileSize: MAX_MB * 1024 * 1024 },
-  }).fields([
-    { name: 'file', maxCount: 1 },
-    { name: 'reference_file', maxCount: 1 },
-
-    { name: 'front_reference', maxCount: 1 },
-    { name: 'back_reference', maxCount: 1 },
-    { name: 'left_reference', maxCount: 1 },
-    { name: 'right_reference', maxCount: 1 },
-    { name: 'top_reference', maxCount: 1 },
-  ]),
-  'Blueprint file',
-);
+const blueprintUpload = multer({
+  storage: cloudStorage("blueprints", ALLOWED_BLUEPRINTS),
+  limits: { fileSize: MAX_MB * 1024 * 1024 },
+}).fields([
+  { name: "file", maxCount: 1 },
+  { name: "reference_file", maxCount: 1 },
+  { name: "front_reference", maxCount: 1 },
+  { name: "back_reference", maxCount: 1 },
+  { name: "left_reference", maxCount: 1 },
+  { name: "right_reference", maxCount: 1 },
+  { name: "top_reference", maxCount: 1 },
+]);
 
 exports.uploadBlueprintFile = (req, res, next) => {
   blueprintUpload(req, res, (err) => {
     if (err) return next(err);
-    if (res.headersSent) return; // signature check already rejected + responded
 
     req.referenceFiles = {
       front:
@@ -136,38 +70,22 @@ exports.uploadBlueprintFile = (req, res, next) => {
   });
 };
 
-exports.uploadPaymentProof = withSignatureCheck(
-  multer({
-    storage: diskStorage('payments'),
-    fileFilter: fileFilter(ALLOWED_IMAGES, 'Payment proof'),
-    limits: { fileSize: MAX_MB * 1024 * 1024 },
-  }).single('proof'),
-  'Payment proof',
-);
+exports.uploadPaymentProof = multer({
+  storage: cloudStorage("payments", ALLOWED_IMAGES),
+  limits: { fileSize: MAX_MB * 1024 * 1024 },
+}).single("proof");
 
-exports.uploadWarrantyProof = withSignatureCheck(
-  multer({
-    storage: diskStorage('warranty'),
-    fileFilter: fileFilter(ALLOWED_DOCS, 'Warranty proof'),
-    limits: { fileSize: MAX_MB * 1024 * 1024 },
-  }).single('proof'),
-  'Warranty proof',
-);
+exports.uploadWarrantyProof = multer({
+  storage: cloudStorage("warranty", ALLOWED_DOCS),
+  limits: { fileSize: MAX_MB * 1024 * 1024 },
+}).single("proof");
 
-exports.uploadDeliveryReceipt = withSignatureCheck(
-  multer({
-    storage: diskStorage('deliveries'),
-    fileFilter: fileFilter(ALLOWED_IMAGES, 'Delivery receipt'),
-    limits: { fileSize: MAX_MB * 1024 * 1024 },
-  }).single('receipt'),
-  'Delivery receipt',
-);
+exports.uploadDeliveryReceipt = multer({
+  storage: cloudStorage("deliveries", ALLOWED_IMAGES),
+  limits: { fileSize: MAX_MB * 1024 * 1024 },
+}).single("receipt");
 
-exports.uploadSiteLogo = withSignatureCheck(
-  multer({
-    storage: diskStorage('settings'),
-    fileFilter: fileFilter(ALLOWED_IMAGES, 'Site logo'),
-    limits: { fileSize: 2 * 1024 * 1024 },
-  }).single('site_logo'),
-  'Site logo',
-);
+exports.uploadSiteLogo = multer({
+  storage: cloudStorage("settings", ALLOWED_IMAGES),
+  limits: { fileSize: 2 * 1024 * 1024 },
+}).single("site_logo");
