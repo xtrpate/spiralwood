@@ -2,8 +2,10 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import { Bell } from "lucide-react";
 import api from "../services/api";
 import useAuthStore from "../store/authStore";
+import "./NotificationBell.css";
 
 const S = {
   btn: {
@@ -250,6 +252,7 @@ export default function NotificationBell({ compact = false }) {
   return (
     <>
       <button
+        className={isCashier ? "cashier-notification-trigger" : undefined}
         style={
           compact
             ? { ...S.btnIcon, position: "relative" }
@@ -259,7 +262,7 @@ export default function NotificationBell({ compact = false }) {
         aria-label={compact ? "Notifications" : undefined}
         title={compact ? "Notifications" : undefined}
       >
-        {compact ? "🔔" : "🔔 Notifications"}
+        {compact ? (isCashier ? <Bell size={20} strokeWidth={1.8} /> : "🔔") : "🔔 Notifications"}
         {unreadCount > 0 && (
           <span
             style={{
@@ -287,6 +290,7 @@ export default function NotificationBell({ compact = false }) {
       {open && (
         <div style={S.overlay} onClick={() => setOpen(false)}>
           <div
+            className={isCashier ? "cashier-notification-modal" : undefined}
             style={{ ...S.modal, width: 480 }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -298,11 +302,22 @@ export default function NotificationBell({ compact = false }) {
                 marginBottom: 20,
               }}
             >
-              <div style={{ ...S.mTitle, marginBottom: 0 }}>
-                🔔 Notifications
+              <div
+                className={isCashier ? "cashier-notification-title" : undefined}
+                style={{ ...S.mTitle, marginBottom: 0 }}
+              >
+                {isCashier ? (
+                  <>
+                    <Bell size={18} strokeWidth={1.8} />
+                    <span>Notifications</span>
+                  </>
+                ) : (
+                  "🔔 Notifications"
+                )}
               </div>
               {unreadCount > 0 && (
                 <button
+                  className={isCashier ? "cashier-notification-mark-all" : undefined}
                   style={{
                     ...S.btn,
                     ...S.btnGray,
@@ -331,10 +346,12 @@ export default function NotificationBell({ compact = false }) {
               notifications.map((n) => (
                 <div
                   key={n.id}
+                  className={isCashier ? "cashier-notification-item" : undefined}
                   style={S.notifItem(!n.is_read)}
                   onClick={() => handleNotificationClick(n)}
                 >
                   <div
+                    className={isCashier ? "cashier-notification-item-title" : undefined}
                     style={{
                       fontSize: 13,
                       fontWeight: 800,
@@ -345,6 +362,7 @@ export default function NotificationBell({ compact = false }) {
                     {n.title}
                   </div>
                   <div
+                    className={isCashier ? "cashier-notification-item-message" : undefined}
                     style={{
                       fontSize: 13,
                       color: "#52525b",
@@ -355,6 +373,7 @@ export default function NotificationBell({ compact = false }) {
                     {n.message}
                   </div>
                   <div
+                    className={isCashier ? "cashier-notification-meta" : undefined}
                     style={{
                       fontSize: 11,
                       color: "#71717a",
@@ -367,7 +386,7 @@ export default function NotificationBell({ compact = false }) {
                       {new Date(n.created_at).toLocaleString("en-PH")}
                     </span>
                     {!n.is_read && (
-                      <span style={{ color: "#0a0a0a", fontWeight: 800 }}>
+                      <span className={isCashier ? "cashier-notification-unread" : undefined} style={{ color: "#0a0a0a", fontWeight: 800 }}>
                         ● Unread
                       </span>
                     )}
@@ -383,6 +402,7 @@ export default function NotificationBell({ compact = false }) {
               }}
             >
               <button
+                className={isCashier ? "cashier-notification-close" : undefined}
                 style={{ ...S.btn, ...S.btnGray }}
                 onClick={() => setOpen(false)}
               >
