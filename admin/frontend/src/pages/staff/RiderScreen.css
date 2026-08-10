@@ -1629,3 +1629,36 @@
     box-sizing: border-box;
   }
 }
+/* WISDOM RIDER SCHEDULED ACTION FLOW V1 */
+.rider-delivery-card-actions.is-scheduled {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.rider-delivery-start-action {
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid #18181b !important;
+  border-radius: 0 !important;
+  background: #18181b !important;
+  color: #ffffff !important;
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.rider-delivery-start-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .rider-delivery-card-actions.is-scheduled {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .rider-delivery-card-actions.is-scheduled .rider-delivery-start-action,
+  .rider-delivery-card-actions.is-scheduled .rider-delivery-map-action {
+    width: auto;
+  }
+}

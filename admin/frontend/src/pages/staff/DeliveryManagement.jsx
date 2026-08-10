@@ -758,52 +758,16 @@ export default function DeliveryManagement() {
                   />
                 </div>
 
-                <div className="rider-delivery-card-actions">
-                  {deliveryMapHref ? (
-                    <a
-                      href={deliveryMapHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rider-v2-btn rider-v2-btn-secondary rider-delivery-map-action"
-                    >
-                      <Navigation size={14} strokeWidth={2} />
-                      Open Map
-                    </a>
-                  ) : null}
-
-                  <button
-                    type="button"
-                    className="rider-v2-btn rider-v2-btn-secondary rider-delivery-detail-toggle"
-                    onClick={() =>
-                      setExpandedDeliveryId((current) =>
-                        current === delivery.id ? null : delivery.id,
-                      )
-                    }
-                  >
-                    {expandedDeliveryId === delivery.id
-                      ? "Hide Details"
-                      : "View Details"}
-                  </button>
-                </div>
-                {expandedDeliveryId === delivery.id ? (
-                  <div className="rider-delivery-expanded">
-                {delivery.notes ? (
-                  <div style={notesBox}>
-                    <div style={notesLabel}>Notes</div>
-                    <div style={notesText}>{delivery.notes}</div>
-                  </div>
-                ) : null}
-
-                {canStartTransit && (
-                  <div style={actionSection}>
-                    <div style={sectionTitle}>Next Action</div>
-                    <div style={helperText}>
-                      Start the trip once the furniture is loaded and ready to
-                      leave the shop.
-                    </div>
-
-                    <div className="rider-button-row">
+                {/* WISDOM RIDER SCHEDULED ACTION FLOW V1 */}
+                <div
+                  className={`rider-delivery-card-actions${
+                    canStartTransit ? " is-scheduled" : ""
+                  }`}
+                >
+                  {canStartTransit ? (
+                    <>
                       <button
+                        type="button"
                         onClick={() =>
                           saveDeliveryUpdate({
                             delivery,
@@ -813,15 +777,64 @@ export default function DeliveryManagement() {
                           })
                         }
                         disabled={savingId === delivery.id}
-                        className="rider-btn rider-btn-primary"
+                        className="rider-v2-btn rider-v2-btn-primary rider-delivery-start-action"
                       >
                         {savingId === delivery.id
                           ? "Saving..."
                           : "Start Delivery"}
                       </button>
-                    </div>
+
+                      {deliveryMapHref ? (
+                        <a
+                          href={deliveryMapHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rider-v2-btn rider-v2-btn-secondary rider-delivery-map-action"
+                        >
+                          <Navigation size={14} strokeWidth={2} />
+                          Open Map
+                        </a>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      {deliveryMapHref ? (
+                        <a
+                          href={deliveryMapHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rider-v2-btn rider-v2-btn-secondary rider-delivery-map-action"
+                        >
+                          <Navigation size={14} strokeWidth={2} />
+                          Open Map
+                        </a>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        className="rider-v2-btn rider-v2-btn-secondary rider-delivery-detail-toggle"
+                        onClick={() =>
+                          setExpandedDeliveryId((current) =>
+                            current === delivery.id ? null : delivery.id,
+                          )
+                        }
+                      >
+                        {expandedDeliveryId === delivery.id
+                          ? "Hide Details"
+                          : "View Details"}
+                      </button>
+                    </>
+                  )}
+                </div>
+                {!canStartTransit && expandedDeliveryId === delivery.id ? (
+                  <div className="rider-delivery-expanded">
+                {delivery.notes ? (
+                  <div style={notesBox}>
+                    <div style={notesLabel}>Notes</div>
+                    <div style={notesText}>{delivery.notes}</div>
                   </div>
-                )}
+                ) : null}
+
 
                 {canCompleteDelivery && (
                   <div style={actionSection}>
