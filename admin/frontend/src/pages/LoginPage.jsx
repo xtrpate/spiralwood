@@ -16,7 +16,35 @@ const getDefaultRouteForUser = (user) => {
     return "/login";
   }
 
-  return "/catalog";
+  return "/";
+};
+
+const getCustomerPostLoginRoute = (redirectTo) => {
+  const target = String(redirectTo || "").trim();
+
+  // Normal sign-in should always land on Home. Public storefront pages
+  // such as /catalog must not override that default just because a stale
+  // navigation state is still attached to the login entry.
+  if (!target || target === "/" || target === "/catalog") return "/";
+
+  // Preserve only intentional authenticated customer flows.
+  const protectedCustomerPrefixes = [
+    "/cart",
+    "/checkout",
+    "/custom-checkout",
+    "/orders",
+    "/appointment",
+    "/warranty",
+    "/support",
+    "/profilesettings",
+    "/custom-requests/",
+  ];
+
+  return protectedCustomerPrefixes.some((prefix) =>
+    target.startsWith(prefix),
+  )
+    ? target
+    : "/";
 };
 
 export default function LoginPage() {
@@ -60,7 +88,13 @@ export default function LoginPage() {
 
     try {
       const user = await login(form.email, form.password, rememberMe, captchaToken);
-      navigate(redirectTo || getDefaultRouteForUser(user), { replace: true });
+
+      const nextRoute =
+        user?.role === "customer"
+          ? getCustomerPostLoginRoute(redirectTo)
+          : redirectTo || getDefaultRouteForUser(user);
+
+      navigate(nextRoute, { replace: true });
     } catch (err) {
       const code = err?.response?.data?.code;
       const emailFromServer = err?.response?.data?.email;

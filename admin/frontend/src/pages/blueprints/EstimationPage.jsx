@@ -703,14 +703,93 @@ const isCustomizationImageValue = (key, value) => {
   );
 };
 
+const SYSTEM_PREVIEW_IMAGE_KEYS = new Set([
+  "image",
+  "image_url",
+  "preview",
+  "preview_url",
+  "preview_image",
+  "preview_image_url",
+  "thumbnail",
+  "thumbnail_url",
+]);
+
 const collectCustomizationReferenceFiles = (orderContext = {}) => {
   const files = [];
+
+  const pushReference = ({
+    item,
+    itemIndex,
+    entry,
+    entryIndex,
+    sourceKey = "reference",
+  }) => {
+    if (!entry) return;
+
+    if (typeof entry === "string") {
+      const fileUrl = entry.trim();
+      if (!fileUrl) return;
+      files.push({
+        id: `custom-reference-${item?.order_item_id || itemIndex}-${sourceKey}-${entryIndex}`,
+        file_url: fileUrl,
+        file_name: "Customer reference",
+        mime_type: getImageMimeType(fileUrl) || "image/*",
+      });
+      return;
+    }
+
+    if (typeof entry !== "object" || Array.isArray(entry)) return;
+    const fileUrl = String(
+      entry.data_url || entry.file_url || entry.url || entry.src || "",
+    ).trim();
+    if (!fileUrl) return;
+
+    files.push({
+      id:
+        entry.id ||
+        `custom-reference-${item?.order_item_id || itemIndex}-${sourceKey}-${entryIndex}`,
+      file_url: fileUrl,
+      file_name: entry.name || entry.file_name || "Customer reference",
+      mime_type:
+        entry.mime_type ||
+        entry.type ||
+        getImageMimeType(fileUrl) ||
+        "image/*",
+    });
+  };
+
   (Array.isArray(orderContext?.items) ? orderContext.items : []).forEach(
     (item, itemIndex) => {
       const customization = item?.customization || {};
+
+      [
+        ["reference_photos", customization.reference_photos],
+        ["reference_files", customization.reference_files],
+        ["attachments", customization.attachments],
+      ].forEach(([sourceKey, value]) => {
+        const entries = Array.isArray(value)
+          ? value
+          : value && typeof value === "object"
+            ? Object.values(value)
+            : [];
+        entries.forEach((entry, entryIndex) =>
+          pushReference({
+            item,
+            itemIndex,
+            entry,
+            entryIndex,
+            sourceKey,
+          }),
+        );
+      });
+
       Object.entries(customization).forEach(([key, value], fieldIndex) => {
+        const normalizedKey = String(key || "").trim().toLowerCase();
+        if (SYSTEM_PREVIEW_IMAGE_KEYS.has(normalizedKey)) return;
+        if (!/(reference|attachment|photo)/i.test(normalizedKey)) return;
         if (typeof value !== "string" || !isCustomizationImageValue(key, value))
           return;
+
         const fileUrl = value.trim();
         files.push({
           id: `customization-${item?.order_item_id || itemIndex}-${key}-${fieldIndex}`,
@@ -721,6 +800,7 @@ const collectCustomizationReferenceFiles = (orderContext = {}) => {
       });
     },
   );
+
   return files;
 };
 
@@ -880,6 +960,85 @@ const getInventoryAvailability = (item = {}, material = null) => {
     shortage: 0,
     remaining,
   };
+};
+
+const getQuotationInventoryIssues = (inventoryItems = [], rawMaterials = []) => {
+  if (!inventoryItems.length) {
+    return [
+      {
+        code: "NO_REQUIRED_INVENTORY_MATERIALS",
+        message:
+          "Add at least one Required Inventory Material before sending the quotation.",
+      },
+    ];
+  }
+
+  const issues = [];
+  const requirements = new Map();
+  const materialMap = new Map(
+    rawMaterials.map((material) => [Number(material.id), material]),
+  );
+
+  inventoryItems.forEach((item, index) => {
+    const materialId = Number(item.raw_material_id);
+    const quantity = Number(item.quantity);
+
+    if (!Number.isSafeInteger(materialId) || materialId <= 0) {
+      issues.push({
+        code: "INVENTORY_MATERIAL_NOT_SELECTED",
+        message: `Required Inventory Material row ${index + 1} needs an inventory item.`,
+      });
+      return;
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      issues.push({
+        code: "INVALID_INVENTORY_QUANTITY",
+        message: `Required Inventory Material row ${index + 1} needs a quantity greater than 0.`,
+      });
+      return;
+    }
+
+    requirements.set(
+      materialId,
+      (requirements.get(materialId) || 0) + quantity,
+    );
+  });
+
+  for (const [materialId, required] of requirements.entries()) {
+    const material = materialMap.get(materialId);
+
+    if (!material) {
+      issues.push({
+        code: "RAW_MATERIAL_NOT_FOUND",
+        message: `Selected inventory material #${materialId} is no longer available. Refresh the page.`,
+      });
+      continue;
+    }
+
+    if (Number(material.is_active) === 0) {
+      issues.push({
+        code: "RAW_MATERIAL_INACTIVE",
+        message: `${material.name || `Material #${materialId}`} is archived or inactive.`,
+      });
+      continue;
+    }
+
+    const available = Math.max(
+      0,
+      Number(material.available_quantity ?? material.quantity) || 0,
+    );
+
+    if (available + 1e-9 < required) {
+      const shortage = Math.max(0, required - available);
+      issues.push({
+        code: "INSUFFICIENT_AVAILABLE_INVENTORY",
+        message: `${material.name || `Material #${materialId}`} is short by ${formatInventoryQuantity(shortage)} ${material.unit || "unit"}. Required: ${formatInventoryQuantity(required)}; available: ${formatInventoryQuantity(available)}.`,
+      });
+    }
+  }
+
+  return issues;
 };
 
 const getAvailabilityColors = (state) => {
@@ -1327,9 +1486,10 @@ function EstimateTable({
                       <div
                         style={{ fontSize: 11, marginTop: 7, color: "#7f1d1d" }}
                       >
-                        The estimate may still be saved or sent. This phase only
-                        reports availability; stock is not reserved or deducted
-                        yet.
+                        You may still save this estimate as a draft, but the
+                        quotation cannot be sent until these inventory shortages
+                        are resolved. Stock is reserved only after the required
+                        verified payment threshold is reached.
                       </div>
                     </div>
                   ) : rows.length > 0 &&
@@ -1346,6 +1506,19 @@ function EstimateTable({
                     >
                       All selected inventory materials are currently sufficient.
                       Stock is not reserved or deducted yet.
+                    </div>
+                  ) : rows.length === 0 ? (
+                    <div
+                      style={{
+                        padding: "12px 14px",
+                        border: "1px solid #fecaca",
+                        background: "#fef2f2",
+                        color: "#991b1b",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Add at least one Required Inventory Material before sending
+                      the quotation. You may save the estimate as a draft first.
                     </div>
                   ) : (
                     <div style={{ color: "#52525b", fontWeight: 700 }}>
@@ -1775,6 +1948,46 @@ export default function EstimationPage() {
   );
   const inventoryItems = useMemo(() => items.filter(isInventoryItem), [items]);
   const otherItems = useMemo(() => items.filter(isOtherItem), [items]);
+  const quotationInventoryIssues = useMemo(
+    () => getQuotationInventoryIssues(inventoryItems, rawMaterials),
+    [inventoryItems, rawMaterials],
+  );
+
+  const deliveryAssessmentStatus = String(
+    oversizedDeliveryDraft?.assessment_status || "",
+  )
+    .trim()
+    .toLowerCase();
+  const isOversizedDeliveryPending =
+    deliveryAssessmentStatus === "oversized" &&
+    !oversizedDeliveryDraft?.complete;
+
+  const quotationGateReasons = useMemo(() => {
+    const reasons = [];
+
+    if (quotationInventoryIssues.length > 0) {
+      reasons.push({
+        key: "inventory",
+        title: "Inventory requirements are not ready",
+        message:
+          quotationInventoryIssues[0]?.message ||
+          "Complete the Required Inventory Materials before sending the quotation.",
+      });
+    }
+
+    if (isOversizedDeliveryPending) {
+      reasons.push({
+        key: "delivery",
+        title: "Delivery assessment is required",
+        message:
+          "This furniture exceeds the standard truck limit. Complete the larger-truck / additional-delivery-fee assessment before sending the quotation.",
+      });
+    }
+
+    return reasons;
+  }, [quotationInventoryIssues, isOversizedDeliveryPending]);
+
+  const isSendQuotationBlocked = quotationGateReasons.length > 0;
 
   const inventoryPricingMode =
     estimation?.inventory_pricing_mode === "legacy_billable"
@@ -2110,6 +2323,21 @@ export default function EstimationPage() {
     const validationErrors = getValidationErrors({ items, costs });
     if (showFirstValidationError(validationErrors)) return;
 
+    if (quotationInventoryIssues.length > 0) {
+      toast.error(
+        quotationInventoryIssues[0]?.message ||
+          "Complete the Required Inventory Materials before sending the quotation.",
+      );
+      return;
+    }
+
+    if (isOversizedDeliveryPending) {
+      toast.error(
+        "Complete the oversized-delivery assessment before sending the quotation.",
+      );
+      return;
+    }
+
     setApproving(true);
     try {
       const response = await api.patch(`/blueprints/${id}/estimation/approve`);
@@ -2330,7 +2558,12 @@ export default function EstimationPage() {
             <button
               type="button"
               onClick={handleSendQuote}
-              disabled={!estimation?.id || approving || isSent}
+              disabled={approving || isSendQuotationBlocked}
+              title={
+                isSendQuotationBlocked
+                  ? quotationGateReasons.map((reason) => reason.message).join(" ")
+                  : "Send quotation to customer"
+              }
               style={
                 !estimation?.id || approving || isSent
                   ? { ...btnGhost, ...btnDisabled }
@@ -2379,6 +2612,40 @@ export default function EstimationPage() {
           {isApproved
             ? "This quotation is customer-approved. All estimate sections are locked."
             : "This quotation was sent to the customer. Editing is locked while waiting for the customer decision."}
+        </div>
+      )}
+
+      {!isReadOnly && quotationGateReasons.length > 0 && (
+        <div
+          style={{
+            border: "1px solid #fecaca",
+            background: "#fff7f7",
+            padding: "14px 16px",
+            marginBottom: 20,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 13,
+              fontWeight: 800,
+              color: "#991b1b",
+              marginBottom: 7,
+            }}
+          >
+            Quotation cannot be sent yet
+          </div>
+          <div style={{ display: "grid", gap: 7 }}>
+            {quotationGateReasons.map((reason) => (
+              <div key={reason.key} style={{ color: "#7f1d1d" }}>
+                <div style={{ fontSize: 12, fontWeight: 700 }}>
+                  {reason.title}
+                </div>
+                <div style={{ fontSize: 11, lineHeight: 1.5, marginTop: 2 }}>
+                  {reason.message}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
