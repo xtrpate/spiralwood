@@ -1,3 +1,4 @@
+// WISDOM INDOOR MY TASKS UI V1
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -12,6 +13,14 @@ const REQUIRED_STEPS = [
   "Packing",
 ];
 
+const FILTERS = [
+  { key: "all", label: "All" },
+  { key: "assigned", label: "Assigned" },
+  { key: "in_progress", label: "In Production" },
+  { key: "blocked", label: "Blocked" },
+  { key: "ready", label: "Ready" },
+];
+
 const STEP_STATUS_META = {
   pending: {
     bg: "#ffffff",
@@ -22,19 +31,19 @@ const STEP_STATUS_META = {
   in_progress: {
     bg: "#f4f4f5",
     color: "#18181b",
-    border: "#e4e4e7",
+    border: "#cfcfd4",
     label: "In Progress",
   },
   completed: {
-    bg: "#0a0a0a",
+    bg: "#18181b",
     color: "#ffffff",
-    border: "#0a0a0a",
+    border: "#18181b",
     label: "Done",
   },
   blocked: {
-    bg: "#fef2f2",
+    bg: "#ffffff",
     color: "#991b1b",
-    border: "#fecaca",
+    border: "#d8a3a3",
     label: "Blocked",
   },
 };
@@ -49,20 +58,20 @@ const ORDER_STATUS_META = {
   in_progress: {
     bg: "#f4f4f5",
     color: "#18181b",
-    border: "#e4e4e7",
+    border: "#cfcfd4",
     label: "In Production",
   },
   blocked: {
-    bg: "#fef2f2",
+    bg: "#ffffff",
     color: "#991b1b",
-    border: "#fecaca",
+    border: "#d8a3a3",
     label: "Blocked",
   },
   ready: {
-    bg: "#0a0a0a",
+    bg: "#18181b",
     color: "#ffffff",
-    border: "#0a0a0a",
-    label: "Ready for Shipping",
+    border: "#18181b",
+    label: "Ready",
   },
 };
 
@@ -72,18 +81,16 @@ const normalize = (value) =>
     .toLowerCase()
     .replace(/\s+/g, "_");
 
-const formatDateTime = (value) => {
+const formatDate = (value) => {
   if (!value) return "—";
 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
 
-  return date.toLocaleString("en-PH", {
-    year: "numeric",
+  return date.toLocaleDateString("en-PH", {
     month: "short",
     day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
+    year: "numeric",
   });
 };
 
@@ -95,9 +102,13 @@ const getSortableTimestamp = (value) => {
 
 const getLatestTaskTimestamp = (taskList = []) =>
   taskList.reduce((latest, task) => {
-    const candidate = getSortableTimestamp(
-      task?.created_at || task?.assigned_at || task?.due_date,
+    const candidate = Math.max(
+      getSortableTimestamp(task?.created_at),
+      getSortableTimestamp(task?.assigned_at),
+      getSortableTimestamp(task?.updated_at),
+      getSortableTimestamp(task?.due_date),
     );
+
     return candidate > latest ? candidate : latest;
   }, 0);
 
@@ -112,20 +123,45 @@ const getPreviousRequiredStepLabel = (steps, stepIndex) => {
   return previousIncomplete ? previousIncomplete.stepLabel : "";
 };
 
+const getCurrentStep = (steps = []) => {
+  const inProgress = steps.find((step) => step.status === "in_progress");
+  if (inProgress) return inProgress;
+
+  const blocked = steps.find((step) => step.status === "blocked");
+  if (blocked) return blocked;
+
+  const nextPending = steps.find((step, index) => {
+    if (step.status !== "pending") return false;
+    return canStartStepInSequence(steps, index);
+  });
+
+  if (nextPending) return nextPending;
+
+  const firstPending = steps.find((step) => step.status === "pending");
+  if (firstPending) return firstPending;
+
+  return steps[steps.length - 1] || null;
+};
+
 export default function MyTasks() {
   const { user } = useAuthStore();
+
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [expandedOrderKey, setExpandedOrderKey] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [focusedTaskId, setFocusedTaskId] = useState(null);
 
   const loadTasks = async () => {
     setLoading(true);
+
     try {
       const { data } = await api.get("/tasks");
-
       const safeList = Array.isArray(data) ? data : [];
+
       const visible =
         user?.role === "admin"
           ? safeList
@@ -136,7 +172,7 @@ export default function MyTasks() {
       setTasks(visible);
     } catch (err) {
       toast.error(
-        err?.response?.data?.message || "Failed to load production orders.",
+        err?.response?.data?.message || "Failed to load production work.",
       );
     } finally {
       setLoading(false);
@@ -147,59 +183,14 @@ export default function MyTasks() {
     loadTasks();
   }, []); // eslint-disable-line
 
-  // Notification double-click focus support: this page has no filters
-  // that would hide a task, so we only need to locate it, scroll it
-  // into view, and briefly highlight it. Fails safely if the task no
-  // longer exists (e.g. deleted) — never guesses from message text.
-  useEffect(() => {
-    const focusId = searchParams.get("focus_task_id");
-    if (!focusId || loading) return;
-
-    const numericId = Number(focusId);
-    const match = tasks.find((t) => Number(t.id) === numericId);
-
-    if (!match) {
-      toast.error("That task could not be found. It may have been removed.");
-      const next = new URLSearchParams(searchParams);
-      next.delete("focus_task_id");
-      setSearchParams(next, { replace: true });
-      return;
-    }
-
-    setFocusedTaskId(numericId);
-
-    const scrollTimer = setTimeout(() => {
-      const stepEl = document.getElementById(`task-step-${numericId}`);
-      const orderEl = match.order_id
-        ? document.getElementById(`order-group-${match.order_id}`)
-        : null;
-      (stepEl || orderEl)?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
-    }, 50);
-
-    const highlightTimer = setTimeout(() => setFocusedTaskId(null), 4000);
-
-    const next = new URLSearchParams(searchParams);
-    next.delete("focus_task_id");
-    setSearchParams(next, { replace: true });
-
-    return () => {
-      clearTimeout(scrollTimer);
-      clearTimeout(highlightTimer);
-    };
-    
-  }, [searchParams, loading, tasks]);
-
   const updateTaskStatus = async (taskId, status) => {
     try {
       setBusyId(taskId);
 
       const { data } = await api.put(`/tasks/${taskId}/status`, { status });
 
-      setTasks((prev) =>
-        prev.map((task) =>
+      setTasks((previous) =>
+        previous.map((task) =>
           Number(task.id) === Number(taskId)
             ? {
                 ...task,
@@ -230,10 +221,8 @@ export default function MyTasks() {
           key,
           orderId: task.order_id || null,
           orderNumber: task.order_number || "—",
-          assignedToName: task.assigned_to_name || "—",
           assignedByName: task.assigned_by_name || "—",
           dueDate: task.due_date || null,
-          deliveryAddress: task.delivery_address || "—",
           adminNote: task.description || "",
           rawTasks: [],
         });
@@ -250,16 +239,11 @@ export default function MyTasks() {
         bucket.adminNote = task.description;
       }
 
-      if (!bucket.assignedToName && task.assigned_to_name) {
-        bucket.assignedToName = task.assigned_to_name;
-      }
-
-      if (!bucket.assignedByName && task.assigned_by_name) {
+      if (
+        (!bucket.assignedByName || bucket.assignedByName === "—") &&
+        task.assigned_by_name
+      ) {
         bucket.assignedByName = task.assigned_by_name;
-      }
-
-      if (!bucket.deliveryAddress && task.delivery_address) {
-        bucket.deliveryAddress = task.delivery_address;
       }
     });
 
@@ -292,12 +276,12 @@ export default function MyTasks() {
           ["in_progress", "completed", "blocked"].includes(step.status),
         );
 
-        const readyForShipping =
+        const ready =
           completedCount === REQUIRED_STEPS.length &&
           steps.every((step) => Boolean(step.task));
 
         let overallStatus = "assigned";
-        if (readyForShipping) overallStatus = "ready";
+        if (ready) overallStatus = "ready";
         else if (hasBlocked) overallStatus = "blocked";
         else if (hasInProgress || hasStarted) overallStatus = "in_progress";
 
@@ -309,7 +293,8 @@ export default function MyTasks() {
             (completedCount / REQUIRED_STEPS.length) * 100,
           ),
           overallStatus,
-          readyForShipping,
+          ready,
+          currentStep: getCurrentStep(steps),
           latestTaskTimestamp: getLatestTaskTimestamp(order.rawTasks),
         };
       })
@@ -333,86 +318,193 @@ export default function MyTasks() {
       });
   }, [tasks]);
 
-  const summary = useMemo(() => {
-    return {
-      orders: groupedOrders.length,
-      assigned: groupedOrders.filter((o) => o.overallStatus === "assigned")
-        .length,
-      inProgress: groupedOrders.filter((o) => o.overallStatus === "in_progress")
-        .length,
-      blocked: groupedOrders.filter((o) => o.overallStatus === "blocked")
-        .length,
-      ready: groupedOrders.filter((o) => o.readyForShipping).length,
+  useEffect(() => {
+    const focusId = searchParams.get("focus_task_id");
+    if (!focusId || loading) return;
+
+    const numericId = Number(focusId);
+    const matchedOrder = groupedOrders.find((order) =>
+      order.rawTasks.some((task) => Number(task.id) === numericId),
+    );
+
+    if (!matchedOrder) {
+      toast.error("That task could not be found. It may have been removed.");
+
+      const next = new URLSearchParams(searchParams);
+      next.delete("focus_task_id");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    setFilter("all");
+    setSearch("");
+    setExpandedOrderKey(matchedOrder.key);
+    setFocusedTaskId(numericId);
+
+    const scrollTimer = setTimeout(() => {
+      const stepElement = document.getElementById(`task-step-${numericId}`);
+      const orderElement = document.getElementById(
+        `order-group-${matchedOrder.orderId || matchedOrder.key}`,
+      );
+
+      (stepElement || orderElement)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 100);
+
+    const highlightTimer = setTimeout(() => setFocusedTaskId(null), 4000);
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("focus_task_id");
+    setSearchParams(next, { replace: true });
+
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(highlightTimer);
     };
-  }, [groupedOrders]);
+  }, [searchParams, loading, groupedOrders, setSearchParams]);
+
+  const summary = useMemo(
+    () => ({
+      assigned: groupedOrders.filter(
+        (order) => order.overallStatus === "assigned",
+      ).length,
+      inProgress: groupedOrders.filter(
+        (order) => order.overallStatus === "in_progress",
+      ).length,
+      blocked: groupedOrders.filter(
+        (order) => order.overallStatus === "blocked",
+      ).length,
+      ready: groupedOrders.filter((order) => order.ready).length,
+    }),
+    [groupedOrders],
+  );
+
+  const visibleOrders = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return groupedOrders.filter((order) => {
+      if (filter !== "all" && order.overallStatus !== filter) {
+        return false;
+      }
+
+      if (!query) return true;
+
+      const currentStep = order.currentStep?.stepLabel || "";
+
+      return [
+        order.orderNumber,
+        currentStep,
+        order.assignedByName,
+        ORDER_STATUS_META[order.overallStatus]?.label,
+      ].some((value) =>
+        String(value || "")
+          .toLowerCase()
+          .includes(query),
+      );
+    });
+  }, [groupedOrders, filter, search]);
 
   return (
     <div style={pageShell}>
-      <div style={heroCard}>
-        <div style={{ marginBottom: 24 }}>
-          <h1 style={pageTitle}>Production Work Queue</h1>
+      <header style={pageHeader}>
+        <div>
+          <h1 style={pageTitle}>My Production Work</h1>
           <p style={pageSubtitle}>
-            Manage your assigned production orders, complete each manufacturing
-            step, and notify admin when the order is ready for shipping review.
+            Complete your assigned production steps in order.
           </p>
         </div>
+      </header>
 
-        <div style={summaryGrid}>
-          <SummaryCard
-            label="Assigned Orders"
-            value={summary.orders}
-            color="#0a0a0a"
-          />
-          <SummaryCard
-            label="New Assignments"
-            value={summary.assigned}
-            color="#52525b"
-          />
-          <SummaryCard
-            label="In Production"
-            value={summary.inProgress}
-            color="#18181b"
-          />
-          <SummaryCard
-            label="Blocked"
-            value={summary.blocked}
-            color="#dc2626"
-          />
-          <SummaryCard
-            label="Ready for Shipping"
-            value={summary.ready}
-            color="#0a0a0a"
-          />
+      <section style={summaryGrid}>
+        <SummaryCard label="New Assignments" value={summary.assigned} />
+        <SummaryCard
+          label="In Production"
+          value={summary.inProgress}
+          emphasized
+        />
+        <SummaryCard
+          label="Blocked"
+          value={summary.blocked}
+          danger={summary.blocked > 0}
+        />
+        <SummaryCard label="Ready" value={summary.ready} />
+      </section>
+
+      <section style={toolbar}>
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search order or production step"
+          aria-label="Search production work"
+          style={searchInput}
+        />
+
+        <div style={filterRow}>
+          {FILTERS.map((item) => {
+            const active = filter === item.key;
+
+            return (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => setFilter(item.key)}
+                style={active ? activeFilterButton : filterButton}
+              >
+                {item.label}
+              </button>
+            );
+          })}
         </div>
-      </div>
+      </section>
 
-      <div style={boardCard}>
-        <div style={boardHeader}>Assigned Production Orders — Newest First</div>
+      <section style={listPanel}>
+        <div style={listHeader}>
+          <div>
+            <h2 style={sectionTitle}>Production Orders</h2>
+            <p style={sectionSubtitle}>Newest assignments first.</p>
+          </div>
+
+          {!loading ? (
+            <div style={recordCount}>
+              {visibleOrders.length}{" "}
+              {visibleOrders.length === 1 ? "order" : "orders"}
+            </div>
+          ) : null}
+        </div>
 
         {loading ? (
-          <div style={emptyState}>Loading production orders...</div>
-        ) : groupedOrders.length === 0 ? (
-          <div style={emptyState}>No assigned production orders found.</div>
+          <div style={emptyState}>Loading production work...</div>
+        ) : visibleOrders.length === 0 ? (
+          <div style={emptyState}>No production work matches this view.</div>
         ) : (
           <div style={orderList}>
-            {groupedOrders.map((order) => {
+            {visibleOrders.map((order) => {
               const orderMeta =
                 ORDER_STATUS_META[order.overallStatus] ||
                 ORDER_STATUS_META.assigned;
 
+              const isExpanded = expandedOrderKey === order.key;
+              const currentStep =
+                order.ready
+                  ? "Production Complete"
+                  : order.currentStep?.stepLabel || "Production Work";
+
               return (
-                <div
+                <article
                   key={order.key}
-                  id={`order-group-${order.orderId}`}
+                  id={`order-group-${order.orderId || order.key}`}
                   style={orderCard}
                 >
-                  <div style={orderTop}>
-                    <div style={{ flex: 1, minWidth: 260 }}>
-                      <div style={orderHeaderRow}>
-                        <span style={orderRefBadge}>
-                          {order.orderNumber ||
-                            `Order #${order.orderId || "—"}`}
-                        </span>
+                  <div style={orderSummary}>
+                    <div style={orderPrimary}>
+                      <div style={orderHeadingRow}>
+                        <div>
+                          <div style={orderNumber}>{order.orderNumber}</div>
+                          <div style={currentStepText}>{currentStep}</div>
+                        </div>
 
                         <span
                           style={{
@@ -426,117 +518,143 @@ export default function MyTasks() {
                         </span>
                       </div>
 
-                      <h3 style={orderTitle}>Production Order</h3>
-                      <p style={orderSubtitle}>
-                        Complete the full workflow from Cutting Machine up to
-                        Packing, then wait for admin shipping review.
-                      </p>
-                    </div>
-
-                    <div style={progressPanel}>
-                      <div style={progressLabel}>
-                        {order.completedCount}/{REQUIRED_STEPS.length} steps
-                        completed
-                      </div>
-                      <div style={progressBarTrack}>
-                        <div
-                          style={{
-                            ...progressBarFill,
-                            width: `${order.progressPercent}%`,
-                          }}
+                      <div style={metaGrid}>
+                        <Info
+                          label="Due Date"
+                          value={formatDate(order.dueDate)}
+                          important
+                        />
+                        <Info
+                          label="Progress"
+                          value={`${order.completedCount} of ${REQUIRED_STEPS.length} steps`}
+                        />
+                        <Info
+                          label="Assigned By"
+                          value={order.assignedByName}
                         />
                       </div>
-                      <div style={progressValue}>{order.progressPercent}%</div>
                     </div>
-                  </div>
 
-                  <div style={metaGrid}>
-                    <Info label="Assigned To" value={order.assignedToName} />
-                    <Info label="Assigned By" value={order.assignedByName} />
-                    <Info
-                      label="Assigned On"
-                      value={
-                        order.latestTaskTimestamp
-                          ? formatDateTime(order.latestTaskTimestamp)
-                          : "—"
-                      }
-                    />
-                    <Info
-                      label="Due Date"
-                      value={order.dueDate ? formatDateTime(order.dueDate) : "—"}
-                    />
-                    <Info
-                      label="Delivery Address"
-                      value={order.deliveryAddress}
-                    />
-                  </div>
-
-                  <div style={noteBox}>
-                    <div style={noteTitle}>Admin Production Note</div>
-                    <div style={noteText}>
-                      {order.adminNote ||
-                        "No additional production note provided."}
-                    </div>
-                  </div>
-
-                  <div style={checklistWrap}>
-                    <div style={checklistTitle}>Production Checklist</div>
-
-                    <div style={stepList}>
-                      {order.steps.map((step, stepIndex) => {
-                        const stepMeta =
-                          STEP_STATUS_META[step.status] ||
-                          STEP_STATUS_META.pending;
-
-                        const canStartThisStep = canStartStepInSequence(
-                          order.steps,
-                          stepIndex,
-                        );
-
-                        const previousRequiredStepLabel =
-                          getPreviousRequiredStepLabel(order.steps, stepIndex);
-
-                        return (
+                    <div style={orderActionColumn}>
+                      <div style={progressArea}>
+                        <div style={progressTrack}>
                           <div
-                            key={step.stepLabel}
-                            id={step.task ? `task-step-${step.task.id}` : undefined}
-                            style={
-                              step.task && focusedTaskId === step.task.id
-                                ? {
-                                    ...stepRow,
-                                    boxShadow: "0 0 0 3px #0a0a0a",
-                                    borderRadius: 8,
-                                    transition: "box-shadow 0.3s ease",
-                                  }
-                                : stepRow
-                            }
-                          >
-                            <div style={stepLeft}>
-                              <div style={stepName}>{step.stepLabel}</div>
-                              <div style={stepSubtext}>
-                                {step.task
-                                  ? step.task.title
-                                  : "Waiting for production packet creation"}
+                            style={{
+                              ...progressFill,
+                              width: `${order.progressPercent}%`,
+                            }}
+                          />
+                        </div>
+                        <div style={progressPercent}>
+                          {order.progressPercent}%
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedOrderKey((current) =>
+                            current === order.key ? null : order.key,
+                          )
+                        }
+                        style={viewButton}
+                      >
+                        {isExpanded ? "Hide Work" : "View Work"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {isExpanded ? (
+                    <div style={expandedArea}>
+                      {order.adminNote ? (
+                        <div style={noteBox}>
+                          <div style={noteLabel}>Admin Note</div>
+                          <div style={noteText}>{order.adminNote}</div>
+                        </div>
+                      ) : null}
+
+                      <div style={stepsHeader}>
+                        <div>
+                          <h3 style={stepsTitle}>Production Steps</h3>
+                          <p style={stepsSubtitle}>
+                            Finish each step before starting the next one.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div style={stepList}>
+                        {order.steps.map((step, stepIndex) => {
+                          const stepMeta =
+                            STEP_STATUS_META[step.status] ||
+                            STEP_STATUS_META.pending;
+
+                          const canStartThisStep = canStartStepInSequence(
+                            order.steps,
+                            stepIndex,
+                          );
+
+                          const previousStep = getPreviousRequiredStepLabel(
+                            order.steps,
+                            stepIndex,
+                          );
+
+                          const isFocused =
+                            step.task &&
+                            Number(focusedTaskId) === Number(step.task.id);
+
+                          return (
+                            <div
+                              key={step.stepLabel}
+                              id={
+                                step.task
+                                  ? `task-step-${step.task.id}`
+                                  : undefined
+                              }
+                              style={{
+                                ...stepRow,
+                                ...(isFocused
+                                  ? {
+                                      outline: "2px solid #18181b",
+                                      outlineOffset: "-2px",
+                                    }
+                                  : {}),
+                              }}
+                            >
+                              <div style={stepIndexBox}>{stepIndex + 1}</div>
+
+                              <div style={stepContent}>
+                                <div style={stepName}>{step.stepLabel}</div>
+
+                                {!step.task ? (
+                                  <div style={stepHint}>
+                                    Waiting for task assignment
+                                  </div>
+                                ) : step.status === "pending" &&
+                                  !canStartThisStep ? (
+                                  <div style={stepHint}>
+                                    Finish {previousStep} first
+                                  </div>
+                                ) : null}
                               </div>
-                            </div>
 
-                            <div style={stepRight}>
-                              <span
-                                style={{
-                                  ...statusBadge,
-                                  background: stepMeta.bg,
-                                  color: stepMeta.color,
-                                  border: `1px solid ${stepMeta.border}`,
-                                }}
-                              >
-                                {stepMeta.label}
-                              </span>
+                              <div style={stepRight}>
+                                <span
+                                  style={{
+                                    ...statusBadge,
+                                    background: stepMeta.bg,
+                                    color: stepMeta.color,
+                                    border: `1px solid ${stepMeta.border}`,
+                                  }}
+                                >
+                                  {stepMeta.label}
+                                </span>
 
-                              {step.task ? (
-                                <div style={stepActions}>
-                                  {step.status === "pending" &&
-                                    canStartThisStep && (
+                                {step.task ? (
+                                  <div style={stepActions}>
+                                    {step.status === "pending" &&
+                                    canStartThisStep ? (
                                       <button
+                                        type="button"
                                         onClick={() =>
                                           updateTaskStatus(
                                             step.task.id,
@@ -546,164 +664,153 @@ export default function MyTasks() {
                                         disabled={busyId === step.task.id}
                                         style={
                                           busyId === step.task.id
-                                            ? disabledGhostBtn
-                                            : ghostBtn
+                                            ? disabledButton
+                                            : secondaryButton
                                         }
                                       >
                                         {busyId === step.task.id
                                           ? "Saving..."
                                           : "Start"}
                                       </button>
-                                    )}
+                                    ) : null}
 
-                                  {step.status === "pending" &&
-                                    !canStartThisStep && (
-                                      <span style={sequenceHint}>
-                                        Complete {previousRequiredStepLabel}{" "}
-                                        first
-                                      </span>
-                                    )}
+                                    {step.status === "in_progress" ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            updateTaskStatus(
+                                              step.task.id,
+                                              "completed",
+                                            )
+                                          }
+                                          disabled={busyId === step.task.id}
+                                          style={
+                                            busyId === step.task.id
+                                              ? disabledButton
+                                              : primaryButton
+                                          }
+                                        >
+                                          {busyId === step.task.id
+                                            ? "Saving..."
+                                            : "Mark Done"}
+                                        </button>
 
-                                  {step.status === "in_progress" && (
-                                    <>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            updateTaskStatus(
+                                              step.task.id,
+                                              "blocked",
+                                            )
+                                          }
+                                          disabled={busyId === step.task.id}
+                                          style={
+                                            busyId === step.task.id
+                                              ? disabledButton
+                                              : dangerButton
+                                          }
+                                        >
+                                          {busyId === step.task.id
+                                            ? "Saving..."
+                                            : "Report Blocker"}
+                                        </button>
+                                      </>
+                                    ) : null}
+
+                                    {step.status === "blocked" ? (
                                       <button
+                                        type="button"
                                         onClick={() =>
                                           updateTaskStatus(
                                             step.task.id,
-                                            "completed",
+                                            "in_progress",
                                           )
                                         }
                                         disabled={busyId === step.task.id}
                                         style={
                                           busyId === step.task.id
-                                            ? btnDisabled
-                                            : successBtn
+                                            ? disabledButton
+                                            : secondaryButton
                                         }
                                       >
                                         {busyId === step.task.id
                                           ? "Saving..."
-                                          : "Mark Done"}
+                                          : "Resume"}
                                       </button>
-
-                                      <button
-                                        onClick={() =>
-                                          updateTaskStatus(
-                                            step.task.id,
-                                            "blocked",
-                                          )
-                                        }
-                                        disabled={busyId === step.task.id}
-                                        style={
-                                          busyId === step.task.id
-                                            ? btnDisabled
-                                            : dangerBtn
-                                        }
-                                      >
-                                        {busyId === step.task.id
-                                          ? "Saving..."
-                                          : "Report Blocker"}
-                                      </button>
-                                    </>
-                                  )}
-
-                                  {step.status === "blocked" && (
-                                    <button
-                                      onClick={() =>
-                                        updateTaskStatus(
-                                          step.task.id,
-                                          "in_progress",
-                                        )
-                                      }
-                                      disabled={busyId === step.task.id}
-                                      style={
-                                        busyId === step.task.id
-                                          ? disabledGhostBtn
-                                          : ghostBtn
-                                      }
-                                    >
-                                      {busyId === step.task.id
-                                        ? "Saving..."
-                                        : "Resume"}
-                                    </button>
-                                  )}
-                                </div>
-                              ) : null}
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                          );
+                        })}
+                      </div>
 
-                  {order.readyForShipping && (
-                    <div style={readyBox}>
-                      Full production workflow completed. Admin has been
-                      notified that this order is ready for shipping review.
+                      {order.ready ? (
+                        <div style={readyMessage}>
+                          Production complete. Admin has been notified.
+                        </div>
+                      ) : null}
                     </div>
-                  )}
-                </div>
+                  ) : null}
+                </article>
               );
             })}
           </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
 
-function SummaryCard({ label, value, color }) {
+function SummaryCard({ label, value, emphasized = false, danger = false }) {
   return (
     <div style={summaryCard}>
       <div
         style={{
-          fontSize: 26,
+          fontSize: 24,
           fontWeight: 800,
-          color,
-          letterSpacing: "-0.02em",
+          color: danger ? "#991b1b" : "#18181b",
           lineHeight: 1,
+          letterSpacing: "-0.025em",
         }}
       >
         {value}
       </div>
-      <div
-        style={{
-          fontSize: 10,
-          color: "#71717a",
-          marginTop: 8,
-          fontWeight: 800,
-          textTransform: "uppercase",
-          letterSpacing: "1px",
-        }}
-      >
-        {label}
-      </div>
+
+      <div style={summaryLabel}>{label}</div>
+
+      {emphasized ? <div style={summaryAccent} /> : null}
     </div>
   );
 }
 
-function Info({ label, value }) {
+function Info({ label, value, important = false }) {
   return (
     <div>
       <div style={infoLabel}>{label}</div>
-      <div style={infoValue}>{value || "—"}</div>
+      <div
+        style={{
+          ...infoValue,
+          fontWeight: important ? 650 : 500,
+        }}
+      >
+        {value || "—"}
+      </div>
     </div>
   );
 }
 
 const pageShell = {
-  padding: 24,
-  display: "flex",
-  flexDirection: "column",
-  gap: 16,
-  fontFamily: "'Inter', sans-serif",
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "0 0 36px",
+  color: "#18181b",
 };
 
-const heroCard = {
-  background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 16,
-  padding: "20px 24px",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+const pageHeader = {
+  marginBottom: 18,
 };
 
 const pageTitle = {
@@ -711,339 +818,441 @@ const pageTitle = {
   fontSize: 24,
   fontWeight: 800,
   color: "#0a0a0a",
-  letterSpacing: "-0.02em",
+  lineHeight: 1.15,
+  letterSpacing: "-0.025em",
 };
 
 const pageSubtitle = {
   margin: "6px 0 0",
-  color: "#52525b",
-  fontSize: 13,
+  color: "#696a70",
+  fontSize: 12.5,
+  fontWeight: 400,
   lineHeight: 1.5,
-  maxWidth: 720,
 };
 
 const summaryGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-  gap: 16,
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 10,
+  marginBottom: 14,
 };
 
 const summaryCard = {
-  background: "#fff",
-  borderRadius: 12,
-  border: "1px solid #e4e4e7",
-  padding: "16px 20px",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-};
-
-const boardCard = {
-  background: "#fff",
-  borderRadius: 16,
-  border: "1px solid #e4e4e7",
+  position: "relative",
+  minHeight: 76,
+  padding: "15px 17px",
+  boxSizing: "border-box",
+  background: "#ffffff",
+  border: "1px solid #dcdde1",
+  borderRadius: 0,
   overflow: "hidden",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
-const boardHeader = {
-  padding: "20px 24px",
-  borderBottom: "1px solid #e4e4e7",
-  fontWeight: 800,
-  fontSize: 16,
-  color: "#0a0a0a",
-  background: "#fafafa",
+const summaryLabel = {
+  marginTop: 7,
+  color: "#77787e",
+  fontSize: 9,
+  fontWeight: 700,
+  letterSpacing: "0.075em",
+  textTransform: "uppercase",
+};
+
+const summaryAccent = {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  bottom: 0,
+  height: 2,
+  background: "#18181b",
+};
+
+const toolbar = {
+  padding: 12,
+  marginBottom: 14,
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  flexWrap: "wrap",
+  background: "#ffffff",
+  border: "1px solid #dcdde1",
+  borderRadius: 0,
+};
+
+const searchInput = {
+  flex: "0 1 330px",
+  minWidth: 230,
+  height: 36,
+  padding: "0 11px",
+  boxSizing: "border-box",
+  border: "1px solid #d7d8dc",
+  borderRadius: 0,
+  background: "#ffffff",
+  color: "#18181b",
+  fontSize: 11.5,
+  fontWeight: 400,
+  outline: "none",
+};
+
+const filterRow = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  flexWrap: "wrap",
+};
+
+const filterButton = {
+  minHeight: 32,
+  padding: "6px 10px",
+  border: "1px solid #d7d8dc",
+  borderRadius: 0,
+  background: "#ffffff",
+  color: "#52525b",
+  fontSize: 10.5,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const activeFilterButton = {
+  ...filterButton,
+  borderColor: "#18181b",
+  background: "#18181b",
+  color: "#ffffff",
+};
+
+const listPanel = {
+  background: "#ffffff",
+  border: "1px solid #dcdde1",
+  borderRadius: 0,
+};
+
+const listHeader = {
+  minHeight: 60,
+  padding: "13px 16px",
+  boxSizing: "border-box",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  borderBottom: "1px solid #e5e5e8",
+};
+
+const sectionTitle = {
+  margin: 0,
+  fontSize: 14,
+  fontWeight: 700,
+  color: "#18181b",
+};
+
+const sectionSubtitle = {
+  margin: "4px 0 0",
+  fontSize: 10.5,
+  fontWeight: 400,
+  color: "#7d7e83",
+};
+
+const recordCount = {
+  color: "#85868b",
+  fontSize: 10,
+  fontWeight: 500,
 };
 
 const emptyState = {
-  padding: 40,
-  color: "#71717a",
+  padding: 34,
+  color: "#77787e",
   textAlign: "center",
-  fontSize: 13,
-  fontWeight: 600,
+  fontSize: 11.5,
+  fontWeight: 500,
 };
 
 const orderList = {
   display: "grid",
-  gap: 16,
-  padding: 20,
 };
 
 const orderCard = {
-  border: "1px solid #e4e4e7",
-  borderRadius: 12,
-  padding: 20,
   background: "#ffffff",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+  borderBottom: "1px solid #dddddf",
+  borderRadius: 0,
 };
 
-const orderTop = {
+const orderSummary = {
+  padding: "16px",
   display: "flex",
   justifyContent: "space-between",
-  gap: 20,
-  alignItems: "flex-start",
-  flexWrap: "wrap",
+  alignItems: "stretch",
+  gap: 22,
 };
 
-const orderHeaderRow = {
+const orderPrimary = {
+  flex: 1,
+  minWidth: 0,
+};
+
+const orderHeadingRow = {
   display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-  alignItems: "center",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 14,
 };
 
-const orderRefBadge = {
-  background: "#f4f4f5",
-  color: "#18181b",
-  padding: "4px 10px",
-  borderRadius: 999,
+const orderNumber = {
+  color: "#111113",
+  fontSize: 14,
+  fontWeight: 800,
+  letterSpacing: "0.015em",
+};
+
+const currentStepText = {
+  marginTop: 4,
+  color: "#55565b",
   fontSize: 11,
-  fontWeight: 700,
-  border: "1px solid #e4e4e7",
+  fontWeight: 550,
 };
 
 const statusBadge = {
-  padding: "4px 10px",
-  borderRadius: 999,
-  fontSize: 11,
+  minHeight: 23,
+  padding: "4px 8px",
+  boxSizing: "border-box",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 0,
+  fontSize: 9,
   fontWeight: 700,
+  letterSpacing: "0.05em",
   textTransform: "uppercase",
-  letterSpacing: "1px",
-};
-
-const orderTitle = {
-  margin: "12px 0 6px",
-  fontSize: 20,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  letterSpacing: "-0.01em",
-};
-
-const orderSubtitle = {
-  margin: 0,
-  color: "#52525b",
-  fontSize: 13,
-  lineHeight: 1.5,
-};
-
-const progressPanel = {
-  minWidth: 240,
-  maxWidth: 320,
-  width: "100%",
-  background: "#fafafa",
-  padding: "14px",
-  borderRadius: 12,
-  border: "1px solid #e4e4e7",
-};
-
-const progressLabel = {
-  fontSize: 11,
-  fontWeight: 800,
-  color: "#18181b",
-  marginBottom: 8,
-  textTransform: "uppercase",
-  letterSpacing: "1px",
-};
-
-const progressBarTrack = {
-  height: 8,
-  background: "#e4e4e7",
-  borderRadius: 999,
-  overflow: "hidden",
-};
-
-const progressBarFill = {
-  height: "100%",
-  background: "#18181b",
-  borderRadius: 999,
-};
-
-const progressValue = {
-  marginTop: 8,
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#18181b",
-  textAlign: "right",
+  whiteSpace: "nowrap",
 };
 
 const metaGrid = {
-  marginTop: 20,
+  marginTop: 15,
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: 16,
+  gridTemplateColumns: "repeat(3, minmax(130px, 1fr))",
+  gap: 18,
 };
 
 const infoLabel = {
-  fontSize: 10,
-  color: "#71717a",
-  fontWeight: 800,
-  textTransform: "uppercase",
-  letterSpacing: "1px",
   marginBottom: 4,
+  color: "#818287",
+  fontSize: 8.5,
+  fontWeight: 700,
+  letterSpacing: "0.07em",
+  textTransform: "uppercase",
 };
 
 const infoValue = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: "#18181b",
+  color: "#2b2b2f",
+  fontSize: 10.5,
+  lineHeight: 1.4,
   wordBreak: "break-word",
 };
 
-const noteBox = {
-  marginTop: 20,
-  background: "#fafafa",
-  border: "1px solid #e4e4e7",
-  borderRadius: 10,
-  padding: 14,
+const orderActionColumn = {
+  width: 190,
+  flex: "0 0 190px",
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "space-between",
+  alignItems: "stretch",
+  gap: 14,
 };
 
-const noteTitle = {
-  fontSize: 10,
-  fontWeight: 800,
+const progressArea = {
+  width: "100%",
+};
+
+const progressTrack = {
+  width: "100%",
+  height: 5,
+  overflow: "hidden",
+  background: "#e8e8eb",
+  borderRadius: 0,
+};
+
+const progressFill = {
+  height: "100%",
+  background: "#18181b",
+  borderRadius: 0,
+};
+
+const progressPercent = {
+  marginTop: 5,
+  color: "#66676c",
+  fontSize: 9.5,
+  fontWeight: 600,
+  textAlign: "right",
+};
+
+const viewButton = {
+  minHeight: 32,
+  padding: "6px 10px",
+  border: "1px solid #18181b",
+  borderRadius: 0,
+  background: "#ffffff",
   color: "#18181b",
+  fontSize: 10.5,
+  fontWeight: 650,
+  cursor: "pointer",
+};
+
+const expandedArea = {
+  padding: "0 16px 16px",
+  borderTop: "1px solid #ededf0",
+};
+
+const noteBox = {
+  marginTop: 14,
+  padding: "11px 12px",
+  border: "1px solid #dfdfe3",
+  borderRadius: 0,
+  background: "#fafafa",
+};
+
+const noteLabel = {
+  marginBottom: 5,
+  color: "#55565b",
+  fontSize: 8.5,
+  fontWeight: 700,
+  letterSpacing: "0.07em",
   textTransform: "uppercase",
-  letterSpacing: "1px",
-  marginBottom: 6,
 };
 
 const noteText = {
-  fontSize: 13,
-  color: "#52525b",
+  color: "#55565b",
+  fontSize: 10.5,
+  fontWeight: 400,
   lineHeight: 1.5,
   whiteSpace: "pre-wrap",
 };
 
-const checklistWrap = {
-  marginTop: 24,
+const stepsHeader = {
+  marginTop: 15,
+  marginBottom: 10,
 };
 
-const checklistTitle = {
-  fontSize: 15,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  marginBottom: 14,
-  letterSpacing: "-0.01em",
+const stepsTitle = {
+  margin: 0,
+  color: "#18181b",
+  fontSize: 13,
+  fontWeight: 700,
+};
+
+const stepsSubtitle = {
+  margin: "4px 0 0",
+  color: "#7d7e83",
+  fontSize: 10,
+  fontWeight: 400,
 };
 
 const stepList = {
   display: "grid",
-  gap: 12,
 };
 
 const stepRow = {
-  border: "1px solid #e4e4e7",
-  background: "#ffffff",
-  borderRadius: 10,
-  padding: "16px",
-  display: "flex",
-  justifyContent: "space-between",
+  minHeight: 58,
+  padding: "10px 12px",
+  boxSizing: "border-box",
+  display: "grid",
+  gridTemplateColumns: "28px minmax(0, 1fr) auto",
   alignItems: "center",
-  gap: 16,
-  flexWrap: "wrap",
+  gap: 12,
+  border: "1px solid #e2e2e5",
+  borderBottom: 0,
+  borderRadius: 0,
+  background: "#ffffff",
 };
 
-const stepLeft = {
-  flex: 1,
-  minWidth: 220,
+const stepIndexBox = {
+  width: 24,
+  height: 24,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: "1px solid #d7d8dc",
+  borderRadius: 0,
+  color: "#73747a",
+  fontSize: 9.5,
+  fontWeight: 600,
+};
+
+const stepContent = {
+  minWidth: 0,
 };
 
 const stepName = {
-  fontSize: 14,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  marginBottom: 4,
+  color: "#1d1d20",
+  fontSize: 11.5,
+  fontWeight: 650,
 };
 
-const stepSubtext = {
-  fontSize: 12,
-  color: "#71717a",
-  lineHeight: 1.5,
-  fontWeight: 500,
+const stepHint = {
+  marginTop: 4,
+  color: "#88898e",
+  fontSize: 9.5,
+  fontWeight: 400,
 };
 
 const stepRight = {
   display: "flex",
   alignItems: "center",
-  gap: 12,
+  justifyContent: "flex-end",
+  gap: 8,
   flexWrap: "wrap",
 };
 
 const stepActions = {
   display: "flex",
-  gap: 8,
+  alignItems: "center",
+  gap: 6,
   flexWrap: "wrap",
 };
 
-const readyBox = {
-  marginTop: 20,
-  background: "#fafafa",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 10,
-  padding: "12px 16px",
-  fontSize: 12,
-  fontWeight: 700,
+const baseActionButton = {
+  minHeight: 30,
+  padding: "5px 9px",
+  borderRadius: 0,
+  fontSize: 10,
+  fontWeight: 650,
 };
 
-const ghostBtn = {
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  padding: "8px 14px",
-  fontWeight: 700,
-  cursor: "pointer",
-  fontSize: 12,
-};
-
-const disabledGhostBtn = {
-  background: "#f4f4f5",
-  color: "#a1a1aa",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  padding: "8px 14px",
-  fontWeight: 700,
-  cursor: "not-allowed",
-  fontSize: 12,
-};
-
-const successBtn = {
+const primaryButton = {
+  ...baseActionButton,
+  border: "1px solid #18181b",
   background: "#18181b",
   color: "#ffffff",
+  cursor: "pointer",
+};
+
+const secondaryButton = {
+  ...baseActionButton,
   border: "1px solid #18181b",
-  borderRadius: 8,
-  padding: "8px 14px",
-  fontWeight: 700,
+  background: "#ffffff",
+  color: "#18181b",
   cursor: "pointer",
-  fontSize: 12,
 };
 
-const dangerBtn = {
-  background: "#fef2f2",
+const dangerButton = {
+  ...baseActionButton,
+  border: "1px solid #d8a3a3",
+  background: "#ffffff",
   color: "#991b1b",
-  border: "1px solid #fecaca",
-  borderRadius: 8,
-  padding: "8px 14px",
-  fontWeight: 700,
   cursor: "pointer",
-  fontSize: 12,
 };
 
-const btnDisabled = {
-  background: "#e4e4e7",
-  color: "#a1a1aa",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  padding: "8px 14px",
-  fontWeight: 700,
+const disabledButton = {
+  ...baseActionButton,
+  border: "1px solid #dedee2",
+  background: "#f3f3f5",
+  color: "#a0a1a6",
   cursor: "not-allowed",
-  fontSize: 12,
 };
 
-const sequenceHint = {
-  fontSize: 11,
-  fontWeight: 700,
-  color: "#71717a",
+const readyMessage = {
+  marginTop: 12,
+  padding: "10px 12px",
+  border: "1px solid #d7d8dc",
+  borderRadius: 0,
   background: "#fafafa",
-  border: "1px solid #e4e4e7",
-  borderRadius: 999,
-  padding: "6px 12px",
+  color: "#3f3f46",
+  fontSize: 10.5,
+  fontWeight: 550,
 };

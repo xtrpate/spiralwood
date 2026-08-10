@@ -1,658 +1,626 @@
-// admin/frontend/src/pages/staff/Dashboard.jsx
-import { useState, useEffect } from "react";
-import api from "../../services/api";
-
+// WISDOM INDOOR STAFF DASHBOARD UI V1
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
-import {
-  ShoppingBag,
-  DollarSign,
-  TrendingUp,
   AlertTriangle,
-  Clock,
+  ArrowRight,
+  CalendarClock,
+  ClipboardList,
+  Clock3,
+  PackageCheck,
 } from "lucide-react";
+import api from "../../services/api";
+import useAuthStore from "../../store/authStore";
 
-// Converted generic classes to precise inline styles for the monochrome theme
-const getOrderStatusStyle = (status) => {
-  const key = String(status || "").toLowerCase();
+const REQUIRED_STEPS = [
+  "Cutting Machine",
+  "Edge Banding",
+  "Horizontal Drilling",
+  "Retouching",
+  "Packing",
+];
 
-  if (key === "completed" || key === "delivered")
-    return {
-      background: "#0a0a0a",
-      color: "#ffffff",
-      border: "1px solid #0a0a0a",
-    };
-  if (key === "confirmed")
-    return {
-      background: "#f4f4f5",
-      color: "#18181b",
-      border: "1px solid #e4e4e7",
-    };
-  if (key === "pending" || key === "shipping" || key === "production")
-    return {
-      background: "#ffffff",
-      color: "#52525b",
-      border: "1px solid #d4d4d8",
-    };
-  if (key === "cancelled")
-    return {
-      background: "#fef2f2",
-      color: "#991b1b",
-      border: "1px solid #fecaca",
-    };
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
 
-  return {
-    background: "#fafafa",
-    color: "#71717a",
-    border: "1px solid #e4e4e7",
-  };
+const toDateKey = (value) => {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 };
 
-const getStockStatusStyle = (s) => {
-  if (s === "in_stock")
-    return {
-      background: "#f4f4f5",
-      color: "#18181b",
-      border: "1px solid #e4e4e7",
-    };
-  if (s === "low_stock")
-    return {
-      background: "#ffffff",
-      color: "#52525b",
-      border: "1px solid #d4d4d8",
-    };
-  return {
-    background: "#fef2f2",
-    color: "#991b1b",
-    border: "1px solid #fecaca",
-  };
+const todayKey = () => toDateKey(new Date());
+
+const formatDate = (value) => {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+
+  return parsed.toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 };
+
+const formatTime = (value) => {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "—";
+
+  return parsed.toLocaleTimeString("en-PH", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const safeTime = (value) => {
+  if (!value) return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const getAssignedStaffId = (appointment) =>
+  Number(
+    appointment?.assigned_staff_id ??
+      appointment?.assigned_to ??
+      appointment?.assigned_provider_id ??
+      0,
+  );
+
+const getPurposeLabel = (value) => {
+  const key = normalize(value);
+  if (key === "site_measurement") return "Site Measurement";
+  if (key === "installation") return "Installation";
+  if (key === "consultation") return "Consultation";
+
+  return String(value || "Appointment")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const getAppointmentStatusLabel = (value) => {
+  const key = normalize(value);
+  if (key === "awaiting_staff_acceptance") return "Awaiting Acceptance";
+  if (key === "confirmed") return "Confirmed";
+  if (key === "pending") return "Pending";
+  if (key === "completed") return "Completed";
+  if (key === "cancelled") return "Cancelled";
+  if (key === "rejected") return "Rejected";
+
+  return String(value || "—")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const getWorkStatus = (taskList = []) => {
+  const statuses = taskList.map((task) => normalize(task.status));
+
+  if (
+    taskList.length > 0 &&
+    taskList.every((task) => normalize(task.status) === "completed")
+  ) {
+    return "ready";
+  }
+
+  if (statuses.includes("blocked")) return "blocked";
+
+  if (
+    statuses.includes("in_progress") ||
+    statuses.includes("completed")
+  ) {
+    return "in_progress";
+  }
+
+  return "assigned";
+};
+
+const getWorkStatusLabel = (status) => {
+  if (status === "ready") return "Ready";
+  if (status === "blocked") return "Blocked";
+  if (status === "in_progress") return "In Production";
+  return "Assigned";
+};
+
+const getCurrentStep = (taskList = []) => {
+  const sorted = [...taskList].sort((a, b) => {
+    const aIndex = REQUIRED_STEPS.findIndex(
+      (step) => normalize(step) === normalize(a.task_role),
+    );
+    const bIndex = REQUIRED_STEPS.findIndex(
+      (step) => normalize(step) === normalize(b.task_role),
+    );
+
+    return (aIndex < 0 ? 999 : aIndex) - (bIndex < 0 ? 999 : bIndex);
+  });
+
+  const active = sorted.find(
+    (task) => normalize(task.status) === "in_progress",
+  );
+  if (active) return active;
+
+  const next = sorted.find(
+    (task) => normalize(task.status) !== "completed",
+  );
+  if (next) return next;
+
+  return sorted[sorted.length - 1] || null;
+};
+
+const groupAssignedWork = (tasks = [], userId) => {
+  const visible = tasks.filter(
+    (task) => Number(task.assigned_to) === Number(userId),
+  );
+
+  const grouped = new Map();
+
+  visible.forEach((task) => {
+    const key =
+      task.order_id ||
+      task.order_number ||
+      `${task.assigned_to || "staff"}-${task.id}`;
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        key,
+        orderId: task.order_id || null,
+        orderNumber: task.order_number || "—",
+        dueDate: task.due_date || null,
+        tasks: [],
+      });
+    }
+
+    const group = grouped.get(key);
+    group.tasks.push(task);
+
+    if (!group.dueDate && task.due_date) {
+      group.dueDate = task.due_date;
+    }
+  });
+
+  return Array.from(grouped.values())
+    .map((group) => {
+      const currentTask = getCurrentStep(group.tasks);
+      const status = getWorkStatus(group.tasks);
+
+      const latestTime = group.tasks.reduce(
+        (latest, task) =>
+          Math.max(
+            latest,
+            safeTime(task.created_at),
+            safeTime(task.assigned_at),
+            safeTime(task.updated_at),
+          ),
+        0,
+      );
+
+      return {
+        ...group,
+        currentTask,
+        currentStep:
+          status === "ready"
+            ? "Production Complete"
+            : currentTask?.task_role || "Production Work",
+        status,
+        latestTime,
+      };
+    })
+    .sort((a, b) => {
+      if (b.latestTime !== a.latestTime) {
+        return b.latestTime - a.latestTime;
+      }
+
+      return Number(b.orderId || 0) - Number(a.orderId || 0);
+    });
+};
+
+const getInventoryStatus = (item) => {
+  const explicit = normalize(item?.status);
+  if (explicit === "out_of_stock") return "Out of Stock";
+  if (explicit === "low_stock") return "Low Stock";
+
+  const stock = Number(
+    item?.stock ??
+      item?.stock_quantity ??
+      item?.quantity ??
+      item?.current_stock ??
+      0,
+  );
+
+  return stock <= 0 ? "Out of Stock" : "Low Stock";
+};
+
+const getInventoryStock = (item) =>
+  Number(
+    item?.stock ??
+      item?.stock_quantity ??
+      item?.quantity ??
+      item?.current_stock ??
+      0,
+  );
+
+const getInventoryName = (item) =>
+  item?.product_name ||
+  item?.name ||
+  item?.material_name ||
+  item?.item_name ||
+  "Inventory Item";
+
+const card = {
+  background: "#ffffff",
+  border: "1px solid #dcdde1",
+  borderRadius: 0,
+  boxShadow: "none",
+};
+
+const buttonBase = {
+  minHeight: 34,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 7,
+  padding: "7px 11px",
+  borderRadius: 0,
+  fontSize: 11,
+  fontWeight: 650,
+  cursor: "pointer",
+};
+
+const secondaryButton = {
+  ...buttonBase,
+  border: "1px solid #18181b",
+  background: "#ffffff",
+  color: "#18181b",
+};
+
+const labelStyle = {
+  color: "#77787e",
+  fontSize: 9,
+  fontWeight: 700,
+  letterSpacing: "0.075em",
+  textTransform: "uppercase",
+};
+
+const valueStyle = {
+  color: "#18181b",
+  fontSize: 22,
+  fontWeight: 800,
+  lineHeight: 1,
+  letterSpacing: "-0.02em",
+};
+
+function SummaryCard({ icon: Icon, label, value, emphasis = false }) {
+  return (
+    <div
+      style={{
+        ...card,
+        minHeight: 82,
+        padding: "16px 18px",
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+      }}
+    >
+      <div
+        style={{
+          width: 38,
+          height: 38,
+          flex: "0 0 38px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          border: "1px solid #dedee1",
+          borderRadius: 0,
+          background: emphasis ? "#18181b" : "#fafafa",
+          color: emphasis ? "#ffffff" : "#18181b",
+        }}
+      >
+        <Icon size={18} strokeWidth={1.8} />
+      </div>
+
+      <div>
+        <div style={valueStyle}>{value}</div>
+        <div style={{ ...labelStyle, marginTop: 7 }}>{label}</div>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ children, strong = false, danger = false }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        minHeight: 24,
+        padding: "4px 8px",
+        borderRadius: 0,
+        border: danger
+          ? "1px solid #d7a3a3"
+          : strong
+            ? "1px solid #18181b"
+            : "1px solid #d2d3d7",
+        background: strong ? "#18181b" : "#ffffff",
+        color: danger ? "#991b1b" : strong ? "#ffffff" : "#3f3f46",
+        fontSize: 9.5,
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
 
 export default function Dashboard() {
-  const [data, setData] = useState(null);
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
+
+  const [tasks, setTasks] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [inventoryAlerts, setInventoryAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let isMounted = true;
+    let active = true;
 
-    const loadDashboard = async () => {
-      try {
-        const res = await api.get("/pos/dashboard");
-        if (isMounted) setData(res.data);
-      } catch (err) {
-        console.error(
-          "Dashboard load error:",
-          err.response?.data || err.message,
-        );
-        if (isMounted) setData(null);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
+    const load = async () => {
+      setLoading(true);
+
+      const [taskResult, appointmentResult, dashboardResult] =
+        await Promise.allSettled([
+          api.get("/tasks"),
+          api.get("/pos/appointments"),
+          api.get("/pos/dashboard"),
+        ]);
+
+      if (!active) return;
+
+      setTasks(
+        taskResult.status === "fulfilled" &&
+          Array.isArray(taskResult.value?.data)
+          ? taskResult.value.data
+          : [],
+      );
+
+      setAppointments(
+        appointmentResult.status === "fulfilled" &&
+          Array.isArray(appointmentResult.value?.data)
+          ? appointmentResult.value.data
+          : [],
+      );
+
+      const dashboardData =
+        dashboardResult.status === "fulfilled"
+          ? dashboardResult.value?.data
+          : null;
+
+      setInventoryAlerts(
+        Array.isArray(dashboardData?.low_stock_alerts)
+          ? dashboardData.low_stock_alerts
+          : [],
+      );
+
+      setLoading(false);
     };
 
-    loadDashboard();
+    load();
 
     return () => {
-      isMounted = false;
+      active = false;
     };
   }, []);
 
-  if (loading)
-    return (
-      <div
-        style={{
-          color: "#71717a",
-          fontSize: 13,
-          fontWeight: 600,
-          padding: 40,
-          textAlign: "center",
-        }}
-      >
-        Loading dashboard...
-      </div>
-    );
+  const work = useMemo(
+    () => groupAssignedWork(tasks, user?.id),
+    [tasks, user?.id],
+  );
 
-  if (!data)
-    return (
-      <div style={{ marginBottom: 24 }}>
-        <p style={{ color: "#71717a", fontSize: 13, fontWeight: 600 }}>
-          Failed to load dashboard.
-        </p>
-      </div>
-    );
+  const assignedAppointments = useMemo(
+    () =>
+      appointments
+        .filter(
+          (appointment) =>
+            getAssignedStaffId(appointment) === Number(user?.id || 0),
+        )
+        .sort(
+          (a, b) =>
+            safeTime(a.scheduled_date) - safeTime(b.scheduled_date),
+        ),
+    [appointments, user?.id],
+  );
+
+  const todaysAppointments = useMemo(
+    () =>
+      assignedAppointments.filter(
+        (appointment) =>
+          toDateKey(appointment.scheduled_date) === todayKey() &&
+          !["completed", "cancelled", "rejected"].includes(
+            normalize(appointment.status),
+          ),
+      ),
+    [assignedAppointments],
+  );
+
+  const inProductionCount = work.filter(
+    (item) => item.status === "in_progress",
+  ).length;
+
+  const visibleWork = work.slice(0, 5);
+  const visibleAppointments = todaysAppointments.slice(0, 4);
+  const visibleInventoryAlerts = inventoryAlerts.slice(0, 5);
+
+  const todayLabel = new Date().toLocaleDateString("en-PH", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 
   return (
-    <div style={{ fontFamily: "'Inter', sans-serif", paddingBottom: 40 }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 24,
-            fontWeight: 800,
-            color: "#0a0a0a",
-            letterSpacing: "-0.02em",
-          }}
-        >
-          POS Dashboard
-        </h1>
-        <p
-          style={{
-            margin: "6px 0 0",
-            fontSize: 13,
-            color: "#52525b",
-            lineHeight: 1.5,
-          }}
-        >
-          Today's overview —{" "}
-          {new Date().toLocaleDateString("en-PH", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          })}
-        </p>
-      </div>
-
-      <div
+    <div
+      style={{
+        width: "100%",
+        boxSizing: "border-box",
+        paddingBottom: 36,
+        color: "#18181b",
+      }}
+    >
+      <header
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: 16,
-          marginBottom: 24,
-        }}
-      >
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #e4e4e7",
-            borderRadius: 16,
-            padding: "20px 24px",
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-          }}
-        >
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: "#f4f4f5",
-              color: "#18181b",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <ShoppingBag size={22} />
-          </div>
-          <div>
-            <div
-              style={{
-                fontSize: 24,
-                fontWeight: 800,
-                color: "#0a0a0a",
-                letterSpacing: "-0.02em",
-                lineHeight: 1,
-              }}
-            >
-              {data.today?.order_count ?? 0}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: "#71717a",
-                textTransform: "uppercase",
-                letterSpacing: "1px",
-                marginTop: 6,
-              }}
-            >
-              Orders Today
-            </div>
-          </div>
-        </div>
-
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #e4e4e7",
-            borderRadius: 16,
-            padding: "20px 24px",
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-          }}
-        >
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: "#18181b",
-              color: "#ffffff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <DollarSign size={22} />
-          </div>
-          <div>
-            <div
-              style={{
-                fontSize: 24,
-                fontWeight: 800,
-                color: "#0a0a0a",
-                letterSpacing: "-0.02em",
-                lineHeight: 1,
-              }}
-            >
-              ₱
-              {parseFloat(data.today?.total_sales || 0).toLocaleString(
-                "en-PH",
-                {
-                  minimumFractionDigits: 2,
-                },
-              )}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: "#71717a",
-                textTransform: "uppercase",
-                letterSpacing: "1px",
-                marginTop: 6,
-              }}
-            >
-              Sales Today
-            </div>
-          </div>
-        </div>
-
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #e4e4e7",
-            borderRadius: 16,
-            padding: "20px 24px",
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-          }}
-        >
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: "#f4f4f5",
-              color: "#18181b",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <TrendingUp size={22} />
-          </div>
-          <div>
-            <div
-              style={{
-                fontSize: 24,
-                fontWeight: 800,
-                color: "#0a0a0a",
-                letterSpacing: "-0.02em",
-                lineHeight: 1,
-              }}
-            >
-              ₱
-              {parseFloat(data.weekly_sales || 0).toLocaleString("en-PH", {
-                minimumFractionDigits: 2,
-              })}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: "#71717a",
-                textTransform: "uppercase",
-                letterSpacing: "1px",
-                marginTop: 6,
-              }}
-            >
-              This Week
-            </div>
-          </div>
-        </div>
-
-        <div
-          style={{
-            background: "#fff",
-            border: "1px solid #e4e4e7",
-            borderRadius: 16,
-            padding: "20px 24px",
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-          }}
-        >
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 12,
-              background: data.low_stock_alerts?.length ? "#fef2f2" : "#f4f4f5",
-              color: data.low_stock_alerts?.length ? "#dc2626" : "#18181b",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <AlertTriangle size={22} />
-          </div>
-          <div>
-            <div
-              style={{
-                fontSize: 24,
-                fontWeight: 800,
-                color: data.low_stock_alerts?.length ? "#dc2626" : "#0a0a0a",
-                letterSpacing: "-0.02em",
-                lineHeight: 1,
-              }}
-            >
-              {data.low_stock_alerts?.length ?? 0}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: "#71717a",
-                textTransform: "uppercase",
-                letterSpacing: "1px",
-                marginTop: 6,
-              }}
-            >
-              Low Stock Alerts
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 20,
           marginBottom: 20,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 16,
         }}
       >
-        <div
-          style={{
-            background: "#fff",
-            borderRadius: 16,
-            border: "1px solid #e4e4e7",
-            padding: "20px 24px",
-            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-          }}
-        >
-          <h3
-            style={{
-              margin: "0 0 20px",
-              fontWeight: 800,
-              fontSize: 16,
-              color: "#0a0a0a",
-            }}
-          >
-            Top Products Today
-          </h3>
-          {!data.top_products || data.top_products.length === 0 ? (
-            <p
-              style={{
-                color: "#71717a",
-                fontSize: 13,
-                fontWeight: 500,
-                margin: 0,
-                textAlign: "center",
-                padding: 40,
-              }}
-            >
-              No sales recorded today.
-            </p>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={data.top_products}>
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="#e4e4e7"
-                  vertical={false}
-                />
-                <XAxis
-                  dataKey="product_name"
-                  tick={{ fontSize: 11, fill: "#71717a" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#71717a" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  formatter={(v) => [`${v} units`, "Qty Sold"]}
-                  contentStyle={{
-                    background: "#18181b",
-                    border: "none",
-                    borderRadius: 8,
-                    color: "#fff",
-                    fontSize: 12,
-                    fontWeight: 600,
-                  }}
-                  itemStyle={{ color: "#fff" }}
-                />
-                <Bar
-                  dataKey="qty_sold"
-                  fill="#18181b"
-                  radius={[4, 4, 0, 0]}
-                  barSize={36}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        <div
-          style={{
-            background: "#fff",
-            borderRadius: 16,
-            border: "1px solid #e4e4e7",
-            padding: "0",
-            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div
-            style={{ padding: "20px 24px", borderBottom: "1px solid #f4f4f5" }}
-          >
-            <h3
-              style={{
-                margin: 0,
-                fontWeight: 800,
-                fontSize: 16,
-                color: "#0a0a0a",
-              }}
-            >
-              Low Stock Alerts
-            </h3>
-          </div>
-
-          {!data.low_stock_alerts || data.low_stock_alerts.length === 0 ? (
-            <div
-              style={{
-                padding: 40,
-                textAlign: "center",
-                color: "#71717a",
-                fontSize: 13,
-                fontWeight: 500,
-                flex: 1,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              All products are well-stocked.
-            </div>
-          ) : (
-            <div style={{ overflowX: "auto", flex: 1 }}>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontSize: 13,
-                  textAlign: "left",
-                }}
-              >
-                <thead>
-                  <tr style={{ background: "#fafafa" }}>
-                    <th
-                      style={{
-                        padding: "12px 24px",
-                        fontSize: 10,
-                        fontWeight: 800,
-                        color: "#71717a",
-                        textTransform: "uppercase",
-                        letterSpacing: "1px",
-                        borderBottom: "1px solid #e4e4e7",
-                      }}
-                    >
-                      Product
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px 24px",
-                        fontSize: 10,
-                        fontWeight: 800,
-                        color: "#71717a",
-                        textTransform: "uppercase",
-                        letterSpacing: "1px",
-                        borderBottom: "1px solid #e4e4e7",
-                      }}
-                    >
-                      Stock
-                    </th>
-                    <th
-                      style={{
-                        padding: "12px 24px",
-                        fontSize: 10,
-                        fontWeight: 800,
-                        color: "#71717a",
-                        textTransform: "uppercase",
-                        letterSpacing: "1px",
-                        borderBottom: "1px solid #e4e4e7",
-                      }}
-                    >
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.low_stock_alerts.map((p) => (
-                    <tr
-                      key={p.id}
-                      style={{ borderBottom: "1px solid #f4f4f5" }}
-                    >
-                      <td
-                        style={{
-                          padding: "14px 24px",
-                          color: "#18181b",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {p.name}
-                      </td>
-                      <td
-                        style={{
-                          padding: "14px 24px",
-                          color: "#52525b",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {p.stock}
-                      </td>
-                      <td style={{ padding: "14px 24px" }}>
-                        <span
-                          style={{
-                            ...getStockStatusStyle(p.stock_status),
-                            padding: "4px 10px",
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            textTransform: "capitalize",
-                            display: "inline-block",
-                          }}
-                        >
-                          {String(p.stock_status || "").replace("_", " ")}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div
-        style={{
-          background: "#fff",
-          borderRadius: 16,
-          border: "1px solid #e4e4e7",
-          padding: "0",
-          boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-        }}
-      >
-        <div
-          style={{ padding: "20px 24px", borderBottom: "1px solid #f4f4f5" }}
-        >
-          <h3
+        <div>
+          <h1
             style={{
               margin: 0,
-              fontWeight: 800,
-              fontSize: 16,
               color: "#0a0a0a",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
+              fontSize: 24,
+              fontWeight: 800,
+              lineHeight: 1.15,
+              letterSpacing: "-0.025em",
             }}
           >
-            <Clock size={18} /> Recent Orders Today
-          </h3>
+            Staff Dashboard
+          </h1>
+          <p
+            style={{
+              margin: "6px 0 0",
+              color: "#68696f",
+              fontSize: 12.5,
+              fontWeight: 400,
+              lineHeight: 1.5,
+            }}
+          >
+            Your assigned work and today's priorities.
+          </p>
         </div>
 
-        {!data.recent_orders || data.recent_orders.length === 0 ? (
+        <div
+          style={{
+            color: "#85868b",
+            fontSize: 10.5,
+            fontWeight: 400,
+            whiteSpace: "nowrap",
+            paddingTop: 4,
+          }}
+        >
+          {todayLabel}
+        </div>
+      </header>
+
+      <section
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          gap: 10,
+          marginBottom: 16,
+        }}
+      >
+        <SummaryCard
+          icon={ClipboardList}
+          label="Assigned Work"
+          value={loading ? "—" : work.length}
+        />
+        <SummaryCard
+          icon={PackageCheck}
+          label="In Production"
+          value={loading ? "—" : inProductionCount}
+          emphasis
+        />
+        <SummaryCard
+          icon={CalendarClock}
+          label="Appointments Today"
+          value={loading ? "—" : todaysAppointments.length}
+        />
+        <SummaryCard
+          icon={AlertTriangle}
+          label="Inventory Alerts"
+          value={loading ? "—" : inventoryAlerts.length}
+        />
+      </section>
+
+      <section style={{ ...card, marginBottom: 16 }}>
+        <div
+          style={{
+            minHeight: 60,
+            padding: "14px 16px",
+            boxSizing: "border-box",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 16,
+            borderBottom: "1px solid #e7e7ea",
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                margin: 0,
+                color: "#18181b",
+                fontSize: 14,
+                fontWeight: 700,
+              }}
+            >
+              My Work
+            </h2>
+            <p
+              style={{
+                margin: "4px 0 0",
+                color: "#7d7e83",
+                fontSize: 10.5,
+                lineHeight: 1.4,
+              }}
+            >
+              Your latest assigned production work.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            style={secondaryButton}
+            onClick={() => navigate("/staff/tasks")}
+          >
+            View all
+          </button>
+        </div>
+
+        {loading ? (
           <div
             style={{
-              padding: 40,
+              padding: 28,
+              color: "#77787e",
+              fontSize: 11.5,
               textAlign: "center",
-              color: "#71717a",
-              fontSize: 13,
-              fontWeight: 500,
             }}
           >
-            No orders processed today.
+            Loading assigned work...
+          </div>
+        ) : visibleWork.length === 0 ? (
+          <div
+            style={{
+              padding: 28,
+              color: "#77787e",
+              fontSize: 11.5,
+              textAlign: "center",
+            }}
+          >
+            No production work is assigned to you.
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -660,158 +628,114 @@ export default function Dashboard() {
               style={{
                 width: "100%",
                 borderCollapse: "collapse",
-                fontSize: 13,
-                textAlign: "left",
+                tableLayout: "fixed",
+                fontSize: 11.5,
               }}
             >
               <thead>
                 <tr style={{ background: "#fafafa" }}>
-                  <th
-                    style={{
-                      padding: "14px 24px",
-                      fontSize: 10,
-                      fontWeight: 800,
-                      color: "#71717a",
-                      textTransform: "uppercase",
-                      letterSpacing: "1px",
-                      borderBottom: "1px solid #e4e4e7",
-                    }}
-                  >
-                    Order #
-                  </th>
-                  <th
-                    style={{
-                      padding: "14px 24px",
-                      fontSize: 10,
-                      fontWeight: 800,
-                      color: "#71717a",
-                      textTransform: "uppercase",
-                      letterSpacing: "1px",
-                      borderBottom: "1px solid #e4e4e7",
-                    }}
-                  >
-                    Customer
-                  </th>
-                  <th
-                    style={{
-                      padding: "14px 24px",
-                      fontSize: 10,
-                      fontWeight: 800,
-                      color: "#71717a",
-                      textTransform: "uppercase",
-                      letterSpacing: "1px",
-                      borderBottom: "1px solid #e4e4e7",
-                    }}
-                  >
-                    Total
-                  </th>
-                  <th
-                    style={{
-                      padding: "14px 24px",
-                      fontSize: 10,
-                      fontWeight: 800,
-                      color: "#71717a",
-                      textTransform: "uppercase",
-                      letterSpacing: "1px",
-                      borderBottom: "1px solid #e4e4e7",
-                    }}
-                  >
-                    Payment
-                  </th>
-                  <th
-                    style={{
-                      padding: "14px 24px",
-                      fontSize: 10,
-                      fontWeight: 800,
-                      color: "#71717a",
-                      textTransform: "uppercase",
-                      letterSpacing: "1px",
-                      borderBottom: "1px solid #e4e4e7",
-                    }}
-                  >
-                    Status
-                  </th>
-                  <th
-                    style={{
-                      padding: "14px 24px",
-                      fontSize: 10,
-                      fontWeight: 800,
-                      color: "#71717a",
-                      textTransform: "uppercase",
-                      letterSpacing: "1px",
-                      borderBottom: "1px solid #e4e4e7",
-                    }}
-                  >
-                    Time
-                  </th>
+                  {[
+                    ["Order", "24%"],
+                    ["Current Step", "29%"],
+                    ["Due Date", "18%"],
+                    ["Status", "18%"],
+                    ["", "11%"],
+                  ].map(([label, width]) => (
+                    <th
+                      key={label || "action"}
+                      style={{
+                        width,
+                        padding: "10px 16px",
+                        borderBottom: "1px solid #e7e7ea",
+                        color: "#77787e",
+                        fontSize: 8.5,
+                        fontWeight: 700,
+                        letterSpacing: "0.075em",
+                        textAlign: label ? "left" : "right",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
+
               <tbody>
-                {data.recent_orders.map((o) => (
-                  <tr key={o.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                    <td style={{ padding: "16px 24px", color: "#18181b" }}>
-                      <strong style={{ fontWeight: 800 }}>
-                        {o.order_number}
-                      </strong>
-                    </td>
+                {visibleWork.map((item) => (
+                  <tr key={item.key}>
                     <td
                       style={{
-                        padding: "16px 24px",
+                        padding: "13px 16px",
+                        borderBottom: "1px solid #ededf0",
                         color: "#18181b",
-                        fontWeight: 600,
+                        fontWeight: 700,
                       }}
                     >
-                      {o.walkin_customer_name}
+                      {item.orderNumber}
                     </td>
+
                     <td
                       style={{
-                        padding: "16px 24px",
-                        color: "#0a0a0a",
-                        fontWeight: 800,
+                        padding: "13px 16px",
+                        borderBottom: "1px solid #ededf0",
+                        color: "#3f3f46",
+                        fontWeight: 500,
                       }}
                     >
-                      ₱
-                      {parseFloat(o.total || 0).toLocaleString("en-PH", {
-                        minimumFractionDigits: 2,
-                      })}
+                      {item.currentStep}
                     </td>
+
                     <td
                       style={{
-                        padding: "16px 24px",
+                        padding: "13px 16px",
+                        borderBottom: "1px solid #ededf0",
                         color: "#52525b",
-                        textTransform: "capitalize",
-                        fontWeight: 500,
+                        fontWeight: 400,
                       }}
                     >
-                      {o.payment_method}
+                      {formatDate(item.dueDate)}
                     </td>
-                    <td style={{ padding: "16px 24px" }}>
-                      <span
-                        style={{
-                          ...getOrderStatusStyle(o.status),
-                          padding: "4px 10px",
-                          borderRadius: 999,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          textTransform: "capitalize",
-                          display: "inline-block",
-                        }}
-                      >
-                        {o.status}
-                      </span>
-                    </td>
+
                     <td
                       style={{
-                        padding: "16px 24px",
-                        color: "#71717a",
-                        fontSize: 12,
-                        fontWeight: 500,
+                        padding: "13px 16px",
+                        borderBottom: "1px solid #ededf0",
                       }}
                     >
-                      {new Date(o.created_at).toLocaleTimeString("en-PH", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                      <StatusBadge
+                        strong={item.status === "ready"}
+                        danger={item.status === "blocked"}
+                      >
+                        {getWorkStatusLabel(item.status)}
+                      </StatusBadge>
+                    </td>
+
+                    <td
+                      style={{
+                        padding: "10px 16px",
+                        borderBottom: "1px solid #ededf0",
+                        textAlign: "right",
+                      }}
+                    >
+                      <button
+                        type="button"
+                        style={{
+                          ...secondaryButton,
+                          minHeight: 30,
+                          padding: "5px 9px",
+                          fontSize: 10,
+                        }}
+                        onClick={() =>
+                          navigate(
+                            item.currentTask?.id
+                              ? `/staff/tasks?focus_task_id=${item.currentTask.id}`
+                              : "/staff/tasks",
+                          )
+                        }
+                      >
+                        View
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -819,7 +743,307 @@ export default function Dashboard() {
             </table>
           </div>
         )}
+      </section>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+          gap: 16,
+        }}
+      >
+        <section style={card}>
+          <div
+            style={{
+              minHeight: 60,
+              padding: "14px 16px",
+              boxSizing: "border-box",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              borderBottom: "1px solid #e7e7ea",
+            }}
+          >
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 14,
+                  fontWeight: 700,
+                }}
+              >
+                Today's Appointments
+              </h2>
+              <p
+                style={{
+                  margin: "4px 0 0",
+                  color: "#7d7e83",
+                  fontSize: 10.5,
+                }}
+              >
+                Appointments assigned to you today.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              style={{
+                ...secondaryButton,
+                minHeight: 30,
+                padding: "5px 9px",
+                fontSize: 10,
+              }}
+              onClick={() => navigate("/staff/appointment")}
+            >
+              View all
+            </button>
+          </div>
+
+          {loading ? (
+            <div
+              style={{
+                padding: 28,
+                color: "#77787e",
+                fontSize: 11.5,
+                textAlign: "center",
+              }}
+            >
+              Loading appointments...
+            </div>
+          ) : visibleAppointments.length === 0 ? (
+            <div
+              style={{
+                padding: 28,
+                color: "#77787e",
+                fontSize: 11.5,
+                textAlign: "center",
+              }}
+            >
+              No appointments assigned for today.
+            </div>
+          ) : (
+            <div>
+              {visibleAppointments.map((appointment) => (
+                <div
+                  key={appointment.id}
+                  style={{
+                    minHeight: 66,
+                    padding: "12px 16px",
+                    boxSizing: "border-box",
+                    display: "grid",
+                    gridTemplateColumns: "72px minmax(0, 1fr) auto",
+                    alignItems: "center",
+                    gap: 12,
+                    borderBottom: "1px solid #ededf0",
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        color: "#18181b",
+                        fontSize: 11,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {formatTime(appointment.scheduled_date)}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 3,
+                        color: "#85868b",
+                        fontSize: 9,
+                      }}
+                    >
+                      Today
+                    </div>
+                  </div>
+
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        color: "#252529",
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {appointment.customer_name ||
+                        appointment.customer ||
+                        `Appointment ${appointment.id}`}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 4,
+                        color: "#77787e",
+                        fontSize: 9.5,
+                      }}
+                    >
+                      {getPurposeLabel(appointment.purpose)}
+                    </div>
+                  </div>
+
+                  <StatusBadge
+                    strong={normalize(appointment.status) === "completed"}
+                  >
+                    {getAppointmentStatusLabel(appointment.status)}
+                  </StatusBadge>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section style={card}>
+          <div
+            style={{
+              minHeight: 60,
+              padding: "14px 16px",
+              boxSizing: "border-box",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 12,
+              borderBottom: "1px solid #e7e7ea",
+            }}
+          >
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 14,
+                  fontWeight: 700,
+                }}
+              >
+                Inventory Alerts
+              </h2>
+              <p
+                style={{
+                  margin: "4px 0 0",
+                  color: "#7d7e83",
+                  fontSize: 10.5,
+                }}
+              >
+                Stock conditions that may affect current work.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              style={{
+                ...secondaryButton,
+                minHeight: 30,
+                padding: "5px 9px",
+                fontSize: 10,
+              }}
+              onClick={() => navigate("/staff/inventory")}
+            >
+              View inventory
+            </button>
+          </div>
+
+          {loading ? (
+            <div
+              style={{
+                padding: 28,
+                color: "#77787e",
+                fontSize: 11.5,
+                textAlign: "center",
+              }}
+            >
+              Loading inventory alerts...
+            </div>
+          ) : visibleInventoryAlerts.length === 0 ? (
+            <div
+              style={{
+                padding: 28,
+                color: "#77787e",
+                fontSize: 11.5,
+                textAlign: "center",
+              }}
+            >
+              No inventory alerts right now.
+            </div>
+          ) : (
+            <div>
+              {visibleInventoryAlerts.map((item, index) => {
+                const status = getInventoryStatus(item);
+                const stock = getInventoryStock(item);
+
+                return (
+                  <div
+                    key={item.id || `${getInventoryName(item)}-${index}`}
+                    style={{
+                      minHeight: 66,
+                      padding: "12px 16px",
+                      boxSizing: "border-box",
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) 64px auto",
+                      alignItems: "center",
+                      gap: 12,
+                      borderBottom: "1px solid #ededf0",
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: "#252529",
+                        fontSize: 11.5,
+                        fontWeight: 600,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {getInventoryName(item)}
+                    </div>
+
+                    <div>
+                      <div
+                        style={{
+                          color: "#18181b",
+                          fontSize: 11,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {stock}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 3,
+                          color: "#85868b",
+                          fontSize: 9,
+                        }}
+                      >
+                        Stock
+                      </div>
+                    </div>
+
+                    <StatusBadge danger={status === "Out of Stock"}>
+                      {status}
+                    </StatusBadge>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
       </div>
+
+      <style>{`
+        @media (max-width: 1050px) {
+          .pos-main > div > section:first-of-type {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+
+        @media (max-width: 760px) {
+          .pos-main > div > header {
+            flex-direction: column;
+          }
+        }
+      `}</style>
     </div>
   );
 }

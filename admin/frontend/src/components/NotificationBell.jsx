@@ -162,7 +162,7 @@ export default function NotificationBell({ compact = false }) {
   const isCashier = user?.role === "staff" && user?.staff_type === "cashier";
   const isDeliveryRider =
     user?.role === "staff" && user?.staff_type === "delivery_rider";
-  const useMonochromeNotification = isCashier || isDeliveryRider;
+  const useMonochromeNotification = isCashier || isDeliveryRider || isIndoorStaff;
 
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);

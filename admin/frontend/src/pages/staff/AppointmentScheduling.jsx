@@ -286,6 +286,362 @@ function SummaryCard({ label, count, hint }) {
   );
 }
 
+// WISDOM INDOOR APPOINTMENTS UI V1
+const getIndoorStatusLabel = (status) => {
+  const key = String(status || "").toLowerCase();
+
+  if (key === "awaiting_staff_acceptance") return "Awaiting Acceptance";
+  if (key === "confirmed") return "Confirmed";
+  if (key === "completed") return "Completed";
+  if (key === "cancelled") return "Cancelled";
+  if (key === "rejected") return "Rejected";
+
+  return getStatusLabel(status);
+};
+
+const cleanIndoorWorkNote = (value) =>
+  String(value || "")
+    .replace(/^(?:work\s+note|notes?|note)\s*:\s*/i, "")
+    .trim();
+
+function IndoorSummaryCard({ label, count, hint, emphasized = false }) {
+  return (
+    <div style={indoorSummaryCardStyle}>
+      <div
+        style={{
+          fontSize: 25,
+          fontWeight: 800,
+          color: "#18181b",
+          lineHeight: 1,
+          letterSpacing: "-0.025em",
+        }}
+      >
+        {count}
+      </div>
+      <div style={indoorSummaryLabelStyle}>{label}</div>
+      <div style={indoorSummaryHintStyle}>{hint}</div>
+      {emphasized ? <div style={indoorSummaryAccentStyle} /> : null}
+    </div>
+  );
+}
+
+function IndoorStatusBadge({ status }) {
+  const base = getStatusStyle(status);
+
+  return (
+    <span
+      style={{
+        ...base,
+        minHeight: 24,
+        padding: "4px 8px",
+        boxSizing: "border-box",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: 0,
+        fontSize: 9.5,
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+        textTransform: "uppercase",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {getIndoorStatusLabel(status)}
+    </span>
+  );
+}
+
+function IndoorInfo({ label, value, important = false }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={indoorInfoLabelStyle}>{label}</div>
+      <div
+        style={{
+          ...indoorInfoValueStyle,
+          fontWeight: important ? 650 : 500,
+        }}
+      >
+        {value || "—"}
+      </div>
+    </div>
+  );
+}
+
+function IndoorAppointmentSection({ title, subtitle, children }) {
+  return (
+    <section style={indoorSectionStyle}>
+      <div style={indoorSectionHeaderStyle}>
+        <div>
+          <h3 style={indoorSectionTitleStyle}>{title}</h3>
+          <p style={indoorSectionSubtitleStyle}>{subtitle}</p>
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+const indoorPageHeaderStyle = {
+  marginBottom: 18,
+};
+
+const indoorPageTitleStyle = {
+  margin: 0,
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#0a0a0a",
+  lineHeight: 1.15,
+  letterSpacing: "-0.025em",
+};
+
+const indoorPageSubtitleStyle = {
+  margin: "6px 0 0",
+  color: "#696a70",
+  fontSize: 12.5,
+  fontWeight: 400,
+  lineHeight: 1.5,
+};
+
+const indoorSummaryGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 10,
+  marginBottom: 14,
+};
+
+const indoorSummaryCardStyle = {
+  position: "relative",
+  minHeight: 84,
+  padding: "15px 17px",
+  boxSizing: "border-box",
+  background: "#ffffff",
+  border: "1px solid #dcdde1",
+  borderRadius: 0,
+  overflow: "hidden",
+};
+
+const indoorSummaryLabelStyle = {
+  marginTop: 7,
+  color: "#5d5e63",
+  fontSize: 9,
+  fontWeight: 700,
+  letterSpacing: "0.075em",
+  textTransform: "uppercase",
+};
+
+const indoorSummaryHintStyle = {
+  marginTop: 5,
+  color: "#919297",
+  fontSize: 9.5,
+  fontWeight: 400,
+  lineHeight: 1.35,
+};
+
+const indoorSummaryAccentStyle = {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  bottom: 0,
+  height: 2,
+  background: "#18181b",
+};
+
+const indoorSectionStyle = {
+  marginBottom: 14,
+  background: "#ffffff",
+  border: "1px solid #dcdde1",
+  borderRadius: 0,
+  overflow: "hidden",
+};
+
+const indoorSectionHeaderStyle = {
+  minHeight: 60,
+  padding: "13px 16px",
+  boxSizing: "border-box",
+  display: "flex",
+  alignItems: "center",
+  borderBottom: "1px solid #e5e5e8",
+};
+
+const indoorSectionTitleStyle = {
+  margin: 0,
+  color: "#18181b",
+  fontSize: 14,
+  fontWeight: 700,
+};
+
+const indoorSectionSubtitleStyle = {
+  margin: "4px 0 0",
+  color: "#7d7e83",
+  fontSize: 10.5,
+  fontWeight: 400,
+  lineHeight: 1.4,
+};
+
+const indoorAppointmentListStyle = {
+  display: "grid",
+};
+
+const indoorAppointmentCardStyle = {
+  padding: 0,
+  borderBottom: "1px solid #e8e8eb",
+  background: "#ffffff",
+  borderRadius: 0,
+};
+
+const indoorAppointmentHeaderStyle = {
+  padding: "14px 16px 0",
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 14,
+};
+
+const indoorAppointmentRefStyle = {
+  color: "#111113",
+  fontSize: 14,
+  fontWeight: 800,
+  letterSpacing: "0.015em",
+};
+
+const indoorCustomerStyle = {
+  marginTop: 4,
+  color: "#3f3f46",
+  fontSize: 11.5,
+  fontWeight: 600,
+};
+
+const indoorInfoGridStyle = {
+  marginTop: 14,
+  padding: "0 16px 14px",
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(130px, 1fr))",
+  gap: 16,
+};
+
+const indoorInfoLabelStyle = {
+  marginBottom: 4,
+  color: "#818287",
+  fontSize: 8.5,
+  fontWeight: 700,
+  letterSpacing: "0.07em",
+  textTransform: "uppercase",
+};
+
+const indoorInfoValueStyle = {
+  color: "#2b2b2f",
+  fontSize: 10.5,
+  lineHeight: 1.4,
+  wordBreak: "break-word",
+};
+
+const indoorScopeStyle = {
+  margin: "0 16px 14px",
+  padding: "9px 10px",
+  border: "1px solid #e0e0e3",
+  borderRadius: 0,
+  background: "#fafafa",
+  color: "#55565b",
+  fontSize: 10.5,
+  fontWeight: 400,
+  lineHeight: 1.45,
+};
+
+const indoorActionsStyle = {
+  marginTop: 0,
+  padding: "10px 16px",
+  display: "flex",
+  justifyContent: "flex-end",
+  alignItems: "center",
+  gap: 7,
+  flexWrap: "wrap",
+  borderTop: "1px solid #e7e7ea",
+  background: "#fafafa",
+};
+
+const indoorButtonBase = {
+  minHeight: 34,
+  padding: "7px 11px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  borderRadius: 0,
+  fontSize: 10.5,
+  fontWeight: 650,
+};
+
+const indoorPrimaryButton = {
+  ...indoorButtonBase,
+  border: "1px solid #18181b",
+  background: "#18181b",
+  color: "#ffffff",
+  cursor: "pointer",
+};
+
+const indoorSecondaryButton = {
+  ...indoorButtonBase,
+  border: "1px solid #18181b",
+  background: "#ffffff",
+  color: "#18181b",
+  cursor: "pointer",
+};
+
+const indoorDangerButton = {
+  ...indoorButtonBase,
+  border: "1px solid #d8a3a3",
+  background: "#ffffff",
+  color: "#991b1b",
+  cursor: "pointer",
+};
+
+const indoorDisabledButton = {
+  ...indoorButtonBase,
+  border: "1px solid #dedee2",
+  background: "#f3f3f5",
+  color: "#a0a1a6",
+  cursor: "not-allowed",
+};
+
+const indoorEmptyStyle = {
+  padding: 28,
+  color: "#77787e",
+  textAlign: "center",
+  fontSize: 11.5,
+  fontWeight: 500,
+};
+
+const indoorHistoryTableStyle = {
+  width: "100%",
+  minWidth: 900,
+  borderCollapse: "collapse",
+  fontSize: 11,
+};
+
+const indoorHistoryHeadStyle = {
+  background: "#fafafa",
+  borderBottom: "1px solid #e4e4e7",
+};
+
+const indoorHistoryThStyle = {
+  padding: "10px 12px",
+  color: "#77787e",
+  fontSize: 8.5,
+  fontWeight: 700,
+  letterSpacing: "0.075em",
+  textAlign: "left",
+  textTransform: "uppercase",
+};
+
+const indoorHistoryTdStyle = {
+  padding: "12px",
+  color: "#3f3f46",
+  fontSize: 10.5,
+  fontWeight: 400,
+  verticalAlign: "middle",
+  borderBottom: "1px solid #ededf0",
+};
+
 export default function AppointmentScheduling() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -812,90 +1168,90 @@ export default function AppointmentScheduling() {
       hint: "Waiting for your acceptance",
     },
     {
-      label: "Confirmed Schedule",
+      label: "Active Appointments",
       count: staffConfirmedAppointments.length,
-      hint: "Appointments you are actively handling",
+      hint: "Appointments you are handling",
     },
     {
-      label: "Closed History",
+      label: "History",
       count: staffClosedAppointments.length,
-      hint: "Completed or cancelled records",
+      hint: "Completed and closed records",
     },
   ];
 
   return (
     <div style={{ fontFamily: "'Inter', sans-serif" }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 16,
-          marginBottom: 24,
-          flexWrap: "wrap",
-        }}
-      >
-        <div>
-          <h2
+      {isAdmin ? (
+        <>
+          <div
             style={{
-              margin: 0,
-              fontWeight: 800,
-              fontSize: 24,
-              color: "#0a0a0a",
-              letterSpacing: "-0.02em",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              gap: 16,
+              marginBottom: 24,
+              flexWrap: "wrap",
             }}
           >
-            {isAdmin
-              ? "Appointment Dispatch & Triage"
-              : "My Field Appointments"}
-          </h2>
-          <p
+            <div>
+              <h2
+                style={{
+                  margin: 0,
+                  fontWeight: 800,
+                  fontSize: 24,
+                  color: "#0a0a0a",
+                  letterSpacing: "-0.02em",
+                }}
+              >
+                Appointment Dispatch & Triage
+              </h2>
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  color: "#52525b",
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  maxWidth: 720,
+                }}
+              >
+                Review incoming appointment requests, assign indoor staff,
+                track staff acceptance, and monitor confirmed or closed
+                appointments.
+              </p>
+            </div>
+
+            <button
+              style={showForm ? btnGhost : btnPrimary}
+              onClick={() => {
+                setShowForm((prev) => !prev);
+                setError("");
+                setSuccess("");
+              }}
+            >
+              <Plus size={16} />
+              {showForm ? "Close Manual Form" : "Create Manual Appointment"}
+            </button>
+          </div>
+
+          <div
             style={{
-              margin: "6px 0 0",
-              color: "#52525b",
-              fontSize: 13,
-              lineHeight: 1.5,
-              maxWidth: 720,
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 16,
+              marginBottom: 24,
             }}
           >
-            {isAdmin
-              ? "Review incoming appointment requests, assign indoor staff, track staff acceptance, and monitor confirmed or closed appointments."
-              : "Review your assigned appointments, accept new work, and update completion status for confirmed field schedules."}
-          </p>
-        </div>
-
-        {isAdmin && (
-          <button
-            style={showForm ? btnGhost : btnPrimary}
-            onClick={() => {
-              setShowForm((prev) => !prev);
-              setError("");
-              setSuccess("");
-            }}
-          >
-            <Plus size={16} />
-            {showForm ? "Close Manual Form" : "Create Manual Appointment"}
-          </button>
-        )}
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: 16,
-          marginBottom: 24,
-        }}
-      >
-        {(isAdmin ? adminSummary : staffSummary).map((item) => (
-          <SummaryCard
-            key={item.label}
-            label={item.label}
-            count={item.count}
-            hint={item.hint}
-          />
-        ))}
-      </div>
+            {adminSummary.map((item) => (
+              <SummaryCard
+                key={item.label}
+                label={item.label}
+                count={item.count}
+                hint={item.hint}
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
 
       {isAdmin && (
         <SectionCard
@@ -1739,244 +2095,380 @@ export default function AppointmentScheduling() {
 
       {isIndoorStaff && (
         <>
-          <SectionCard
+          <header style={indoorPageHeaderStyle}>
+            <h1 style={indoorPageTitleStyle}>My Appointments</h1>
+            <p style={indoorPageSubtitleStyle}>
+              Review assigned appointments and update work status.
+            </p>
+          </header>
+
+          <div style={indoorSummaryGridStyle}>
+            {staffSummary.map((item, index) => (
+              <IndoorSummaryCard
+                key={item.label}
+                label={item.label}
+                count={item.count}
+                hint={item.hint}
+                emphasized={index === 1}
+              />
+            ))}
+          </div>
+
+          {error ? (
+            <div
+              style={{
+                marginBottom: 14,
+                padding: "10px 12px",
+                border: "1px solid #d8a3a3",
+                borderRadius: 0,
+                background: "#ffffff",
+                color: "#991b1b",
+                fontSize: 10.5,
+                fontWeight: 550,
+              }}
+            >
+              {error}
+            </div>
+          ) : null}
+
+          {success ? (
+            <div
+              style={{
+                marginBottom: 14,
+                padding: "10px 12px",
+                border: "1px solid #d7d8dc",
+                borderRadius: 0,
+                background: "#fafafa",
+                color: "#3f3f46",
+                fontSize: 10.5,
+                fontWeight: 550,
+              }}
+            >
+              {success}
+            </div>
+          ) : null}
+
+          <IndoorAppointmentSection
             title="New Assignments"
-            subtitle="Appointments assigned to you and waiting for your acceptance."
+            subtitle="Appointments waiting for your response."
           >
             {staffNewAssignments.length === 0 ? (
-              <p style={emptyStateStyle}>No new assigned appointments.</p>
+              <div style={indoorEmptyStyle}>No new appointments.</div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={tableStyle}>
-                  <thead>
-                    <tr style={thRowStyle}>
-                      <th style={thStyle}>Request #</th>
-                      <th style={thStyle}>Customer</th>
-                      <th style={thStyle}>Service Type</th>
-                      <th style={thStyle}>Proposed Schedule</th>
-                      <th style={thStyle}>Location / Address</th>
-                      <th style={thStyle}>Assigned By</th>
-                      <th style={thStyle}>Status</th>
-                      <th style={thStyle}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {staffNewAssignments.map((a) => (
-                      <tr
-                        key={a.id}
-                        id={`appointment-row-${a.id}`}
-                        style={
-                          focusedAppointmentId === a.id
-                            ? {
-                                ...trStyle,
-                                boxShadow: "inset 0 0 0 2px #0a0a0a",
-                              }
-                            : trStyle
-                        }
-                      >
-                        {renderRequestRefCell(a)}
-                        {renderCustomerCell(a)}
-                        {renderServiceCell(a)}
-                        {renderConfirmedScheduleCell(a)}
-                        {renderAddressCell(a)}
-                        {renderRequestedByCell(a)}
-                        {renderStatusCell(a)}
+              <div style={indoorAppointmentListStyle}>
+                {staffNewAssignments.map((a) => {
+                  const scope = cleanIndoorWorkNote(getScope(a));
 
-                        <td style={tdStyle}>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: 8,
-                            }}
-                          >
-                            <button
-                              style={btnPrimary}
-                              disabled={actionLoadingId === a.id}
-                              onClick={() =>
-                                handleAction(
-                                  a.id,
-                                  { status: "confirmed" },
-                                  "Appointment accepted and confirmed.",
-                                )
-                              }
-                            >
-                              <CheckCircle2 size={14} /> Accept
-                            </button>
-
-                            <button
-                              style={btnDanger}
-                              disabled={actionLoadingId === a.id}
-                              onClick={() =>
-                                handleAction(
-                                  a.id,
-                                  {
-                                    status: "pending",
-                                    assigned_staff_id: null,
-                                  },
-                                  "Appointment returned to admin for reassignment.",
-                                )
-                              }
-                            >
-                              <Ban size={14} /> Return to Admin
-                            </button>
+                  return (
+                    <article
+                      key={a.id}
+                      id={`appointment-row-${a.id}`}
+                      style={{
+                        ...indoorAppointmentCardStyle,
+                        ...(focusedAppointmentId === a.id
+                          ? {
+                              boxShadow: "inset 0 0 0 2px #18181b",
+                            }
+                          : {}),
+                      }}
+                    >
+                      <div style={indoorAppointmentHeaderStyle}>
+                        <div>
+                          <div style={indoorAppointmentRefStyle}>
+                            {formatRequestNumber(a.id)}
                           </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </SectionCard>
-
-          <SectionCard
-            title="Confirmed Schedule"
-            subtitle="Appointments you already accepted and are currently responsible for handling."
-          >
-            {staffConfirmedAppointments.length === 0 ? (
-              <p style={emptyStateStyle}>No confirmed appointments yet.</p>
-            ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={tableStyle}>
-                  <thead>
-                    <tr style={thRowStyle}>
-                      <th style={thStyle}>Request #</th>
-                      <th style={thStyle}>Customer</th>
-                      <th style={thStyle}>Service Type</th>
-                      <th style={thStyle}>Confirmed Schedule</th>
-                      <th style={thStyle}>Location / Address</th>
-                      <th style={thStyle}>Customer Contact</th>
-                      <th style={thStyle}>Status</th>
-                      <th style={thStyle}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {staffConfirmedAppointments.map((a) => (
-                      <tr
-                        key={a.id}
-                        id={`appointment-row-${a.id}`}
-                        style={
-                          focusedAppointmentId === a.id
-                            ? {
-                                ...trStyle,
-                                boxShadow: "inset 0 0 0 2px #0a0a0a",
-                              }
-                            : trStyle
-                        }
-                      >
-                        {renderRequestRefCell(a)}
-                        {renderCustomerCell(a)}
-                        {renderServiceCell(a)}
-                        {renderConfirmedScheduleCell(a)}
-                        {renderAddressCell(a)}
-
-                        <td style={tdStyle}>
-                          <div style={{ fontWeight: 600 }}>{getContact(a)}</div>
-                          <div style={subTextStyle}>
+                          <div style={indoorCustomerStyle}>
                             {a.customer_name || "Customer"}
                           </div>
-                        </td>
+                        </div>
 
-                        {renderStatusCell(a)}
+                        <IndoorStatusBadge status={a.status} />
+                      </div>
 
-                        <td style={tdStyle}>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: 8,
-                            }}
-                          >
-                            <button
-                              style={btnPrimary}
-                              disabled={actionLoadingId === a.id}
-                              onClick={() =>
-                                handleAction(
-                                  a.id,
-                                  { status: "completed" },
-                                  "Appointment marked as completed.",
-                                )
-                              }
-                            >
-                              <Check size={14} /> Mark Done
-                            </button>
+                      <div style={indoorInfoGridStyle}>
+                        <IndoorInfo
+                          label="Service"
+                          value={humanizePurpose(a.purpose)}
+                          important
+                        />
+                        <IndoorInfo
+                          label="Schedule"
+                          value={formatDateTime(
+                            a.preferred_date || a.scheduled_date,
+                          )}
+                          important
+                        />
+                        <IndoorInfo
+                          label="Location"
+                          value={getAddress(a)}
+                        />
+                        <IndoorInfo
+                          label="Contact"
+                          value={getContact(a)}
+                        />
+                      </div>
 
-                            <button
-                              style={btnDanger}
-                              disabled={actionLoadingId === a.id}
-                              onClick={() =>
-                                handleAction(
-                                  a.id,
-                                  { status: "cancelled" },
-                                  "Appointment cancelled.",
-                                )
-                              }
-                            >
-                              <Ban size={14} /> Cancel
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                      {scope &&
+                      scope !== "No additional scope details" ? (
+                        <div style={indoorScopeStyle}>
+                          <strong style={{ fontWeight: 650, color: "#303034" }}>
+                            Work note:
+                          </strong>{" "}
+                          {scope}
+                        </div>
+                      ) : null}
+
+                      <div style={indoorActionsStyle}>
+                        <button
+                          type="button"
+                          style={
+                            actionLoadingId === a.id
+                              ? indoorDisabledButton
+                              : indoorPrimaryButton
+                          }
+                          disabled={actionLoadingId === a.id}
+                          onClick={() =>
+                            handleAction(
+                              a.id,
+                              { status: "confirmed" },
+                              "Appointment accepted and confirmed.",
+                            )
+                          }
+                        >
+                          <CheckCircle2 size={14} />
+                          {actionLoadingId === a.id ? "Saving..." : "Accept"}
+                        </button>
+
+                        <button
+                          type="button"
+                          style={
+                            actionLoadingId === a.id
+                              ? indoorDisabledButton
+                              : indoorDangerButton
+                          }
+                          disabled={actionLoadingId === a.id}
+                          onClick={() =>
+                            handleAction(
+                              a.id,
+                              {
+                                status: "pending",
+                                assigned_staff_id: null,
+                              },
+                              "Appointment returned to admin for reassignment.",
+                            )
+                          }
+                        >
+                          <Ban size={14} />
+                          Return to Admin
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             )}
-          </SectionCard>
+          </IndoorAppointmentSection>
 
-          <SectionCard
-            title="Completed / Closed History"
-            subtitle="Your completed or cancelled field appointments for reference."
+          <IndoorAppointmentSection
+            title="Active Appointments"
+            subtitle="Appointments you accepted and are currently handling."
+          >
+            {staffConfirmedAppointments.length === 0 ? (
+              <div style={indoorEmptyStyle}>No active appointments.</div>
+            ) : (
+              <div style={indoorAppointmentListStyle}>
+                {staffConfirmedAppointments.map((a) => {
+                  const scope = cleanIndoorWorkNote(getScope(a));
+
+                  return (
+                    <article
+                      key={a.id}
+                      id={`appointment-row-${a.id}`}
+                      style={{
+                        ...indoorAppointmentCardStyle,
+                        ...(focusedAppointmentId === a.id
+                          ? {
+                              boxShadow: "inset 0 0 0 2px #18181b",
+                            }
+                          : {}),
+                      }}
+                    >
+                      <div style={indoorAppointmentHeaderStyle}>
+                        <div>
+                          <div style={indoorAppointmentRefStyle}>
+                            {formatRequestNumber(a.id)}
+                          </div>
+                          <div style={indoorCustomerStyle}>
+                            {a.customer_name || "Customer"}
+                          </div>
+                        </div>
+
+                        <IndoorStatusBadge status={a.status} />
+                      </div>
+
+                      <div style={indoorInfoGridStyle}>
+                        <IndoorInfo
+                          label="Service"
+                          value={humanizePurpose(a.purpose)}
+                          important
+                        />
+                        <IndoorInfo
+                          label="Schedule"
+                          value={formatDateTime(
+                            a.scheduled_date || a.preferred_date,
+                          )}
+                          important
+                        />
+                        <IndoorInfo
+                          label="Location"
+                          value={getAddress(a)}
+                        />
+                        <IndoorInfo
+                          label="Contact"
+                          value={getContact(a)}
+                        />
+                      </div>
+
+                      {scope &&
+                      scope !== "No additional scope details" ? (
+                        <div style={indoorScopeStyle}>
+                          <strong style={{ fontWeight: 650, color: "#303034" }}>
+                            Work note:
+                          </strong>{" "}
+                          {scope}
+                        </div>
+                      ) : null}
+
+                      <div style={indoorActionsStyle}>
+                        <button
+                          type="button"
+                          style={
+                            actionLoadingId === a.id
+                              ? indoorDisabledButton
+                              : indoorPrimaryButton
+                          }
+                          disabled={actionLoadingId === a.id}
+                          onClick={() =>
+                            handleAction(
+                              a.id,
+                              { status: "completed" },
+                              "Appointment marked as completed.",
+                            )
+                          }
+                        >
+                          <Check size={14} />
+                          {actionLoadingId === a.id ? "Saving..." : "Mark Done"}
+                        </button>
+
+                        <button
+                          type="button"
+                          style={
+                            actionLoadingId === a.id
+                              ? indoorDisabledButton
+                              : indoorDangerButton
+                          }
+                          disabled={actionLoadingId === a.id}
+                          onClick={() =>
+                            handleAction(
+                              a.id,
+                              { status: "cancelled" },
+                              "Appointment cancelled.",
+                            )
+                          }
+                        >
+                          <Ban size={14} />
+                          Cancel
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </IndoorAppointmentSection>
+
+          <IndoorAppointmentSection
+            title="Appointment History"
+            subtitle="Completed and closed appointments for reference."
           >
             {staffClosedAppointments.length === 0 ? (
-              <p style={emptyStateStyle}>No closed appointment history yet.</p>
+              <div style={indoorEmptyStyle}>No appointment history yet.</div>
             ) : (
               <div style={{ overflowX: "auto" }}>
-                <table style={tableStyle}>
+                <table style={indoorHistoryTableStyle}>
                   <thead>
-                    <tr style={thRowStyle}>
-                      <th style={thStyle}>Request #</th>
-                      <th style={thStyle}>Customer</th>
-                      <th style={thStyle}>Service Type</th>
-                      <th style={thStyle}>Schedule</th>
-                      <th style={thStyle}>Location / Address</th>
-                      <th style={thStyle}>Status</th>
-                      <th style={thStyle}>Last Updated</th>
+                    <tr style={indoorHistoryHeadStyle}>
+                      <th style={indoorHistoryThStyle}>Appointment</th>
+                      <th style={indoorHistoryThStyle}>Customer</th>
+                      <th style={indoorHistoryThStyle}>Service</th>
+                      <th style={indoorHistoryThStyle}>Schedule</th>
+                      <th style={indoorHistoryThStyle}>Location</th>
+                      <th style={indoorHistoryThStyle}>Status</th>
+                      <th style={indoorHistoryThStyle}>Updated</th>
                     </tr>
                   </thead>
+
                   <tbody>
-                    {staffClosedAppointments.map((a) => (
-                      <tr
-                        key={a.id}
-                        id={`appointment-row-${a.id}`}
-                        style={
-                          focusedAppointmentId === a.id
-                            ? {
-                                ...trStyle,
-                                boxShadow: "inset 0 0 0 2px #0a0a0a",
-                              }
-                            : trStyle
-                        }
-                      >
-                        {renderRequestRefCell(a)}
-                        {renderCustomerCell(a)}
-                        {renderServiceCell(a)}
-                        {renderConfirmedScheduleCell(a)}
-                        {renderAddressCell(a)}
-                        {renderStatusCell(a)}
-                        <td
-                          style={{ ...tdStyle, color: "#71717a", fontSize: 12 }}
+                    {[...staffClosedAppointments]
+                      .sort(
+                        (a, b) =>
+                          new Date(b.updated_at || b.scheduled_date || 0).getTime() -
+                          new Date(a.updated_at || a.scheduled_date || 0).getTime(),
+                      )
+                      .map((a) => (
+                        <tr
+                          key={a.id}
+                          id={`appointment-row-${a.id}`}
+                          style={
+                            focusedAppointmentId === a.id
+                              ? {
+                                  boxShadow: "inset 0 0 0 2px #18181b",
+                                }
+                              : undefined
+                          }
                         >
-                          {formatDateTime(a.updated_at)}
-                        </td>
-                      </tr>
-                    ))}
+                          <td
+                            style={{
+                              ...indoorHistoryTdStyle,
+                              fontWeight: 750,
+                              color: "#18181b",
+                            }}
+                          >
+                            {formatRequestNumber(a.id)}
+                          </td>
+                          <td
+                            style={{
+                              ...indoorHistoryTdStyle,
+                              fontWeight: 600,
+                              color: "#2b2b2f",
+                            }}
+                          >
+                            {a.customer_name || "Customer"}
+                          </td>
+                          <td style={indoorHistoryTdStyle}>
+                            {humanizePurpose(a.purpose)}
+                          </td>
+                          <td style={indoorHistoryTdStyle}>
+                            {formatDateTime(
+                              a.scheduled_date || a.preferred_date,
+                            )}
+                          </td>
+                          <td style={indoorHistoryTdStyle}>
+                            {getAddress(a)}
+                          </td>
+                          <td style={indoorHistoryTdStyle}>
+                            <IndoorStatusBadge status={a.status} />
+                          </td>
+                          <td style={indoorHistoryTdStyle}>
+                            {formatDateTime(a.updated_at)}
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
             )}
-          </SectionCard>
+          </IndoorAppointmentSection>
         </>
       )}
     </div>
