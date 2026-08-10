@@ -250,6 +250,7 @@ export default function ProductSearch() {
             production_cost: Number(product?.production_cost ?? 0),
             quantity: 1,
             max_stock: stockLimit,
+            image_url: product.image_url || "",
 
             // 👉 RULE 7: Send details to checkout screen
             wood_type: product.material,
@@ -418,6 +419,20 @@ export default function ProductSearch() {
     [cart],
   );
 
+  const getCartItemImage = useCallback(
+    (item) => {
+      const directImage = String(item?.image_url || "").trim();
+      if (directImage) return directImage;
+
+      const matchedProduct = allProducts.find(
+        (product) => String(product?.id) === String(item?.product_id),
+      );
+
+      return matchedProduct?.image_url || "";
+    },
+    [allProducts],
+  );
+
   const proceedToCheckout = useCallback(() => {
     if (cartLocked) {
       navigate("/staff/order");
@@ -441,10 +456,7 @@ export default function ProductSearch() {
       <div className="search-panel">
         <div className="page-header">
           <h1>Product Search & Cart</h1>
-          <p>
-            Browse products, search by keyword, or scan a barcode to add items
-            faster.
-          </p>
+          <p>Search, scan, and add products to the current sale.</p>
         </div>
 
         {cartLocked && (
@@ -487,24 +499,42 @@ export default function ProductSearch() {
           </div>
         )}
 
-        <div className="barcode-bar">
-          <ScanLine size={18} className="search-icon" />
-          <input
-            ref={barcodeRef}
-            type="text"
-            placeholder="Scan or enter barcode..."
-            value={barcode}
-            onChange={(e) => setBarcode(e.target.value)}
-            onFocus={() => {
-              if (barcodeMessage) clearMessage();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                searchByBarcode(barcode);
-              }
-            }}
-          />
+        <div className="pos-search-tools">
+          <div className="search-bar">
+            <Search size={18} className="search-icon" />
+            <input
+              type="text"
+              placeholder="Search products, categories, materials, or barcode"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => {
+                if (barcodeMessageType !== "error") {
+                  clearMessage();
+                }
+              }}
+            />
+          </div>
+
+          <div className="barcode-bar">
+            <ScanLine size={18} className="search-icon" />
+            <input
+              ref={barcodeRef}
+              type="text"
+              placeholder="Scan or enter barcode"
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value)}
+              onFocus={() => {
+                if (barcodeMessage) clearMessage();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  searchByBarcode(barcode);
+                }
+              }}
+            />
+          </div>
+
           <button
             type="button"
             className="barcode-btn"
@@ -521,29 +551,6 @@ export default function ProductSearch() {
           </div>
         )}
 
-        <div className="search-bar">
-          <Search size={18} className="search-icon" />
-          <input
-            type="text"
-            placeholder="Search products by name, category, material, or barcode..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => {
-              if (barcodeMessageType !== "error") {
-                clearMessage();
-              }
-            }}
-          />
-          <button
-            type="button"
-            className="barcode-focus-btn"
-            onClick={() => barcodeRef.current?.focus()}
-            title="Focus barcode input"
-          >
-            <ScanLine size={16} />
-          </button>
-        </div>
-
         <div className="search-results">
           {searching && <p className="search-hint">Loading products...</p>}
 
@@ -556,8 +563,8 @@ export default function ProductSearch() {
             !barcode.trim() &&
             products.length > 0 && (
               <p className="search-hint">
-                Showing available products. Use the search box or scan a barcode
-                above.
+                {products.length} available product
+                {products.length !== 1 ? "s" : ""}
               </p>
             )}
 
@@ -603,145 +610,30 @@ export default function ProductSearch() {
 
                     <div className="product-info">
                       <div className="product-name">{product.name}</div>
-                      <div className="product-category">{product.category}</div>
+                      <div className="product-card-meta">
+                        <div className="product-price">
+                          ₱{formatCurrency(product.walkin_price)}
+                        </div>
 
-                      {/* 👉 RULE 7: The "Rich Specs" View for Cashier */}
-                      <div
-                        style={{
-                          fontSize: "11px",
-                          color: "#71717a",
-                          margin: "10px 0",
-                          padding: "10px",
-                          background: "#fafafa",
-                          borderRadius: "8px",
-                          border: "1px solid #f4f4f5",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "8px",
-                        }}
-                      >
-                        {product.dimensions && (
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "flex-start",
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontWeight: "800",
-                                color: "#18181b",
-                                width: "40px",
-                                textTransform: "uppercase",
-                                letterSpacing: "1px",
-                              }}
-                            >
-                              Size:
-                            </span>
-                            <span
-                              style={{
-                                flex: 1,
-                                fontWeight: 500,
-                                color: "#52525b",
-                              }}
-                            >
-                              {product.dimensions}
-                            </span>
-                          </div>
-                        )}
-                        {product.material && (
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "flex-start",
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontWeight: "800",
-                                color: "#18181b",
-                                width: "40px",
-                                textTransform: "uppercase",
-                                letterSpacing: "1px",
-                              }}
-                            >
-                              Mat:
-                            </span>
-                            <span
-                              style={{
-                                flex: 1,
-                                fontWeight: 500,
-                                color: "#52525b",
-                              }}
-                            >
-                              {product.material}
-                            </span>
-                          </div>
-                        )}
-                        {product.description && (
-                          <div
-                            style={{
-                              display: "-webkit-box",
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: "vertical",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              marginTop: "2px",
-                              lineHeight: 1.5,
-                              fontWeight: 500,
-                              color: "#52525b",
-                            }}
-                            title={product.description}
-                          >
-                            <span
-                              style={{
-                                fontWeight: "800",
-                                color: "#18181b",
-                                textTransform: "uppercase",
-                                letterSpacing: "1px",
-                              }}
-                            >
-                              Info:{" "}
-                            </span>
-                            {product.description}
-                          </div>
-                        )}
-                        {!product.dimensions &&
-                          !product.material &&
-                          !product.description && (
-                            <div
-                              style={{
-                                fontStyle: "italic",
-                                opacity: 0.6,
-                                fontWeight: 500,
-                              }}
-                            >
-                              No extra details provided.
-                            </div>
-                          )}
-                      </div>
-
-                      <div
-                        className="product-price"
-                        style={{ marginTop: "auto" }}
-                      >
-                        ₱{formatCurrency(product.walkin_price)}
-                      </div>
-
-                      <div className={`stock-chip ${statusClass}`}>
-                        {formatStockStatus(product.stock_status || statusClass)}{" "}
-                        ({product.stock})
+                        <div className={`stock-chip ${statusClass}`}>
+                          {formatStockStatus(
+                            product.stock_status || statusClass,
+                          )}{" "}
+                          ({product.stock})
+                        </div>
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      className="add-btn"
-                      onClick={() => addToCart(product)}
-                      disabled={product.stock <= 0 || cartLocked}
-                    >
-                      <Plus size={16} /> Add to Cart
-                    </button>
+                    <div className="product-card-action">
+                      <button
+                        type="button"
+                        className="add-btn"
+                        onClick={() => addToCart(product)}
+                        disabled={product.stock <= 0 || cartLocked}
+                      >
+                        <Plus size={15} /> Add to Cart
+                      </button>
+                    </div>
                   </div>
                 );
               })}
@@ -759,40 +651,49 @@ export default function ProductSearch() {
 
         {cart.length === 0 ? (
           <div className="cart-empty">
-            Cart is empty.
-            <br />
-            Search and add products to begin.
+            <ShoppingCart size={28} strokeWidth={1.6} />
+            <strong>No items in cart</strong>
+            <span>Search or scan a product to begin this sale.</span>
           </div>
         ) : (
           <>
             <div className="cart-items">
               {cart.map((item) => (
                 <div key={item.key} className="cart-item">
-                  <div className="cart-item-name">{item.product_name}</div>
-                  <div className="cart-item-price">
-                    ₱{formatCurrency(item.unit_price * item.quantity)}
-                  </div>
-                  <div className="cart-item-controls">
-                    <button
-                      type="button"
-                      onClick={() => updateQty(item.key, -1)}
-                      disabled={cartLocked}
-                    >
-                      <Minus size={13} />
-                    </button>
-                    <span>{item.quantity}</span>
-                    <button
-                      type="button"
-                      onClick={() => updateQty(item.key, 1)}
-                      disabled={cartLocked}
-                    >
-                      <Plus size={13} />
-                    </button>
+                  <div className="cart-item-compact">
+                    <div className="cart-item-quantity">x{item.quantity}</div>
+
+                    <div className="cart-item-thumb">
+                      {getCartItemImage(item) &&
+                      !brokenImages[`cart-${item.key}`] ? (
+                        <img
+                          src={getCartItemImage(item)}
+                          alt={item.product_name}
+                          onError={() =>
+                            setBrokenImages((prev) => ({
+                              ...prev,
+                              [`cart-${item.key}`]: true,
+                            }))
+                          }
+                        />
+                      ) : (
+                        <div className="cart-item-thumb-fallback">Box</div>
+                      )}
+                    </div>
+
+                    <div className="cart-item-copy">
+                      <div className="cart-item-name">{item.product_name}</div>
+                      <div className="cart-item-price">
+                        ₱{formatCurrency(item.unit_price)}
+                      </div>
+                    </div>
+
                     <button
                       type="button"
                       className="remove-btn"
                       onClick={() => removeItem(item.key)}
                       disabled={cartLocked}
+                      aria-label={`Remove ${item.product_name} from cart`}
                     >
                       <Trash2 size={13} />
                     </button>

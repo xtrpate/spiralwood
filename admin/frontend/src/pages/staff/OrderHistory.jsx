@@ -20,7 +20,11 @@ const getStatusStyle = (status) => {
   };
 };
 
-const PAYMENT_METHOD_LABELS = { gcash: "GCash" };
+const PAYMENT_METHOD_LABELS = {
+  gcash: "GCash",
+  paymongo: "Online Payment",
+  bank_transfer: "Bank Transfer",
+};
 const formatPaymentMethod = (value) => {
   const normalized = String(value || "").toLowerCase();
   return PAYMENT_METHOD_LABELS[normalized] || normalized.replace("_", " ");
@@ -77,7 +81,7 @@ export default function OrderHistory() {
             style={{
               margin: 0,
               fontSize: 24,
-              fontWeight: 800,
+              fontWeight: 700,
               color: "#0a0a0a",
               letterSpacing: "-0.02em",
             }}
@@ -92,7 +96,7 @@ export default function OrderHistory() {
               lineHeight: 1.5,
             }}
           >
-            Review past walk-in orders and reprint receipts.
+            View past sales and print receipts.
           </p>
         </div>
 
@@ -104,9 +108,9 @@ export default function OrderHistory() {
             alignItems: "center",
             background: "#ffffff",
             padding: "8px 14px",
-            borderRadius: "12px",
-            border: "1px solid #e4e4e7",
-            boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+            borderRadius: "0",
+            border: "1px solid #dcdce0",
+            boxShadow: "none",
             flexWrap: "wrap",
           }}
         >
@@ -136,10 +140,10 @@ export default function OrderHistory() {
               }}
               style={btnClear}
               onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "#fee2e2")
+                (e.currentTarget.style.background = "#f4f4f5")
               }
               onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "#fef2f2")
+                (e.currentTarget.style.background = "#ffffff")
               }
             >
               Clear
@@ -205,13 +209,13 @@ export default function OrderHistory() {
             <table style={tableStyle}>
               <thead>
                 <tr style={thRowStyle}>
-                  <th style={thStyle}>Date & Time</th>
-                  <th style={thStyle}>Order #</th>
+                  <th style={thStyle}>Date and Time</th>
+                  <th style={thStyle}>Order Number</th>
                   <th style={thStyle}>Customer</th>
                   <th style={thStyle}>Payment</th>
                   <th style={thStyle}>Total</th>
                   <th style={thStyle}>Status</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>Actions</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Receipt</th>
                 </tr>
               </thead>
               <tbody>
@@ -237,14 +241,14 @@ export default function OrderHistory() {
                       <td
                         style={{
                           ...tdStyle,
-                          fontWeight: 800,
+                          fontWeight: 600,
                           color: "#0a0a0a",
                         }}
                       >
                         {order.order_number}
                       </td>
                       <td style={tdStyle}>
-                        <div style={{ fontWeight: 700, color: "#18181b" }}>
+                        <div style={{ fontWeight: 600, color: "#18181b" }}>
                           {order.walkin_customer_name || "Walk-in Customer"}
                         </div>
                         {order.walkin_customer_phone && (
@@ -273,7 +277,7 @@ export default function OrderHistory() {
                       <td
                         style={{
                           ...tdStyle,
-                          fontWeight: 800,
+                          fontWeight: 650,
                           color: "#0a0a0a",
                         }}
                       >
@@ -287,9 +291,9 @@ export default function OrderHistory() {
                           style={{
                             ...statusStyle,
                             padding: "4px 10px",
-                            borderRadius: 999,
+                            borderRadius: 0,
                             fontSize: 10,
-                            fontWeight: 800,
+                            fontWeight: 600,
                             textTransform: "uppercase",
                             letterSpacing: "1px",
                             display: "inline-block",
@@ -306,13 +310,13 @@ export default function OrderHistory() {
                               navigate(`/staff/receipt/${order.receipt_id}`)
                             }
                             onMouseEnter={(e) =>
-                              (e.currentTarget.style.background = "#e4e4e7")
-                            }
-                            onMouseLeave={(e) =>
                               (e.currentTarget.style.background = "#f4f4f5")
                             }
+                            onMouseLeave={(e) =>
+                              (e.currentTarget.style.background = "#ffffff")
+                            }
                           >
-                            <Printer size={14} /> Receipt
+                            <Printer size={14} /> View Receipt
                           </button>
                         ) : (
                           <span
@@ -322,7 +326,7 @@ export default function OrderHistory() {
                               fontWeight: 600,
                             }}
                           >
-                            No Receipt
+                            Not available
                           </span>
                         )}
                       </td>
@@ -342,16 +346,16 @@ export default function OrderHistory() {
 
 const cardStyle = {
   background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 16,
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+  border: "1px solid #dcdce0",
+  borderRadius: 0,
+  boxShadow: "none",
   overflow: "hidden",
 };
 
 const dateInputStyle = {
-  border: "1px solid #e4e4e7",
+  border: "1px solid #cfcfd3",
   padding: "8px 12px",
-  borderRadius: "8px",
+  borderRadius: "0",
   outline: "none",
   fontSize: "13px",
   color: "#18181b",
@@ -359,30 +363,30 @@ const dateInputStyle = {
 };
 
 const btnClear = {
-  background: "#fef2f2",
-  border: "1px solid #fecaca",
-  color: "#991b1b",
+  background: "#ffffff",
+  border: "1px solid #111111",
+  color: "#111111",
   padding: "8px 14px",
-  borderRadius: "8px",
+  borderRadius: "0",
   fontSize: "12px",
-  fontWeight: 700,
+  fontWeight: 600,
   cursor: "pointer",
-  transition: "background 0.2s",
+  transition: "background 0.15s",
 };
 
 const btnReceipt = {
   display: "inline-flex",
   alignItems: "center",
   gap: 6,
-  background: "#f4f4f5",
-  border: "1px solid #e4e4e7",
-  color: "#18181b",
+  background: "#ffffff",
+  border: "1px solid #111111",
+  color: "#111111",
   padding: "8px 14px",
-  borderRadius: "8px",
+  borderRadius: "0",
   fontSize: "12px",
-  fontWeight: 700,
+  fontWeight: 600,
   cursor: "pointer",
-  transition: "background 0.2s",
+  transition: "background 0.15s",
 };
 
 const tableStyle = {
@@ -401,7 +405,7 @@ const thRowStyle = {
 const thStyle = {
   padding: "14px 20px",
   fontSize: 10,
-  fontWeight: 800,
+  fontWeight: 600,
   color: "#71717a",
   textTransform: "uppercase",
   letterSpacing: "1px",

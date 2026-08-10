@@ -199,3 +199,485 @@
     padding: 12px;
   }
 }
+/* =========================================================
+   WISDOM CASHIER PROCESS ORDER UI V4
+   Modern split POS checkout. Main surfaces are zero-radius.
+   ========================================================= */
+
+.pos-process-order {
+  color: #18181b;
+}
+
+.pos-process-order .pos-order-grid {
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+  align-items: start;
+}
+
+.pos-process-order .pos-order-form-card,
+.pos-process-order .pos-order-summary-card {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  border-color: #dcdce0 !important;
+}
+
+.pos-process-order .pos-order-form-card {
+  padding: 24px !important;
+}
+
+.pos-process-order .pos-order-form-card > h3 {
+  margin-bottom: 20px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.pos-process-order .pos-order-fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+  align-items: start;
+}
+
+.pos-process-order .pos-form-field {
+  min-width: 0;
+  margin-bottom: 18px !important;
+}
+
+.pos-process-order .pos-field-customer,
+.pos-process-order .pos-field-phone,
+.pos-process-order .pos-field-payment,
+.pos-process-order .pos-field-discount,
+.pos-process-order .pos-field-cash {
+  grid-column: span 1;
+}
+
+.pos-process-order .pos-delivery-section,
+.pos-process-order .pos-field-notes {
+  grid-column: 1 / -1;
+}
+
+.pos-process-order input,
+.pos-process-order select,
+.pos-process-order textarea,
+.pos-process-order button,
+.pos-process-order .pos-order-form-card,
+.pos-process-order .pos-order-summary-card,
+.pos-process-order .pos-delivery-section,
+.pos-process-order .pos-qr-pending-panel,
+.pos-process-order .pos-qr-code-card,
+.pos-process-order .pos-qr-code-frame,
+.pos-process-order .pos-qr-notice,
+.pos-process-order .pos-qr-countdown,
+.pos-process-order .pos-qr-auto-note {
+  border-radius: 0 !important;
+}
+
+.pos-process-order input,
+.pos-process-order select {
+  min-height: 44px;
+}
+
+.pos-process-order textarea {
+  min-height: 74px;
+}
+
+.pos-process-order label {
+  font-weight: 600 !important;
+}
+
+.pos-process-order .pos-delivery-section {
+  margin: 4px 0 18px !important;
+  padding: 18px !important;
+  background: #fafafa !important;
+  border-color: #dedee2 !important;
+}
+
+.pos-process-order .pos-delivery-section h4 {
+  margin-bottom: 12px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+.pos-process-order .pos-delivery-toggle {
+  width: 38px !important;
+  height: 22px !important;
+  border-radius: 0 !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.pos-process-order .pos-delivery-toggle-knob {
+  width: 16px !important;
+  height: 16px !important;
+  top: 3px !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.pos-process-order .location-picker input,
+.pos-process-order .location-picker button,
+.pos-process-order .location-picker ul,
+.pos-process-order .leaflet-container,
+.pos-process-order .leaflet-control-zoom,
+.pos-process-order .leaflet-control-zoom a {
+  border-radius: 0 !important;
+}
+
+.pos-process-order .location-picker > label {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #626268 !important;
+  letter-spacing: 0.08em !important;
+}
+
+.pos-process-order .leaflet-container {
+  border: 1px solid #dcdce0;
+}
+
+.pos-process-order .pos-order-actions {
+  grid-column: 1 / -1;
+  margin-top: 8px !important;
+  padding-top: 18px;
+  border-top: 1px solid #e4e4e7;
+}
+
+.pos-process-order .pos-order-actions button {
+  min-height: 44px;
+  font-weight: 600 !important;
+}
+
+.pos-process-order .pos-order-summary-card {
+  position: sticky;
+  top: 20px;
+  overflow: hidden;
+}
+
+.pos-process-order .pos-order-summary-header {
+  padding: 16px 18px !important;
+  background: #ffffff !important;
+  border-bottom-color: #e4e4e7 !important;
+}
+
+.pos-process-order .pos-order-summary-header h3 {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+}
+
+.pos-process-order .pos-order-summary-items {
+  padding: 0 18px !important;
+  max-height: 280px !important;
+}
+
+.pos-process-order .pos-order-summary-items > div {
+  padding: 14px 0 !important;
+}
+
+.pos-process-order .pos-order-summary-totals {
+  padding: 18px !important;
+  background: #fafafa !important;
+}
+
+.pos-process-order .pos-order-summary-card,
+.pos-process-order .pos-order-summary-card span,
+.pos-process-order .pos-order-summary-card div {
+  font-variant-numeric: tabular-nums;
+}
+
+.pos-process-order .pos-order-summary-totals > div {
+  line-height: 1.35;
+}
+
+.pos-process-order .pos-order-summary-totals > div[style*="font-size: 20px"] {
+  font-weight: 700 !important;
+}
+
+.pos-process-order .pos-order-summary-totals span[style*="font-weight: 600"],
+.pos-process-order .pos-order-summary-totals span[style*="font-weight: 700"] {
+  font-weight: 600 !important;
+}
+
+@media (max-width: 1100px) {
+  .pos-process-order .pos-order-grid {
+    grid-template-columns: minmax(0, 1fr) 330px;
+  }
+}
+
+@media (max-width: 920px) {
+  .pos-process-order .pos-order-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-process-order .pos-order-summary-card {
+    position: static;
+  }
+}
+
+@media (max-width: 680px) {
+  .pos-process-order .pos-order-fieldset {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-process-order .pos-field-customer,
+  .pos-process-order .pos-field-phone,
+  .pos-process-order .pos-field-payment,
+  .pos-process-order .pos-field-discount,
+  .pos-process-order .pos-field-cash,
+  .pos-process-order .pos-delivery-section,
+  .pos-process-order .pos-field-notes {
+    grid-column: 1;
+  }
+
+  .pos-process-order .pos-order-form-card {
+    padding: 18px !important;
+  }
+}
+/* =========================================================
+   WISDOM CASHIER PROCESS ORDER POLISH V5
+   White/black actions, cleaner delivery selector, no radius.
+   ========================================================= */
+
+.pos-process-order .pos-order-actions button,
+.pos-process-order .pos-qr-actions button,
+.pos-process-order .location-picker button,
+.pos-order-success-page button {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-weight: 600 !important;
+}
+
+.pos-process-order .pos-order-actions button:hover:not(:disabled),
+.pos-process-order .pos-qr-actions button:hover:not(:disabled),
+.pos-process-order .location-picker button:hover:not(:disabled),
+.pos-order-success-page button:hover:not(:disabled) {
+  background: #f4f4f5 !important;
+  color: #111111 !important;
+}
+
+.pos-process-order button:disabled,
+.pos-order-success-page button:disabled {
+  opacity: 0.5 !important;
+}
+
+/* Delivery selector: a compact white outlined control instead of a
+   large dark switch. The moving black square still shows on/off state. */
+.pos-process-order .pos-delivery-section > div > label {
+  width: fit-content;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #111111;
+  background: #ffffff;
+  color: #111111 !important;
+  gap: 9px !important;
+  font-weight: 600 !important;
+  box-sizing: border-box;
+}
+
+.pos-process-order .pos-delivery-toggle {
+  width: 34px !important;
+  height: 20px !important;
+  flex: 0 0 34px !important;
+  background: #ffffff !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.pos-process-order .pos-delivery-toggle-knob {
+  width: 8px !important;
+  height: 8px !important;
+  top: 5px !important;
+  background: #111111 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.pos-process-order .location-picker input,
+.pos-process-order .location-picker button,
+.pos-process-order .location-picker ul,
+.pos-process-order .location-picker li,
+.pos-process-order .leaflet-container,
+.pos-process-order .leaflet-control-zoom,
+.pos-process-order .leaflet-control-zoom a {
+  border-radius: 0 !important;
+}
+
+.pos-process-order .location-picker ul {
+  box-shadow: 0 8px 20px rgba(17, 17, 17, 0.08) !important;
+}
+
+.pos-process-order .location-picker button {
+  min-height: 40px;
+}
+
+.pos-process-order .pos-order-summary-card,
+.pos-process-order .pos-order-form-card,
+.pos-process-order .pos-delivery-section {
+  border-radius: 0 !important;
+}
+
+.pos-order-success-card,
+.pos-order-success-total {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.pos-order-success-card {
+  border: 1px solid #dcdce0 !important;
+}
+
+.pos-order-success-card h2 {
+  font-weight: 700 !important;
+}
+
+.pos-order-success-total > p:first-child {
+  font-weight: 700 !important;
+}
+/* =========================================================
+   WISDOM CASHIER DELIVERY TOGGLE + PRIMARY ACTIONS V6.1
+   ========================================================= */
+
+/* Restore the familiar rounded switch. This and quantity controls are
+   intentional exceptions to the square/no-radius cashier system. */
+.pos-process-order .pos-delivery-section > div > label {
+  width: fit-content;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  gap: 10px !important;
+}
+
+.pos-process-order .pos-delivery-toggle {
+  width: 44px !important;
+  height: 24px !important;
+  flex: 0 0 44px !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  background: #d4d4d8 !important;
+  box-shadow: none !important;
+}
+
+.pos-process-order .pos-delivery-toggle.is-on {
+  background: #111111 !important;
+}
+
+.pos-process-order .pos-delivery-toggle-knob {
+  width: 18px !important;
+  height: 18px !important;
+  top: 3px !important;
+  left: 3px !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+}
+
+.pos-process-order .pos-delivery-toggle.is-on .pos-delivery-toggle-knob {
+  left: 23px !important;
+}
+
+/* Confirm is the primary action: black with white text. */
+.pos-process-order .pos-order-actions button:last-child {
+  background: #111111 !important;
+  color: #ffffff !important;
+  border: 1px solid #111111 !important;
+}
+
+.pos-process-order .pos-order-actions button:last-child:hover:not(:disabled) {
+  background: #2c2c2f !important;
+  color: #ffffff !important;
+}
+
+/* Back stays secondary. */
+.pos-process-order .pos-order-actions button:first-child {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border: 1px solid #111111 !important;
+}
+
+/* Success: View Receipt primary, New Order secondary. */
+.pos-order-success-card button:first-child {
+  background: #111111 !important;
+  color: #ffffff !important;
+  border: 1px solid #111111 !important;
+}
+
+.pos-order-success-card button:first-child:hover:not(:disabled) {
+  background: #2c2c2f !important;
+  color: #ffffff !important;
+}
+
+.pos-order-success-card button:last-child {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border: 1px solid #111111 !important;
+}
+/* =========================================================
+   WISDOM CASHIER ORDER SUMMARY THUMBNAILS V6.3
+   Match the compact Product Search cart item presentation.
+   ========================================================= */
+
+.pos-process-order .pos-order-summary-item {
+  display: grid !important;
+  grid-template-columns: 48px minmax(0, 1fr) auto !important;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 0 !important;
+}
+
+.pos-process-order .pos-order-summary-thumb {
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  border: 1px solid #e1e1e4;
+  border-radius: 0;
+  background: #f5f5f6;
+}
+
+.pos-process-order .pos-order-summary-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pos-process-order .pos-order-summary-thumb-fallback {
+  width: 100%;
+  height: 100%;
+  background: #f0f0f1;
+}
+
+.pos-process-order .pos-order-summary-copy {
+  min-width: 0;
+}
+
+.pos-process-order .pos-order-summary-copy > div:first-child {
+  overflow: hidden;
+  font-weight: 600 !important;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pos-process-order .pos-order-summary-copy > div:last-child {
+  margin-top: 4px !important;
+  color: #71717a !important;
+  font-size: 11px;
+  font-weight: 400 !important;
+}
+
+@media (max-width: 680px) {
+  .pos-process-order .pos-order-summary-item {
+    grid-template-columns: 44px minmax(0, 1fr) auto !important;
+    gap: 8px;
+  }
+
+  .pos-process-order .pos-order-summary-thumb {
+    width: 44px;
+    height: 44px;
+  }
+}

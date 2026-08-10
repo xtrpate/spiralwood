@@ -7,6 +7,10 @@ export default function TicketList({
   selectedTicket,
   onSelect,
   onClearFilters,
+  title = "Support Tickets",
+  emptyTitle = "No Support Tickets",
+  emptyText = "There are currently no support tickets matching your filters.",
+  clearLabel = "Clear Filters",
 }) {
   if (loading) {
     return (
@@ -28,12 +32,12 @@ export default function TicketList({
         <div className="support-empty-state">
           <div className="support-empty-icon">🛟</div>
 
-          <h3>No Support Tickets</h3>
+          <h3>{emptyTitle}</h3>
 
-          <p>There are currently no support tickets matching your filters.</p>
+          <p>{emptyText}</p>
 
           <button className="support-clear-filter-btn" onClick={onClearFilters}>
-            Clear Filters
+            {clearLabel}
           </button>
         </div>
       </div>
@@ -42,7 +46,7 @@ export default function TicketList({
 
   return (
     <div className="support-ticket-list">
-      <h3>Support Tickets</h3>
+      <h3>{title}</h3>
 
       {tickets.map((ticket) => (
         <TicketItem

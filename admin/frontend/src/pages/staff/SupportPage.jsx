@@ -3,11 +3,10 @@ import { useSearchParams } from "react-router-dom";
 
 import posSupportService from "../../services/posSupportService";
 
-const SummaryCard = ({ title, value, subtitle }) => (
-  <div className="support-summary-card">
-    <span>{subtitle}</span>
-    <h2>{value}</h2>
-    <p>{title}</p>
+const SummaryCard = ({ label, value }) => (
+  <div className="support-summary-card staff-support-summary-card">
+    <span>{label}</span>
+    <strong>{value}</strong>
   </div>
 );
 
@@ -97,9 +96,7 @@ export default function SupportPage() {
   };
 
   const filteredTickets = tickets.filter((ticket) => {
-    const matchesStatus = filters.status
-      ? ticket.status === filters.status
-      : ticket.status !== "closed";
+    const matchesStatus = !filters.status || ticket.status === filters.status;
 
     const matchesCategory =
       !filters.category || ticket.category === filters.category;
@@ -138,78 +135,64 @@ export default function SupportPage() {
     }
   };
   return (
-    <div className="support-page">
-      <div className="support-header">
+    <div className="support-page staff-support-page">
+      <header className="support-header staff-support-header">
         <div>
-          <span className="support-label">CUSTOMER SERVICE</span>
-
-          <h1>My Assigned Tickets</h1>
-
-          <p>View and respond to support tickets assigned to you.</p>
+          <h1>Support Tickets</h1>
+          <p>View and reply to customer tickets assigned to you.</p>
         </div>
-      </div>
+      </header>
 
-      <div className="support-summary-grid">
-        <SummaryCard
-          title="Action Required"
-          value={stats.active}
-          subtitle="Your Active Queue"
-        />
-        <SummaryCard
-          title="Awaiting Reply"
-          value={stats.awaiting}
-          subtitle="Waiting on Customer"
-        />
-        <SummaryCard
-          title="Resolved"
-          value={stats.resolved}
-          subtitle="Completed Tasks"
-        />
-        <SummaryCard
-          title="Total Assigned"
-          value={stats.total}
-          subtitle="All-Time Tickets"
-        />
-      </div>
+      <section className="support-summary-grid staff-support-summary-grid">
+        <SummaryCard label="Active Tickets" value={stats.active} />
+        <SummaryCard label="Waiting for Customer" value={stats.awaiting} />
+        <SummaryCard label="Completed" value={stats.resolved} />
+        <SummaryCard label="Total Assigned" value={stats.total} />
+      </section>
 
-      <FilterBar
-        filters={filters}
-        onChange={handleFilterChange}
-        total={tickets.length}
-        filtered={tickets.length}
-      />
+      <div className="staff-support-workspace">
+        <section className="staff-support-queue" aria-label="Ticket queue">
+          <FilterBar
+            filters={filters}
+            onChange={handleFilterChange}
+            total={tickets.length}
+            filtered={filteredTickets.length}
+            variant="staff"
+          />
 
-      <div className="support-content">
-        <TicketList
-          tickets={filteredTickets}
-          loading={loading}
-          selectedTicket={selectedTicket}
-          onSelect={openTicket}
-          onClearFilters={clearFilters}
-        />
+          <TicketList
+            tickets={filteredTickets}
+            loading={loading}
+            selectedTicket={selectedTicket}
+            onSelect={openTicket}
+            onClearFilters={clearFilters}
+            title="Tickets"
+            emptyTitle="No tickets found"
+            emptyText="No tickets match your current filters."
+            clearLabel="Clear filters"
+          />
+        </section>
 
-        <div className="support-right-panel">
-          <div className="support-right-panel">
-            {activeTab === "details" && (
-              <TicketDetails
-                ticket={selectedTicket}
-                onUpdated={() => openTicket(selectedTicket.id, true)}
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-              />
-            )}
+        <section className="staff-support-detail" aria-label="Ticket details">
+          {activeTab === "details" && (
+            <TicketDetails
+              ticket={selectedTicket}
+              onUpdated={() => openTicket(selectedTicket.id, true)}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+            />
+          )}
 
-            {activeTab === "conversation" && (
-              <TicketConversation
-                ticket={selectedTicket}
-                messages={messages}
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-                onReplySent={() => openTicket(selectedTicket.id, true)}
-              />
-            )}
-          </div>
-        </div>
+          {activeTab === "conversation" && (
+            <TicketConversation
+              ticket={selectedTicket}
+              messages={messages}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              onReplySent={() => openTicket(selectedTicket.id, true)}
+            />
+          )}
+        </section>
       </div>
     </div>
   );

@@ -16,9 +16,9 @@ export default function TicketDetails({
   if (!ticket) {
     return (
       <div className="support-ticket-details">
-        <h2>Select a Ticket</h2>
+        <h2>Select a ticket</h2>
 
-        <p>Choose a support ticket to view its details.</p>
+        <p>Choose a ticket to view details and messages.</p>
       </div>
     );
   }
@@ -28,8 +28,7 @@ export default function TicketDetails({
       <h2>{ticket.subject}</h2>
 
       <p className="ticket-subtitle">
-        Manage your assigned support ticket, update its status, and communicate
-        with the customer.
+        Update this ticket or reply to the customer.
       </p>
 
       <div className="support-tabs">
@@ -52,7 +51,7 @@ export default function TicketDetails({
 
       {activeTab === "details" && (
         <>
-          <h4 className="ticket-section-title">Ticket Information</h4>
+          <h4 className="ticket-section-title">Ticket Details</h4>
 
           <div className="ticket-meta-grid">
             <div className="ticket-meta-item">
@@ -94,7 +93,7 @@ export default function TicketDetails({
             <div className="ticket-meta-item">
               <span>
                 <UserCheck size={15} />
-                Assigned To
+                Assigned to
               </span>
 
               <strong>{ticket.assigned_name || "Unassigned"}</strong>
@@ -107,7 +106,7 @@ export default function TicketDetails({
             </div>
           </div>
 
-          <h4 className="ticket-section-title">Ticket Management</h4>
+          <h4 className="ticket-section-title">Update Ticket</h4>
 
           <TicketManagement ticket={ticket} onUpdated={onUpdated} />
         </>

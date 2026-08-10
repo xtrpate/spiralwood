@@ -103,6 +103,8 @@ const normalizeServerCheckout = (value) => {
           Number.isFinite(lineSubtotal) && lineSubtotal >= 0
             ? lineSubtotal
             : unitPrice * quantity,
+        image_url:
+          typeof item?.image_url === "string" ? item.image_url.trim() : "",
       };
     })
     .filter(Boolean);
@@ -285,6 +287,19 @@ export default function ProcessOrder() {
   const serverCheckout = normalizeServerCheckout(qrAttempt?.server_checkout);
   const hasServerCheckout = Boolean(serverCheckout);
   const displayCart = qrAttempt && serverCheckout ? serverCheckout.items : cart;
+
+  const getOrderSummaryImage = (item) => {
+    const directImage = String(item?.image_url || "").trim();
+    if (directImage) return directImage;
+
+    const localCartItem = cart.find(
+      (cartItem) =>
+        String(cartItem?.product_id) === String(item?.product_id),
+    );
+
+    return String(localCartItem?.image_url || "").trim();
+  };
+
   const displaySubtotal =
     qrAttempt && serverCheckout ? serverCheckout.subtotal : subtotal;
   const displayDiscountAmount =
@@ -861,6 +876,7 @@ export default function ProcessOrder() {
   if (success) {
     return (
       <div
+        className="pos-order-success-page"
         style={{
           display: "flex",
           alignItems: "center",
@@ -870,6 +886,7 @@ export default function ProcessOrder() {
         }}
       >
         <div
+          className="pos-order-success-card"
           style={{
             ...cardStyle,
             maxWidth: 520,
@@ -884,7 +901,7 @@ export default function ProcessOrder() {
               color: "#0a0a0a",
               marginBottom: 8,
               fontSize: 24,
-              fontWeight: 800,
+              fontWeight: 700,
               letterSpacing: "-0.01em",
             }}
           >
@@ -892,11 +909,11 @@ export default function ProcessOrder() {
           </h2>
 
           <p style={{ color: "#52525b", marginBottom: 6, fontSize: 14 }}>
-            Order #:{" "}
+            Order Number:{" "}
             <strong style={{ color: "#18181b" }}>{success.order_number}</strong>
           </p>
           <p style={{ color: "#52525b", marginBottom: 6, fontSize: 14 }}>
-            Receipt #:{" "}
+            Receipt Number:{" "}
             <strong style={{ color: "#18181b" }}>
               {success.receipt_number}
             </strong>
@@ -922,6 +939,7 @@ export default function ProcessOrder() {
           )}
 
           <div
+            className="pos-order-success-total"
             style={{
               margin: "24px 0",
               padding: "20px",
@@ -933,7 +951,7 @@ export default function ProcessOrder() {
             <p
               style={{
                 fontSize: 28,
-                fontWeight: 800,
+                fontWeight: 700,
                 color: "#0a0a0a",
                 margin: "0 0 12px",
                 letterSpacing: "-0.02em",
@@ -964,7 +982,7 @@ export default function ProcessOrder() {
                     style={{
                       color: "#059669",
                       margin: 0,
-                      fontWeight: 800,
+                      fontWeight: 700,
                       fontSize: 16,
                     }}
                   >
@@ -1029,9 +1047,12 @@ export default function ProcessOrder() {
 
   if (cart.length === 0 && !qrAttempt) {
     return (
-      <div style={{ fontFamily: "'Inter', sans-serif" }}>
+      <div
+        className="pos-process-order"
+        style={{ fontFamily: "'Inter', sans-serif" }}
+      >
         <div style={pageHeader}>
-          <h1 style={pageTitle}>Process Order & Payment</h1>
+          <h1 style={pageTitle}>Process Order</h1>
         </div>
         <div style={{ ...cardStyle, textAlign: "center", padding: 60 }}>
           <p
@@ -1056,20 +1077,23 @@ export default function ProcessOrder() {
   }
 
   return (
-    <div style={{ fontFamily: "'Inter', sans-serif", paddingBottom: 40 }}>
+    <div
+      className="pos-process-order"
+      style={{ fontFamily: "'Inter', sans-serif", paddingBottom: 40 }}
+    >
       <div style={pageHeader}>
-        <h1 style={pageTitle}>Process Order & Payment</h1>
+        <h1 style={pageTitle}>Process Order</h1>
         <p style={pageSubtitle}>
-          Review cart and complete payment for walk-in customer
+          Enter customer details and complete the sale.
         </p>
       </div>
 
       <div className="pos-order-grid">
-        <div style={{ ...cardStyle, padding: 32 }}>
+        <div className="pos-order-form-card" style={{ ...cardStyle, padding: 32 }}>
           <h3
             style={{
               margin: "0 0 24px",
-              fontWeight: 800,
+              fontWeight: 700,
               fontSize: 18,
               color: "#0a0a0a",
               letterSpacing: "-0.01em",
@@ -1081,16 +1105,16 @@ export default function ProcessOrder() {
                 : qrNeedsManualReview
                   ? "Online Payment Needs Review"
                   : "Online Payment Pending"
-              : "Customer, Payment & Delivery"}
+              : "Sale Details"}
           </h3>
 
-          <form onSubmit={handleSubmit}>
+          <form className="pos-order-form" onSubmit={handleSubmit}>
             {!qrAttempt && (
             <fieldset
               disabled={Boolean(qrAttempt)}
               className="pos-order-fieldset"
             >
-            <div style={formField}>
+            <div className="pos-form-field pos-field-customer" style={formField}>
               <label style={labelStyle}>Customer Name *</label>
               <input
                 type="text"
@@ -1104,7 +1128,7 @@ export default function ProcessOrder() {
               />
             </div>
 
-            <div style={formField}>
+            <div className="pos-form-field pos-field-phone" style={formField}>
               <label style={labelStyle}>
                 Phone Number{phoneIsRequired ? " *" : ""}
               </label>
@@ -1143,7 +1167,7 @@ export default function ProcessOrder() {
               )}
             </div>
 
-            <div style={formField}>
+            <div className="pos-form-field pos-field-payment" style={formField}>
               <label style={labelStyle}>Payment Method *</label>
               <select
                 value={effectivePaymentMethod}
@@ -1175,12 +1199,12 @@ export default function ProcessOrder() {
                 }}
               >
                 {POS_QR_ENABLED
-                  ? "Choose Cash or Online Payment through PayMongo."
-                  : "Only cash is currently available at the cashier. Online Payment is coming soon."}
+                  ? "Choose cash or online payment."
+                  : "Cash only."}
               </div>
             </div>
 
-            <div style={formField}>
+            <div className="pos-form-field pos-field-discount" style={formField}>
               <label style={labelStyle}>Discount</label>
               <div style={{ display: "flex", gap: "8px" }}>
                 <select
@@ -1225,7 +1249,7 @@ export default function ProcessOrder() {
             </div>
 
             {effectivePaymentMethod === "cash" && (
-              <div style={formField}>
+              <div className="pos-form-field pos-field-cash" style={formField}>
                 <label style={labelStyle}>Cash Received (₱) *</label>
                 <input
                   type="number"
@@ -1243,6 +1267,7 @@ export default function ProcessOrder() {
             )}
 
             <div
+              className="pos-delivery-section"
               style={{
                 marginTop: 24,
                 marginBottom: 24,
@@ -1255,12 +1280,12 @@ export default function ProcessOrder() {
               <h4
                 style={{
                   margin: "0 0 16px",
-                  fontWeight: 800,
+                  fontWeight: 700,
                   fontSize: 15,
                   color: "#0a0a0a",
                 }}
               >
-                Fulfillment Options
+                Delivery
               </h4>
               <div
                 style={{ display: "flex", flexDirection: "column", gap: 16 }}
@@ -1271,12 +1296,15 @@ export default function ProcessOrder() {
                     alignItems: "center",
                     gap: 10,
                     fontSize: 13,
-                    fontWeight: 700,
+                    fontWeight: 600,
                     color: "#18181b",
                     cursor: "pointer",
                   }}
                 >
                   <div
+                    className={`pos-delivery-toggle ${
+                      form.need_delivery ? "is-on" : "is-off"
+                    }`}
                     onClick={() =>
                       setForm({ ...form, need_delivery: !form.need_delivery })
                     }
@@ -1292,6 +1320,7 @@ export default function ProcessOrder() {
                     }}
                   >
                     <div
+                      className="pos-delivery-toggle-knob"
                       style={{
                         width: 18,
                         height: 18,
@@ -1305,7 +1334,7 @@ export default function ProcessOrder() {
                       }}
                     />
                   </div>
-                  Need Delivery
+                  Add delivery
                 </label>
 
                 {form.need_delivery && (
@@ -1319,13 +1348,13 @@ export default function ProcessOrder() {
                   >
                     <div style={{ gridColumn: "1 / -1" }}>
                       <LocationPicker
-                        label="Delivery Address & Exact Location *"
+                        label="Delivery Address *"
                         addressValue={form.delivery_address}
                         onAddressChange={handleDeliveryAddressChange}
                         value={deliveryPin}
                         onChange={handleDeliveryPinChange}
-                        height={260}
-                        showCurrentLocation={false}
+                        height={220}
+                        showCurrentLocation={true}
                       />
                     </div>
 
@@ -1345,7 +1374,7 @@ export default function ProcessOrder() {
                     </div>
 
                     <div>
-                      <label style={labelStyle}>Preferred Date & Time *</label>
+                      <label style={labelStyle}>Delivery Date and Time *</label>
                       <input
                         type="datetime-local"
                         value={form.delivery_requested_date}
@@ -1377,13 +1406,11 @@ export default function ProcessOrder() {
               </div>
             </div>
 
-            <div style={formField}>
-              <label style={labelStyle}>
-                Additional Notes / Special Instructions
-              </label>
+            <div className="pos-form-field pos-field-notes" style={formField}>
+              <label style={labelStyle}>Order Notes</label>
               <textarea
                 rows={3}
-                placeholder="Add any final instructions for the admin or build team here..."
+                placeholder="Add optional notes for this order"
                 value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })}
                 style={{
@@ -1526,6 +1553,7 @@ export default function ProcessOrder() {
 
             {!qrAttempt && (
               <div
+                className="pos-order-actions"
                 style={{
                   display: "flex",
                   gap: 12,
@@ -1577,7 +1605,7 @@ export default function ProcessOrder() {
                   >
                     {loading
                       ? "Processing..."
-                      : "✓ Confirm Order & Process Payment"}
+                      : "Confirm Order and Payment"}
                   </button>
                 )}
               </div>
@@ -1586,8 +1614,12 @@ export default function ProcessOrder() {
         </div>
 
         {/* Right Sidebar - Summary */}
-        <div style={{ ...cardStyle, padding: 0, height: "fit-content" }}>
+        <div
+          className="pos-order-summary-card"
+          style={{ ...cardStyle, padding: 0, height: "fit-content" }}
+        >
           <div
+            className="pos-order-summary-header"
             style={{
               padding: "20px 24px",
               borderBottom: "1px solid #f4f4f5",
@@ -1597,21 +1629,25 @@ export default function ProcessOrder() {
             <h3
               style={{
                 margin: 0,
-                fontWeight: 800,
-                fontSize: 16,
+                fontWeight: 700,
+                fontSize: 15,
                 color: "#0a0a0a",
-                letterSpacing: "1px",
-                textTransform: "uppercase",
+                letterSpacing: "0",
+                textTransform: "none",
               }}
             >
               Order Summary
             </h3>
           </div>
 
-          <div style={{ maxHeight: 320, overflowY: "auto", padding: "0 24px" }}>
+          <div
+            className="pos-order-summary-items"
+            style={{ maxHeight: 320, overflowY: "auto", padding: "0 24px" }}
+          >
             {displayCart.map((item) => (
               <div
                 key={item.key || `reserved-${item.product_id}`}
+                className="pos-order-summary-item"
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
@@ -1620,35 +1656,41 @@ export default function ProcessOrder() {
                   fontSize: 13,
                 }}
               >
-                <div>
+                <div className="pos-order-summary-thumb">
+                  {getOrderSummaryImage(item) ? (
+                    <img
+                      src={getOrderSummaryImage(item)}
+                      alt={item.product_name}
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <div
+                      className="pos-order-summary-thumb-fallback"
+                      aria-hidden="true"
+                    />
+                  )}
+                </div>
+
+                <div className="pos-order-summary-copy">
                   <div
                     style={{
-                      fontWeight: 700,
+                      fontWeight: 600,
                       color: "#0a0a0a",
                       marginBottom: 2,
                     }}
                   >
                     {item.product_name}
                   </div>
-                  {(item.wood_type || item.dimensions) && (
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "#71717a",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {item.wood_type}{" "}
-                      {item.dimensions ? `(${item.dimensions})` : ""}
-                    </div>
-                  )}
+
                   <div
-                    style={{ color: "#71717a", marginTop: 4, fontWeight: 600 }}
+                    style={{ color: "#71717a", marginTop: 4, fontWeight: 500 }}
                   >
-                    x{item.quantity} @ ₱{Number(item.unit_price).toLocaleString()}
+                    Quantity {item.quantity} at ₱{Number(item.unit_price).toLocaleString()} each
                   </div>
                 </div>
-                <div style={{ fontWeight: 800, color: "#0a0a0a" }}>
+                <div style={{ fontWeight: 650, color: "#0a0a0a" }}>
                   ₱
                   {(Number.isFinite(Number(item.subtotal))
                     ? Number(item.subtotal)
@@ -1662,6 +1704,7 @@ export default function ProcessOrder() {
           </div>
 
           <div
+            className="pos-order-summary-totals"
             style={{
               padding: 24,
               background: "#fafafa",
@@ -1713,7 +1756,7 @@ export default function ProcessOrder() {
                 display: "flex",
                 justifyContent: "space-between",
                 fontSize: 20,
-                fontWeight: 800,
+                fontWeight: 700,
                 color: "#0a0a0a",
                 marginTop: 16,
                 paddingTop: 16,
@@ -1721,7 +1764,7 @@ export default function ProcessOrder() {
                 letterSpacing: "-0.01em",
               }}
             >
-              <span>TOTAL</span>
+              <span>Total</span>
               <span>
                 ₱
                 {displayTotal.toLocaleString("en-PH", {
@@ -1740,7 +1783,7 @@ export default function ProcessOrder() {
                   }}
                 >
                   <span>Cash Received</span>
-                  <span style={{ fontWeight: 700, color: "#18181b" }}>
+                  <span style={{ fontWeight: 600, color: "#18181b" }}>
                     ₱
                     {cashReceived.toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
@@ -1754,7 +1797,7 @@ export default function ProcessOrder() {
                     fontSize: 13,
                     marginTop: 8,
                     color: cashReceived >= total ? "#059669" : "#dc2626",
-                    fontWeight: 700,
+                    fontWeight: 600,
                   }}
                 >
                   <span>
@@ -1778,7 +1821,7 @@ export default function ProcessOrder() {
                   }}
                 >
                   <span>Payment Method</span>
-                  <span style={{ fontWeight: 700, color: "#18181b" }}>
+                  <span style={{ fontWeight: 600, color: "#18181b" }}>
                     Online Payment
                   </span>
                 </div>
@@ -1820,7 +1863,7 @@ const pageHeader = {
 
 const pageTitle = {
   fontSize: 24,
-  fontWeight: 800,
+  fontWeight: 700,
   color: "#0a0a0a",
   margin: 0,
   letterSpacing: "-0.02em",
@@ -1848,7 +1891,7 @@ const labelStyle = {
   display: "block",
   marginBottom: 8,
   fontSize: 11,
-  fontWeight: 800,
+  fontWeight: 600,
   color: "#71717a",
   textTransform: "uppercase",
   letterSpacing: "1px",
@@ -1887,7 +1930,7 @@ const btnPrimary = {
   borderRadius: 8,
   cursor: "pointer",
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
@@ -1903,6 +1946,6 @@ const btnSecondary = {
   borderRadius: 8,
   cursor: "pointer",
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
