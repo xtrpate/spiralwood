@@ -86,7 +86,7 @@ export default function POSLayout() {
           icon: LayoutDashboard,
           label: "Dashboard",
         },
-        { to: "/staff/deliveries", icon: Truck, label: "Active Deliveries" },
+        { to: "/staff/deliveries", icon: Truck, label: "Deliveries" },
         { to: "/staff/rider-history", icon: ClipboardList, label: "History" },
       ];
     }

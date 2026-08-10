@@ -76,3 +76,16 @@
   font-weight: 600 !important;
   box-shadow: none !important;
 }
+
+/* Rider reuses the cashier monochrome notification presentation. */
+.cashier-notification-count {
+  border-radius: 0 !important;
+  background: #111111 !important;
+  color: #ffffff !important;
+  border-color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.cashier-notification-trigger svg {
+  color: currentColor !important;
+}

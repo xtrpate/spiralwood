@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { Navigation, UploadCloud, FileText } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
 import useAuthStore from "../../store/authStore";
 import "./RiderScreen.css";
@@ -52,6 +53,30 @@ const formatDateTime = (value) => {
   });
 };
 
+const toDeliveryDateKey = (value) => {
+  const raw = String(value || "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : "";
+};
+
+const getLocalTodayKey = () => {
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
+};
+
+const isRiderActiveDelivery = (delivery) =>
+  ["scheduled", "in_transit"].includes(normalize(delivery?.status));
+
+const isRiderOverdueDelivery = (delivery, todayKey = getLocalTodayKey()) => {
+  if (!isRiderActiveDelivery(delivery)) return false;
+  const scheduledKey = toDeliveryDateKey(delivery?.scheduled_date);
+  return Boolean(scheduledKey && scheduledKey < todayKey);
+};
+
 const formatStatus = (value) => {
   if (!value) return "—";
   return String(value)
@@ -59,6 +84,7 @@ const formatStatus = (value) => {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
+// WISDOM RIDER COMPLETED STATUS STYLE V1
 const getStatusMeta = (status) => {
   const normalized = normalize(status);
   switch (normalized) {
@@ -67,6 +93,8 @@ const getStatusMeta = (status) => {
     case "in_transit":
       return { bg: "#f4f4f5", border: "#e4e4e7", text: "#18181b" };
     case "delivered":
+      return { bg: "#f4f4f5", border: "#bfc1c5", text: "#18181b" };
+    case "completed":
       return { bg: "#0a0a0a", border: "#0a0a0a", text: "#ffffff" };
     case "failed":
       return { bg: "#fef2f2", border: "#fecaca", text: "#991b1b" };
@@ -94,6 +122,7 @@ export default function DeliveryManagement() {
   const [failureReasonInput, setFailureReasonInput] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const [focusedDeliveryId, setFocusedDeliveryId] = useState(null);
+  const [expandedDeliveryId, setExpandedDeliveryId] = useState(null);
 
   const loadDeliveries = useCallback(async () => {
     setLoading(true);
@@ -143,6 +172,7 @@ export default function DeliveryManagement() {
     setStatusFilter("all");
     setSearch("");
     setFocusedDeliveryId(numericId);
+    setExpandedDeliveryId(numericId);
 
     const scrollTimer = setTimeout(() => {
       document
@@ -462,6 +492,7 @@ export default function DeliveryManagement() {
     { value: "completed", label: "Completed" },
   ];
 
+
   const filteredDeliveries = useMemo(() => {
     const keyword = search.trim().toLowerCase();
 
@@ -487,23 +518,24 @@ export default function DeliveryManagement() {
       <div className="rider-card" style={{ padding: "16px" }}>
         <div>
           <h2 style={pageTitle}>
-            {isDeliveryRider ? "My Deliveries" : "Delivery Management"}
+            {isDeliveryRider ? "Deliveries" : "Delivery Management"}
           </h2>
           <p style={pageSubtitle}>
             {isDeliveryRider
-              ? "View assigned deliveries, update transit status, and upload proof of delivery."
+              ? "Manage assigned deliveries that still need action."
               : "Monitor assigned deliveries and review delivery proof uploads."}
           </p>
         </div>
       </div>
 
       <div
-        className="rider-card"
+        className="rider-card rider-work-filter-card"
         style={{ padding: "16px", marginBottom: "16px" }}
       >
         <input
           type="text"
-          placeholder="Search by order, customer, address, driver, or status"
+          className="rider-work-search"
+          placeholder="Search order, customer, address, or status"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={searchInput}
@@ -542,6 +574,10 @@ export default function DeliveryManagement() {
             const statusMeta = getStatusMeta(status);
             const selectedFile = receiptFiles[delivery.id] || null;
             const hasReceipt = Boolean(delivery.signed_receipt);
+            const deliveryMapHref = getGoogleMapsHref(
+              delivery.delivery_lat,
+              delivery.delivery_lng,
+            );
 
             // 👉 NEW: Added isCompleted boolean
             const canStartTransit = status === "scheduled";
@@ -629,7 +665,7 @@ export default function DeliveryManagement() {
               <div
                 key={delivery.id}
                 id={`delivery-card-${delivery.id}`}
-                className="rider-card"
+                className="rider-card rider-delivery-card"
                 style={{
                   padding: "16px",
                   border: `2px solid ${
@@ -666,7 +702,7 @@ export default function DeliveryManagement() {
                       color: statusMeta.text,
                       border: `1px solid ${statusMeta.border}`,
                       padding: "4px 10px",
-                      borderRadius: 999,
+                      borderRadius: 0,
                       fontSize: 11,
                       fontWeight: 700,
                       alignSelf: "flex-start",
@@ -682,53 +718,32 @@ export default function DeliveryManagement() {
                   <InfoCard
                     label="Address"
                     value={
-                      <>
-                        {delivery.address || "—"}
-                        {(() => {
-                          const mapsHref = getGoogleMapsHref(
-                            delivery.delivery_lat,
-                            delivery.delivery_lng,
-                          );
-                          return mapsHref ? (
-                            <a
-                              href={mapsHref}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{
-                                display: "block",
-                                marginTop: 4,
-                                fontSize: 11,
-                                fontWeight: 700,
-                                color: "#2563eb",
-                              }}
-                            >
-                              Open in Google Maps ↗
-                            </a>
-                          ) : isBlueprintDelivery ? (
-                            <span
-                              style={{
-                                display: "block",
-                                marginTop: 4,
-                                fontSize: 11,
-                                fontWeight: 700,
-                                color: "#a1a1aa",
-                              }}
-                            >
-                              Location pin unavailable
-                            </span>
-                          ) : null;
-                        })()}
-                      </>
+                      <div className="rider-delivery-address-value">
+                        <span>{delivery.address || "—"}</span>
+                        {!deliveryMapHref && isBlueprintDelivery ? (
+                          <small>Location pin unavailable</small>
+                        ) : null}
+                      </div>
                     }
                   />
                   <InfoCard
                     label="Scheduled"
-                    value={formatDateTime(delivery.scheduled_date)}
+                    value={
+                      <div>
+                        <div>{formatDateTime(delivery.scheduled_date)}</div>
+                        {isDeliveryRider &&
+                        isRiderOverdueDelivery(delivery) ? (
+                          <span style={overdueScheduleText}>Overdue</span>
+                        ) : null}
+                      </div>
+                    }
                   />
+                  {!isDeliveryRider ? (
                   <InfoCard
                     label="Driver"
                     value={delivery.driver_name || "Unassigned"}
                   />
+                  ) : null}
                   <InfoCard
                     label="Proof Status"
                     value={hasReceipt ? "Uploaded" : "Awaiting upload"}
@@ -739,10 +754,39 @@ export default function DeliveryManagement() {
                     value={`₱ ${paymentBalance.toLocaleString("en-PH", {
                       minimumFractionDigits: 2,
                     })}`}
-                    tone={paymentBalance > 0 ? "#dc2626" : "#18181b"}
+                    tone="#18181b"
                   />
                 </div>
 
+                <div className="rider-delivery-card-actions">
+                  {deliveryMapHref ? (
+                    <a
+                      href={deliveryMapHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rider-v2-btn rider-v2-btn-secondary rider-delivery-map-action"
+                    >
+                      <Navigation size={14} strokeWidth={2} />
+                      Open Map
+                    </a>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    className="rider-v2-btn rider-v2-btn-secondary rider-delivery-detail-toggle"
+                    onClick={() =>
+                      setExpandedDeliveryId((current) =>
+                        current === delivery.id ? null : delivery.id,
+                      )
+                    }
+                  >
+                    {expandedDeliveryId === delivery.id
+                      ? "Hide Details"
+                      : "View Details"}
+                  </button>
+                </div>
+                {expandedDeliveryId === delivery.id ? (
+                  <div className="rider-delivery-expanded">
                 {delivery.notes ? (
                   <div style={notesBox}>
                     <div style={notesLabel}>Notes</div>
@@ -773,7 +817,7 @@ export default function DeliveryManagement() {
                       >
                         {savingId === delivery.id
                           ? "Saving..."
-                          : "Start Transit"}
+                          : "Start Delivery"}
                       </button>
                     </div>
                   </div>
@@ -792,7 +836,7 @@ export default function DeliveryManagement() {
                           }}
                         >
                           <div style={sectionTitle}>
-                            Remaining Balance — Blueprint Order
+                            Remaining Balance
                           </div>
                           {blueprintMethodRequired ||
                           blueprintAwaitingOnline ? (
@@ -1048,27 +1092,21 @@ export default function DeliveryManagement() {
                         ) : null}
                       </div>
 
-                      <input
-                        type="file"
-                        accept="image/*,.pdf"
-                        disabled={savingId === delivery.id || !canUploadProof}
-                        onChange={(e) =>
-                          handleReceiptChange(
-                            delivery.id,
-                            e.target.files?.[0] || null,
-                          )
+                      <ProofUploadField
+                        inputId={`delivery-proof-${delivery.id}`}
+                        disabled={
+                          savingId === delivery.id || !canUploadProof
                         }
-                        style={{
-                          ...fileInput,
-                          opacity:
-                            savingId === delivery.id || !canUploadProof
-                              ? 0.6
-                              : 1,
-                          cursor:
-                            savingId === delivery.id || !canUploadProof
-                              ? "not-allowed"
-                              : "pointer",
-                        }}
+                        selectedFile={selectedFile}
+                        onSelect={(file) =>
+                          handleReceiptChange(delivery.id, file)
+                        }
+                        title={
+                          selectedFile
+                            ? "Proof selected"
+                            : "Upload delivery proof"
+                        }
+                        helper="JPG, PNG, or PDF up to 5 MB"
                       />
 
                       {!canUploadProof && (
@@ -1085,14 +1123,7 @@ export default function DeliveryManagement() {
                         </div>
                       )}
 
-                      {selectedFile ? (
-                        <div style={selectedFileText}>
-                          {hasReceipt
-                            ? "Selected replacement file: "
-                            : "Selected file: "}
-                          {selectedFile.name}
-                        </div>
-                      ) : null}
+
                     </div>
 
                     <div className="rider-button-row">
@@ -1154,12 +1185,6 @@ export default function DeliveryManagement() {
                         </span>
                       </div>
 
-                      <div style={summaryItem}>
-                        <span style={summaryLabel}>Proof</span>
-                        <span style={summaryValue}>
-                          {hasReceipt ? "Uploaded" : "Not uploaded"}
-                        </span>
-                      </div>
                     </div>
 
                     <div style={{ marginTop: 12 }}>
@@ -1190,31 +1215,22 @@ export default function DeliveryManagement() {
                               </span>
                             </div>
 
-                            <input
-                              type="file"
-                              accept="image/*,.pdf"
+                            <ProofUploadField
+                              inputId={`delivery-proof-replace-${delivery.id}`}
                               disabled={savingId === delivery.id}
-                              onChange={(e) =>
-                                handleReceiptChange(
-                                  delivery.id,
-                                  e.target.files?.[0] || null,
-                                )
+                              selectedFile={selectedFile}
+                              onSelect={(file) =>
+                                handleReceiptChange(delivery.id, file)
                               }
-                              style={{
-                                ...fileInput,
-                                opacity: savingId === delivery.id ? 0.6 : 1,
-                                cursor:
-                                  savingId === delivery.id
-                                    ? "not-allowed"
-                                    : "pointer",
-                              }}
+                              title={
+                                hasReceipt
+                                  ? "Replace delivery proof"
+                                  : "Upload delivery proof"
+                              }
+                              helper="JPG, PNG, or PDF up to 5 MB"
                             />
 
-                            {selectedFile ? (
-                              <div style={selectedFileText}>
-                                Selected file: {selectedFile.name}
-                              </div>
-                            ) : null}
+
 
                             <div className="rider-button-row">
                               <button
@@ -1295,6 +1311,8 @@ export default function DeliveryManagement() {
                     </div>
                   </div>
                 )}
+                  </div>
+                ) : null}
               </div>
             );
           })}
@@ -1323,7 +1341,7 @@ export default function DeliveryManagement() {
           <div
             style={{
               background: "#ffffff",
-              borderRadius: "12px",
+              borderRadius: 0,
               padding: "24px",
               width: "100%",
               maxWidth: "420px",
@@ -1370,7 +1388,7 @@ export default function DeliveryManagement() {
               style={{
                 width: "100%",
                 padding: "10px 12px",
-                borderRadius: "8px",
+                borderRadius: 0,
                 border: "1px solid #e4e4e7",
                 fontSize: "13px",
                 fontFamily: "inherit",
@@ -1443,14 +1461,67 @@ export default function DeliveryManagement() {
   );
 }
 
+function ProofUploadField({
+  inputId,
+  disabled,
+  selectedFile,
+  onSelect,
+  title,
+  helper,
+}) {
+  return (
+    <label
+      htmlFor={inputId}
+      className={`rider-proof-upload${disabled ? " is-disabled" : ""}`}
+    >
+      <input
+        id={inputId}
+        className="rider-proof-upload-input"
+        type="file"
+        accept="image/*,.pdf"
+        disabled={disabled}
+        onChange={(event) =>
+          onSelect(event.target.files?.[0] || null)
+        }
+      />
+
+      <div className="rider-proof-upload-icon">
+        <UploadCloud size={20} strokeWidth={1.8} />
+      </div>
+
+      <div className="rider-proof-upload-copy">
+        <strong>{title}</strong>
+        <span>{helper}</span>
+        {selectedFile ? (
+          <span className="rider-proof-selected">
+            <FileText size={13} strokeWidth={1.8} />
+            {selectedFile.name}
+          </span>
+        ) : null}
+      </div>
+
+      <span className="rider-proof-upload-action">
+        {selectedFile ? "Change File" : "Select File"}
+      </span>
+    </label>
+  );
+}
+
 function InfoCard({ label, value, tone }) {
   return (
     <div
-      className="rider-card"
+      className="rider-card rider-delivery-info-card"
       style={{ padding: "12px", background: "#fafafa" }}
     >
-      <div style={infoLabel}>{label}</div>
-      <div style={{ ...infoValue, color: tone || "#18181b" }}>{value}</div>
+      <div className="rider-delivery-info-label" style={infoLabel}>
+        {label}
+      </div>
+      <div
+        className="rider-delivery-info-value"
+        style={{ ...infoValue, color: tone || "#18181b" }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
@@ -1466,7 +1537,7 @@ const pageShell = {
 const heroCard = {
   background: "#ffffff",
   border: "1px solid #e4e4e7",
-  borderRadius: "16px",
+  borderRadius: 0,
   padding: "18px 20px",
   boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
@@ -1489,7 +1560,7 @@ const pageSubtitle = {
 const searchCard = {
   background: "#ffffff",
   border: "1px solid #e4e4e7",
-  borderRadius: "14px",
+  borderRadius: 0,
   padding: "14px",
   boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
@@ -1497,7 +1568,7 @@ const searchCard = {
 const searchInput = {
   width: "100%",
   padding: "12px 14px",
-  borderRadius: "8px",
+  borderRadius: 0,
   border: "1px solid #e4e4e7",
   outline: "none",
   fontSize: "13px",
@@ -1514,7 +1585,7 @@ const statusFilterRow = {
 
 const statusFilterButton = {
   padding: "6px 14px",
-  borderRadius: "999px",
+  borderRadius: 0,
   border: "1px solid #e4e4e7",
   background: "#fafafa",
   color: "#71717a",
@@ -1532,7 +1603,7 @@ const statusFilterButtonActive = {
 
 const alertError = {
   padding: "12px 14px",
-  borderRadius: "12px",
+  borderRadius: 0,
   background: "#fef2f2",
   border: "1px solid #fecaca",
   color: "#991b1b",
@@ -1542,7 +1613,7 @@ const alertError = {
 
 const alertSuccess = {
   padding: "12px 14px",
-  borderRadius: "12px",
+  borderRadius: 0,
   background: "#fafafa",
   border: "1px solid #e4e4e7",
   color: "#18181b",
@@ -1553,7 +1624,7 @@ const alertSuccess = {
 const emptyCard = {
   background: "#ffffff",
   border: "1px solid #e4e4e7",
-  borderRadius: "16px",
+  borderRadius: 0,
   padding: "40px",
   color: "#71717a",
   fontSize: "13px",
@@ -1569,7 +1640,7 @@ const cardList = {
 const deliveryCard = {
   background: "#ffffff",
   border: "1px solid #e4e4e7",
-  borderRadius: "16px",
+  borderRadius: 0,
   padding: "24px",
   boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
@@ -1599,7 +1670,7 @@ const deliveryCustomer = {
 
 const infoCard = {
   border: "1px solid #e4e4e7",
-  borderRadius: "12px",
+  borderRadius: 0,
   padding: "14px",
   background: "#fafafa",
 };
@@ -1625,7 +1696,7 @@ const notesBox = {
   marginTop: "16px",
   padding: "16px",
   border: "1px solid #e4e4e7",
-  borderRadius: "12px",
+  borderRadius: 0,
   background: "#fafafa",
 };
 
@@ -1668,7 +1739,7 @@ const proofPanel = {
   marginTop: "16px",
   padding: "16px",
   border: "1px dashed #d4d4d8",
-  borderRadius: "12px",
+  borderRadius: 0,
   background: "#fafafa",
 };
 
@@ -1710,7 +1781,7 @@ const summaryRow = {
 
 const summaryItem = {
   border: "1px solid #e4e4e7",
-  borderRadius: "12px",
+  borderRadius: 0,
   padding: "16px",
   background: "#fafafa",
 };
@@ -1732,11 +1803,21 @@ const summaryValue = {
   color: "#18181b",
 };
 
+const overdueScheduleText = {
+  display: "inline-block",
+  marginTop: "4px",
+  color: "#18181b",
+  fontSize: "10px",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
 const viewLink = {
   display: "inline-flex",
   alignItems: "center",
   padding: "8px 14px",
-  borderRadius: "8px",
+  borderRadius: 0,
   background: "#f4f4f5",
   color: "#18181b",
   border: "1px solid #e4e4e7",

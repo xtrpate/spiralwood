@@ -1,55 +1,44 @@
-import { useState, useEffect, useMemo } from "react";
-import api from "../../services/api";
-import { Calendar, MapPin } from "lucide-react";
+// WISDOM RIDER HISTORY UI V2.2
+import { useEffect, useMemo, useState } from "react";
+import {
+  Clock3,
+  FileText,
+  MapPin,
+  Navigation,
+  X,
+} from "lucide-react";
+import api, { buildAssetUrl } from "../../services/api";
 import "./RiderScreen.css";
 
-const parseMapCoordinate = (value) => {
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parsed = Number(trimmed);
+const normalize = (value) => String(value || "").trim().toLowerCase();
+
+const parseCoordinate = (value) => {
+  const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const getBlueprintMapsHref = (lat, lng) => {
-  const latitude = parseMapCoordinate(lat);
-  const longitude = parseMapCoordinate(lng);
+const getPinnedMapHref = (record = {}) => {
+  const lat = parseCoordinate(record.delivery_lat);
+  const lng = parseCoordinate(record.delivery_lng);
+
   if (
-    latitude === null ||
-    longitude === null ||
-    latitude < -90 ||
-    latitude > 90 ||
-    longitude < -180 ||
-    longitude > 180
-  )
+    lat === null ||
+    lng === null ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180
+  ) {
     return null;
-  return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+  }
+
+  return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 };
-
-const getStandardMapsHref = (lat, lng, address) => {
-  const coordinateHref = getBlueprintMapsHref(lat, lng);
-  if (coordinateHref) return coordinateHref;
-  const trimmedAddress = String(address || "").trim();
-  return trimmedAddress
-    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(trimmedAddress)}`
-    : null;
-};
-
-const isBlueprintOrderType = (orderType) =>
-  String(orderType || "")
-    .trim()
-    .toLowerCase() === "blueprint";
-
-const getGoogleMapsHref = (lat, lng, address, orderType) =>
-  isBlueprintOrderType(orderType)
-    ? getBlueprintMapsHref(lat, lng)
-    : getStandardMapsHref(lat, lng, address);
 
 const formatDateTime = (value) => {
-  if (!value) return "—";
+  if (!value) return "Not available";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  if (Number.isNaN(date.getTime())) return "Not available";
 
   return date.toLocaleString("en-PH", {
     year: "numeric",
@@ -60,295 +49,409 @@ const formatDateTime = (value) => {
   });
 };
 
+const getRecordDate = (record) =>
+  normalize(record.status) === "delivered"
+    ? record.delivered_date || record.updated_at
+    : record.updated_at;
+
+const sortableTime = (record) => {
+  const value =
+    record.assigned_at ||
+    record.updated_at ||
+    record.delivered_date ||
+    null;
+
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isFinite(time) ? time : 0;
+};
+
 export default function RiderHistory() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [selectedRecord, setSelectedRecord] = useState(null);
 
   useEffect(() => {
-    api
-      .get("/pos/deliveries/history")
-      .then((res) => setHistory(res.data))
-      .catch((err) => console.error("Failed to load history", err))
+    Promise.all([
+      api.get("/pos/deliveries/history"),
+      api.get("/pos/deliveries"),
+    ])
+      .then(([historyRes, deliveriesRes]) => {
+        const historyList = Array.isArray(historyRes.data)
+          ? historyRes.data
+          : [];
+        const deliveryList = Array.isArray(deliveriesRes.data)
+          ? deliveriesRes.data
+          : [];
+
+        const deliveryById = new Map(
+          deliveryList.map((delivery) => [
+            Number(delivery.id),
+            delivery,
+          ]),
+        );
+
+        const enriched = historyList.map((record) => {
+          const liveRecord =
+            deliveryById.get(Number(record.delivery_id)) || {};
+
+          return {
+            ...record,
+            ...liveRecord,
+            delivery_id: record.delivery_id,
+            order_number:
+              liveRecord.order_number || record.order_number,
+            customer_name:
+              liveRecord.customer_name || record.customer_name,
+            address: liveRecord.address || record.address,
+            status: liveRecord.status || record.status,
+            delivered_date:
+              liveRecord.delivered_date || record.delivered_date,
+            updated_at: liveRecord.updated_at || record.updated_at,
+          };
+        });
+
+        setHistory(enriched);
+      })
+      .catch((err) => {
+        console.error("Failed to load delivery history", err);
+        setHistory([]);
+      })
       .finally(() => setLoading(false));
   }, []);
 
   const filteredHistory = useMemo(() => {
-    return history.filter((h) => {
-      if (!startDate && !endDate) return true;
-      const itemDate = new Date(h.updated_at);
-      itemDate.setHours(0, 0, 0, 0);
-      if (startDate) {
-        const sDate = new Date(startDate);
-        sDate.setHours(0, 0, 0, 0);
-        if (itemDate < sDate) return false;
-      }
-      if (endDate) {
-        const eDate = new Date(endDate);
-        eDate.setHours(0, 0, 0, 0);
-        if (itemDate > eDate) return false;
-      }
-      return true;
-    });
-  }, [history, startDate, endDate]);
+    const keyword = search.trim().toLowerCase();
 
-  if (loading)
-    return (
-      <div
-        style={{
-          padding: "40px",
-          textAlign: "center",
-          color: "#71717a",
-          fontWeight: 600,
-        }}
-      >
-        Loading history...
-      </div>
-    );
+    return history
+      .filter((record) => {
+        const status = normalize(record.status);
+        if (statusFilter !== "all" && status !== statusFilter) {
+          return false;
+        }
+
+        const recordDate = new Date(getRecordDate(record));
+        if (!Number.isNaN(recordDate.getTime())) {
+          recordDate.setHours(0, 0, 0, 0);
+
+          if (startDate) {
+            const start = new Date(`${startDate}T00:00:00`);
+            start.setHours(0, 0, 0, 0);
+            if (recordDate < start) return false;
+          }
+
+          if (endDate) {
+            const end = new Date(`${endDate}T00:00:00`);
+            end.setHours(0, 0, 0, 0);
+            if (recordDate > end) return false;
+          }
+        }
+
+        if (!keyword) return true;
+
+        return [
+          record.order_number,
+          record.customer_name,
+          record.address,
+          record.status,
+        ].some((field) =>
+          String(field || "")
+            .toLowerCase()
+            .includes(keyword),
+        );
+      })
+      .sort((a, b) => {
+        const timeDifference = sortableTime(b) - sortableTime(a);
+        if (timeDifference !== 0) return timeDifference;
+
+        return Number(b.delivery_id || 0) - Number(a.delivery_id || 0);
+      });
+  }, [history, search, statusFilter, startDate, endDate]);
+
+  const filters = [
+    { value: "all", label: "All" },
+    { value: "delivered", label: "Delivered" },
+    { value: "failed", label: "Failed" },
+  ];
+
+  const selectedMapHref = selectedRecord
+    ? getPinnedMapHref(selectedRecord)
+    : null;
 
   return (
-    <div className="rider-page-shell">
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          flexWrap: "wrap",
-          gap: 16,
-        }}
-      >
+    <div className="rider-page-shell rider-history-v2">
+      <header className="rider-v2-page-header">
         <div>
           <h2 className="rider-header-title">Delivery History</h2>
           <p className="rider-header-subtitle">
-            Review past deliveries and customer details.
+            Review completed and failed delivery records.
           </p>
         </div>
+      </header>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            background: "#ffffff",
-            padding: "8px 14px",
-            borderRadius: 12,
-            border: "1px solid #e4e4e7",
-            flexWrap: "wrap",
-          }}
-        >
-          <Calendar size={16} color="#71717a" />
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            style={{
-              border: "1px solid #e4e4e7",
-              borderRadius: 8,
-              padding: "6px 10px",
-              outline: "none",
-              color: "#18181b",
-              fontSize: 13,
-            }}
-          />
-          <span style={{ color: "#71717a", fontSize: 13, fontWeight: 600 }}>
-            to
-          </span>
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            style={{
-              border: "1px solid #e4e4e7",
-              borderRadius: 8,
-              padding: "6px 10px",
-              outline: "none",
-              color: "#18181b",
-              fontSize: 13,
-            }}
-          />
+      <section className="rider-card rider-history-filters rider-history-filters-v22">
+        <div className="rider-history-tabs">
+          {filters.map((filter) => (
+            <button
+              type="button"
+              key={filter.value}
+              className={`rider-history-tab ${
+                statusFilter === filter.value ? "is-active" : ""
+              }`}
+              onClick={() => setStatusFilter(filter.value)}
+            >
+              {filter.label}
+            </button>
+          ))}
         </div>
-      </div>
 
-      {filteredHistory.length === 0 ? (
-        <div
-          style={{
-            padding: 40,
-            background: "#fff",
-            borderRadius: 16,
-            border: "1px solid #e4e4e7",
-            color: "#71717a",
-            textAlign: "center",
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        >
-          No completed or failed deliveries found for this date range.
+        <div className="rider-history-filter-grid rider-history-filter-grid-v22">
+          <label className="rider-history-search-field">
+            <span>Search</span>
+            <input
+              type="text"
+              placeholder="Order, customer, or address"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+
+          <label>
+            <span>From</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+            />
+          </label>
+
+          <label>
+            <span>To</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+            />
+          </label>
         </div>
-      ) : (
-        <div style={{ display: "grid", gap: "16px" }}>
-          {filteredHistory.map((h) => {
-            const mapsHref = getGoogleMapsHref(
-              h.delivery_lat,
-              h.delivery_lng,
-              h.address,
-              h.order_type,
-            );
-            const isBlueprintDelivery = isBlueprintOrderType(h.order_type);
-            return (
-              <div
-                key={h.delivery_id}
-                className="rider-card"
-                style={{
-                  padding: "16px",
-                  border: `2px solid ${h.status === "delivered" ? "#0a0a0a" : "#ef4444"}`,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    gap: "12px",
-                    marginBottom: "16px",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div>
-                    <div
-                      style={{
-                        fontSize: "18px",
-                        fontWeight: 800,
-                        color: "#0a0a0a",
-                        marginBottom: "4px",
-                        letterSpacing: "-0.01em",
-                      }}
-                    >
-                      {h.order_number}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "14px",
-                        color: "#52525b",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {h.customer_name}
-                    </div>
-                  </div>
+      </section>
 
-                  <span
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 999,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      letterSpacing: "1px",
-                      background:
-                        h.status === "delivered" ? "#0a0a0a" : "#fef2f2",
-                      color: h.status === "delivered" ? "#ffffff" : "#991b1b",
-                      border: `1px solid ${h.status === "delivered" ? "#0a0a0a" : "#fecaca"}`,
-                    }}
-                  >
-                    {h.status}
-                  </span>
-                </div>
+      <section className="rider-card rider-history-records">
+        <div className="rider-history-records-head">
+          <div>
+            <h3>Records</h3>
+            <p>Newest assignments are shown first.</p>
+          </div>
+          <span>{filteredHistory.length} shown</span>
+        </div>
 
-                <div className="rider-details-grid">
-                  <InfoCard
-                    label="Date & Time"
-                    value={formatDateTime(h.updated_at)}
-                  />
-                  <InfoCard
-                    label="Address"
-                    value={
-                      <>
-                        {h.address || "—"}
-                        {mapsHref ? (
-                          <a
-                            href={mapsHref}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              display: "block",
-                              marginTop: 4,
-                              fontSize: 11,
-                              fontWeight: 700,
-                              color: "#2563eb",
-                            }}
-                          >
-                            Open in Google Maps ↗
-                          </a>
-                        ) : isBlueprintDelivery ? (
-                          <span
-                            style={{
-                              display: "block",
-                              marginTop: 4,
-                              fontSize: 11,
-                              fontWeight: 700,
-                              color: "#a1a1aa",
-                            }}
-                          >
-                            Location pin unavailable
-                          </span>
-                        ) : null}
-                      </>
-                    }
-                  />
-                  <InfoCard
-                    label="Total"
-                    value={`₱${Number(h.total || 0).toLocaleString("en-PH", {
-                      minimumFractionDigits: 2,
-                    })}`}
-                  />
-                  <InfoCard
-                    label="Payment"
-                    value={
-                      <span style={{ textTransform: "capitalize" }}>
-                        {h.payment_status || "Pending"}
+        {loading ? (
+          <div className="rider-history-empty">Loading history...</div>
+        ) : filteredHistory.length === 0 ? (
+          <div className="rider-history-empty">
+            No delivery records match these filters.
+          </div>
+        ) : (
+          <div className="rider-table-scroll">
+            <table className="rider-table rider-mobile-table rider-history-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Order</th>
+                  <th>Customer</th>
+                  <th>Destination</th>
+                  <th>Result</th>
+                  <th aria-label="Action" />
+                </tr>
+              </thead>
+              <tbody>
+                {filteredHistory.map((record) => (
+                  <tr key={record.delivery_id}>
+                    <td data-label="Date">
+                      {formatDateTime(getRecordDate(record))}
+                    </td>
+                    <td
+                      data-label="Order"
+                      className="rider-history-order"
+                    >
+                      {record.order_number || "—"}
+                    </td>
+                    <td data-label="Customer">
+                      {record.customer_name || "Customer"}
+                    </td>
+                    <td
+                      data-label="Destination"
+                      className="rider-history-destination"
+                    >
+                      {record.address || "Address unavailable"}
+                    </td>
+                    <td data-label="Result">
+                      <span
+                        className={`rider-history-result ${
+                          normalize(record.status) === "delivered"
+                            ? "is-delivered"
+                            : ""
+                        }`}
+                      >
+                        {normalize(record.status) === "delivered"
+                          ? "Delivered"
+                          : "Failed"}
                       </span>
-                    }
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
+                    </td>
+                    <td data-label="Action" className="rider-history-action-cell">
+                      <button
+                        type="button"
+                        className="rider-v2-row-action"
+                        onClick={() => setSelectedRecord(record)}
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
-function InfoCard({ label, value }) {
-  return (
-    <div
-      className="rider-card"
-      style={{ padding: "12px", background: "#fafafa" }}
-    >
-      <div
-        style={{
-          fontSize: "10px",
-          fontWeight: 800,
-          color: "#71717a",
-          textTransform: "uppercase",
-          letterSpacing: "1px",
-          marginBottom: "6px",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: "14px",
-          fontWeight: 700,
-          color: "#18181b",
-          lineHeight: 1.5,
-          wordBreak: "break-word",
-        }}
-      >
-        {value}
-      </div>
+      {selectedRecord ? (
+        <div
+          className="rider-history-detail-overlay"
+          onClick={() => setSelectedRecord(null)}
+        >
+          <aside
+            className="rider-history-detail-panel"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="rider-history-detail-head">
+              <div>
+                <span>Delivery Record</span>
+                <h3>{selectedRecord.order_number || "Order"}</h3>
+                <p>{selectedRecord.customer_name || "Customer"}</p>
+              </div>
+              <button
+                type="button"
+                className="rider-history-close"
+                aria-label="Close details"
+                onClick={() => setSelectedRecord(null)}
+              >
+                <X size={18} strokeWidth={1.8} />
+              </button>
+            </div>
+
+            <div className="rider-history-detail-status">
+              <span
+                className={`rider-history-result ${
+                  normalize(selectedRecord.status) === "delivered"
+                    ? "is-delivered"
+                    : ""
+                }`}
+              >
+                {normalize(selectedRecord.status) === "delivered"
+                  ? "Delivered"
+                  : "Failed"}
+              </span>
+            </div>
+
+            <div className="rider-history-detail-grid">
+              <div className="rider-history-detail-item">
+                <span>Destination</span>
+                <strong>
+                  {selectedRecord.address || "Address unavailable"}
+                </strong>
+              </div>
+
+              <div className="rider-history-detail-item">
+                <span>Scheduled</span>
+                <strong>
+                  {formatDateTime(selectedRecord.scheduled_date)}
+                </strong>
+              </div>
+
+              <div className="rider-history-detail-item">
+                <span>Assigned</span>
+                <strong>
+                  {formatDateTime(selectedRecord.assigned_at)}
+                </strong>
+              </div>
+
+              <div className="rider-history-detail-item">
+                <span>
+                  {normalize(selectedRecord.status) === "delivered"
+                    ? "Completed"
+                    : "Attempted"}
+                </span>
+                <strong>
+                  {formatDateTime(getRecordDate(selectedRecord))}
+                </strong>
+              </div>
+            </div>
+
+            <section className="rider-history-detail-section">
+              <div className="rider-history-detail-section-title">
+                <MapPin size={15} strokeWidth={1.8} />
+                Location
+              </div>
+              <p>
+                {selectedMapHref
+                  ? "A saved delivery pin is available for this record."
+                  : "No saved delivery pin is available for this older record."}
+              </p>
+
+              {selectedMapHref ? (
+                <a
+                  href={selectedMapHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rider-v2-btn rider-v2-btn-secondary rider-history-detail-button"
+                >
+                  <Navigation size={15} strokeWidth={2} />
+                  Open Map
+                </a>
+              ) : null}
+            </section>
+
+            <section className="rider-history-detail-section">
+              <div className="rider-history-detail-section-title">
+                <FileText size={15} strokeWidth={1.8} />
+                Proof of Delivery
+              </div>
+              <p>
+                {selectedRecord.signed_receipt
+                  ? "Proof was uploaded for this delivery."
+                  : "No proof file is available for this record."}
+              </p>
+
+              {selectedRecord.signed_receipt ? (
+                <a
+                  href={buildAssetUrl(selectedRecord.signed_receipt)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rider-v2-btn rider-v2-btn-secondary rider-history-detail-button"
+                >
+                  View Proof
+                </a>
+              ) : null}
+            </section>
+
+            {selectedRecord.notes ? (
+              <section className="rider-history-detail-section">
+                <div className="rider-history-detail-section-title">
+                  <Clock3 size={15} strokeWidth={1.8} />
+                  Notes
+                </div>
+                <p className="rider-history-notes">
+                  {selectedRecord.notes}
+                </p>
+              </section>
+            ) : null}
+          </aside>
+        </div>
+      ) : null}
     </div>
   );
 }
