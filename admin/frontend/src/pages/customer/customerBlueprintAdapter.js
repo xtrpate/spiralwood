@@ -207,30 +207,53 @@ const isRenderableComponentSet = (items = []) => {
   return normalized.some((component) => Number(component.depth) >= 20);
 };
 
-const extractRealComponents = (blueprint = {}, designData = {}, view3dData = {}) => {
-  const savedDesignComponents = Array.isArray(designData?.components)
-    ? designData.components
-    : [];
+const extractRenderableComponentsFromSource = (source = {}) => {
+  const candidates = [
+    source?.components,
+    source?.objects,
+    source?.items,
+    source?.parts,
+    source?.meshes,
+    source?.scene?.components,
+    source?.scene?.objects,
+    source?.sceneData?.components,
+    source?.sceneData?.objects,
+    source?.view3d?.components,
+    source?.view3d?.objects,
+    source?.saved3d?.components,
+    source?.saved3d?.objects,
+    source?.saved3D?.components,
+    source?.saved3D?.objects,
+  ];
 
-  const savedView3dComponents = Array.isArray(view3dData?.components)
-    ? view3dData.components
-    : [];
+  for (const items of candidates) {
+    if (!isRenderableComponentSet(items)) continue;
+
+    return items
+      .map((item, index) => normalizeComponent(item, index))
+      .filter((item) => item.visible);
+  }
+
+  return [];
+};
+
+const extractRealComponents = (blueprint = {}, designData = {}, view3dData = {}) => {
+  // WISDOM CUSTOMER BLUEPRINT COMPONENT EXTRACTION V1
+  const savedDesignComponents =
+    extractRenderableComponentsFromSource(designData);
+  if (savedDesignComponents.length > 0) {
+    return savedDesignComponents;
+  }
+
+  const savedView3dComponents =
+    extractRenderableComponentsFromSource(view3dData);
+  if (savedView3dComponents.length > 0) {
+    return savedView3dComponents;
+  }
 
   const savedDbComponents = Array.isArray(blueprint?.components)
     ? blueprint.components
     : [];
-
-  if (isRenderableComponentSet(savedDesignComponents)) {
-    return savedDesignComponents
-      .map((item, index) => normalizeComponent(item, index))
-      .filter((item) => item.visible);
-  }
-
-  if (isRenderableComponentSet(savedView3dComponents)) {
-    return savedView3dComponents
-      .map((item, index) => normalizeComponent(item, index))
-      .filter((item) => item.visible);
-  }
 
   if (isRenderableComponentSet(savedDbComponents)) {
     return savedDbComponents
@@ -240,7 +263,6 @@ const extractRealComponents = (blueprint = {}, designData = {}, view3dData = {})
 
   return [];
 };
-
 
 
 const pickMainComponent = (components = []) => {

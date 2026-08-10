@@ -573,36 +573,21 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
   const [filter, setFilter] = useState("all");
-  const [customRequestMap, setCustomRequestMap] = useState({});
+
   const [searchParams, setSearchParams] = useSearchParams();
   const [focusedOrderId, setFocusedOrderId] = useState(null);
 
   const fetchOrders = () => {
     setLoading(true);
 
-    Promise.all([
-      api.get("/customer/orders"),
-      api.get("/customer/custom-orders").catch(() => ({ data: [] })),
-    ])
-      .then(([ordersRes, customOrdersRes]) => {
+    // WISDOM CUSTOMER ORDERS FAST LOAD V1
+    // The main orders endpoint already includes order_type and order id,
+    // so the page no longer waits for a second custom-orders request.
+    api
+      .get("/customer/orders")
+      .then((ordersRes) => {
         const nextOrders = Array.isArray(ordersRes.data) ? ordersRes.data : [];
-        const nextCustomOrders = Array.isArray(customOrdersRes.data)
-          ? customOrdersRes.data
-          : [];
-
-        const nextCustomRequestMap = nextCustomOrders.reduce((acc, item) => {
-          const orderNumber = String(item?.order_number || "").trim();
-          const numericId = Number(item?.id || 0);
-
-          if (orderNumber && numericId > 0) {
-            acc[orderNumber] = numericId;
-          }
-
-          return acc;
-        }, {});
-
         setOrders(nextOrders);
-        setCustomRequestMap(nextCustomRequestMap);
       })
       .catch((err) => {
         console.error(
@@ -610,7 +595,6 @@ export default function OrdersPage() {
           err?.response?.data || err,
         );
         setOrders([]);
-        setCustomRequestMap({});
       })
       .finally(() => setLoading(false));
   };
@@ -672,11 +656,13 @@ export default function OrdersPage() {
   };
 
   const handleOpenOrder = (order) => {
-    const customRequestId =
-      customRequestMap[String(order?.order_number || "").trim()];
+    const isBlueprintRequest =
+      String(order?.order_type || "")
+        .trim()
+        .toLowerCase() === "blueprint";
 
-    if (customRequestId) {
-      navigate(`/custom-requests/${customRequestId}`);
+    if (isBlueprintRequest) {
+      navigate(`/custom-requests/${order.id}`);
       return;
     }
 
@@ -869,8 +855,6 @@ export default function OrdersPage() {
               order.status === "delivered" &&
               String(order.payment_status || "").toLowerCase() === "paid";
 
-            const isCustomRequest =
-              !!customRequestMap[String(order?.order_number || "").trim()];
 
             const canPayNow =
               String(order?.status || "").toLowerCase() === "pending" &&

@@ -397,6 +397,13 @@ const hasExactAdmin3DSource = (row = {}, designData = {}, view3dData = {}) => {
   const viewItems = extractSceneItems(view3dData);
   if (viewItems.length > 0) return true;
 
+  // WISDOM CUSTOMER BLUEPRINT 3D DETECTION V1
+  const designItems = extractSceneItems(designData);
+  if (designItems.length > 0) return true;
+
+  const rowItems = extractSceneItems(row);
+  if (rowItems.length > 0) return true;
+
   const design3DSources = [
     designData?.scene,
     designData?.sceneData,

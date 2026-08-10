@@ -408,6 +408,9 @@ exports.createOrder = async (req, res) => {
 /* ── List My Orders ── */
 exports.getOrders = async (req, res) => {
   try {
+    // WISDOM CUSTOMER ORDERS BATCH READ V1
+    // Keep the response shape unchanged while avoiding one or more
+    // database round-trips for every order on the page.
     const [orders] = await db.query(
       `SELECT id, order_number, status, payment_method,
               payment_status, subtotal, total, payment_url,
@@ -420,15 +423,77 @@ exports.getOrders = async (req, res) => {
       [req.user.id],
     );
 
-    for (const order of orders) {
-      const [items] = await db.query(
-        `SELECT oi.product_name, oi.quantity, oi.unit_price, p.image_url
-         FROM order_items oi
-         LEFT JOIN products p ON p.id = oi.product_id
-         WHERE oi.order_id = ?
-         ORDER BY oi.id ASC`,
-        [order.id],
+    if (!orders.length) {
+      return res.json([]);
+    }
+
+    const orderIds = orders
+      .map((order) => Number(order.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+    const orderPlaceholders = orderIds.map(() => "?").join(",");
+    const [itemRows] = await db.query(
+      `SELECT
+          oi.order_id,
+          oi.product_name,
+          oi.quantity,
+          oi.unit_price,
+          p.image_url
+       FROM order_items oi
+       LEFT JOIN products p ON p.id = oi.product_id
+       WHERE oi.order_id IN (${orderPlaceholders})
+       ORDER BY oi.order_id ASC, oi.id ASC`,
+      orderIds,
+    );
+
+    const itemsByOrderId = new Map();
+
+    for (const row of itemRows) {
+      const orderId = Number(row.order_id);
+      if (!itemsByOrderId.has(orderId)) {
+        itemsByOrderId.set(orderId, []);
+      }
+
+      itemsByOrderId.get(orderId).push({
+        product_name: row.product_name,
+        quantity: row.quantity,
+        unit_price: row.unit_price,
+        image_url: row.image_url,
+      });
+    }
+
+    const blueprintIds = [
+      ...new Set(
+        orders
+          .map((order) => Number(order.blueprint_id))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    ];
+
+    const blueprintById = new Map();
+
+    if (blueprintIds.length > 0) {
+      const blueprintPlaceholders = blueprintIds.map(() => "?").join(",");
+      const [blueprintRows] = await db.query(
+        `SELECT id, title, thumbnail_url, source, file_url, file_type
+         FROM blueprints
+         WHERE id IN (${blueprintPlaceholders})`,
+        blueprintIds,
       );
+
+      for (const row of blueprintRows) {
+        blueprintById.set(Number(row.id), {
+          title: row.title,
+          thumbnail_url: row.thumbnail_url,
+          source: row.source,
+          file_url: row.file_url,
+          file_type: row.file_type,
+        });
+      }
+    }
+
+    for (const order of orders) {
+      const items = itemsByOrderId.get(Number(order.id)) || [];
 
       order.item_count = items.length;
       order.total_qty = items.reduce(
@@ -439,28 +504,24 @@ exports.getOrders = async (req, res) => {
       // Compact My Orders cards only need a small preview.
       // Full item details still come from GET /customer/orders/:id.
       order.items_preview = items.slice(0, 2);
-      order.blueprint_preview = null;
-      if (order.blueprint_id) {
-        const [blueprintRows] = await db.query(
-          `SELECT title, thumbnail_url, source, file_url, file_type
-           FROM blueprints
-           WHERE id = ?
-           LIMIT 1`,
-          [order.blueprint_id],
-        );
 
-        order.blueprint_preview = blueprintRows[0] || null;
-      }
+      const blueprintId = Number(order.blueprint_id);
+      order.blueprint_preview =
+        Number.isInteger(blueprintId) && blueprintId > 0
+          ? blueprintById.get(blueprintId) || null
+          : null;
     }
 
-    res.json(orders);
+    return res.json(orders);
   } catch (err) {
     console.error("[customer.orders GET]", err);
-    res.status(500).json({ message: "Server error.", error: err.message });
+    return res.status(500).json({
+      message: "Server error.",
+      error: err.message,
+    });
   }
 };
 
-/* ── Single Order Detail ── */
 exports.getOrderById = async (req, res) => {
   try {
     // ── FIXED: Switched to .query and parsed ID ──
