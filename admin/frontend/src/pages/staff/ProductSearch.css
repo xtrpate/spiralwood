@@ -1,470 +1,596 @@
+/* =========================================================
+   WISDOM CASHIER PRODUCT SEARCH UI POLISH V1
+   Cashier-only POS page. Sharp edges / zero radius.
+   ========================================================= */
+
 .search-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) 356px;
+  gap: 28px;
   align-items: start;
-  min-height: calc(100vh - 56px);
-  font-family: "Inter", sans-serif;
+  min-height: calc(100vh - 64px);
   padding-bottom: 40px;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  color: #18181b;
 }
 
 .search-panel {
   min-width: 0;
-  overflow-y: auto;
-  padding-right: 6px;
 }
 
-.page-header {
-  margin-bottom: 24px;
+.search-panel .page-header {
+  margin-bottom: 22px;
 }
 
-.page-header h1 {
-  margin: 0 0 4px;
-  font-size: 24px;
-  font-weight: 800;
-  color: #0a0a0a;
-  letter-spacing: -0.02em;
-}
-
-.page-header p {
+.search-panel .page-header h1 {
   margin: 0;
-  color: #52525b;
-  font-size: 13px;
-  line-height: 1.5;
+  color: #111111;
+  font-size: 27px;
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: -0.035em;
 }
 
-/* Barcode */
+.search-panel .page-header p {
+  max-width: 720px;
+  margin: 7px 0 0;
+  color: #6b6b70;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+/* Barcode and search */
 .barcode-bar {
   position: relative;
-  margin-bottom: 12px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 96px;
   gap: 10px;
   align-items: center;
+  margin-bottom: 10px;
+}
+
+.barcode-bar input,
+.search-bar input {
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  box-sizing: border-box;
+  border: 1px solid #d8d8dc;
+  border-radius: 0 !important;
+  outline: none;
+  background: #ffffff;
+  color: #18181b;
+  font: inherit;
+  font-size: 13px;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .barcode-bar input {
-  width: 100%;
-  min-width: 0;
-  padding: 12px 14px 12px 42px;
-  border: 1px solid #e4e4e7;
-  border-radius: 8px;
-  font-size: 13px;
-  box-sizing: border-box;
-  background: #fff;
-  color: #18181b;
-  transition: all 0.2s ease;
-  outline: none;
+  padding: 0 14px 0 42px;
 }
 
-.barcode-bar input:focus {
-  border-color: #18181b;
+.search-bar input {
+  padding: 0 44px 0 42px;
+}
+
+.barcode-bar input::placeholder,
+.search-bar input::placeholder {
+  color: #8b8b91;
+}
+
+.barcode-bar input:focus,
+.search-bar input:focus {
+  border-color: #111111;
+  box-shadow: 0 0 0 1px #111111;
 }
 
 .barcode-btn {
-  padding: 12px 20px;
-  border: 1px solid #18181b;
-  border-radius: 8px;
-  background: #18181b;
-  color: #fff;
+  min-width: 96px;
+  height: 48px;
+  padding: 0 18px;
+  border: 1px solid #111111;
+  border-radius: 0 !important;
+  background: #111111;
+  color: #ffffff;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 650;
   cursor: pointer;
-  min-width: 92px;
-  transition: background 0.2s ease;
+  transition:
+    background-color 140ms ease,
+    opacity 140ms ease;
 }
 
 .barcode-btn:hover:not(:disabled) {
-  background: #3f3f46;
+  background: #2c2c2f;
 }
 
 .barcode-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .barcode-message {
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
+  margin: 0 0 10px;
+  padding: 11px 14px;
+  border: 1px solid #d8d8dc;
+  border-radius: 0 !important;
+  background: #ffffff;
+  color: #3f3f46;
+  font-size: 12px;
+  font-weight: 500;
   line-height: 1.5;
-  border: 1px solid transparent;
 }
 
-.barcode-message.info {
-  background: #fafafa;
-  border-color: #e4e4e7;
-  color: #18181b;
-}
-
+.barcode-message.info,
 .barcode-message.success {
-  background: #fafafa;
-  border-color: #e4e4e7;
-  color: #18181b;
+  border-color: #d8d8dc;
+  background: #ffffff;
+  color: #3f3f46;
 }
 
 .barcode-message.error {
-  background: #fef2f2;
-  border-color: #fecaca;
+  border-color: #e6b8b8;
+  background: #fffafa;
   color: #991b1b;
 }
 
-/* Search */
 .search-bar {
   position: relative;
-  margin-bottom: 24px;
-}
-
-.search-bar input {
-  width: 100%;
-  min-width: 0;
-  padding: 12px 44px 12px 42px;
-  border: 1px solid #e4e4e7;
-  border-radius: 8px;
-  font-size: 13px;
-  box-sizing: border-box;
-  background: #fff;
-  color: #18181b;
-  transition: all 0.2s ease;
-  outline: none;
-}
-
-.search-bar input:focus {
-  border-color: #18181b;
-}
-
-.barcode-focus-btn {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  border: none;
-  background: transparent;
-  color: #71717a;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-}
-
-.barcode-focus-btn:hover {
-  background: #f4f4f5;
-  color: #18181b;
+  margin-bottom: 22px;
 }
 
 .search-icon {
   position: absolute;
+  z-index: 2;
   left: 14px;
   top: 50%;
   transform: translateY(-50%);
-  color: #71717a;
+  color: #73737a;
+  pointer-events: none;
 }
 
+.barcode-focus-btn {
+  position: absolute;
+  z-index: 2;
+  right: 8px;
+  top: 50%;
+  width: 32px;
+  height: 32px;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 0 !important;
+  background: transparent;
+  color: #73737a;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.barcode-focus-btn:hover {
+  background: #f1f1f2;
+  color: #111111;
+}
+
+/* Results */
 .search-results {
   min-height: 120px;
 }
 
 .search-hint {
-  color: #71717a;
-  font-size: 13px;
-  font-weight: 500;
-  padding: 20px 0;
-  text-align: center;
+  margin: 0 0 14px;
+  padding: 0;
+  color: #77777e;
+  font-size: 12px;
+  font-weight: 450;
+  line-height: 1.5;
+  text-align: left;
 }
 
-/* Products */
 .product-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
+  gap: 18px;
 }
 
 .product-card {
-  background: #fff;
-  border-radius: 16px;
-  overflow: hidden;
-  border: 1px solid #e4e4e7;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  transition: all 0.2s ease;
+  overflow: hidden;
+  border: 1px solid #dedee2;
+  border-radius: 0 !important;
+  background: #ffffff;
+  box-shadow: none;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
 }
 
 .product-card:hover {
-  border-color: #d4d4d8;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+  border-color: #bdbdc3;
+  box-shadow: 0 8px 24px rgba(17, 17, 17, 0.055);
   transform: translateY(-2px);
 }
 
-.product-img {
+.product-img,
+.product-img-placeholder {
   width: 100%;
-  height: 140px;
+  height: 184px;
+  border: 0;
+  border-bottom: 1px solid #ededee;
+  border-radius: 0 !important;
+  background: #f7f7f7;
+}
+
+.product-img {
+  display: block;
   object-fit: cover;
   object-position: center;
-  display: block;
-  background: #fafafa;
-  border-bottom: 1px solid #f4f4f5;
 }
 
 .product-img-placeholder {
-  width: 100%;
-  height: 140px;
-  background: #fafafa;
-  border-bottom: 1px solid #f4f4f5;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 32px;
+  color: #76767c;
+  font-size: 30px;
 }
 
 .product-info {
-  padding: 16px;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 17px 18px 15px;
 }
 
 .product-name {
-  font-weight: 800;
+  margin: 0 0 4px;
+  color: #111111;
   font-size: 15px;
-  margin-bottom: 4px;
-  color: #0a0a0a;
-  line-height: 1.4;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .product-category {
-  font-size: 11px;
-  color: #71717a;
-  margin-bottom: 12px;
-  font-weight: 600;
+  margin: 0 0 13px;
+  color: #77777d;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+}
+
+.product-details {
+  min-height: 74px;
+  margin-bottom: 15px;
+}
+
+.product-specs {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.product-spec-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.product-spec-row span {
+  color: #8a8a90;
+  font-weight: 500;
+}
+
+.product-spec-row strong {
+  overflow-wrap: anywhere;
+  color: #4b4b50;
+  font-weight: 550;
+}
+
+.product-description {
+  margin: 0;
+  overflow: hidden;
+  color: #64646a;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.product-description.is-empty {
+  color: #9a9a9f;
+  font-style: italic;
 }
 
 .product-price {
-  font-size: 18px;
-  font-weight: 800;
-  color: #0a0a0a;
-  margin-bottom: 12px;
-  letter-spacing: -0.01em;
+  margin: auto 0 10px;
+  color: #111111;
+  font-size: 19px;
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
 }
 
 .stock-chip {
+  align-self: flex-start;
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 800;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid #d9d9dd;
+  border-radius: 0 !important;
+  background: #fafafa;
+  color: #4d4d52;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 1px;
 }
 
 .stock-chip.in_stock {
-  background: #f4f4f5;
-  color: #18181b;
-  border: 1px solid #e4e4e7;
+  border-color: #d9d9dd;
+  background: #fafafa;
+  color: #303034;
 }
 
 .stock-chip.low_stock {
-  background: #ffffff;
-  color: #52525b;
-  border: 1px solid #d4d4d8;
+  border-color: #d8c99a;
+  background: #fffdf6;
+  color: #755c12;
 }
 
 .stock-chip.out_of_stock {
-  background: #fef2f2;
+  border-color: #e6b8b8;
+  background: #fffafa;
   color: #991b1b;
-  border: 1px solid #fecaca;
 }
 
 .add-btn {
-  margin: 0 16px 16px;
-  padding: 12px;
-  background: #f4f4f5;
-  color: #18181b;
-  border: 1px solid #e4e4e7;
-  border-radius: 8px;
+  width: calc(100% - 36px);
+  min-height: 43px;
+  margin: 0 18px 18px;
+  padding: 0 14px;
+  border: 1px solid #111111;
+  border-radius: 0 !important;
+  background: #111111;
+  color: #ffffff;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 700;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: all 0.2s ease;
+  font-size: 12px;
+  font-weight: 650;
+  transition:
+    background-color 140ms ease,
+    opacity 140ms ease,
+    transform 100ms ease;
 }
 
 .add-btn:hover:not(:disabled) {
-  background: #e4e4e7;
+  background: #2c2c2f;
+}
+
+.add-btn:active:not(:disabled) {
+  transform: scale(0.99);
 }
 
 .add-btn:disabled {
-  opacity: 0.5;
+  border-color: #d9d9dc;
+  background: #eeeeef;
+  color: #8d8d92;
+  opacity: 1;
   cursor: not-allowed;
 }
 
 /* Cart */
 .cart-panel {
-  background: #fff;
-  border-radius: 16px;
-  border: 1px solid #e4e4e7;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  position: sticky;
-  top: 0;
-  max-height: calc(100vh - 56px);
+  border: 1px solid #dcdce0;
+  border-radius: 0 !important;
+  background: #ffffff;
+  box-shadow: none;
 }
 
 .cart-header {
-  padding: 20px 24px;
-  background: #fafafa;
-  border-bottom: 1px solid #e4e4e7;
-  color: #0a0a0a;
-  font-weight: 800;
-  font-size: 15px;
+  min-height: 58px;
+  padding: 0 20px;
+  border-bottom: 1px solid #e3e3e6;
+  background: #ffffff;
+  color: #111111;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
+  font-size: 14px;
+  font-weight: 700;
   letter-spacing: -0.01em;
 }
 
 .cart-empty {
-  padding: 40px 24px;
+  min-height: 230px;
+  padding: 42px 24px;
+  color: #76767c;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
   text-align: center;
-  color: #71717a;
+}
+
+.cart-empty svg {
+  margin-bottom: 4px;
+  color: #9b9ba0;
+}
+
+.cart-empty strong {
+  color: #343438;
   font-size: 13px;
-  font-weight: 500;
-  line-height: 1.8;
+  font-weight: 650;
+}
+
+.cart-empty span {
+  max-width: 220px;
+  color: #828288;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
 }
 
 .cart-items {
   flex: 1;
+  max-height: 500px;
   overflow-y: auto;
-  padding: 8px 0;
-  max-height: 480px;
+  padding: 0;
 }
 
 .cart-item {
-  padding: 16px 24px;
-  border-bottom: 1px solid #f4f4f5;
+  padding: 17px 20px;
+  border-bottom: 1px solid #eeeeef;
 }
 
 .cart-item:last-child {
-  border-bottom: none;
+  border-bottom: 0;
 }
 
 .cart-item-name {
-  font-size: 14px;
-  font-weight: 700;
-  color: #18181b;
   margin-bottom: 6px;
+  color: #252529;
+  font-size: 13px;
+  font-weight: 650;
   line-height: 1.4;
 }
 
 .cart-item-price {
-  font-size: 16px;
-  font-weight: 800;
-  color: #0a0a0a;
   margin-bottom: 12px;
+  color: #111111;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .cart-item-controls {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
 }
 
 .cart-item-controls button {
-  width: 32px;
-  height: 32px;
-  border: 1px solid #e4e4e7;
-  border-radius: 8px;
-  background: #fafafa;
-  color: #18181b;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #d8d8dc;
+  border-radius: 0 !important;
+  background: #ffffff;
+  color: #39393e;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition:
+    border-color 130ms ease,
+    background-color 130ms ease;
 }
 
-.cart-item-controls button:hover {
-  background: #f4f4f5;
+.cart-item-controls button:hover:not(:disabled) {
+  border-color: #a9a9ae;
+  background: #f6f6f7;
+}
+
+.cart-item-controls button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .cart-item-controls .remove-btn {
-  border-color: #fecaca;
-  color: #dc2626;
-  background: #fef2f2;
+  margin-left: auto;
+  border-color: #e4c1c1;
+  background: #ffffff;
+  color: #b42323;
 }
 
-.cart-item-controls .remove-btn:hover {
-  background: #fee2e2;
+.cart-item-controls .remove-btn:hover:not(:disabled) {
+  border-color: #d9a2a2;
+  background: #fffafa;
 }
 
-.cart-item-controls span {
-  font-size: 14px;
-  font-weight: 700;
-  min-width: 28px;
+.cart-item-controls > span {
+  min-width: 25px;
+  color: #343438;
+  font-size: 12px;
+  font-weight: 650;
   text-align: center;
-  color: #18181b;
 }
 
 .cart-summary {
-  padding: 24px;
-  border-top: 1px solid #e4e4e7;
+  padding: 18px 20px 20px;
+  border-top: 1px solid #dfdfe2;
   background: #fafafa;
 }
 
 .cart-total {
+  margin-bottom: 15px;
   display: flex;
+  align-items: flex-end;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+  gap: 16px;
 }
 
 .checkout-btn {
   width: 100%;
-  justify-content: center;
-  font-size: 14px;
-  padding: 14px;
-  border: 1px solid #18181b;
-  border-radius: 8px;
-  background: #18181b;
-  color: #fff;
-  font-weight: 700;
+  min-height: 46px;
+  padding: 0 15px;
+  border: 1px solid #111111;
+  border-radius: 0 !important;
+  background: #111111;
+  color: #ffffff;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  transition: background 0.2s ease;
+  justify-content: center;
+  gap: 9px;
+  font-size: 12px;
+  font-weight: 650;
+  transition: background-color 140ms ease;
 }
 
 .checkout-btn:hover:not(:disabled) {
-  background: #3f3f46;
+  background: #2c2c2f;
 }
 
 .checkout-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-/* Scrollbar */
+/* Scrollbars */
 .search-panel::-webkit-scrollbar,
 .cart-items::-webkit-scrollbar {
-  width: 8px;
+  width: 7px;
 }
 
 .search-panel::-webkit-scrollbar-thumb,
 .cart-items::-webkit-scrollbar-thumb {
-  background: #d4d4d8;
-  border-radius: 999px;
+  border-radius: 0;
+  background: #cfcfd3;
 }
 
 .search-panel::-webkit-scrollbar-track,
@@ -472,8 +598,30 @@
   background: transparent;
 }
 
-/* Responsive */
-@media (max-width: 1024px) {
+/* Zero radius across this cashier page only. */
+.search-layout button,
+.search-layout input,
+.search-layout .product-card,
+.search-layout .product-img,
+.search-layout .product-img-placeholder,
+.search-layout .stock-chip,
+.search-layout .cart-panel,
+.search-layout .barcode-message {
+  border-radius: 0 !important;
+}
+
+@media (max-width: 1180px) {
+  .search-layout {
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 20px;
+  }
+
+  .product-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
   .search-layout {
     grid-template-columns: 1fr;
   }
@@ -484,7 +632,7 @@
   }
 
   .cart-items {
-    max-height: 400px;
+    max-height: 420px;
   }
 }
 
@@ -500,4 +648,689 @@
   .product-grid {
     grid-template-columns: 1fr;
   }
+
+  .product-img,
+  .product-img-placeholder {
+    height: 210px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-card,
+  .add-btn,
+  .barcode-btn,
+  .checkout-btn,
+  .barcode-bar input,
+  .search-bar input {
+    transition: none !important;
+  }
+
+  .product-card:hover,
+  .add-btn:active:not(:disabled) {
+    transform: none;
+  }
+}
+/* =========================================================
+   WISDOM CASHIER PRODUCT SEARCH LAYOUT V2.2
+   Compact POS toolbar + tighter cards + customer-style qty.
+   Main surfaces remain zero-radius.
+   ========================================================= */
+
+.search-layout {
+  grid-template-columns: minmax(0, 1fr) 370px;
+  gap: 26px;
+}
+
+/* One desktop workbar instead of two stretched input rows. */
+.pos-search-tools {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) 250px 96px;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.pos-search-tools .search-bar,
+.pos-search-tools .barcode-bar {
+  margin: 0;
+  min-width: 0;
+}
+
+.pos-search-tools .barcode-bar {
+  display: block;
+}
+
+.pos-search-tools .search-bar input,
+.pos-search-tools .barcode-bar input,
+.pos-search-tools .barcode-btn {
+  height: 46px;
+}
+
+.pos-search-tools .barcode-btn {
+  width: 96px;
+  min-width: 96px;
+  padding: 0 12px;
+}
+
+.barcode-message {
+  margin-top: -4px;
+  margin-bottom: 14px;
+}
+
+.search-hint {
+  margin-bottom: 12px;
+  color: #77777d;
+  font-size: 11.5px;
+}
+
+/* Tighter product rhythm while keeping equal card structure. */
+.product-grid {
+  gap: 16px;
+}
+
+.product-img,
+.product-img-placeholder {
+  height: 174px;
+}
+
+.product-info {
+  padding: 16px 17px 13px;
+}
+
+.product-category {
+  margin-bottom: 10px;
+}
+
+.product-details {
+  min-height: 58px;
+  margin-bottom: 12px;
+}
+
+.product-description {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.product-card-meta {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.product-card-meta .product-price {
+  margin: 0;
+  flex: 1;
+}
+
+.product-card-meta .stock-chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.add-btn {
+  margin-top: 13px;
+}
+
+/* Empty cart should not look like an oversized blank panel. */
+.cart-empty {
+  min-height: 190px;
+  padding: 30px 22px;
+}
+
+/* Customer-style compact quantity control:
+   only this outer control is rounded on the cashier page. */
+.cart-item-controls {
+  gap: 9px;
+}
+
+.cart-qty-control {
+  width: 92px;
+  height: 30px;
+  flex: 0 0 92px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  overflow: hidden;
+  border: 1px solid #bfbfbf;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.cart-qty-control button,
+.cart-qty-control span {
+  width: auto;
+  min-width: 30px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #111111;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.cart-qty-control button {
+  cursor: pointer;
+}
+
+.cart-qty-control button:hover:not(:disabled) {
+  background: #f5f5f5;
+}
+
+.cart-qty-control button:disabled {
+  background: transparent;
+  color: #b5b5b5;
+  cursor: not-allowed;
+}
+
+.cart-qty-control span {
+  font-weight: 500;
+  pointer-events: none;
+}
+
+/* Keep remove separate and square. */
+.cart-item-controls > .remove-btn {
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  border-radius: 0 !important;
+}
+
+/* Main cashier surfaces and actions stay square. The qty wrapper above
+   is the single intentional rounded exception. */
+.search-layout .product-card,
+.search-layout .product-img,
+.search-layout .product-img-placeholder,
+.search-layout .stock-chip,
+.search-layout .cart-panel,
+.search-layout .barcode-message,
+.search-layout .barcode-btn,
+.search-layout .add-btn,
+.search-layout .checkout-btn,
+.search-layout .remove-btn,
+.search-layout .search-bar input,
+.search-layout .barcode-bar input {
+  border-radius: 0 !important;
+}
+
+@media (max-width: 1240px) {
+  .search-layout {
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 20px;
+  }
+
+  .pos-search-tools {
+    grid-template-columns: minmax(300px, 1fr) 220px 90px;
+  }
+
+  .pos-search-tools .barcode-btn {
+    width: 90px;
+    min-width: 90px;
+  }
+}
+
+@media (max-width: 1040px) {
+  .search-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .cart-panel {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .pos-search-tools {
+    grid-template-columns: minmax(0, 1fr) 96px;
+  }
+
+  .pos-search-tools .search-bar {
+    grid-column: 1 / -1;
+  }
+
+  .pos-search-tools .barcode-btn {
+    width: 96px;
+    min-width: 96px;
+  }
+}
+
+@media (max-width: 520px) {
+  .pos-search-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-search-tools .search-bar,
+  .pos-search-tools .barcode-bar,
+  .pos-search-tools .barcode-btn {
+    grid-column: 1;
+    width: 100%;
+  }
+
+  .pos-search-tools .barcode-btn {
+    min-width: 0;
+  }
+
+  .product-card-meta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+/* =========================================================
+   WISDOM CASHIER TYPOGRAPHY WORDING V3.1
+   Balanced hierarchy: bold where useful, not black-heavy.
+   ========================================================= */
+
+.search-panel .page-header h1 {
+  font-weight: 700;
+}
+
+.product-name {
+  font-weight: 600;
+}
+
+.product-category {
+  font-weight: 600;
+}
+
+.product-price {
+  font-weight: 650;
+}
+
+.stock-chip {
+  font-weight: 600;
+}
+
+.add-btn {
+  font-weight: 600;
+}
+
+.cart-header {
+  font-weight: 600;
+}
+
+.cart-item-name {
+  font-weight: 600;
+}
+
+.cart-item-price {
+  font-weight: 650;
+}
+
+.cart-total > span {
+  font-weight: 600;
+}
+
+.cart-total > strong {
+  font-weight: 700;
+}
+
+.checkout-btn {
+  font-weight: 600;
+}
+/* =========================================================
+   WISDOM CASHIER BUTTON SYSTEM V5
+   Cashier actions are white with black text/borders.
+   ========================================================= */
+
+.search-layout .barcode-btn,
+.search-layout .add-btn,
+.search-layout .checkout-btn,
+.search-layout .cart-item-controls > .remove-btn {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-weight: 600 !important;
+}
+
+.search-layout .barcode-btn:hover:not(:disabled),
+.search-layout .add-btn:hover:not(:disabled),
+.search-layout .checkout-btn:hover:not(:disabled),
+.search-layout .cart-item-controls > .remove-btn:hover:not(:disabled) {
+  background: #f4f4f5 !important;
+  color: #111111 !important;
+  border-color: #111111 !important;
+}
+
+.search-layout .barcode-btn:disabled,
+.search-layout .add-btn:disabled,
+.search-layout .checkout-btn:disabled {
+  background: #ffffff !important;
+  color: #777777 !important;
+  border-color: #bfbfbf !important;
+  opacity: 0.55;
+}
+/* =========================================================
+   WISDOM CASHIER PRODUCT CART V6.1
+   Image-first product cards + compact thumbnail cart rows.
+   ========================================================= */
+
+/* Product cards: image, name, price/stock, action only. */
+.product-card {
+  min-height: 0;
+}
+
+.product-img,
+.product-img-placeholder {
+  height: 190px;
+}
+
+.product-info {
+  padding: 15px 16px 4px;
+}
+
+.product-name {
+  min-height: 38px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.product-card-meta {
+  margin-top: 12px;
+  min-height: 28px;
+}
+
+.product-card-meta .product-price {
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.product-card-action {
+  min-height: 48px;
+  margin: 0 16px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.product-card-action .add-btn {
+  width: 100%;
+  min-height: 42px;
+  margin: 0;
+  background: #111111 !important;
+  color: #ffffff !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+}
+
+.product-card-action .add-btn:hover:not(:disabled) {
+  background: #2c2c2f !important;
+  color: #ffffff !important;
+}
+
+.product-card-action .add-btn:disabled {
+  background: #eeeeef !important;
+  color: #8d8d92 !important;
+  border-color: #d9d9dc !important;
+}
+
+.product-card-qty-control {
+  width: 98px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  overflow: hidden;
+  border: 1px solid #bfbfbf;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.product-card-qty-control button,
+.product-card-qty-control span {
+  min-width: 31px;
+  height: 30px;
+  padding: 0;
+  margin: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #111111 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.product-card-qty-control button {
+  cursor: pointer;
+}
+
+.product-card-qty-control button:hover:not(:disabled) {
+  background: #f4f4f5 !important;
+}
+
+.product-card-qty-control button:disabled {
+  color: #b5b5b5 !important;
+  cursor: not-allowed;
+}
+
+.product-card-qty-control span {
+  font-weight: 500;
+  pointer-events: none;
+}
+
+/* Compact order-summary rows. Quantity adjustment lives on product card. */
+.cart-items {
+  max-height: 520px;
+}
+
+.cart-item {
+  padding: 0;
+  border-bottom: 1px solid #e8e8ea;
+}
+
+.cart-item-compact {
+  display: grid;
+  grid-template-columns: 24px 50px minmax(0, 1fr) 30px;
+  gap: 10px;
+  align-items: center;
+  min-height: 72px;
+  padding: 10px 14px;
+}
+
+.cart-item-quantity {
+  color: #343438;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.cart-item-thumb {
+  width: 50px;
+  height: 50px;
+  overflow: hidden;
+  border: 1px solid #e1e1e4;
+  border-radius: 0;
+  background: #f7f7f7;
+}
+
+.cart-item-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cart-item-thumb-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8a8a90;
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.cart-item-copy {
+  min-width: 0;
+}
+
+.cart-item-copy .cart-item-name {
+  margin: 0 0 5px;
+  overflow: hidden;
+  color: #222226;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cart-item-copy .cart-item-price {
+  margin: 0;
+  color: #5f5f65;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.cart-item-compact > .remove-btn {
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #d9d9dd !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  color: #4f4f54 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.cart-item-compact > .remove-btn:hover:not(:disabled) {
+  border-color: #111111 !important;
+  background: #f4f4f5 !important;
+  color: #111111 !important;
+}
+
+/* Primary cashier actions: black button / white text. */
+.search-layout .barcode-btn,
+.search-layout .checkout-btn {
+  background: #111111 !important;
+  color: #ffffff !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+}
+
+.search-layout .barcode-btn:hover:not(:disabled),
+.search-layout .checkout-btn:hover:not(:disabled) {
+  background: #2c2c2f !important;
+  color: #ffffff !important;
+}
+
+.search-layout .barcode-btn:disabled,
+.search-layout .checkout-btn:disabled {
+  background: #eeeeef !important;
+  color: #8d8d92 !important;
+  border-color: #d9d9dc !important;
+}
+
+/* Main product/cart surfaces stay square. */
+.search-layout .product-card,
+.search-layout .product-img,
+.search-layout .product-img-placeholder,
+.search-layout .cart-panel,
+.search-layout .cart-item-thumb {
+  border-radius: 0 !important;
+}
+
+@media (max-width: 520px) {
+  .product-card-meta {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .cart-item-compact {
+    grid-template-columns: 22px 46px minmax(0, 1fr) 30px;
+    gap: 8px;
+    padding: 9px 10px;
+  }
+
+  .cart-item-thumb {
+    width: 46px;
+    height: 46px;
+  }
+}
+/* =========================================================
+   WISDOM CASHIER PRODUCT QUANTITY V6.2
+   Product cards always use minus / quantity / plus.
+   Plus is the add-to-cart action when quantity is zero.
+   ========================================================= */
+
+.product-card-action {
+  min-height: 40px;
+  margin-top: 2px;
+}
+
+.product-card-action .product-card-qty-control {
+  width: 100px;
+  height: 32px;
+  margin-left: auto;
+}
+
+.product-card-action .product-card-qty-control.is-zero button:first-child {
+  color: #c8c8cc !important;
+  cursor: not-allowed;
+}
+
+.product-card-action .product-card-qty-control.is-zero span {
+  color: #77777d;
+}
+
+.product-card-action .product-card-qty-control button:last-child {
+  color: #111111 !important;
+}
+
+.product-card-action .product-card-qty-control button:last-child:hover:not(:disabled) {
+  background: #111111 !important;
+  color: #ffffff !important;
+}
+
+/* The old Add to Cart button is intentionally no longer rendered. */
+.product-card-action .add-btn {
+  display: none !important;
+}
+/* =========================================================
+   WISDOM CASHIER ADD TO CART RESTORE V6.3
+   Restore V6.1 card behavior while keeping compact cart rows.
+   ========================================================= */
+
+.product-card-action .add-btn {
+  display: inline-flex !important;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #111111 !important;
+  color: #ffffff !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+}
+
+.product-card-action .add-btn:hover:not(:disabled) {
+  background: #2c2c2f !important;
+  color: #ffffff !important;
+}
+
+.product-card-action .add-btn:disabled {
+  background: #eeeeef !important;
+  color: #8d8d92 !important;
+  border-color: #d9d9dc !important;
 }

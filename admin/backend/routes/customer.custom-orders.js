@@ -39,18 +39,104 @@ const proofUpload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 }).single("proof");
 
-const assetStorage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: "wisdom_uploads/custom-request-assets",
-    allowed_formats: ["jpg", "jpeg", "png", "webp", "pdf"],
+const CHAT_ATTACHMENT_EXTENSIONS = new Set([
+  ".jpg",
+  ".jpeg",
+  ".jfif",
+  ".png",
+  ".webp",
+  ".pdf",
+]);
+
+const CHAT_ATTACHMENT_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]);
+
+const assetUploadRaw = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 8 * 1024 * 1024,
+    files: 5,
+  },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    const mimeType = String(file.mimetype || "")
+      .trim()
+      .toLowerCase();
+
+    if (
+      CHAT_ATTACHMENT_EXTENSIONS.has(ext) &&
+      CHAT_ATTACHMENT_MIME_TYPES.has(mimeType)
+    ) {
+      cb(null, true);
+      return;
+    }
+
+    const error = new Error(
+      "Attachments must be JPG, JPEG, JFIF, PNG, WEBP, or PDF files.",
+    );
+    error.status = 400;
+    cb(error);
   },
 });
 
-const assetUpload = multer({
-  storage: assetStorage,
-  limits: { fileSize: 8 * 1024 * 1024 },
-}).array("attachments", 5);
+const assetUpload = (req, res, next) => {
+  assetUploadRaw.array("attachments", 5)(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({
+            message: "Each attachment must be 8MB or smaller.",
+          });
+        }
+
+        if (
+          err.code === "LIMIT_FILE_COUNT" ||
+          err.code === "LIMIT_UNEXPECTED_FILE"
+        ) {
+          return res.status(400).json({
+            message: "You can attach up to 5 files per message.",
+          });
+        }
+      }
+
+      if (Number(err.status) === 400) {
+        return res.status(400).json({ message: err.message });
+      }
+
+      return next(err);
+    }
+
+    for (const file of req.files || []) {
+      const ext = path.extname(file.originalname || "").toLowerCase();
+      const mimeType = String(file.mimetype || "")
+        .trim()
+        .toLowerCase();
+
+      const extensionMatchesMime =
+        ([".jpg", ".jpeg", ".jfif"].includes(ext) &&
+          mimeType === "image/jpeg") ||
+        (ext === ".png" && mimeType === "image/png") ||
+        (ext === ".webp" && mimeType === "image/webp") ||
+        (ext === ".pdf" && mimeType === "application/pdf");
+
+      if (
+        !extensionMatchesMime ||
+        !verifyBufferSignature(file.buffer, ext)
+      ) {
+        return res.status(400).json({
+          message:
+            "One of the attachments does not match its file type. Please choose the original image or PDF file.",
+        });
+      }
+    }
+
+    next();
+  });
+};
 
 /* ──────────────────────────────────────────────────────────
    Initial custom-request reference photo upload

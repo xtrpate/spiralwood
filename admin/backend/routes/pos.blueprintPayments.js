@@ -6,6 +6,13 @@ const { logAction } = require("../middleware/auditLog");
 const controller = require("../controllers/staff/pos.blueprintPayments");
 
 router.get(
+  "/",
+  authenticate,
+  requireCashierOrAdmin,
+  controller.listOrders,
+);
+
+router.get(
   "/lookup",
   authenticate,
   requireCashierOrAdmin,

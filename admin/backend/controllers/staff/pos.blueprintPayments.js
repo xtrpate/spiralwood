@@ -96,6 +96,125 @@ const getPaymentHistoryForOrder = async (dbPool, orderId) => {
   });
 };
 
+
+exports.listOrders = async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `
+      SELECT
+        o.id AS order_id,
+        o.order_number,
+        o.status AS order_status,
+        o.payment_status,
+        o.payment_method AS initial_payment_method,
+        o.total,
+        o.blueprint_id,
+        o.created_at,
+        o.updated_at,
+
+        COALESCE(
+          NULLIF(TRIM(o.walkin_customer_name), ''),
+          NULLIF(TRIM(customer.name), ''),
+          'Customer'
+        ) AS customer_name,
+
+        COALESCE(
+          NULLIF(TRIM(b.title), ''),
+          'Blueprint'
+        ) AS blueprint_title,
+
+        b.thumbnail_url,
+
+        COALESCE(
+          SUM(
+            CASE
+              WHEN LOWER(COALESCE(pt.status, '')) = 'verified'
+                THEN pt.amount
+              ELSE 0
+            END
+          ),
+          0
+        ) AS verified_total,
+
+        COALESCE(
+          SUM(
+            CASE
+              WHEN LOWER(COALESCE(pt.status, '')) = 'pending'
+                THEN 1
+              ELSE 0
+            END
+          ),
+          0
+        ) AS pending_payment_count
+
+      FROM orders o
+      LEFT JOIN users customer
+        ON customer.id = o.customer_id
+      LEFT JOIN blueprints b
+        ON b.id = o.blueprint_id
+      LEFT JOIN payment_transactions pt
+        ON pt.order_id = o.id
+
+      WHERE o.order_type = 'blueprint'
+
+      GROUP BY
+        o.id,
+        o.order_number,
+        o.status,
+        o.payment_status,
+        o.payment_method,
+        o.total,
+        o.blueprint_id,
+        o.created_at,
+        o.updated_at,
+        o.walkin_customer_name,
+        customer.name,
+        b.title,
+        b.thumbnail_url
+
+      ORDER BY o.updated_at DESC, o.id DESC
+      LIMIT 200
+      `,
+      [],
+    );
+
+    const orders = rows.map((row) => {
+      const total = Number(row.total || 0);
+      const verifiedTotal = Number(row.verified_total || 0);
+      const pendingPaymentCount = Number(row.pending_payment_count || 0);
+      const remainingBalance = Math.max(0, total - verifiedTotal);
+      const storedStatus = normalize(row.payment_status) || "unpaid";
+
+      return {
+        order_id: row.order_id,
+        order_number: row.order_number,
+        order_status: row.order_status,
+        payment_status:
+          pendingPaymentCount > 0 && storedStatus !== "paid"
+            ? "pending"
+            : storedStatus,
+        stored_payment_status: storedStatus,
+        initial_payment_method: row.initial_payment_method || null,
+        total,
+        verified_total: verifiedTotal,
+        remaining_balance: remainingBalance,
+        pending_payment_count: pendingPaymentCount,
+        customer_name: row.customer_name,
+        blueprint_id: row.blueprint_id,
+        blueprint_title: row.blueprint_title,
+        thumbnail_url: row.thumbnail_url || null,
+        created_at: row.created_at,
+      };
+    });
+
+    return res.json({ orders });
+  } catch (err) {
+    console.error("[pos.blueprintPayments listOrders]", err);
+    return res.status(500).json({
+      message: "Failed to load blueprint payments.",
+    });
+  }
+};
 exports.lookupByOrderNumber = async (req, res) => {
   const rawOrderNumber = req.query.order_number;
 
@@ -107,7 +226,27 @@ exports.lookupByOrderNumber = async (req, res) => {
 
   try {
     const [[row]] = await pool.query(
-      `SELECT id FROM orders WHERE order_number = ? LIMIT 1`,
+      `
+      SELECT
+        o.id,
+        COALESCE(
+          NULLIF(TRIM(o.walkin_customer_name), ''),
+          NULLIF(TRIM(customer.name), ''),
+          'Customer'
+        ) AS customer_name,
+        COALESCE(
+          NULLIF(TRIM(b.title), ''),
+          'Blueprint'
+        ) AS blueprint_title,
+        b.thumbnail_url
+      FROM orders o
+      LEFT JOIN users customer
+        ON customer.id = o.customer_id
+      LEFT JOIN blueprints b
+        ON b.id = o.blueprint_id
+      WHERE o.order_number = ?
+      LIMIT 1
+      `,
       [orderNumber],
     );
 
@@ -118,7 +257,13 @@ exports.lookupByOrderNumber = async (req, res) => {
     const summary = await getRestrictedPaymentSummary(pool, row.id);
     const paymentHistory = await getPaymentHistoryForOrder(pool, row.id);
 
-    return res.json({ ...summary, payment_history: paymentHistory });
+    return res.json({
+      ...summary,
+      customer_name: row.customer_name,
+      blueprint_title: row.blueprint_title,
+      thumbnail_url: row.thumbnail_url || null,
+      payment_history: paymentHistory,
+    });
   } catch (err) {
     console.error("[pos.blueprintPayments lookupByOrderNumber]", err);
     return res.status(500).json({ message: "Failed to look up order." });

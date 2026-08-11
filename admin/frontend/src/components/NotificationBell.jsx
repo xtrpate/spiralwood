@@ -2,8 +2,10 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import { Bell } from "lucide-react";
 import api from "../services/api";
 import useAuthStore from "../store/authStore";
+import "./NotificationBell.css";
 
 const S = {
   btn: {
@@ -160,6 +162,7 @@ export default function NotificationBell({ compact = false }) {
   const isCashier = user?.role === "staff" && user?.staff_type === "cashier";
   const isDeliveryRider =
     user?.role === "staff" && user?.staff_type === "delivery_rider";
+  const useMonochromeNotification = isCashier || isDeliveryRider || isIndoorStaff;
 
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
@@ -250,6 +253,7 @@ export default function NotificationBell({ compact = false }) {
   return (
     <>
       <button
+        className={useMonochromeNotification ? "cashier-notification-trigger" : undefined}
         style={
           compact
             ? { ...S.btnIcon, position: "relative" }
@@ -259,9 +263,27 @@ export default function NotificationBell({ compact = false }) {
         aria-label={compact ? "Notifications" : undefined}
         title={compact ? "Notifications" : undefined}
       >
-        {compact ? "🔔" : "🔔 Notifications"}
+        {compact ? (
+          useMonochromeNotification ? (
+            <Bell size={20} strokeWidth={1.8} />
+          ) : (
+            "🔔"
+          )
+        ) : useMonochromeNotification ? (
+          <>
+            <Bell size={17} strokeWidth={1.8} />
+            <span>Notifications</span>
+          </>
+        ) : (
+          "🔔 Notifications"
+        )}
         {unreadCount > 0 && (
           <span
+            className={
+              useMonochromeNotification
+                ? "cashier-notification-count"
+                : undefined
+            }
             style={{
               position: "absolute",
               top: -6,
@@ -287,6 +309,7 @@ export default function NotificationBell({ compact = false }) {
       {open && (
         <div style={S.overlay} onClick={() => setOpen(false)}>
           <div
+            className={useMonochromeNotification ? "cashier-notification-modal" : undefined}
             style={{ ...S.modal, width: 480 }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -298,11 +321,22 @@ export default function NotificationBell({ compact = false }) {
                 marginBottom: 20,
               }}
             >
-              <div style={{ ...S.mTitle, marginBottom: 0 }}>
-                🔔 Notifications
+              <div
+                className={useMonochromeNotification ? "cashier-notification-title" : undefined}
+                style={{ ...S.mTitle, marginBottom: 0 }}
+              >
+                {useMonochromeNotification ? (
+                  <>
+                    <Bell size={18} strokeWidth={1.8} />
+                    <span>Notifications</span>
+                  </>
+                ) : (
+                  "🔔 Notifications"
+                )}
               </div>
               {unreadCount > 0 && (
                 <button
+                  className={useMonochromeNotification ? "cashier-notification-mark-all" : undefined}
                   style={{
                     ...S.btn,
                     ...S.btnGray,
@@ -311,7 +345,7 @@ export default function NotificationBell({ compact = false }) {
                   }}
                   onClick={markAllRead}
                 >
-                  Mark all read
+                  Mark all as read
                 </button>
               )}
             </div>
@@ -331,10 +365,12 @@ export default function NotificationBell({ compact = false }) {
               notifications.map((n) => (
                 <div
                   key={n.id}
+                  className={useMonochromeNotification ? "cashier-notification-item" : undefined}
                   style={S.notifItem(!n.is_read)}
                   onClick={() => handleNotificationClick(n)}
                 >
                   <div
+                    className={useMonochromeNotification ? "cashier-notification-item-title" : undefined}
                     style={{
                       fontSize: 13,
                       fontWeight: 800,
@@ -345,6 +381,7 @@ export default function NotificationBell({ compact = false }) {
                     {n.title}
                   </div>
                   <div
+                    className={useMonochromeNotification ? "cashier-notification-item-message" : undefined}
                     style={{
                       fontSize: 13,
                       color: "#52525b",
@@ -355,6 +392,7 @@ export default function NotificationBell({ compact = false }) {
                     {n.message}
                   </div>
                   <div
+                    className={useMonochromeNotification ? "cashier-notification-meta" : undefined}
                     style={{
                       fontSize: 11,
                       color: "#71717a",
@@ -367,7 +405,7 @@ export default function NotificationBell({ compact = false }) {
                       {new Date(n.created_at).toLocaleString("en-PH")}
                     </span>
                     {!n.is_read && (
-                      <span style={{ color: "#0a0a0a", fontWeight: 800 }}>
+                      <span className={useMonochromeNotification ? "cashier-notification-unread" : undefined} style={{ color: "#0a0a0a", fontWeight: 800 }}>
                         ● Unread
                       </span>
                     )}
@@ -383,6 +421,7 @@ export default function NotificationBell({ compact = false }) {
               }}
             >
               <button
+                className={useMonochromeNotification ? "cashier-notification-close" : undefined}
                 style={{ ...S.btn, ...S.btnGray }}
                 onClick={() => setOpen(false)}
               >

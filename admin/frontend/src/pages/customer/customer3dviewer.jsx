@@ -1591,7 +1591,12 @@ export default function Customer3DViewer({
             </div>
           </aside>
         ) : (
-          <aside style={styles.sidebar}>
+          <aside
+            style={{
+              ...styles.sidebar,
+              ...styles.customizeSidebarScrollable,
+            }}
+          >
             <div style={styles.sidebarScroll}>
             <section
               style={{
@@ -2364,6 +2369,16 @@ const styles = {
     overflow: "hidden",
   },
 
+  customizeSidebarScrollable: {
+    display: "block",
+    minHeight: 0,
+    height: "100%",
+    overflowY: "auto",
+    overflowX: "hidden",
+    overscrollBehaviorY: "contain",
+    scrollbarGutter: "stable",
+  },
+
   fullHeightNoScrollLayout: {
     minHeight: 0,
     height: "100%",
@@ -2375,7 +2390,7 @@ const styles = {
     padding: "6px 7px 5px",
     display: "grid",
     gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gridAutoRows: "min-content",
+    gridAutoRows: "max-content",
     alignContent: "start",
     gap: 5,
   },
@@ -2679,16 +2694,16 @@ const styles = {
 
   sidebarFooter: {
     minHeight: 0,
-    height: "100%",
-    overflowY: "auto",
+    height: "auto",
+    overflow: "visible",
     borderTop: "1px solid #d9dee4",
     background: "#ffffff",
-    padding: "8px 9px 9px",
+    padding: "8px 9px 12px",
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr)",
-    gridTemplateRows: "auto auto minmax(92px, 1fr) auto",
-    rowGap: 5,
-    alignItems: "stretch",
+    gridTemplateRows: "auto auto auto auto",
+    rowGap: 8,
+    alignItems: "start",
   },
 
   orderDetailsStackedUniform: {
@@ -2769,9 +2784,9 @@ const styles = {
   },
 
   notesFooterField: {
-    height: "100%",
-    gridTemplateRows: "auto minmax(0, 1fr)",
-    alignContent: "stretch",
+    height: "auto",
+    gridTemplateRows: "auto auto",
+    alignContent: "start",
   },
 
   footerLabel: {
@@ -2882,8 +2897,8 @@ const styles = {
   textarea: {
     width: "100%",
     minHeight: 92,
-    height: "100%",
-    resize: "none",
+    height: 92,
+    resize: "vertical",
     borderRadius: 0,
     border: "1px solid #111111",
     padding: "8px 9px",
@@ -2894,7 +2909,7 @@ const styles = {
     outline: "none",
     background: "#ffffff",
     color: "#111111",
-    alignSelf: "stretch",
+    alignSelf: "start",
   },
 
   applyBtn: {

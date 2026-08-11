@@ -1088,3 +1088,478 @@
 
   cursor: not-allowed;
 }
+/* =========================================================
+   WISDOM CASHIER SUPPORT INBOX UI V1
+   Research-inspired queue + detail workspace.
+   Scoped to staff/cashier Support only.
+   ========================================================= */
+
+.staff-support-page {
+  width: 100%;
+  padding: 26px 28px 40px;
+  color: #18181b;
+  background: #f7f7f8;
+  box-sizing: border-box;
+}
+
+.staff-support-page,
+.staff-support-page button,
+.staff-support-page input,
+.staff-support-page select,
+.staff-support-page textarea {
+  font-family: inherit;
+}
+
+.staff-support-header {
+  margin-bottom: 16px;
+}
+
+.staff-support-header h1 {
+  margin: 0;
+  color: #111111;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.staff-support-header p {
+  margin: 7px 0 0;
+  color: #6b6b72;
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+.staff-support-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.staff-support-page .staff-support-summary-card {
+  min-height: 82px;
+  padding: 14px 16px;
+  border: 1px solid #dcdce0;
+  border-top: 2px solid #111111;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+  box-sizing: border-box;
+}
+
+.staff-support-page .staff-support-summary-card span {
+  display: block;
+  margin: 0;
+  color: #6b6b72;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.staff-support-page .staff-support-summary-card strong {
+  display: block;
+  margin-top: 9px;
+  color: #111111;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.staff-support-workspace {
+  display: grid;
+  grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.staff-support-queue {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.staff-support-detail {
+  min-width: 0;
+}
+
+/* Queue filters live with the queue, not across the whole workspace. */
+.staff-support-page .support-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #dcdce0;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.staff-support-page .support-filter-bar select,
+.staff-support-page .support-search,
+.staff-support-page .support-search input {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.staff-support-page .support-filter-bar select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 9px;
+  border: 1px solid #d6d6da;
+  background: #ffffff;
+  color: #313136;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.staff-support-page .support-search {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 10px;
+  gap: 8px;
+  border: 1px solid #d6d6da;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.staff-support-page .support-search input {
+  min-width: 0;
+  padding: 8px 0;
+  border: 0;
+  color: #313136;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.staff-support-page .support-filter-count {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #7a7a80;
+  font-size: 10.5px;
+  font-weight: 400;
+  text-align: right;
+}
+
+/* Ticket queue uses flat rows rather than floating cards. */
+.staff-support-page .support-ticket-list {
+  height: auto;
+  max-height: calc(100vh - 350px);
+  min-height: 360px;
+  padding: 12px;
+  overflow-y: auto;
+  border: 1px solid #dcdce0;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.staff-support-page .support-ticket-list > h3 {
+  margin: 2px 0 10px;
+  color: #111111;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.staff-support-page .support-ticket-item {
+  margin: 0;
+  padding: 13px 11px;
+  border: 0;
+  border-top: 1px solid #ededee;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+  transform: none;
+  transition: background 0.12s ease;
+}
+
+.staff-support-page .support-ticket-item:first-of-type {
+  border-top: 1px solid #ededee;
+}
+
+.staff-support-page .support-ticket-item:hover {
+  border-color: #ededee;
+  border-radius: 0;
+  background: #f7f7f8;
+  box-shadow: none;
+  transform: none;
+}
+
+.staff-support-page .support-ticket-item.active {
+  border: 0;
+  border-top: 1px solid #ededee;
+  border-radius: 0;
+  background: #f1f1f2;
+  box-shadow: inset 3px 0 0 #111111;
+  transform: none;
+}
+
+.staff-support-page .ticket-card-header h4,
+.staff-support-page .support-ticket-item h4 {
+  color: #1f1f23;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.staff-support-page .ticket-customer {
+  margin: 7px 0;
+  color: #3f3f44;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.staff-support-page .ticket-meta,
+.staff-support-page .support-ticket-item p {
+  gap: 4px;
+  margin: 5px 0;
+  color: #77777d;
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.staff-support-page .ticket-footer {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid #eeeeef;
+}
+
+.staff-support-page .priority,
+.staff-support-page .support-status-badge {
+  min-height: 22px;
+  padding: 3px 7px;
+  border: 1px solid #d8d8dc;
+  border-radius: 0;
+  background: #f7f7f8 !important;
+  color: #343438 !important;
+  box-shadow: none;
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+/* Compact empty queue instead of a tall decorative blank panel. */
+.staff-support-page .support-empty-state {
+  min-height: 250px;
+  padding: 42px 18px;
+}
+
+.staff-support-page .support-empty-icon {
+  display: none;
+}
+
+.staff-support-page .support-empty-state h3 {
+  margin: 0 0 7px;
+  color: #222226;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.staff-support-page .support-empty-state p {
+  max-width: 280px;
+  margin: 0;
+  color: #737379;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.staff-support-page .support-clear-filter-btn {
+  margin-top: 16px;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid #111111;
+  border-radius: 0;
+  background: #ffffff;
+  color: #111111;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.staff-support-page .support-clear-filter-btn:hover {
+  background: #f2f2f3;
+}
+
+/* Ticket detail pane */
+.staff-support-page .support-ticket-details,
+.staff-support-page .support-conversation-card {
+  min-height: 0;
+  padding: 20px;
+  border: 1px solid #dcdce0;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.staff-support-page .support-ticket-details > h2 {
+  margin: 0;
+  color: #111111;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.staff-support-page .support-ticket-details > p,
+.staff-support-page .ticket-subtitle {
+  margin: 6px 0 0;
+  color: #707076;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.staff-support-page .support-tabs {
+  margin-top: 18px;
+  gap: 0;
+  border-bottom: 1px solid #e2e2e5;
+}
+
+.staff-support-page .support-tabs button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: #ffffff;
+  color: #696970;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.staff-support-page .support-tabs button.active {
+  border-bottom-color: #111111;
+  background: #ffffff;
+  color: #111111;
+  font-weight: 600;
+}
+
+.staff-support-page .ticket-divider {
+  margin: 18px 0;
+  border: 0;
+  border-top: 1px solid #ececee;
+}
+
+.staff-support-page .ticket-section-title {
+  margin: 0 0 12px;
+  color: #2c2c31;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.staff-support-page .ticket-meta-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 20px;
+}
+
+.staff-support-page .ticket-meta-item {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e4e4e6;
+  border-radius: 0;
+  background: #fafafa;
+}
+
+.staff-support-page .ticket-meta-item span {
+  color: #77777d;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.staff-support-page .ticket-meta-item strong {
+  color: #222226;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.staff-support-page .ticket-management select,
+.staff-support-page .ticket-management textarea,
+.staff-support-page .assign-dropdown select,
+.staff-support-page .reply-composer {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.staff-support-page .ticket-management button,
+.staff-support-page .assign-dropdown button,
+.staff-support-page .reply-send-btn {
+  border: 1px solid #111111;
+  border-radius: 0;
+  background: #111111;
+  color: #ffffff;
+  box-shadow: none;
+  font-weight: 600;
+}
+
+.staff-support-page .ticket-management button:hover:not(:disabled),
+.staff-support-page .assign-dropdown button:hover:not(:disabled),
+.staff-support-page .reply-send-btn:hover:not(:disabled) {
+  background: #2b2b2e;
+}
+
+.staff-support-page .conversation-bubble,
+.staff-support-page .reply-composer,
+.staff-support-page .reply-send-btn {
+  border-radius: 0;
+}
+
+.staff-support-page .conversation-bubble {
+  padding: 10px 12px;
+  box-shadow: none;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1180px) {
+  .staff-support-workspace {
+    grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+  }
+
+  .staff-support-page .ticket-meta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .staff-support-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .staff-support-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-support-page .support-ticket-list {
+    max-height: 380px;
+    min-height: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .staff-support-page {
+    padding: 18px 14px 32px;
+  }
+
+  .staff-support-summary-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .staff-support-page .support-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-support-page .support-search,
+  .staff-support-page .support-filter-count {
+    grid-column: 1;
+  }
+
+  .staff-support-page .ticket-meta-grid {
+    grid-template-columns: 1fr;
+  }
+}

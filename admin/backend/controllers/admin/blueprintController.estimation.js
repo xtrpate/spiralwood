@@ -33,6 +33,152 @@ const {
   purgeExpiredArchivedBlueprints,
 } = require("./blueprintController.helpers");
 
+const checkQuotationInventoryReadiness = async (
+  conn,
+  { estimation, orderId } = {},
+) => {
+  const estimationMeta = safeJsonParse(estimation?.estimation_data, {}) || {};
+  const snapshotItems = Array.isArray(estimationMeta.items)
+    ? estimationMeta.items
+    : [];
+
+  const inventoryItems = snapshotItems.filter(
+    (item) =>
+      String(item?.source_type || item?.sourceType || "")
+        .trim()
+        .toLowerCase() === "inventory_material",
+  );
+
+  if (!inventoryItems.length) {
+    return {
+      ready: false,
+      issues: [
+        {
+          code: "NO_REQUIRED_INVENTORY_MATERIALS",
+          message:
+            "Add at least one Required Inventory Material before sending the quotation.",
+        },
+      ],
+    };
+  }
+
+  const issues = [];
+  const requirements = new Map();
+
+  inventoryItems.forEach((item, index) => {
+    const materialId = Number(item?.raw_material_id);
+    const quantity = Number(item?.quantity);
+
+    if (!Number.isSafeInteger(materialId) || materialId <= 0) {
+      issues.push({
+        code: "INVENTORY_MATERIAL_NOT_SELECTED",
+        item_index: index,
+        message: `Required Inventory Material row ${index + 1} has no selected inventory item.`,
+      });
+      return;
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      issues.push({
+        code: "INVALID_INVENTORY_QUANTITY",
+        material_id: materialId,
+        item_index: index,
+        message: `Required Inventory Material row ${index + 1} must have a quantity greater than 0.`,
+      });
+      return;
+    }
+
+    const current = requirements.get(materialId) || 0;
+    requirements.set(materialId, current + quantity);
+  });
+
+  if (issues.length) return { ready: false, issues };
+
+  const materialIds = [...requirements.keys()].sort((a, b) => a - b);
+  const placeholders = materialIds.map(() => "?").join(",");
+
+  const [materialRows] = await conn.query(
+    `SELECT id, name, unit, quantity, stock_status, is_active
+     FROM raw_materials
+     WHERE id IN (${placeholders})
+     ORDER BY id
+     FOR UPDATE`,
+    materialIds,
+  );
+
+  const [reservationRows] = await conn.query(
+    `SELECT id, order_id, material_id, quantity, status
+     FROM blueprint_material_reservations
+     WHERE material_id IN (${placeholders})
+       AND status = 'reserved'
+       AND order_id <> ?
+     ORDER BY material_id, id
+     FOR UPDATE`,
+    [...materialIds, Number(orderId)],
+  );
+
+  const materialMap = new Map(
+    materialRows.map((row) => [Number(row.id), row]),
+  );
+  const reservedElsewhere = new Map();
+
+  reservationRows.forEach((row) => {
+    const materialId = Number(row.material_id);
+    const quantity = Number(row.quantity) || 0;
+    reservedElsewhere.set(
+      materialId,
+      (reservedElsewhere.get(materialId) || 0) + quantity,
+    );
+  });
+
+  for (const materialId of materialIds) {
+    const material = materialMap.get(materialId);
+    const required = Number(requirements.get(materialId) || 0);
+
+    if (!material) {
+      issues.push({
+        code: "RAW_MATERIAL_NOT_FOUND",
+        material_id: materialId,
+        required,
+        message: `Selected inventory material #${materialId} no longer exists. Refresh the estimate and select another material.`,
+      });
+      continue;
+    }
+
+    if (Number(material.is_active) === 0) {
+      issues.push({
+        code: "RAW_MATERIAL_INACTIVE",
+        material_id: materialId,
+        material_name: material.name,
+        required,
+        message: `${material.name || `Material #${materialId}`} is archived or inactive and cannot be used for this quotation.`,
+      });
+      continue;
+    }
+
+    const onHand = Math.max(0, Number(material.quantity) || 0);
+    const reserved = Math.max(0, Number(reservedElsewhere.get(materialId)) || 0);
+    const available = Math.max(0, onHand - reserved);
+
+    if (available + 1e-9 < required) {
+      issues.push({
+        code: "INSUFFICIENT_AVAILABLE_INVENTORY",
+        material_id: materialId,
+        material_name: material.name,
+        unit: material.unit,
+        required,
+        on_hand: onHand,
+        reserved_elsewhere: reserved,
+        available,
+        shortage: Math.max(0, required - available),
+        message: `${material.name || `Material #${materialId}`} requires ${required} ${material.unit || "unit"}, but only ${available} ${material.unit || "unit"} is currently available after existing reservations.`,
+      });
+    }
+  }
+
+  return { ready: issues.length === 0, issues };
+};
+
 exports.getEstimation = async (req, res) => {
   const conn = await pool.getConnection();
 
@@ -931,6 +1077,23 @@ exports.approveEstimation = async (req, res) => {
         message:
           "Quotation state changed before it could be sent. Please refresh and try again.",
         integrity_reason: "ESTIMATION_STATE_CHANGED",
+      });
+    }
+
+    const inventoryReadiness = await checkQuotationInventoryReadiness(conn, {
+      estimation: latestEstimation,
+      orderId: order.id,
+    });
+
+    if (!inventoryReadiness.ready) {
+      await conn.rollback();
+      const firstIssue = inventoryReadiness.issues?.[0];
+      return res.status(409).json({
+        message:
+          firstIssue?.message ||
+          "Quotation cannot be sent until required inventory materials are complete and sufficient.",
+        integrity_reason: "INVENTORY_NOT_READY_FOR_QUOTATION",
+        inventory_issues: inventoryReadiness.issues || [],
       });
     }
 

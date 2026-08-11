@@ -86,7 +86,7 @@ export default function POSLayout() {
           icon: LayoutDashboard,
           label: "Dashboard",
         },
-        { to: "/staff/deliveries", icon: Truck, label: "Active Deliveries" },
+        { to: "/staff/deliveries", icon: Truck, label: "Deliveries" },
         { to: "/staff/rider-history", icon: ClipboardList, label: "History" },
       ];
     }
@@ -94,15 +94,30 @@ export default function POSLayout() {
     return [];
   }, [isAdmin, isCashier, isIndoorStaff, isDeliveryRider]);
 
+  // WISDOM ROLE BASED SIDEBAR IDENTITY V1
   const roleLabel = isAdmin
     ? "Administrator"
     : isCashier
       ? "Cashier"
       : isDeliveryRider
-        ? "Delivery Rider"
+        ? "Delivery Staff"
         : isIndoorStaff
           ? "Indoor Staff"
-          : user?.role || "User";
+          : user?.role === "staff"
+            ? "Staff"
+            : user?.role || "User";
+
+  const workspaceLabel = isAdmin
+    ? "Admin Portal"
+    : isCashier
+      ? "POS System"
+      : isDeliveryRider
+        ? "Delivery"
+        : isIndoorStaff
+          ? "Staff Portal"
+          : user?.role === "staff"
+            ? "Staff Portal"
+            : "System";
 
   const handleLogout = () => {
     logout();
@@ -124,7 +139,7 @@ export default function POSLayout() {
               <div className="logo-icon">W</div>
               <div className="logo-text">
                 <span className="logo-name">WISDOM</span>
-                <span className="logo-sub">POS System</span>
+                <span className="logo-sub">{workspaceLabel}</span>
               </div>
             </div>
           )}
