@@ -695,11 +695,12 @@ function ProcessModal({ row, onClose, onSubmit, processing }) {
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const pageShell = {
-  maxWidth: 1180,
+  maxWidth: 1480, // Widened to match the new Orders grid
   margin: "0 auto",
   display: "flex",
   flexDirection: "column",
   gap: 16,
+  color: "#202124",
 };
 
 const headerBlock = {
@@ -711,78 +712,81 @@ const headerBlock = {
 };
 
 const eyebrow = {
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: "1.2px",
+  fontSize: 9.5,
+  fontWeight: 600,
+  letterSpacing: ".35px",
   textTransform: "uppercase",
-  color: "#71717a",
+  color: "#62676e",
   marginBottom: 8,
 };
 
 const pageTitle = {
   margin: 0,
-  fontSize: 24,
-  lineHeight: 1.1,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  letterSpacing: "-0.02em",
+  fontSize: 25,
+  lineHeight: 1.15,
+  fontWeight: 700,
+  color: "#17191c",
+  letterSpacing: "-0.025em",
 };
 
 const pageSubtitle = {
-  margin: "8px 0 0",
-  color: "#52525b",
-  fontSize: 13,
-  lineHeight: 1.55,
+  margin: "7px 0 0",
+  color: "#73777e",
+  fontSize: 12.5,
+  lineHeight: 1.45,
 };
 
 const summaryPill = {
   background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 12,
-  padding: "10px 14px",
-  fontSize: 12,
-  fontWeight: 700,
-  color: "#18181b",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
+  padding: "0 14px",
+  height: 36,
+  display: "inline-flex",
+  alignItems: "center",
+  fontSize: 11.5,
+  fontWeight: 600,
+  color: "#25282c",
 };
 
 const statsGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-  gap: 12,
+  gap: 10,
 };
 
 const statCard = {
   background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 12,
-  padding: "16px 18px",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
+  padding: "14px 16px",
+  minHeight: 78,
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
 };
 
 const statLabel = {
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: "1px",
+  fontSize: 9.5,
+  fontWeight: 600,
+  letterSpacing: ".35px",
   textTransform: "uppercase",
-  color: "#71717a",
+  color: "#62676e",
   marginBottom: 8,
 };
 
 const statValue = {
-  fontSize: 24,
-  fontWeight: 800,
-  color: "#0a0a0a",
+  fontSize: 23,
+  fontWeight: 700,
+  color: "#17191c",
   lineHeight: 1,
-  letterSpacing: "-0.02em",
 };
 
 const infoCard = {
   background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 16,
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
   padding: 16,
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const infoHeader = {
@@ -795,14 +799,14 @@ const infoHeader = {
 
 const infoTitle = {
   fontSize: 14,
-  fontWeight: 800,
-  color: "#0a0a0a",
+  fontWeight: 700,
+  color: "#1e2023",
 };
 
 const infoSubtitle = {
   marginTop: 4,
   fontSize: 12,
-  color: "#52525b",
+  color: "#777c82",
 };
 
 const policyBody = {
@@ -810,20 +814,19 @@ const policyBody = {
   display: "grid",
   gap: 8,
   padding: "14px 16px",
-  borderRadius: 12,
+  borderRadius: 4,
   background: "#fafafa",
-  border: "1px solid #e4e4e7",
-  color: "#52525b",
-  fontSize: 13,
+  border: "1px solid #dfe2e5",
+  color: "#34383d",
+  fontSize: 12.5,
   lineHeight: 1.6,
 };
 
 const filterCard = {
   background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 16,
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
   padding: 16,
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const filterTopRow = {
@@ -835,12 +838,12 @@ const filterTopRow = {
 
 const inputBase = {
   height: 38,
-  borderRadius: 8,
-  border: "1px solid #e4e4e7",
+  borderRadius: 4,
+  border: "1px solid #d4d7db",
   background: "#ffffff",
-  padding: "0 14px",
-  fontSize: 13,
-  color: "#18181b",
+  padding: "0 12px",
+  fontSize: 12,
+  color: "#25282c",
   outline: "none",
 };
 
@@ -857,10 +860,13 @@ const statusRow = {
 };
 
 const statusChip = {
-  padding: "6px 14px",
-  borderRadius: 999,
+  padding: "0 14px",
+  height: 32,
+  display: "inline-flex",
+  alignItems: "center",
+  borderRadius: 4,
   border: "1px solid transparent",
-  fontSize: 11,
+  fontSize: 11.5,
   fontWeight: 600,
   cursor: "pointer",
   transition: "all 0.15s ease",
@@ -868,36 +874,34 @@ const statusChip = {
 
 const filtersMeta = {
   marginLeft: "auto",
-  fontSize: 12,
-  color: "#71717a",
+  fontSize: 11.5,
+  color: "#777c82",
   fontWeight: 500,
 };
 
 const tableCard = {
   background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 16,
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
   overflow: "hidden",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const tableHeader = {
-  padding: "20px 20px 14px",
-  borderBottom: "1px solid #e4e4e7",
+  padding: "15px 16px 12px",
+  borderBottom: "1px solid #e8eaed",
 };
 
 const tableTitle = {
   margin: 0,
-  fontSize: 18,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  letterSpacing: "-0.01em",
+  fontSize: 16,
+  fontWeight: 700,
+  color: "#1e2023",
 };
 
 const tableSubtitle = {
   margin: "4px 0 0",
-  fontSize: 13,
-  color: "#52525b",
+  fontSize: 11.5,
+  color: "#777c82",
 };
 
 const tableWrap = {
@@ -916,14 +920,14 @@ const theadRow = {
 };
 
 const th = {
-  padding: "14px 16px",
+  padding: "10px 14px",
   textAlign: "left",
-  fontSize: 10,
-  fontWeight: 800,
+  fontSize: 9.5,
+  fontWeight: 600,
   textTransform: "uppercase",
-  letterSpacing: "1px",
-  color: "#71717a",
-  borderBottom: "1px solid #e4e4e7",
+  letterSpacing: ".35px",
+  color: "#60656d",
+  borderBottom: "1px solid #e4e6e9",
 };
 
 const tbodyRow = {
@@ -931,40 +935,40 @@ const tbodyRow = {
 };
 
 const td = {
-  padding: "16px 16px",
-  fontSize: 13,
-  color: "#18181b",
-  borderBottom: "1px solid #f4f4f5",
+  padding: "11px 14px",
+  fontSize: 11.5,
+  color: "#34383d",
+  borderBottom: "1px solid #eff0f1",
   verticalAlign: "middle",
 };
 
 const orderLink = {
   background: "none",
   border: "none",
-  color: "#18181b",
+  color: "#17191c",
   padding: 0,
-  fontSize: 13,
-  fontWeight: 800,
+  fontSize: 11.8,
+  fontWeight: 700,
   cursor: "pointer",
 };
 
 const primaryText = {
-  fontSize: 13,
-  fontWeight: 700,
-  color: "#0a0a0a",
+  fontSize: 11.8,
+  fontWeight: 600,
+  color: "#25282c",
 };
 
 const secondaryText = {
-  marginTop: 4,
-  fontSize: 11,
-  color: "#71717a",
+  marginTop: 3,
+  fontSize: 9.8,
+  color: "#858a91",
 };
 
 const reasonText = {
   maxWidth: 240,
-  fontSize: 12,
-  lineHeight: 1.55,
-  color: "#52525b",
+  fontSize: 11.5,
+  lineHeight: 1.45,
+  color: "#34383d",
 };
 
 const softBadge = {
@@ -972,8 +976,8 @@ const softBadge = {
   alignItems: "center",
   justifyContent: "center",
   padding: "4px 10px",
-  borderRadius: 999,
-  fontSize: 11,
+  borderRadius: 4,
+  fontSize: 10.5,
   fontWeight: 600,
   whiteSpace: "nowrap",
 };
@@ -985,76 +989,93 @@ const actionsRow = {
 };
 
 const btnView = {
-  padding: "8px 14px",
-  borderRadius: 8,
-  border: "1px solid #e4e4e7",
-  background: "#f4f4f5",
-  color: "#18181b",
-  fontSize: 12,
-  fontWeight: 700,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 13px",
+  height: 32,
+  borderRadius: 4,
+  border: "1px solid #d9dce0",
+  background: "#ffffff",
+  color: "#25282c",
+  fontSize: 10.8,
+  fontWeight: 600,
   cursor: "pointer",
   transition: "background 0.2s",
 };
 
 const btnApprove = {
-  padding: "8px 14px",
-  borderRadius: 8,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 13px",
+  height: 32,
+  borderRadius: 4,
   border: "1px solid #18181b",
   background: "#18181b",
   color: "#ffffff",
-  fontSize: 12,
-  fontWeight: 700,
+  fontSize: 10.8,
+  fontWeight: 600,
   cursor: "pointer",
   transition: "background 0.2s",
 };
 
 const btnGhost = {
-  padding: "9px 14px",
-  borderRadius: 8,
-  border: "1px solid #e4e4e7",
-  background: "#f4f4f5",
-  color: "#18181b",
-  fontSize: 12,
-  fontWeight: 700,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 14px",
+  height: 36,
+  borderRadius: 4,
+  border: "1px solid #d9dce0",
+  background: "#ffffff",
+  color: "#25282c",
+  fontSize: 11.5,
+  fontWeight: 600,
   cursor: "pointer",
   transition: "background 0.2s",
 };
 
 const btnPrimary = {
-  padding: "10px 18px",
-  borderRadius: 8,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 14px",
+  height: 36,
+  borderRadius: 4,
   border: "1px solid #18181b",
   background: "#18181b",
   color: "#ffffff",
-  fontSize: 13,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
   cursor: "pointer",
   transition: "background 0.2s",
 };
 
 const emptyCell = {
-  padding: 32,
+  padding: 34,
   textAlign: "center",
-  color: "#71717a",
-  fontSize: 13,
+  color: "#858a91",
+  fontSize: 12,
 };
 
 const emptyState = {
   display: "flex",
   flexDirection: "column",
-  gap: 6,
+  gap: 5,
   alignItems: "center",
 };
 
 const emptyStateTitle = {
-  fontWeight: 800,
-  color: "#0a0a0a",
-  fontSize: 15,
+  fontWeight: 650,
+  color: "#25282c",
+  fontSize: 13,
 };
 
 const emptyStateText = {
   maxWidth: 420,
-  lineHeight: 1.55,
+  lineHeight: 1.45,
+  fontSize: 11,
 };
 
 const overlay = {
@@ -1070,45 +1091,44 @@ const overlay = {
 
 const modalBox = {
   background: "#fff",
-  borderRadius: 16,
-  padding: 28,
-  width: 500,
+  borderRadius: 4,
+  padding: 24,
+  width: 480,
   maxWidth: "100%",
-  border: "1px solid #e4e4e7",
-  boxShadow: "0 25px 60px rgba(0, 0, 0, 0.15)",
+  border: "1px solid #dfe2e5",
 };
 
 const modalTitle = {
   margin: 0,
   fontSize: 18,
-  fontWeight: 800,
-  color: "#0a0a0a",
+  fontWeight: 700,
+  color: "#1e2023",
 };
 
 const modalSubtitle = {
   margin: "6px 0 20px",
-  fontSize: 13,
-  color: "#52525b",
+  fontSize: 12.5,
+  color: "#777c82",
 };
 
 const infoPanel = {
   background: "#fafafa",
-  border: "1px solid #e4e4e7",
-  borderRadius: 12,
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
   padding: "14px 16px",
   marginBottom: 20,
   display: "grid",
   gap: 10,
-  fontSize: 13,
-  color: "#18181b",
-  lineHeight: 1.55,
+  fontSize: 12.5,
+  color: "#34383d",
+  lineHeight: 1.45,
 };
 
 const labelSm = {
   display: "block",
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#18181b",
+  fontSize: 11.5,
+  fontWeight: 600,
+  color: "#1e2023",
   marginBottom: 8,
 };
 
@@ -1122,39 +1142,39 @@ const radioLabel = {
   display: "inline-flex",
   alignItems: "center",
   gap: 8,
-  fontSize: 13,
-  color: "#18181b",
+  fontSize: 12.5,
+  color: "#34383d",
   fontWeight: 500,
 };
 
 const inputFull = {
   width: "100%",
-  height: 40,
-  borderRadius: 8,
-  border: "1px solid #e4e4e7",
+  height: 38,
+  borderRadius: 4,
+  border: "1px solid #d4d7db",
   background: "#ffffff",
-  padding: "0 14px",
-  fontSize: 13,
-  color: "#18181b",
+  padding: "0 12px",
+  fontSize: 12,
+  color: "#25282c",
   boxSizing: "border-box",
   outline: "none",
 };
 
 const helperText = {
   marginTop: 8,
-  fontSize: 11,
-  color: "#71717a",
-  lineHeight: 1.5,
+  fontSize: 10.5,
+  color: "#777c82",
+  lineHeight: 1.45,
 };
 
 const rejectNote = {
   padding: "14px 16px",
-  borderRadius: 12,
+  borderRadius: 4,
   background: "#fef2f2",
   border: "1px solid #fecaca",
   color: "#991b1b",
-  fontSize: 13,
-  lineHeight: 1.55,
+  fontSize: 12.5,
+  lineHeight: 1.45,
 };
 
 const modalActions = {
@@ -1166,13 +1186,17 @@ const modalActions = {
 };
 
 const btnDeclineAction = {
-  padding: "10px 18px",
-  borderRadius: 8,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 14px",
+  height: 36,
+  borderRadius: 4,
   border: "1px solid #fecaca",
   background: "#fef2f2",
   color: "#dc2626",
-  fontSize: 13,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
   cursor: "pointer",
   transition: "background 0.2s",
 };

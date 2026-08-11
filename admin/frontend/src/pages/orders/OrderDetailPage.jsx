@@ -3151,19 +3151,19 @@ function TableShell({ children }) {
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const pageShell = {
-  maxWidth: 1120,
+  maxWidth: 1480, // Widened to match the new Orders grid
   margin: "0 auto",
   display: "flex",
   flexDirection: "column",
   gap: 16,
+  color: "#202124",
 };
 
 const heroCard = {
   background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 16,
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
   padding: "16px 20px",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const heroTop = {
@@ -3176,11 +3176,11 @@ const heroTop = {
 };
 
 const eyebrow = {
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: "1.2px",
+  fontSize: 9.5,
+  fontWeight: 600,
+  letterSpacing: ".35px",
   textTransform: "uppercase",
-  color: "#71717a",
+  color: "#62676e",
   marginBottom: 8,
 };
 
@@ -3193,18 +3193,18 @@ const heroTitleRow = {
 
 const pageTitle = {
   margin: 0,
-  fontSize: 24,
-  lineHeight: 1.12,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  letterSpacing: "-0.02em",
+  fontSize: 25,
+  lineHeight: 1.15,
+  fontWeight: 700,
+  color: "#17191c",
+  letterSpacing: "-0.025em",
 };
 
 const pageSubtitle = {
-  margin: "8px 0 0",
-  fontSize: 13,
-  color: "#52525b",
-  lineHeight: 1.55,
+  margin: "7px 0 0",
+  fontSize: 12.5,
+  color: "#73777e",
+  lineHeight: 1.45,
   maxWidth: 620,
 };
 
@@ -3221,17 +3221,18 @@ const detailTabRow = {
   flexWrap: "wrap",
   marginTop: 16,
   paddingTop: 16,
-  borderTop: "1px solid #e4e4e7",
+  borderTop: "1px solid #dfe2e5",
 };
 
 const detailTabButton = {
-  padding: "8px 16px",
-  borderRadius: 8,
-  border: "1px solid #e4e4e7",
+  padding: "0 14px",
+  height: 36,
+  borderRadius: 4,
+  border: "1px solid #dfe2e5",
   background: "#ffffff",
-  color: "#52525b",
-  fontSize: 12,
-  fontWeight: 700,
+  color: "#25282c",
+  fontSize: 11.5,
+  fontWeight: 600,
   cursor: "pointer",
   transition: "all 0.2s ease",
 };
@@ -3239,14 +3240,18 @@ const detailTabButton = {
 const statsGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-  gap: 12,
+  gap: 10,
 };
 
 const statCard = {
-  background: "#fafafa",
-  border: "1px solid #e4e4e7",
-  borderRadius: 12,
-  padding: "12px 14px",
+  background: "#ffffff",
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
+  padding: "14px 16px",
+  minHeight: 78,
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
 };
 
 const statTop = {
@@ -3266,18 +3271,18 @@ const toneDot = {
 };
 
 const statLabel = {
-  fontSize: 10,
-  fontWeight: 800,
-  letterSpacing: "1px",
+  fontSize: 9.5,
+  fontWeight: 600,
+  letterSpacing: ".35px",
   textTransform: "uppercase",
-  color: "#71717a",
+  color: "#62676e",
 };
 
 const statValue = {
-  fontSize: 20,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  letterSpacing: "-0.01em",
+  fontSize: 23,
+  fontWeight: 700,
+  color: "#17191c",
+  lineHeight: 1,
 };
 
 const sectionGrid = {
@@ -3295,23 +3300,22 @@ const detailPairGrid = {
 
 const sectionCard = {
   background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 16,
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
   padding: "16px 20px",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
 };
 
 const sectionHeader = {
   marginBottom: 14,
   paddingBottom: 10,
-  borderBottom: "1px solid #f4f4f5",
+  borderBottom: "1px solid #eff0f1",
 };
 
 const sectionTitle = {
   margin: 0,
   fontSize: 16,
-  fontWeight: 800,
-  color: "#0a0a0a",
+  fontWeight: 700,
+  color: "#1e2023",
 };
 
 const infoRow = {
@@ -3324,15 +3328,15 @@ const infoRow = {
 };
 
 const infoLabel = {
-  fontSize: 12,
-  color: "#71717a",
-  fontWeight: 700,
+  fontSize: 11.5,
+  color: "#777c82",
+  fontWeight: 600,
   minWidth: 120,
 };
 
 const infoValue = {
-  fontSize: 13,
-  color: "#18181b",
+  fontSize: 12.5,
+  color: "#34383d",
   textAlign: "right",
   maxWidth: "72%",
   wordBreak: "break-word",
@@ -3342,8 +3346,8 @@ const infoValue = {
 const tableShell = {
   width: "100%",
   overflowX: "auto",
-  border: "1px solid #e4e4e7",
-  borderRadius: 12,
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
 };
 
 const table = {
@@ -3353,115 +3357,107 @@ const table = {
   minWidth: 680,
 };
 
-const theadRow = {
-  background: "#fafafa",
-};
-
-const tbodyRow = {
-  background: "#ffffff",
-};
-
-const tfootRow = {
-  background: "#fafafa",
-};
+const theadRow = { background: "#fafafa" };
+const tbodyRow = { background: "#ffffff" };
+const tfootRow = { background: "#fafafa" };
 
 const th = {
   textAlign: "left",
-  padding: "12px 14px",
-  fontSize: 10,
-  fontWeight: 800,
-  color: "#71717a",
+  padding: "10px 14px",
+  fontSize: 9.5,
+  fontWeight: 600,
+  color: "#60656d",
   textTransform: "uppercase",
-  letterSpacing: "1px",
-  borderBottom: "1px solid #e4e4e7",
+  letterSpacing: ".35px",
+  borderBottom: "1px solid #e4e6e9",
 };
 
 const td = {
-  padding: "12px 14px",
-  color: "#18181b",
-  fontSize: 13,
-  borderBottom: "1px solid #f4f4f5",
+  padding: "11px 14px",
+  color: "#34383d",
+  fontSize: 11.5,
+  borderBottom: "1px solid #eff0f1",
   verticalAlign: "middle",
 };
 
 const emptyText = {
   margin: 0,
-  fontSize: 13,
-  color: "#71717a",
+  fontSize: 12.5,
+  color: "#777c82",
   lineHeight: 1.5,
 };
 
 const infoNotice = {
   background: "#fafafa",
-  border: "1px solid #e4e4e7",
-  color: "#18181b",
-  borderRadius: 12,
+  border: "1px solid #dfe2e5",
+  color: "#34383d",
+  borderRadius: 4,
   padding: "10px 14px",
   fontSize: 12,
-  fontWeight: 700,
+  fontWeight: 600,
 };
 
 const noticeBox = {
   marginTop: 16,
   padding: 14,
   background: "#fafafa",
-  borderRadius: 12,
-  border: "1px dashed #d4d4d8",
+  borderRadius: 4,
+  border: "1px dashed #d9dce0",
 };
 
 const noticeTitle = {
   fontSize: 12,
-  fontWeight: 800,
-  color: "#18181b",
+  fontWeight: 700,
+  color: "#1e2023",
   marginBottom: 10,
 };
 
 const textBlock = {
   marginTop: 16,
   padding: 14,
-  borderRadius: 12,
+  borderRadius: 4,
   background: "#fafafa",
-  border: "1px solid #e4e4e7",
+  border: "1px solid #dfe2e5",
 };
 
 const textBlockTitle = {
-  fontSize: 10,
-  fontWeight: 800,
-  color: "#18181b",
+  fontSize: 9.5,
+  fontWeight: 600,
+  color: "#60656d",
   marginBottom: 8,
   textTransform: "uppercase",
-  letterSpacing: "1px",
+  letterSpacing: ".35px",
 };
 
 const multilineText = {
   margin: 0,
-  fontSize: 13,
-  color: "#52525b",
+  fontSize: 12.5,
+  color: "#34383d",
   lineHeight: 1.6,
   whiteSpace: "pre-wrap",
 };
 
 const taskList = {
   marginTop: 16,
-  border: "1px solid #e4e4e7",
-  borderRadius: 12,
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
   overflow: "hidden",
 };
 
 const taskListHeader = {
   padding: "10px 14px",
   background: "#fafafa",
-  borderBottom: "1px solid #e4e4e7",
-  fontSize: 10,
-  fontWeight: 800,
-  color: "#71717a",
+  borderBottom: "1px solid #dfe2e5",
+  fontSize: 9.5,
+  fontWeight: 600,
+  color: "#60656d",
   textTransform: "uppercase",
-  letterSpacing: "1px",
+  letterSpacing: ".35px",
 };
 
 const taskCard = {
   padding: 14,
-  borderBottom: "1px solid #f4f4f5",
+  borderBottom: "1px solid #eff0f1",
   background: "#ffffff",
 };
 
@@ -3474,15 +3470,15 @@ const taskTop = {
 };
 
 const taskTitle = {
-  fontSize: 14,
-  fontWeight: 800,
-  color: "#0a0a0a",
+  fontSize: 13,
+  fontWeight: 700,
+  color: "#1e2023",
   marginBottom: 4,
 };
 
 const taskMeta = {
-  fontSize: 12,
-  color: "#71717a",
+  fontSize: 11.5,
+  color: "#777c82",
   lineHeight: 1.5,
 };
 
@@ -3495,24 +3491,24 @@ const taskDetailsGrid = {
 
 const miniInfoCard = {
   background: "#fafafa",
-  border: "1px solid #e4e4e7",
-  borderRadius: 10,
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
   padding: 10,
 };
 
 const miniInfoLabel = {
-  fontSize: 10,
-  fontWeight: 800,
-  color: "#71717a",
+  fontSize: 9.5,
+  fontWeight: 600,
+  color: "#60656d",
   textTransform: "uppercase",
-  letterSpacing: "1px",
+  letterSpacing: ".35px",
   marginBottom: 6,
 };
 
 const miniInfoValue = {
-  fontSize: 13,
+  fontSize: 12.5,
   fontWeight: 600,
-  color: "#0a0a0a",
+  color: "#1e2023",
   lineHeight: 1.5,
   wordBreak: "break-word",
 };
@@ -3529,9 +3525,9 @@ const timelineCancelNotice = {
   padding: "10px 14px",
   background: "#fef2f2",
   border: "1px solid #fecaca",
-  borderRadius: 12,
-  fontSize: 13,
-  fontWeight: 700,
+  borderRadius: 4,
+  fontSize: 12.5,
+  fontWeight: 600,
   color: "#991b1b",
 };
 
@@ -3566,7 +3562,7 @@ const timelineLine = {
   flex: 1,
   height: 4,
   borderRadius: 999,
-  background: "#e4e4e7",
+  background: "#e4e6e9",
 };
 
 const timelineDot = {
@@ -3576,18 +3572,18 @@ const timelineDot = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontSize: 12,
-  fontWeight: 800,
-  border: "1px solid #d4d4d8",
+  fontSize: 11.5,
+  fontWeight: 700,
+  border: "1px solid #d9dce0",
   background: "#ffffff",
-  color: "#71717a",
+  color: "#777c82",
   flexShrink: 0,
 };
 
 const timelineStepTitle = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#0a0a0a",
+  fontSize: 11.5,
+  fontWeight: 700,
+  color: "#1e2023",
   marginBottom: 6,
   lineHeight: 1.35,
   textAlign: "center",
@@ -3595,20 +3591,20 @@ const timelineStepTitle = {
 };
 
 const timelineStepNote = {
-  fontSize: 11,
-  color: "#71717a",
+  fontSize: 10.5,
+  color: "#777c82",
   lineHeight: 1.45,
   textAlign: "center",
   padding: "0 8px",
 };
 
 const mutedBadge = {
-  fontSize: 12,
-  fontWeight: 700,
-  color: "#71717a",
+  fontSize: 11.5,
+  fontWeight: 600,
+  color: "#777c82",
   background: "#fafafa",
-  border: "1px solid #e4e4e7",
-  borderRadius: 999,
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
   padding: "6px 12px",
 };
 
@@ -3616,9 +3612,9 @@ const pill = {
   display: "inline-flex",
   alignItems: "center",
   padding: "4px 10px",
-  borderRadius: 999,
-  fontSize: 11,
-  fontWeight: 700,
+  borderRadius: 4,
+  fontSize: 10.5,
+  fontWeight: 600,
   whiteSpace: "nowrap",
 };
 
@@ -3629,24 +3625,24 @@ const inlineActions = {
 };
 
 const mutedInline = {
-  fontSize: 12,
-  color: "#71717a",
+  fontSize: 11.5,
+  color: "#777c82",
 };
 
 const previewLinkButton = {
   background: "none",
   border: "none",
   padding: 0,
-  color: "#18181b",
-  fontWeight: 800,
-  fontSize: 12,
+  color: "#1e2023",
+  fontWeight: 700,
+  fontSize: 11.5,
   cursor: "pointer",
   textDecoration: "underline",
 };
 
 const proofPreviewBox = {
-  border: "1px solid #e4e4e7",
-  borderRadius: 12,
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
   background: "#fafafa",
   padding: 14,
   minHeight: 320,
@@ -3659,14 +3655,14 @@ const proofPreviewImage = {
   maxWidth: "100%",
   width: "100%",
   height: "auto",
-  borderRadius: 8,
+  borderRadius: 4,
 };
 
 const proofPreviewFrame = {
   width: "100%",
   height: "65vh",
   border: "none",
-  borderRadius: 8,
+  borderRadius: 4,
   background: "#ffffff",
 };
 
@@ -3676,8 +3672,8 @@ const proofPreviewFallback = {
   alignItems: "center",
   justifyContent: "center",
   textAlign: "center",
-  color: "#71717a",
-  fontSize: 13,
+  color: "#777c82",
+  fontSize: 12.5,
   fontWeight: 600,
   padding: 20,
 };
@@ -3686,13 +3682,14 @@ const btnSecondaryLink = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: "9px 16px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  fontSize: 13,
-  fontWeight: 700,
+  padding: "0 14px",
+  height: 36,
+  background: "#ffffff",
+  color: "#25282c",
+  border: "1px solid #d9dce0",
+  borderRadius: 4,
+  fontSize: 11.5,
+  fontWeight: 600,
   textDecoration: "none",
   transition: "background 0.2s",
 };
@@ -3700,11 +3697,11 @@ const btnSecondaryLink = {
 const linkButton = {
   background: "none",
   border: "none",
-  color: "#18181b",
-  fontWeight: 800,
+  color: "#1e2023",
+  fontWeight: 700,
   cursor: "pointer",
   padding: 0,
-  fontSize: 13,
+  fontSize: 12.5,
   textDecoration: "underline",
 };
 
@@ -3721,12 +3718,11 @@ const overlay = {
 
 const modalBox = {
   background: "#fff",
-  borderRadius: 16,
-  padding: 28,
+  borderRadius: 4,
+  padding: 24,
   width: 480,
   maxWidth: "100%",
-  border: "1px solid #e4e4e7",
-  boxShadow: "0 25px 60px rgba(0, 0, 0, 0.15)",
+  border: "1px solid #dfe2e5",
 };
 
 const modalHeader = {
@@ -3735,16 +3731,16 @@ const modalHeader = {
 
 const modalTitle = {
   margin: 0,
-  fontSize: 20,
-  fontWeight: 800,
-  color: "#0a0a0a",
+  fontSize: 18,
+  fontWeight: 700,
+  color: "#1e2023",
   letterSpacing: "-0.01em",
 };
 
 const modalSubtitle = {
   margin: "6px 0 0",
-  fontSize: 13,
-  color: "#52525b",
+  fontSize: 12.5,
+  color: "#777c82",
   lineHeight: 1.5,
 };
 
@@ -3752,10 +3748,10 @@ const alertWarning = {
   background: "#fefce8",
   border: "1px solid #fde047",
   color: "#a16207",
-  borderRadius: 12,
+  borderRadius: 4,
   padding: "10px 14px",
-  fontSize: 12,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
   marginBottom: 12,
 };
 
@@ -3774,22 +3770,23 @@ const modalActions = {
 };
 
 const labelSm = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#18181b",
+  fontSize: 11.5,
+  fontWeight: 600,
+  color: "#1e2023",
   display: "block",
   marginBottom: 8,
 };
 
 const inputFull = {
   width: "100%",
-  padding: "10px 12px",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  fontSize: 13,
-  boxSizing: "border-box",
+  height: 38,
+  borderRadius: 4,
+  border: "1px solid #d4d7db",
   background: "#fff",
-  color: "#0a0a0a",
+  padding: "0 12px",
+  fontSize: 12,
+  color: "#25282c",
+  boxSizing: "border-box",
   outline: "none",
 };
 
@@ -3798,91 +3795,119 @@ const center = {
   alignItems: "center",
   justifyContent: "center",
   height: 320,
-  color: "#71717a",
-  fontSize: 14,
+  color: "#777c82",
+  fontSize: 13,
   fontWeight: 600,
 };
 
 const btnBack = {
-  padding: "6px 10px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: 32,
+  padding: "0 12px",
   background: "#ffffff",
-  color: "#52525b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  color: "#25282c",
+  border: "1px solid #d9dce0",
+  borderRadius: 4,
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
   transition: "all 0.2s",
 };
 
 const btnGhost = {
-  padding: "9px 16px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: 36,
+  padding: "0 14px",
+  background: "#ffffff",
+  color: "#25282c",
+  border: "1px solid #d9dce0",
+  borderRadius: 4,
   cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
   transition: "all 0.2s",
 };
 
 const btnPrimary = {
-  padding: "9px 16px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: 36,
+  padding: "0 14px",
   background: "#18181b",
   color: "#ffffff",
   border: "1px solid #18181b",
-  borderRadius: 8,
+  borderRadius: 4,
   cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
 const btnView = {
-  padding: "9px 14px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: 32,
+  padding: "0 12px",
+  background: "#ffffff",
+  color: "#25282c",
+  border: "1px solid #d9dce0",
+  borderRadius: 4,
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
 const btnSecondary = {
-  padding: "9px 14px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: 36,
+  padding: "0 14px",
   background: "#ffffff",
-  color: "#18181b",
-  border: "1px solid #d4d4d8",
-  borderRadius: 8,
+  color: "#25282c",
+  border: "1px solid #d9dce0",
+  borderRadius: 4,
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
 const btnAccept = {
-  padding: "9px 14px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: 36,
+  padding: "0 14px",
   background: "#18181b",
   color: "#ffffff",
   border: "1px solid #18181b",
-  borderRadius: 8,
+  borderRadius: 4,
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
 const btnDecline = {
-  padding: "9px 14px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  height: 36,
+  padding: "0 14px",
   background: "#fef2f2",
   color: "#991b1b",
   border: "1px solid #fecaca",
-  borderRadius: 8,
+  borderRadius: 4,
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
