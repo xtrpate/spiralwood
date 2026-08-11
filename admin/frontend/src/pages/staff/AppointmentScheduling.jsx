@@ -1701,13 +1701,16 @@ export default function AppointmentScheduling() {
               </div>
 
               <div>
-                <label style={labelStyle}>Service Type</label>
+                <label style={labelStyle}>
+                  Service Type <span style={{ color: "#ef4444" }}>*</span>
+                </label>
                 <select
                   style={inputStyle}
                   value={form.purpose}
                   onChange={(e) =>
                     setForm((prev) => ({ ...prev, purpose: e.target.value }))
                   }
+                  required
                 >
                   <option value="installation">Installation</option>
                   <option value="consultation">Consultation</option>
@@ -1716,24 +1719,118 @@ export default function AppointmentScheduling() {
               </div>
 
               <div>
-                <label style={labelStyle}>Preferred / Planned Schedule</label>
+                <label style={labelStyle}>
+                  Schedule Date <span style={{ color: "#ef4444" }}>*</span>
+                </label>
                 <input
                   style={inputStyle}
-                  type="datetime-local"
-                  value={form.scheduled_date}
-                  onChange={(e) =>
+                  type="date"
+                  min={getMinDateYMD()}
+                  value={
+                    form.scheduled_date ? form.scheduled_date.split("T")[0] : ""
+                  }
+                  onChange={(e) => {
+                    const selectedDate = e.target.value;
+                    const existingTime = form.scheduled_date
+                      ? form.scheduled_date.split("T")[1]?.substring(0, 5)
+                      : "";
+
                     setForm((prev) => ({
                       ...prev,
-                      scheduled_date: e.target.value,
-                    }))
-                  }
+                      scheduled_date: selectedDate
+                        ? `${selectedDate}T${existingTime || "09:00"}`
+                        : "",
+                    }));
+                  }}
                   required
                 />
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    ...labelStyle,
+                    color: form.scheduled_date ? "#18181b" : "#a1a1aa",
+                  }}
+                >
+                  Schedule Time <span style={{ color: "#ef4444" }}>*</span>
+                </label>
+                <select
+                  style={{
+                    ...inputStyle,
+                    background: form.scheduled_date ? "#ffffff" : "#fafafa",
+                    color: form.scheduled_date ? "#18181b" : "#a1a1aa",
+                    cursor: form.scheduled_date ? "pointer" : "not-allowed",
+                  }}
+                  value={
+                    form.scheduled_date
+                      ? form.scheduled_date.split("T")[1]?.substring(0, 5)
+                      : ""
+                  }
+                  onChange={(e) => {
+                    const d = form.scheduled_date
+                      ? form.scheduled_date.split("T")[0]
+                      : "";
+                    if (d) {
+                      setForm((prev) => ({
+                        ...prev,
+                        scheduled_date: `${d}T${e.target.value}`,
+                      }));
+                    }
+                  }}
+                  disabled={!form.scheduled_date}
+                  required
+                >
+                  <option value="" disabled>
+                    Select time...
+                  </option>
+                  {TIME_SLOTS.map((slot) => {
+                    const d = form.scheduled_date
+                      ? form.scheduled_date.split("T")[0]
+                      : "";
+                    let statusText = "Available";
+
+                    if (d) {
+                      const slotDateTime = new Date(`${d}T${slot}:00`);
+                      const isPast = slotDateTime < new Date();
+
+                      const dateObj = new Date(`${d}T00:00:00`);
+                      const isSunday = dateObj.getDay() === 0;
+
+                      const booking = (bookedSlots[d] || []).find(
+                        (b) => b.time === slot || b === slot,
+                      );
+
+                      if (isSunday) {
+                        statusText = "Closed";
+                      } else if (booking) {
+                        statusText =
+                          booking.status === "completed"
+                            ? "Completed"
+                            : "Booked";
+                      } else if (isPast) {
+                        statusText = "Past";
+                      }
+                    }
+
+                    return (
+                      <option
+                        key={slot}
+                        value={slot}
+                        disabled={statusText !== "Available"}
+                      >
+                        {formatTimeForDisplay(slot)} - {statusText}
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
             </div>
 
             <div style={{ marginTop: 20 }}>
-              <label style={labelStyle}>Scope / Notes</label>
+              <label style={labelStyle}>
+                Scope / Notes <span style={{ color: "#ef4444" }}>*</span>
+              </label>
               <textarea
                 style={{
                   ...inputStyle,
@@ -1746,6 +1843,7 @@ export default function AppointmentScheduling() {
                   setForm((prev) => ({ ...prev, notes: e.target.value }))
                 }
                 placeholder="Project description, address, contact number, customer notes, or dispatch remarks"
+                required
               />
             </div>
 
