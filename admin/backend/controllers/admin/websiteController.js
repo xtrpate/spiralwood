@@ -34,6 +34,12 @@ const SETTING_KEY_GROUPS = {
   show_about_section: "display",
   show_contact_section: "display",
   business_address: "display",
+  // WISDOM GOOGLE MAPS LINK V1
+  google_maps_url: "display",
+  // WISDOM GOOGLE MAPS PIN V1
+  business_latitude: "display",
+  business_longitude: "display",
+  google_maps_place_id: "display",
   business_phone: "display",
   business_email: "display",
   social_facebook: "display",
@@ -219,6 +225,10 @@ exports.updateSettings = async (req, res) => {
           contact_info_changed: changedKeys.some((k) =>
             [
               "business_address",
+              "google_maps_url",
+              "business_latitude",
+              "business_longitude",
+              "google_maps_place_id",
               "business_phone",
               "business_email",
               "social_facebook",

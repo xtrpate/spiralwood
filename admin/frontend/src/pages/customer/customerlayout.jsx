@@ -338,6 +338,34 @@ export default function CustomerLayout() {
     "8 Laot Street, Near Gavino, Prenza I, Marilao, 3019 Bulacan";
   const dynamicName =
     siteSettings?.display?.site_name || "Spiral Wood Services";
+  // WISDOM GOOGLE MAPS LINK V1
+  const dynamicGoogleMapsUrl = String(
+    siteSettings?.display?.google_maps_url || "",
+  ).trim();
+
+  // WISDOM GOOGLE MAPS PIN V1
+  const businessLatitudeRaw = String(
+    siteSettings?.display?.business_latitude || "",
+  ).trim();
+  const businessLongitudeRaw = String(
+    siteSettings?.display?.business_longitude || "",
+  ).trim();
+  const dynamicGoogleMapsPlaceId = String(
+    siteSettings?.display?.google_maps_place_id || "",
+  ).trim();
+
+  const businessLatitude = Number(businessLatitudeRaw);
+  const businessLongitude = Number(businessLongitudeRaw);
+  const hasBusinessCoordinates =
+    businessLatitudeRaw !== "" &&
+    businessLongitudeRaw !== "" &&
+    Number.isFinite(businessLatitude) &&
+    businessLatitude >= -90 &&
+    businessLatitude <= 90 &&
+    Number.isFinite(businessLongitude) &&
+    businessLongitude >= -180 &&
+    businessLongitude <= 180;
+
   const dynamicSiteLogo = siteSettings?.display?.site_logo
     ? buildAssetUrl(siteSettings.display.site_logo)
     : logoImg;
@@ -345,9 +373,21 @@ export default function CustomerLayout() {
   const footerInfo = {
     address: dynamicAddress,
     phone: siteSettings?.display?.business_phone || "09530695310",
-    mapUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-      dynamicAddress
-    )}`,
+    mapUrl:
+      hasBusinessCoordinates || dynamicGoogleMapsPlaceId
+        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+            hasBusinessCoordinates
+              ? `${businessLatitude},${businessLongitude}`
+              : dynamicAddress,
+          )}${
+            dynamicGoogleMapsPlaceId
+              ? `&query_place_id=${encodeURIComponent(dynamicGoogleMapsPlaceId)}`
+              : ""
+          }`
+        : dynamicGoogleMapsUrl ||
+          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+            dynamicAddress,
+          )}`,
     email: siteSettings?.display?.business_email || "spiralwood@gmail.com",
     facebookName: dynamicName,
     facebookUrl:

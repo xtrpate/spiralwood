@@ -68,7 +68,32 @@ const KEY_META = {
   business_address: {
     label: "Business Address",
     type: "text",
-    hint: "Shown in the customer footer and used by the Google Maps link.",
+    hint: "Shown in the customer footer.",
+    width: "wide",
+  },
+  // WISDOM GOOGLE MAPS PIN V1
+  business_latitude: {
+    label: "Business Latitude",
+    type: "number",
+    hint: "Latitude of the exact business pin shown in Google Maps.",
+    width: "number",
+    min: -90,
+    max: 90,
+    step: 0.000001,
+  },
+  business_longitude: {
+    label: "Business Longitude",
+    type: "number",
+    hint: "Longitude of the exact business pin shown in Google Maps.",
+    width: "number",
+    min: -180,
+    max: 180,
+    step: 0.000001,
+  },
+  google_maps_place_id: {
+    label: "Google Maps Place ID",
+    type: "text",
+    hint: "Recommended for opening the exact Spiral Wood Services business listing.",
     width: "wide",
   },
   business_phone: {
@@ -235,6 +260,9 @@ const TAB_KEYS = {
     "show_about_section",
     "show_contact_section",
     "business_address",
+    "business_latitude",
+    "business_longitude",
+    "google_maps_place_id",
     "business_phone",
     "business_email",
     "social_facebook",
@@ -335,6 +363,41 @@ export default function WebsiteSettingsPage() {
           "Enter valid internal truck width, height, and length limits in millimeters.",
         );
         return false;
+      }
+    }
+
+    const mapLocationChanged = [
+      "business_latitude",
+      "business_longitude",
+      "google_maps_place_id",
+    ].some((key) => Object.prototype.hasOwnProperty.call(dirty, key));
+
+    if (mapLocationChanged) {
+      const latitudeRaw = String(settings.business_latitude ?? "").trim();
+      const longitudeRaw = String(settings.business_longitude ?? "").trim();
+
+      if ((latitudeRaw && !longitudeRaw) || (!latitudeRaw && longitudeRaw)) {
+        setActiveTab("display");
+        toast.error("Enter both Business Latitude and Business Longitude.");
+        return false;
+      }
+
+      if (latitudeRaw && longitudeRaw) {
+        const latitude = Number(latitudeRaw);
+        const longitude = Number(longitudeRaw);
+
+        if (
+          !Number.isFinite(latitude) ||
+          latitude < -90 ||
+          latitude > 90 ||
+          !Number.isFinite(longitude) ||
+          longitude < -180 ||
+          longitude > 180
+        ) {
+          setActiveTab("display");
+          toast.error("Enter valid business latitude and longitude coordinates.");
+          return false;
+        }
       }
     }
 
