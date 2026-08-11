@@ -550,48 +550,19 @@ export default function CustomerLayout() {
             gap: compact ? "16px" : "5px",
           }}
         >
-          {siteSettings?.display?.site_logo ? (
-            <span
-              // WISDOM CUSTOMER HEADER FOOTER LOGO CLEAN CROP V1
-              // Real IMG crop preserves smooth antialiasing. The uploaded logo
-              // has transparent canvas; these dimensions map its circular S
-              // back to the old header proportion without changing the navbar.
-              style={{
-                width: compact ? "38px" : "48px",
-                height: compact ? "38px" : "48px",
-                flex: "0 0 auto",
-                display: "block",
-                position: "relative",
-                overflow: "hidden",
-                background: "transparent",
-              }}
-            >
-              <img
-                src={dynamicSiteLogo}
-                alt="Spiral Wood Services"
-                style={{
-                  width: compact ? "51px" : "65px",
-                  height: "auto",
-                  maxWidth: "none",
-                  position: "absolute",
-                  left: "50%",
-                  top: "50%",
-                  transform: "translate(-50%, -43.5%)",
-                  display: "block",
-                }}
-              />
-            </span>
-          ) : (
-            <img
-              src={dynamicSiteLogo}
-              alt="Spiral Wood Services"
-              style={{
-                width: compact ? "38px" : "48px",
-                height: compact ? "38px" : "48px",
-                objectFit: "contain",
-              }}
-            />
-          )}
+          <img
+            src={dynamicSiteLogo}
+            alt="Spiral Wood Services"
+            onError={(e) => {
+              e.currentTarget.src = logoImg;
+            }}
+            style={{
+              width: compact ? "38px" : "48px",
+              height: compact ? "38px" : "48px",
+              objectFit: "contain",
+              flex: "0 0 auto",
+            }}
+          />
           <div
             className="cust-brand-copy"
             style={{ alignItems: "center", margin: 0 }}
@@ -643,43 +614,19 @@ export default function CustomerLayout() {
     return (
       <div className="cust-brand-block compact footer">
         <div className="cust-brand-badge footer">
-          {siteSettings?.display?.site_logo ? (
-          <span
-            // Footer keeps the old larger S proportion but intentionally has
-            // no white background, border, or panel.
-            style={{
-              width: "42px",
-              height: "42px",
-              flex: "0 0 auto",
-              display: "block",
-              position: "relative",
-              overflow: "hidden",
-              background: "transparent",
-              border: "none",
-            }}
-          >
-            <img
-              src={dynamicSiteLogo}
-              alt="Spiral Wood Services logo"
-              style={{
-                width: "57px",
-                height: "auto",
-                maxWidth: "none",
-                position: "absolute",
-                left: "50%",
-                top: "50%",
-                transform: "translate(-50%, -43.5%)",
-                display: "block",
-              }}
-            />
-          </span>
-        ) : (
           <img
             src={dynamicSiteLogo}
             alt="Spiral Wood Services logo"
+            onError={(e) => {
+              e.currentTarget.src = logoImg;
+            }}
             className="cust-brand-logo"
+            style={{
+              width: "42px",
+              height: "42px",
+              objectFit: "contain",
+            }}
           />
-        )}
         </div>
 
         <div className="cust-brand-copy">
