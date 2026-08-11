@@ -2,6 +2,29 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
+import "./OrdersPage.css";
+
+const getStatusColor = (status) => {
+  const s = String(status || "")
+    .trim()
+    .toLowerCase();
+  if (["delivered", "completed"].includes(s)) return "green";
+  if (["pending"].includes(s)) return "yellow";
+  if (["cancelled"].includes(s)) return "red";
+  if (["confirmed", "contract_released", "production", "shipping"].includes(s))
+    return "blue";
+  return "gray";
+};
+
+const getPaymentColor = (status) => {
+  const s = String(status || "")
+    .trim()
+    .toLowerCase();
+  if (["paid"].includes(s)) return "green";
+  if (["unpaid", "rejected"].includes(s)) return "red";
+  if (["pending", "partial"].includes(s)) return "yellow";
+  return "gray";
+};
 
 const STATUS_STYLE = {
   pending: {
@@ -267,8 +290,8 @@ export default function OrdersPage() {
   const totalPages = Math.max(1, Math.ceil(total / 20));
 
   return (
-    <div style={pageShell}>
-      <div style={headerBlock}>
+    <div style={pageShell} className="orders-admin-v2">
+      <div style={headerBlock} className="orders-header">
         <div>
           <div style={eyebrow}>Sales & Orders</div>
           <h1 style={pageTitle}>Order Management</h1>
@@ -291,130 +314,105 @@ export default function OrdersPage() {
         </button>
       </div>
 
-      <div style={statsGrid}>
+      <div className="orders-summary-grid">
         {stats.map((item) => (
-          <div
-            key={item.label}
-            style={{
-              ...statCard,
-              borderLeft: `4px solid ${item.accent}`,
-            }}
-          >
-            <div style={statLabel}>{item.label}</div>
-
-            <div style={statValue}>{item.value}</div>
+          <div key={item.label} className="orders-summary-card">
+            <div className="orders-summary-label">{item.label}</div>
+            <div className="orders-summary-value">{item.value}</div>
           </div>
         ))}
       </div>
 
-      <div style={filterCard}>
-        <div style={filterTopRow}>
-          <input
-            placeholder="Search order no., customer, phone, or email..."
-            value={filters.search}
-            onChange={(e) => setF("search", e.target.value)}
-            style={{ ...inputBase, ...searchInput }}
-          />
+      <div className="orders-toolbar no-print">
+        <div className="orders-toolbar-row">
+          <label className="orders-filter-field orders-filter-search">
+            <span className="orders-filter-label">Search Orders</span>
+            <input
+              placeholder="Search no., customer, phone, or email..."
+              value={filters.search}
+              onChange={(e) => setF("search", e.target.value)}
+            />
+          </label>
 
-          <select
-            value={filters.channel}
-            onChange={(e) => setF("channel", e.target.value)}
-            style={{ ...inputBase, minWidth: 150 }}
-          >
-            <option value="">All channels</option>
-            <option value="online">Online</option>
-            <option value="walkin">Walk-in (POS)</option>
-          </select>
+          <label className="orders-filter-field">
+            <span className="orders-filter-label">Status</span>
+            <select
+              value={filters.status}
+              onChange={(e) => setF("status", e.target.value)}
+            >
+              <option value="">All Statuses</option>
+              {STATUS_ORDER.map((statusKey) => (
+                <option key={statusKey} value={statusKey}>
+                  {STATUS_STYLE[statusKey]?.label || statusKey}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <select
-            value={filters.orderType}
-            onChange={(e) => setF("orderType", e.target.value)}
-            style={{ ...inputBase, minWidth: 150 }}
-          >
-            <option value="">All Types</option>
-            <option value="standard">Standard</option>
-            <option value="blueprint">Blueprint</option>
-          </select>
+          <label className="orders-filter-field">
+            <span className="orders-filter-label">Channel</span>
+            <select
+              value={filters.channel}
+              onChange={(e) => setF("channel", e.target.value)}
+            >
+              <option value="">All Channels</option>
+              <option value="online">Online</option>
+              <option value="walkin">Walk-in (POS)</option>
+            </select>
+          </label>
 
-          <input
-            type="date"
-            value={filters.from}
-            onChange={(e) => setF("from", e.target.value)}
-            style={{ ...inputBase, minWidth: 150 }}
-          />
+          <label className="orders-filter-field">
+            <span className="orders-filter-label">Type</span>
+            <select
+              value={filters.orderType}
+              onChange={(e) => setF("orderType", e.target.value)}
+            >
+              <option value="">All Types</option>
+              <option value="standard">Standard</option>
+              <option value="blueprint">Blueprint</option>
+            </select>
+          </label>
 
-          <input
-            type="date"
-            value={filters.to}
-            onChange={(e) => setF("to", e.target.value)}
-            style={{ ...inputBase, minWidth: 150 }}
-          />
+          <label className="orders-filter-field">
+            <span className="orders-filter-label">From Date</span>
+            <input
+              type="date"
+              value={filters.from}
+              onChange={(e) => setF("from", e.target.value)}
+            />
+          </label>
 
-          <button onClick={resetFilters} style={btnGhost}>
-            Reset
-          </button>
-        </div>
+          <label className="orders-filter-field">
+            <span className="orders-filter-label">To Date</span>
+            <input
+              type="date"
+              value={filters.to}
+              onChange={(e) => setF("to", e.target.value)}
+            />
+          </label>
 
-        <div style={statusRow}>
-          <button
-            type="button"
-            onClick={() => setF("status", "")}
-            style={{
-              ...statusChip,
-              background: filters.status ? "#f4f4f5" : "#18181b",
-              color: filters.status ? "#52525b" : "#ffffff",
-              borderColor: filters.status ? "#e4e4e7" : "#18181b",
-            }}
-          >
-            All
-          </button>
-
-          {STATUS_ORDER.map((statusKey) => {
-            const tone = STATUS_STYLE[statusKey];
-            if (!tone) return null;
-
-            const isActive = filters.status === statusKey;
-
-            return (
-              <button
-                key={statusKey}
-                type="button"
-                onClick={() => setF("status", statusKey)}
-                style={{
-                  ...statusChip,
-                  background: isActive ? "#18181b" : tone.bg,
-                  color: isActive ? "#ffffff" : tone.color,
-                  borderColor: isActive ? "#18181b" : tone.border,
-                }}
-              >
-                {tone.label}
-              </button>
-            );
-          })}
-
-          <div style={filtersMeta}>
-            {activeFilterCount > 0
-              ? `${activeFilterCount} active filter(s)`
-              : "No active filters"}
-          </div>
+          {activeFilterCount > 0 && (
+            <button onClick={resetFilters} className="orders-filter-reset">
+              Reset Filters
+            </button>
+          )}
         </div>
       </div>
 
-      <div style={tableCard}>
-        <div style={tableHeader}>
-          <div>
-            <h2 style={tableTitle}>Orders</h2>
-            <p style={tableSubtitle}>
-              Use the detail page for approvals, quotation review, payment
-              checks, contract, and delivery actions.
-            </p>
-          </div>
+      <div className="orders-table-card">
+        <div className="orders-section-head">
+          <h2 style={tableTitle}>Orders Queue</h2>
+          <p style={tableSubtitle}>
+            Review, process payments, and manage fulfillment.
+          </p>
         </div>
 
-        <div style={tableWrap}>
-          <table style={table}>
+        <div
+          style={{ overflowX: "auto", overflowY: "auto", maxHeight: "600px" }}
+        >
+          <table className="orders-table">
             <thead>
-              <tr style={theadRow}>
+              <tr>
                 {[
                   "Order",
                   "Customer",
@@ -426,7 +424,12 @@ export default function OrdersPage() {
                   "Date",
                   "Action",
                 ].map((label) => (
-                  <th key={label} style={th}>
+                  <th
+                    key={label}
+                    style={{
+                      textAlign: label === "Amount" ? "right" : "left",
+                    }}
+                  >
                     {label}
                   </th>
                 ))}
@@ -463,9 +466,6 @@ export default function OrdersPage() {
                       order.payment_status_display || order.payment_status,
                     )
                   ] || {
-                    bg: "#f4f4f5",
-                    color: "#52525b",
-                    border: "#e4e4e7",
                     label: "Unknown",
                   };
 
@@ -482,17 +482,25 @@ export default function OrdersPage() {
                       : "View";
 
                   return (
-                    <tr key={order.id} style={tbodyRow}>
-                      <td style={td}>
-                        <button
-                          onClick={() => navigate(`/admin/orders/${order.id}`)}
-                          style={orderLink}
+                    <tr
+                      key={order.id}
+                      className="orders-body-row"
+                      style={{ cursor: "pointer" }}
+                      onClick={() => navigate(`/admin/orders/${order.id}`)}
+                    >
+                      <td>
+                        <div
+                          style={{
+                            fontWeight: 800,
+                            color: "#18181b",
+                            marginBottom: 4,
+                          }}
                         >
                           {order.order_number ||
                             `#${String(order.id).padStart(5, "0")}`}
-                        </button>
+                        </div>
 
-                        <div style={secondaryText}>
+                        <div style={{ fontSize: 11, color: "#6b7280" }}>
                           {customRequest
                             ? "Blueprint Request"
                             : "Standard Order"}
@@ -502,7 +510,7 @@ export default function OrdersPage() {
                         </div>
                       </td>
 
-                      <td style={td}>
+                      <td>
                         <div style={primaryText}>
                           {order.customer_name ||
                             order.walkin_customer_name ||
@@ -521,108 +529,70 @@ export default function OrdersPage() {
                         </div>
                       </td>
 
-                      <td style={td}>
+                      <td>
                         <div
                           style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
                         >
-                          <span style={softBadge}>
+                          <span className="orders-neutral-tag">
                             {customRequest ? "Blueprint" : "Standard"}
                           </span>
-
-                          {quoteNeeded ? (
-                            <span
-                              style={{
-                                ...softBadge,
-                                background: "#fffbeb",
-                                color: "#b45309",
-                                border: "1px solid #fde68a",
-                              }}
-                            >
+                          {quoteNeeded && (
+                            <span className="orders-quote-tag">
                               Quote Needed
                             </span>
-                          ) : null}
+                          )}
                         </div>
                       </td>
 
-                      <td style={td}>
-                        <span
-                          style={{
-                            ...softBadge,
-                            background: channelMeta.bg,
-                            color: channelMeta.color,
-                            border: `1px solid ${channelMeta.border}`,
-                          }}
-                        >
+                      <td>
+                        <span className="orders-neutral-tag">
                           {channelMeta.label}
                         </span>
                       </td>
 
-                      <td style={td}>
+                      <td style={{ textAlign: "right" }}>
                         <div
                           style={{
                             fontWeight: 800,
-                            fontSize: 15,
+                            fontSize: 13,
                             color: "#111827",
                           }}
                         >
                           {formatMoney(order.total_amount)}
                         </div>
-
-                        <div
-                          style={{
-                            marginTop: 4,
-                            fontSize: 11,
-                            color: "#6B7280",
-                            fontWeight: 500,
-                          }}
-                        >
-                          {paymentTone.label}
-                        </div>
                       </td>
 
-                      <td style={td}>
+                      <td>
                         <span
-                          style={{
-                            ...softBadge,
-                            background: paymentTone.bg,
-                            color: paymentTone.color,
-                            border: `1px solid ${paymentTone.border}`,
-                          }}
+                          className={`orders-status orders-status-${getPaymentColor(
+                            order.payment_status_display ||
+                              order.payment_status,
+                          )}`}
                         >
                           {paymentTone.label || "Unknown"}
                         </span>
                       </td>
 
-                      <td style={td}>
+                      <td>
                         <div
                           style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
                         >
                           <span
-                            style={{
-                              ...softBadge,
-                              background: statusTone.bg,
-                              color: statusTone.color,
-                              border: `1px solid ${statusTone.border}`,
-                            }}
+                            className={`orders-status orders-status-${getStatusColor(
+                              order.status,
+                            )}`}
                           >
                             {quoteNeeded ? "Pending Review" : statusTone.label}
                           </span>
                         </div>
                       </td>
 
-                      <td
-                        style={{
-                          ...td,
-                          color: "#71717a",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
+                      <td style={{ color: "#71717a", fontSize: 12 }}>
                         {formatDate(order.created_at)}
                       </td>
 
-                      <td style={td}>
+                      <td>
                         <button
-                          onClick={() => navigate(`/admin/orders/${order.id}`)}
                           style={
                             quoteNeeded || normalizedStatus === "pending"
                               ? btnPrimary
