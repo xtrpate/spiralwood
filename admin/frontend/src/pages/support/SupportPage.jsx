@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import {
+  CircleCheckBig,
+  CircleDot,
+  Clock3,
+  RefreshCw,
+  UserCheck,
+} from "lucide-react";
 
 import adminSupportService from "../../services/adminSupportService";
 import "./SupportPage.css";
@@ -13,10 +20,10 @@ export default function SupportPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
+
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [activeTab, setActiveTab] = useState("details");
-
   const [messages, setMessages] = useState([]);
 
   const [filters, setFilters] = useState({
@@ -34,11 +41,9 @@ export default function SupportPage() {
       setLoading(true);
 
       const data = await adminSupportService.getTickets();
-
       setTickets(data.tickets || []);
     } catch (err) {
       console.error(err);
-
       setTickets([]);
     } finally {
       setLoading(false);
@@ -65,11 +70,8 @@ export default function SupportPage() {
     try {
       const data = await adminSupportService.getTicket(ticketId);
 
-      console.log("Ticket API Response:", data.messages);
-
       setSelectedTicket(data.ticket);
       setActiveTab("details");
-
       setMessages(data.messages || []);
     } catch (err) {
       console.error(err);
@@ -78,7 +80,6 @@ export default function SupportPage() {
 
   useEffect(() => {
     document.title = "Support Management";
-
     loadTickets();
   }, []);
 
@@ -86,13 +87,11 @@ export default function SupportPage() {
     if (!tickets.length) return;
 
     const params = new URLSearchParams(location.search);
-
     const ticketId = Number(params.get("ticket"));
 
     if (!ticketId) return;
 
-    const ticket = tickets.find((t) => t.id === ticketId);
-
+    const ticket = tickets.find((item) => item.id === ticketId);
     if (!ticket) return;
 
     openTicket(ticket.id);
@@ -104,7 +103,7 @@ export default function SupportPage() {
     const data = await adminSupportService.getTicket(selectedTicket.id);
 
     setSelectedTicket(data.ticket);
-    setMessages(data.messages);
+    setMessages(data.messages || []);
 
     await loadTickets();
   };
@@ -120,92 +119,129 @@ export default function SupportPage() {
     const matchesPriority =
       !filters.priority || ticket.priority === filters.priority;
 
-    const search = filters.search.toLowerCase();
+    const search = filters.search.trim().toLowerCase();
 
     const matchesSearch =
       !search ||
-      ticket.subject.toLowerCase().includes(search) ||
-      ticket.customer_name.toLowerCase().includes(search);
+      String(ticket.subject || "").toLowerCase().includes(search) ||
+      String(ticket.customer_name || "").toLowerCase().includes(search) ||
+      String(ticket.order_number || "").toLowerCase().includes(search);
 
     return matchesStatus && matchesCategory && matchesPriority && matchesSearch;
   });
 
   const summary = {
-    open: tickets.filter((t) => t.status === "open").length,
-
-    assigned: tickets.filter((t) => t.status === "assigned").length,
-
-    awaiting: tickets.filter((t) => t.status === "awaiting_customer").length,
-
-    resolved: tickets.filter(
-      (t) => t.status === "resolved" || t.status === "closed",
+    open: tickets.filter((ticket) => ticket.status === "open").length,
+    assigned: tickets.filter((ticket) =>
+      ["assigned", "in_progress"].includes(ticket.status),
+    ).length,
+    awaiting: tickets.filter(
+      (ticket) => ticket.status === "awaiting_customer",
+    ).length,
+    resolved: tickets.filter((ticket) =>
+      ["resolved", "closed"].includes(ticket.status),
     ).length,
   };
 
   return (
-    <div className="support-page">
-      <div className="support-header">
+    <div className="support-page admin-support-page">
+      {/* WISDOM ADMIN SUPPORT UI POLISH V1 */}
+      {/* WISDOM ADMIN SUPPORT VISUAL POLISH V1.1 */}
+      <header className="support-header admin-support-header">
         <div>
-          <span className="support-label">CUSTOMER SERVICE</span>
-
           <h1>Support Management</h1>
-
-          <p>Manage customer support tickets, assignments and conversations.</p>
+          <p>
+            Review customer requests, assignments, status, and conversations.
+          </p>
         </div>
 
-        <button className="support-refresh-btn" onClick={loadTickets}>
-          Refresh
+        <button
+          type="button"
+          className="support-refresh-btn admin-support-refresh-btn"
+          onClick={loadTickets}
+          disabled={loading}
+        >
+          <RefreshCw size={14} strokeWidth={1.9} />
+          {loading ? "Refreshing..." : "Refresh"}
         </button>
-      </div>
+      </header>
 
-      <section className="support-summary-grid">
-        <SummaryCard title="Open" value={summary.open} />
-
-        <SummaryCard title="Assigned" value={summary.assigned} />
-
-        <SummaryCard title="Awaiting" value={summary.awaiting} />
-
-        <SummaryCard title="Resolved" value={summary.resolved} />
+      <section className="support-summary-grid admin-support-summary-grid">
+        <SummaryCard
+          title="Open"
+          value={summary.open}
+          tone="open"
+          icon={<CircleDot size={17} strokeWidth={1.9} />}
+        />
+        <SummaryCard
+          title="Assigned"
+          value={summary.assigned}
+          tone="assigned"
+          icon={<UserCheck size={17} strokeWidth={1.9} />}
+        />
+        <SummaryCard
+          title="Waiting for Customer"
+          value={summary.awaiting}
+          tone="waiting"
+          icon={<Clock3 size={17} strokeWidth={1.9} />}
+        />
+        <SummaryCard
+          title="Resolved"
+          value={summary.resolved}
+          tone="resolved"
+          icon={<CircleCheckBig size={17} strokeWidth={1.9} />}
+        />
       </section>
 
-      <FilterBar
-        filters={filters}
-        onChange={handleFilterChange}
-        total={tickets.length}
-        filtered={filteredTickets.length}
-      />
-
-      <div className="support-content">
-        <TicketList
-          tickets={filteredTickets}
-          loading={loading}
-          selectedTicket={selectedTicket}
-          onSelect={openTicket}
-          onClearFilters={clearFilters}
+      <section className="admin-support-workspace">
+        <FilterBar
+          filters={filters}
+          onChange={handleFilterChange}
+          total={tickets.length}
+          filtered={filteredTickets.length}
+          variant="admin"
+          onClear={clearFilters}
         />
 
-        <div className="support-right-panel">
-          {activeTab === "details" && (
-            <TicketDetails
-              ticket={selectedTicket}
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              onAssigned={refreshSelectedTicket}
-              onUpdated={refreshSelectedTicket}
-            />
-          )}
+        <div className="support-content admin-support-content">
+          <TicketList
+            tickets={filteredTickets}
+            loading={loading}
+            selectedTicket={selectedTicket}
+            onSelect={openTicket}
+            onClearFilters={clearFilters}
+            title="Support Tickets"
+            emptyTitle="No tickets found"
+            emptyText="No support tickets match the current filters."
+            clearLabel="Reset Filters"
+            variant="admin"
+          />
 
-          {activeTab === "conversation" && (
-            <TicketConversation
-              ticket={selectedTicket}
-              messages={messages}
-              activeTab={activeTab}
-              setActiveTab={setActiveTab}
-              onReplySent={refreshSelectedTicket}
-            />
-          )}
+          <div className="support-right-panel admin-support-right-panel">
+            {activeTab === "details" && (
+              <TicketDetails
+                ticket={selectedTicket}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                onAssigned={refreshSelectedTicket}
+                onUpdated={refreshSelectedTicket}
+                variant="admin"
+              />
+            )}
+
+            {activeTab === "conversation" && (
+              <TicketConversation
+                ticket={selectedTicket}
+                messages={messages}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                onReplySent={refreshSelectedTicket}
+                variant="admin"
+              />
+            )}
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

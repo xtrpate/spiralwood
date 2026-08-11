@@ -1,644 +1,1362 @@
 // src/pages/customers/CustomersPage.jsx – Customer Account Management (Admin)
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import api from "../../services/api";
 import toast from "react-hot-toast";
+import {
+  BadgeCheck,
+  Eye,
+  MailWarning,
+  MoreHorizontal,
+  Search,
+  UserRoundCheck,
+  UserRoundX,
+  UsersRound,
+  X,
+} from "lucide-react";
 
-const EMAIL_VERIFY_STYLE = {
-  verified: {
-    bg: "#f4f4f5",
-    color: "#18181b",
-    border: "#e4e4e7",
-    label: "Verified",
-  },
-  pending: {
-    bg: "#fef2f2",
-    color: "#991b1b",
-    border: "#fecaca",
-    label: "Not Verified",
-  },
+const FILTERS = {
+  search: "",
+  email_status: "",
+  account_status: "",
+  page: 1,
+};
+
+const PAGE_SIZE = 20;
+const API_PAGE_SIZE = 500;
+
+const getInitial = (name) =>
+  String(name || "?").trim().charAt(0).toUpperCase() || "?";
+
+const formatDate = (value, includeTime = false) => {
+  if (!value) return "Never";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Never";
+
+  return includeTime
+    ? date.toLocaleString("en-PH", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : date.toLocaleDateString("en-PH", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
 };
 
 export default function CustomersPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
+
   const [rows, setRows] = useState([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoad] = useState(true);
-  const [filters, setFilters] = useState({
-    search: "",
-    is_verified: "",
-    page: 1,
-  });
-  const [detail, setDetail] = useState(null); // { row }
+  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState(FILTERS);
+  const [detail, setDetail] = useState(null);
+  const [openMenuId, setOpenMenuId] = useState(null);
+
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setOpenMenuId(null);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
 
   const load = useCallback(async () => {
-    setLoad(true);
+    setLoading(true);
+
     try {
-      const { data } = await api.get("/customers", {
-        params: { ...filters, limit: 20 },
+      const first = await api.get("/customers", {
+        params: { page: 1, limit: API_PAGE_SIZE },
       });
-      setRows(data.rows);
-      setTotal(data.total);
+
+      const firstRows = Array.isArray(first.data?.rows) ? first.data.rows : [];
+      const total = Number(first.data?.total || firstRows.length);
+      const pageCount = Math.max(1, Math.ceil(total / API_PAGE_SIZE));
+
+      if (pageCount === 1) {
+        setRows(firstRows);
+        return;
+      }
+
+      const remainingRequests = [];
+      for (let page = 2; page <= pageCount; page += 1) {
+        remainingRequests.push(
+          api.get("/customers", {
+            params: { page, limit: API_PAGE_SIZE },
+          }),
+        );
+      }
+
+      const remaining = await Promise.all(remainingRequests);
+      const combined = [...firstRows];
+
+      remaining.forEach(({ data }) => {
+        if (Array.isArray(data?.rows)) combined.push(...data.rows);
+      });
+
+      setRows(combined);
     } finally {
-      setLoad(false);
+      setLoading(false);
     }
-  }, [filters]);
+  }, []);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const setF = (k, v) => setFilters((f) => ({ ...f, [k]: v, page: 1 }));
+  const doAction = async (id, action, name) => {
+    const message =
+      action === "activate"
+        ? `Activate ${name}'s customer account?`
+        : `Deactivate ${name}'s customer account? Their order and warranty history will remain available.`;
 
-  const doAction = async (id, action) => {
-    const labels = {
-      activate: "Activate this account?",
-      deactivate: "Deactivate this account?",
-      delete:
-        "Deactivate and remove this customer from active use? Their order/warranty history will be kept, and the account can be reactivated later if needed.",
-    };
-
-    if (!window.confirm(labels[action])) return;
+    if (!window.confirm(message)) return;
 
     try {
       const { data } = await api.put(`/customers/${id}/status`, { action });
-      toast.success(data?.message || "Customer updated.");
+      toast.success(data?.message || "Customer account updated.");
       setDetail(null);
-      load();
+      setOpenMenuId(null);
+      await load();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Action failed.");
     }
   };
 
-  const verifiedCount = rows.filter((r) => Number(r.is_verified) === 1).length;
-  const notVerifiedCount = rows.filter(
-    (r) => Number(r.is_verified) !== 1,
-  ).length;
+  const verifiedCount = useMemo(
+    () => rows.filter((row) => Number(row.is_verified) === 1).length,
+    [rows],
+  );
+
+  const notVerifiedCount = useMemo(
+    () => rows.filter((row) => Number(row.is_verified) !== 1).length,
+    [rows],
+  );
+
+  const inactiveCount = useMemo(
+    () => rows.filter((row) => !row.is_active).length,
+    [rows],
+  );
+
+  const filteredRows = useMemo(() => {
+    const search = filters.search.trim().toLowerCase();
+
+    return rows.filter((row) => {
+      const searchable = [row.name, row.email, row.phone]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const verified = Number(row.is_verified) === 1;
+      const active = !!row.is_active;
+
+      const matchesSearch = !search || searchable.includes(search);
+      const matchesEmail =
+        !filters.email_status ||
+        (filters.email_status === "verified" && verified) ||
+        (filters.email_status === "not_verified" && !verified);
+      const matchesAccount =
+        !filters.account_status ||
+        (filters.account_status === "active" && active) ||
+        (filters.account_status === "inactive" && !active);
+
+      return matchesSearch && matchesEmail && matchesAccount;
+    });
+  }, [rows, filters.search, filters.email_status, filters.account_status]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+
+  useEffect(() => {
+    if (filters.page > pageCount) {
+      setFilters((current) => ({ ...current, page: pageCount }));
+    }
+  }, [filters.page, pageCount]);
+
+  const pageRows = useMemo(() => {
+    const start = (filters.page - 1) * PAGE_SIZE;
+    return filteredRows.slice(start, start + PAGE_SIZE);
+  }, [filteredRows, filters.page]);
+
+  const activeFilterCount = [
+    filters.search,
+    filters.email_status,
+    filters.account_status,
+  ].filter(Boolean).length;
+
+  const setFilter = (key, value) =>
+    setFilters((current) => ({
+      ...current,
+      [key]: value,
+      page: 1,
+    }));
+
+  const resetFilters = () => setFilters(FILTERS);
 
   return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 20,
-        }}
-      >
+    <div className="wisdom-admin-customers-v2">
+      {/* WISDOM ADMIN CUSTOMER ACCOUNT MANAGEMENT UI V2 */}
+      <style>{styles}</style>
+
+      <header className="cm-page-header">
         <div>
-          <h1 style={pageTitle}>Customer Account Management</h1>
-          <p style={{ fontSize: 13, color: "#52525b", margin: "4px 0 0" }}>
-            Review customer accounts and manage customer access.
+          <h1 className="cm-page-title">Customer Account Management</h1>
+          <p className="cm-page-subtitle">
+            Review customer accounts, verification, sign-in activity, and access.
           </p>
         </div>
-      </div>
+      </header>
 
-      <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
-        <SummaryChip label="Total Customers" value={total} color="#18181b" />
-        <SummaryChip
+      <section className="cm-summary-grid" aria-label="Customer account summary">
+        <SummaryCard
+          label="Total Customers"
+          value={rows.length}
+          icon={<UsersRound size={18} strokeWidth={1.9} />}
+        />
+        <SummaryCard
           label="Email Verified"
           value={verifiedCount}
-          color="#18181b"
+          icon={<BadgeCheck size={18} strokeWidth={1.9} />}
         />
-        <SummaryChip
+        <SummaryCard
           label="Not Verified"
           value={notVerifiedCount}
-          color="#dc2626"
+          icon={<MailWarning size={18} strokeWidth={1.9} />}
           alert={notVerifiedCount > 0}
         />
-      </div>
-
-      <div
-        style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}
-      >
-        <input
-          placeholder="Search name or email..."
-          value={filters.search}
-          onChange={(e) => setF("search", e.target.value)}
-          style={inputSm}
+        <SummaryCard
+          label="Inactive Accounts"
+          value={inactiveCount}
+          icon={<UserRoundX size={18} strokeWidth={1.9} />}
         />
+      </section>
 
-        <select
-          value={filters.is_verified}
-          onChange={(e) => setF("is_verified", e.target.value)}
-          style={inputSm}
-        >
-          <option value="">All Email Status</option>
-          <option value="1">Verified</option>
-          <option value="0">Not Verified</option>
-        </select>
+      <section className="cm-card">
+        <div className="cm-card-heading">
+          <div>
+            <h2>Customer Accounts</h2>
+            <p>
+              Find customers and review their contact, verification, and account status.
+            </p>
+          </div>
 
-        <button
-          onClick={() => setFilters({ search: "", is_verified: "", page: 1 })}
-          style={btnGhost}
-        >
-          Reset
-        </button>
-      </div>
+          <div className="cm-result-count">
+            {filteredRows.length} of {rows.length} customers
+          </div>
+        </div>
 
-      <div style={card}>
-        <table
-          style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
-        >
-          <thead>
-            <tr
-              style={{
-                background: "#ffffff",
-                borderBottom: "1px solid #e4e4e7",
-              }}
+        <div className="cm-toolbar">
+          <label className="cm-field cm-search-field">
+            <span>Search</span>
+            <div className="cm-search-wrap">
+              <Search size={15} strokeWidth={1.8} aria-hidden="true" />
+              <input
+                value={filters.search}
+                onChange={(event) => setFilter("search", event.target.value)}
+                placeholder="Search name, email, or phone..."
+              />
+            </div>
+          </label>
+
+          <label className="cm-field">
+            <span>Email Status</span>
+            <select
+              value={filters.email_status}
+              onChange={(event) => setFilter("email_status", event.target.value)}
             >
-              {[
-                "Name",
-                "Email",
-                "Phone",
-                "Registered",
-                "Last Login",
-                "Email Verified",
-                "Active",
-                "Actions",
-              ].map((h) => (
-                <th key={h} style={th}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr>
-                <td colSpan={8} style={centerCell}>
-                  Loading customers...
-                </td>
-              </tr>
-            ) : rows.length === 0 ? (
-              <tr>
-                <td colSpan={8} style={centerCell}>
-                  No customers found.
-                </td>
-              </tr>
-            ) : (
-              rows.map((r) => {
-                const emailStatus =
-                  Number(r.is_verified) === 1
-                    ? EMAIL_VERIFY_STYLE.verified
-                    : EMAIL_VERIFY_STYLE.pending;
+              <option value="">All Email Statuses</option>
+              <option value="verified">Verified</option>
+              <option value="not_verified">Not Verified</option>
+            </select>
+          </label>
 
-                return (
-                  <tr key={r.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                    <td style={td}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                        }}
-                      >
-                        <div style={avatar}>
-                          {r.name?.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <div style={{ fontWeight: 600, color: "#0a0a0a" }}>
-                            {r.name}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
+          <label className="cm-field">
+            <span>Account Status</span>
+            <select
+              value={filters.account_status}
+              onChange={(event) =>
+                setFilter("account_status", event.target.value)
+              }
+            >
+              <option value="">All Account Statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </label>
 
-                    <td style={{ ...td, fontSize: 12 }}>{r.email}</td>
-                    <td style={{ ...td, fontSize: 12 }}>{r.phone || "—"}</td>
-
-                    <td style={{ ...td, fontSize: 12, color: "#71717a" }}>
-                      {new Date(r.created_at).toLocaleDateString("en-PH")}
-                    </td>
-
-                    <td style={{ ...td, fontSize: 12, color: "#71717a" }}>
-                      {r.last_login ? (
-                        new Date(r.last_login).toLocaleDateString("en-PH")
-                      ) : (
-                        <span style={{ color: "#a1a1aa" }}>Never</span>
-                      )}
-                    </td>
-
-                    <td style={td}>
-                      <span
-                        style={{
-                          background: emailStatus.bg,
-                          color: emailStatus.color,
-                          border: `1px solid ${emailStatus.border}`,
-                          padding: "2px 10px",
-                          borderRadius: 12,
-                          fontSize: 11,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {emailStatus.label}
-                      </span>
-                    </td>
-
-                    <td style={td}>
-                      <span
-                        style={{
-                          background: r.is_active ? "#f4f4f5" : "#fef2f2",
-                          color: r.is_active ? "#18181b" : "#991b1b",
-                          border: `1px solid ${r.is_active ? "#e4e4e7" : "#fecaca"}`,
-                          padding: "2px 10px",
-                          borderRadius: 12,
-                          fontSize: 11,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {r.is_active ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-
-                    <td style={td}>
-                      <div
-                        style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
-                      >
-                        <button
-                          onClick={() => setDetail({ row: r })}
-                          style={btnView}
-                        >
-                          View
-                        </button>
-                        {r.is_active ? (
-                          <button
-                            onClick={() => doAction(r.id, "deactivate")}
-                            style={btnWarn}
-                          >
-                            Deactivate
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => doAction(r.id, "activate")}
-                            style={btnApprove}
-                          >
-                            Activate
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-
-        {total > 20 && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              gap: 10,
-              padding: 16,
-              background: "#fafafa",
-            }}
-          >
+          {activeFilterCount > 0 && (
             <button
-              disabled={filters.page <= 1}
-              onClick={() => setFilters((f) => ({ ...f, page: f.page - 1 }))}
-              style={btnGhost}
+              type="button"
+              className="cm-btn cm-btn-secondary cm-reset-btn"
+              onClick={resetFilters}
             >
-              ← Prev
+              Reset Filters
+            </button>
+          )}
+        </div>
+
+        <div className="cm-table-wrap">
+          <table className="cm-table">
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>Contact</th>
+                <th>Registered</th>
+                <th>Last Login</th>
+                <th>Email Status</th>
+                <th>Account Status</th>
+                <th className="cm-actions-heading">Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="cm-empty">
+                    Loading customer accounts...
+                  </td>
+                </tr>
+              ) : pageRows.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="cm-empty">
+                    <strong>No matching customers</strong>
+                    <span>Adjust the search or filters to view more accounts.</span>
+                  </td>
+                </tr>
+              ) : (
+                pageRows.map((row) => (
+                  <CustomerRow
+                    key={row.id}
+                    row={row}
+                    openMenuId={openMenuId}
+                    setOpenMenuId={setOpenMenuId}
+                    menuRef={menuRef}
+                    onView={() => {
+                      setDetail(row);
+                      setOpenMenuId(null);
+                    }}
+                    onAction={doAction}
+                  />
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {pageCount > 1 && (
+          <div className="cm-pagination">
+            <button
+              type="button"
+              className="cm-btn cm-btn-secondary"
+              disabled={filters.page <= 1}
+              onClick={() =>
+                setFilters((current) => ({
+                  ...current,
+                  page: current.page - 1,
+                }))
+              }
+            >
+              Previous
             </button>
 
-            <span style={{ fontSize: 13, color: "#71717a", fontWeight: 600 }}>
-              Page {filters.page} of {Math.ceil(total / 20)}
+            <span>
+              Page {filters.page} of {pageCount}
             </span>
 
             <button
-              disabled={filters.page >= Math.ceil(total / 20)}
-              onClick={() => setFilters((f) => ({ ...f, page: f.page + 1 }))}
-              style={btnGhost}
+              type="button"
+              className="cm-btn cm-btn-secondary"
+              disabled={filters.page >= pageCount}
+              onClick={() =>
+                setFilters((current) => ({
+                  ...current,
+                  page: current.page + 1,
+                }))
+              }
             >
-              Next →
+              Next
             </button>
           </div>
         )}
-      </div>
+      </section>
 
       {detail && (
         <CustomerDetailModal
-          row={detail.row}
+          row={detail}
           onClose={() => setDetail(null)}
-          onAction={(action) => doAction(detail.row.id, action)}
+          onAction={doAction}
         />
       )}
     </div>
   );
 }
 
-function CustomerDetailModal({ row, onClose, onAction }) {
-  const emailStatus =
-    Number(row.is_verified) === 1
-      ? EMAIL_VERIFY_STYLE.verified
-      : EMAIL_VERIFY_STYLE.pending;
+function SummaryCard({ label, value, icon, alert = false }) {
+  return (
+    <div className="cm-summary-card">
+      <div>
+        <div className="cm-summary-label">{label}</div>
+        <div className={`cm-summary-value${alert ? " is-alert" : ""}`}>
+          {value}
+        </div>
+      </div>
+
+      <div className="cm-summary-icon" aria-hidden="true">
+        {icon}
+      </div>
+    </div>
+  );
+}
+
+function CustomerRow({
+  row,
+  openMenuId,
+  setOpenMenuId,
+  menuRef,
+  onView,
+  onAction,
+}) {
+  const verified = Number(row.is_verified) === 1;
+  const active = !!row.is_active;
 
   return (
-    <div style={overlay}>
-      <div style={modalBox}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-            marginBottom: 20,
-          }}
-        >
-          <div style={{ ...avatar, width: 52, height: 52, fontSize: 22 }}>
-            {row.name?.charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 18,
-                fontWeight: 800,
-                color: "#0a0a0a",
-              }}
-            >
-              {row.name}
-            </h3>
-            <span
-              style={{
-                background: emailStatus.bg,
-                color: emailStatus.color,
-                border: `1px solid ${emailStatus.border}`,
-                padding: "2px 10px",
-                borderRadius: 12,
-                fontSize: 11,
-                fontWeight: 600,
-                display: "inline-block",
-                marginTop: 6,
-              }}
-            >
-              {emailStatus.label}
-            </span>
+    <tr>
+      <td>
+        <div className="cm-account-cell">
+          <div className="cm-avatar">{getInitial(row.name)}</div>
+          <div className="cm-account-copy">
+            <span className="cm-user-name">{row.name || "Unnamed Customer"}</span>
+            <small>Customer account</small>
           </div>
         </div>
+      </td>
 
-        <div
-          style={{
-            background: "#f4f4f5",
-            border: "1px solid #e4e4e7",
-            borderRadius: 10,
-            padding: "14px 16px",
-            marginBottom: 20,
-          }}
-        >
-          {[
-            ["Email", row.email],
-            ["Phone", row.phone || "—"],
-            ["Address", row.address || "—"],
-            ["Registered", new Date(row.created_at).toLocaleString("en-PH")],
-            [
-              "Last Login",
-              row.last_login
-                ? new Date(row.last_login).toLocaleString("en-PH")
-                : "Never",
-            ],
-            [
-              "Email Status",
-              Number(row.is_verified) === 1
-                ? "✓ Email verified"
-                : "✗ Not verified",
-            ],
-            ["Account", row.is_active ? "Active" : "Inactive"],
-          ].map(([label, value]) => (
-            <div
-              key={label}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "8px 0",
-                borderBottom: "1px solid #e4e4e7",
-                fontSize: 13,
-              }}
+      <td>
+        <div className="cm-contact">
+          <span>{row.email || "Email not provided"}</span>
+          <small>{row.phone || "Phone not provided"}</small>
+        </div>
+      </td>
+
+      <td>
+        <span className="cm-date">{formatDate(row.created_at)}</span>
+      </td>
+
+      <td>
+        <span className="cm-date">{formatDate(row.last_login)}</span>
+      </td>
+
+      <td>
+        <StatusText
+          positive={verified}
+          positiveLabel="Verified"
+          negativeLabel="Not Verified"
+        />
+      </td>
+
+      <td>
+        <StatusText
+          positive={active}
+          positiveLabel="Active"
+          negativeLabel="Inactive"
+        />
+      </td>
+
+      <td>
+        <div className="cm-row-actions">
+          <button
+            type="button"
+            className="cm-btn cm-btn-secondary cm-view-btn"
+            onClick={onView}
+          >
+            <Eye size={13} strokeWidth={1.9} />
+            View
+          </button>
+
+          <div
+            className="cm-more-wrap"
+            ref={openMenuId === row.id ? menuRef : null}
+          >
+            <button
+              type="button"
+              className="cm-icon-btn"
+              aria-label={`More actions for ${row.name}`}
+              aria-expanded={openMenuId === row.id}
+              onClick={() =>
+                setOpenMenuId((current) => (current === row.id ? null : row.id))
+              }
             >
-              <span style={{ color: "#71717a", fontWeight: 600 }}>{label}</span>
-              <span
-                style={{
-                  color: "#18181b",
-                  fontWeight: 500,
-                  textAlign: "right",
-                  maxWidth: "60%",
-                }}
-              >
-                {value}
-              </span>
+              <MoreHorizontal size={17} strokeWidth={2} />
+            </button>
+
+            {openMenuId === row.id && (
+              <div className="cm-action-menu">
+                {active ? (
+                  <button
+                    type="button"
+                    className="cm-menu-danger"
+                    onClick={() => onAction(row.id, "deactivate", row.name)}
+                  >
+                    <UserRoundX size={14} strokeWidth={1.9} />
+                    Deactivate Account
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onAction(row.id, "activate", row.name)}
+                  >
+                    <UserRoundCheck size={14} strokeWidth={1.9} />
+                    Activate Account
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function StatusText({
+  positive,
+  positiveLabel,
+  negativeLabel,
+}) {
+  return (
+    <span className={`cm-status${positive ? " is-positive" : " is-negative"}`}>
+      <i aria-hidden="true" />
+      {positive ? positiveLabel : negativeLabel}
+    </span>
+  );
+}
+
+function CustomerDetailModal({ row, onClose, onAction }) {
+  const active = !!row.is_active;
+  const verified = Number(row.is_verified) === 1;
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="cm-overlay"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="cm-modal" role="dialog" aria-modal="true">
+        <div className="cm-modal-header">
+          <div className="cm-modal-profile">
+            <div className="cm-avatar cm-modal-avatar">{getInitial(row.name)}</div>
+            <div>
+              <div className="cm-modal-eyebrow">Customer Account</div>
+              <h3>{row.name || "Unnamed Customer"}</h3>
+              <p>{row.email || "Email not provided"}</p>
             </div>
-          ))}
+          </div>
+
+          <button
+            type="button"
+            className="cm-modal-close"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            <X size={17} strokeWidth={1.9} />
+          </button>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-            marginBottom: 16,
-          }}
-        >
-          {row.is_active ? (
-            <button onClick={() => onAction("deactivate")} style={btnWarn}>
+        <div className="cm-modal-body">
+          <section className="cm-detail-section">
+            <div className="cm-section-title">Contact Information</div>
+            <div className="cm-detail-grid">
+              <DetailItem label="Email" value={row.email || "Not provided"} />
+              <DetailItem label="Phone" value={row.phone || "Not provided"} />
+              <DetailItem
+                label="Address"
+                value={row.address || "Not provided"}
+                wide
+              />
+            </div>
+          </section>
+
+          <section className="cm-detail-section">
+            <div className="cm-section-title">Account Information</div>
+            <div className="cm-detail-grid">
+              <DetailItem
+                label="Registered"
+                value={formatDate(row.created_at, true)}
+              />
+              <DetailItem
+                label="Last Login"
+                value={formatDate(row.last_login, true)}
+              />
+              <DetailItem
+                label="Email Status"
+                value={
+                  <StatusText
+                    positive={verified}
+                    positiveLabel="Verified"
+                    negativeLabel="Not Verified"
+                  />
+                }
+              />
+              <DetailItem
+                label="Account Status"
+                value={
+                  <StatusText
+                    positive={active}
+                    positiveLabel="Active"
+                    negativeLabel="Inactive"
+                  />
+                }
+              />
+            </div>
+          </section>
+        </div>
+
+        <div className="cm-modal-footer">
+          <button
+            type="button"
+            className="cm-btn cm-btn-secondary"
+            onClick={onClose}
+          >
+            Close
+          </button>
+
+          {active ? (
+            <button
+              type="button"
+              className="cm-btn cm-btn-danger-outline"
+              onClick={() => onAction(row.id, "deactivate", row.name)}
+            >
               Deactivate Account
             </button>
           ) : (
-            <button onClick={() => onAction("activate")} style={btnApprove}>
+            <button
+              type="button"
+              className="cm-btn cm-btn-primary"
+              onClick={() => onAction(row.id, "activate", row.name)}
+            >
               Activate Account
             </button>
           )}
-
-          <button
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Deactivate ${row.name}'s account? Their order/warranty history will be kept, and the account can be reactivated later.`,
-                )
-              ) {
-                onAction("delete");
-                onClose();
-              }
-            }}
-            style={btnDelete}
-          >
-            🗑 Deactivate Account
-          </button>
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button onClick={onClose} style={btnGhost}>
-            Close
-          </button>
         </div>
       </div>
     </div>
   );
 }
 
-function SummaryChip({ label, value, color, alert }) {
+function DetailItem({ label, value, wide = false }) {
   return (
-    <div
-      style={{
-        background: "#fff",
-        borderRadius: 12,
-        padding: "18px 20px",
-        border: "1px solid #e4e4e7",
-        borderLeft: `4px solid ${alert ? "#ef4444" : color}`,
-        boxShadow: "0 1px 2px rgba(0,0,0,.02)",
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        minWidth: 160,
-      }}
-    >
-      <div>
-        <p
-          style={{
-            fontSize: 10,
-            color: "#71717a",
-            margin: 0,
-            textTransform: "uppercase",
-            letterSpacing: 1.2,
-            fontWeight: 800,
-          }}
-        >
-          {label}
-        </p>
-        <p
-          style={{
-            fontSize: 24,
-            fontWeight: 800,
-            color: alert ? "#ef4444" : "#0a0a0a",
-            margin: "6px 0 0",
-            letterSpacing: "-0.02em",
-          }}
-        >
-          {value}
-        </p>
-      </div>
-      {alert && <span style={{ fontSize: 20 }}>⚠️</span>}
+    <div className={`cm-detail-item${wide ? " is-wide" : ""}`}>
+      <span>{label}</span>
+      <div>{value}</div>
     </div>
   );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
-const pageTitle = {
-  fontSize: 24,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  margin: 0,
-  letterSpacing: "-0.02em",
-};
-const card = {
-  background: "#fff",
-  borderRadius: 12,
-  border: "1px solid #e4e4e7",
-  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
-  overflow: "hidden",
-};
-const th = {
-  textAlign: "left",
-  padding: "13px 16px",
-  fontSize: 10,
-  fontWeight: 800,
-  color: "#71717a",
-  textTransform: "uppercase",
-  letterSpacing: 1,
-};
-const td = { padding: "13px 16px", color: "#18181b", verticalAlign: "middle" };
-const centerCell = { textAlign: "center", padding: 40, color: "#a1a1aa" };
-const inputSm = {
-  padding: "8px 12px",
-  border: "1px solid #e4e4e7",
-  borderRadius: 6,
-  fontSize: 13,
-  minWidth: 180,
-  outline: "none",
-  color: "#18181b",
-};
-const avatar = {
-  width: 36,
-  height: 36,
-  borderRadius: "50%",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontWeight: 700,
-  fontSize: 14,
-  flexShrink: 0,
-};
-const overlay = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,.6)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 1000,
-};
-const modalBox = {
-  background: "#fff",
-  borderRadius: 12,
-  padding: 28,
-  width: 480,
-  maxHeight: "85vh",
-  overflowY: "auto",
-  border: "1px solid #e4e4e7",
-  boxShadow: "0 20px 60px rgba(0,0,0,.15)",
-};
-const btnGhost = {
-  padding: "8px 16px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 600,
-};
-const btnView = {
-  padding: "5px 14px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 600,
-};
-const btnApprove = {
-  padding: "5px 14px",
-  background: "#18181b",
-  color: "#ffffff",
-  border: "1px solid #18181b",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 600,
-};
-const btnWarn = {
-  padding: "5px 14px",
-  background: "#ffffff",
-  color: "#18181b",
-  border: "1px solid #d4d4d8",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 600,
-};
-const btnDelete = {
-  padding: "5px 14px",
-  background: "#fef2f2",
-  color: "#991b1b",
-  border: "1px solid #fecaca",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 600,
-};
+const styles = `
+  .wisdom-admin-customers-v2 {
+    width: min(100%, 1460px);
+    margin: 0 auto;
+    color: #18181b;
+    --cm-border: #dde1e6;
+    --cm-border-soft: #eceff2;
+    --cm-muted: #71717a;
+    --cm-danger: #b42318;
+  }
+
+  .wisdom-admin-customers-v2 *,
+  .wisdom-admin-customers-v2 *::before,
+  .wisdom-admin-customers-v2 *::after {
+    box-sizing: border-box;
+  }
+
+  .wisdom-admin-customers-v2 button,
+  .wisdom-admin-customers-v2 input,
+  .wisdom-admin-customers-v2 select {
+    font: inherit;
+  }
+
+  .cm-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 18px;
+  }
+
+  .cm-page-title {
+    margin: 0;
+    color: #0a0a0a;
+    font-size: 26px;
+    line-height: 1.15;
+    font-weight: 760;
+    letter-spacing: -0.02em;
+  }
+
+  .cm-page-subtitle {
+    margin: 6px 0 0;
+    max-width: 720px;
+    color: #626871;
+    font-size: 12.5px;
+    line-height: 1.5;
+    font-weight: 400;
+  }
+
+  .cm-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .cm-summary-card {
+    min-height: 82px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 15px;
+    border: 1px solid var(--cm-border);
+    border-radius: 4px;
+    background: #ffffff;
+  }
+
+  .cm-summary-label {
+    color: #696f78;
+    font-size: 9.5px;
+    line-height: 1.3;
+    font-weight: 650;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .cm-summary-value {
+    margin-top: 7px;
+    color: #111214;
+    font-size: 25px;
+    line-height: 1;
+    font-weight: 760;
+  }
+
+  .cm-summary-value.is-alert {
+    color: #c43b31;
+  }
+
+  .cm-summary-icon {
+    color: #464b52;
+  }
+
+  .cm-card {
+    border: 1px solid var(--cm-border);
+    border-radius: 4px;
+    background: #ffffff;
+    overflow: visible;
+  }
+
+  .cm-card-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 18px;
+    padding: 16px 17px 13px;
+    border-bottom: 1px solid var(--cm-border);
+  }
+
+  .cm-card-heading h2 {
+    margin: 0;
+    color: #17191d;
+    font-size: 17px;
+    line-height: 1.3;
+    font-weight: 720;
+  }
+
+  .cm-card-heading p {
+    margin: 4px 0 0;
+    color: #737982;
+    font-size: 11.5px;
+    line-height: 1.45;
+    font-weight: 400;
+  }
+
+  .cm-result-count {
+    padding: 7px 9px;
+    border: 1px solid var(--cm-border);
+    border-radius: 3px;
+    color: #555b63;
+    background: #ffffff;
+    font-size: 10.5px;
+    font-weight: 550;
+    white-space: nowrap;
+  }
+
+  .cm-toolbar {
+    display: grid;
+    grid-template-columns:
+      minmax(300px, 1.7fr)
+      minmax(180px, 0.75fr)
+      minmax(180px, 0.75fr)
+      auto;
+    align-items: end;
+    gap: 10px;
+    padding: 13px 17px;
+    border-bottom: 1px solid var(--cm-border);
+    background: #fafafa;
+  }
+
+  .cm-field {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .cm-field > span,
+  .cm-section-title {
+    color: #393e45;
+    font-size: 10.5px;
+    line-height: 1.3;
+    font-weight: 650;
+  }
+
+  .cm-field input,
+  .cm-field select {
+    width: 100%;
+    height: 37px;
+    padding: 0 10px;
+    border: 1px solid #cbd0d6;
+    border-radius: 3px;
+    outline: none;
+    background: #ffffff;
+    color: #262a30;
+    font-size: 12.5px;
+    font-weight: 400;
+  }
+
+  .cm-field input:focus,
+  .cm-field select:focus {
+    border-color: #777d85;
+    box-shadow: 0 0 0 2px rgba(24, 24, 27, 0.07);
+  }
+
+  .cm-search-wrap {
+    position: relative;
+  }
+
+  .cm-search-wrap svg {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #8a9098;
+    pointer-events: none;
+  }
+
+  .cm-search-wrap input {
+    padding-left: 32px;
+  }
+
+  .cm-btn {
+    min-height: 35px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11.5px;
+    line-height: 1;
+    font-weight: 650;
+    transition:
+      background 130ms ease,
+      border-color 130ms ease,
+      color 130ms ease;
+  }
+
+  .cm-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .cm-btn-primary {
+    border-color: #18181b;
+    background: #18181b;
+    color: #ffffff;
+  }
+
+  .cm-btn-primary:hover:not(:disabled) {
+    background: #2f2f33;
+  }
+
+  .cm-btn-secondary {
+    border-color: #cfd4da;
+    background: #ffffff;
+    color: #2e3238;
+  }
+
+  .cm-btn-secondary:hover:not(:disabled) {
+    background: #f7f7f8;
+  }
+
+  .cm-btn-danger-outline {
+    border-color: #e4aaa5;
+    background: #ffffff;
+    color: #b42318;
+  }
+
+  .cm-btn-danger-outline:hover:not(:disabled) {
+    background: #fff5f4;
+  }
+
+  .cm-reset-btn {
+    min-width: 100px;
+  }
+
+  .cm-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .cm-table {
+    width: 100%;
+    min-width: 1110px;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  .cm-table th {
+    padding: 11px 13px;
+    border-bottom: 1px solid var(--cm-border);
+    background: #fbfbfb;
+    color: #727882;
+    font-size: 9px;
+    line-height: 1.2;
+    font-weight: 650;
+    letter-spacing: 1px;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .cm-table th:nth-child(1) { width: 21%; }
+  .cm-table th:nth-child(2) { width: 24%; }
+  .cm-table th:nth-child(3) { width: 11%; }
+  .cm-table th:nth-child(4) { width: 11%; }
+  .cm-table th:nth-child(5) { width: 11%; }
+  .cm-table th:nth-child(6) { width: 11%; }
+  .cm-table th:nth-child(7) { width: 11%; }
+
+  .cm-table td {
+    padding: 12px 13px;
+    border-bottom: 1px solid var(--cm-border-soft);
+    color: #2d3137;
+    font-size: 12px;
+    line-height: 1.35;
+    font-weight: 400;
+    vertical-align: middle;
+  }
+
+  .cm-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+
+  .cm-table tbody tr:hover {
+    background: #fcfcfc;
+  }
+
+  .cm-account-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .cm-avatar {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #dfe2e6;
+    border-radius: 50%;
+    background: #f7f7f8;
+    color: #25282d;
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+
+  .cm-account-copy,
+  .cm-contact {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .cm-user-name {
+    overflow: hidden;
+    color: #1c1f23;
+    font-size: 12.5px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cm-account-copy small,
+  .cm-contact small {
+    overflow: hidden;
+    color: #8a9098;
+    font-size: 10.5px;
+    font-weight: 400;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cm-contact > span {
+    overflow: hidden;
+    color: #4f555d;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cm-date {
+    color: #696f78;
+    font-size: 11.5px;
+    font-weight: 400;
+  }
+
+  .cm-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #4d535b;
+    font-size: 11px;
+    font-weight: 550;
+    white-space: nowrap;
+  }
+
+  .cm-status i {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    border-radius: 50%;
+  }
+
+  .cm-status.is-positive i {
+    background: #2f7d4a;
+  }
+
+  .cm-status.is-negative {
+    color: #9d3028;
+  }
+
+  .cm-status.is-negative i {
+    background: #c43b31;
+  }
+
+  .cm-row-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .cm-actions-heading {
+    text-align: right !important;
+  }
+
+  .cm-view-btn {
+    min-height: 31px;
+    padding: 0 9px;
+    font-size: 10.5px;
+  }
+
+  .cm-more-wrap {
+    position: relative;
+  }
+
+  .cm-icon-btn,
+  .cm-modal-close {
+    width: 32px;
+    height: 32px;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid #cfd4da;
+    border-radius: 3px;
+    background: #ffffff;
+    color: #50565e;
+    cursor: pointer;
+  }
+
+  .cm-icon-btn:hover,
+  .cm-modal-close:hover {
+    background: #f7f7f8;
+  }
+
+  .cm-action-menu {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 5px);
+    right: 0;
+    width: 190px;
+    padding: 5px;
+    border: 1px solid #d6dae0;
+    border-radius: 3px;
+    background: #ffffff;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  }
+
+  .cm-action-menu button {
+    width: 100%;
+    min-height: 34px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 9px;
+    border: 0;
+    border-radius: 2px;
+    background: transparent;
+    color: #34383e;
+    cursor: pointer;
+    font-size: 11.5px;
+    font-weight: 550;
+    text-align: left;
+  }
+
+  .cm-action-menu button:hover {
+    background: #f5f6f7;
+  }
+
+  .cm-action-menu .cm-menu-danger {
+    color: #b42318;
+  }
+
+  .cm-action-menu .cm-menu-danger:hover {
+    background: #fff4f2;
+  }
+
+  .cm-empty {
+    height: 170px;
+    text-align: center;
+    color: #777d86;
+  }
+
+  .cm-empty strong,
+  .cm-empty span {
+    display: block;
+  }
+
+  .cm-empty strong {
+    margin-bottom: 5px;
+    color: #30343a;
+    font-size: 13px;
+    font-weight: 650;
+  }
+
+  .cm-empty span {
+    font-size: 11.5px;
+    font-weight: 400;
+  }
+
+  .cm-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 15px;
+    border-top: 1px solid var(--cm-border);
+    background: #fafafa;
+  }
+
+  .cm-pagination span {
+    color: #696f78;
+    font-size: 11px;
+    font-weight: 550;
+  }
+
+  .cm-overlay {
+    position: fixed;
+    z-index: 1000;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.58);
+  }
+
+  .cm-modal {
+    width: min(100%, 650px);
+    max-height: 90vh;
+    overflow-y: auto;
+    border: 1px solid #d8dce1;
+    border-radius: 4px;
+    background: #ffffff;
+    box-shadow: 0 22px 56px rgba(0, 0, 0, 0.2);
+  }
+
+  .cm-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 19px 15px;
+    border-bottom: 1px solid #e1e4e8;
+  }
+
+  .cm-modal-profile {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+  }
+
+  .cm-modal-avatar {
+    width: 42px;
+    height: 42px;
+    flex-basis: 42px;
+    font-size: 14px;
+  }
+
+  .cm-modal-eyebrow {
+    margin-bottom: 4px;
+    color: #7b8189;
+    font-size: 9px;
+    font-weight: 650;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .cm-modal-header h3 {
+    margin: 0;
+    color: #17191d;
+    font-size: 20px;
+    line-height: 1.2;
+    font-weight: 740;
+  }
+
+  .cm-modal-header p {
+    margin: 5px 0 0;
+    color: #727881;
+    font-size: 11.5px;
+    line-height: 1.4;
+    font-weight: 400;
+  }
+
+  .cm-modal-body {
+    padding: 18px 19px;
+  }
+
+  .cm-detail-section + .cm-detail-section {
+    margin-top: 18px;
+    padding-top: 17px;
+    border-top: 1px solid #eceef1;
+  }
+
+  .cm-section-title {
+    margin-bottom: 9px;
+  }
+
+  .cm-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .cm-detail-item {
+    min-width: 0;
+    padding: 10px 11px;
+    border: 1px solid #e0e3e7;
+    border-radius: 3px;
+    background: #ffffff;
+  }
+
+  .cm-detail-item.is-wide {
+    grid-column: 1 / -1;
+  }
+
+  .cm-detail-item > span {
+    display: block;
+    margin-bottom: 4px;
+    color: #858b93;
+    font-size: 9px;
+    font-weight: 650;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+  }
+
+  .cm-detail-item > div {
+    overflow-wrap: anywhere;
+    color: #2f343a;
+    font-size: 11.5px;
+    line-height: 1.45;
+    font-weight: 500;
+  }
+
+  .cm-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 13px 19px;
+    border-top: 1px solid #e1e4e8;
+    background: #fafafa;
+  }
+
+  @media (max-width: 1000px) {
+    .cm-summary-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .cm-toolbar {
+      grid-template-columns:
+        minmax(240px, 1fr)
+        minmax(170px, 0.65fr)
+        minmax(170px, 0.65fr);
+    }
+
+    .cm-reset-btn {
+      width: fit-content;
+    }
+  }
+
+  @media (max-width: 720px) {
+    .wisdom-admin-customers-v2 {
+      width: 100%;
+    }
+
+    .cm-summary-grid,
+    .cm-toolbar,
+    .cm-detail-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .cm-card-heading {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .cm-detail-item.is-wide {
+      grid-column: auto;
+    }
+  }
+`;

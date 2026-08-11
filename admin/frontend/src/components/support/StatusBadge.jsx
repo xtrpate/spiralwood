@@ -1,21 +1,31 @@
 const statusColors = {
   open: "#2563eb",
-  assigned: "#7c3aed",
-  in_progress: "#f59e0b",
-  awaiting_customer: "#ea580c",
-  resolved: "#16a34a",
-  closed: "#6b7280",
+  assigned: "#52525b",
+  in_progress: "#a16207",
+  awaiting_customer: "#c2410c",
+  resolved: "#2f7d4a",
+  closed: "#71717a",
 };
 
-export default function StatusBadge({ status }) {
+const statusLabels = {
+  open: "Open",
+  assigned: "Assigned",
+  in_progress: "In Progress",
+  awaiting_customer: "Waiting for Customer",
+  resolved: "Resolved",
+  closed: "Closed",
+};
+
+export default function StatusBadge({ status, compact = false }) {
   return (
     <span
-      className="support-status-badge"
+      className={`support-status-badge support-status-${status}${compact ? " is-compact" : ""}`}
       style={{
-        backgroundColor: statusColors[status] || "#6b7280",
+        "--support-status-color": statusColors[status] || "#71717a",
       }}
     >
-      {status.replaceAll("_", " ")}
+      <i aria-hidden="true" />
+      {statusLabels[status] || String(status || "").replaceAll("_", " ")}
     </span>
   );
 }

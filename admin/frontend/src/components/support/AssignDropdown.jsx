@@ -3,12 +3,16 @@ import toast from "react-hot-toast";
 
 import adminSupportService from "../../services/adminSupportService";
 
-export default function AssignDropdown({ ticket, onAssigned }) {
+export default function AssignDropdown({
+  ticket,
+  onAssigned,
+  variant = "default",
+}) {
   const [users, setUsers] = useState([]);
-
   const [selectedUser, setSelectedUser] = useState("");
-
   const [loading, setLoading] = useState(false);
+
+  const adminMode = variant === "admin";
 
   useEffect(() => {
     loadUsers();
@@ -25,7 +29,6 @@ export default function AssignDropdown({ ticket, onAssigned }) {
   const loadUsers = async () => {
     try {
       const data = await adminSupportService.getAssignableUsers();
-
       setUsers(data.users || []);
     } catch (err) {
       console.error(err);
@@ -52,32 +55,36 @@ export default function AssignDropdown({ ticket, onAssigned }) {
     }
   };
 
+  const cashierUsers = users.filter(
+    (user) =>
+      String(user.role || "").toLowerCase() === "staff" &&
+      String(user.staff_type || "").toLowerCase() === "cashier",
+  );
+
   return (
-    <div className="assign-dropdown">
-      <label>Assign To</label>
+    <div className={`assign-dropdown ${adminMode ? "admin-assign-dropdown" : ""}`}>
+      <label>{adminMode ? "Assigned Staff" : "Assign To"}</label>
 
-      <select
-        value={selectedUser}
-        onChange={(e) => setSelectedUser(e.target.value)}
-      >
-        <option value="">-- Select User --</option>
+      <div className={adminMode ? "admin-assign-row" : ""}>
+        <select
+          value={selectedUser}
+          onChange={(event) => setSelectedUser(event.target.value)}
+        >
+          <option value="">
+            {adminMode ? "Select cashier" : "-- Select User --"}
+          </option>
 
-        {users
-          .filter(
-            (user) =>
-              String(user.role || "").toLowerCase() === "staff" &&
-              String(user.staff_type || "").toLowerCase() === "cashier",
-          )
-          .map((user) => (
+          {cashierUsers.map((user) => (
             <option key={user.id} value={user.id}>
-              {user.name} ({user.role})
+              {adminMode ? user.name : `${user.name} (${user.role})`}
             </option>
           ))}
-      </select>
+        </select>
 
-      <button onClick={handleAssign} disabled={!selectedUser || loading}>
-        {loading ? "Assigning..." : "Assign Ticket"}
-      </button>
+        <button onClick={handleAssign} disabled={!selectedUser || loading}>
+          {loading ? "Assigning..." : adminMode ? "Assign" : "Assign Ticket"}
+        </button>
+      </div>
     </div>
   );
 }

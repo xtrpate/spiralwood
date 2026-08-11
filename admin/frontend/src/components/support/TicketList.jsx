@@ -11,16 +11,14 @@ export default function TicketList({
   emptyTitle = "No Support Tickets",
   emptyText = "There are currently no support tickets matching your filters.",
   clearLabel = "Clear Filters",
+  variant = "default",
 }) {
   if (loading) {
     return (
-      <div className="support-ticket-list">
+      <div className={`support-ticket-list ${variant === "admin" ? "admin-support-ticket-list" : ""}`}>
         <SkeletonTicket />
-
         <SkeletonTicket />
-
         <SkeletonTicket />
-
         <SkeletonTicket />
       </div>
     );
@@ -28,15 +26,16 @@ export default function TicketList({
 
   if (tickets.length === 0) {
     return (
-      <div className="support-ticket-list">
+      <div className={`support-ticket-list ${variant === "admin" ? "admin-support-ticket-list" : ""}`}>
         <div className="support-empty-state">
-          <div className="support-empty-icon">🛟</div>
-
           <h3>{emptyTitle}</h3>
-
           <p>{emptyText}</p>
 
-          <button className="support-clear-filter-btn" onClick={onClearFilters}>
+          <button
+            type="button"
+            className="support-clear-filter-btn"
+            onClick={onClearFilters}
+          >
             {clearLabel}
           </button>
         </div>
@@ -45,8 +44,11 @@ export default function TicketList({
   }
 
   return (
-    <div className="support-ticket-list">
-      <h3>{title}</h3>
+    <div className={`support-ticket-list ${variant === "admin" ? "admin-support-ticket-list" : ""}`}>
+      <div className="admin-support-ticket-list-head">
+        <h3>{title}</h3>
+        {variant === "admin" && <span>{tickets.length} visible</span>}
+      </div>
 
       {tickets.map((ticket) => (
         <TicketItem
@@ -54,6 +56,7 @@ export default function TicketList({
           ticket={ticket}
           active={selectedTicket?.id === ticket.id}
           onClick={() => onSelect(ticket.id)}
+          variant={variant}
         />
       ))}
     </div>

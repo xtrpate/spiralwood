@@ -1563,3 +1563,1439 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   WISDOM ADMIN SUPPORT UI POLISH V1
+   Admin-only layout overrides. Staff Support keeps its existing scoped styles.
+   ========================================================================== */
+
+.admin-support-page {
+  width: min(100%, 1460px);
+  margin: 0 auto;
+  padding: 0;
+  color: #18181b;
+  --support-border: #dde1e6;
+  --support-border-soft: #eceff2;
+  --support-muted: #71717a;
+  --support-danger: #b42318;
+}
+
+.admin-support-page *,
+.admin-support-page *::before,
+.admin-support-page *::after {
+  box-sizing: border-box;
+}
+
+.admin-support-header {
+  margin-bottom: 18px;
+  align-items: flex-start;
+}
+
+.admin-support-header h1 {
+  margin: 0;
+  color: #0a0a0a;
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 760;
+  letter-spacing: -0.02em;
+}
+
+.admin-support-header p {
+  margin: 6px 0 0;
+  max-width: 720px;
+  color: #626871;
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+.admin-support-refresh-btn {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid #cfd4da;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #2e3238;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 620;
+}
+
+.admin-support-refresh-btn:hover:not(:disabled) {
+  background: #f7f7f8;
+}
+
+.admin-support-refresh-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.admin-support-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.admin-support-page .support-summary-card {
+  min-height: 82px;
+  padding: 14px 15px;
+  border: 1px solid var(--support-border);
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.admin-support-page .support-summary-card::before,
+.admin-support-page .support-summary-card::after {
+  display: none !important;
+}
+
+.admin-support-page .support-summary-card span {
+  display: block;
+  margin: 0;
+  color: #696f78;
+  font-size: 9.5px;
+  line-height: 1.3;
+  font-weight: 650;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.admin-support-page .support-summary-card h2 {
+  margin: 7px 0 0;
+  color: #111214;
+  font-size: 25px;
+  line-height: 1;
+  font-weight: 760;
+}
+
+.admin-support-workspace {
+  border: 1px solid var(--support-border);
+  border-radius: 4px;
+  background: #ffffff;
+  overflow: visible;
+}
+
+.admin-support-filter-bar {
+  display: grid;
+  grid-template-columns:
+    minmax(320px, 1.55fr)
+    minmax(165px, 0.7fr)
+    minmax(180px, 0.75fr)
+    minmax(155px, 0.65fr);
+  gap: 10px;
+  align-items: end;
+  padding: 13px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--support-border);
+  border-radius: 0;
+  background: #fafafa;
+}
+
+.admin-support-filter-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.admin-support-filter-field > span {
+  color: #393e45;
+  font-size: 10.5px;
+  line-height: 1.3;
+  font-weight: 650;
+}
+
+.admin-support-filter-field select,
+.admin-support-filter-field input {
+  width: 100%;
+  height: 37px;
+  padding: 0 10px;
+  border: 1px solid #cbd0d6;
+  border-radius: 3px;
+  outline: none;
+  background: #ffffff;
+  color: #262a30;
+  font-size: 12.5px;
+  font-weight: 400;
+}
+
+.admin-support-filter-field select:focus,
+.admin-support-filter-field input:focus,
+.admin-support-search:focus-within {
+  border-color: #777d85;
+  box-shadow: 0 0 0 2px rgba(24, 24, 27, 0.07);
+}
+
+.admin-support-search {
+  height: 37px;
+  min-width: 0;
+  padding: 0 10px;
+  gap: 7px;
+  border: 1px solid #cbd0d6;
+  border-radius: 3px;
+  background: #ffffff;
+}
+
+.admin-support-search svg {
+  color: #8a9098;
+  flex: 0 0 auto;
+}
+
+.admin-support-search input {
+  height: 35px;
+  padding: 0;
+  border: 0;
+  box-shadow: none !important;
+}
+
+.admin-support-filter-result {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 22px;
+  color: #7c828a;
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.admin-support-filter-result button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #454a51;
+  cursor: pointer;
+  font-size: 10.5px;
+  font-weight: 620;
+}
+
+.admin-support-filter-result button:hover {
+  text-decoration: underline;
+}
+
+.admin-support-content {
+  grid-template-columns: minmax(330px, 380px) minmax(0, 1fr);
+  gap: 0;
+  height: auto;
+  min-height: 620px;
+  margin-top: 0;
+}
+
+.admin-support-ticket-list {
+  height: 620px;
+  padding: 14px;
+  border: 0;
+  border-right: 1px solid var(--support-border);
+  border-radius: 0;
+  background: #ffffff;
+  overflow-y: auto;
+}
+
+.admin-support-ticket-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.admin-support-ticket-list-head h3 {
+  margin: 0;
+  color: #24272c;
+  font-size: 14px;
+  font-weight: 680;
+}
+
+.admin-support-ticket-list-head > span {
+  color: #8a9098;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.admin-support-ticket-item {
+  width: 100%;
+  display: block;
+  margin-top: 8px;
+  padding: 11px 12px;
+  border: 1px solid #e0e3e7;
+  border-radius: 3px;
+  background: #ffffff;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  box-shadow: none;
+  transform: none;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+
+.admin-support-ticket-item:hover {
+  background: #fafafa;
+  border-color: #cfd4da;
+  box-shadow: none;
+  transform: none;
+}
+
+.admin-support-ticket-item.active {
+  background: #f7f7f8;
+  border: 1px solid #18181b;
+  box-shadow: none;
+  transform: none;
+}
+
+.admin-support-ticket-item .ticket-card-header {
+  align-items: flex-start;
+}
+
+.admin-support-ticket-item .ticket-card-header h4 {
+  margin: 0;
+  color: #1c1f23;
+  font-size: 12.5px;
+  line-height: 1.4;
+  font-weight: 650;
+}
+
+.admin-support-ticket-item .ticket-customer {
+  margin: 6px 0 0;
+  color: #5d636b;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 500;
+}
+
+.admin-ticket-meta {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 8px;
+  color: #858b93;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.admin-support-ticket-item .ticket-footer {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid #eceef1;
+}
+
+.admin-support-ticket-item .ticket-footer small {
+  color: #92979e;
+  font-size: 9.5px;
+  font-weight: 400;
+  text-transform: none;
+}
+
+.admin-support-right-panel {
+  min-width: 0;
+  min-height: 620px;
+  background: #ffffff;
+}
+
+.admin-support-ticket-details,
+.admin-support-conversation-card {
+  min-height: 620px;
+  padding: 17px 18px;
+  border: 0;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.admin-support-ticket-details.is-empty,
+.admin-support-conversation-card.is-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.admin-support-ticket-details.is-empty > *,
+.admin-support-conversation-card.is-empty > * {
+  max-width: 420px;
+}
+
+.admin-support-ticket-details.is-empty h2,
+.admin-support-conversation-card.is-empty h2 {
+  margin: 0 0 5px;
+  color: #30343a;
+  font-size: 16px;
+  font-weight: 680;
+}
+
+.admin-support-ticket-details.is-empty p,
+.admin-support-conversation-card.is-empty p {
+  margin: 0;
+  color: #7b8189;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.admin-ticket-detail-heading,
+.admin-conversation-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.admin-ticket-detail-heading h2,
+.admin-conversation-heading h2 {
+  margin: 0;
+  color: #17191d;
+  font-size: 19px;
+  line-height: 1.3;
+  font-weight: 720;
+}
+
+.admin-support-page .ticket-subtitle {
+  margin: 5px 0 0;
+  color: #7b8189;
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 400;
+}
+
+.admin-support-page .support-tabs {
+  display: flex;
+  gap: 18px;
+  margin-top: 15px;
+  border-bottom: 1px solid var(--support-border);
+}
+
+.admin-support-page .support-tabs button {
+  position: relative;
+  min-height: 34px;
+  padding: 0 0 9px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #747a82;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 580;
+}
+
+.admin-support-page .support-tabs button.active {
+  color: #18181b;
+  font-weight: 650;
+}
+
+.admin-support-page .support-tabs button.active::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: #18181b;
+}
+
+.admin-support-page .ticket-divider {
+  display: none;
+}
+
+.admin-support-page .ticket-details-top {
+  padding-top: 17px;
+}
+
+.admin-support-page .ticket-section-title {
+  margin: 0 0 9px;
+  color: #3b4047;
+  font-size: 10.5px;
+  line-height: 1.3;
+  font-weight: 680;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.admin-support-page .ticket-meta-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 18px;
+}
+
+.admin-support-page .ticket-meta-item {
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid #e0e3e7;
+  border-radius: 3px;
+  background: #ffffff;
+}
+
+.admin-support-page .ticket-meta-item > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+  color: #858b93;
+  font-size: 9px;
+  line-height: 1.3;
+  font-weight: 620;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.admin-support-page .ticket-meta-item strong {
+  display: block;
+  overflow: hidden;
+  color: #2f343a;
+  font-size: 11.5px;
+  line-height: 1.4;
+  font-weight: 580;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-support-page .assign-dropdown {
+  margin: 0 0 18px;
+}
+
+.admin-support-page .admin-assign-dropdown {
+  padding: 11px;
+  border: 1px solid #e0e3e7;
+  border-radius: 3px;
+  background: #fafafa;
+}
+
+.admin-support-page .admin-assign-dropdown > label,
+.admin-support-page .admin-ticket-management label > span,
+.admin-support-page .admin-resolution-note > span {
+  display: block;
+  margin-bottom: 6px;
+  color: #565c64;
+  font-size: 10px;
+  font-weight: 620;
+}
+
+.admin-assign-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.admin-support-page .assign-dropdown select,
+.admin-support-page .ticket-management select,
+.admin-support-page .ticket-management textarea {
+  width: 100%;
+  border: 1px solid #cfd4da;
+  border-radius: 3px;
+  outline: none;
+  background: #ffffff;
+  color: #2d3137;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.admin-support-page .assign-dropdown select,
+.admin-support-page .ticket-management select {
+  height: 36px;
+  padding: 0 9px;
+}
+
+.admin-support-page .assign-dropdown select:focus,
+.admin-support-page .ticket-management select:focus,
+.admin-support-page .ticket-management textarea:focus {
+  border-color: #777d85;
+  box-shadow: 0 0 0 2px rgba(24, 24, 27, 0.07);
+}
+
+.admin-support-page .assign-dropdown button,
+.admin-support-page .ticket-management > button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid #18181b;
+  border-radius: 3px;
+  background: #18181b;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 630;
+}
+
+.admin-support-page .assign-dropdown button:hover:not(:disabled),
+.admin-support-page .ticket-management > button:hover:not(:disabled) {
+  background: #2f2f33;
+}
+
+.admin-support-page .assign-dropdown button:disabled,
+.admin-support-page .ticket-management > button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.admin-support-page .admin-ticket-management {
+  margin: 0;
+  padding: 11px;
+  border: 1px solid #e0e3e7;
+  border-radius: 3px;
+  background: #fafafa;
+  gap: 10px;
+}
+
+.admin-ticket-management-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-ticket-management-grid label,
+.admin-resolution-note {
+  display: block;
+}
+
+.admin-support-page .ticket-management textarea {
+  min-height: 72px;
+  padding: 9px;
+  resize: vertical;
+}
+
+.admin-support-page .ticket-management > button {
+  align-self: flex-end;
+  width: fit-content;
+}
+
+.admin-support-page .support-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent !important;
+  color: #545a62 !important;
+  font-size: 10.5px;
+  line-height: 1.3;
+  font-weight: 570;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.admin-support-page .support-status-badge i {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--support-status-color);
+}
+
+.admin-support-page .priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border-radius: 0;
+  background: transparent !important;
+  color: #6a7078 !important;
+  font-size: 9.5px;
+  line-height: 1.3;
+  font-weight: 500;
+  text-transform: none;
+}
+
+.admin-support-page .priority::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: #8a9098;
+}
+
+.admin-support-page .priority.high::before {
+  background: #c47b16;
+}
+
+.admin-support-page .priority.urgent::before {
+  background: #c43b31;
+}
+
+.admin-support-page .support-empty-state {
+  min-height: 360px;
+  padding: 40px 20px;
+}
+
+.admin-support-page .support-empty-icon {
+  display: none;
+}
+
+.admin-support-page .support-empty-state h3 {
+  margin: 0 0 6px;
+  color: #30343a;
+  font-size: 14px;
+  font-weight: 660;
+}
+
+.admin-support-page .support-empty-state p {
+  margin: 0;
+  max-width: 300px;
+  color: #7b8189;
+  font-size: 11px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+.admin-support-page .support-clear-filter-btn {
+  min-height: 34px;
+  margin-top: 14px;
+  padding: 0 11px;
+  border: 1px solid #cfd4da;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #34383e;
+  font-size: 10.5px;
+  font-weight: 620;
+}
+
+.admin-support-conversation-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-support-conversation-card .conversation-card-body {
+  flex: 1;
+  margin-top: 14px;
+  padding: 0 4px 0 0;
+}
+
+.admin-support-page .conversation-row {
+  gap: 5px;
+  margin-bottom: 15px;
+}
+
+.admin-support-page .conversation-meta {
+  margin-bottom: 2px;
+  color: #818790;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.admin-support-page .conversation-bubble {
+  max-width: 76%;
+  padding: 10px 12px;
+  border: 1px solid #e1e4e8;
+  border-radius: 4px;
+  box-shadow: none;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.admin-support-page .conversation-row.customer .conversation-bubble {
+  background: #f7f7f8;
+  color: #30343a;
+}
+
+.admin-support-page .conversation-row.admin .conversation-bubble {
+  border-color: #18181b;
+  background: #18181b;
+  color: #ffffff;
+}
+
+.admin-support-page .conversation-row small {
+  margin-top: 2px;
+  color: #9a9fa6;
+  font-size: 9.5px;
+}
+
+.admin-support-page .reply-box {
+  margin-top: 12px;
+}
+
+.admin-support-page .reply-composer {
+  min-height: 48px;
+  padding: 7px 7px 7px 11px;
+  border: 1px solid #cfd4da;
+  border-radius: 3px;
+  box-shadow: none;
+}
+
+.admin-support-page .reply-send-btn {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 3px;
+}
+
+@media (max-width: 1100px) {
+  .admin-support-filter-bar {
+    grid-template-columns: minmax(260px, 1.4fr) repeat(3, minmax(140px, 0.7fr));
+  }
+
+  .admin-support-page .ticket-meta-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .admin-support-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-support-filter-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-support-content {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-support-ticket-list {
+    height: auto;
+    max-height: 430px;
+    border-right: 0;
+    border-bottom: 1px solid var(--support-border);
+  }
+
+  .admin-support-right-panel,
+  .admin-support-ticket-details,
+  .admin-support-conversation-card {
+    min-height: 520px;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-support-page {
+    padding: 0;
+  }
+
+  .admin-support-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .admin-support-summary-grid,
+  .admin-support-filter-bar,
+  .admin-ticket-management-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-support-page .ticket-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-assign-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-support-page .assign-dropdown button,
+  .admin-support-page .ticket-management > button {
+    width: 100%;
+  }
+}
+
+/* ==========================================================================
+   WISDOM ADMIN SUPPORT VISUAL POLISH V1.1
+   Adds restrained semantic color and stronger visual hierarchy.
+   ========================================================================== */
+
+.admin-support-page .admin-support-stat {
+  position: relative;
+  min-height: 86px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 15px;
+  border: 1px solid var(--support-border) !important;
+  border-top: 1px solid var(--support-border) !important;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.025);
+}
+
+.admin-support-page .admin-support-stat::before,
+.admin-support-page .admin-support-stat::after {
+  display: none !important;
+  content: none !important;
+}
+
+.admin-support-page .admin-support-stat h2 {
+  margin-top: 8px;
+  color: #111214;
+}
+
+.admin-support-stat-icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 4px;
+  background: #f4f5f6;
+  color: #59616c;
+}
+
+.admin-support-page .admin-support-stat.tone-open h2 {
+  color: #2563eb;
+}
+
+.admin-support-page .admin-support-stat.tone-open .admin-support-stat-icon {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.admin-support-page .admin-support-stat.tone-assigned h2 {
+  color: #4b5563;
+}
+
+.admin-support-page .admin-support-stat.tone-assigned .admin-support-stat-icon {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+.admin-support-page .admin-support-stat.tone-waiting h2 {
+  color: #a16207;
+}
+
+.admin-support-page .admin-support-stat.tone-waiting .admin-support-stat-icon {
+  background: #fffbeb;
+  color: #b7791f;
+}
+
+.admin-support-page .admin-support-stat.tone-resolved h2 {
+  color: #2f7d4a;
+}
+
+.admin-support-page .admin-support-stat.tone-resolved .admin-support-stat-icon {
+  background: #f0f9f3;
+  color: #2f7d4a;
+}
+
+/* Toolbar becomes a clearer working surface without adding visual noise. */
+.admin-support-filter-bar {
+  background: #f8f9fa;
+}
+
+.admin-support-filter-field > span {
+  color: #4a5058;
+}
+
+.admin-support-filter-result {
+  padding-top: 1px;
+}
+
+/* Ticket queue: softer cards, clearer selected state. */
+.admin-support-ticket-list {
+  background: #fcfcfd;
+}
+
+.admin-support-ticket-list-head {
+  padding: 0 2px 2px;
+}
+
+.admin-support-ticket-item {
+  position: relative;
+  border-color: #e3e6ea;
+  background: #ffffff;
+}
+
+.admin-support-ticket-item:hover {
+  border-color: #cfd5dc;
+  background: #f8fafc;
+}
+
+.admin-support-ticket-item.active {
+  padding-left: 14px;
+  border-color: #cbd5e1;
+  background: #f4f7fb;
+  box-shadow: inset 3px 0 0 #64748b;
+}
+
+.admin-support-ticket-item.active .ticket-card-header h4 {
+  color: #111827;
+}
+
+/* Ticket details: one information surface instead of six separate boxes. */
+.admin-support-page .ticket-meta-grid {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid #e0e4e8;
+  border-radius: 4px;
+  background: #fafbfc;
+}
+
+.admin-support-page .ticket-meta-item {
+  min-height: 72px;
+  padding: 11px 12px;
+  border: 0;
+  border-right: 1px solid #e6e9ed;
+  border-bottom: 1px solid #e6e9ed;
+  border-radius: 0;
+  background: transparent;
+}
+
+.admin-support-page .ticket-meta-item:nth-child(3n) {
+  border-right: 0;
+}
+
+.admin-support-page .ticket-meta-item:nth-last-child(-n + 3) {
+  border-bottom: 0;
+}
+
+.admin-support-page .ticket-meta-item > span {
+  color: #7e858e;
+}
+
+.admin-support-page .ticket-meta-item strong {
+  color: #242a31;
+}
+
+/* Section headings become more deliberate without being heavy. */
+.admin-support-page .ticket-section-title {
+  margin-top: 2px;
+  margin-bottom: 8px;
+  color: #4b525a;
+  letter-spacing: 0.65px;
+}
+
+/* Assignment and ticket update use a subtle surface rather than heavy boxes. */
+.admin-support-page .admin-assign-dropdown,
+.admin-support-page .admin-ticket-management {
+  border-color: #e1e5e9;
+  background: #f8f9fa;
+}
+
+.admin-support-page .admin-assign-dropdown {
+  padding: 12px;
+}
+
+.admin-support-page .admin-ticket-management {
+  padding: 12px;
+}
+
+.admin-support-page .admin-assign-dropdown > label,
+.admin-support-page .admin-ticket-management label > span,
+.admin-support-page .admin-resolution-note > span {
+  color: #545b63;
+}
+
+/* Inputs remain white so they are easy to identify as editable controls. */
+.admin-support-page .assign-dropdown select,
+.admin-support-page .ticket-management select,
+.admin-support-page .ticket-management textarea {
+  background: #ffffff;
+}
+
+/* Status dots are semantic; text stays restrained. */
+.admin-support-page .support-status-open {
+  color: #375f99 !important;
+}
+
+.admin-support-page .support-status-awaiting_customer {
+  color: #8a5b10 !important;
+}
+
+.admin-support-page .support-status-resolved {
+  color: #3c6e4c !important;
+}
+
+.admin-support-page .support-status-assigned,
+.admin-support-page .support-status-in_progress,
+.admin-support-page .support-status-closed {
+  color: #59616a !important;
+}
+
+/* Conversation keeps the same hierarchy as the details panel. */
+.admin-support-conversation-card {
+  background: #ffffff;
+}
+
+.admin-support-page .conversation-row.customer .conversation-bubble {
+  border-color: #e2e6ea;
+  background: #f7f8fa;
+}
+
+.admin-support-page .reply-composer {
+  background: #ffffff;
+}
+
+/* Small depth only on primary work surfaces. */
+.admin-support-workspace {
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.035);
+}
+
+/* Prevent the old thick summary top treatment from winning at any breakpoint. */
+.admin-support-page .support-summary-card,
+.admin-support-page .support-summary-card:hover {
+  border-top-width: 1px !important;
+  border-top-style: solid !important;
+  border-top-color: var(--support-border) !important;
+  transform: none;
+}
+
+@media (max-width: 1100px) {
+  .admin-support-page .ticket-meta-item:nth-child(3n) {
+    border-right: 1px solid #e6e9ed;
+  }
+
+  .admin-support-page .ticket-meta-item:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .admin-support-page .ticket-meta-item:nth-last-child(-n + 3) {
+    border-bottom: 1px solid #e6e9ed;
+  }
+
+  .admin-support-page .ticket-meta-item:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-support-page .ticket-meta-item,
+  .admin-support-page .ticket-meta-item:nth-child(2n),
+  .admin-support-page .ticket-meta-item:nth-child(3n),
+  .admin-support-page .ticket-meta-item:nth-last-child(-n + 2),
+  .admin-support-page .ticket-meta-item:nth-last-child(-n + 3) {
+    border-right: 0;
+    border-bottom: 1px solid #e6e9ed;
+  }
+
+  .admin-support-page .ticket-meta-item:last-child {
+    border-bottom: 0;
+  }
+}
+
+/* ==========================================================================
+   WISDOM ADMIN SUPPORT VISUAL POLISH V1.2
+   Final card alignment + richer Details / Conversation surfaces.
+   ========================================================================== */
+
+/* Summary cards: match the Customers account-summary composition.
+   Label/value stay left; icon stays pinned to the upper-right. */
+.admin-support-page .admin-support-stat {
+  flex-direction: row !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+}
+
+.admin-support-page .admin-support-stat > div:first-child {
+  min-width: 0;
+  display: block;
+}
+
+.admin-support-page .admin-support-stat-icon {
+  align-self: flex-start;
+  margin: 0 0 0 auto;
+}
+
+/* Details header: give the selected ticket a clear, calm focal surface. */
+.admin-support-page .admin-ticket-detail-heading {
+  padding: 13px 14px;
+  border: 1px solid #e1e6eb;
+  border-radius: 4px;
+  background: #f8fafc;
+}
+
+.admin-support-page .admin-ticket-detail-heading h2 {
+  color: #111827;
+}
+
+.admin-support-page .admin-ticket-detail-heading .ticket-subtitle {
+  color: #737b85;
+}
+
+/* Ticket information: add subtle depth without turning it into colored cards. */
+.admin-support-page .ticket-details-top {
+  padding-top: 14px;
+}
+
+.admin-support-page .ticket-meta-grid {
+  border-color: #dce2e8;
+  background: #f8fafc;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.025);
+}
+
+.admin-support-page .ticket-meta-item {
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.admin-support-page .ticket-meta-item:nth-child(even) {
+  background: rgba(248, 250, 252, 0.85);
+}
+
+.admin-support-page .ticket-meta-item > span svg {
+  color: #7f8a96;
+}
+
+.admin-support-page .ticket-meta-item strong {
+  font-weight: 620;
+}
+
+/* Section blocks: slightly stronger hierarchy, still consistent with Admin UI. */
+.admin-support-page .admin-assign-dropdown,
+.admin-support-page .admin-ticket-management {
+  border-color: #dfe4e9;
+  background: #f7f9fb;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02);
+}
+
+.admin-support-page .admin-assign-dropdown {
+  position: relative;
+}
+
+.admin-support-page .admin-ticket-management {
+  position: relative;
+}
+
+.admin-support-page .assign-dropdown select,
+.admin-support-page .ticket-management select,
+.admin-support-page .ticket-management textarea {
+  border-color: #cbd2d9;
+}
+
+.admin-support-page .assign-dropdown button,
+.admin-support-page .ticket-management > button {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+/* Conversation: avoid the large blank-white document feeling. */
+.admin-support-page .admin-support-conversation-card {
+  background: #ffffff;
+}
+
+.admin-support-page .admin-conversation-heading {
+  padding: 13px 14px;
+  border: 1px solid #e1e6eb;
+  border-radius: 4px;
+  background: #f8fafc;
+}
+
+.admin-support-page .admin-conversation-heading h2 {
+  color: #111827;
+}
+
+.admin-support-page .admin-support-conversation-card .support-tabs {
+  margin-top: 12px;
+}
+
+.admin-support-page .admin-support-conversation-card .conversation-card-body {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid #e2e7ec;
+  border-radius: 4px;
+  background: #f8fafc;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.admin-support-page .admin-support-conversation-card .support-conversation {
+  gap: 14px;
+}
+
+.admin-support-page .conversation-row {
+  margin-bottom: 12px;
+}
+
+.admin-support-page .conversation-meta {
+  color: #77808a;
+}
+
+.admin-support-page .conversation-bubble {
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035);
+}
+
+.admin-support-page .conversation-row.customer .conversation-bubble {
+  border-color: #dfe4e9;
+  background: #ffffff;
+  color: #2f3740;
+}
+
+.admin-support-page .conversation-row.admin .conversation-bubble {
+  border-color: #20242a;
+  background: #20242a;
+  color: #ffffff;
+}
+
+.admin-support-page .conversation-card-footer {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e6eaee;
+}
+
+.admin-support-page .reply-box {
+  margin-top: 0;
+}
+
+.admin-support-page .reply-composer {
+  min-height: 50px;
+  border-color: #cbd2d9;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.025);
+}
+
+.admin-support-page .reply-composer:focus-within {
+  border-color: #6b7280;
+  box-shadow: 0 0 0 2px rgba(24, 24, 27, 0.06);
+}
+
+.admin-support-page .reply-send-btn {
+  background: #18181b;
+}
+
+.admin-support-page .reply-send-btn:hover:not(:disabled) {
+  background: #2f2f33;
+}
+
+/* Keep empty state visually connected to the work area. */
+.admin-support-page .admin-support-ticket-details.is-empty,
+.admin-support-page .admin-support-conversation-card.is-empty {
+  background:
+    linear-gradient(#ffffff, #ffffff) padding-box,
+    linear-gradient(180deg, #eef2f6, #ffffff) border-box;
+}
+
+@media (max-width: 900px) {
+  .admin-support-page .admin-ticket-detail-heading,
+  .admin-support-page .admin-conversation-heading {
+    padding: 12px;
+  }
+}
+
+/* ==========================================================================
+   WISDOM ADMIN SUPPORT MONOCHROME + WOOD ACCENT V1
+   Black / white / gray base with one restrained wood accent for selection.
+   ========================================================================== */
+
+.admin-support-page {
+  --support-wood: #7a624b;
+  --support-wood-soft: #faf8f5;
+  --support-neutral-icon-bg: #f3f4f5;
+  --support-neutral-icon: #60666d;
+}
+
+/* Summary cards: neutral only. */
+.admin-support-page .admin-support-stat h2,
+.admin-support-page .admin-support-stat.tone-open h2,
+.admin-support-page .admin-support-stat.tone-assigned h2,
+.admin-support-page .admin-support-stat.tone-waiting h2,
+.admin-support-page .admin-support-stat.tone-resolved h2 {
+  color: #111214 !important;
+}
+
+.admin-support-page .admin-support-stat-icon,
+.admin-support-page .admin-support-stat.tone-open .admin-support-stat-icon,
+.admin-support-page .admin-support-stat.tone-assigned .admin-support-stat-icon,
+.admin-support-page .admin-support-stat.tone-waiting .admin-support-stat-icon,
+.admin-support-page .admin-support-stat.tone-resolved .admin-support-stat-icon {
+  background: var(--support-neutral-icon-bg) !important;
+  color: var(--support-neutral-icon) !important;
+}
+
+/* Statuses become neutral so the page does not read as a rainbow dashboard. */
+.admin-support-page .support-status-badge,
+.admin-support-page .support-status-open,
+.admin-support-page .support-status-assigned,
+.admin-support-page .support-status-in_progress,
+.admin-support-page .support-status-awaiting_customer,
+.admin-support-page .support-status-resolved,
+.admin-support-page .support-status-closed {
+  color: #50565d !important;
+}
+
+.admin-support-page .support-status-badge i {
+  background: #8a8f95 !important;
+}
+
+/* Priority is neutral by default. High is neutral; only truly urgent remains
+   destructive red because it communicates a real warning. */
+.admin-support-page .priority::before,
+.admin-support-page .priority.high::before {
+  background: #969ba1 !important;
+}
+
+.admin-support-page .priority.urgent::before {
+  background: #b42318 !important;
+}
+
+/* The one branded accent: selected ticket. */
+.admin-support-ticket-item.active {
+  border-color: #d8d0c7 !important;
+  background: var(--support-wood-soft) !important;
+  box-shadow: inset 3px 0 0 var(--support-wood) !important;
+}
+
+.admin-support-ticket-item.active .ticket-card-header h4 {
+  color: #1c1b1a !important;
+}
+
+.admin-support-ticket-item:hover:not(.active) {
+  border-color: #d4d7db !important;
+  background: #fafafa !important;
+}
+
+/* The second use of the same accent: active Details / Conversation tab. */
+.admin-support-page .support-tabs button.active {
+  color: #27221e !important;
+}
+
+.admin-support-page .support-tabs button.active::after {
+  background: var(--support-wood) !important;
+}
+
+/* Selected ticket header receives only a very subtle warm surface. */
+.admin-support-page .admin-ticket-detail-heading,
+.admin-support-page .admin-conversation-heading {
+  border-color: #e3e1de !important;
+  background: #faf9f7 !important;
+}
+
+/* Keep information/editing surfaces neutral. */
+.admin-support-page .ticket-meta-grid,
+.admin-support-page .admin-assign-dropdown,
+.admin-support-page .admin-ticket-management,
+.admin-support-page
+  .admin-support-conversation-card
+  .conversation-card-body {
+  border-color: #e1e4e7 !important;
+  background: #f8f9fa !important;
+}
+
+.admin-support-page .ticket-meta-item {
+  background: rgba(255, 255, 255, 0.72) !important;
+}
+
+.admin-support-page .ticket-meta-item:nth-child(even) {
+  background: rgba(249, 250, 251, 0.9) !important;
+}
+
+/* Form focus can carry the same restrained accent so the interface is not
+   completely flat, without adding new decorative colors. */
+.admin-support-page .assign-dropdown select:focus,
+.admin-support-page .ticket-management select:focus,
+.admin-support-page .ticket-management textarea:focus,
+.admin-support-page .reply-composer:focus-within {
+  border-color: #a79686 !important;
+  box-shadow: 0 0 0 2px rgba(122, 98, 75, 0.08) !important;
+}
+
+/* Customer/admin conversation remains readable and monochrome. */
+.admin-support-page .conversation-row.customer .conversation-bubble {
+  border-color: #dfe3e7 !important;
+  background: #ffffff !important;
+  color: #30353b !important;
+}
+
+.admin-support-page .conversation-row.admin .conversation-bubble {
+  border-color: #202124 !important;
+  background: #202124 !important;
+  color: #ffffff !important;
+}
+
+.admin-support-page .reply-send-btn {
+  background: #18181b !important;
+  color: #ffffff !important;
+}
+
+.admin-support-page .reply-send-btn:hover:not(:disabled) {
+  background: #303034 !important;
+}
