@@ -1,0 +1,236 @@
+/* ==========================================================================
+   WISDOM POS PAYMENT RECOVERY UI POLISH V1.0.2
+   Admin-facing presentation only.
+   ========================================================================== */
+
+[data-pos-recovery-page="true"] {
+  width: min(100%, 1460px) !important;
+  max-width: 1460px !important;
+  margin: 0 auto !important;
+  gap: 14px !important;
+  color: #18181b !important;
+}
+
+[data-pos-recovery-page="true"] * {
+  box-sizing: border-box;
+}
+
+/* Header */
+[data-pos-recovery-page="true"] h1 {
+  color: #17181a !important;
+  font-size: 25px !important;
+  line-height: 1.2 !important;
+  font-weight: 720 !important;
+  letter-spacing: -0.35px !important;
+}
+
+[data-pos-recovery-page="true"] header p {
+  max-width: 660px !important;
+  color: #747b83 !important;
+  font-size: 12px !important;
+  line-height: 1.55 !important;
+  font-weight: 400 !important;
+}
+
+[data-pos-recovery-page="true"] header button {
+  min-height: 34px !important;
+  padding: 0 12px !important;
+  border-radius: 3px !important;
+  font-size: 11px !important;
+  font-weight: 620 !important;
+}
+
+/* Shared admin cards */
+[data-pos-recovery-page="true"] > section {
+  border-color: #dfe3e7 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+
+/* Compact filter card */
+[data-pos-recovery-page="true"] .pos-recovery-filter-card {
+  padding: 12px 14px !important;
+  background: #fafafa !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-filter-grid {
+  display: grid !important;
+  grid-template-columns: 250px 140px !important;
+  justify-content: start !important;
+  gap: 10px !important;
+  align-items: end !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-filter-card label {
+  margin: 0 !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-filter-card label > span {
+  display: block !important;
+  margin: 0 0 6px !important;
+  color: #454b52 !important;
+  font-size: 10.5px !important;
+  line-height: 1.2 !important;
+  font-weight: 650 !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-filter-card select {
+  width: 100% !important;
+  height: 37px !important;
+  min-height: 37px !important;
+  max-height: 37px !important;
+  padding: 0 32px 0 10px !important;
+  border: 1px solid #cfd4da !important;
+  border-radius: 3px !important;
+  background: #ffffff !important;
+  color: #30353b !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  box-shadow: none !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-filter-card select:focus {
+  border-color: #747a81 !important;
+  outline: none !important;
+  box-shadow: 0 0 0 2px rgba(24, 24, 27, 0.06) !important;
+}
+
+/* Main recovery list */
+[data-pos-recovery-page="true"] .pos-recovery-table-card {
+  overflow: hidden !important;
+  background: #ffffff !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-main-table {
+  min-width: 790px !important;
+  font-size: 12px !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-main-table thead tr {
+  background: #fafafa !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-main-table thead th {
+  padding: 11px 12px !important;
+  border-bottom: 1px solid #e0e3e6 !important;
+  color: #737a82 !important;
+  font-size: 9px !important;
+  line-height: 1.3 !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.9px !important;
+  text-transform: uppercase !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-main-table tbody td {
+  padding: 13px 12px !important;
+  border-top-color: #eceef0 !important;
+  color: #3e444b !important;
+  font-size: 11.5px !important;
+  line-height: 1.45 !important;
+  font-weight: 400 !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-main-table tbody tr:hover > td {
+  background: #fcfcfc !important;
+}
+
+/* Payment and Amount are the primary scan values. */
+[data-pos-recovery-page="true"] .pos-recovery-main-table tbody td:first-child {
+  color: #20242a !important;
+  font-weight: 650 !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-main-table tbody td:nth-child(5) {
+  color: #20242a !important;
+  font-weight: 650 !important;
+}
+
+/* Supporting timestamp */
+[data-pos-recovery-page="true"] .pos-recovery-main-table tbody td:nth-child(7) {
+  color: #777e86 !important;
+  font-size: 10.75px !important;
+}
+
+/* Session remains in the data/JSX for recovery logic, but is hidden from
+   the normal list scan. Expanded colspan rows have only one TD, so they are
+   unaffected by this selector. */
+[data-pos-recovery-page="true"] .pos-recovery-main-table thead th:nth-child(6),
+[data-pos-recovery-page="true"] .pos-recovery-main-table tbody tr > td:nth-child(6) {
+  display: none !important;
+}
+
+/* Status: restrained neutral text rather than a bright pill. */
+[data-pos-recovery-page="true"] .pos-recovery-main-table tbody td:nth-child(2) > span {
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #4a5057 !important;
+  font-size: 10.75px !important;
+  font-weight: 600 !important;
+}
+
+/* Actions */
+[data-pos-recovery-page="true"] .pos-recovery-main-table button {
+  min-height: 32px !important;
+  padding: 0 10px !important;
+  border-radius: 3px !important;
+  font-size: 10.5px !important;
+  font-weight: 620 !important;
+  box-shadow: none !important;
+}
+
+/* Empty/loading state */
+[data-pos-recovery-page="true"] .pos-recovery-empty-state,
+[data-pos-recovery-page="true"] .pos-recovery-loading-state {
+  padding: 42px 20px !important;
+  color: #81878f !important;
+  text-align: center !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-empty-state > div:first-child {
+  color: #666c73 !important;
+  font-size: 24px !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-empty-state strong {
+  display: block;
+  margin-top: 8px;
+  color: #2c3137 !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-empty-state span {
+  display: block;
+  margin-top: 4px;
+  color: #81878f !important;
+  font-size: 11.5px !important;
+  font-weight: 400 !important;
+}
+
+/* Review/details */
+[data-pos-recovery-page="true"] .pos-recovery-detail-card {
+  padding: 18px !important;
+  border-radius: 4px !important;
+}
+
+[data-pos-recovery-page="true"] .pos-recovery-detail-card h2 {
+  color: #1c2025 !important;
+  font-size: 17px !important;
+  font-weight: 700 !important;
+}
+
+@media (max-width: 800px) {
+  [data-pos-recovery-page="true"] {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  [data-pos-recovery-page="true"] .pos-recovery-filter-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-pos-recovery-page="true"] .pos-recovery-main-table {
+    min-width: 760px !important;
+  }
+}

@@ -8,6 +8,7 @@ import React, {
 import { Link } from "react-router-dom";
 import toast from "react-hot-toast";
 import api from "../../services/api";
+import "./POSRecoveryPolish.css";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All unresolved" },
@@ -948,7 +949,8 @@ export default function PosQrRecoveryPage() {
       !manualRelease.reviewedRefreshedQuantities);
 
   return (
-    <div style={pageStyles.page}>
+    <div style={pageStyles.page} data-pos-recovery-page="true">
+      {/* WISDOM POS PAYMENT RECOVERY UI POLISH V1.0.2 */}
       <header>
         <div
           style={{
@@ -961,7 +963,7 @@ export default function PosQrRecoveryPage() {
         >
           <div>
             <h1 style={{ margin: 0, fontSize: 25, letterSpacing: "-0.02em" }}>
-              POS QR Recovery
+              POS Payment Recovery
             </h1>
             <p
               style={{
@@ -972,10 +974,7 @@ export default function PosQrRecoveryPage() {
                 lineHeight: 1.55,
               }}
             >
-              Review unresolved POS QR payments. Attach only an existing
-              PayMongo Checkout Session, verify an attached payment, safely
-              release a provider-unknown reservation, or cancel an expired
-              unpaid attempt.
+              Review incomplete POS payments and safely resolve payment attempts.
             </p>
           </div>
           <button
@@ -989,7 +988,7 @@ export default function PosQrRecoveryPage() {
               opacity: listLoading ? 0.55 : 1,
             }}
           >
-            {listLoading ? "Refreshing…" : "Refresh list"}
+            {listLoading ? "Refreshing…" : "Refresh"}
           </button>
         </div>
       </header>
@@ -1018,8 +1017,9 @@ export default function PosQrRecoveryPage() {
         onClose={() => setCompletionResult(null)}
       />
 
-      <section style={{ ...pageStyles.card, padding: 16 }}>
+      <section style={{ ...pageStyles.card, padding: 16 }} className="pos-recovery-filter-card">
         <div
+          className="pos-recovery-filter-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
@@ -1042,7 +1042,7 @@ export default function PosQrRecoveryPage() {
             </select>
           </label>
           <label>
-            <span style={pageStyles.label}>Rows</span>
+            <span style={pageStyles.label}>Rows per page</span>
             <select
               value={limit}
               onChange={(event) => setLimit(Number(event.target.value))}
@@ -1058,7 +1058,7 @@ export default function PosQrRecoveryPage() {
         </div>
       </section>
 
-      <section style={pageStyles.card}>
+      <section style={pageStyles.card} className="pos-recovery-table-card">
         {listError && (
           <div
             style={{
@@ -1076,6 +1076,7 @@ export default function PosQrRecoveryPage() {
 
         <div style={{ overflowX: "auto" }}>
           <table
+            className="pos-recovery-main-table"
             style={{
               width: "100%",
               borderCollapse: "collapse",
@@ -1085,13 +1086,13 @@ export default function PosQrRecoveryPage() {
           >
             <thead>
               <tr style={{ background: "#f4f4f5", color: "#52525b" }}>
-                <th style={{ textAlign: "left", padding: 12 }}>Attempt</th>
+                <th style={{ textAlign: "left", padding: 12 }}>Payment</th>
                 <th style={{ textAlign: "left", padding: 12 }}>Status</th>
                 <th style={{ textAlign: "left", padding: 12 }}>Cashier</th>
                 <th style={{ textAlign: "left", padding: 12 }}>Customer</th>
-                <th style={{ textAlign: "right", padding: 12 }}>Total</th>
+                <th style={{ textAlign: "right", padding: 12 }}>Amount</th>
                 <th style={{ textAlign: "left", padding: 12 }}>Session</th>
-                <th style={{ textAlign: "left", padding: 12 }}>Updated</th>
+                <th style={{ textAlign: "left", padding: 12 }}>Last Updated</th>
                 <th style={{ textAlign: "right", padding: 12 }}>Actions</th>
               </tr>
             </thead>
@@ -1174,7 +1175,7 @@ export default function PosQrRecoveryPage() {
                               opacity: busy ? 0.55 : 1,
                             }}
                           >
-                            {isSelected ? "Hide details" : "View details"}
+                            {isSelected ? "Close" : "Review"}
                           </button>
 
                           {attempt.status === "provider_unknown" && (
@@ -1328,33 +1329,25 @@ export default function PosQrRecoveryPage() {
         </div>
 
         {!listLoading && attempts.length === 0 && !listError && (
-          <div style={{ padding: 34, textAlign: "center", color: "#71717a" }}>
+          <div
+            className="pos-recovery-empty-state"
+            style={{ padding: 34, textAlign: "center", color: "#71717a" }}
+          >
             <div style={{ fontSize: 28 }}>✓</div>
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 14,
-                fontWeight: 800,
-                color: "#3f3f46",
-              }}
-            >
-              No unresolved POS QR attempts
-            </div>
-            <div style={{ marginTop: 4, fontSize: 12 }}>
-              The recovery queue is currently clear.
-            </div>
+            <strong>No payments need recovery</strong>
+            <span>There are no unresolved POS payment attempts.</span>
           </div>
         )}
 
         {listLoading && (
-          <div style={{ padding: 34, textAlign: "center", color: "#71717a" }}>
+          <div className="pos-recovery-loading-state" style={{ padding: 34, textAlign: "center", color: "#71717a" }}>
             Loading unresolved attempts…
           </div>
         )}
       </section>
 
       {selectedAttemptId && (
-        <section style={{ ...pageStyles.card, padding: 18 }}>
+        <section style={{ ...pageStyles.card, padding: 18 }} className="pos-recovery-detail-card">
           <div
             style={{
               display: "flex",
