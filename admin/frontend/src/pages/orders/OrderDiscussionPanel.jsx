@@ -166,11 +166,10 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
   return (
     <div
       style={{
-        border: "1px solid #e4e4e7",
-        borderRadius: 16,
+        border: "1px solid #dfe2e5",
+        borderRadius: 4,
         background: "#fff",
         overflow: "hidden",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
       }}
     >
       <div

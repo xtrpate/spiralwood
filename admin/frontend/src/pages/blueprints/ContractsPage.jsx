@@ -1167,7 +1167,7 @@ export default function ContractsPage() {
   };
 
   return (
-    <div>
+    <div style={pageShell}>
       <div
         style={{
           display: "flex",
@@ -1727,54 +1727,14 @@ export default function ContractsPage() {
   );
 }
 
-function SummaryCard({ label, value, color, icon }) {
+function SummaryCard({ label, value, icon }) {
   return (
-    <div
-      style={{
-        background: "#fff",
-        borderRadius: 16,
-        padding: "16px 20px",
-        border: "1px solid #e4e4e7",
-        borderLeft: `4px solid ${color}`,
-        boxShadow: "0 1px 2px rgba(0,0,0,.02)",
-        minWidth: 160,
-        flex: 1,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div>
-          <p
-            style={{
-              fontSize: 10,
-              color: "#71717a",
-              margin: 0,
-              textTransform: "uppercase",
-              letterSpacing: "1px",
-              fontWeight: 800,
-            }}
-          >
-            {label}
-          </p>
-          <p
-            style={{
-              fontSize: 26,
-              fontWeight: 800,
-              color: "#0a0a0a",
-              margin: "6px 0 0",
-              letterSpacing: "-0.02em",
-            }}
-          >
-            {value}
-          </p>
-        </div>
-        <span style={{ fontSize: 24 }}>{icon}</span>
+    <div style={statCard}>
+      <div style={statTop}>
+        <div style={statLabel}>{label}</div>
+        <span style={{ fontSize: 16 }}>{icon}</span>
       </div>
+      <div style={statValue}>{value}</div>
     </div>
   );
 }
@@ -1795,61 +1755,111 @@ function EligibilityItem({ label, value, ok }) {
   );
 }
 
+// ─── Styles ─────────────────────────────────────────────────────────────────
+
+const pageShell = {
+  maxWidth: 1480,
+  margin: "0 auto",
+  display: "flex",
+  flexDirection: "column",
+  gap: 16,
+  color: "#202124",
+};
+
 const pageTitle = {
-  fontSize: 24,
-  fontWeight: 800,
-  color: "#0a0a0a",
   margin: 0,
-  letterSpacing: "-0.02em",
+  fontSize: 25,
+  lineHeight: 1.15,
+  fontWeight: 700,
+  color: "#17191c",
+  letterSpacing: "-0.025em",
+};
+
+const statCard = {
+  background: "#ffffff",
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
+  padding: "14px 16px",
+  minHeight: 78,
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+  minWidth: 160,
+  flex: 1,
+};
+
+const statTop = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 8,
+};
+
+const statLabel = {
+  fontSize: 9.5,
+  fontWeight: 600,
+  letterSpacing: ".35px",
+  textTransform: "uppercase",
+  color: "#62676e",
+};
+
+const statValue = {
+  fontSize: 23,
+  fontWeight: 700,
+  color: "#17191c",
+  lineHeight: 1,
 };
 
 const card = {
-  background: "#fff",
-  borderRadius: 16,
-  border: "1px solid #e4e4e7",
-  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
+  background: "#ffffff",
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
   overflow: "hidden",
 };
 
 const th = {
   textAlign: "left",
-  padding: "14px 16px",
-  fontSize: 10,
-  fontWeight: 800,
-  color: "#71717a",
+  padding: "10px 14px",
+  fontSize: 9.5,
+  fontWeight: 600,
   textTransform: "uppercase",
-  letterSpacing: "1px",
+  letterSpacing: ".35px",
+  color: "#60656d",
+  borderBottom: "1px solid #e4e6e9",
 };
 
 const td = {
-  padding: "14px 16px",
-  color: "#18181b",
+  padding: "11px 14px",
+  color: "#34383d",
+  fontSize: 11.5,
+  borderBottom: "1px solid #eff0f1",
   verticalAlign: "middle",
 };
 
 const centerCell = {
   textAlign: "center",
-  padding: 40,
-  color: "#71717a",
-  fontWeight: 600,
-  fontSize: 13,
+  padding: 34,
+  color: "#858a91",
+  fontSize: 12,
 };
 
 const labelSm = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#18181b",
+  fontSize: 11.5,
+  fontWeight: 600,
+  color: "#1e2023",
   display: "block",
   marginBottom: 8,
 };
 
 const inputFull = {
   width: "100%",
-  padding: "10px 14px",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  fontSize: 13,
-  color: "#18181b",
+  height: 38,
+  borderRadius: 4,
+  border: "1px solid #d4d7db",
+  background: "#ffffff",
+  padding: "0 12px",
+  fontSize: 12,
+  color: "#25282c",
   boxSizing: "border-box",
   outline: "none",
 };
@@ -1857,7 +1867,7 @@ const inputFull = {
 const overlay = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,.6)",
+  background: "rgba(0, 0, 0, 0.6)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -1867,99 +1877,116 @@ const overlay = {
 
 const modalBox = {
   background: "#fff",
-  borderRadius: 16,
-  padding: 32,
+  borderRadius: 4,
+  padding: 24,
   maxHeight: "90vh",
   overflowY: "auto",
-  border: "1px solid #e4e4e7",
+  border: "1px solid #dfe2e5",
   boxShadow: "0 25px 60px rgba(0, 0, 0, 0.15)",
 };
 
 const btnPrimary = {
-  padding: "10px 20px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 14px",
+  height: 36,
   background: "#18181b",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
+  color: "#ffffff",
+  border: "1px solid #18181b",
+  borderRadius: 4,
   cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
 const btnGhost = {
-  padding: "10px 16px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 14px",
+  height: 36,
+  background: "#ffffff",
+  color: "#25282c",
+  border: "1px solid #d9dce0",
+  borderRadius: 4,
   cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
   transition: "all 0.2s",
 };
 
 const btnPrint = {
-  padding: "6px 14px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 13px",
+  height: 32,
+  background: "#ffffff",
+  color: "#25282c",
+  border: "1px solid #d9dce0",
+  borderRadius: 4,
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 700,
+  fontSize: 10.8,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
 const btnView = {
-  padding: "6px 14px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "0 13px",
+  height: 32,
   background: "#18181b",
   color: "#ffffff",
   border: "1px solid #18181b",
-  borderRadius: 8,
+  borderRadius: 4,
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 700,
+  fontSize: 10.8,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
 const linkBtn = {
   background: "none",
   border: "none",
-  color: "#0a0a0a",
-  fontWeight: 800,
+  color: "#17191c",
+  fontWeight: 700,
   cursor: "pointer",
-  fontSize: 13,
+  fontSize: 11.8,
+  padding: 0,
   textDecoration: "underline",
 };
 
 const warningBanner = {
   marginBottom: 20,
-  padding: "14px 16px",
-  borderRadius: 12,
+  padding: "10px 14px",
+  borderRadius: 4,
   background: "#fefce8",
   border: "1px solid #fde047",
   color: "#a16207",
-  fontSize: 13,
-  lineHeight: 1.6,
-  fontWeight: 500,
+  fontSize: 11.5,
+  lineHeight: 1.5,
+  fontWeight: 600,
 };
 
 const eligibilityCard = {
   marginBottom: 24,
   padding: 16,
-  borderRadius: 12,
+  borderRadius: 4,
   background: "#fafafa",
-  border: "1px solid #e4e4e7",
+  border: "1px solid #dfe2e5",
 };
 
 const eligibilityTitle = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#0a0a0a",
+  fontSize: 9.5,
+  fontWeight: 600,
+  color: "#60656d",
   marginBottom: 16,
   textTransform: "uppercase",
-  letterSpacing: "1px",
+  letterSpacing: ".35px",
 };
 
 const eligibilityGrid = {
@@ -1970,65 +1997,65 @@ const eligibilityGrid = {
 
 const eligibilityItem = {
   background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
   padding: "12px 14px",
 };
 
 const eligibilityItemLabel = {
-  fontSize: 10,
-  fontWeight: 800,
-  color: "#71717a",
+  fontSize: 9.5,
+  fontWeight: 600,
+  color: "#60656d",
   marginBottom: 6,
   textTransform: "uppercase",
-  letterSpacing: "1px",
+  letterSpacing: ".35px",
 };
 
 const eligibilityItemValue = {
-  fontSize: 13,
-  fontWeight: 700,
-  lineHeight: 1.5,
+  fontSize: 11.5,
+  fontWeight: 600,
+  lineHeight: 1.45,
   wordBreak: "break-word",
 };
 
 const infoText = {
-  fontSize: 13,
-  color: "#52525b",
+  fontSize: 11.5,
+  color: "#777c82",
   fontWeight: 500,
 };
 
 const errorText = {
-  fontSize: 13,
-  color: "#dc2626",
+  fontSize: 11.5,
+  color: "#991b1b",
   lineHeight: 1.5,
   fontWeight: 600,
 };
 
 const errorBox = {
-  padding: "12px 14px",
-  borderRadius: 8,
+  padding: "10px 14px",
+  borderRadius: 4,
   background: "#fef2f2",
   border: "1px solid #fecaca",
   color: "#991b1b",
-  fontSize: 12,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
 };
 
 const validationSummaryBox = {
   marginBottom: 24,
   padding: 18,
-  borderRadius: 12,
+  borderRadius: 4,
   background: "#fafafa",
-  border: "1px solid #e4e4e7",
+  border: "1px solid #dfe2e5",
 };
 
 const validationSummaryTitle = {
-  fontSize: 11,
-  fontWeight: 800,
-  color: "#0a0a0a",
+  fontSize: 9.5,
+  fontWeight: 600,
+  color: "#60656d",
   marginBottom: 16,
   textTransform: "uppercase",
-  letterSpacing: "1px",
+  letterSpacing: ".35px",
 };
 
 const validationList = {
@@ -2042,31 +2069,31 @@ const validationRow = {
   alignItems: "flex-start",
   gap: 12,
   background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  border: "1px solid #dfe2e5",
+  borderRadius: 4,
   padding: "12px 14px",
 };
 
 const validationDot = {
-  width: 10,
-  height: 10,
+  width: 8,
+  height: 8,
   borderRadius: 999,
   flexShrink: 0,
-  marginTop: 4,
+  marginTop: 3,
 };
 
 const validationLabel = {
-  fontSize: 10,
-  fontWeight: 800,
-  color: "#71717a",
+  fontSize: 9.5,
+  fontWeight: 600,
+  color: "#60656d",
   marginBottom: 4,
   textTransform: "uppercase",
-  letterSpacing: "1px",
+  letterSpacing: ".35px",
 };
 
 const validationValue = {
-  fontSize: 12,
-  fontWeight: 700,
-  lineHeight: 1.5,
+  fontSize: 11.5,
+  fontWeight: 600,
+  lineHeight: 1.45,
   wordBreak: "break-word",
 };
