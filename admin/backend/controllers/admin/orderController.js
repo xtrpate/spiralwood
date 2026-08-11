@@ -625,15 +625,58 @@ exports.getAll = async (req, res) => {
     }
 
     const [orders] = await pool.query(
-      `SELECT o.id, o.order_number, o.order_type, o.type AS channel, o.status,
-              o.total AS total_amount, o.payment_method, o.payment_status, o.created_at,
+      `SELECT
+              o.id,
+              o.order_number,
+              o.order_type,
+              o.type AS channel,
+              o.status,
+              o.total AS total_amount,
+              o.payment_method,
+              o.payment_status,
+              o.created_at,
               (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
-              COALESCE(u.name,  o.walkin_customer_name)  AS customer_name,
-              COALESCE(u.email, '')                      AS customer_email,
-              COALESCE(u.phone, o.walkin_customer_phone)  AS customer_phone
-       FROM orders o LEFT JOIN users u ON u.id = o.customer_id
+              COALESCE(u.name, o.walkin_customer_name) AS customer_name,
+              COALESCE(u.email, '') AS customer_email,
+              COALESCE(u.phone, o.walkin_customer_phone) AS customer_phone,
+              u.profile_photo AS customer_profile_photo,
+              (
+                SELECT COALESCE(NULLIF(oi.product_name, ''), p.name, 'Order item')
+                FROM order_items oi
+                LEFT JOIN products p ON p.id = oi.product_id
+                WHERE oi.order_id = o.id
+                ORDER BY oi.id ASC
+                LIMIT 1
+              ) AS item_name,
+              COALESCE(
+                b.thumbnail_url,
+                (
+                  SELECT COALESCE(
+                    CASE
+                      WHEN JSON_VALID(oi2.customization_json) THEN
+                        NULLIF(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(oi2.customization_json, '$.preview_image_url')), 'null'), '')
+                      ELSE NULL
+                    END,
+                    CASE
+                      WHEN JSON_VALID(oi2.customization_json) THEN
+                        NULLIF(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(oi2.customization_json, '$.image_url')), 'null'), '')
+                      ELSE NULL
+                    END,
+                    p2.image_url
+                  )
+                  FROM order_items oi2
+                  LEFT JOIN products p2 ON p2.id = oi2.product_id
+                  WHERE oi2.order_id = o.id
+                  ORDER BY oi2.id ASC
+                  LIMIT 1
+                )
+              ) AS thumbnail_url
+       FROM orders o
+       LEFT JOIN users u ON u.id = o.customer_id
+       LEFT JOIN blueprints b ON b.id = o.blueprint_id
        WHERE ${where.join(" AND ")}
-       ORDER BY o.created_at DESC LIMIT ? OFFSET ?`,
+       ORDER BY o.created_at DESC
+       LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), parseInt(offset)],
     );
 
@@ -643,7 +686,39 @@ exports.getAll = async (req, res) => {
       params,
     );
 
-    res.json({ orders, total });
+    const [[summary]] = await pool.query(
+      `SELECT
+          COUNT(*) AS total_orders,
+          COALESCE(SUM(CASE
+            WHEN LOWER(COALESCE(o.status, '')) = 'pending'
+              OR LOWER(COALESCE(o.payment_status, '')) = 'pending'
+            THEN 1 ELSE 0 END), 0) AS needs_review,
+          COALESCE(SUM(CASE
+            WHEN LOWER(COALESCE(o.order_type, '')) = 'blueprint'
+            THEN 1 ELSE 0 END), 0) AS custom_requests,
+          COALESCE(SUM(CASE
+            WHEN LOWER(COALESCE(o.order_type, '')) = 'blueprint'
+              AND LOWER(COALESCE(o.status, '')) = 'pending'
+            THEN 1 ELSE 0 END), 0) AS quote_needed,
+          COALESCE(SUM(CASE
+            WHEN LOWER(COALESCE(o.payment_status, '')) = 'paid'
+            THEN 1 ELSE 0 END), 0) AS paid_orders,
+          COALESCE(SUM(CASE
+            WHEN LOWER(COALESCE(o.type, '')) = 'online'
+            THEN 1 ELSE 0 END), 0) AS online_orders,
+          COALESCE(SUM(CASE
+            WHEN LOWER(COALESCE(o.status, '')) = 'pending'
+            THEN 1 ELSE 0 END), 0) AS pending_orders,
+          COALESCE(SUM(CASE
+            WHEN LOWER(COALESCE(o.status, '')) = 'completed'
+            THEN 1 ELSE 0 END), 0) AS completed_orders
+       FROM orders o
+       LEFT JOIN users u ON u.id = o.customer_id
+       WHERE ${where.join(" AND ")}`,
+      params,
+    );
+
+    res.json({ orders, total, summary });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
