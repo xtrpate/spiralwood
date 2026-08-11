@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
+import "./WarrantyPage.css";
 
 const STATUS_META = {
   pending: {
@@ -141,8 +142,6 @@ export default function WarrantyPage() {
       { label: "Pending", value: getStatusCount(rows, "pending") },
       { label: "Approved", value: getStatusCount(rows, "approved") },
       { label: "Fulfilled", value: getStatusCount(rows, "fulfilled") },
-      { label: "Rejected", value: getStatusCount(rows, "rejected") },
-      { label: "Cancelled", value: getStatusCount(rows, "cancelled") },
     ],
     [rows],
   );
@@ -191,111 +190,96 @@ export default function WarrantyPage() {
   const activeFilterCount = [search, statusFilter].filter(Boolean).length;
 
   return (
-    <div style={pageShell}>
-      <div style={headerRow}>
+    <div style={pageShell} className="warranty-admin-v2">
+      {/* WISDOM ADMIN WARRANTY UI POLISH V2.0.1 */}
+      {/* WISDOM ADMIN WARRANTY JSX HOTFIX V2.0.2 */}
+      {/* WISDOM WARRANTY STRAY NEWLINE HOTFIX V2.0.3 */}
+      <div style={headerRow} className="warranty-header">
         <div>
-          <div style={eyebrow}>Sales & Orders</div>
           <h1 style={pageTitle}>Warranty Claims</h1>
           <p style={pageSubtitle}>
-            Review pending claims, inspect customer evidence, approve valid
-            requests, and record fulfillment cleanly.
+            Review customer warranty claims, evidence, and fulfillment.
           </p>
         </div>
 
-        <div style={headerBadge}>{rows.length} total claims</div>
       </div>
 
-      <div style={statsGrid}>
+      <div style={statsGrid} className="warranty-summary-grid">
         {stats.map((item) => (
-          <div key={item.label} style={statCard}>
+          <div key={item.label} style={statCard} className="warranty-summary-card">
             <div style={statLabel}>{item.label}</div>
             <div style={statValue}>{item.value}</div>
           </div>
         ))}
       </div>
 
-      <div style={infoBanner}>
-        <strong>Admin workflow:</strong> Review the claim first, inspect the
-        defect photo and proof, then approve or reject. Only approved claims can
-        be marked as fulfilled with a replacement receipt or service proof.
-      </div>
-
-      <div style={toolbarCard}>
-        <div style={toolbarTop}>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search order, customer, product, issue, or admin note..."
-            style={searchInput}
-          />
-
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            style={selectInput}
-          >
-            <option value="">All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="approved">Approved</option>
-            <option value="fulfilled">Fulfilled</option>
-            <option value="rejected">Rejected</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-
-          <button
-            onClick={() => {
-              setSearch("");
-              setStatusFilter("");
-            }}
-            style={ghostButton}
-          >
-            Reset
-          </button>
-        </div>
-
-        <div style={statusRow}>
-          <StatusFilterChip
-            active={statusFilter === ""}
-            label="All"
-            onClick={() => setStatusFilter("")}
-          />
-          {Object.entries(STATUS_META).map(([key, meta]) => (
-            <StatusFilterChip
-              key={key}
-              active={statusFilter === key}
-              label={meta.label}
-              onClick={() => setStatusFilter(key)}
-              meta={meta}
+      <div style={toolbarCard} className="warranty-toolbar">
+        <div style={toolbarTop} className="warranty-toolbar-row">
+          <label className="warranty-filter-field warranty-filter-search">
+            <span className="warranty-filter-label">Search</span>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search claim, customer, order, or issue..."
+              style={searchInput}
             />
-          ))}
+          </label>
 
-          <div style={filterMeta}>
-            {activeFilterCount > 0
-              ? `${activeFilterCount} active filter(s)`
-              : "No active filters"}
+          <label className="warranty-filter-field warranty-filter-status">
+            <span className="warranty-filter-label">Status</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={selectInput}
+            >
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="fulfilled">Fulfilled</option>
+              <option value="rejected">Rejected</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </label>
+
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setStatusFilter("");
+              }}
+              style={ghostButton}
+              className="warranty-filter-reset"
+            >
+              Reset Filters
+            </button>
+          )}
+
+          <div className="warranty-filter-result">
+            {filteredRows.length} of {rows.length} claims
           </div>
         </div>
       </div>
 
-      <div style={tableCard}>
-        <div style={sectionHead}>
+      <div style={tableCard} className="warranty-table-card">
+        <div style={sectionHead} className="warranty-section-head">
           <div>
             <h2 style={sectionTitle}>Warranty Queue</h2>
             <p style={sectionSubtitle}>
-              Compact admin queue with full review inside the claim modal.
+              Review claims and open a claim for complete details.
             </p>
           </div>
         </div>
 
         <div style={tableWrap}>
-          <table style={table}>
+          <table style={table} className="warranty-table">
             <thead>
               <tr style={theadRow}>
-                <th style={{ ...th, width: "30%" }}>Claim</th>
-                <th style={{ ...th, width: "18%" }}>Customer</th>
+                <th style={{ ...th, width: "32%" }}>Claim</th>
+                <th style={{ ...th, width: "20%" }}>Customer</th>
                 <th style={{ ...th, width: "18%" }}>Submitted</th>
-                <th style={{ ...th, width: "14%" }}>Status</th>
-                <th style={{ ...th, width: "20%" }}>Actions</th>
+                <th style={{ ...th, width: "12%" }}>Status</th>
+                <th style={{ ...th, width: "18%" }}>Actions</th>
               </tr>
             </thead>
 
@@ -320,7 +304,7 @@ export default function WarrantyPage() {
                     "No issue description provided.";
 
                   return (
-                    <tr key={row.id} style={bodyRow}>
+                    <tr key={row.id} style={bodyRow} className="warranty-body-row">
                       <td style={td}>
                         <div style={claimTitle}>
                           {row.product_name || "Unnamed Product"}
@@ -333,13 +317,13 @@ export default function WarrantyPage() {
                         >
                           {row.order_number || `Order #${row.order_id}`}
                         </button>
-                        <div style={issuePreviewStyle}>{issuePreview}</div>
+                        <div style={issuePreviewStyle} className="warranty-issue-preview">{issuePreview}</div>
                         {row.status === "rejected" && row.admin_note ? (
-                          <div style={notePreviewStyle}>
+                          <div style={notePreviewStyle} className="warranty-note-preview">
                             Rejection reason: {row.admin_note}
                           </div>
                         ) : row.admin_note ? (
-                          <div style={notePreviewStyleAdmin}>
+                          <div style={notePreviewStyleAdmin} className="warranty-note-preview">
                             Admin note: {row.admin_note}
                           </div>
                         ) : null}
@@ -373,19 +357,16 @@ export default function WarrantyPage() {
 
                       <td style={td}>
                         <span
-                          style={{
-                            ...statusPill,
-                            background: statusMeta.bg,
-                            color: statusMeta.tone,
-                            borderColor: statusMeta.border,
-                          }}
+                          className={`warranty-status warranty-status-${String(
+                            row.status || "pending",
+                          ).toLowerCase()}`}
                         >
                           {statusMeta.label}
                         </span>
                       </td>
 
                       <td style={td}>
-                        <div style={rowActions}>
+                        <div style={rowActions} className="warranty-row-actions">
                           <button
                             onClick={() => setSelectedRow(row)}
                             style={primaryOutlineBtn}
@@ -447,40 +428,6 @@ export default function WarrantyPage() {
   );
 }
 
-function StatusFilterChip({ active, label, onClick, meta }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        ...filterChip,
-        background: active
-          ? meta
-            ? meta.bg === "#ffffff"
-              ? "#18181b"
-              : meta.bg
-            : "#18181b"
-          : meta
-            ? meta.bg === "#ffffff"
-              ? "#f4f4f5"
-              : meta.bg
-            : "#f4f4f5",
-        color: active
-          ? meta && meta.bg !== "#ffffff"
-            ? meta.tone
-            : "#ffffff"
-          : meta
-            ? meta.tone
-            : "#52525b",
-        border: active
-          ? `1px solid ${meta ? (meta.border === "#d4d4d8" ? "#18181b" : meta.border) : "#18181b"}`
-          : `1px solid ${meta ? meta.border : "#e4e4e7"}`,
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
 function ReviewModal({
   row,
   onClose,
@@ -494,12 +441,13 @@ function ReviewModal({
 
   return (
     <div style={overlay}>
-      <div style={reviewModal}>
-        <div style={modalHeader}>
+      <div style={reviewModal} className="warranty-review-modal">
+        <div style={modalHeader} className="warranty-modal-header">
           <div>
-            <div style={modalEyebrow}>Warranty Review</div>
-            <h3 style={modalTitle}>{row.product_name || "Warranty Claim"}</h3>
+            <div style={modalEyebrow}>Warranty Claim</div>
+            <h3 style={modalTitle}>Review Warranty Claim</h3>
             <div style={modalSubline}>
+              {row.product_name || "Claim"} ·{" "}
               {row.order_number || `Order #${row.order_id}`} · Claim #
               {String(row.id).padStart(4, "0")}
             </div>
@@ -510,45 +458,45 @@ function ReviewModal({
           </button>
         </div>
 
-        <div style={reviewGrid}>
-          <div style={mainColumn}>
-            <div style={panel}>
+        <div style={reviewGrid} className="warranty-review-grid">
+          <div style={mainColumn} className="warranty-main-column">
+            <div style={panel} className="warranty-panel">
               <div style={panelTitle}>Issue Description</div>
               <div style={issueBody}>
                 {row.description || "No issue description provided."}
               </div>
             </div>
 
-            <div style={panel}>
+            <div style={panel} className="warranty-panel">
               <div style={panelTitle}>Evidence</div>
-              <div style={evidenceRow}>
+              <div style={evidenceRow} className="warranty-evidence-row">
                 <button
                   onClick={() => openAsset(row.photo_url, "defect photo")}
-                  style={evidenceBtn}
+                  style={evidenceBtn} className="warranty-evidence-btn"
                 >
-                  Open Defect Photo
+                  Defect Photo
                 </button>
                 <button
                   onClick={() => openAsset(row.proof_url, "proof of purchase")}
-                  style={evidenceBtn}
+                  style={evidenceBtn} className="warranty-evidence-btn"
                 >
-                  Open Proof of Purchase
+                  Proof of Purchase
                 </button>
                 {row.replacement_receipt && (
                   <button
                     onClick={() =>
                       openAsset(row.replacement_receipt, "replacement receipt")
                     }
-                    style={secondaryEvidenceBtn}
+                    style={secondaryEvidenceBtn} className="warranty-evidence-btn"
                   >
-                    Open Replacement Receipt
+                    Fulfillment Proof
                   </button>
                 )}
               </div>
             </div>
 
             {row.admin_note && (
-              <div style={panel}>
+              <div style={panel} className="warranty-panel">
                 <div style={panelTitle}>
                   {statusKey === "rejected" ? "Rejection Reason" : "Admin Note"}
                 </div>
@@ -557,9 +505,9 @@ function ReviewModal({
             )}
           </div>
 
-          <div style={sideColumn}>
-            <div style={summaryCard}>
-              <div style={summaryTitle}>Claim Summary</div>
+          <div style={sideColumn} className="warranty-side-column">
+            <div style={summaryCard} className="warranty-claim-details">
+              <div style={summaryTitle}>Claim Details</div>
 
               <div style={summaryItem}>
                 <span style={summaryLabel}>Customer</span>
@@ -583,7 +531,7 @@ function ReviewModal({
               </div>
 
               <div style={summaryItem}>
-                <span style={summaryLabel}>Current Status</span>
+                <span style={summaryLabel}>Status</span>
                 <span
                   style={{
                     ...statusPill,
@@ -613,39 +561,33 @@ function ReviewModal({
                 </div>
               )}
 
-              {row.admin_note && (
-                <div style={summaryItem}>
-                  <span style={summaryLabel}>
-                    {statusKey === "rejected"
-                      ? "Rejection Reason"
-                      : "Admin Note"}
-                  </span>
-                  <span style={summaryValue}>{row.admin_note}</span>
-                </div>
-              )}
-
               <div style={summaryDivider} />
 
-              <button onClick={onViewOrder} style={fullWidthGhost}>
-                View Linked Order
-              </button>
-
-              {statusKey === "pending" && (
-                <div style={decisionStack}>
-                  <button onClick={onApprove} style={approveBtn}>
-                    Approve Claim
-                  </button>
-                  <button onClick={onReject} style={rejectBtn}>
-                    Reject Claim
-                  </button>
-                </div>
-              )}
-
-              {statusKey === "approved" && (
-                <button onClick={onFulfill} style={fulfillBtn}>
-                  Mark as Fulfilled
+              {/* WISDOM WARRANTY ORDER LINK + THREE ACTION BUTTONS V2.1.3.1 */}
+              <div
+                className={`warranty-review-actions warranty-review-actions-${statusKey}`}
+              >
+                <button onClick={onViewOrder} style={fullWidthGhost} className="warranty-claim-action warranty-view-order-btn">
+                  View Order
                 </button>
-              )}
+
+                {statusKey === "pending" && (
+                  <div style={decisionStack} className="warranty-decision-stack">
+                    <button onClick={onApprove} style={approveBtn} className="warranty-claim-action warranty-approve-btn">
+                      Approve Claim
+                    </button>
+                    <button onClick={onReject} style={rejectBtn} className="warranty-claim-action warranty-reject-btn">
+                      Reject Claim
+                    </button>
+                  </div>
+                )}
+
+                {statusKey === "approved" && (
+                  <button onClick={onFulfill} style={fulfillBtn} className="warranty-claim-action warranty-fulfill-btn">
+                    Mark as Fulfilled
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -662,8 +604,8 @@ function DecisionModal({ row, decision, onClose, onSubmit }) {
 
   return (
     <div style={overlay}>
-      <div style={smallModal}>
-        <div style={modalHeader}>
+      <div style={smallModal} className="warranty-small-modal">
+        <div style={modalHeader} className="warranty-modal-header">
           <div>
             <div style={modalEyebrow}>
               {isReject ? "Reject Claim" : "Approve Claim"}
@@ -682,7 +624,7 @@ function DecisionModal({ row, decision, onClose, onSubmit }) {
           </button>
         </div>
 
-        <div style={{ ...panel, margin: 22, marginBottom: 14 }}>
+        <div style={{ ...panel, margin: 22, marginBottom: 14 }} className="warranty-panel">
           <div style={panelTitle}>
             {isReject ? "Rejection Reason" : "Admin Note"}
           </div>
@@ -696,15 +638,16 @@ function DecisionModal({ row, decision, onClose, onSubmit }) {
                 : "Optional note for approval..."
             }
             style={textareaInput}
+            className="warranty-textarea"
           />
           <div style={helperText}>
             {isReject
               ? "This note will be shown to the customer."
-              : "Optional internal/customer-facing note for this decision."}
+              : "Optional note for this decision."}
           </div>
         </div>
 
-        <div style={modalFooter}>
+        <div style={modalFooter} className="warranty-modal-footer">
           <button onClick={onClose} style={ghostButton}>
             Cancel
           </button>
@@ -736,11 +679,11 @@ function FulfillModal({ row, onClose, onSubmit }) {
 
   return (
     <div style={overlay}>
-      <div style={smallModal}>
-        <div style={modalHeader}>
+      <div style={smallModal} className="warranty-small-modal">
+        <div style={modalHeader} className="warranty-modal-header">
           <div>
             <div style={modalEyebrow}>Fulfillment</div>
-            <h3 style={modalTitle}>Upload Replacement Receipt</h3>
+            <h3 style={modalTitle}>Upload Fulfillment Proof</h3>
             <div style={modalSubline}>
               {row.order_number || `Order #${row.order_id}`} ·{" "}
               {row.product_name}
@@ -752,20 +695,21 @@ function FulfillModal({ row, onClose, onSubmit }) {
           </button>
         </div>
 
-        <div style={{ ...panel, margin: 22, marginBottom: 14 }}>
-          <div style={panelTitle}>Replacement Receipt / Service Proof</div>
+        <div style={{ ...panel, margin: 22, marginBottom: 14 }} className="warranty-panel">
+          <div style={panelTitle}>Fulfillment Proof</div>
           <input
             type="file"
             accept=".jpg,.jpeg,.png,.webp,.pdf"
             onChange={(e) => setFile(e.target.files?.[0] || null)}
             style={fileInput}
+            className="warranty-file-input"
           />
           <div style={helperText}>
-            Upload the proof used to close this approved warranty claim.
+            Upload the document or image used to close this approved warranty claim.
           </div>
         </div>
 
-        <div style={modalFooter}>
+        <div style={modalFooter} className="warranty-modal-footer">
           <button onClick={onClose} style={ghostButton}>
             Cancel
           </button>
@@ -777,7 +721,7 @@ function FulfillModal({ row, onClose, onSubmit }) {
               }
               onSubmit({ id: row.id, file });
             }}
-            style={fulfillBtn}
+            style={fulfillBtn} className="warranty-claim-action warranty-fulfill-btn"
           >
             Save Fulfillment
           </button>

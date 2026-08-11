@@ -309,6 +309,8 @@ export default function UsersPage() {
   return (
     <div className="wisdom-admin-users-v2">
       {/* WISDOM ADMIN USER MANAGEMENT UI V2 */}
+      {/* WISDOM USER SUMMARY CARD CLEANUP V1 */}
+      {/* WISDOM INACTIVE ACCOUNT NUMBER RED V1 */}
       <style>{styles}</style>
 
       <header className="um-page-header">
@@ -518,7 +520,7 @@ function SummaryCard({ label, value, icon, alert = false }) {
     <div className={`um-summary-card${alert ? " um-summary-alert" : ""}`}>
       <div>
         <div className="um-summary-label">{label}</div>
-        <div className="um-summary-value">{value}</div>
+        <div className={`um-summary-value${alert ? " is-alert" : ""}`}>{value}</div>
       </div>
       <div className="um-summary-icon" aria-hidden="true">
         {icon}
@@ -1164,13 +1166,8 @@ const styles = `
     gap: 16px;
     padding: 14px 15px;
     border: 1px solid var(--um-border);
-    border-left: 3px solid #18181b;
     border-radius: 4px;
     background: #ffffff;
-  }
-
-  .um-summary-alert {
-    border-left-color: var(--um-danger);
   }
 
   .um-summary-label {
@@ -1190,12 +1187,20 @@ const styles = `
     font-weight: 760;
   }
 
+  .um-summary-value.is-alert {
+    color: #c43b31;
+  }
+
   .um-summary-icon {
     color: #464b52;
   }
 
+  .um-summary-alert .um-summary-value {
+    color: #c43b31;
+  }
+
   .um-summary-alert .um-summary-icon {
-    color: var(--um-danger);
+    color: #464b52;
   }
 
   .um-card {
