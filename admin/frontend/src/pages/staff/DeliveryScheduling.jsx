@@ -84,6 +84,9 @@ export default function DeliveryScheduling() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const todayLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const [deliveries, setDeliveries] = useState([]);
   const [eligibleOrders, setEligibleOrders] = useState([]);
   const [riders, setRiders] = useState([]);
@@ -122,11 +125,6 @@ export default function DeliveryScheduling() {
     } else if (!/^\d{4}-\d{2}-\d{2}$/.test(form.scheduled_date)) {
       nextErrors.scheduled_date = "Confirmed delivery schedule is invalid.";
     } else {
-      const pad = (n) => String(n).padStart(2, "0");
-      const todayLocal = `${now.getFullYear()}-${pad(
-        now.getMonth() + 1,
-      )}-${pad(now.getDate())}`;
-
       if (form.scheduled_date < todayLocal) {
         nextErrors.scheduled_date =
           "Confirmed delivery schedule cannot be in the past.";
@@ -374,6 +372,8 @@ export default function DeliveryScheduling() {
           <h3
             style={{
               margin: "0 0 20px",
+              paddingBottom: 16,
+              borderBottom: "1px solid #212122",
               fontWeight: 800,
               fontSize: 16,
               color: "#0a0a0a",
@@ -391,8 +391,16 @@ export default function DeliveryScheduling() {
                 gap: 16,
               }}
             >
-              <div>
-                <label style={labelStyle}>Order *</label>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <label style={labelStyle}>
+                  Order <span style={{ color: "#dc2626" }}>*</span>
+                </label>
                 <select
                   value={form.order_id}
                   onChange={(e) => {
@@ -466,8 +474,17 @@ export default function DeliveryScheduling() {
                 )}
               </div>
 
-              <div>
-                <label style={labelStyle}>Assigned Delivery Rider *</label>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <label style={labelStyle}>
+                  Assigned Delivery Rider{" "}
+                  <span style={{ color: "#dc2626" }}>*</span>
+                </label>
                 <select
                   value={form.driver_id}
                   onChange={(e) => {
@@ -506,7 +523,13 @@ export default function DeliveryScheduling() {
               </div>
 
               {form.requested_date && (
-                <div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "flex-end",
+                  }}
+                >
                   <label style={labelStyle}>
                     Requested Delivery Date & Time
                   </label>
@@ -534,8 +557,17 @@ export default function DeliveryScheduling() {
                 </div>
               )}
 
-              <div>
-                <label style={labelStyle}>Confirmed Delivery Schedule *</label>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <label style={labelStyle}>
+                  Confirmed Delivery Schedule{" "}
+                  <span style={{ color: "#dc2626" }}>*</span>
+                </label>
                 <input
                   type="date"
                   value={form.scheduled_date}
@@ -551,6 +583,7 @@ export default function DeliveryScheduling() {
                     }));
                   }}
                   required
+                  min={todayLocal}
                   style={{
                     ...inputStyle,
                     borderColor: fieldErrors.scheduled_date
@@ -573,7 +606,9 @@ export default function DeliveryScheduling() {
               </div>
 
               <div style={{ gridColumn: "1 / -1" }}>
-                <label style={labelStyle}>Delivery Address *</label>
+                <label style={labelStyle}>
+                  Delivery Address <span style={{ color: "#dc2626" }}>*</span>
+                </label>
                 <input
                   type="text"
                   value={form.address}
@@ -783,82 +818,111 @@ export default function DeliveryScheduling() {
                 </tr>
               </thead>
               <tbody>
-                {deliveries.map((d) => (
-                  <tr
-                    key={d.id}
-                    id={`delivery-row-${d.id}`}
-                    style={{
-                      borderBottom: "1px solid #f4f4f5",
-                      ...(focusedDeliveryId === d.id
-                        ? { boxShadow: "inset 0 0 0 2px #0a0a0a" }
-                        : null),
-                    }}
-                  >
-                    <td style={{ padding: "16px 20px", color: "#18181b" }}>
-                      <strong style={{ fontWeight: 800 }}>
-                        {d.order_number}
-                      </strong>
-                    </td>
-                    <td
+                {[...deliveries]
+                  .sort((a, b) => {
+                    const getRank = (status) => {
+                      switch (String(status || "").toLowerCase()) {
+                        case "in_transit":
+                          return 1;
+                        case "scheduled":
+                          return 2;
+                        case "delivered":
+                          return 3;
+                        case "completed":
+                          return 4;
+                        case "failed":
+                          return 5;
+                        default:
+                          return 6;
+                      }
+                    };
+                    const rankA = getRank(a.status);
+                    const rankB = getRank(b.status);
+
+                    // Sort by hierarchy first
+                    if (rankA !== rankB) return rankA - rankB;
+
+                    // If statuses are the same, sort by scheduled date (newest first)
+                    return (
+                      new Date(b.scheduled_date) - new Date(a.scheduled_date)
+                    );
+                  })
+                  .map((d) => (
+                    <tr
+                      key={d.id}
+                      id={`delivery-row-${d.id}`}
                       style={{
-                        padding: "16px 20px",
-                        color: "#52525b",
-                        fontWeight: 600,
+                        borderBottom: "1px solid #f4f4f5",
+                        ...(focusedDeliveryId === d.id
+                          ? { boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                          : null),
                       }}
                     >
-                      {d.customer_name || "—"}
-                    </td>
-                    <td
-                      style={{
-                        padding: "16px 20px",
-                        color: "#18181b",
-                        maxWidth: 200,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                      title={d.address || ""}
-                    >
-                      {d.address}
-                    </td>
-                    <td
-                      style={{
-                        padding: "16px 20px",
-                        fontSize: 12,
-                        color: "#52525b",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {formatDateTime(d.scheduled_date)}
-                    </td>
-                    <td
-                      style={{
-                        padding: "16px 20px",
-                        color: "#18181b",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {d.driver_name || (
-                        <span style={{ color: "#a1a1aa" }}>Unassigned</span>
-                      )}
-                    </td>
-                    <td style={{ padding: "16px 20px" }}>
-                      <span
+                      <td style={{ padding: "16px 20px", color: "#18181b" }}>
+                        <strong style={{ fontWeight: 800 }}>
+                          {d.order_number}
+                        </strong>
+                      </td>
+                      <td
                         style={{
-                          ...getStatusStyle(d.status),
-                          padding: "4px 10px",
-                          borderRadius: 999,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          textTransform: "uppercase",
-                          letterSpacing: "1px",
+                          padding: "16px 20px",
+                          color: "#52525b",
+                          fontWeight: 600,
                         }}
                       >
-                        {String(d.status || "").replace("_", " ")}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                        {d.customer_name || "—"}
+                      </td>
+                      <td
+                        style={{
+                          padding: "16px 20px",
+                          color: "#18181b",
+                          maxWidth: 200,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={d.address || ""}
+                      >
+                        {d.address}
+                      </td>
+                      <td
+                        style={{
+                          padding: "16px 20px",
+                          fontSize: 12,
+                          color: "#52525b",
+                          fontWeight: 500,
+                        }}
+                      >
+                        {formatDateTime(d.scheduled_date)}
+                      </td>
+                      <td
+                        style={{
+                          padding: "16px 20px",
+                          color: "#18181b",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {d.driver_name || (
+                          <span style={{ color: "#a1a1aa" }}>Unassigned</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "16px 20px" }}>
+                        <span
+                          style={{
+                            ...getStatusStyle(d.status),
+                            padding: "4px 10px",
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            textTransform: "uppercase",
+                            letterSpacing: "1px",
+                          }}
+                        >
+                          {String(d.status || "").replace("_", " ")}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
@@ -886,6 +950,7 @@ const labelStyle = {
   color: "#18181b",
   letterSpacing: "1px",
   textTransform: "uppercase",
+  whiteSpace: "nowrap",
 };
 
 const inputStyle = {
