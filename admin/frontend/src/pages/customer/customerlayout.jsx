@@ -1255,8 +1255,12 @@ export default function CustomerLayout() {
           </>
         )}
       </aside>
+      {/* WISDOM UNIFIED SIGN OUT UI V1 */}
       {logoutConfirmOpen && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="customer-signout-title"
           style={{
             position: "fixed",
             inset: 0,
@@ -1264,29 +1268,31 @@ export default function CustomerLayout() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            padding: "24px",
+            padding: "20px",
             pointerEvents: "none",
           }}
         >
           <div
             style={{
               width: "100%",
-              maxWidth: "430px",
+              maxWidth: "390px",
               background: "#ffffff",
-              border: "1px solid #e5e7eb",
-              boxShadow: "0 20px 50px rgba(0,0,0,0.16)",
-              padding: "28px 28px 24px",
+              border: "1px solid #d9d9dc",
+              borderRadius: 0,
+              boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
+              padding: "24px",
               pointerEvents: "auto",
             }}
           >
             <h3
+              id="customer-signout-title"
               style={{
                 margin: 0,
-                fontSize: "28px",
-                fontWeight: 700,
                 color: "#111111",
-                lineHeight: 1.1,
-                letterSpacing: "-0.02em",
+                fontSize: "22px",
+                fontWeight: 750,
+                lineHeight: 1.2,
+                letterSpacing: "-0.015em",
               }}
             >
               Sign out
@@ -1294,10 +1300,11 @@ export default function CustomerLayout() {
 
             <p
               style={{
-                margin: "10px 0 0",
-                fontSize: "15px",
-                color: "#5f5f5f",
-                lineHeight: 1.6,
+                margin: "8px 0 0",
+                color: "#66666b",
+                fontSize: "14px",
+                fontWeight: 400,
+                lineHeight: 1.5,
               }}
             >
               Are you sure you want to sign out?
@@ -1307,42 +1314,46 @@ export default function CustomerLayout() {
               style={{
                 display: "flex",
                 justifyContent: "flex-end",
-                gap: "12px",
-                marginTop: "26px",
+                gap: "8px",
+                marginTop: "22px",
               }}
             >
               <button
                 type="button"
                 onClick={closeLogoutConfirm}
                 style={{
-                  minWidth: "108px",
-                  height: "44px",
-                  border: "1px solid #d1d5db",
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #bfc0c4",
+                  borderRadius: 0,
                   background: "#ffffff",
                   color: "#111111",
                   cursor: "pointer",
-                  fontWeight: 600,
-                  fontSize: "15px",
+                  fontSize: "13px",
+                  fontWeight: 650,
                 }}
               >
-                No
+                Cancel
               </button>
 
               <button
                 type="button"
                 onClick={handleLogout}
                 style={{
-                  minWidth: "108px",
-                  height: "44px",
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
                   border: "1px solid #111111",
+                  borderRadius: 0,
                   background: "#111111",
                   color: "#ffffff",
                   cursor: "pointer",
-                  fontWeight: 600,
-                  fontSize: "15px",
+                  fontSize: "13px",
+                  fontWeight: 650,
                 }}
               >
-                Yes
+                Sign out
               </button>
             </div>
           </div>

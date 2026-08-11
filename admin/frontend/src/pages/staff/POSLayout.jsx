@@ -24,6 +24,8 @@ import NotificationBell from "../../components/NotificationBell";
 export default function POSLayout() {
   const { user, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // WISDOM UNIFIED SIGN OUT UI V1
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const { clearCart } = useCart();
 
   const isAdmin = user?.role === "admin";
@@ -120,9 +122,18 @@ export default function POSLayout() {
             : "System";
 
   const handleLogout = () => {
+    setLogoutConfirmOpen(false);
     logout();
     clearCart(false);
     window.location.href = "/login";
+  };
+
+  const openLogoutConfirm = () => {
+    setLogoutConfirmOpen(true);
+  };
+
+  const closeLogoutConfirm = () => {
+    setLogoutConfirmOpen(false);
   };
 
   return (
@@ -210,8 +221,9 @@ export default function POSLayout() {
           {sidebarOpen && (
             <button
               className="logout-btn"
-              onClick={handleLogout}
-              title="Logout"
+              onClick={openLogoutConfirm}
+              title="Sign out"
+              aria-label="Sign out"
             >
               <LogOut size={18} />
             </button>
@@ -222,6 +234,114 @@ export default function POSLayout() {
       <main className="pos-main">
         <Outlet />
       </main>
+
+      {logoutConfirmOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="staff-signout-title"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 12000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            background: "rgba(0,0,0,0.52)",
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeLogoutConfirm();
+            }
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "390px",
+              background: "#ffffff",
+              border: "1px solid #d9d9dc",
+              borderRadius: 0,
+              boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
+              padding: "24px",
+            }}
+          >
+            <h3
+              id="staff-signout-title"
+              style={{
+                margin: 0,
+                color: "#111111",
+                fontSize: "22px",
+                fontWeight: 750,
+                lineHeight: 1.2,
+                letterSpacing: "-0.015em",
+              }}
+            >
+              Sign out
+            </h3>
+
+            <p
+              style={{
+                margin: "8px 0 0",
+                color: "#66666b",
+                fontSize: "14px",
+                fontWeight: 400,
+                lineHeight: 1.5,
+              }}
+            >
+              Are you sure you want to sign out?
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "8px",
+                marginTop: "22px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeLogoutConfirm}
+                style={{
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #bfc0c4",
+                  borderRadius: 0,
+                  background: "#ffffff",
+                  color: "#111111",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: 650,
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                style={{
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #111111",
+                  borderRadius: 0,
+                  background: "#111111",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: 650,
+                }}
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
