@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 
-const EFFECTIVE_DATE = "April 23, 2026";
+const EFFECTIVE_DATE = "August 11, 2026";
 const BUSINESS_EMAIL = "spiralwoodservices@gmail.com";
 const BUSINESS_PHONE = "09530695310";
 const BUSINESS_ADDRESS = "8 Sitio Laot, Prenza 1, Marilao, Bulacan";
@@ -9,118 +9,119 @@ const sections = [
   {
     title: "1. About the Service",
     paragraphs: [
-      "These Terms of Service govern your access to and use of the Spiral Wood Services website and the WISDOM Web-Based Sales and Inventory System with Digital Blueprint features made available to customers.",
-      "The platform may allow you to browse products, create an account, verify your email, submit custom furniture or blueprint-related requests, place orders, upload payment proof where applicable, track order progress, request appointments, and submit warranty claims.",
+      "These Terms of Service apply to the Spiral Wood Services website and the customer features available through WISDOM.",
+      "WISDOM may allow you to browse furniture, create an account, verify your email, place orders, submit custom furniture or blueprint requests, upload payment proof when required, track order progress, request appointments, send support requests, and submit warranty claims.",
     ],
   },
   {
     title: "2. Acceptance of Terms",
     paragraphs: [
-      "By creating an account, accessing the website, placing an order, uploading files, or using any customer-facing feature of the platform, you agree to be bound by these Terms of Service and our Privacy Policy.",
-      "If you do not agree with these Terms, please do not use the protected features of the platform.",
+      "By creating an account or using the customer features of WISDOM, you agree to follow these Terms of Service and our Privacy Policy.",
+      "If you do not agree with these Terms, please do not use features that require an account or a transaction.",
     ],
   },
   {
-    title: "3. Account Registration and Security",
+    title: "3. Account and Security",
     paragraphs: [
-      "To use protected customer features, you must provide accurate, complete, and current information during registration.",
-      "You agree that the information you submit is true and updated, that your email address and contact details belong to you or are lawfully used by you, and that you will complete any required OTP or email verification process.",
-      "You are responsible for maintaining the confidentiality of your login credentials and for all activities performed using your account.",
-      "Spiral Wood Services may suspend, restrict, or deactivate accounts that contain false information, abusive activity, suspicious transactions, or violations of these Terms.",
+      "You must provide accurate and current information when you create or update your account.",
+      "You are responsible for using an email address and contact details that belong to you or that you are allowed to use. You must also complete any required email or OTP verification.",
+      "Keep your password and account access private. You are responsible for activity made through your account unless you report unauthorized access to us.",
+      "Spiral Wood Services may restrict or deactivate an account when there is false information, suspicious activity, abuse, fraud, or a serious violation of these Terms.",
     ],
   },
   {
-    title: "4. Product Listings, Visuals, and Availability",
+    title: "4. Product Information and Availability",
     paragraphs: [
-      "We make reasonable efforts to display product names, descriptions, dimensions, finishes, prices, and availability as accurately as possible.",
-      "However, actual colors, textures, wood grain, finishes, and final furniture appearance may vary due to screen settings, lighting conditions, natural material variation, hardware availability, supplier changes, and production adjustments.",
-      "All products, pricing, availability, and lead times remain subject to confirmation, revision, or temporary unavailability.",
+      "We try to keep product names, descriptions, dimensions, finishes, prices, and stock information accurate.",
+      "Actual color, wood grain, texture, finish, and appearance may vary because of screen settings, lighting, natural material differences, available hardware, supplier changes, or production needs.",
+      "Prices, stock, materials, and lead times may still require confirmation and may change when necessary.",
     ],
   },
   {
-    title: "5. Blueprint Viewing, Customization, and Custom Requests",
+    title: "5. Custom Furniture and Blueprints",
     paragraphs: [
-      "The website may allow customers to view blueprint-based furniture options, select templated designs, and submit customization requests within the limits defined by Spiral Wood Services.",
-      "Customer customization input, uploaded reference images, measurements, notes, and preferences are treated as a request for review and do not automatically guarantee production, pricing lock-in, or immediate acceptance.",
-      "Custom or blueprint-based requests may still require internal review, clarification, estimation, payment verification, contract generation, production approval, and schedule confirmation before fulfillment.",
+      "WISDOM may let you view furniture designs, use available templates, provide measurements, upload reference images, and submit customization requests.",
+      "A submitted design, image, measurement, note, or preference is a request for review. It does not automatically confirm the final design, price, production schedule, or acceptance of the project.",
+      "Custom furniture and blueprint requests may require review, clarification, quotation, customer approval, payment verification, contract preparation, production approval, and schedule confirmation before work begins.",
     ],
   },
   {
-    title: "6. Orders and Payment",
+    title: "6. Orders and Payments",
     paragraphs: [
-      "When you place an order, you agree that your order details, contact information, delivery information, and payment information are accurate and complete.",
-      "Payment terms may vary depending on the product type, order type, and payment method made available on the platform.",
-      "Standard products may require full payment or another payment arrangement presented during checkout. Custom or blueprint-based products may follow a staged or milestone-based payment flow, including down payment requirements before production begins.",
-      "Submission of proof of payment does not automatically mean that the payment has already been verified or approved.",
+      "When placing an order, you must provide correct order details, contact information, delivery information, and payment information.",
+      "The payment process may depend on the product or project. Standard products may require full payment or another payment option shown during checkout.",
+      "Custom or blueprint projects may require a down payment before production and a remaining balance at a later stage.",
+      "Uploading payment proof does not mean the payment is already verified. Payment is considered verified only after the required review or confirmation is completed.",
     ],
   },
   {
-    title: "7. Delivery, Installation, and Appointments",
+    title: "7. Delivery, Installation and Appointments",
     paragraphs: [
-      "Some orders may require delivery, site visits, measurement appointments, installation schedules, or similar service coordination.",
-      "You agree to provide a complete and accurate address, contact number, and any other required scheduling information.",
-      "Delivery, installation, and appointment dates may change due to routing conditions, production status, manpower availability, weather, site access limitations, safety concerns, or other operational reasons.",
-      "An authorized person should be available to receive the order, coordinate the visit, or attend the scheduled appointment.",
+      "Some orders may require delivery, installation, site measurement, consultation, or another scheduled visit.",
+      "You must provide a complete address, active contact number, and other information needed for the visit.",
+      "Schedules may change because of production progress, delivery routing, staff availability, weather, site conditions, safety concerns, or other reasonable operational issues.",
+      "Please make sure you or an authorized person is available at the agreed location and time.",
     ],
   },
   {
-    title: "8. Cancellation, Refunds, and Order Changes",
+    title: "8. Cancellations, Refunds and Changes",
     paragraphs: [
-      "Cancellation and refund handling may depend on the order type, production stage, contract status, and applicable business rules shown on the platform or communicated during the transaction.",
-      "For standard products, eligibility for cancellation or refund may depend on order status, shipment status, item condition, and applicable consumer protection rules.",
-      "For custom or blueprint-based products, cancellation after down payment or after significant project processing may be subject to processing fees, partial refunds, or non-refundable stages where clearly communicated and allowed by applicable law.",
-      "Nothing in these Terms removes any remedy that may be available to consumers under applicable law for defective, misrepresented, or non-conforming goods or services.",
+      "Cancellation, refund, and order-change options may depend on the order type, payment status, production stage, delivery status, and any agreement connected to the order.",
+      "For standard products, a cancellation or refund may also depend on the condition and status of the item.",
+      "For custom furniture, costs already used for approved design work, materials, or production may affect the amount that can be refunded when allowed by law and clearly communicated to the customer.",
+      "These Terms do not remove any customer right or remedy that cannot legally be waived, including rights that may apply to defective or misrepresented goods or services.",
     ],
   },
   {
     title: "9. Warranty",
     paragraphs: [
-      "Eligible completed orders may qualify for warranty review subject to the applicable warranty period, product condition, and verification process of Spiral Wood Services.",
-      "Warranty claims may require supporting proof such as order references, photos, descriptions, receipts, or other documentation reasonably needed for evaluation.",
-      "Warranty coverage may be denied where damage or issues are caused by misuse, neglect, unauthorized alteration, improper handling, accidental damage, force majeure, third-party modifications, or normal wear and tear, unless otherwise provided in a written agreement or specific product warranty.",
+      "Eligible completed orders may be submitted for warranty review based on the applicable warranty period and the condition of the product.",
+      "We may ask for the order reference, receipt, photos, description of the issue, or other information needed to review the claim.",
+      "Warranty coverage may not apply to damage caused by misuse, neglect, unauthorized changes, improper handling, accidental damage, normal wear, or work performed by another party, unless a written warranty or applicable law provides otherwise.",
     ],
   },
   {
-    title: "10. Customer Uploads and Submitted Content",
+    title: "10. Customer Uploads",
     paragraphs: [
-      "If you upload payment proofs, reference images, furniture preferences, notes, warranty evidence, or other content, you confirm that you own the content or have the right to submit it.",
-      "You also confirm that your uploads do not violate any law, third-party rights, or intellectual property rights and do not contain malicious, fraudulent, obscene, or abusive material.",
-      "You allow Spiral Wood Services to use submitted content only for account verification, order processing, custom request review, design clarification, production coordination, delivery handling, warranty evaluation, customer support, fraud prevention, security review, and related recordkeeping.",
+      "When you upload payment proof, reference images, photos, notes, documents, or other content, you confirm that you have the right to submit them.",
+      "Do not upload content that is unlawful, fraudulent, harmful, abusive, or that violates another person's rights.",
+      "Spiral Wood Services may use your submitted content only for the services connected to your account or transaction, such as order processing, custom design review, payment verification, production, delivery, appointments, warranty review, customer support, security, and recordkeeping.",
     ],
   },
   {
     title: "11. Acceptable Use",
     paragraphs: [
-      "You agree not to use the platform for unlawful, fraudulent, abusive, or harmful purposes.",
-      "You must not attempt unauthorized access to any account, admin feature, staff feature, database, or backend service, and you must not interfere with the security, stability, or availability of the platform.",
+      "Do not use WISDOM for illegal, fraudulent, abusive, or harmful activity.",
+      "Do not attempt to access another user's account, restricted staff or admin features, databases, servers, or other protected parts of the system without permission.",
+      "Do not intentionally disrupt, damage, overload, or misuse the website or its services.",
     ],
   },
   {
     title: "12. Intellectual Property",
     paragraphs: [
-      "The WISDOM platform, website content, branding, page layout, text, and platform-generated materials owned by Spiral Wood Services remain the property of Spiral Wood Services or its licensors, unless otherwise stated.",
-      "You may not copy, reproduce, scrape, resell, reverse-engineer, or reuse platform content for unauthorized commercial purposes without written permission.",
+      "The WISDOM system, Spiral Wood Services branding, website content, and business-owned materials remain the property of Spiral Wood Services or their lawful owners unless stated otherwise.",
+      "You may not copy, resell, publish, scrape, reverse-engineer, or use protected system content for unauthorized commercial purposes without permission.",
     ],
   },
   {
-    title: "13. Service Availability and Limitation of Liability",
+    title: "13. Service Availability",
     paragraphs: [
-      "We work to keep the platform available and reasonably accurate, but we do not guarantee uninterrupted operation, error-free access, or immediate availability of every feature at all times.",
-      "To the extent allowed by law, Spiral Wood Services shall not be liable for indirect or consequential losses arising from outages, delays, inaccurate user submissions, third-party service interruptions, or events beyond reasonable control.",
-      "This limitation does not remove liability where liability cannot be waived under applicable law.",
+      "We work to keep WISDOM available and accurate, but temporary errors, maintenance, internet problems, third-party service issues, or other interruptions may happen.",
+      "We may correct errors, update information, or temporarily limit a feature when needed for security, maintenance, or normal business operations.",
+      "Any limitation of responsibility under these Terms applies only to the extent allowed by applicable law.",
     ],
   },
   {
     title: "14. Changes to these Terms",
     paragraphs: [
-      "We may update these Terms of Service from time to time to reflect legal, business, operational, or platform changes.",
-      "Any updated version will be posted on this page with a revised effective date. Continued use of the platform after publication of the updated Terms means you accept the revised version.",
+      "We may update these Terms when our services, business process, system features, or legal requirements change.",
+      "The updated Terms will be posted on this page with a new effective date. Please review this page from time to time.",
     ],
   },
   {
     title: "15. Contact Information",
     paragraphs: [
-      "For questions about these Terms of Service, you may contact Spiral Wood Services using the contact details below.",
+      "If you have questions about these Terms of Service, please contact Spiral Wood Services using the information below.",
     ],
   },
 ];
@@ -219,8 +220,8 @@ export default function TermsPage() {
           <p style={styles.subtitle}>
             Effective Date: {EFFECTIVE_DATE}
             <br />
-            These Terms apply to the customer-facing website and related WISDOM
-            customer portal features of Spiral Wood Services.
+            These Terms apply to the Spiral Wood Services website and the customer
+            features available through WISDOM.
           </p>
 
           {sections.map((section) => (

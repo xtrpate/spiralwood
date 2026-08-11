@@ -134,7 +134,8 @@ export default function LoginPage() {
 
           <form className="auth-form" onSubmit={handleSubmit}>
             <div className="field">
-              <label>Username or email address *</label>
+              {/* WISDOM LOGIN WORDING V1 */}
+              <label>Email address</label>
               <div className="field-input-wrap">
                 <input
                   type="email"
@@ -150,7 +151,7 @@ export default function LoginPage() {
             </div>
 
             <div className="field">
-              <label>Password *</label>
+              <label>Password</label>
               <div
                 className="field-input-wrap"
                 style={{ position: "relative" }}

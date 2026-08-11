@@ -1,90 +1,93 @@
 import { Link } from "react-router-dom";
 
-const EFFECTIVE_DATE = "April 23, 2026";
+const EFFECTIVE_DATE = "August 11, 2026";
 const BUSINESS_EMAIL = "spiralwoodservices@gmail.com";
 const BUSINESS_PHONE = "09530695310";
 const BUSINESS_ADDRESS = "8 Sitio Laot, Prenza 1, Marilao, Bulacan";
 
 const sections = [
   {
-    title: "1. Introduction",
+    title: "1. Overview",
     paragraphs: [
-      "Spiral Wood Services respects your privacy and is committed to protecting your personal data.",
-      "This Privacy Policy explains what information we collect through the customer-facing WISDOM website and related services, why we collect it, how we use it, who may receive it, how long we retain it, and what rights you may exercise under applicable law.",
+      "Spiral Wood Services respects your privacy and works to protect the personal data you provide through WISDOM.",
+      "This Privacy Policy explains what information we may collect, why we use it, who may access it, how long we may keep it, and the privacy rights available to you under applicable law.",
     ],
   },
   {
-    title: "2. Personal Data We May Collect",
+    title: "2. Information We May Collect",
     paragraphs: [
-      "Depending on the feature you use, we may collect account and profile information such as your name, email address, phone number, home or delivery address, account status, verification status, and login-related records.",
-      "We may also collect order and transaction information such as product selections, blueprint or customization preferences, order history, delivery details, appointment details, payment status, and receipt-related information.",
-      "Where applicable, we may collect uploaded proof of payment, reference images, custom request notes, warranty claim details, supporting photos or documents, and customer support communications.",
-      "For security and technical operations, we may process IP address, device or browser data, access logs, account activity records, audit-related records, and system backup records necessary to maintain service integrity and protect the platform.",
+      "We may collect account information such as your name, email address, phone number, address, account status, and verification status.",
+      "We may collect transaction information such as product selections, custom furniture or blueprint requests, orders, delivery details, appointment details, payment status, and receipt information.",
+      "When you use certain features, we may also receive payment proof, reference images, measurements, notes, warranty information, supporting photos or documents, and messages sent to customer support.",
+      "For security and system operation, we may process technical information such as IP address, browser or device information, login records, account activity, audit records, and system logs.",
     ],
   },
   {
-    title: "3. Why We Process Your Data",
+    title: "3. How We Use Your Information",
     paragraphs: [
-      "We process personal data only for legitimate and specific business purposes related to the services we provide.",
-      "These purposes may include account creation, email or OTP verification, login security, order processing, custom request handling, blueprint-related review, payment verification, order status updates, appointment scheduling, delivery coordination, warranty handling, customer support, fraud prevention, security monitoring, recordkeeping, and compliance with legal, accounting, tax, consumer protection, and operational requirements.",
+      "We use personal data only for clear and legitimate purposes connected to the services we provide.",
+      "These purposes may include creating and verifying accounts, securing login access, processing orders, reviewing custom furniture and blueprint requests, verifying payments, updating order status, arranging appointments, coordinating delivery or installation, reviewing warranty claims, providing customer support, preventing fraud, maintaining records, and meeting legal or business requirements.",
     ],
   },
   {
-    title: "4. Basis of Processing",
+    title: "4. Basis for Processing",
     paragraphs: [
-      "Our basis for processing depends on the activity involved. Where applicable, processing may be based on your consent, on steps necessary to process your request or transaction, on compliance with legal obligations, or on legitimate interests such as fraud prevention, platform security, dispute handling, service administration, and operational recordkeeping.",
-      "Where consent is required, you may be asked to give it through the relevant form or transaction flow.",
+      "Depending on the activity, we may process personal data with your consent, because it is needed to handle your request or transaction, because the law requires it, or because it is reasonably needed for security, fraud prevention, dispute handling, service administration, or recordkeeping.",
+      "When consent is required, we will request it through the relevant form or process. Where applicable, you may withdraw consent, subject to legal or contractual limits.",
     ],
   },
   {
-    title: "5. How We Collect and Use Data",
+    title: "5. How We Protect Your Data",
     paragraphs: [
-      "We collect personal data directly from you through registration forms, login flows, verification pages, order forms, payment proof uploads, custom request forms, warranty forms, profile settings, appointment forms, and your general use of the website.",
-      "We use reasonable administrative, organizational, physical, and technical measures to protect personal data, including role-based access controls, account verification processes, restricted internal access, and security measures designed to reduce unauthorized access, misuse, loss, or disclosure.",
+      "We use reasonable administrative, physical, and technical measures to protect personal data against unauthorized access, loss, misuse, alteration, or disclosure.",
+      "These measures may include account verification, role-based access, restricted staff access, authentication controls, activity records, backups, and other security measures used by the system.",
+      "No online system can guarantee absolute security, but we work to use safeguards that are appropriate for the information and services involved.",
     ],
   },
   {
-    title: "6. Who May Receive Your Data",
+    title: "6. Who May Access Your Data",
     paragraphs: [
-      "Your personal data may be accessed only by authorized Spiral Wood Services administrators, staff, assigned personnel, and service providers who need the information to support account handling, order processing, delivery, appointments, customer service, hosting, storage, email delivery, backup operations, security review, and related business operations.",
-      "We may also disclose information where required by law, regulation, court order, lawful request of government authorities, or where necessary for the establishment, exercise, or defense of legal claims.",
-      "We do not sell your personal data.",
+      "Personal data may be accessed by authorized Spiral Wood Services administrators, staff, and assigned personnel only when they need it to perform their work.",
+      "Service providers may also process limited information when needed for services such as hosting, file storage, email delivery, payment processing, security, or backup operations. Their access should be limited to the service they provide.",
+      "We may disclose information when required by law, a lawful government request, a court order, or when reasonably needed to protect legal rights or investigate fraud or security issues.",
+      "Spiral Wood Services does not sell your personal data.",
     ],
   },
   {
-    title: "7. Retention of Data",
+    title: "7. How Long We Keep Data",
     paragraphs: [
-      "We retain personal data only for as long as necessary for the purposes described in this Privacy Policy and for related legal, accounting, tax, audit, warranty, dispute-resolution, fraud prevention, security, and operational requirements.",
-      "Account information may be retained while your account remains active and for a reasonable period thereafter as needed for compliance and security review.",
-      "Order, receipt, payment verification, delivery, appointment, and warranty records may be retained as long as reasonably necessary for transaction support, legal compliance, customer support, and internal auditing.",
-      "Archived or backup-related records may also be retained according to operational and disaster-recovery requirements.",
+      "We keep personal data only for as long as reasonably needed for the purpose it was collected and for applicable legal, accounting, tax, warranty, dispute, security, audit, and business record requirements.",
+      "Account information may be kept while your account is active and for a reasonable period after it is closed when needed for security, records, or legal requirements.",
+      "Order, payment, receipt, delivery, appointment, warranty, and support records may be kept for as long as needed to support the transaction and related business or legal requirements.",
+      "Backup copies may be kept for a limited period as part of normal backup and recovery processes.",
     ],
   },
   {
-    title: "8. Your Rights",
+    title: "8. Your Privacy Rights",
     paragraphs: [
-      "Subject to applicable law and reasonable verification requirements, you may have rights as a data subject, including the right to be informed, right to access, right to object, right to rectify, right to erasure or blocking, right to data portability, right to file a complaint, and right to damages.",
-      "If you wish to exercise any privacy-related right, you may contact us using the contact details below.",
+      "Under the Philippine Data Privacy Act of 2012 and other applicable rules, you may have rights over your personal data, subject to legal conditions and reasonable identity verification.",
+      "These rights may include the right to be informed, access your data, object to certain processing, correct inaccurate data, request erasure or blocking when allowed, receive data in a portable format when applicable, file a complaint, and claim damages when provided by law.",
+      "To ask about or exercise a privacy right, please contact us using the information below. You may also contact the National Privacy Commission when applicable.",
     ],
   },
   {
-    title: "9. Third-Party Services and Links",
+    title: "9. Third-Party Services",
     paragraphs: [
-      "The website may use or link to third-party services or pages that have their own terms and privacy practices. When you interact with those third-party services, their own rules may apply.",
-      "We encourage users to review the privacy practices of any relevant third-party service before sharing information directly with them.",
+      "WISDOM may use or link to third-party services. These services may have their own terms and privacy practices.",
+      "When you directly use a third-party service, please review its privacy information before providing personal data.",
     ],
   },
   {
     title: "10. Changes to this Privacy Policy",
     paragraphs: [
-      "We may update this Privacy Policy from time to time to reflect legal, operational, technical, or business changes.",
-      "Any updated version will be posted on this page with a revised effective date. Continued use of the platform after publication of the updated version means you acknowledge the changes.",
+      "We may update this Privacy Policy when our services, system features, business processes, or legal requirements change.",
+      "The updated Privacy Policy will be posted on this page with a new effective date. Please review this page from time to time.",
     ],
   },
   {
     title: "11. Contact Us",
     paragraphs: [
-      "For privacy concerns, privacy requests, or questions about this Privacy Policy, please contact Spiral Wood Services using the contact details below.",
+      "For privacy questions, requests, or concerns, please contact Spiral Wood Services using the information below.",
     ],
   },
 ];
@@ -183,8 +186,8 @@ export default function PrivacyPolicyPage() {
           <p style={styles.subtitle}>
             Effective Date: {EFFECTIVE_DATE}
             <br />
-            This Privacy Policy applies to the customer-facing website and
-            related WISDOM customer portal features of Spiral Wood Services.
+            This Privacy Policy applies to the Spiral Wood Services website and the
+            customer features available through WISDOM.
           </p>
 
           {sections.map((section) => (
