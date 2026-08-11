@@ -3,30 +3,31 @@ import { useNavigate, useLocation } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
 import jsPDF from "jspdf";
+import "./ContractsPage.css";
 
 const DEFAULT_TERMS = `1. SCOPE OF WORK
-The contractor agrees to fabricate and deliver the custom woodwork as described in the approved blueprint and cost estimation attached to this contract.
+Spiral Wood Services will fabricate and deliver the custom woodwork based on the approved blueprint and approved project estimation linked to this contract.
 
 2. PAYMENT TERMS
-A down payment of 30% of the total contract price is required before fabrication begins. The remaining balance is due upon delivery and acceptance of the finished product.
+A verified down payment equal to 30% of the approved contract amount is required before fabrication begins. The remaining balance is due upon delivery and acceptance of the finished product.
 
-3. DELIVERY & INSTALLATION
-The estimated completion and delivery date will be agreed upon after the down payment is received. Delays caused by customer changes or force majeure will extend the timeline accordingly.
+3. DELIVERY AND INSTALLATION
+The expected completion and delivery schedule will be confirmed after the required down payment is received. Customer-requested changes or circumstances beyond reasonable control may require a schedule adjustment.
 
-4. CHANGES & REVISIONS
-Any changes to the approved design after fabrication has begun may incur additional charges and timeline adjustments, subject to mutual agreement.
+4. CHANGES AND REVISIONS
+Changes requested after fabrication begins may result in additional charges or schedule adjustments. Any change must be agreed upon before the revised work proceeds.
 
 5. OWNERSHIP
-Ownership of the finished product transfers to the customer upon full payment of the contract price.
+Ownership of the finished product transfers to the customer after full payment of the contract amount.
 
 6. GOVERNING LAW
-This contract shall be governed by the laws of the Republic of the Philippines.`;
+This agreement is governed by the laws of the Republic of the Philippines.`;
 
-const DEFAULT_WARRANTY = `This product is covered by a one (1) year warranty from the date of delivery against defects in materials and workmanship under normal use conditions.
+const DEFAULT_WARRANTY = `The finished product is covered by a one (1) year warranty from the date of delivery for defects in materials and workmanship under normal use.
 
-Warranty does not cover damage caused by misuse, neglect, unauthorized modifications, or external causes such as accidents or natural disasters.
+The warranty does not cover damage caused by misuse, neglect, unauthorized modifications, accidents, natural disasters, or other external causes.
 
-To file a warranty claim, contact Spiral Wood Services with proof of purchase and documentation of the defect.`;
+To request warranty service, the customer must contact Spiral Wood Services and provide proof of purchase together with documentation of the reported defect.`;
 
 const formatCurrencyUI = (value) =>
   `₱ ${Number(value || 0).toLocaleString("en-PH", {
@@ -35,7 +36,7 @@ const formatCurrencyUI = (value) =>
   })}`;
 
 const formatCurrencyPdf = (value) =>
-  `₱ ${Number(value || 0).toLocaleString("en-PH", {
+  `PHP ${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -49,7 +50,11 @@ const formatDate = (value) => {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-PH");
+  return d.toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 };
 
 const formatDatePdf = (value) => {
@@ -76,6 +81,13 @@ const titleCase = (value) =>
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\b\w/g, (char) => char.toUpperCase()) || "—";
+
+const cleanContractHeading = (value) =>
+  String(value || "")
+    .replace(/_/g, " ")
+    .replace(/\s*[&/]\s*/g, " AND ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 function parseNumberedSections(text = "") {
   const normalizedText = String(text || "")
@@ -177,6 +189,7 @@ export default function ContractsPage() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [contractSearch, setContractSearch] = useState("");
 
   const [selectedOrderInfo, setSelectedOrderInfo] = useState(null);
   const [loadingOrderInfo, setLoadingOrderInfo] = useState(false);
@@ -403,52 +416,36 @@ export default function ContractsPage() {
   const printContract = (c) => {
     try {
       const doc = new jsPDF({ unit: "mm", format: "a4" });
-
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
-
-      const margin = 14;
+      const margin = 18;
       const contentWidth = pageWidth - margin * 2;
-      const bottomLimit = pageHeight - 18;
+      const bottomLimit = pageHeight - 20;
+      const contractNumber = `CNT-${String(c.id).padStart(5, "0")}`;
+      const customerDisplayName = formatPersonName(c.customer_name) || "Customer";
+      const authorizedPersonDisplayName =
+        formatPersonName(c.issued_by_name || "System Administrator") ||
+        "System Administrator";
+      let y = 18;
 
-      let y = 16;
-      const customerDisplayName = formatPersonName(c.customer_name);
-      const authorizedPersonDisplayName = formatPersonName(
-        c.issued_by_name || "Admin",
-      );
-
-      const drawFrame = () => {
-        doc.setDrawColor(45, 45, 45);
-        doc.setLineWidth(0.6);
-        doc.rect(4, 4, pageWidth - 8, pageHeight - 8);
-
-        doc.setDrawColor(150, 150, 150);
-        doc.setLineWidth(0.2);
-        doc.rect(8, 8, pageWidth - 16, pageHeight - 16);
-      };
-
-      const drawPageHeader = () => {
+      const drawContinuationHeader = () => {
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(15);
-        doc.text("PROJECT CONTRACT AGREEMENT", pageWidth / 2, y, {
-          align: "center",
-        });
-        y += 7;
-
-        doc.setFont("helvetica", "normal");
         doc.setFontSize(8.5);
-        const introText = `This Contract Agreement is entered into by and between Spiral Wood Services and ${
-          customerDisplayName || "the Customer"
-        } under the terms and conditions stated below.`;
-        const introLines = doc.splitTextToSize(introText, contentWidth - 26);
-        doc.text(introLines, pageWidth / 2, y, { align: "center" });
-        y += introLines.length * 3.9 + 6;
+        doc.setTextColor(35, 35, 35);
+        doc.text("SPIRAL WOOD SERVICES", margin, 14);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.setTextColor(105, 105, 105);
+        doc.text(contractNumber, pageWidth - margin, 14, { align: "right" });
+        doc.setDrawColor(220, 220, 220);
+        doc.setLineWidth(0.25);
+        doc.line(margin, 17, pageWidth - margin, 17);
+        y = 24;
       };
 
       const addPage = () => {
         doc.addPage();
-        drawFrame();
-        y = 14;
+        drawContinuationHeader();
       };
 
       const ensureSpace = (needed = 10) => {
@@ -459,252 +456,180 @@ export default function ContractsPage() {
         text,
         x,
         maxWidth,
-        lineHeight = 3.85,
-        paragraphGap = 1.5,
-        fontSize = 8.5,
+        lineHeight = 4.1,
+        paragraphGap = 2,
+        fontSize = 9,
       ) => {
         const paragraphs = buildWrappedParagraphs(doc, text, maxWidth);
-
-        if (!paragraphs.length) {
-          y += lineHeight;
-          return;
-        }
-
         paragraphs.forEach((lines, index) => {
-          const needed =
-            Math.max(lines.length, 1) * lineHeight +
-            (index < paragraphs.length - 1 ? paragraphGap : 0);
-
+          const needed = Math.max(lines.length, 1) * lineHeight + paragraphGap;
           ensureSpace(needed + 1);
-
           doc.setFont("helvetica", "normal");
           doc.setFontSize(fontSize);
-
+          doc.setTextColor(45, 45, 45);
           if (lines.length) doc.text(lines, x, y);
-
           y += Math.max(lines.length, 1) * lineHeight;
-
           if (index < paragraphs.length - 1) y += paragraphGap;
         });
       };
 
       const drawSection = (number, title, body) => {
+        const cleanTitle = cleanContractHeading(title);
         const estimatedBodyHeight = estimateTextBlockHeight(
           doc,
           body,
           contentWidth,
-          3.85,
-          1.5,
+          4.1,
+          2,
         );
-
-        ensureSpace(5 + estimatedBodyHeight + 2);
-
+        ensureSpace(7 + estimatedBodyHeight);
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(9.6);
-        doc.text(`${number}. ${title}`, margin, y);
-        y += 5;
-
-        drawParagraphBlock(body, margin, contentWidth, 3.85, 1.5, 8.5);
-        y += 2.4;
+        doc.setFontSize(10);
+        doc.setTextColor(20, 20, 20);
+        doc.text(`${number}. ${cleanTitle}`, margin, y);
+        y += 5.5;
+        drawParagraphBlock(body, margin, contentWidth, 4.1, 2, 9);
+        y += 2.5;
       };
 
-      const drawMiniSection = (
-        title,
-        rows,
-        x,
-        width,
-        defaultLabelWidth = 28,
-      ) => {
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(9.3);
-        doc.text(title, x, y);
-
-        let rowY = y + 5;
-
-        rows.forEach((row) => {
-          const label = `${row.label}:`;
-          const labelWidth = row.labelWidth ?? defaultLabelWidth;
-
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(8.2);
-          doc.text(label, x, rowY);
-
-          if (row.line) {
-            const lineStartX = x + labelWidth;
-            const lineEndX = x + width - 2;
-
-            doc.setDrawColor(90, 90, 90);
-            doc.setLineWidth(0.25);
-            doc.line(lineStartX, rowY, lineEndX, rowY);
-
-            rowY += 4.6;
-            return;
-          }
-
-          const value = row.value || "—";
-
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(8.2);
-          const wrapped = doc.splitTextToSize(
-            String(value),
-            width - labelWidth,
-          );
-          doc.text(wrapped, x + labelWidth, rowY);
-
-          rowY += Math.max(wrapped.length, 1) * 3.55 + 1;
-        });
-
-        return rowY;
-      };
-
-      const contractTermsText =
-        String(c.materials_used || "").trim() || DEFAULT_TERMS;
-
-      const terms = parseNumberedSections(contractTermsText);
-      const warrantyText = c.warranty_terms || DEFAULT_WARRANTY;
-
-      drawFrame();
-      drawPageHeader();
-
-      const leftX = margin;
-      const rightX = 107;
-      const colWidth = 82;
-
-      const partiesRows = [
-        {
-          label: "Company Name",
-          value: "Spiral Wood Services",
-          labelWidth: 30,
-        },
-        {
-          label: "Authorized Person / Project In-Charge",
-          value: authorizedPersonDisplayName || "Admin",
-          labelWidth: 63,
-        },
-        {
-          label: "Customer Name",
-          value: customerDisplayName || "____________________",
-          labelWidth: 30,
-        },
-      ];
-
-      const projectRows = [
-        {
-          label: "Contract No",
-          value: `CNT-${String(c.id).padStart(5, "0")}`,
-          labelWidth: 27,
-        },
-        {
-          label: "Order No",
-          value: `#${String(c.order_id).padStart(5, "0")}`,
-          labelWidth: 27,
-        },
-        {
-          label: "Blueprint Ref",
-          value: c.blueprint_id
-            ? `BP-${String(c.blueprint_id).padStart(5, "0")}`
-            : "N/A",
-          labelWidth: 27,
-        },
-        {
-          label: "Date Issued",
-          value: formatDatePdf(c.created_at),
-          labelWidth: 27,
-        },
-        {
-          label: "Total Amount",
-          value: formatCurrencyPdf(c.total_amount || 0),
-          labelWidth: 27,
-        },
-      ];
-
-      ensureSpace(30);
-      const leftEndY = drawMiniSection(
-        "1. PARTIES INVOLVED",
-        partiesRows,
-        leftX,
-        colWidth,
-        30,
-      );
-      const rightEndY = drawMiniSection(
-        "2. PROJECT DETAILS",
-        projectRows,
-        rightX,
-        colWidth,
-        27,
-      );
-      y = Math.max(leftEndY, rightEndY) + 4;
-
-      terms.forEach((section, index) => {
-        drawSection(index + 3, section.title, section.body);
-      });
-
-      drawSection(terms.length + 3, "WARRANTY", warrantyText);
-
-      const signatureBlockHeight = 31;
-      const authorizationHeight = 9;
-
-      if (y + authorizationHeight + signatureBlockHeight > bottomLimit) {
-        addPage();
-      }
-
-      drawSection(
-        terms.length + 4,
-        "AUTHORIZATION",
-        "By signing below, both parties confirm their agreement to the terms stated in this contract.",
-      );
-
-      ensureSpace(signatureBlockHeight);
-
+      doc.setTextColor(30, 30, 30);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.text("SIGNATURES", pageWidth / 2, y, { align: "center" });
+      doc.setFontSize(9);
+      doc.text("SPIRAL WOOD SERVICES", margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.text(contractNumber, pageWidth - margin, y, { align: "right" });
       y += 8;
 
-      const sigLeftX = margin;
-      const sigRightX = 110;
-      const lineStartOffsetName = 13;
-      const lineStartOffsetSig = 18;
-      const lineStartOffsetDate = 11;
-      const lineLength = 48;
-
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(8.6);
-      doc.text("Authorized Person / Project In-Charge", sigLeftX, y);
-      doc.text("Customer", sigRightX, y);
-      y += 8;
+      doc.setFontSize(17);
+      doc.setTextColor(15, 15, 15);
+      doc.text("Custom Furniture Agreement", margin, y);
+      y += 6;
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8.5);
-      doc.setDrawColor(70, 70, 70);
-      doc.setLineWidth(0.25);
+      doc.setTextColor(95, 95, 95);
+      doc.text(`Issued ${formatDatePdf(c.created_at)}`, margin, y);
+      y += 5;
 
-      doc.text("Name:", sigLeftX, y);
-      doc.text(
-        authorizedPersonDisplayName || "Admin",
-        sigLeftX + lineStartOffsetName,
-        y - 0.8,
+      doc.setDrawColor(205, 205, 205);
+      doc.setLineWidth(0.3);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 8;
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10.5);
+      doc.setTextColor(25, 25, 25);
+      doc.text("Agreement Overview", margin, y);
+      y += 6;
+
+      const leftX = margin;
+      const rightX = 109;
+      const labelColor = [105, 105, 105];
+      const valueColor = [25, 25, 25];
+
+      const overviewRows = [
+        ["Customer", customerDisplayName, "Order Reference", `#${String(c.order_id).padStart(5, "0")}`],
+        ["Authorized Representative", authorizedPersonDisplayName, "Blueprint Reference", c.blueprint_id ? `BP-${String(c.blueprint_id).padStart(5, "0")}` : "Not available"],
+        ["Contract Amount", formatCurrencyPdf(c.total_amount || 0), "Contract Number", contractNumber],
+      ];
+
+      overviewRows.forEach(([leftLabel, leftValue, rightLabel, rightValue]) => {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.6);
+        doc.setTextColor(...labelColor);
+        doc.text(leftLabel, leftX, y);
+        doc.text(rightLabel, rightX, y);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(...valueColor);
+        doc.text(String(leftValue || "—"), leftX, y + 4.2);
+        doc.text(String(rightValue || "—"), rightX, y + 4.2);
+        y += 11;
+      });
+
+      doc.setDrawColor(230, 230, 230);
+      doc.line(margin, y - 1, pageWidth - margin, y - 1);
+      y += 6;
+
+      const intro =
+        `This agreement is made between Spiral Wood Services and ${customerDisplayName} for the custom furniture project identified above. The approved blueprint, project estimation, payment requirements, and terms below form part of this agreement.`;
+      drawParagraphBlock(intro, margin, contentWidth, 4.1, 2, 9);
+      y += 5;
+
+      const contractTermsText =
+        String(c.materials_used || "").trim() || DEFAULT_TERMS;
+      const terms = parseNumberedSections(contractTermsText);
+      const warrantyText = c.warranty_terms || DEFAULT_WARRANTY;
+
+      terms.forEach((section, index) => {
+        drawSection(index + 1, section.title, section.body);
+      });
+
+      drawSection(terms.length + 1, "WARRANTY", warrantyText);
+      drawSection(
+        terms.length + 2,
+        "ACCEPTANCE",
+        "By signing below, both parties confirm that they have reviewed and accepted the terms of this agreement.",
       );
-      doc.line(sigLeftX + lineStartOffsetName, y, sigLeftX + lineLength, y);
 
-      doc.text("Name:", sigRightX, y);
-      doc.line(sigRightX + lineStartOffsetName, y, sigRightX + lineLength, y);
-      y += 9;
+      ensureSpace(43);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10.5);
+      doc.setTextColor(25, 25, 25);
+      doc.text("Signatures", margin, y);
+      y += 8;
 
-      doc.text("Signature:", sigLeftX, y);
-      doc.line(sigLeftX + lineStartOffsetSig, y, sigLeftX + lineLength, y);
+      const sigLeft = margin;
+      const sigRight = 111;
+      const sigWidth = 70;
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "bold");
+      doc.text("Authorized Representative", sigLeft, y);
+      doc.text("Customer", sigRight, y);
+      y += 7;
 
-      doc.text("Signature:", sigRightX, y);
-      doc.line(sigRightX + lineStartOffsetSig, y, sigRightX + lineLength, y);
-      y += 9;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.text(authorizedPersonDisplayName, sigLeft, y);
+      doc.text(customerDisplayName, sigRight, y);
+      y += 7;
 
-      doc.text("Date:", sigLeftX, y);
-      doc.line(sigLeftX + lineStartOffsetDate, y, sigLeftX + lineLength, y);
+      doc.setDrawColor(90, 90, 90);
+      doc.setLineWidth(0.25);
+      doc.line(sigLeft, y, sigLeft + sigWidth, y);
+      doc.line(sigRight, y, sigRight + sigWidth, y);
+      y += 4;
+      doc.setFontSize(7.5);
+      doc.setTextColor(110, 110, 110);
+      doc.text("Signature", sigLeft, y);
+      doc.text("Signature", sigRight, y);
+      y += 10;
 
-      doc.text("Date:", sigRightX, y);
-      doc.line(sigRightX + lineStartOffsetDate, y, sigRightX + lineLength, y);
+      doc.setDrawColor(90, 90, 90);
+      doc.line(sigLeft, y, sigLeft + 38, y);
+      doc.line(sigRight, y, sigRight + 38, y);
+      y += 4;
+      doc.setTextColor(110, 110, 110);
+      doc.text("Date", sigLeft, y);
+      doc.text("Date", sigRight, y);
 
-      doc.save(`contract_CNT-${String(c.id).padStart(5, "0")}.pdf`);
+      const pageCount = doc.getNumberOfPages();
+      for (let page = 1; page <= pageCount; page += 1) {
+        doc.setPage(page);
+        doc.setDrawColor(225, 225, 225);
+        doc.setLineWidth(0.2);
+        doc.line(margin, pageHeight - 14, pageWidth - margin, pageHeight - 14);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(115, 115, 115);
+        doc.text(`Spiral Wood Services | ${contractNumber}`, margin, pageHeight - 9);
+        doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 9, { align: "right" });
+      }
+
+      doc.save(`contract_${contractNumber}.pdf`);
       toast.success("Contract PDF downloaded.");
     } catch (err) {
       toast.error("Failed to generate contract PDF.");
@@ -718,6 +643,28 @@ export default function ContractsPage() {
       d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
     );
   }).length;
+
+  const filteredContracts = useMemo(() => {
+    const query = normalize(contractSearch);
+    if (!query) return contracts;
+
+    return contracts.filter((contract) => {
+      const haystack = [
+        `CNT-${String(contract.id || "").padStart(5, "0")}`,
+        contract.order_id ? `#${String(contract.order_id).padStart(5, "0")}` : "",
+        contract.blueprint_id
+          ? `BP-${String(contract.blueprint_id).padStart(5, "0")}`
+          : "",
+        contract.customer_name,
+        contract.customer_email,
+        contract.issued_by_name,
+      ]
+        .map(normalize)
+        .join(" ");
+
+      return haystack.includes(query);
+    });
+  }, [contractSearch, contracts]);
 
   const contractedOrderIds = new Set(
     contracts.map((c) => String(c.order_id || "")),
@@ -864,114 +811,58 @@ export default function ContractsPage() {
 
   const validationItems = [
     {
-      label: "Order selected",
-      ok: Boolean(form.order_id) && isPositiveIntegerString(form.order_id),
-      value: form.order_id
-        ? `#${String(form.order_id).padStart(5, "0")}`
-        : "Required",
-    },
-    {
-      label: "Order type",
-      ok: orderTypeValid,
-      value: selectedOrderInfo
-        ? titleCase(selectedOrderInfo.order_type)
-        : loadingOrderInfo
-          ? "Checking..."
-          : "Not loaded",
-    },
-    {
-      label: "Order status (must be confirmed)",
+      label: "Order Status",
       ok: Boolean(selectedOrderInfo) && orderStatusConfirmed,
       value: loadingOrderInfo
-        ? "Checking..."
+        ? "Checking order"
         : selectedOrderInfo
           ? titleCase(selectedOrderInfo.status || selectedOrderInfo.raw_status)
-          : orderInfoError || "Not loaded",
+          : "Select an order",
     },
     {
-      label: "Customer on order",
+      label: "Customer",
       ok: hasCustomerId,
       value: hasCustomerId
-        ? formatPersonName(selectedOrderInfo?.customer_name) || "Linked"
-        : "Missing customer on order",
+        ? formatPersonName(selectedOrderInfo?.customer_name) || "Linked customer"
+        : "Customer account required",
     },
     {
-      label: "Existing contract",
-      ok: !hasExistingContract,
-      value: hasExistingContract
-        ? "A contract already exists for this order"
-        : "None",
-    },
-    {
-      label: "Lifecycle integrity",
-      ok: Boolean(selectedOrderInfo) && !lifecycleIntegrityWarning,
-      value: !selectedOrderInfo
-        ? "Not loaded"
-        : lifecycleIntegrityWarning
-          ? titleCase(lifecycleIntegrityReason) ||
-            "Lifecycle integrity conflict — manual review required"
-          : "OK",
-    },
-    {
-      label: "Canonical blueprint",
+      label: "Blueprint",
       ok:
         Boolean(canonicalBlueprintId) &&
         canonicalBlueprintValid &&
         !manualBlueprintMismatch,
-      value: manualBlueprintMismatch
-        ? "Entered blueprint ID does not match this order's linked blueprint"
-        : manualBlueprintInvalid
-          ? "Invalid manual blueprint ID"
-          : canonicalBlueprintId && !canonicalBlueprintValid
-            ? "Invalid canonical blueprint ID on order"
-            : canonicalBlueprintId
-              ? `BP-${String(canonicalBlueprintId).padStart(5, "0")}`
-              : "Missing linked blueprint",
+      value: canonicalBlueprintId && canonicalBlueprintValid
+        ? `BP-${String(canonicalBlueprintId).padStart(5, "0")}`
+        : "Linked blueprint required",
     },
     {
-      label: "Saved estimation",
+      label: "Approved Estimation",
       ok: estimationEligible,
-      value: !canonicalBlueprintId
-        ? "Waiting for canonical blueprint"
-        : loadingEstimation
-          ? "Checking..."
-          : estimationEligible
-            ? "Approved and saved"
-            : estimationError || "Not available",
-    },
-    {
-      label: "Approved estimation total",
-      ok: approvedEstimationTotal > 0,
-      value:
-        approvedEstimationTotal > 0
+      value: loadingEstimation
+        ? "Checking estimation"
+        : estimationEligible
           ? formatCurrencyUI(approvedEstimationTotal)
-          : "Not available",
+          : estimationError || "Approved estimation required",
     },
     {
-      label: "Order / estimation total match",
+      label: "Order Total",
       ok: totalsMatch,
       value: totalsMatch
-        ? `${formatCurrencyUI(orderTotalAmount)} matches estimation`
-        : "Order total does not match the approved estimation total",
+        ? `${formatCurrencyUI(orderTotalAmount)} confirmed`
+        : "Must match the approved estimation",
     },
     {
-      label: "Verified payment (30% required)",
+      label: "Down Payment",
       ok: paymentReady,
-      value: !estimationEligible
-        ? "Waiting for approved estimation"
-        : hasVerifiedPayment
-          ? `Verified ${formatCurrencyUI(verifiedPaymentTotal)} / Required ${formatCurrencyUI(requiredDownPayment)}`
-          : `At least 30% verified down payment required (Required ${formatCurrencyUI(requiredDownPayment)})`,
+      value: estimationEligible
+        ? `${formatCurrencyUI(verifiedPaymentTotal)} verified of ${formatCurrencyUI(requiredDownPayment)} required`
+        : "Waiting for approved estimation",
     },
     {
-      label: "Contract terms",
-      ok: contractTermsReady,
-      value: contractTermsReady ? "Ready" : "Contract terms are required",
-    },
-    {
-      label: "Warranty terms",
-      ok: warrantyTermsReady,
-      value: warrantyTermsReady ? "Ready" : "Warranty terms are required",
+      label: "Existing Contract",
+      ok: !hasExistingContract,
+      value: hasExistingContract ? "Contract already exists" : "No existing contract",
     },
   ];
 
@@ -1167,556 +1058,301 @@ export default function ContractsPage() {
   };
 
   return (
-    <div style={pageShell}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 20,
-          gap: 12,
-          flexWrap: "wrap",
-        }}
-      >
+    <div className="contracts-page">
+      <header className="contracts-page-header">
         <div>
-          <h1 style={pageTitle}>Contracts</h1>
-          <p style={{ fontSize: 13, color: "#52525b", margin: "4px 0 0" }}>
-            Generate and manage sales contracts for custom blueprint orders.
-          </p>
+          <h1>Contracts</h1>
+          <p>Create, download, and review contracts for approved custom furniture orders.</p>
         </div>
-
-        <button onClick={() => setModal(true)} style={btnPrimary}>
-          Generate Contract
+        <button
+          type="button"
+          className="contracts-btn contracts-btn-primary contracts-create-btn"
+          onClick={() => setModal(true)}
+        >
+          Create Contract
         </button>
-      </div>
+      </header>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          marginBottom: 24,
-          flexWrap: "wrap",
-        }}
-      >
-        <SummaryCard
-          label="Total Contracts"
-          value={contracts.length}
-          color="#18181b"
-          icon="📝"
-        />
-        <SummaryCard
-          label="This Month"
-          value={contractsThisMonth}
-          color="#18181b"
-          icon="📅"
-        />
-      </div>
+      <section className="contracts-summary" aria-label="Contract summary">
+        <SummaryCard label="Total Contracts" value={contracts.length} />
+        <SummaryCard label="Issued This Month" value={contractsThisMonth} />
+      </section>
 
       {duplicateOrderIds.length > 0 && (
-        <div style={warningBanner}>
-          Historical duplicate contract rows were detected for order(s):{" "}
-          {duplicateOrderIds
-            .map((id) => `#${String(id).padStart(5, "0")}`)
-            .join(", ")}
-          . Existing records are still shown, but new duplicate generation is
-          blocked by backend validation.
+        <div className="contracts-alert contracts-alert-warning">
+          Some older records contain more than one contract for the same order.
+          Existing records remain available, but the system will prevent new duplicate contracts.
         </div>
       )}
 
-      <div style={card}>
-        <table
-          style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
-        >
-          <thead>
-            <tr
-              style={{
-                background: "#fafafa",
-                borderBottom: "1px solid #e4e4e7",
-              }}
-            >
-              {[
-                "Contract #",
-                "Order #",
-                "Customer",
-                "Amount",
-                "Blueprint",
-                "Issued By",
-                "Date Issued",
-                "Actions",
-              ].map((h) => (
-                <th key={h} style={th}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
+      <section className="contracts-records-card">
+        <div className="contracts-records-toolbar">
+          <div>
+            <h2>Contract Records</h2>
+            <p>Review issued contracts and access related order details.</p>
+          </div>
+          <div className="contracts-search-wrap">
+            <span className="contracts-search-icon" aria-hidden="true">⌕</span>
+            <input
+              type="search"
+              value={contractSearch}
+              onChange={(event) => setContractSearch(event.target.value)}
+              placeholder="Search contract, order, customer, or blueprint"
+              aria-label="Search contracts"
+            />
+          </div>
+        </div>
 
-          <tbody>
-            {loading ? (
+        <div className="contracts-table-scroll">
+          <table className="contracts-table">
+            <thead>
               <tr>
-                <td colSpan={8} style={centerCell}>
-                  Loading contracts...
-                </td>
+                <th>Contract No.</th>
+                <th>Customer</th>
+                <th>Order Ref.</th>
+                <th>Blueprint Ref.</th>
+                <th className="contracts-amount-col">Amount</th>
+                <th>Authorized By</th>
+                <th>Issued Date</th>
+                <th>Actions</th>
               </tr>
-            ) : contracts.length === 0 ? (
-              <tr>
-                <td colSpan={8} style={centerCell}>
-                  No contracts generated yet.
-                </td>
-              </tr>
-            ) : (
-              contracts.map((c) => (
-                <tr key={c.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                  <td style={{ ...td, fontWeight: 800, color: "#0a0a0a" }}>
-                    CNT-{String(c.id).padStart(5, "0")}
-                  </td>
-
-                  <td style={td}>
-                    <button
-                      onClick={() => navigate(`/admin/orders/${c.order_id}`)}
-                      style={linkBtn}
-                    >
-                      #{String(c.order_id).padStart(5, "0")}
-                    </button>
-                  </td>
-
-                  <td style={td}>
-                    <div style={{ fontWeight: 600, color: "#18181b" }}>
-                      {formatPersonName(c.customer_name) || "—"}
-                    </div>
-                    <div
-                      style={{ fontSize: 11, color: "#71717a", marginTop: 2 }}
-                    >
-                      {c.customer_email || ""}
-                    </div>
-                  </td>
-
-                  <td style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}>
-                    {c.total_amount ? formatCurrencyUI(c.total_amount) : "—"}
-                  </td>
-
-                  <td style={td}>
-                    {c.blueprint_id ? (
-                      <button
-                        onClick={() =>
-                          navigate(`/admin/blueprints/${c.blueprint_id}/design`)
-                        }
-                        style={linkBtn}
-                      >
-                        BP-{String(c.blueprint_id).padStart(5, "0")}
-                      </button>
-                    ) : (
-                      <span style={{ color: "#a1a1aa" }}>—</span>
-                    )}
-                  </td>
-
-                  <td style={td}>{c.issued_by_name || "Admin"}</td>
-
-                  <td
-                    style={{
-                      ...td,
-                      fontSize: 12,
-                      color: "#71717a",
-                      fontWeight: 500,
-                    }}
-                  >
-                    {formatDate(c.created_at)}
-                  </td>
-
-                  <td style={td}>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      <button onClick={() => printContract(c)} style={btnPrint}>
-                        Print
-                      </button>
-                      <button
-                        onClick={() => navigate(`/admin/orders/${c.order_id}`)}
-                        style={btnView}
-                      >
-                        View Order
-                      </button>
-                    </div>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="contracts-empty-cell">Loading contracts...</td>
+                </tr>
+              ) : filteredContracts.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="contracts-empty-cell">
+                    {contractSearch ? "No contracts match your search." : "No contracts have been generated yet."}
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                filteredContracts.map((contract) => (
+                  <tr key={contract.id}>
+                    <td className="contracts-contract-no">
+                      CNT-{String(contract.id).padStart(5, "0")}
+                    </td>
+                    <td>
+                      <div className="contracts-customer-name">
+                        {formatPersonName(contract.customer_name) || "—"}
+                      </div>
+                      {contract.customer_email ? (
+                        <div className="contracts-secondary-text">{contract.customer_email}</div>
+                      ) : null}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="contracts-text-link"
+                        onClick={() => navigate(`/admin/orders/${contract.order_id}`)}
+                      >
+                        #{String(contract.order_id).padStart(5, "0")}
+                      </button>
+                    </td>
+                    <td>
+                      {contract.blueprint_id ? (
+                        <button
+                          type="button"
+                          className="contracts-text-link"
+                          onClick={() =>
+                            navigate(`/admin/blueprints/${contract.blueprint_id}/design`)
+                          }
+                        >
+                          BP-{String(contract.blueprint_id).padStart(5, "0")}
+                        </button>
+                      ) : (
+                        <span className="contracts-secondary-text">Not available</span>
+                      )}
+                    </td>
+                    <td className="contracts-amount-col contracts-amount">
+                      {contract.total_amount
+                        ? formatCurrencyUI(contract.total_amount)
+                        : "—"}
+                    </td>
+                    <td>{formatPersonName(contract.issued_by_name || "System Administrator")}</td>
+                    <td className="contracts-issued-date">{formatDate(contract.created_at)}</td>
+                    <td>
+                      <div className="contracts-row-actions">
+                        <button
+                          type="button"
+                          className="contracts-btn contracts-btn-primary contracts-btn-sm"
+                          onClick={() => printContract(contract)}
+                        >
+                          Download PDF
+                        </button>
+                        <button
+                          type="button"
+                          className="contracts-btn contracts-btn-secondary contracts-btn-sm"
+                          onClick={() => navigate(`/admin/orders/${contract.order_id}`)}
+                        >
+                          Order Details
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {modal && (
-        <div style={overlay}>
-          <div style={{ ...modalBox, width: 700 }}>
-            <h3
-              style={{
-                margin: "0 0 6px",
-                color: "#0a0a0a",
-                fontSize: 20,
-                fontWeight: 800,
-                letterSpacing: "-0.01em",
-              }}
-            >
-              Generate Sales Contract
-            </h3>
-            <p style={{ fontSize: 13, color: "#71717a", margin: "0 0 24px" }}>
-              Select a confirmed blueprint order, verify the linked blueprint
-              reference and approved estimation, then customize the contract
-              terms before generating.
-            </p>
-
-            <form onSubmit={handleGenerate}>
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelSm}>Order * (Confirmed orders only)</label>
-                <select
-                  required
-                  value={form.order_id}
-                  onChange={(e) => handleOrderChange(e.target.value)}
-                  style={inputFull}
-                >
-                  <option value="">— Select Order —</option>
-                  {availableOrders.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      #{String(o.id).padStart(5, "0")} —{" "}
-                      {formatPersonName(o.customer_name) || "—"} —{" "}
-                      {formatCurrencyUI(o.total_amount || 0)}
-                    </option>
-                  ))}
-                </select>
-
-                {availableOrders.length === 0 && (
-                  <p
-                    style={{
-                      fontSize: 11,
-                      color: "#dc2626",
-                      marginTop: 6,
-                      fontWeight: 600,
-                    }}
-                  >
-                    No selectable confirmed orders available. Orders with
-                    existing contracts are excluded, and final contract
-                    eligibility is still checked against blueprint reference,
-                    payment, estimation approval, and order status.
-                  </p>
-                )}
-              </div>
-
-              <div style={{ marginBottom: 20 }}>
-                <label style={labelSm}>Linked blueprint (from order)</label>
-                <input
-                  type="text"
-                  value={
-                    canonicalBlueprintId
-                      ? `BP-${String(canonicalBlueprintId).padStart(5, "0")}`
-                      : selectedOrderInfo
-                        ? "No blueprint linked to this order"
-                        : "Select an order to load its linked blueprint"
-                  }
-                  readOnly
-                  style={{
-                    ...inputFull,
-                    background: "#f4f4f5",
-                    color: "#52525b",
-                  }}
-                />
-                <p
-                  style={{
-                    fontSize: 11,
-                    color: "#71717a",
-                    marginTop: 6,
-                    fontWeight: 500,
-                  }}
-                >
-                  The blueprint used for this contract always comes from the
-                  selected order — it is never chosen manually.
-                </p>
-
-                <label style={{ ...labelSm, marginTop: 14, display: "block" }}>
-                  Blueprint ID reference check (optional)
-                </label>
-                <input
-                  type="number"
-                  value={form.blueprint_id}
-                  onChange={(e) => setF("blueprint_id", e.target.value)}
-                  style={inputFull}
-                  placeholder="Optional — only checked against the order's linked blueprint above"
-                />
-                <p
-                  style={{
-                    fontSize: 11,
-                    color: manualBlueprintMismatch ? "#dc2626" : "#71717a",
-                    marginTop: 6,
-                    fontWeight: manualBlueprintMismatch ? 700 : 500,
-                  }}
-                >
-                  {manualBlueprintMismatch
-                    ? "This does not match the order's linked blueprint above — contract generation is blocked until this is cleared or corrected."
-                    : "This value is only used to verify it matches the order's linked blueprint (e.g. when opened from another page). It never replaces or controls which blueprint is used."}
+        <div className="contracts-modal-overlay" role="presentation">
+          <div className="contracts-modal" role="dialog" aria-modal="true" aria-labelledby="create-contract-title">
+            <div className="contracts-modal-header">
+              <div>
+                <h2 id="create-contract-title">Create Contract</h2>
+                <p>
+                  Select an eligible blueprint order. The system will confirm the customer,
+                  approved estimation, and required payment before the contract is generated.
                 </p>
               </div>
-
-              {form.order_id && (
-                <div style={eligibilityCard}>
-                  <div style={eligibilityTitle}>Contract Eligibility Check</div>
-
-                  {loadingOrderInfo ? (
-                    <div style={infoText}>
-                      Loading selected order details...
-                    </div>
-                  ) : orderInfoError ? (
-                    <div style={errorText}>{orderInfoError}</div>
-                  ) : (
-                    <>
-                      <div style={eligibilityGrid}>
-                        <EligibilityItem
-                          label="Customer"
-                          ok={hasCustomerId}
-                          value={
-                            formatPersonName(
-                              selectedOrderInfo?.customer_name,
-                            ) ||
-                            (hasCustomerId
-                              ? "Linked"
-                              : "Missing customer on order")
-                          }
-                        />
-                        <EligibilityItem
-                          label="Order Amount"
-                          ok={orderTotalAmount > 0}
-                          value={formatCurrencyUI(orderTotalAmount)}
-                        />
-                        <EligibilityItem
-                          label="Order Type"
-                          ok={orderTypeValid}
-                          value={titleCase(selectedOrderInfo?.order_type)}
-                        />
-                        <EligibilityItem
-                          label="Order Status (must be confirmed)"
-                          ok={orderStatusConfirmed}
-                          value={titleCase(
-                            selectedOrderInfo?.status ||
-                              selectedOrderInfo?.raw_status,
-                          )}
-                        />
-                        <EligibilityItem
-                          label="Existing Contract"
-                          ok={!hasExistingContract}
-                          value={
-                            hasExistingContract
-                              ? "A contract already exists for this order"
-                              : "None"
-                          }
-                        />
-                        <EligibilityItem
-                          label="Lifecycle Integrity"
-                          ok={!lifecycleIntegrityWarning}
-                          value={
-                            lifecycleIntegrityWarning
-                              ? titleCase(lifecycleIntegrityReason) ||
-                                "Conflict — manual review required"
-                              : "OK"
-                          }
-                        />
-                        <EligibilityItem
-                          label="Canonical Blueprint"
-                          ok={
-                            Boolean(canonicalBlueprintId) &&
-                            canonicalBlueprintValid &&
-                            !manualBlueprintInvalid &&
-                            !manualBlueprintMismatch
-                          }
-                          value={
-                            manualBlueprintMismatch
-                              ? "Entered ID does not match order's blueprint"
-                              : manualBlueprintInvalid
-                                ? "Invalid manual blueprint ID"
-                                : canonicalBlueprintId &&
-                                    !canonicalBlueprintValid
-                                  ? "Invalid canonical blueprint ID on order"
-                                  : canonicalBlueprintId
-                                    ? `BP-${String(canonicalBlueprintId).padStart(5, "0")}`
-                                    : "Missing linked blueprint"
-                          }
-                        />
-                        <EligibilityItem
-                          label="Saved Estimation"
-                          ok={estimationEligible}
-                          value={
-                            !canonicalBlueprintId
-                              ? "Waiting for canonical blueprint"
-                              : loadingEstimation
-                                ? "Checking..."
-                                : estimationEligible
-                                  ? "Approved and saved"
-                                  : estimationError || "Not available"
-                          }
-                        />
-                        <EligibilityItem
-                          label="Approved Estimation Total"
-                          ok={approvedEstimationTotal > 0}
-                          value={
-                            approvedEstimationTotal > 0
-                              ? formatCurrencyUI(approvedEstimationTotal)
-                              : "Not available"
-                          }
-                        />
-                        <EligibilityItem
-                          label="Order / Estimation Total Match"
-                          ok={totalsMatch}
-                          value={
-                            totalsMatch
-                              ? "Matches"
-                              : "Order total does not match the approved estimation total"
-                          }
-                        />
-                        <EligibilityItem
-                          label="Verified Payment (30% required)"
-                          ok={paymentReady}
-                          value={
-                            !estimationEligible
-                              ? "Waiting for approved estimation"
-                              : hasVerifiedPayment
-                                ? `Verified ${formatCurrencyUI(verifiedPaymentTotal)} / Required ${formatCurrencyUI(requiredDownPayment)}`
-                                : `At least 30% verified down payment required (Required ${formatCurrencyUI(requiredDownPayment)})`
-                          }
-                        />
-                      </div>
-
-                      {hasExistingContract && (
-                        <div style={{ ...errorBox, marginTop: 16 }}>
-                          A contract is already linked to this order.
-                        </div>
-                      )}
-
-                      {lifecycleIntegrityWarning && (
-                        <div style={{ ...errorBox, marginTop: 16 }}>
-                          This order's blueprint lifecycle has an integrity
-                          conflict
-                          {lifecycleIntegrityReason
-                            ? ` (${titleCase(lifecycleIntegrityReason)})`
-                            : ""}
-                          . Manual review is required before a contract can be
-                          generated.
-                          {conflictingOrderIds && conflictingOrderIds.length ? (
-                            <>
-                              {" "}
-                              Conflicting order IDs:{" "}
-                              {conflictingOrderIds.join(", ")}.
-                            </>
-                          ) : null}
-                        </div>
-                      )}
-
-                      {!lifecycleIntegrityWarning && orderStatusBlocked && (
-                        <div style={{ ...errorBox, marginTop: 16 }}>
-                          This order is no longer eligible because it is already{" "}
-                          {titleCase(currentOrderStatus) ||
-                            "in an unknown status"}
-                          .
-                        </div>
-                      )}
-
-                      {manualBlueprintMismatch && (
-                        <div style={{ ...errorBox, marginTop: 16 }}>
-                          The entered blueprint ID does not match this
-                          order&apos;s linked blueprint. Contract generation is
-                          blocked until this is cleared or corrected.
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelSm}>Contract Terms & Conditions</label>
-                <textarea
-                  value={form.terms}
-                  onChange={(e) => setF("terms", e.target.value)}
-                  rows={8}
-                  style={{
-                    ...inputFull,
-                    resize: "vertical",
-                    fontSize: 13,
-                    lineHeight: 1.6,
-                    minHeight: 180,
-                    fontFamily: "inherit",
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: 24 }}>
-                <label style={labelSm}>Warranty Terms</label>
-                <textarea
-                  value={form.warranty_terms}
-                  onChange={(e) => setF("warranty_terms", e.target.value)}
-                  rows={5}
-                  style={{
-                    ...inputFull,
-                    resize: "vertical",
-                    fontSize: 13,
-                    lineHeight: 1.6,
-                    minHeight: 120,
-                    fontFamily: "inherit",
-                  }}
-                />
-              </div>
-
-              <div style={validationSummaryBox}>
-                <div style={validationSummaryTitle}>Pre-submit Validation</div>
-                <div style={validationList}>
-                  {validationItems.map((item) => (
-                    <div key={item.label} style={validationRow}>
-                      <span
-                        style={{
-                          ...validationDot,
-                          background: item.ok ? "#16a34a" : "#dc2626",
-                        }}
-                      />
-                      <div style={{ minWidth: 0 }}>
-                        <div style={validationLabel}>{item.label}</div>
-                        <div
-                          style={{
-                            ...validationValue,
-                            color: item.ok ? "#166534" : "#991b1b",
-                          }}
-                        >
-                          {item.value}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  justifyContent: "flex-end",
-                  flexWrap: "wrap",
-                  marginTop: 28,
+              <button
+                type="button"
+                className="contracts-modal-close"
+                aria-label="Close create contract window"
+                onClick={() => {
+                  setModal(false);
+                  resetForm();
                 }}
               >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={handleGenerate} className="contracts-form">
+              <section className="contracts-form-section">
+                <div className="contracts-section-heading">
+                  <span>1</span>
+                  <div>
+                    <h3>Order Details</h3>
+                    <p>Choose the confirmed blueprint order covered by this agreement.</p>
+                  </div>
+                </div>
+
+                <label className="contracts-field">
+                  <span>Confirmed Blueprint Order</span>
+                  <select
+                    required
+                    value={form.order_id}
+                    onChange={(event) => handleOrderChange(event.target.value)}
+                  >
+                    <option value="">Select an order</option>
+                    {availableOrders.map((order) => (
+                      <option key={order.id} value={order.id}>
+                        {order.order_number || `#${String(order.id).padStart(5, "0")}`} · {formatPersonName(order.customer_name) || "Customer"} · {formatCurrencyUI(order.total_amount || 0)}
+                      </option>
+                    ))}
+                  </select>
+                  <small>Only confirmed blueprint orders without an existing contract are listed.</small>
+                </label>
+
+                {availableOrders.length === 0 && (
+                  <div className="contracts-alert contracts-alert-neutral">
+                    There are no confirmed blueprint orders available for a new contract.
+                  </div>
+                )}
+
+                <label className="contracts-field">
+                  <span>Blueprint Reference</span>
+                  <input
+                    type="text"
+                    readOnly
+                    value={
+                      canonicalBlueprintId
+                        ? `BP-${String(canonicalBlueprintId).padStart(5, "0")}`
+                        : selectedOrderInfo
+                          ? "No blueprint linked"
+                          : "Select an order first"
+                    }
+                  />
+                  <small>The blueprint is taken directly from the selected order.</small>
+                </label>
+
+                {manualBlueprintMismatch && (
+                  <div className="contracts-alert contracts-alert-error">
+                    The blueprint reference from the previous page does not match the selected order.
+                    Reopen the contract from the correct order before continuing.
+                  </div>
+                )}
+
+                {orderInfoError && (
+                  <div className="contracts-alert contracts-alert-error">{orderInfoError}</div>
+                )}
+
+                {lifecycleIntegrityWarning && (
+                  <div className="contracts-alert contracts-alert-error">
+                    This order has a blueprint workflow conflict and requires review before a contract can be created.
+                  </div>
+                )}
+              </section>
+
+              {form.order_id && (
+                <section className="contracts-form-section">
+                  <div className="contracts-section-heading">
+                    <span>2</span>
+                    <div>
+                      <h3>Contract Readiness</h3>
+                      <p>All required checks must be complete before generation.</p>
+                    </div>
+                  </div>
+
+                  <div className="contracts-readiness-grid">
+                    {validationItems.map((item) => (
+                      <ReadinessItem key={item.label} {...item} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              <section className="contracts-form-section">
+                <div className="contracts-section-heading">
+                  <span>3</span>
+                  <div>
+                    <h3>Agreement Content</h3>
+                    <p>Review the standard project and warranty terms before generating the PDF.</p>
+                  </div>
+                </div>
+
+                <label className="contracts-field">
+                  <span>Agreement Terms</span>
+                  <textarea
+                    value={form.terms}
+                    onChange={(event) => setF("terms", event.target.value)}
+                    rows={11}
+                  />
+                </label>
+
+                <label className="contracts-field">
+                  <span>Warranty Coverage</span>
+                  <textarea
+                    value={form.warranty_terms}
+                    onChange={(event) => setF("warranty_terms", event.target.value)}
+                    rows={6}
+                  />
+                </label>
+              </section>
+
+              <div className="contracts-modal-actions">
                 <button
                   type="button"
+                  className="contracts-btn contracts-btn-secondary"
                   onClick={() => {
                     setModal(false);
                     resetForm();
                   }}
-                  style={btnGhost}
                 >
                   Cancel
                 </button>
-
                 <button
                   type="submit"
+                  className="contracts-btn contracts-btn-primary"
                   disabled={!canSubmit}
-                  style={{
-                    ...btnPrimary,
-                    opacity: canSubmit ? 1 : 0.6,
-                    cursor: canSubmit ? "pointer" : "not-allowed",
-                  }}
                 >
-                  {saving ? "Generating..." : "Generate Contract"}
+                  {saving ? "Generating Contract..." : "Generate Contract"}
                 </button>
               </div>
             </form>
@@ -1727,373 +1363,26 @@ export default function ContractsPage() {
   );
 }
 
-function SummaryCard({ label, value, icon }) {
+function SummaryCard({ label, value }) {
   return (
-    <div style={statCard}>
-      <div style={statTop}>
-        <div style={statLabel}>{label}</div>
-        <span style={{ fontSize: 16 }}>{icon}</span>
-      </div>
-      <div style={statValue}>{value}</div>
+    <div className="contracts-summary-card">
+      <div className="contracts-summary-label">{label}</div>
+      <div className="contracts-summary-value">{value}</div>
     </div>
   );
 }
 
-function EligibilityItem({ label, value, ok }) {
+function ReadinessItem({ label, value, ok }) {
   return (
-    <div style={eligibilityItem}>
-      <div style={eligibilityItemLabel}>{label}</div>
-      <div
-        style={{
-          ...eligibilityItemValue,
-          color: ok ? "#166534" : "#991b1b",
-        }}
-      >
-        {value}
+    <div className="contracts-readiness-item">
+      <span
+        className={`contracts-readiness-dot ${ok ? "is-ready" : "is-blocked"}`}
+        aria-hidden="true"
+      />
+      <div>
+        <div className="contracts-readiness-label">{label}</div>
+        <div className="contracts-readiness-value">{value}</div>
       </div>
     </div>
   );
 }
-
-// ─── Styles ─────────────────────────────────────────────────────────────────
-
-const pageShell = {
-  maxWidth: 1480,
-  margin: "0 auto",
-  display: "flex",
-  flexDirection: "column",
-  gap: 16,
-  color: "#202124",
-};
-
-const pageTitle = {
-  margin: 0,
-  fontSize: 25,
-  lineHeight: 1.15,
-  fontWeight: 700,
-  color: "#17191c",
-  letterSpacing: "-0.025em",
-};
-
-const statCard = {
-  background: "#ffffff",
-  border: "1px solid #dfe2e5",
-  borderRadius: 4,
-  padding: "14px 16px",
-  minHeight: 78,
-  display: "flex",
-  flexDirection: "column",
-  justifyContent: "center",
-  minWidth: 160,
-  flex: 1,
-};
-
-const statTop = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: 8,
-};
-
-const statLabel = {
-  fontSize: 9.5,
-  fontWeight: 600,
-  letterSpacing: ".35px",
-  textTransform: "uppercase",
-  color: "#62676e",
-};
-
-const statValue = {
-  fontSize: 23,
-  fontWeight: 700,
-  color: "#17191c",
-  lineHeight: 1,
-};
-
-const card = {
-  background: "#ffffff",
-  border: "1px solid #dfe2e5",
-  borderRadius: 4,
-  overflow: "hidden",
-};
-
-const th = {
-  textAlign: "left",
-  padding: "10px 14px",
-  fontSize: 9.5,
-  fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: ".35px",
-  color: "#60656d",
-  borderBottom: "1px solid #e4e6e9",
-};
-
-const td = {
-  padding: "11px 14px",
-  color: "#34383d",
-  fontSize: 11.5,
-  borderBottom: "1px solid #eff0f1",
-  verticalAlign: "middle",
-};
-
-const centerCell = {
-  textAlign: "center",
-  padding: 34,
-  color: "#858a91",
-  fontSize: 12,
-};
-
-const labelSm = {
-  fontSize: 11.5,
-  fontWeight: 600,
-  color: "#1e2023",
-  display: "block",
-  marginBottom: 8,
-};
-
-const inputFull = {
-  width: "100%",
-  height: 38,
-  borderRadius: 4,
-  border: "1px solid #d4d7db",
-  background: "#ffffff",
-  padding: "0 12px",
-  fontSize: 12,
-  color: "#25282c",
-  boxSizing: "border-box",
-  outline: "none",
-};
-
-const overlay = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0, 0, 0, 0.6)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 1000,
-  padding: 20,
-};
-
-const modalBox = {
-  background: "#fff",
-  borderRadius: 4,
-  padding: 24,
-  maxHeight: "90vh",
-  overflowY: "auto",
-  border: "1px solid #dfe2e5",
-  boxShadow: "0 25px 60px rgba(0, 0, 0, 0.15)",
-};
-
-const btnPrimary = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0 14px",
-  height: 36,
-  background: "#18181b",
-  color: "#ffffff",
-  border: "1px solid #18181b",
-  borderRadius: 4,
-  cursor: "pointer",
-  fontSize: 11.5,
-  fontWeight: 600,
-  transition: "background 0.2s",
-};
-
-const btnGhost = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0 14px",
-  height: 36,
-  background: "#ffffff",
-  color: "#25282c",
-  border: "1px solid #d9dce0",
-  borderRadius: 4,
-  cursor: "pointer",
-  fontSize: 11.5,
-  fontWeight: 600,
-  transition: "all 0.2s",
-};
-
-const btnPrint = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0 13px",
-  height: 32,
-  background: "#ffffff",
-  color: "#25282c",
-  border: "1px solid #d9dce0",
-  borderRadius: 4,
-  cursor: "pointer",
-  fontSize: 10.8,
-  fontWeight: 600,
-  transition: "background 0.2s",
-};
-
-const btnView = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "0 13px",
-  height: 32,
-  background: "#18181b",
-  color: "#ffffff",
-  border: "1px solid #18181b",
-  borderRadius: 4,
-  cursor: "pointer",
-  fontSize: 10.8,
-  fontWeight: 600,
-  transition: "background 0.2s",
-};
-
-const linkBtn = {
-  background: "none",
-  border: "none",
-  color: "#17191c",
-  fontWeight: 700,
-  cursor: "pointer",
-  fontSize: 11.8,
-  padding: 0,
-  textDecoration: "underline",
-};
-
-const warningBanner = {
-  marginBottom: 20,
-  padding: "10px 14px",
-  borderRadius: 4,
-  background: "#fefce8",
-  border: "1px solid #fde047",
-  color: "#a16207",
-  fontSize: 11.5,
-  lineHeight: 1.5,
-  fontWeight: 600,
-};
-
-const eligibilityCard = {
-  marginBottom: 24,
-  padding: 16,
-  borderRadius: 4,
-  background: "#fafafa",
-  border: "1px solid #dfe2e5",
-};
-
-const eligibilityTitle = {
-  fontSize: 9.5,
-  fontWeight: 600,
-  color: "#60656d",
-  marginBottom: 16,
-  textTransform: "uppercase",
-  letterSpacing: ".35px",
-};
-
-const eligibilityGrid = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12,
-};
-
-const eligibilityItem = {
-  background: "#ffffff",
-  border: "1px solid #dfe2e5",
-  borderRadius: 4,
-  padding: "12px 14px",
-};
-
-const eligibilityItemLabel = {
-  fontSize: 9.5,
-  fontWeight: 600,
-  color: "#60656d",
-  marginBottom: 6,
-  textTransform: "uppercase",
-  letterSpacing: ".35px",
-};
-
-const eligibilityItemValue = {
-  fontSize: 11.5,
-  fontWeight: 600,
-  lineHeight: 1.45,
-  wordBreak: "break-word",
-};
-
-const infoText = {
-  fontSize: 11.5,
-  color: "#777c82",
-  fontWeight: 500,
-};
-
-const errorText = {
-  fontSize: 11.5,
-  color: "#991b1b",
-  lineHeight: 1.5,
-  fontWeight: 600,
-};
-
-const errorBox = {
-  padding: "10px 14px",
-  borderRadius: 4,
-  background: "#fef2f2",
-  border: "1px solid #fecaca",
-  color: "#991b1b",
-  fontSize: 11.5,
-  fontWeight: 600,
-};
-
-const validationSummaryBox = {
-  marginBottom: 24,
-  padding: 18,
-  borderRadius: 4,
-  background: "#fafafa",
-  border: "1px solid #dfe2e5",
-};
-
-const validationSummaryTitle = {
-  fontSize: 9.5,
-  fontWeight: 600,
-  color: "#60656d",
-  marginBottom: 16,
-  textTransform: "uppercase",
-  letterSpacing: ".35px",
-};
-
-const validationList = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12,
-};
-
-const validationRow = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: 12,
-  background: "#ffffff",
-  border: "1px solid #dfe2e5",
-  borderRadius: 4,
-  padding: "12px 14px",
-};
-
-const validationDot = {
-  width: 8,
-  height: 8,
-  borderRadius: 999,
-  flexShrink: 0,
-  marginTop: 3,
-};
-
-const validationLabel = {
-  fontSize: 9.5,
-  fontWeight: 600,
-  color: "#60656d",
-  marginBottom: 4,
-  textTransform: "uppercase",
-  letterSpacing: ".35px",
-};
-
-const validationValue = {
-  fontSize: 11.5,
-  fontWeight: 600,
-  lineHeight: 1.45,
-  wordBreak: "break-word",
-};

@@ -257,6 +257,8 @@
 .orders-admin-v2 .orders-body-row { cursor: pointer; transition: background .12s ease; }
 .orders-admin-v2 .orders-body-row:hover td { background: #fbfbfc !important; }
 
+
+
 .orders-admin-v2 .orders-table th:nth-child(1) { width: 23%; }
 .orders-admin-v2 .orders-table th:nth-child(2) { width: 18%; }
 .orders-admin-v2 .orders-table th:nth-child(3) { width: 19%; }
@@ -509,3 +511,4 @@
   .orders-admin-v2 .orders-filter-field { width: 100%; }
   .orders-admin-v2 .orders-table-scroll { height: auto; max-height: 620px; }
 }
+
