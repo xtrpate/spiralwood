@@ -32,6 +32,9 @@ const SHOP_CATEGORIES = [
 ];
 
 export default function ProductFormPage() {
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
   const { id } = useParams();
   const navigate = useNavigate();
   const isEdit = Boolean(id);

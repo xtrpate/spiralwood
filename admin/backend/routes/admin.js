@@ -107,6 +107,12 @@ router.delete(
 router.patch("/products/:id/publish", adminOnly, products.togglePublish);
 router.patch("/products/:id/featured", adminOnly, products.toggleFeatured);
 router.patch(
+  "/products/:id/active",
+  adminOnly,
+  logAction("toggle_active_product", "products"),
+  products.toggleActive,
+);
+router.patch(
   "/products/blueprint/:blueprint_id/unpublish",
   adminOnly,
   products.unpublishByBlueprint,

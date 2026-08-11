@@ -30,6 +30,15 @@ exports.getAll = async (req, res) => {
     const where = ["1=1"];
     const params = [];
 
+    if (req.query.is_active !== undefined) {
+      where.push("p.is_active = ?");
+      params.push(
+        req.query.is_active === "false" || req.query.is_active === "0" ? 0 : 1,
+      );
+    } else {
+      where.push("p.is_active = 1");
+    }
+
     if (search) {
       where.push("(p.name LIKE ? OR p.barcode LIKE ?)");
       params.push(`%${search}%`, `%${search}%`);
@@ -56,7 +65,16 @@ exports.getAll = async (req, res) => {
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
        WHERE ${where.join(" AND ")}
-       ORDER BY p.created_at DESC
+       ORDER BY 
+         CASE 
+           WHEN p.is_active = 0 THEN 5
+           WHEN p.is_published = 0 THEN 4
+           WHEN p.stock_status = 'out_of_stock' THEN 3
+           WHEN p.stock_status = 'low_stock' THEN 2
+           WHEN p.stock_status = 'in_stock' THEN 1
+           ELSE 6 
+         END ASC,
+         p.created_at DESC
        LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), offset],
     );
@@ -594,6 +612,27 @@ exports.unpublishByBlueprint = async (req, res) => {
     res.json({ message: "Blueprint product unpublished successfully." });
   } catch (err) {
     console.error("[unpublishByBlueprint Error]:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// ── PATCH /api/products/:id/active (Enable/Disable Product) ─────────────────
+exports.toggleActive = async (req, res) => {
+  try {
+    const { is_active } = req.body;
+    const activeValue = is_active ? 1 : 0;
+
+    await pool.query("UPDATE products SET is_active = ? WHERE id = ?", [
+      activeValue,
+      parseInt(req.params.id),
+    ]);
+
+    res.json({
+      is_active: !!activeValue,
+      message: activeValue ? "Product enabled." : "Product disabled.",
+    });
+  } catch (err) {
+    console.error("[toggleActive Error]:", err);
     res.status(500).json({ message: err.message });
   }
 };

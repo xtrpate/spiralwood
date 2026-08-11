@@ -4,8 +4,8 @@ import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 
 const STOCK_BADGE = {
-  in_stock: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
-  low_stock: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
+  in_stock: { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
+  low_stock: { bg: "#fff7ed", color: "#da5f36", border: "#fed7aa" },
   out_of_stock: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
 };
 
@@ -24,6 +24,7 @@ export default function ProductsPage() {
     search: "",
     type: "",
     status: "",
+    is_active: "1",
     page: 1,
   });
 
@@ -53,6 +54,18 @@ export default function ProductsPage() {
       );
       load();
     } catch {}
+  };
+
+  const toggleActive = async (id, currentStatus) => {
+    try {
+      const { data } = await api.patch(`/products/${id}/active`, {
+        is_active: !currentStatus,
+      });
+      toast.success(data.message || "Product status updated.");
+      load();
+    } catch (err) {
+      toast.error("Failed to update product status.");
+    }
   };
 
   const handleBulkPublish = async (is_published) => {
@@ -134,6 +147,18 @@ export default function ProductsPage() {
           >
             + Add Product
           </button>
+
+          <button
+            onClick={() => navigate(`/admin/products/${selectedIds[0]}/edit`)}
+            disabled={selectedIds.length !== 1}
+            style={{
+              ...btnGhost,
+              opacity: selectedIds.length === 1 ? 1 : 0.4,
+              cursor: selectedIds.length === 1 ? "pointer" : "not-allowed",
+            }}
+          >
+            ✏️ Edit Product
+          </button>
         </div>
       </div>
 
@@ -179,6 +204,17 @@ export default function ProductsPage() {
             <option value="in_stock">In Stock</option>
             <option value="low_stock">Low Stock</option>
             <option value="out_of_stock">Out of Stock</option>
+          </select>
+          <select
+            value={filters.is_active}
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, is_active: e.target.value, page: 1 }))
+            }
+            style={inputSm}
+          >
+            <option value="1">Active Products</option>
+            <option value="0">Disabled Products</option>
+            <option value="">All Products</option>
           </select>
         </div>
 
@@ -235,12 +271,11 @@ export default function ProductsPage() {
               </th>
               {[
                 "Image",
-                "Wood Type",
                 "Name",
                 "Category",
                 "Type",
-                "Online Price",
-                "Walk-in",
+                "Wood Type",
+                "Pricing",
                 "Stock",
                 "Status",
                 "Published",
@@ -298,7 +333,11 @@ export default function ProductsPage() {
                       borderBottom: "1px solid #f4f4f5",
                       background: selectedIds.includes(p.id)
                         ? "#fafafa"
-                        : "white",
+                        : p.is_active === 0
+                          ? "#f9fafb"
+                          : "white",
+                      opacity: p.is_active === 0 ? 0.6 : 1,
+                      transition: "all 0.2s",
                     }}
                   >
                     <td style={{ ...td, textAlign: "center" }}>
@@ -345,16 +384,6 @@ export default function ProductsPage() {
                     <td
                       style={{
                         ...td,
-                        color: "#71717a",
-                        fontSize: 12,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {p.wood_type || "—"}
-                    </td>
-                    <td
-                      style={{
-                        ...td,
                         fontWeight: 700,
                         maxWidth: 180,
                         color: "#0a0a0a",
@@ -384,11 +413,45 @@ export default function ProductsPage() {
                         {p.type}
                       </span>
                     </td>
-                    <td style={td}>
-                      ₱ {Number(p.online_price).toLocaleString()}
+
+                    <td
+                      style={{
+                        ...td,
+                        color: "#71717a",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {p.wood_type || "—"}
                     </td>
-                    <td style={{ ...td, color: "#71717a" }}>
-                      ₱ {Number(p.walkin_price).toLocaleString()}
+
+                    <td style={td}>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 2,
+                        }}
+                      >
+                        <span
+                          style={{
+                            color: "#0a0a0a",
+                            fontWeight: 700,
+                            fontSize: 13,
+                          }}
+                        >
+                          ₱ {Number(p.online_price).toLocaleString()}
+                        </span>
+                        <span
+                          style={{
+                            color: "#71717a",
+                            fontSize: 11,
+                            fontWeight: 500,
+                          }}
+                        >
+                          Walk-in: ₱ {Number(p.walkin_price).toLocaleString()}
+                        </span>
+                      </div>
                     </td>
                     <td style={{ ...td, fontWeight: 600 }}>{p.stock}</td>
                     <td style={td}>
@@ -442,22 +505,38 @@ export default function ProductsPage() {
                         ⭐
                       </button>
                     </td>
-                    <td style={td}>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button
-                          onClick={() =>
-                            navigate(`/admin/products/${p.id}/edit`)
-                          }
-                          style={btnEdit}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => deleteProduct(p.id, p.name)}
-                          style={btnDel}
-                        >
-                          Del
-                        </button>
+                    <td style={{ ...td, textAlign: "center" }}>
+                      <div
+                        onClick={() => toggleActive(p.id, p.is_active !== 0)}
+                        style={{
+                          width: 36,
+                          height: 20,
+                          background: p.is_active !== 0 ? "#18181b" : "#e4e4e7",
+                          borderRadius: 20,
+                          position: "relative",
+                          cursor: "pointer",
+                          transition: "background 0.2s",
+                          display: "inline-block",
+                        }}
+                        title={
+                          p.is_active !== 0
+                            ? "Disable Product"
+                            : "Enable Product"
+                        }
+                      >
+                        <div
+                          style={{
+                            width: 16,
+                            height: 16,
+                            background: "#ffffff",
+                            borderRadius: "50%",
+                            position: "absolute",
+                            top: 2,
+                            left: p.is_active !== 0 ? 18 : 2,
+                            transition: "left 0.2s",
+                            boxShadow: "0 1px 2px rgba(0,0,0,0.1)",
+                          }}
+                        />
                       </div>
                     </td>
                   </tr>
