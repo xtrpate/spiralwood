@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -87,12 +88,43 @@ function Badge({ value }) {
   );
 }
 
-function SummaryCard({ label, value, note }) {
+function SummaryCard({ label, value, note, accentColor, icon }) {
   return (
-    <div style={summaryCard}>
-      <div style={summaryLabel}>{label}</div>
-      <div style={summaryValue}>{value}</div>
-      {note ? <div style={summaryNote}>{note}</div> : null}
+    <div
+      style={{
+        ...summaryCard,
+        borderLeft: accentColor
+          ? `4px solid ${accentColor}`
+          : "1px solid #e4e4e7",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
+      }}
+    >
+      <div>
+        <div style={summaryLabel}>{label}</div>
+        <div style={summaryValue}>{value}</div>
+        {note ? <div style={summaryNote}>{note}</div> : null}
+      </div>
+
+      {icon ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 36,
+            height: 36,
+            background: "#f4f4f5",
+            borderRadius: 8,
+            fontSize: 18,
+            flexShrink: 0,
+            marginLeft: 12,
+          }}
+        >
+          {icon}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -101,6 +133,7 @@ export default function SalesReportPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
+  const navigate = useNavigate();
   const [tab, setTab] = useState("");
   const [period, setPeriod] = useState("monthly");
   const [from, setFrom] = useState("");
@@ -318,29 +351,41 @@ export default function SalesReportPage() {
               label="Gross Order Value"
               value={money(summary.gross_order_value)}
               note="Non-cancelled orders created in the selected period"
+              accentColor="#2563EB"
+              icon="📦"
             />
             <SummaryCard
               label="Actual Collected"
               value={money(summary.actual_collected)}
               note={`${summary.collection_count || 0} verified payment transaction(s)`}
+              accentColor="#22C55E"
+              icon="💰"
             />
             <SummaryCard
               label="Outstanding"
               value={money(summary.outstanding_balance)}
               note="Unpaid balance of non-cancelled orders in the selected order period"
+              accentColor="#EF4444"
+              icon="💳"
             />
             <SummaryCard
               label="Estimated Order Profit"
               value={money(summary.total_profit)}
               note="Estimate only; not realized accounting profit"
+              accentColor="#8B5CF6"
+              icon="📈"
             />
             <SummaryCard
               label="Non-cancelled Orders"
               value={summary.total_orders || 0}
+              accentColor="#0891B2"
+              icon="📋"
             />
             <SummaryCard
               label="Average Order Value"
               value={money(summary.avg_order_value)}
+              accentColor="#F59E0B"
+              icon="📊"
             />
           </div>
 
@@ -361,10 +406,15 @@ export default function SalesReportPage() {
                       "Order Type",
                       "Method",
                       "Amount",
-                      "Processed By",
                       "Order Status",
                     ].map((label) => (
-                      <th key={label} style={th}>
+                      <th
+                        key={label}
+                        style={{
+                          ...th,
+                          textAlign: label === "Amount" ? "right" : "left",
+                        }}
+                      >
                         {label}
                       </th>
                     ))}
@@ -373,15 +423,23 @@ export default function SalesReportPage() {
                 <tbody>
                   {collections.length === 0 ? (
                     <EmptyRow
-                      colSpan={9}
+                      colSpan={8}
                       text="No verified collections for this period."
                     />
                   ) : (
                     collections.map((row) => (
-                      <tr key={row.payment_transaction_id} style={tr}>
+                      <tr
+                        key={row.payment_transaction_id}
+                        style={clickableTr}
+                        onClick={() =>
+                          navigate(`/admin/orders/${row.order_id}`)
+                        }
+                      >
                         <td style={td}>{dateTime(row.payment_date)}</td>
                         <td style={td}>{row.receipt_number || "—"}</td>
-                        <td style={{ ...td, fontWeight: 800 }}>
+                        <td
+                          style={{ ...td, fontWeight: 800, color: "#18181b" }}
+                        >
                           {row.order_number || `#${row.order_id}`}
                         </td>
                         <td style={td}>{row.customer_name || "—"}</td>
@@ -389,10 +447,11 @@ export default function SalesReportPage() {
                         <td style={td}>
                           {paymentMethodLabel(row.payment_method)}
                         </td>
-                        <td style={{ ...td, fontWeight: 800 }}>
+                        <td
+                          style={{ ...td, fontWeight: 800, textAlign: "right" }}
+                        >
                           {money(row.amount)}
                         </td>
-                        <td style={td}>{row.processed_by || "System"}</td>
                         <td style={td}>
                           <Badge value={row.order_status} />
                         </td>
@@ -425,11 +484,30 @@ export default function SalesReportPage() {
                       "Payment",
                       "Order Status",
                       "Receipts",
-                    ].map((label) => (
-                      <th key={label} style={th}>
-                        {label}
-                      </th>
-                    ))}
+                    ].map((label) => {
+                      const isFinancial = [
+                        "Order Total",
+                        "Collected This Period",
+                        "Lifetime Collected",
+                        "Remaining",
+                      ].includes(label);
+                      const isCenter = label === "Receipts";
+                      return (
+                        <th
+                          key={label}
+                          style={{
+                            ...th,
+                            textAlign: isFinancial
+                              ? "right"
+                              : isCenter
+                                ? "center"
+                                : "left",
+                          }}
+                        >
+                          {label}
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody>
@@ -440,20 +518,34 @@ export default function SalesReportPage() {
                     />
                   ) : (
                     orders.map((row) => (
-                      <tr key={row.id} style={tr}>
-                        <td style={{ ...td, fontWeight: 800 }}>
+                      <tr
+                        key={row.id}
+                        style={clickableTr}
+                        onClick={() => navigate(`/admin/orders/${row.id}`)}
+                      >
+                        <td
+                          style={{ ...td, fontWeight: 800, color: "#18181b" }}
+                        >
                           {row.order_number || `#${row.id}`}
                         </td>
                         <td style={td}>{row.customer_name || "—"}</td>
                         <td style={td}>
                           {humanize(row.channel)} · {humanize(row.order_type)}
                         </td>
-                        <td style={td}>{money(row.total_amount)}</td>
-                        <td style={{ ...td, fontWeight: 800 }}>
+                        <td style={{ ...td, textAlign: "right" }}>
+                          {money(row.total_amount)}
+                        </td>
+                        <td
+                          style={{ ...td, fontWeight: 800, textAlign: "right" }}
+                        >
                           {money(row.collected_this_period)}
                         </td>
-                        <td style={td}>{money(row.lifetime_collected)}</td>
-                        <td style={td}>{money(row.remaining_balance)}</td>
+                        <td style={{ ...td, textAlign: "right" }}>
+                          {money(row.lifetime_collected)}
+                        </td>
+                        <td style={{ ...td, textAlign: "right" }}>
+                          {money(row.remaining_balance)}
+                        </td>
                         <td style={td}>
                           {row.collected_payment_methods
                             ? row.collected_payment_methods
@@ -522,7 +614,13 @@ export default function SalesReportPage() {
                         "Gross Order Value",
                         "Estimated Profit",
                       ].map((label) => (
-                        <th key={label} style={th}>
+                        <th
+                          key={label}
+                          style={{
+                            ...th,
+                            textAlign: label === "Product" ? "left" : "right",
+                          }}
+                        >
                           {label}
                         </th>
                       ))}
@@ -540,9 +638,15 @@ export default function SalesReportPage() {
                           <td style={{ ...td, fontWeight: 700 }}>
                             {row.product_name || "—"}
                           </td>
-                          <td style={td}>{quantity(row.units_sold)}</td>
-                          <td style={td}>{money(row.gross_order_value)}</td>
-                          <td style={td}>{money(row.estimated_profit)}</td>
+                          <td style={{ ...td, textAlign: "right" }}>
+                            {quantity(row.units_sold)}
+                          </td>
+                          <td style={{ ...td, textAlign: "right" }}>
+                            {money(row.gross_order_value)}
+                          </td>
+                          <td style={{ ...td, textAlign: "right" }}>
+                            {money(row.estimated_profit)}
+                          </td>
                         </tr>
                       ))
                     )}
@@ -619,7 +723,10 @@ const tabButton = {
   fontWeight: 800,
   borderBottom: "2px solid transparent",
 };
-const tabButtonActive = { color: "#18181b", borderBottomColor: "#18181b" };
+const tabButtonActive = {
+  color: "#18181b",
+  borderBottom: "2px solid #18181b",
+};
 const filterBar = {
   display: "flex",
   alignItems: "center",
@@ -685,9 +792,9 @@ const emptyState = {
 };
 const summaryGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-  gap: 12,
-  marginBottom: 18,
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: 14,
+  marginBottom: 20,
 };
 const summaryCard = {
   background: "#fff",
@@ -733,23 +840,34 @@ const sectionTitle = {
   color: "#18181b",
 };
 const sectionSubtitle = { margin: "4px 0 0", fontSize: 11, color: "#71717a" };
-const tableScroll = { overflowX: "auto" };
-const table = { width: "100%", borderCollapse: "collapse", fontSize: 12 };
+const tableScroll = {
+  overflowX: "auto",
+  overflowY: "auto",
+  maxHeight: "600px",
+};
+const table = { width: "100%", borderCollapse: "collapse", fontSize: 14 };
 const th = {
   textAlign: "left",
-  padding: "10px 12px",
+  padding: "16px 16px",
   background: "#fafafa",
   borderBottom: "1px solid #e4e4e7",
   color: "#52525b",
-  fontSize: 10,
+  fontSize: 11,
   textTransform: "uppercase",
   letterSpacing: ".03em",
   whiteSpace: "nowrap",
+  position: "sticky",
+  top: 0,
+  zIndex: 10,
 };
 const tr = { borderBottom: "1px solid #f4f4f5" };
+const clickableTr = {
+  borderBottom: "1px solid #f4f4f5",
+  cursor: "pointer",
+};
 const td = {
-  padding: "11px 12px",
-  verticalAlign: "top",
+  padding: "16px 16px",
+  verticalAlign: "middle",
   color: "#3f3f46",
   whiteSpace: "nowrap",
 };
@@ -773,4 +891,18 @@ const smallEmpty = {
   fontSize: 12,
   padding: 12,
   textAlign: "center",
+};
+
+const orderLink = {
+  background: "none",
+  border: "none",
+  padding: 0,
+  color: "#18181b",
+  fontSize: 12,
+  fontWeight: 800,
+  cursor: "pointer",
+  textDecoration: "underline",
+  textDecorationColor: "#d4d4d8",
+  textUnderlineOffset: 4,
+  transition: "all 0.2s",
 };

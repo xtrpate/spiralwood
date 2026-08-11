@@ -278,7 +278,17 @@ export default function OrdersPage() {
           </p>
         </div>
 
-        <div style={summaryPill}>{total} total orders</div>
+        <button
+          onClick={load}
+          disabled={loading}
+          style={{
+            ...summaryPill,
+            opacity: loading ? 0.7 : 1,
+            cursor: loading ? "wait" : "pointer",
+          }}
+        >
+          {loading ? "⏳ Refreshing..." : "Refresh"}
+        </button>
       </div>
 
       <div style={statsGrid}>
@@ -723,12 +733,15 @@ const summaryPill = {
   fontWeight: 700,
   color: "#18181b",
   boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+  cursor: "pointer",
+  transition: "all 0.2s",
+  outline: "none",
 };
 
 const statsGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-  gap: 12,
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: 14,
 };
 
 const statCard = {

@@ -225,9 +225,10 @@ const formatRequestNumber = (id) =>
 const getStatusLabel = (status) =>
   STATUS_LABELS[String(status || "").toLowerCase()] || String(status || "—");
 
-function SectionCard({ title, subtitle, children }) {
+function SectionCard({ title, subtitle, children, id }) {
   return (
     <div
+      id={id}
       style={{
         background: "#fff",
         borderRadius: 16,
@@ -235,6 +236,7 @@ function SectionCard({ title, subtitle, children }) {
         padding: "24px",
         marginBottom: 20,
         boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+        scrollMarginTop: "64px",
       }}
     >
       <h3 style={sectionTitleStyle}>
@@ -1214,16 +1216,28 @@ export default function AppointmentScheduling() {
                   maxWidth: 720,
                 }}
               >
-                Review incoming appointment requests, assign indoor staff,
-                track staff acceptance, and monitor confirmed or closed
-                appointments.
+                Review incoming appointment requests, assign indoor staff, track
+                staff acceptance, and monitor confirmed or closed appointments.
               </p>
             </div>
 
             <button
               style={showForm ? btnGhost : btnPrimary}
               onClick={() => {
-                setShowForm((prev) => !prev);
+                setShowForm((prev) => {
+                  const nextState = !prev;
+                  if (nextState) {
+                    setTimeout(() => {
+                      document
+                        .getElementById("manual-appointment-form")
+                        ?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "start",
+                        });
+                    }, 50);
+                  }
+                  return nextState;
+                });
                 setError("");
                 setSuccess("");
               }}
@@ -1624,6 +1638,7 @@ export default function AppointmentScheduling() {
 
       {isAdmin && showForm && (
         <SectionCard
+          id="manual-appointment-form"
           title="Create Manual Appointment Request"
           subtitle="Use this form only for walk-in, phone, or manually encoded requests that still need dispatch handling."
         >
@@ -2198,18 +2213,11 @@ export default function AppointmentScheduling() {
                           )}
                           important
                         />
-                        <IndoorInfo
-                          label="Location"
-                          value={getAddress(a)}
-                        />
-                        <IndoorInfo
-                          label="Contact"
-                          value={getContact(a)}
-                        />
+                        <IndoorInfo label="Location" value={getAddress(a)} />
+                        <IndoorInfo label="Contact" value={getContact(a)} />
                       </div>
 
-                      {scope &&
-                      scope !== "No additional scope details" ? (
+                      {scope && scope !== "No additional scope details" ? (
                         <div style={indoorScopeStyle}>
                           <strong style={{ fontWeight: 650, color: "#303034" }}>
                             Work note:
@@ -2319,18 +2327,11 @@ export default function AppointmentScheduling() {
                           )}
                           important
                         />
-                        <IndoorInfo
-                          label="Location"
-                          value={getAddress(a)}
-                        />
-                        <IndoorInfo
-                          label="Contact"
-                          value={getContact(a)}
-                        />
+                        <IndoorInfo label="Location" value={getAddress(a)} />
+                        <IndoorInfo label="Contact" value={getContact(a)} />
                       </div>
 
-                      {scope &&
-                      scope !== "No additional scope details" ? (
+                      {scope && scope !== "No additional scope details" ? (
                         <div style={indoorScopeStyle}>
                           <strong style={{ fontWeight: 650, color: "#303034" }}>
                             Work note:
@@ -2412,8 +2413,12 @@ export default function AppointmentScheduling() {
                     {[...staffClosedAppointments]
                       .sort(
                         (a, b) =>
-                          new Date(b.updated_at || b.scheduled_date || 0).getTime() -
-                          new Date(a.updated_at || a.scheduled_date || 0).getTime(),
+                          new Date(
+                            b.updated_at || b.scheduled_date || 0,
+                          ).getTime() -
+                          new Date(
+                            a.updated_at || a.scheduled_date || 0,
+                          ).getTime(),
                       )
                       .map((a) => (
                         <tr
@@ -2453,9 +2458,7 @@ export default function AppointmentScheduling() {
                               a.scheduled_date || a.preferred_date,
                             )}
                           </td>
-                          <td style={indoorHistoryTdStyle}>
-                            {getAddress(a)}
-                          </td>
+                          <td style={indoorHistoryTdStyle}>{getAddress(a)}</td>
                           <td style={indoorHistoryTdStyle}>
                             <IndoorStatusBadge status={a.status} />
                           </td>

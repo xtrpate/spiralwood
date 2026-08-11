@@ -112,7 +112,7 @@ export default function WarrantyPage() {
   const filteredRows = useMemo(() => {
     const term = search.trim().toLowerCase();
 
-    return rows.filter((row) => {
+    const filtered = rows.filter((row) => {
       const matchesStatus =
         !statusFilter ||
         String(row.status || "").toLowerCase() === statusFilter;
@@ -133,16 +133,72 @@ export default function WarrantyPage() {
 
       return matchesStatus && matchesSearch;
     });
+
+    return filtered.sort((a, b) => {
+      const getRank = (status) => {
+        switch (String(status || "").toLowerCase()) {
+          case "approved":
+            return 1;
+          case "pending":
+            return 2;
+          case "fulfilled":
+            return 3;
+          case "rejected":
+            return 4;
+          case "cancelled":
+            return 5;
+          default:
+            return 6;
+        }
+      };
+
+      const rankA = getRank(a.status);
+      const rankB = getRank(b.status);
+
+      if (rankA !== rankB) return rankA - rankB;
+
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
   }, [rows, search, statusFilter]);
 
   const stats = useMemo(
     () => [
-      { label: "Total Claims", value: rows.length },
-      { label: "Pending", value: getStatusCount(rows, "pending") },
-      { label: "Approved", value: getStatusCount(rows, "approved") },
-      { label: "Fulfilled", value: getStatusCount(rows, "fulfilled") },
-      { label: "Rejected", value: getStatusCount(rows, "rejected") },
-      { label: "Cancelled", value: getStatusCount(rows, "cancelled") },
+      {
+        label: "Total Claims",
+        value: rows.length,
+        accentColor: "#2563EB",
+        icon: "📋",
+      },
+      {
+        label: "Pending",
+        value: getStatusCount(rows, "pending"),
+        accentColor: "#F59E0B",
+        icon: "⏳",
+      },
+      {
+        label: "Approved",
+        value: getStatusCount(rows, "approved"),
+        accentColor: "#8B5CF6",
+        icon: "✅",
+      },
+      {
+        label: "Fulfilled",
+        value: getStatusCount(rows, "fulfilled"),
+        accentColor: "#22C55E",
+        icon: "📦",
+      },
+      {
+        label: "Rejected",
+        value: getStatusCount(rows, "rejected"),
+        accentColor: "#EF4444",
+        icon: "❌",
+      },
+      {
+        label: "Cancelled",
+        value: getStatusCount(rows, "cancelled"),
+        accentColor: "#71717A",
+        icon: "🚫",
+      },
     ],
     [rows],
   );
@@ -202,14 +258,52 @@ export default function WarrantyPage() {
           </p>
         </div>
 
-        <div style={headerBadge}>{rows.length} total claims</div>
+        <button
+          onClick={loadClaims}
+          disabled={loading}
+          style={{
+            ...headerBadge,
+            opacity: loading ? 0.7 : 1,
+            cursor: loading ? "wait" : "pointer",
+          }}
+        >
+          {loading ? "⏳ Refreshing..." : "Refresh"}
+        </button>
       </div>
 
       <div style={statsGrid}>
         {stats.map((item) => (
-          <div key={item.label} style={statCard}>
-            <div style={statLabel}>{item.label}</div>
-            <div style={statValue}>{item.value}</div>
+          <div
+            key={item.label}
+            style={{
+              ...statCard,
+              borderLeft: `4px solid ${item.accentColor}`,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+            }}
+          >
+            <div>
+              <div style={statLabel}>{item.label}</div>
+              <div style={statValue}>{item.value}</div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 36,
+                height: 36,
+                background: "#f4f4f5",
+                borderRadius: 8,
+                fontSize: 18,
+                flexShrink: 0,
+                marginLeft: 12,
+              }}
+            >
+              {item.icon}
+            </div>
           </div>
         ))}
       </div>
@@ -447,33 +541,15 @@ export default function WarrantyPage() {
   );
 }
 
-function StatusFilterChip({ active, label, onClick, meta }) {
+function StatusFilterChip({ active, label, onClick }) {
   return (
     <button
       onClick={onClick}
       style={{
         ...filterChip,
-        background: active
-          ? meta
-            ? meta.bg === "#ffffff"
-              ? "#18181b"
-              : meta.bg
-            : "#18181b"
-          : meta
-            ? meta.bg === "#ffffff"
-              ? "#f4f4f5"
-              : meta.bg
-            : "#f4f4f5",
-        color: active
-          ? meta && meta.bg !== "#ffffff"
-            ? meta.tone
-            : "#ffffff"
-          : meta
-            ? meta.tone
-            : "#52525b",
-        border: active
-          ? `1px solid ${meta ? (meta.border === "#d4d4d8" ? "#18181b" : meta.border) : "#18181b"}`
-          : `1px solid ${meta ? meta.border : "#e4e4e7"}`,
+        background: active ? "#18181b" : "#f4f4f5",
+        color: active ? "#ffffff" : "#52525b",
+        border: active ? "1px solid #18181b" : "1px solid #e4e4e7",
       }}
     >
       {label}
@@ -840,33 +916,37 @@ const headerBadge = {
   fontWeight: 700,
   color: "#18181b",
   boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+  cursor: "pointer",
+  transition: "all 0.2s",
+  outline: "none",
 };
 
 const statsGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-  gap: 12,
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: 14,
 };
 
 const statCard = {
   background: "#fff",
   border: "1px solid #e4e4e7",
-  borderRadius: 12,
-  padding: "16px 18px",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+  borderRadius: 14,
+  padding: "22px 24px",
+  minHeight: 100,
+  boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
 };
 
 const statLabel = {
-  fontSize: 10,
+  fontSize: 11,
   fontWeight: 800,
   letterSpacing: "1px",
   textTransform: "uppercase",
   color: "#71717a",
-  marginBottom: 8,
+  marginBottom: 12,
 };
 
 const statValue = {
-  fontSize: 24,
+  fontSize: 32,
   fontWeight: 800,
   color: "#0a0a0a",
   lineHeight: 1,
@@ -989,6 +1069,8 @@ const sectionSubtitle = {
 const tableWrap = {
   width: "100%",
   overflowX: "auto",
+  overflowY: "auto",
+  maxHeight: "600px",
 };
 
 const table = {
@@ -1011,6 +1093,10 @@ const th = {
   letterSpacing: "1px",
   color: "#71717a",
   borderBottom: "1px solid #e4e4e7",
+  position: "sticky",
+  top: 0,
+  zIndex: 10,
+  background: "#fafafa",
 };
 
 const td = {
