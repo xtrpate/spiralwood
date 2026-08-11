@@ -6,6 +6,7 @@ import { buildAssetUrl } from "../../services/api";
 import api from "../../services/api";
 import "./customizepage.css";
 import useAuthStore from "../../store/authStore";
+import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import LocationPicker from "../../components/LocationPicker";
 import { getCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
 
@@ -72,6 +73,43 @@ const resolveCartImageSrc = (src) => {
   }
 
   return buildAssetUrl(raw);
+};
+
+const parseCartEditorSnapshot = (value) => {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+const buildLiveCartBlueprintPreview = (item = {}) => {
+  const editorSnapshot = parseCartEditorSnapshot(item?.editor_snapshot);
+  const components = Array.isArray(editorSnapshot?.components)
+    ? editorSnapshot.components
+    : [];
+
+  if (!components.length) return null;
+
+  return {
+    id: item?.blueprint_id || item?.key || null,
+    title:
+      item?.base_blueprint_title ||
+      item?.product_name ||
+      "Custom Furniture",
+    thumbnail_url: null,
+    components,
+    view_3d_data: {
+      components,
+      worldSize: editorSnapshot?.worldSize || null,
+    },
+  };
 };
 
 const getItemDisplayDims = (item = {}) => {
@@ -469,45 +507,38 @@ export default function CustomCheckoutPage() {
             <div className="checkout-items-preview">
               {checkoutItems.map((item) => {
                 const dims = getItemDisplayDims(item);
+                const liveBlueprintPreview =
+                  buildLiveCartBlueprintPreview(item);
 
                 return (
                   <div key={item.key} className="checkout-item-row">
                     <div className="checkout-item-thumb">
-                      {item.image_url || item.preview_image_url ? (
-                        <img
-                          src={resolveCartImageSrc(
-                            item.image_url || item.preview_image_url,
-                          )}
-                          alt={item.base_blueprint_title || item.product_name}
+                      {liveBlueprintPreview ? (
+                        <CustomerBlueprintViewer
+                          blueprint={liveBlueprintPreview}
+                          readOnly
+                          showHumanControls={false}
+                          compact
+                          compactHeight={88}
+                          defaultPreset="isometric"
+                          defaultShowHuman={false}
+                        />
+                      ) : (
+                        <div
                           style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                             width: "100%",
                             height: "100%",
-                            objectFit: "cover",
-                            borderRadius: 8,
+                            fontSize: 11,
+                            color: "#71717a",
+                            background: "#f7f2ea",
                           }}
-                          onError={(e) => {
-                            e.target.style.display = "none";
-                            if (e.target.nextSibling) {
-                              e.target.nextSibling.style.display = "flex";
-                            }
-                          }}
-                        />
-                      ) : null}
-
-                      <div
-                        style={{
-                          display:
-                            item.image_url || item.preview_image_url
-                              ? "none"
-                              : "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          height: "100%",
-                          fontSize: 20,
-                        }}
-                      >
-                        🪵
-                      </div>
+                        >
+                          Design
+                        </div>
+                      )}
                     </div>
 
                     <div className="checkout-item-details">

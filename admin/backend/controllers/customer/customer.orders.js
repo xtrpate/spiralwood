@@ -471,23 +471,47 @@ exports.getOrders = async (req, res) => {
     ];
 
     const blueprintById = new Map();
+    const blueprintComponentsById = new Map();
 
     if (blueprintIds.length > 0) {
       const blueprintPlaceholders = blueprintIds.map(() => "?").join(",");
       const [blueprintRows] = await db.query(
-        `SELECT id, title, thumbnail_url, source, file_url, file_type
+        `SELECT id, title, thumbnail_url, source, file_url, file_type,
+                design_data, view_3d_data
          FROM blueprints
          WHERE id IN (${blueprintPlaceholders})`,
         blueprintIds,
       );
 
+
+      // WISDOM CUSTOMER ORDER COMPONENT PREVIEW FALLBACK V1
+      const [blueprintComponentRows] = await db.query(
+        `SELECT *
+         FROM blueprint_components
+         WHERE blueprint_id IN (${blueprintPlaceholders})
+         ORDER BY blueprint_id ASC, id ASC`,
+        blueprintIds,
+      );
+
+      for (const component of blueprintComponentRows) {
+        const blueprintId = Number(component.blueprint_id);
+        if (!blueprintComponentsById.has(blueprintId)) {
+          blueprintComponentsById.set(blueprintId, []);
+        }
+        blueprintComponentsById.get(blueprintId).push(component);
+      }
+
       for (const row of blueprintRows) {
         blueprintById.set(Number(row.id), {
+          id: row.id,
           title: row.title,
           thumbnail_url: row.thumbnail_url,
           source: row.source,
           file_url: row.file_url,
           file_type: row.file_type,
+          design_data: row.design_data,
+          view_3d_data: row.view_3d_data,
+          components: blueprintComponentsById.get(Number(row.id)) || [],
         });
       }
     }
@@ -537,7 +561,7 @@ exports.getOrderById = async (req, res) => {
     order.blueprint_detail_preview = null;
     if (order.blueprint_id) {
       const [blueprintRows] = await db.query(
-        `SELECT title, thumbnail_url, source, file_url, file_type
+        `SELECT title, thumbnail_url, source, file_url, file_type, design_data, view_3d_data
          FROM blueprints
          WHERE id = ?
          LIMIT 1`,
@@ -545,6 +569,18 @@ exports.getOrderById = async (req, res) => {
       );
 
       order.blueprint_detail_preview = blueprintRows[0] || null;
+
+      // WISDOM CUSTOMER ORDER DETAIL COMPONENT PREVIEW V1
+      if (order.blueprint_detail_preview) {
+        const [detailComponentRows] = await db.query(
+          `SELECT *
+           FROM blueprint_components
+           WHERE blueprint_id = ?
+           ORDER BY id ASC`,
+          [order.blueprint_id],
+        );
+        order.blueprint_detail_preview.components = detailComponentRows;
+      }
     }
     // ── FIXED: Switched to .query ──
     const [items] = await db.query(

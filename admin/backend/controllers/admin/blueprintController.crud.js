@@ -89,6 +89,7 @@ exports.getAll = async (req, res) => {
     const [rows] = await pool.query(
       `SELECT b.id, b.title, b.description, b.stage, b.source,
               b.file_url, b.file_type, b.thumbnail_url,
+              b.design_data, b.view_3d_data,
               b.is_template, b.is_gallery, b.is_deleted, b.archived_at,
               b.created_at, b.updated_at,
               u.name AS creator_name,
@@ -114,6 +115,51 @@ exports.getAll = async (req, res) => {
        LIMIT ? OFFSET ?`,
       [...params, parseInt(limitNum), parseInt(offset)],
     );
+
+
+    // WISDOM SAVED BLUEPRINT COMPONENT PREVIEW FALLBACK V1
+    // Older blueprints may keep their real furniture geometry in
+    // blueprint_components even when design_data/view_3d_data is empty.
+    const previewBlueprintIds = [
+      ...new Set(
+        rows
+          .map((row) => Number(row.id))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    ];
+
+    if (previewBlueprintIds.length > 0) {
+      const previewPlaceholders = previewBlueprintIds.map(() => "?").join(",");
+      const [previewComponentRows] = await pool.query(
+        `SELECT *
+         FROM blueprint_components
+         WHERE blueprint_id IN (${previewPlaceholders})
+         ORDER BY blueprint_id ASC, id ASC`,
+        previewBlueprintIds,
+      );
+
+      const previewComponentsByBlueprintId = new Map();
+
+      for (const component of previewComponentRows) {
+        const blueprintId = Number(component.blueprint_id);
+        if (!previewComponentsByBlueprintId.has(blueprintId)) {
+          previewComponentsByBlueprintId.set(blueprintId, []);
+        }
+        previewComponentsByBlueprintId.get(blueprintId).push(component);
+      }
+
+      for (const row of rows) {
+        const blueprintId = Number(row.id);
+        row.components =
+          Number.isInteger(blueprintId) && blueprintId > 0
+            ? previewComponentsByBlueprintId.get(blueprintId) || []
+            : [];
+      }
+    } else {
+      for (const row of rows) {
+        row.components = [];
+      }
+    }
 
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) AS total

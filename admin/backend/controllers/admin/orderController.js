@@ -629,6 +629,7 @@ exports.getAll = async (req, res) => {
               o.id,
               o.order_number,
               o.order_type,
+              o.blueprint_id,
               o.type AS channel,
               o.status,
               o.total AS total_amount,
@@ -670,7 +671,18 @@ exports.getAll = async (req, res) => {
                   ORDER BY oi2.id ASC
                   LIMIT 1
                 )
-              ) AS thumbnail_url
+              ) AS thumbnail_url,
+              b.title AS blueprint_title,
+              b.design_data AS blueprint_design_data,
+              b.view_3d_data AS blueprint_view_3d_data,
+              (
+                SELECT oi3.customization_json
+                FROM order_items oi3
+                WHERE oi3.order_id = o.id
+                  AND oi3.customization_json IS NOT NULL
+                ORDER BY oi3.id ASC
+                LIMIT 1
+              ) AS blueprint_item_customization_json
        FROM orders o
        LEFT JOIN users u ON u.id = o.customer_id
        LEFT JOIN blueprints b ON b.id = o.blueprint_id
@@ -679,6 +691,49 @@ exports.getAll = async (req, res) => {
        LIMIT ? OFFSET ?`,
       [...params, parseInt(limit), parseInt(offset)],
     );
+
+
+    // WISDOM ADMIN ORDER SAVED COMPONENT PREVIEW FALLBACK V1
+    const orderBlueprintIds = [
+      ...new Set(
+        orders
+          .map((order) => Number(order.blueprint_id))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    ];
+
+    if (orderBlueprintIds.length > 0) {
+      const componentPlaceholders = orderBlueprintIds.map(() => "?").join(",");
+      const [componentRows] = await pool.query(
+        `SELECT *
+         FROM blueprint_components
+         WHERE blueprint_id IN (${componentPlaceholders})
+         ORDER BY blueprint_id ASC, id ASC`,
+        orderBlueprintIds,
+      );
+
+      const componentsByBlueprintId = new Map();
+
+      for (const component of componentRows) {
+        const blueprintId = Number(component.blueprint_id);
+        if (!componentsByBlueprintId.has(blueprintId)) {
+          componentsByBlueprintId.set(blueprintId, []);
+        }
+        componentsByBlueprintId.get(blueprintId).push(component);
+      }
+
+      for (const order of orders) {
+        const blueprintId = Number(order.blueprint_id);
+        order.blueprint_components =
+          Number.isInteger(blueprintId) && blueprintId > 0
+            ? componentsByBlueprintId.get(blueprintId) || []
+            : [];
+      }
+    } else {
+      for (const order of orders) {
+        order.blueprint_components = [];
+      }
+    }
 
     const [[{ total }]] = await pool.query(
       `SELECT COUNT(*) AS total FROM orders o LEFT JOIN users u ON u.id = o.customer_id

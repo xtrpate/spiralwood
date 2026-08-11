@@ -363,7 +363,7 @@ export default function AdminLayout() {
             {open && (
               <span
                 style={{
-                  fontWeight: 800,
+                  fontWeight: 600,
                   fontSize: 16,
                   color: "#ffffff",
                   whiteSpace: "nowrap",

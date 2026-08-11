@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 import { Package2, Search } from "lucide-react";
+import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
 import "./OrdersPage.css";
 
 const getStatusColor = (status) => {
@@ -129,6 +130,19 @@ const normalize = (value) => {
   return String(value).trim().toLowerCase();
 };
 
+const safeParseOrderJson = (value, fallback = {}) => {
+  try {
+    if (!value) return fallback;
+    if (typeof value === "object" && !Array.isArray(value)) return value;
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 const formatMoney = (value) =>
   `₱ ${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
@@ -188,6 +202,144 @@ const OrderThumbnail = ({ src, alt }) => {
       alt={alt || "Order item"}
       onError={() => setFailed(true)}
     />
+  );
+};
+
+// WISDOM PENDING ORDER DRAFT CACHE V1.0.6
+const ORDER_DRAFT_PREVIEW_CACHE_PREFIX =
+  "wisdom:pending-order-draft-preview:v1:";
+
+const readOrderDraftPreviewCache = (orderId) => {
+  if (!orderId || typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(
+      `${ORDER_DRAFT_PREVIEW_CACHE_PREFIX}${orderId}`,
+    );
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeOrderDraftPreviewCache = (orderId, preview) => {
+  if (!orderId || !preview || typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(
+      `${ORDER_DRAFT_PREVIEW_CACHE_PREFIX}${orderId}`,
+      JSON.stringify(preview),
+    );
+  } catch {
+    // Non-critical display cache only.
+  }
+};
+
+const buildOrderDraftPreview = (data, orderId, title) => {
+  const customItems = Array.isArray(data?.custom_request_items)
+    ? data.custom_request_items
+    : Array.isArray(data?.items)
+      ? data.items
+      : [];
+
+  const sourceItem = customItems.find(
+    (item) =>
+      item?.editor_snapshot &&
+      Array.isArray(item.editor_snapshot.components) &&
+      item.editor_snapshot.components.length > 0,
+  );
+
+  if (!sourceItem) return null;
+
+  const editorSnapshot = sourceItem.editor_snapshot;
+  const components = editorSnapshot.components;
+
+  return {
+    id: `order-draft-${orderId}`,
+    title:
+      sourceItem?.requested_base_blueprint_title ||
+      sourceItem?.display_name ||
+      sourceItem?.product_name ||
+      title ||
+      "Custom Furniture",
+    thumbnail_url: null,
+    components,
+    design_data: {
+      components,
+      worldSize: editorSnapshot?.worldSize || null,
+    },
+    view_3d_data: {
+      components,
+      worldSize: editorSnapshot?.worldSize || null,
+    },
+  };
+};
+
+const OrderBlueprintPreview = ({
+  blueprint,
+  title,
+  orderId = null,
+  loadOrderDraft = false,
+}) => {
+  const [resolvedBlueprint, setResolvedBlueprint] = useState(
+    () =>
+      blueprint ||
+      (loadOrderDraft
+        ? readOrderDraftPreviewCache(orderId)
+        : null),
+  );
+
+  useEffect(() => {
+    setResolvedBlueprint(
+      blueprint ||
+        (loadOrderDraft
+          ? readOrderDraftPreviewCache(orderId)
+          : null),
+    );
+  }, [blueprint, loadOrderDraft, orderId]);
+
+  useEffect(() => {
+    if (!loadOrderDraft || !orderId || blueprint) return undefined;
+
+    let active = true;
+
+    api
+      .get(`/orders/${orderId}`)
+      .then(({ data }) => {
+        if (!active) return;
+
+        const draftPreview = buildOrderDraftPreview(data, orderId, title);
+        if (draftPreview) {
+          setResolvedBlueprint(draftPreview);
+          writeOrderDraftPreviewCache(orderId, draftPreview);
+        }
+      })
+      .catch(() => {
+        // Keep a clean blank preview when no live furniture scene exists.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [blueprint, loadOrderDraft, orderId, title]);
+
+  return (
+    <div
+      className="orders-blueprint-preview"
+      aria-label={title || "Furniture preview"}
+    >
+      {resolvedBlueprint ? (
+        <CustomerBlueprintViewer
+          blueprint={resolvedBlueprint}
+          readOnly
+          showHumanControls={false}
+          compact
+          compactHeight={58}
+          defaultPreset="isometric"
+          defaultShowHuman={false}
+        />
+      ) : null}
+    </div>
   );
 };
 
@@ -475,6 +627,58 @@ export default function OrdersPage() {
                     order.item_name ||
                     (customRequest ? "Custom Furniture" : "Order item");
                   const itemCount = Number(order.item_count || 0);
+                  const draftCustomization = customRequest
+                    ? safeParseOrderJson(
+                        order.blueprint_item_customization_json,
+                        {},
+                      )
+                    : {};
+                  const draftEditorSnapshot = safeParseOrderJson(
+                    draftCustomization?.editor_snapshot,
+                    {},
+                  );
+                  const draftComponents = Array.isArray(
+                    draftEditorSnapshot?.components,
+                  )
+                    ? draftEditorSnapshot.components
+                    : [];
+
+                  const linkedBlueprintPreview = order.blueprint_id
+                    ? {
+                        id: order.blueprint_id,
+                        title: order.blueprint_title || itemName,
+                        thumbnail_url: null,
+                        design_data: order.blueprint_design_data || null,
+                        view_3d_data: order.blueprint_view_3d_data || null,
+                        components: Array.isArray(order.blueprint_components)
+                          ? order.blueprint_components
+                          : [],
+                      }
+                    : null;
+
+                  const draftBlueprintPreview =
+                    customRequest && draftComponents.length > 0
+                      ? {
+                          id: `order-draft-${order.id}`,
+                          title:
+                            draftCustomization?.base_blueprint_title ||
+                            itemName ||
+                            "Custom Furniture",
+                          thumbnail_url: null,
+                          components: draftComponents,
+                          design_data: {
+                            components: draftComponents,
+                            worldSize: draftEditorSnapshot?.worldSize || null,
+                          },
+                          view_3d_data: {
+                            components: draftComponents,
+                            worldSize: draftEditorSnapshot?.worldSize || null,
+                          },
+                        }
+                      : null;
+
+                  const blueprintPreview =
+                    linkedBlueprintPreview || draftBlueprintPreview;
 
                   return (
                     <tr
@@ -484,7 +688,19 @@ export default function OrdersPage() {
                     >
                       <td>
                         <div className="orders-product-cell">
-                          <OrderThumbnail src={order.thumbnail_url} alt={itemName} />
+                          {customRequest ? (
+                            <OrderBlueprintPreview
+                              blueprint={blueprintPreview || null}
+                              title={itemName}
+                              orderId={order.id}
+                              loadOrderDraft={!blueprintPreview}
+                            />
+                          ) : (
+                            <OrderThumbnail
+                              src={order.thumbnail_url}
+                              alt={itemName}
+                            />
+                          )}
                           <div className="orders-product-copy">
                             <div className="orders-product-name">{itemName}</div>
                             {itemCount > 0 && (

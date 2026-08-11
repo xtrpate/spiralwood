@@ -32,6 +32,7 @@ import LandingPage from "./LandingPage";
 import "./customerlayout.css";
 import "./profile.css";
 import CustomerNotificationBell from "../../components/CustomerNotificationBell";
+import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 
 const navItems = [
   { to: "/", icon: Home, label: "Home" },
@@ -495,6 +496,44 @@ export default function CustomerLayout() {
     String(item?.cart_type || item?.item_type || "")
       .trim()
       .toLowerCase() === "blueprint";
+
+  const parseCartEditorSnapshot = (value) => {
+    if (!value) return {};
+    if (typeof value === "object" && !Array.isArray(value)) return value;
+
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed
+        : {};
+    } catch {
+      return {};
+    }
+  };
+
+  const buildLiveCartBlueprintPreview = (item = {}) => {
+    const editorSnapshot = parseCartEditorSnapshot(item?.editor_snapshot);
+    const components = Array.isArray(editorSnapshot?.components)
+      ? editorSnapshot.components
+      : [];
+
+    if (!components.length) return null;
+
+    return {
+      id: item?.blueprint_id || item?.key || null,
+      title:
+        item?.base_blueprint_title ||
+        item?.product_name ||
+        "Custom Furniture",
+      thumbnail_url: null,
+      components,
+      view_3d_data: {
+        components,
+        worldSize: editorSnapshot?.worldSize || null,
+      },
+    };
+  };
+
 
   const hasBlueprintItems = cart.some((item) => isBlueprintItem(item));
   const hasStandardItems = cart.some((item) => !isBlueprintItem(item));
@@ -1165,6 +1204,9 @@ export default function CustomerLayout() {
                 const imageSrc = resolveCartImage(
                   item.image_url || item.preview_image_url,
                 );
+                const liveBlueprintPreview = blueprint
+                  ? buildLiveCartBlueprintPreview(item)
+                  : null;
                 const quantity = Number(item.quantity || 1);
                 const lineTotal = Number(item.unit_price || 0) * quantity;
                 const atMaxStock =
@@ -1175,15 +1217,29 @@ export default function CustomerLayout() {
                 return (
                   <div className="cust-mini-cart-item" key={item.key}>
                     <div className="cust-mini-cart-thumb">
-                      {imageSrc ? (
+                      {blueprint ? (
+                        liveBlueprintPreview ? (
+                          <CustomerBlueprintViewer
+                            blueprint={liveBlueprintPreview}
+                            readOnly
+                            showHumanControls={false}
+                            compact
+                            compactHeight={64}
+                            defaultPreset="isometric"
+                            defaultShowHuman={false}
+                          />
+                        ) : (
+                          <div className="cust-mini-cart-thumb-fallback">
+                            Design
+                          </div>
+                        )
+                      ) : imageSrc ? (
                         <img
                           src={imageSrc}
                           alt={item.base_blueprint_title || item.product_name}
                         />
                       ) : (
-                        <div className="cust-mini-cart-thumb-fallback">
-                          {blueprint ? "ðŸ“" : "ðŸªµ"}
-                        </div>
+                        <div className="cust-mini-cart-thumb-fallback">Item</div>
                       )}
                     </div>
 

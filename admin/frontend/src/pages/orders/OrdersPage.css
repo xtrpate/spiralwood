@@ -215,9 +215,11 @@
 
 .orders-admin-v2 .orders-table-scroll {
   width: 100%;
-  height: clamp(600px, calc(100vh - 250px), 700px);
+  height: clamp(360px, calc(100dvh - 300px), 700px);
   max-height: 700px;
   overflow: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
 
 .orders-admin-v2 .orders-table {
@@ -512,3 +514,193 @@
   .orders-admin-v2 .orders-table-scroll { height: auto; max-height: 620px; }
 }
 
+
+/* Real linked furniture preview for blueprint orders */
+.orders-admin-v2 .orders-blueprint-preview {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  overflow: hidden;
+  border: 1px solid #e4e6e8;
+  border-radius: 4px;
+  background: #f7f2ea;
+}
+.orders-admin-v2 .orders-blueprint-preview .cust-viewer-card,
+.orders-admin-v2 .orders-blueprint-preview .cust-viewer-stage,
+.orders-admin-v2 .orders-blueprint-preview .cust-viewer-canvas,
+.orders-admin-v2 .orders-blueprint-preview canvas,
+.orders-admin-v2 .orders-blueprint-preview .cust-viewer-fallback,
+.orders-admin-v2 .orders-blueprint-preview .cust-viewer-fallback-img,
+.orders-admin-v2 .orders-blueprint-preview .cust-viewer-empty {
+  width: 52px !important;
+  height: 52px !important;
+  min-height: 52px !important;
+  border-radius: 0 !important;
+}
+
+
+/* WISDOM ADMIN ORDERS LIVE BLUEPRINT FINAL V1.0.1 */
+.orders-admin-v2 .orders-blueprint-preview {
+  width: 58px !important;
+  height: 58px !important;
+  flex: 0 0 58px !important;
+  overflow: hidden !important;
+  background: #f7f2ea !important;
+  border: 1px solid #e4e6e8 !important;
+  border-radius: 2px !important;
+}
+
+.orders-admin-v2 .orders-blueprint-preview .cust-viewer-card,
+.orders-admin-v2 .orders-blueprint-preview .cust-viewer-stage,
+.orders-admin-v2 .orders-blueprint-preview .cust-viewer-canvas,
+.orders-admin-v2 .orders-blueprint-preview canvas,
+.orders-admin-v2 .orders-blueprint-preview .cust-viewer-fallback,
+.orders-admin-v2 .orders-blueprint-preview .cust-viewer-empty {
+  width: 58px !important;
+  height: 58px !important;
+  min-height: 58px !important;
+  border-radius: 0 !important;
+}
+
+
+/* WISDOM STABLE RUNTIME BLUEPRINT PREVIEW V1.0.5 */
+.orders-admin-v2 .orders-blueprint-preview {
+  width: 58px !important;
+  height: 58px !important;
+  flex: 0 0 58px !important;
+  overflow: hidden !important;
+  background: #f7f2ea !important;
+  border: 1px solid #e4e6e8 !important;
+  border-radius: 2px !important;
+}
+
+.orders-admin-v2 .orders-blueprint-preview .cust-viewer-runtime-snapshot {
+  width: 58px !important;
+  height: 58px !important;
+  object-fit: contain !important;
+  display: block !important;
+}
+
+.orders-admin-v2 .orders-blueprint-preview:empty {
+  background: #f7f2ea !important;
+}
+
+
+/* WISDOM ORDERS VIEWPORT FILL FINAL V1.0.6 */
+@media (min-width: 1024px) {
+  .orders-admin-v2 {
+    height: calc(100dvh - 103px) !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - 103px) !important;
+    overflow: hidden !important;
+  }
+
+  .orders-admin-v2 .orders-table-card {
+    flex: 1 1 0 !important;
+    min-height: 250px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .orders-admin-v2 .orders-section-head {
+    flex: 0 0 auto !important;
+  }
+
+  .orders-admin-v2 .orders-table-scroll {
+    flex: 1 1 auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: auto !important;
+  }
+}
+
+
+/* WISDOM ADMIN ORDERS TABLE HEIGHT FINAL V1 */
+/*
+  Final desktop-only height correction.
+  Goal: keep the existing Orders UI exactly the same while extending only
+  the All Orders table/card down near the Backup item level in the sidebar.
+*/
+@media (min-width: 1024px) {
+  .orders-admin-v2 {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .orders-admin-v2 .orders-table-card {
+    height: calc(100dvh - 405px) !important;
+    min-height: 520px !important;
+    max-height: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .orders-admin-v2 .orders-section-head {
+    flex: 0 0 auto !important;
+  }
+
+  .orders-admin-v2 .orders-table-scroll {
+    flex: 1 1 auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overflow-x: auto !important;
+  }
+
+  .orders-admin-v2 .orders-pagination,
+  .orders-admin-v2 .pagination,
+  .orders-admin-v2 .orders-table-pagination {
+    flex: 0 0 auto !important;
+  }
+}
+
+
+/* WISDOM ADMIN ORDERS RESTORE OLD TABLE SIZE V1 */
+/*
+  SIZE ONLY.
+  Restore the former Orders table/card dimensions and scrolling behavior.
+  This intentionally overrides the later viewport-fill experiments without
+  changing rows, columns, images, typography, filters, or business logic.
+*/
+@media (min-width: 1024px) {
+  .orders-admin-v2 {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .orders-admin-v2 .orders-table-card {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    display: block !important;
+    overflow: hidden !important;
+  }
+
+  .orders-admin-v2 .orders-section-head {
+    display: flex !important;
+  }
+
+  .orders-admin-v2 .orders-table-scroll {
+    width: 100% !important;
+    height: clamp(600px, calc(100vh - 250px), 700px) !important;
+    min-height: 0 !important;
+    max-height: 700px !important;
+    overflow: auto !important;
+    scrollbar-gutter: stable !important;
+  }
+
+  .orders-admin-v2 .orders-pagination,
+  .orders-admin-v2 .pagination,
+  .orders-admin-v2 .orders-table-pagination {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+}
