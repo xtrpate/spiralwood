@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Search, CheckCircle2 } from "lucide-react";
+import { Search, CheckCircle2, Filter, X } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 
 import api, { buildAssetUrl } from "../../services/api";
@@ -131,6 +131,7 @@ export default function ProductCatalog() {
 
   const [toastMsg, setToastMsg] = useState("");
   const [isHiding, setIsHiding] = useState(false);
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
   useEffect(() => {
     if (!toastMsg) return;
@@ -626,6 +627,13 @@ export default function ProductCatalog() {
               )}
             </div>
 
+            <button
+              className="mobile-filter-toggle"
+              onClick={() => setMobileFilterOpen(true)}
+            >
+              <Filter size={20} />
+            </button>
+
             {hasActiveFilters && (
               <button
                 type="button"
@@ -735,6 +743,129 @@ export default function ProductCatalog() {
           </div>
         </div>
       </div>
+
+      {mobileFilterOpen && (
+        <div
+          className="mobile-filter-overlay"
+          onClick={() => setMobileFilterOpen(false)}
+        >
+          <div
+            className="mobile-filter-drawer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mobile-filter-header">
+              <h3>Filters & Sort</h3>
+              <button onClick={() => setMobileFilterOpen(false)}>
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="mobile-filter-body">
+              <div className="filter-section">
+                <div className="sidebar-title">Sort By</div>
+                <select
+                  className="mobile-sort-select"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                >
+                  <option value="name_asc">Name A–Z</option>
+                  <option value="name_desc">Name Z–A</option>
+                  <option value="price_asc">Price: Low to High</option>
+                  <option value="price_desc">Price: High to Low</option>
+                  <option value="newest">Newest First</option>
+                </select>
+              </div>
+
+              <div className="filter-section">
+                <div className="sidebar-title">Refine by Category</div>
+                <div className="filter-options">
+                  <button
+                    type="button"
+                    className={`filter-option ${catFilter === "all" ? "active" : ""}`}
+                    onClick={() => setCatFilter("all")}
+                  >
+                    <span>All Categories</span>
+                    <span className="filter-count">{total}</span>
+                  </button>
+                  {categories.map((cat) => (
+                    <button
+                      type="button"
+                      key={cat.id}
+                      className={`filter-option ${
+                        catFilter === String(cat.id) ? "active" : ""
+                      }`}
+                      onClick={() => setCatFilter(String(cat.id))}
+                    >
+                      <span>{cat.name}</span>
+                      <span className="filter-count">
+                        {Number(cat.product_count || 0)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="filter-section">
+                <div className="sidebar-title">Filter by Price</div>
+                <div className="price-slider-shell">
+                  <div className="price-inputs">
+                    <input
+                      type="number"
+                      min={sliderMin}
+                      max={safeSliderMax}
+                      placeholder="MIN"
+                      value={tempPriceMin}
+                      onChange={(e) => setTempPriceMin(e.target.value)}
+                    />
+                    <span>—</span>
+                    <input
+                      type="number"
+                      min={sliderMin}
+                      max={safeSliderMax}
+                      placeholder="MAX"
+                      value={tempPriceMax}
+                      onChange={(e) => setTempPriceMax(e.target.value)}
+                    />
+                  </div>
+                  <div className="price-filter-actions">
+                    <button
+                      type="button"
+                      className="price-apply-btn"
+                      onClick={applyPriceFilter}
+                      disabled={!sliderMax}
+                    >
+                      Apply Price
+                    </button>
+                    {(priceMin !== "" || priceMax !== "") && (
+                      <button
+                        type="button"
+                        className="price-reset-btn"
+                        onClick={resetPriceFilter}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mobile-filter-footer">
+              {hasActiveFilters && (
+                <button className="clear-filters" onClick={clearFilters}>
+                  Clear All Filters
+                </button>
+              )}
+              <button
+                className="price-apply-btn"
+                onClick={() => setMobileFilterOpen(false)}
+              >
+                Show Results
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selected && (
         <div

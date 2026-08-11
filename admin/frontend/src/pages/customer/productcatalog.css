@@ -1015,14 +1015,55 @@
     width: 100%;
   }
 
+  /* Stop the screen from stretching horizontally */
+  .catalog-layout {
+    padding: 0 18px;
+    width: 100% !important;
+    overflow: hidden !important;
+  }
+
   .product-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+    width: 100% !important;
   }
 
   .product-card {
     width: 100% !important;
     min-width: 0 !important;
     max-width: none !important;
+    overflow: hidden !important; /* Force contents to stay inside the card */
+  }
+
+  .product-img-box {
+    height: 220px !important;
+  }
+
+  .product-card-body {
+    padding: 12px 10px 14px !important;
+  }
+
+  .product-card-name {
+    font-size: 0.9rem !important;
+    margin-bottom: 8px !important;
+  }
+
+  .product-card-price {
+    font-size: 1rem !important;
+  }
+
+  /* Stack the buttons vertically so they don't crush each other */
+  .product-card-actions {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+  }
+
+  .btn-view,
+  .btn-add-cart {
+    min-height: 36px !important;
+    font-size: 0.75rem !important;
+    padding: 0 8px !important;
+    width: 100% !important;
   }
 
   .product-card-desc {
@@ -1702,7 +1743,6 @@
   }
 }
 
-
 /* WISDOM Product Catalog Header + Search Restore Hotfix
    Restore original Product Catalog top section and catalog search box.
    Keep sidebar/filter and modal UI polish. */
@@ -1840,7 +1880,6 @@
   }
 }
 
-
 /* WISDOM Product View Customer Info Hotfix
    Customer-facing product detail only: Category + Availability. */
 .detail-info-table {
@@ -1852,7 +1891,6 @@
     grid-template-columns: 1fr;
   }
 }
-
 
 /* WISDOM Product Catalog Category Active Hotfix
    Subtle selected-category state only. */
@@ -1969,4 +2007,181 @@
 
 .catalog-search input::placeholder {
   font-weight: 400 !important;
+}
+
+/* ==========================================================================
+   PANG MOBILE FILTER
+   ========================================================================== */
+
+.mobile-filter-toggle {
+  display: none; /* Hidden on desktop */
+}
+
+@media (max-width: 780px) {
+  /* Hide desktop sidebar and header sort dropdown */
+  .catalog-sidebar {
+    display: none !important;
+  }
+  .catalog-sort {
+    display: none !important;
+  }
+
+  /* Toolbar Adjustments */
+  .catalog-toolbar {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    width: 100% !important;
+    gap: 10px !important;
+  }
+
+  .catalog-search-shell {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    max-width: none !important; /* Forces it to fill the space */
+  }
+
+  .catalog-search input {
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* New Filter Icon Button */
+  .mobile-filter-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 50px;
+    height: 50px;
+    background: #ffffff;
+    border: 1.5px solid #b5bac0;
+    color: #111111;
+    cursor: pointer;
+    flex-shrink: 0;
+    border-radius: 0;
+  }
+
+  .mobile-filter-toggle:active,
+  .mobile-filter-toggle:focus {
+    border-color: #111111;
+  }
+
+  .catalog-clear-inline {
+    width: 100% !important;
+  }
+
+  /* Mobile Filter Modal */
+  .mobile-filter-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 10000;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .mobile-filter-drawer {
+    width: 85%;
+    max-width: 360px;
+    height: 100vh;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.15);
+    animation: mobileSlideInRight 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .mobile-filter-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e8e8e8;
+  }
+
+  .mobile-filter-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #111111;
+  }
+
+  .mobile-filter-header button {
+    background: transparent;
+    border: none;
+    color: #111111;
+    padding: 0;
+    display: flex;
+    cursor: pointer;
+  }
+
+  .mobile-filter-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  .mobile-filter-body .filter-section {
+    margin: 0;
+    padding: 0;
+    border: none;
+  }
+
+  .mobile-sort-select {
+    width: 100%;
+    height: 48px;
+    padding: 0 40px 0 14px !important;
+    border: 1px solid #c9c9c6;
+    background-color: #f7f7f5;
+    background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23111111%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 16px;
+    color: #111111;
+    font: inherit;
+    font-size: 0.95rem;
+    outline: none;
+    border-radius: 0;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .mobile-sort-select:focus {
+    border-color: #111111;
+    background-color: #ffffff;
+  }
+
+  .mobile-filter-footer {
+    padding: 20px 24px;
+    border-top: 1px solid #e8e8e8;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .mobile-filter-footer .price-apply-btn {
+    width: 100%;
+    min-height: 50px;
+    font-size: 1rem;
+  }
+
+  .mobile-filter-footer .clear-filters {
+    min-height: 50px;
+    font-size: 1rem;
+  }
+}
+
+@keyframes mobileSlideInRight {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(0);
+  }
 }
