@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../../services/api";
+import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
+import { Package2, Search } from "lucide-react";
 import "./OrdersPage.css";
 
 const getStatusColor = (status) => {
@@ -158,6 +159,60 @@ const isBlueprintOrder = (order) =>
 const needsCustomRequestReview = (order) =>
   isBlueprintOrder(order) && normalize(order?.status) === "pending";
 
+const getInitials = (name) => {
+  const words = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!words.length) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return `${words[0][0] || ""}${words[words.length - 1][0] || ""}`.toUpperCase();
+};
+
+const OrderThumbnail = ({ src, alt }) => {
+  const [failed, setFailed] = useState(false);
+  const resolved = buildAssetUrl(src);
+
+  if (!resolved || failed) {
+    return (
+      <div className="orders-product-thumb orders-product-thumb-empty" aria-hidden="true">
+        <Package2 size={18} strokeWidth={1.65} />
+      </div>
+    );
+  }
+
+  return (
+    <img
+      className="orders-product-thumb"
+      src={resolved}
+      alt={alt || "Order item"}
+      onError={() => setFailed(true)}
+    />
+  );
+};
+
+const CustomerAvatar = ({ src, name }) => {
+  const [failed, setFailed] = useState(false);
+  const resolved = buildAssetUrl(src);
+
+  if (!resolved || failed) {
+    return (
+      <div className="orders-customer-avatar orders-customer-avatar-fallback" aria-hidden="true">
+        {getInitials(name)}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      className="orders-customer-avatar"
+      src={resolved}
+      alt={`${name || "Customer"} profile`}
+      onError={() => setFailed(true)}
+    />
+  );
+};
+
 export default function OrdersPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -166,6 +221,7 @@ export default function OrdersPage() {
 
   const [orders, setOrders] = useState([]);
   const [total, setTotal] = useState(0);
+  const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     search: "",
@@ -186,6 +242,7 @@ export default function OrdersPage() {
 
       setOrders(Array.isArray(data?.orders) ? data.orders : []);
       setTotal(Number(data?.total || 0));
+      setSummary(data?.summary || null);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to load orders.");
     } finally {
@@ -220,72 +277,43 @@ export default function OrdersPage() {
     "to",
   ].filter((key) => Boolean(filters[key])).length;
 
-  const stats = useMemo(() => {
-    const pending = orders.filter(
-      (row) => normalize(row.status) === "pending",
-    ).length;
-
-    const paid = orders.filter(
-      (row) =>
-        normalize(row.payment_status_display || row.payment_status) === "paid",
-    ).length;
-
-    const readyForReview = orders.filter((row) => {
-      const status = normalize(row.status);
-      const payment = normalize(
-        row.payment_status_display || row.payment_status,
-      );
-      return status === "pending" || payment === "pending";
-    }).length;
-
-    const online = orders.filter(
-      (row) => normalize(row.channel || row.type) === "online",
-    ).length;
-
-    const customRequests = orders.filter((row) => isBlueprintOrder(row)).length;
-
-    const quoteNeeded = orders.filter((row) =>
-      needsCustomRequestReview(row),
-    ).length;
-
-    return [
+  const stats = useMemo(
+    () => [
       {
         label: "Total Orders",
-        value: total,
-        accent: "#2563EB",
+        value: Number(summary?.total_orders ?? total),
       },
       {
         label: "Needs Review",
-        value: readyForReview,
-        accent: "#F59E0B",
+        value: Number(summary?.needs_review || 0),
       },
       {
         label: "Custom Requests",
-        value: customRequests,
-        accent: "#8B5CF6",
+        value: Number(summary?.custom_requests || 0),
       },
       {
-        label: "Quote Needed",
-        value: quoteNeeded,
-        accent: "#EA580C",
+        label: "Quotation Required",
+        value: Number(summary?.quote_needed || 0),
       },
       {
         label: "Paid Orders",
-        value: paid,
-        accent: "#22C55E",
+        value: Number(summary?.paid_orders || 0),
       },
       {
         label: "Online Orders",
-        value: online,
-        accent: "#0891B2",
+        value: Number(summary?.online_orders || 0),
       },
       {
-        label: "Pending Status",
-        value: pending,
-        accent: "#71717A",
+        label: "Pending Orders",
+        value: Number(summary?.pending_orders || 0),
       },
-    ];
-  }, [orders, total]);
+      {
+        label: "Completed Orders",
+        value: Number(summary?.completed_orders || 0),
+      },
+    ],
+    [summary, total],
+  );
 
   const totalPages = Math.max(1, Math.ceil(total / 20));
 
@@ -293,11 +321,9 @@ export default function OrdersPage() {
     <div style={pageShell} className="orders-admin-v2">
       <div style={headerBlock} className="orders-header">
         <div>
-          <div style={eyebrow}>Sales & Orders</div>
-          <h1 style={pageTitle}>Order Management</h1>
+          <h1 style={pageTitle}>Orders</h1>
           <p style={pageSubtitle}>
-            Keep the list focused on review, payment checks, quotation intake,
-            and the next order step.
+            Manage customer orders, payments, and fulfillment in one place.
           </p>
         </div>
 
@@ -310,7 +336,7 @@ export default function OrdersPage() {
             cursor: loading ? "wait" : "pointer",
           }}
         >
-          {loading ? "⏳ Refreshing..." : "Refresh"}
+          {loading ? "Refreshing..." : "Refresh"}
         </button>
       </div>
 
@@ -327,19 +353,19 @@ export default function OrdersPage() {
         <div className="orders-toolbar-row">
           <label className="orders-filter-field orders-filter-search">
             <span className="orders-filter-label">Search Orders</span>
-            <input
-              placeholder="Search no., customer, phone, or email..."
-              value={filters.search}
-              onChange={(e) => setF("search", e.target.value)}
-            />
+            <div className="orders-search-control">
+              <Search size={16} strokeWidth={1.8} aria-hidden="true" />
+              <input
+                placeholder="Search by order ID, customer, phone, or email"
+                value={filters.search}
+                onChange={(e) => setF("search", e.target.value)}
+              />
+            </div>
           </label>
 
           <label className="orders-filter-field">
             <span className="orders-filter-label">Status</span>
-            <select
-              value={filters.status}
-              onChange={(e) => setF("status", e.target.value)}
-            >
+            <select value={filters.status} onChange={(e) => setF("status", e.target.value)}>
               <option value="">All Statuses</option>
               {STATUS_ORDER.map((statusKey) => (
                 <option key={statusKey} value={statusKey}>
@@ -351,49 +377,35 @@ export default function OrdersPage() {
 
           <label className="orders-filter-field">
             <span className="orders-filter-label">Channel</span>
-            <select
-              value={filters.channel}
-              onChange={(e) => setF("channel", e.target.value)}
-            >
+            <select value={filters.channel} onChange={(e) => setF("channel", e.target.value)}>
               <option value="">All Channels</option>
               <option value="online">Online</option>
-              <option value="walkin">Walk-in (POS)</option>
+              <option value="walkin">Walk-in</option>
             </select>
           </label>
 
           <label className="orders-filter-field">
             <span className="orders-filter-label">Type</span>
-            <select
-              value={filters.orderType}
-              onChange={(e) => setF("orderType", e.target.value)}
-            >
+            <select value={filters.orderType} onChange={(e) => setF("orderType", e.target.value)}>
               <option value="">All Types</option>
               <option value="standard">Standard</option>
               <option value="blueprint">Blueprint</option>
             </select>
           </label>
 
-          <label className="orders-filter-field">
-            <span className="orders-filter-label">From Date</span>
-            <input
-              type="date"
-              value={filters.from}
-              onChange={(e) => setF("from", e.target.value)}
-            />
+          <label className="orders-filter-field orders-filter-date">
+            <span className="orders-filter-label">From</span>
+            <input type="date" value={filters.from} onChange={(e) => setF("from", e.target.value)} />
           </label>
 
-          <label className="orders-filter-field">
-            <span className="orders-filter-label">To Date</span>
-            <input
-              type="date"
-              value={filters.to}
-              onChange={(e) => setF("to", e.target.value)}
-            />
+          <label className="orders-filter-field orders-filter-date">
+            <span className="orders-filter-label">To</span>
+            <input type="date" value={filters.to} onChange={(e) => setF("to", e.target.value)} />
           </label>
 
           {activeFilterCount > 0 && (
-            <button onClick={resetFilters} className="orders-filter-reset">
-              Reset Filters
+            <button type="button" onClick={resetFilters} className="orders-filter-reset">
+              Reset
             </button>
           )}
         </div>
@@ -401,56 +413,39 @@ export default function OrdersPage() {
 
       <div className="orders-table-card">
         <div className="orders-section-head">
-          <h2 style={tableTitle}>Orders Queue</h2>
-          <p style={tableSubtitle}>
-            Review, process payments, and manage fulfillment.
-          </p>
+          <div>
+            <h2>All Orders</h2>
+            <p>Review order details, payment status, and required actions.</p>
+          </div>
+          <div className="orders-result-count">{total.toLocaleString()} orders</div>
         </div>
 
-        <div
-          style={{ overflowX: "auto", overflowY: "auto", maxHeight: "600px" }}
-        >
+        <div className="orders-table-scroll">
           <table className="orders-table">
             <thead>
               <tr>
-                {[
-                  "Order",
-                  "Customer",
-                  "Type",
-                  "Channel",
-                  "Amount",
-                  "Payment",
-                  "Status",
-                  "Date",
-                  "Action",
-                ].map((label) => (
-                  <th
-                    key={label}
-                    style={{
-                      textAlign: label === "Amount" ? "right" : "left",
-                    }}
-                  >
-                    {label}
-                  </th>
-                ))}
+                <th>Product</th>
+                <th>Customer</th>
+                <th>Order ID</th>
+                <th className="orders-align-right">Amount</th>
+                <th>Payment</th>
+                <th>Status</th>
+                <th>Action</th>
               </tr>
             </thead>
 
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={9} style={emptyCell}>
-                    Loading orders...
-                  </td>
+                  <td colSpan={7} className="orders-empty-cell">Loading orders...</td>
                 </tr>
               ) : orders.length === 0 ? (
                 <tr>
-                  <td colSpan={9} style={emptyCell}>
-                    <div style={emptyState}>
-                      <div style={emptyStateTitle}>No orders found</div>
-                      <div style={emptyStateText}>
-                        Try clearing the filters or check if there are new
-                        orders waiting in another status.
+                  <td colSpan={7} className="orders-empty-cell">
+                    <div className="orders-empty-state">
+                      <div className="orders-empty-title">No orders found</div>
+                      <div className="orders-empty-text">
+                        Try changing the search or filters to find another order.
                       </div>
                     </div>
                   </td>
@@ -460,113 +455,77 @@ export default function OrdersPage() {
                   const normalizedStatus = normalize(order.status);
                   const statusTone =
                     STATUS_STYLE[normalizedStatus] || STATUS_STYLE.pending;
-
-                  const paymentTone = PAYMENT_STYLE[
-                    normalize(
-                      order.payment_status_display || order.payment_status,
-                    )
-                  ] || {
-                    label: "Unknown",
-                  };
-
-                  const channelMeta = getChannelMeta(
-                    order.channel || order.type,
-                  );
-
+                  const paymentTone =
+                    PAYMENT_STYLE[
+                      normalize(order.payment_status_display || order.payment_status)
+                    ] || { label: "Unknown" };
+                  const channelMeta = getChannelMeta(order.channel || order.type);
                   const customRequest = isBlueprintOrder(order);
                   const quoteNeeded = needsCustomRequestReview(order);
-                  const actionLabel = quoteNeeded
-                    ? "Review Request"
-                    : normalizedStatus === "pending"
-                      ? "Review"
-                      : "View";
+                  const actionLabel =
+                    quoteNeeded || normalizedStatus === "pending" ? "Review" : "Details";
+                  const customerName =
+                    order.customer_name || order.walkin_customer_name || "Walk-in customer";
+                  const customerContact =
+                    order.customer_phone ||
+                    order.walkin_customer_phone ||
+                    order.customer_email ||
+                    "No contact details";
+                  const itemName =
+                    order.item_name ||
+                    (customRequest ? "Custom Furniture" : "Order item");
+                  const itemCount = Number(order.item_count || 0);
 
                   return (
                     <tr
                       key={order.id}
                       className="orders-body-row"
-                      style={{ cursor: "pointer" }}
                       onClick={() => navigate(`/admin/orders/${order.id}`)}
                     >
                       <td>
-                        <div
-                          style={{
-                            fontWeight: 800,
-                            color: "#18181b",
-                            marginBottom: 4,
-                          }}
-                        >
-                          {order.order_number ||
-                            `#${String(order.id).padStart(5, "0")}`}
-                        </div>
-
-                        <div style={{ fontSize: 11, color: "#6b7280" }}>
-                          {customRequest
-                            ? "Blueprint Request"
-                            : "Standard Order"}
-                          {" • "}
-                          {order.item_count || 0}{" "}
-                          {Number(order.item_count) === 1 ? "Item" : "Items"}
+                        <div className="orders-product-cell">
+                          <OrderThumbnail src={order.thumbnail_url} alt={itemName} />
+                          <div className="orders-product-copy">
+                            <div className="orders-product-name">{itemName}</div>
+                            {itemCount > 0 && (
+                              <div className="orders-product-meta">
+                                {itemCount} {itemCount === 1 ? "item" : "items"}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </td>
 
                       <td>
-                        <div style={primaryText}>
-                          {order.customer_name ||
-                            order.walkin_customer_name ||
-                            "Unknown customer"}
-                        </div>
-                        <div style={secondaryText}>
-                          {order.customer_phone ? (
-                            <>📞 {order.customer_phone}</>
-                          ) : order.walkin_customer_phone ? (
-                            <>📞 {order.walkin_customer_phone}</>
-                          ) : order.customer_email ? (
-                            <>✉ {order.customer_email}</>
-                          ) : (
-                            "No contact details"
-                          )}
+                        <div className="orders-customer-cell">
+                          <CustomerAvatar
+                            src={order.customer_profile_photo}
+                            name={customerName}
+                          />
+                          <div className="orders-customer-copy">
+                            <div className="orders-customer-name">{customerName}</div>
+                            <div className="orders-customer-contact">{customerContact}</div>
+                          </div>
                         </div>
                       </td>
 
                       <td>
-                        <div
-                          style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
-                        >
-                          <span className="orders-neutral-tag">
-                            {customRequest ? "Blueprint" : "Standard"}
-                          </span>
-                          {quoteNeeded && (
-                            <span className="orders-quote-tag">
-                              Quote Needed
-                            </span>
-                          )}
+                        <div className="orders-order-number">
+                          {order.order_number || `#${String(order.id).padStart(5, "0")}`}
+                        </div>
+                        <div className="orders-order-meta">
+                          {formatDate(order.created_at)} · {channelMeta.label} · {customRequest ? "Blueprint" : "Standard"}
                         </div>
                       </td>
 
-                      <td>
-                        <span className="orders-neutral-tag">
-                          {channelMeta.label}
-                        </span>
-                      </td>
-
-                      <td style={{ textAlign: "right" }}>
-                        <div
-                          style={{
-                            fontWeight: 800,
-                            fontSize: 13,
-                            color: "#111827",
-                          }}
-                        >
-                          {formatMoney(order.total_amount)}
-                        </div>
+                      <td className="orders-align-right">
+                        <div className="orders-amount">{formatMoney(order.total_amount)}</div>
                       </td>
 
                       <td>
                         <span
                           className={`orders-status orders-status-${getPaymentColor(
-                            order.payment_status_display ||
-                              order.payment_status,
+                            order.payment_status_display || order.payment_status,
                           )}`}
                         >
                           {paymentTone.label || "Unknown"}
@@ -574,30 +533,25 @@ export default function OrdersPage() {
                       </td>
 
                       <td>
-                        <div
-                          style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
+                        <span
+                          className={`orders-status orders-status-${getStatusColor(order.status)}`}
                         >
-                          <span
-                            className={`orders-status orders-status-${getStatusColor(
-                              order.status,
-                            )}`}
-                          >
-                            {quoteNeeded ? "Pending Review" : statusTone.label}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td style={{ color: "#71717a", fontSize: 12 }}>
-                        {formatDate(order.created_at)}
+                          {quoteNeeded ? "Pending Review" : statusTone.label}
+                        </span>
                       </td>
 
                       <td>
                         <button
-                          style={
+                          type="button"
+                          className={`orders-action-button ${
                             quoteNeeded || normalizedStatus === "pending"
-                              ? btnPrimary
-                              : btnView
-                          }
+                              ? "orders-action-primary"
+                              : "orders-action-secondary"
+                          }`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            navigate(`/admin/orders/${order.id}`);
+                          }}
                         >
                           {actionLabel}
                         </button>
@@ -611,35 +565,27 @@ export default function OrdersPage() {
         </div>
 
         {total > 20 && (
-          <div style={paginationBar}>
+          <div className="orders-pagination">
             <button
+              type="button"
               disabled={filters.page <= 1}
               onClick={() =>
                 setFilters((prev) => ({ ...prev, page: prev.page - 1 }))
               }
-              style={{
-                ...btnGhost,
-                opacity: filters.page <= 1 ? 0.55 : 1,
-                cursor: filters.page <= 1 ? "not-allowed" : "pointer",
-              }}
             >
               Previous
             </button>
 
-            <span style={paginationText}>
-              Page {filters.page} of {totalPages}
-            </span>
+            <div className="orders-page-position">
+              Page <strong>{filters.page}</strong> of {totalPages}
+            </div>
 
             <button
+              type="button"
               disabled={filters.page >= totalPages}
               onClick={() =>
                 setFilters((prev) => ({ ...prev, page: prev.page + 1 }))
               }
-              style={{
-                ...btnGhost,
-                opacity: filters.page >= totalPages ? 0.55 : 1,
-                cursor: filters.page >= totalPages ? "not-allowed" : "pointer",
-              }}
             >
               Next
             </button>
