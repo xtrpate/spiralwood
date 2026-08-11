@@ -332,16 +332,22 @@ export default function CustomerLayout() {
       : "";
 
   // WISDOM OFFICIAL PICKUP LOCATION V1
+  // WISDOM CUSTOMER SITE SETTINGS WIRING V1.0.3
   const dynamicAddress =
+    String(siteSettings?.display?.business_address || "").trim() ||
     "8 Laot Street, Near Gavino, Prenza I, Marilao, 3019 Bulacan";
   const dynamicName =
     siteSettings?.display?.site_name || "Spiral Wood Services";
+  const dynamicSiteLogo = siteSettings?.display?.site_logo
+    ? buildAssetUrl(siteSettings.display.site_logo)
+    : logoImg;
 
   const footerInfo = {
     address: dynamicAddress,
     phone: siteSettings?.display?.business_phone || "09530695310",
-    mapUrl:
-      "https://www.google.com/maps/place/Spiral+Wood+Services+-+OPC/@14.7888541,120.9870085,776m/data=!3m1!1e3!4m6!3m5!1s0x3397addb7edab011:0x678a2a229260ef47!8m2!3d14.7888214!4d120.9863363!16s%2Fg%2F11p_84h115?entry=ttu&g_ep=EgoyMDI2MDgwNS4xIKXMDSoASAFQAw%3D%3D",
+    mapUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      dynamicAddress
+    )}`,
     email: siteSettings?.display?.business_email || "spiralwood@gmail.com",
     facebookName: dynamicName,
     facebookUrl:
@@ -504,15 +510,48 @@ export default function CustomerLayout() {
             gap: compact ? "16px" : "5px",
           }}
         >
-          <img
-            src={logoImg}
-            alt="Spiral Wood Services"
-            style={{
-              width: compact ? "38px" : "48px",
-              height: compact ? "38px" : "48px",
-              objectFit: "contain",
-            }}
-          />
+          {siteSettings?.display?.site_logo ? (
+            <span
+              // WISDOM CUSTOMER HEADER FOOTER LOGO CLEAN CROP V1
+              // Real IMG crop preserves smooth antialiasing. The uploaded logo
+              // has transparent canvas; these dimensions map its circular S
+              // back to the old header proportion without changing the navbar.
+              style={{
+                width: compact ? "38px" : "48px",
+                height: compact ? "38px" : "48px",
+                flex: "0 0 auto",
+                display: "block",
+                position: "relative",
+                overflow: "hidden",
+                background: "transparent",
+              }}
+            >
+              <img
+                src={dynamicSiteLogo}
+                alt="Spiral Wood Services"
+                style={{
+                  width: compact ? "51px" : "65px",
+                  height: "auto",
+                  maxWidth: "none",
+                  position: "absolute",
+                  left: "50%",
+                  top: "50%",
+                  transform: "translate(-50%, -43.5%)",
+                  display: "block",
+                }}
+              />
+            </span>
+          ) : (
+            <img
+              src={dynamicSiteLogo}
+              alt="Spiral Wood Services"
+              style={{
+                width: compact ? "38px" : "48px",
+                height: compact ? "38px" : "48px",
+                objectFit: "contain",
+              }}
+            />
+          )}
           <div
             className="cust-brand-copy"
             style={{ alignItems: "center", margin: 0 }}
@@ -564,11 +603,43 @@ export default function CustomerLayout() {
     return (
       <div className="cust-brand-block compact footer">
         <div className="cust-brand-badge footer">
+          {siteSettings?.display?.site_logo ? (
+          <span
+            // Footer keeps the old larger S proportion but intentionally has
+            // no white background, border, or panel.
+            style={{
+              width: "42px",
+              height: "42px",
+              flex: "0 0 auto",
+              display: "block",
+              position: "relative",
+              overflow: "hidden",
+              background: "transparent",
+              border: "none",
+            }}
+          >
+            <img
+              src={dynamicSiteLogo}
+              alt="Spiral Wood Services logo"
+              style={{
+                width: "57px",
+                height: "auto",
+                maxWidth: "none",
+                position: "absolute",
+                left: "50%",
+                top: "50%",
+                transform: "translate(-50%, -43.5%)",
+                display: "block",
+              }}
+            />
+          </span>
+        ) : (
           <img
-            src={logoImg}
+            src={dynamicSiteLogo}
             alt="Spiral Wood Services logo"
             className="cust-brand-logo"
           />
+        )}
         </div>
 
         <div className="cust-brand-copy">
@@ -1043,14 +1114,16 @@ export default function CustomerLayout() {
             </NavLink>
           )}
 
-          <NavLink
-            to="/contact"
-            className="cust-side-footer-link"
-            onClick={() => setMenuOpen(false)}
-          >
-            <Mail size={16} />
-            <span>Contact Us</span>
-          </NavLink>
+          {isTrue(siteSettings?.display?.show_contact_section) && (
+            <NavLink
+              to="/contact"
+              className="cust-side-footer-link"
+              onClick={() => setMenuOpen(false)}
+            >
+              <Mail size={16} />
+              <span>Contact Us</span>
+            </NavLink>
+          )}
         </div>
       </aside>
 

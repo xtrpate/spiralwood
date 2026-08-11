@@ -1,4 +1,6 @@
 const multer = require("multer");
+const fs = require("fs");
+const path = require("path");
 const { v2: cloudinary } = require("cloudinary");
 const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
@@ -85,7 +87,70 @@ exports.uploadDeliveryReceipt = multer({
   limits: { fileSize: MAX_MB * 1024 * 1024 },
 }).single("receipt");
 
-exports.uploadSiteLogo = multer({
-  storage: cloudStorage("settings", ALLOWED_IMAGES),
-  limits: { fileSize: 2 * 1024 * 1024 },
+// WISDOM SITE LOGO LOCAL DEV STORAGE V1
+// Local development should not depend on an external Cloudinary request just
+// to update the customer-facing site logo. Production keeps Cloudinary so the
+// deployed logo remains durable across server restarts/deploys.
+const configuredUploadDir =
+  process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
+const siteUploadRoot = path.isAbsolute(configuredUploadDir)
+  ? configuredUploadDir
+  : path.join(__dirname, "..", configuredUploadDir);
+const siteLogoLocalDir = path.join(siteUploadRoot, "settings");
+
+fs.mkdirSync(siteLogoLocalDir, { recursive: true });
+
+const siteLogoFileFilter = (req, file, cb) => {
+  const ext = path.extname(file.originalname || "").toLowerCase().replace(".", "");
+  const mime = String(file.mimetype || "").toLowerCase();
+  const allowedMime = ["image/jpeg", "image/png", "image/webp"];
+
+  if (ALLOWED_IMAGES.includes(ext) && allowedMime.includes(mime)) {
+    cb(null, true);
+    return;
+  }
+
+  const error = new Error("Site logo must be a JPG, JPEG, PNG, or WEBP image.");
+  error.status = 400;
+  cb(error);
+};
+
+const siteLogoLocalStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, siteLogoLocalDir),
+  filename: (req, file, cb) => {
+    const rawExt = path.extname(file.originalname || "").toLowerCase();
+    const ext = ALLOWED_IMAGES.includes(rawExt.replace(".", "")) ? rawExt : ".png";
+    cb(
+      null,
+      `site-logo-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`,
+    );
+  },
+});
+
+const useLocalSiteLogoStorage = process.env.NODE_ENV !== "production";
+
+const siteLogoUpload = multer({
+  storage: useLocalSiteLogoStorage
+    ? siteLogoLocalStorage
+    : cloudStorage("settings", ALLOWED_IMAGES),
+  limits: { fileSize: // WISDOM SITE LOGO 5MB LIMIT V1
+    5 * 1024 * 1024 },
+  fileFilter: siteLogoFileFilter,
 }).single("site_logo");
+
+exports.uploadSiteLogo = (req, res, next) => {
+  siteLogoUpload(req, res, (err) => {
+    if (err) {
+      next(err);
+      return;
+    }
+
+    if (req.file && useLocalSiteLogoStorage) {
+      // websiteController stores req.file.path. Use a public URL path instead
+      // of the machine's absolute Windows/Linux filesystem path.
+      req.file.path = `/uploads/settings/${req.file.filename}`;
+    }
+
+    next();
+  });
+};

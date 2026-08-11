@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import api from "../../services/api";
 import toast from "react-hot-toast";
 import useAuthStore from "../../store/authStore";
+import { Users, ShieldCheck, BriefcaseBusiness, CircleCheck } from "lucide-react";
 
 const ROLE_STYLE = {
   admin: {
@@ -15,7 +16,7 @@ const ROLE_STYLE = {
     bg: "#f4f4f5",
     color: "#18181b",
     border: "#e4e4e7",
-    label: "Staff / POS",
+    label: "Staff",
   },
 };
 
@@ -25,21 +26,21 @@ const STAFF_TYPE_STYLE = {
     color: "#18181b",
     border: "#e4e4e7",
     label: "Cashier",
-    desc: "Handles POS and Walk-in orders",
+    desc: "Sales and payments",
   },
   indoor: {
     bg: "#ffffff",
     color: "#18181b",
     border: "#e4e4e7",
-    label: "Indoor Staff",
-    desc: "Project tasks / appointments",
+    label: "Furniture Specialist",
+    desc: "Production and appointments",
   },
   delivery_rider: {
     bg: "#ffffff",
     color: "#18181b",
     border: "#e4e4e7",
-    label: "Delivery Rider",
-    desc: "Delivery assignment only",
+    label: "Delivery Staff",
+    desc: "Assigned deliveries",
   },
 };
 
@@ -185,7 +186,126 @@ export default function UsersPage() {
   const staff = users.filter((u) => u.role === "staff");
 
   return (
-    <div>
+    <div className="wisdom-admin-users-v102">
+      {/* WISDOM ADMIN USER MANAGEMENT UI V1.0.3 */}
+      <style>{`
+        .wisdom-admin-users-v102 {
+          --um-accent: #4f46e5;
+          --um-accent-soft: #eef2ff;
+          --um-border: #e1e5eb;
+          --um-soft: #f8fafc;
+          --um-muted: #667085;
+        }
+
+        .wisdom-admin-users-v102 button,
+        .wisdom-admin-users-v102 input,
+        .wisdom-admin-users-v102 select {
+          font-family: inherit;
+        }
+
+        .wisdom-admin-users-v102 button {
+          border-radius: 8px !important;
+          min-height: 36px;
+          font-weight: 650 !important;
+          transition:
+            transform 150ms ease,
+            box-shadow 150ms ease,
+            border-color 150ms ease,
+            background 150ms ease;
+        }
+
+        .wisdom-admin-users-v102 button:hover:not(:disabled) {
+          transform: translateY(-1px);
+        }
+
+        .wisdom-admin-users-v102 input,
+        .wisdom-admin-users-v102 select {
+          border-radius: 8px !important;
+          border-color: #d7dce3 !important;
+          background: #ffffff !important;
+        }
+
+        .wisdom-admin-users-v102 input:focus,
+        .wisdom-admin-users-v102 select:focus {
+          outline: none !important;
+          border-color: var(--um-accent) !important;
+          box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12) !important;
+        }
+
+        .wisdom-admin-users-v102 div[style*="border-left"] {
+          border: 1px solid var(--um-border) !important;
+          border-top: 3px solid currentColor !important;
+          border-radius: 10px !important;
+          box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05) !important;
+          background: #ffffff !important;
+        }
+
+        .wisdom-admin-users-v102 table {
+          border-collapse: separate !important;
+          border-spacing: 0 !important;
+        }
+
+        .wisdom-admin-users-v102 thead tr {
+          background: var(--um-soft) !important;
+        }
+
+        .wisdom-admin-users-v102 th {
+          padding: 11px 14px !important;
+          color: var(--um-muted) !important;
+          font-size: 10px !important;
+          font-weight: 700 !important;
+          letter-spacing: 0.075em !important;
+          text-transform: uppercase !important;
+          border-bottom: 1px solid var(--um-border) !important;
+        }
+
+        .wisdom-admin-users-v102 td {
+          padding: 14px !important;
+          border-bottom: 1px solid #edf0f3 !important;
+          vertical-align: middle !important;
+        }
+
+        .wisdom-admin-users-v102 tbody tr {
+          transition: background 140ms ease;
+        }
+
+        .wisdom-admin-users-v102 tbody tr:hover {
+          background: #fafbff !important;
+        }
+
+        .wisdom-admin-users-v102 label:has(input[type="radio"]) {
+          border-radius: 10px !important;
+          border-color: #dfe3e8 !important;
+          background: #ffffff !important;
+        }
+
+        .wisdom-admin-users-v102 label:has(input[type="radio"]:checked) {
+          border-color: var(--um-accent) !important;
+          background: var(--um-accent-soft) !important;
+          box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.10) !important;
+        }
+
+        .wisdom-admin-users-v102 input[type="radio"],
+        .wisdom-admin-users-v102 input[type="checkbox"] {
+          accent-color: var(--um-accent) !important;
+        }
+
+        .wisdom-admin-users-v102 div[style*="position: fixed"][style*="inset"] > div {
+          border-radius: 14px !important;
+          border: 1px solid #dfe3e8 !important;
+          box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22) !important;
+        }
+
+        .wisdom-admin-users-v102 span[style*="border-radius"] {
+          border-radius: 999px !important;
+        }
+
+        @media (max-width: 900px) {
+          .wisdom-admin-users-v102 table {
+            min-width: 900px;
+          }
+        }
+`}</style>
       <div
         style={{
           display: "flex",
@@ -195,10 +315,9 @@ export default function UsersPage() {
         }}
       >
         <div>
-          <h1 style={pageTitle}>User & Role Management</h1>
+          <h1 style={pageTitle}>User Management</h1>
           <p style={{ fontSize: 13, color: "#52525b", margin: "4px 0 0" }}>
-            Manage administrator and staff accounts. Only admins can access this
-            panel.
+            Manage administrator and staff accounts, roles, and account status.
           </p>
         </div>
 
@@ -208,7 +327,7 @@ export default function UsersPage() {
           onMouseEnter={(e) => (e.currentTarget.style.background = "#3f3f46")}
           onMouseLeave={(e) => (e.currentTarget.style.background = "#18181b")}
         >
-          + Add User
+          Add User
         </button>
       </div>
 
@@ -216,28 +335,28 @@ export default function UsersPage() {
         style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}
       >
         <SummaryCard
-          label="Total Users"
+          label="Total Accounts"
           value={users.length}
-          color="#18181b"
-          icon="👥"
+          color="#4f46e5"
+          icon={<Users size={20} strokeWidth={1.9} />}
         />
         <SummaryCard
           label="Administrators"
           value={admins.length}
-          color="#18181b"
-          icon="🔑"
+          color="#7c3aed"
+          icon={<ShieldCheck size={20} strokeWidth={1.9} />}
         />
         <SummaryCard
-          label="Staff / POS"
+          label="Staff Members"
           value={staff.length}
-          color="#18181b"
-          icon="🏪"
+          color="#0284c7"
+          icon={<BriefcaseBusiness size={20} strokeWidth={1.9} />}
         />
         <SummaryCard
-          label="Active"
+          label="Active Accounts"
           value={users.filter((u) => u.is_active).length}
-          color="#18181b"
-          icon="✅"
+          color="#16a34a"
+          icon={<CircleCheck size={20} strokeWidth={1.9} />}
         />
       </div>
 
@@ -254,7 +373,7 @@ export default function UsersPage() {
       <div style={{ marginTop: 24 }} />
 
       <UserTable
-        title="Staff / POS Operators"
+        title="Staff Accounts"
         users={staff}
         loading={loading}
         me={me}
@@ -275,7 +394,7 @@ export default function UsersPage() {
                 letterSpacing: "-0.01em",
               }}
             >
-              {modal === "add" ? "Add New User" : `Edit User — ${target?.name}`}
+              {modal === "add" ? "Add User" : `Edit User — ${target?.name}`}
             </h3>
 
             <form onSubmit={handleSave}>
@@ -301,7 +420,7 @@ export default function UsersPage() {
               </Field>
 
               {modal === "add" && (
-                <Field label="Password *">
+                <Field label="Temporary Password *">
                   <input
                     required
                     type="password"
@@ -323,7 +442,7 @@ export default function UsersPage() {
                 />
               </Field>
 
-              <Field label="Role *">
+              <Field label="Account Type *">
                 <div style={{ display: "flex", gap: 12 }}>
                   {Object.entries(ROLE_STYLE).map(([key, rs]) => {
                     const isSelected = form.role === key;
@@ -375,7 +494,7 @@ export default function UsersPage() {
                           >
                             {key === "admin"
                               ? "Full system access"
-                              : "Assigned internal operations only"}
+                              : "Access based on assigned role"}
                           </div>
                         </div>
                       </label>
@@ -385,7 +504,7 @@ export default function UsersPage() {
               </Field>
 
               {form.role === "staff" && (
-                <Field label="Staff Type *">
+                <Field label="Staff Role *">
                   <div
                     style={{
                       display: "grid",
@@ -511,7 +630,7 @@ export default function UsersPage() {
                 color: "#0a0a0a",
               }}
             >
-              🔒 Reset Password
+              Reset Password
             </h3>
             <p style={{ fontSize: 13, color: "#52525b", margin: "0 0 24px" }}>
               Resetting password for <strong>{target?.name}</strong>
@@ -788,11 +907,11 @@ function UserTable({
                           Edit
                         </button>
                         <button onClick={() => onPassword(u)} style={btnPw}>
-                          🔒 Password
+                          Reset Password
                         </button>
                         {!isMe && (
                           <button onClick={() => onDelete(u)} style={btnDel}>
-                            🗑
+                            Delete
                           </button>
                         )}
                       </div>
