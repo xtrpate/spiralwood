@@ -1,0 +1,233 @@
+/* ==========================================================================
+   WISDOM ADMIN SALES REPORT UI POLISH
+   Professional, compact financial-report presentation.
+   ========================================================================== */
+
+.sales-admin-v2 {
+  width: min(100%, 1460px);
+  max-width: 1460px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  gap: 14px !important;
+  color: #18181b;
+}
+
+.sales-admin-v2 * {
+  box-sizing: border-box;
+}
+
+.sales-admin-v2 .sales-header {
+  align-items: flex-start !important;
+  margin-bottom: 2px;
+}
+
+/* SUMMARY CARDS */
+.sales-admin-v2 .sales-summary-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  width: 100% !important;
+  max-width: none !important;
+}
+
+.sales-admin-v2 .sales-summary-card {
+  position: relative;
+  min-height: 82px;
+  padding: 14px 15px !important;
+  border: 1px solid #dde1e6 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  background: #ffffff !important;
+}
+
+/* Neutral text for summary cards */
+.sales-admin-v2 .sales-summary-card > div:last-child {
+  color: #111214 !important;
+}
+
+/* FILTER TOOLBAR */
+.sales-admin-v2 .sales-toolbar {
+  padding: 12px 14px !important;
+  border: 1px solid #dde1e6 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  background: #fafafa !important;
+  margin-bottom: 18px !important;
+  width: 100% !important;
+  max-width: none !important;
+}
+
+.sales-admin-v2 .sales-toolbar-row {
+  display: flex !important;
+  align-items: end !important;
+  gap: 10px !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  flex-wrap: wrap;
+}
+
+.sales-admin-v2 .sales-filter-field {
+  display: block !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  flex: 0 0 auto;
+}
+
+.sales-admin-v2 .sales-filter-label {
+  display: block !important;
+  margin: 0 0 6px !important;
+  color: #4d535b !important;
+  font-size: 10.5px !important;
+  line-height: 1.2 !important;
+  font-weight: 620 !important;
+  text-transform: uppercase;
+}
+
+.sales-admin-v2 .sales-filter-field input,
+.sales-admin-v2 .sales-filter-field select {
+  display: block !important;
+  width: 100% !important;
+  height: 37px !important;
+  min-height: 37px !important;
+  max-height: 37px !important;
+  min-width: 180px;
+  padding: 0 10px !important;
+  line-height: normal !important;
+  border: 1px solid #cbd0d6 !important;
+  border-radius: 3px !important;
+  background: #ffffff !important;
+  color: #262a30 !important;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+}
+
+.sales-admin-v2 .sales-filter-field input:focus,
+.sales-admin-v2 .sales-filter-field select:focus {
+  border-color: #777d85 !important;
+  box-shadow: 0 0 0 2px rgba(24, 24, 27, 0.07);
+  outline: none;
+}
+
+.sales-admin-v2 .sales-filter-reset {
+  align-self: end !important;
+  height: 37px !important;
+  min-height: 37px !important;
+  padding: 0 14px !important;
+  margin: 0 !important;
+  border-radius: 3px !important;
+  background: #18181b !important;
+  color: #ffffff !important;
+  border: 1px solid #18181b !important;
+  font-size: 11px !important;
+  font-weight: 620 !important;
+  cursor: pointer;
+}
+
+/* TABLES */
+.sales-admin-v2 .sales-table-card {
+  border: 1px solid #dde1e6 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+  width: 100% !important;
+  max-width: none !important;
+}
+
+.sales-admin-v2 .sales-section-head {
+  padding: 15px 16px 12px !important;
+  background: #ffffff;
+}
+
+.sales-admin-v2 .sales-table {
+  min-width: 920px !important;
+}
+
+.sales-admin-v2 .sales-table th {
+  padding: 11px 13px !important;
+  color: #727882 !important;
+  font-size: 9px !important;
+  font-weight: 650 !important;
+  letter-spacing: 1px !important;
+}
+
+.sales-admin-v2 .sales-table td {
+  padding: 13px !important;
+  color: #2d3137 !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  vertical-align: middle !important;
+}
+
+.sales-admin-v2 .sales-body-row:hover {
+  background: #fcfcfc !important;
+}
+
+.sales-admin-v2 .sales-table td button {
+  color: #4f565e !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  text-decoration: none !important;
+}
+
+.sales-admin-v2 .sales-table td button:hover {
+  color: #18181b !important;
+}
+
+/* STATUS DOTS (Clean, text-based) */
+.sales-admin-v2 .sales-status {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+  white-space: nowrap;
+  color: #454b52 !important;
+}
+
+.sales-admin-v2 .sales-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: #8a9098;
+}
+
+/* Green Statuses */
+.sales-admin-v2 .sales-status-paid::before,
+.sales-admin-v2 .sales-status-completed::before,
+.sales-admin-v2 .sales-status-delivered::before,
+.sales-admin-v2 .sales-status-verified::before {
+  background: #3f8a57;
+}
+
+/* Red Statuses */
+.sales-admin-v2 .sales-status-cancelled::before,
+.sales-admin-v2 .sales-status-rejected::before,
+.sales-admin-v2 .sales-status-failed::before {
+  background: #c43b31;
+}
+
+/* Yellow Statuses */
+.sales-admin-v2 .sales-status-pending::before,
+.sales-admin-v2 .sales-status-unpaid::before {
+  background: #c58b16;
+}
+
+@media (max-width: 900px) {
+  .sales-admin-v2 .sales-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 620px) {
+  .sales-admin-v2 .sales-summary-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .sales-admin-v2 .sales-filter-field {
+    width: 100% !important;
+  }
+}

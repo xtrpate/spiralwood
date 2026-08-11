@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import "./SalesReportPage.css";
 
 const TABS = [
   { key: "walkin", label: "POS / Walk-in" },
@@ -67,64 +68,22 @@ const badgeStyle = (value) => {
 };
 
 function Badge({ value }) {
-  const style = badgeStyle(value);
+  const normalized = String(value || "pending")
+    .toLowerCase()
+    .replace(/\s+/g, "-");
   return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "3px 9px",
-        borderRadius: 999,
-        fontSize: 10,
-        fontWeight: 800,
-        textTransform: "capitalize",
-        background: style.background,
-        color: style.color,
-        border: `1px solid ${style.border}`,
-        whiteSpace: "nowrap",
-      }}
-    >
+    <span className={`sales-status sales-status-${normalized}`}>
       {humanize(value)}
     </span>
   );
 }
 
-function SummaryCard({ label, value, note, accentColor, icon }) {
+function SummaryCard({ label, value, note }) {
   return (
-    <div
-      style={{
-        ...summaryCard,
-        borderLeft: accentColor
-          ? `4px solid ${accentColor}`
-          : "1px solid #e4e4e7",
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-      }}
-    >
-      <div>
-        <div style={summaryLabel}>{label}</div>
-        <div style={summaryValue}>{value}</div>
-        {note ? <div style={summaryNote}>{note}</div> : null}
-      </div>
-
-      {icon ? (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 36,
-            height: 36,
-            background: "#f4f4f5",
-            borderRadius: 8,
-            fontSize: 18,
-            flexShrink: 0,
-            marginLeft: 12,
-          }}
-        >
-          {icon}
-        </div>
-      ) : null}
+    <div style={summaryCard} className="sales-summary-card">
+      <div style={summaryLabel}>{label}</div>
+      <div style={summaryValue}>{value}</div>
+      {note ? <div style={summaryNote}>{note}</div> : null}
     </div>
   );
 }
@@ -262,8 +221,12 @@ export default function SalesReportPage() {
   };
 
   return (
-    <div id="print-area" style={{ paddingBottom: 40 }}>
-      <div style={headerRow}>
+    <div
+      id="print-area"
+      style={{ paddingBottom: 40 }}
+      className="sales-admin-v2"
+    >
+      <div style={headerRow} className="sales-header">
         <div>
           <h1 style={pageTitle}>Sales & Collections</h1>
           <p style={pageSubtitle}>
@@ -287,58 +250,61 @@ export default function SalesReportPage() {
         verified, non-refunded collections in this report.
       </div>
 
-      <div className="no-print" style={tabBar}>
-        {TABS.map((item) => (
-          <button
-            key={item.key}
-            onClick={() => setTab(item.key)}
-            style={{
-              ...tabButton,
-              ...(tab === item.key ? tabButtonActive : {}),
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      <div className="sales-toolbar no-print">
+        <div className="sales-toolbar-row">
+          <label className="sales-filter-field">
+            <span className="sales-filter-label">Sales Channel</span>
+            <select value={tab} onChange={(e) => setTab(e.target.value)}>
+              {TABS.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
 
-      <div className="no-print" style={filterBar}>
-        {PERIODS.map((item) => (
+          <label className="sales-filter-field">
+            <span className="sales-filter-label">Report Period</span>
+            <select value={period} onChange={(e) => setPeriod(e.target.value)}>
+              {PERIODS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {period === "custom" && (
+            <>
+              <label className="sales-filter-field">
+                <span className="sales-filter-label">From Date</span>
+                <input
+                  type="date"
+                  value={from}
+                  onChange={(e) => setFrom(e.target.value)}
+                />
+              </label>
+              <label className="sales-filter-field">
+                <span className="sales-filter-label">To Date</span>
+                <input
+                  type="date"
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                />
+              </label>
+            </>
+          )}
+
           <button
-            key={item.value}
-            onClick={() => setPeriod(item.value)}
-            style={{
-              ...pillButton,
-              ...(period === item.value ? pillButtonActive : {}),
-            }}
+            onClick={load}
+            className="sales-filter-reset"
+            disabled={
+              period === "custom" && (!from || !to || from > to || loading)
+            }
           >
-            {item.label}
+            Apply Filters
           </button>
-        ))}
-        {period === "custom" ? (
-          <>
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              style={input}
-            />
-            <span style={{ color: "#71717a", fontSize: 12 }}>to</span>
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              style={input}
-            />
-            <button
-              onClick={load}
-              style={buttonPrimary}
-              disabled={!from || !to || from > to || loading}
-            >
-              Apply
-            </button>
-          </>
-        ) : null}
+        </div>
       </div>
 
       {error ? <div style={errorBox}>{error}</div> : null}
@@ -346,56 +312,44 @@ export default function SalesReportPage() {
 
       {!loading && data ? (
         <>
-          <div style={summaryGrid}>
+          <div style={summaryGrid} className="sales-summary-grid">
             <SummaryCard
               label="Gross Order Value"
               value={money(summary.gross_order_value)}
               note="Non-cancelled orders created in the selected period"
-              accentColor="#2563EB"
-              icon="📦"
             />
             <SummaryCard
               label="Actual Collected"
               value={money(summary.actual_collected)}
               note={`${summary.collection_count || 0} verified payment transaction(s)`}
-              accentColor="#22C55E"
-              icon="💰"
             />
             <SummaryCard
               label="Outstanding"
               value={money(summary.outstanding_balance)}
               note="Unpaid balance of non-cancelled orders in the selected order period"
-              accentColor="#EF4444"
-              icon="💳"
             />
             <SummaryCard
               label="Estimated Order Profit"
               value={money(summary.total_profit)}
               note="Estimate only; not realized accounting profit"
-              accentColor="#8B5CF6"
-              icon="📈"
             />
             <SummaryCard
               label="Non-cancelled Orders"
               value={summary.total_orders || 0}
-              accentColor="#0891B2"
-              icon="📋"
             />
             <SummaryCard
               label="Average Order Value"
               value={money(summary.avg_order_value)}
-              accentColor="#F59E0B"
-              icon="📊"
             />
           </div>
 
-          <section style={card}>
+          <section style={card} className="sales-table-card">
             <SectionHeader
               title="Verified Collection Transactions"
               subtitle={`${collections.length} record(s) based on payment verification date`}
             />
             <div style={tableScroll}>
-              <table style={table}>
+              <table style={table} className="sales-table">
                 <thead>
                   <tr>
                     {[
@@ -431,6 +385,7 @@ export default function SalesReportPage() {
                       <tr
                         key={row.payment_transaction_id}
                         style={clickableTr}
+                        className="sales-body-row"
                         onClick={() =>
                           navigate(`/admin/orders/${row.order_id}`)
                         }
@@ -463,13 +418,13 @@ export default function SalesReportPage() {
             </div>
           </section>
 
-          <section style={card}>
+          <section style={card} className="sales-table-card">
             <SectionHeader
               title="Order Value & Collection Status"
               subtitle="Shows non-cancelled orders in the order period and orders with verified collections in the payment period"
             />
             <div style={tableScroll}>
-              <table style={table}>
+              <table style={table} className="sales-table">
                 <thead>
                   <tr>
                     {[
@@ -521,6 +476,7 @@ export default function SalesReportPage() {
                       <tr
                         key={row.id}
                         style={clickableTr}
+                        className="sales-body-row"
                         onClick={() => navigate(`/admin/orders/${row.id}`)}
                       >
                         <td
