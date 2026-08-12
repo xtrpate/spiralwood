@@ -133,6 +133,13 @@ router.post(
   posFulfillmentController.createDelivery,
 );
 
+router.post(
+  "/deliveries/:id/reschedule",
+  adminOnly,
+  logAction("reschedule_delivery", "deliveries"),
+  posFulfillmentController.rescheduleDelivery,
+);
+
 router.patch(
   "/deliveries/:id/status",
   deliveryAccess,

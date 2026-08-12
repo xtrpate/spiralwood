@@ -7,6 +7,7 @@ import { Plus, Search, CalendarDays, Truck, CheckCircle2, CircleX, RotateCcw } f
 // WISDOM DELIVERY SCHEDULING RESCHEDULE UI FIX V1.0.2
 // WISDOM DELIVERY SCHEDULING MODAL FORM UI FIX V1.0.1
 // WISDOM DELIVERY SCHEDULING FORM SIZE AND ORDER WIDTH FIX V1.0.1
+// WISDOM FAILED DELIVERY RESCHEDULE FLOW V1.1.2
 
 const formatDateTime = (value) => {
   if (!value) return "—";
@@ -186,11 +187,19 @@ export default function DeliveryScheduling() {
     order_id: "",
     driver_id: "",
     address: "",
-    requested_date: "",
     scheduled_date: "",
     notes: "",
-    reschedule_reason: "",
   });
+  const [rescheduleTarget, setRescheduleTarget] = useState(null);
+  const [rescheduleForm, setRescheduleForm] = useState({
+    driver_id: "",
+    scheduled_date: "",
+    reason: "",
+    notes: "",
+  });
+  const [rescheduleLoading, setRescheduleLoading] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState("");
+  const [rescheduleFieldErrors, setRescheduleFieldErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(true);
   const [error, setError] = useState("");
@@ -212,6 +221,21 @@ export default function DeliveryScheduling() {
     });
 
     return [...names].sort((a, b) => a.localeCompare(b));
+  }, [deliveries]);
+
+  const latestDeliveryIdByOrder = useMemo(() => {
+    const latest = new Map();
+
+    deliveries.forEach((delivery) => {
+      const orderKey = String(delivery.order_id || "");
+      const deliveryId = Number(delivery.id);
+      if (!orderKey || !Number.isInteger(deliveryId)) return;
+
+      const currentId = Number(latest.get(orderKey) || 0);
+      if (deliveryId > currentId) latest.set(orderKey, deliveryId);
+    });
+
+    return latest;
   }, [deliveries]);
 
   const statusCounts = useMemo(() => {
@@ -309,15 +333,6 @@ export default function DeliveryScheduling() {
       }
     }
 
-    if (
-      form.requested_date &&
-      form.scheduled_date &&
-      form.requested_date.slice(0, 10) !== form.scheduled_date &&
-      !String(form.reschedule_reason || "").trim()
-    ) {
-      nextErrors.reschedule_reason =
-        "Please provide a reason if the confirmed schedule differs from the requested schedule.";
-    }
 
     setFieldErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -419,10 +434,8 @@ export default function DeliveryScheduling() {
       order_id: "",
       driver_id: "",
       address: "",
-      requested_date: "",
       scheduled_date: "",
       notes: "",
-      reschedule_reason: "",
     });
     setError("");
     setSuccess("");
@@ -431,7 +444,7 @@ export default function DeliveryScheduling() {
   };
 
   useEffect(() => {
-    if (!showForm) return undefined;
+    if (!showForm && !rescheduleTarget) return undefined;
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -439,7 +452,7 @@ export default function DeliveryScheduling() {
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [showForm]);
+  }, [showForm, rescheduleTarget]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -459,7 +472,6 @@ export default function DeliveryScheduling() {
         address: String(form.address || "").trim(),
         scheduled_date: form.scheduled_date,
         notes: String(form.notes || "").trim(),
-        reschedule_reason: String(form.reschedule_reason || "").trim(),
       };
 
       const res = await api.post("/pos/deliveries", payload);
@@ -476,10 +488,8 @@ export default function DeliveryScheduling() {
         order_id: "",
         driver_id: "",
         address: "",
-        requested_date: "",
         scheduled_date: "",
         notes: "",
-        reschedule_reason: "",
       });
       setFieldErrors({});
       setError("");
@@ -489,6 +499,123 @@ export default function DeliveryScheduling() {
       setError(err.response?.data?.message || "Failed to schedule delivery.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openRescheduleModal = (delivery) => {
+    const orderKey = String(delivery?.order_id || "");
+    const latestId = Number(latestDeliveryIdByOrder.get(orderKey) || 0);
+
+    if (
+      normalizeStatus(delivery?.status) !== "failed" ||
+      Number(delivery?.id) !== latestId
+    ) {
+      setError("Only the latest failed delivery attempt can be rescheduled.");
+      return;
+    }
+
+    setError("");
+    setSuccess("");
+    setRescheduleError("");
+    setRescheduleFieldErrors({});
+    setRescheduleTarget(delivery);
+    setRescheduleForm({
+      driver_id: delivery?.driver_id ? String(delivery.driver_id) : "",
+      scheduled_date: "",
+      reason: "",
+      notes: "",
+    });
+  };
+
+  const closeRescheduleModal = () => {
+    if (rescheduleLoading) return;
+
+    setRescheduleTarget(null);
+    setRescheduleForm({
+      driver_id: "",
+      scheduled_date: "",
+      reason: "",
+      notes: "",
+    });
+    setRescheduleError("");
+    setRescheduleFieldErrors({});
+  };
+
+  const validateRescheduleForm = () => {
+    const nextErrors = {};
+
+    if (!rescheduleForm.driver_id) {
+      nextErrors.driver_id = "Please select a delivery rider.";
+    }
+
+    if (!rescheduleForm.scheduled_date) {
+      nextErrors.scheduled_date = "New delivery date is required.";
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(rescheduleForm.scheduled_date)) {
+      nextErrors.scheduled_date = "New delivery date is invalid.";
+    } else if (rescheduleForm.scheduled_date < todayLocal) {
+      nextErrors.scheduled_date = "New delivery date cannot be in the past.";
+    }
+
+    const reason = String(rescheduleForm.reason || "").trim();
+    if (!reason) {
+      nextErrors.reason = "Reschedule reason is required.";
+    } else if (reason.length > 500) {
+      nextErrors.reason = "Reschedule reason must be 500 characters or fewer.";
+    }
+
+    setRescheduleFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const handleRescheduleSubmit = async (event) => {
+    event.preventDefault();
+    setRescheduleError("");
+
+    if (!rescheduleTarget || !validateRescheduleForm()) return;
+
+    const sourceDeliveryId = Number(rescheduleTarget.id);
+    if (!Number.isInteger(sourceDeliveryId) || sourceDeliveryId <= 0) {
+      setRescheduleError("Invalid failed delivery record.");
+      return;
+    }
+
+    setRescheduleLoading(true);
+
+    try {
+      const response = await api.post(
+        `/pos/deliveries/${sourceDeliveryId}/reschedule`,
+        {
+          driver_id: rescheduleForm.driver_id,
+          scheduled_date: rescheduleForm.scheduled_date,
+          reschedule_reason: String(rescheduleForm.reason || "").trim(),
+          notes: String(rescheduleForm.notes || "").trim(),
+        },
+      );
+
+      setRescheduleTarget(null);
+      setRescheduleForm({
+        driver_id: "",
+        scheduled_date: "",
+        reason: "",
+        notes: "",
+      });
+      setRescheduleFieldErrors({});
+      setRescheduleError("");
+      setSuccess(
+        `Delivery rescheduled successfully${
+          response.data?.assigned_driver?.name
+            ? ` and assigned to ${response.data.assigned_driver.name}.`
+            : "."
+        }`,
+      );
+
+      await Promise.all([fetchDeliveries(), fetchEligibleOrders()]);
+    } catch (err) {
+      setRescheduleError(
+        err.response?.data?.message || "Failed to reschedule delivery.",
+      );
+    } finally {
+      setRescheduleLoading(false);
     }
   };
 
@@ -672,9 +799,7 @@ export default function DeliveryScheduling() {
                       ...prev,
                       order_id: nextOrderId,
                       address: selectedOrder?.delivery_address || prev.address,
-                      requested_date: requestedDate,
                       scheduled_date: requestedDateOnly || prev.scheduled_date,
-                      reschedule_reason: "",
                     }));
 
                     setFieldErrors((prev) => ({
@@ -682,7 +807,6 @@ export default function DeliveryScheduling() {
                       order_id: "",
                       address: "",
                       scheduled_date: "",
-                      reschedule_reason: "",
                     }));
                   }}
                   required
@@ -789,25 +913,13 @@ export default function DeliveryScheduling() {
                   type="date"
                   value={form.scheduled_date}
                   onChange={(e) => {
-                    setForm((prev) => {
-                      const nextDate = e.target.value;
-                      const requestedDate = prev.requested_date
-                        ? prev.requested_date.slice(0, 10)
-                        : "";
-
-                      return {
-                        ...prev,
-                        scheduled_date: nextDate,
-                        reschedule_reason:
-                          requestedDate && requestedDate === nextDate
-                            ? ""
-                            : prev.reschedule_reason,
-                      };
-                    });
+                    setForm((prev) => ({
+                      ...prev,
+                      scheduled_date: e.target.value,
+                    }));
                     setFieldErrors((prev) => ({
                       ...prev,
                       scheduled_date: "",
-                      reschedule_reason: "",
                     }));
                   }}
                   required
@@ -820,20 +932,6 @@ export default function DeliveryScheduling() {
                   }}
                 />
 
-                {form.requested_date ? (
-                  <div style={requestedDateHintStyle}>
-                    Requested date:{" "}
-                    <span style={requestedDateValueStyle}>
-                      {formatScheduleParts(form.requested_date).date}
-                    </span>
-                    {form.scheduled_date &&
-                    form.requested_date.slice(0, 10) !== form.scheduled_date ? (
-                      <span style={changedScheduleHintStyle}>
-                        Schedule changed
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
                 {fieldErrors.scheduled_date && (
                   <p
                     style={{
@@ -883,49 +981,6 @@ export default function DeliveryScheduling() {
                 )}
               </div>
 
-              {form.requested_date &&
-              form.scheduled_date &&
-              form.requested_date.slice(0, 10) !== form.scheduled_date ? (
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <div style={rescheduleHeaderStyle}>
-                    <label style={{ ...labelStyle, marginBottom: 0 }}>
-                      Reschedule reason{" "}
-                      <span style={{ color: "#dc2626" }}>*</span>
-                    </label>
-                    <span style={rescheduleHelperStyle}>
-                      Required because the delivery date was changed.
-                    </span>
-                  </div>
-                  <textarea
-                    rows={2}
-                    placeholder="Briefly explain why the delivery date was changed"
-                    value={form.reschedule_reason}
-                    onChange={(e) => {
-                      setForm((prev) => ({
-                        ...prev,
-                        reschedule_reason: e.target.value,
-                      }));
-                      setFieldErrors((prev) => ({
-                        ...prev,
-                        reschedule_reason: "",
-                      }));
-                    }}
-                    style={{
-                      ...inputStyle,
-                      resize: "vertical",
-                      fontFamily: "inherit",
-                      borderColor: fieldErrors.reschedule_reason
-                        ? "#dc2626"
-                        : "#d9dce1",
-                    }}
-                  />
-                  {fieldErrors.reschedule_reason && (
-                    <p style={fieldErrorTextStyle}>
-                      {fieldErrors.reschedule_reason}
-                    </p>
-                  )}
-                </div>
-              ) : null}
 
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={labelStyle}>Notes</label>
@@ -966,10 +1021,8 @@ export default function DeliveryScheduling() {
                     order_id: "",
                     driver_id: "",
                     address: "",
-                    requested_date: "",
                     scheduled_date: "",
                     notes: "",
-                    reschedule_reason: "",
                   });
                   setError("");
                   setSuccess("");
@@ -1002,6 +1055,242 @@ export default function DeliveryScheduling() {
             </div>
           </form>
         </div>
+        </div>
+      )}
+
+      {rescheduleTarget && (
+        <div
+          style={deliveryModalBackdropStyle}
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeRescheduleModal();
+            }
+          }}
+        >
+          <div
+            style={deliveryModalStyle}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delivery-reschedule-modal-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div style={deliveryModalHeaderStyle}>
+              <div>
+                <h2
+                  id="delivery-reschedule-modal-title"
+                  style={deliveryModalTitleStyle}
+                >
+                  Reschedule delivery
+                </h2>
+                <p style={deliveryModalSubtitleStyle}>
+                  Create a new delivery attempt after the latest failed delivery.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                style={deliveryModalCloseStyle}
+                onClick={closeRescheduleModal}
+                disabled={rescheduleLoading}
+                aria-label="Close reschedule delivery"
+              >
+                &times;
+              </button>
+            </div>
+
+            {rescheduleError ? (
+              <div style={deliveryModalErrorStyle}>{rescheduleError}</div>
+            ) : null}
+
+            <form onSubmit={handleRescheduleSubmit}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                  gap: 12,
+                }}
+              >
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={labelStyle}>Order</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={`${rescheduleTarget.order_number || "-"} - ${
+                      rescheduleTarget.customer_name || "-"
+                    }`}
+                    style={{ ...inputStyle, background: "#f4f4f5" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>Previous delivery date</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={formatScheduleParts(rescheduleTarget.scheduled_date).date}
+                    style={{ ...inputStyle, background: "#f4f4f5" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    New delivery date <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <input
+                    type="date"
+                    min={todayLocal}
+                    value={rescheduleForm.scheduled_date}
+                    onChange={(event) => {
+                      setRescheduleForm((prev) => ({
+                        ...prev,
+                        scheduled_date: event.target.value,
+                      }));
+                      setRescheduleFieldErrors((prev) => ({
+                        ...prev,
+                        scheduled_date: "",
+                      }));
+                    }}
+                    style={{
+                      ...inputStyle,
+                      borderColor: rescheduleFieldErrors.scheduled_date
+                        ? "#dc2626"
+                        : "#d9dce1",
+                    }}
+                  />
+                  {rescheduleFieldErrors.scheduled_date ? (
+                    <p style={{ color: "#dc2626", fontSize: 11, margin: "6px 0 0" }}>
+                      {rescheduleFieldErrors.scheduled_date}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div>
+                  <label style={labelStyle}>
+                    Rider <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <select
+                    value={rescheduleForm.driver_id}
+                    onChange={(event) => {
+                      setRescheduleForm((prev) => ({
+                        ...prev,
+                        driver_id: event.target.value,
+                      }));
+                      setRescheduleFieldErrors((prev) => ({
+                        ...prev,
+                        driver_id: "",
+                      }));
+                    }}
+                    style={{
+                      ...inputStyle,
+                      borderColor: rescheduleFieldErrors.driver_id
+                        ? "#dc2626"
+                        : "#d9dce1",
+                    }}
+                  >
+                    <option value="">Select a rider</option>
+                    {riders.map((rider) => (
+                      <option key={rider.id} value={rider.id}>
+                        {rider.name}
+                      </option>
+                    ))}
+                  </select>
+                  {rescheduleFieldErrors.driver_id ? (
+                    <p style={{ color: "#dc2626", fontSize: 11, margin: "6px 0 0" }}>
+                      {rescheduleFieldErrors.driver_id}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={labelStyle}>
+                    Reschedule reason <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    maxLength={500}
+                    placeholder="Briefly explain why another delivery attempt is needed"
+                    value={rescheduleForm.reason}
+                    onChange={(event) => {
+                      setRescheduleForm((prev) => ({
+                        ...prev,
+                        reason: event.target.value,
+                      }));
+                      setRescheduleFieldErrors((prev) => ({
+                        ...prev,
+                        reason: "",
+                      }));
+                    }}
+                    style={{
+                      ...inputStyle,
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                      borderColor: rescheduleFieldErrors.reason
+                        ? "#dc2626"
+                        : "#d9dce1",
+                    }}
+                  />
+                  {rescheduleFieldErrors.reason ? (
+                    <p style={{ color: "#dc2626", fontSize: 11, margin: "6px 0 0" }}>
+                      {rescheduleFieldErrors.reason}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={labelStyle}>Notes</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Add delivery instructions (optional)"
+                    value={rescheduleForm.notes}
+                    onChange={(event) =>
+                      setRescheduleForm((prev) => ({
+                        ...prev,
+                        notes: event.target.value,
+                      }))
+                    }
+                    style={{
+                      ...inputStyle,
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  marginTop: 16,
+                  paddingTop: 16,
+                  borderTop: "1px solid #ececef",
+                  justifyContent: "flex-end",
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={closeRescheduleModal}
+                  disabled={rescheduleLoading}
+                  style={btnGhost}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={rescheduleLoading}
+                  style={
+                    rescheduleLoading
+                      ? { ...btnPrimary, opacity: 0.6, cursor: "not-allowed" }
+                      : btnPrimary
+                  }
+                >
+                  {rescheduleLoading ? "Rescheduling..." : "Reschedule delivery"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -1138,6 +1427,7 @@ export default function DeliveryScheduling() {
                   <th style={thStyle}>Scheduled date</th>
                   <th style={thStyle}>Rider</th>
                   <th style={thStyle}>Status</th>
+                  <th style={thStyle}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -1145,6 +1435,10 @@ export default function DeliveryScheduling() {
                   const schedule = formatScheduleParts(
                     delivery.scheduled_date,
                   );
+                  const canReschedule =
+                    normalizeStatus(delivery.status) === "failed" &&
+                    Number(latestDeliveryIdByOrder.get(String(delivery.order_id))) ===
+                      Number(delivery.id);
 
                   return (
                     <tr
@@ -1200,6 +1494,27 @@ export default function DeliveryScheduling() {
                         >
                           {formatStatusLabel(delivery.status)}
                         </span>
+                      </td>
+
+                      <td style={tdStyle}>
+                        {canReschedule ? (
+                          <button
+                            type="button"
+                            onClick={() => openRescheduleModal(delivery)}
+                            style={{
+                              ...btnGhost,
+                              minHeight: 30,
+                              padding: "5px 9px",
+                              fontSize: 11,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            <RotateCcw size={13} strokeWidth={1.8} aria-hidden="true" />
+                            Reschedule
+                          </button>
+                        ) : (
+                          <span style={{ color: "#a1a1aa" }}>&mdash;</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -1450,7 +1765,7 @@ const emptyStateStyle = {
 
 const tableStyle = {
   width: "100%",
-  minWidth: 980,
+  minWidth: 1080,
   borderCollapse: "collapse",
   tableLayout: "fixed",
   fontSize: 12,
@@ -1515,54 +1830,6 @@ const statusBadgeStyle = {
   whiteSpace: "nowrap",
 };
 
-const requestedDateHintStyle = {
-  marginTop: 6,
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  flexWrap: "wrap",
-  color: "#71717a",
-  fontSize: 11,
-  fontWeight: 400,
-};
-
-const requestedDateValueStyle = {
-  color: "#3f3f46",
-  fontWeight: 500,
-};
-
-const changedScheduleHintStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "1px 6px",
-  border: "1px solid #fed7aa",
-  borderRadius: 2,
-  background: "#fff7ed",
-  color: "#c2410c",
-  fontSize: 10,
-  fontWeight: 500,
-};
-
-const rescheduleHeaderStyle = {
-  marginBottom: 6,
-  display: "flex",
-  alignItems: "baseline",
-  gap: 8,
-  flexWrap: "wrap",
-};
-
-const rescheduleHelperStyle = {
-  color: "#71717a",
-  fontSize: 11,
-  fontWeight: 400,
-};
-
-const fieldErrorTextStyle = {
-  margin: "6px 0 0",
-  color: "#dc2626",
-  fontSize: 11,
-  fontWeight: 500,
-};
 
 // WISDOM DELIVERY SCHEDULING MODAL FORM UI FIX V1.0.1 STYLES
 

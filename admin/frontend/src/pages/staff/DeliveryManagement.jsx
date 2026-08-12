@@ -1434,7 +1434,7 @@ export default function DeliveryManagement() {
                   setFailureReasonInput("");
                 }}
                 disabled={savingId === failureModal.id}
-                style={btnSecondary}
+                className="rider-btn rider-btn-secondary"
               >
                 Cancel
               </button>
@@ -1456,13 +1456,13 @@ export default function DeliveryManagement() {
                   !failureReasonInput.trim() ||
                   failureReasonInput.trim().length > 500
                 }
-                style={
+                className={`rider-btn ${
                   savingId === failureModal.id ||
                   !failureReasonInput.trim() ||
                   failureReasonInput.trim().length > 500
-                    ? btnDisabled
-                    : btnUndo
-                }
+                    ? "rider-btn-disabled"
+                    : "rider-btn-undo"
+                }`}
               >
                 {savingId === failureModal.id ? "Saving..." : "Confirm Failure"}
               </button>

@@ -203,7 +203,6 @@ exports.getDeliverableOrders = async (req, res) => {
           SELECT 1
           FROM deliveries d2
           WHERE d2.order_id = o.id
-            AND d2.status <> 'failed'
         )
 
       ORDER BY o.created_at DESC, o.id DESC
@@ -322,7 +321,6 @@ exports.createDelivery = async (req, res) => {
   const scheduledDateRaw = normalizeText(req.body.scheduled_date);
   const scheduledDate = normalizeConfirmedScheduleDateOnly(scheduledDateRaw);
   const notes = normalizeText(req.body.notes) || "";
-  const rescheduleReason = normalizeText(req.body.reschedule_reason) || "";
 
   if (!orderId || !driverId || !address || !scheduledDateRaw) {
     return res.status(400).json({
@@ -383,7 +381,7 @@ exports.createDelivery = async (req, res) => {
       SELECT id, status
       FROM deliveries
       WHERE order_id = ?
-        AND status <> 'failed'
+      ORDER BY id DESC
       LIMIT 1
       `,
       [orderId],
@@ -391,33 +389,14 @@ exports.createDelivery = async (req, res) => {
 
     if (existingDelivery) {
       return res.status(409).json({
-        message: "A delivery is already scheduled for this order",
+        message:
+          String(existingDelivery.status || "").toLowerCase() === "failed"
+            ? "This order has a failed delivery. Use Reschedule on the latest failed attempt."
+            : "A delivery already exists for this order.",
       });
     }
 
-    const requestedDate = normalizeDateTime(order.requested_delivery_date);
-
-    const finalNotesParts = [];
-    if (notes) finalNotesParts.push(notes);
-
-    if (
-      requestedDate &&
-      scheduledDate &&
-      requestedDate.slice(0, 10) !== scheduledDate &&
-      rescheduleReason
-    ) {
-      finalNotesParts.push(`Reschedule Reason: ${rescheduleReason}`);
-    }
-
-    const finalNotes = finalNotesParts.length
-      ? finalNotesParts.join("\n")
-      : null;
-
-    const [[priorFailedAttempt]] = await db.query(
-      `SELECT id FROM deliveries WHERE order_id = ? AND status = 'failed' LIMIT 1`,
-      [orderId],
-    );
-    const isRedeliverySchedule = Boolean(priorFailedAttempt);
+    const finalNotes = notes || null;
 
     const [result] = await db.query(
       `
@@ -510,12 +489,8 @@ exports.createDelivery = async (req, res) => {
       await createNotificationSafe(db, {
         userId: order.customer_id,
         type: "delivery_update",
-        title: isRedeliverySchedule
-          ? "Redelivery Scheduled"
-          : "Delivery Scheduled",
-        message: isRedeliverySchedule
-          ? `A new delivery schedule for your order ${order.order_number} has been arranged for ${scheduledDate}.`
-          : `Your order ${order.order_number} has been scheduled for delivery on ${scheduledDate}.`,
+        title: "Delivery Scheduled",
+        message: `Your order ${order.order_number} has been scheduled for delivery on ${scheduledDate}.`,
         targetType: "order",
         targetId: orderId,
         targetOrderId: orderId,
@@ -533,6 +508,263 @@ exports.createDelivery = async (req, res) => {
   } catch (err) {
     console.error("POST /api/pos/deliveries error:", err);
     res.status(500).json({ message: "Failed to schedule delivery" });
+  }
+};
+
+exports.rescheduleDelivery = async (req, res) => {
+  const sourceDeliveryId = toNullableInt(req.params.id);
+  const driverId = toNullableInt(req.body.driver_id);
+  const scheduledDateRaw = normalizeText(req.body.scheduled_date);
+  const scheduledDate = normalizeConfirmedScheduleDateOnly(scheduledDateRaw);
+  const rescheduleReason = normalizeText(req.body.reschedule_reason);
+  const notes = normalizeText(req.body.notes) || "";
+
+  if (!sourceDeliveryId) {
+    return res.status(400).json({ message: "Invalid failed delivery id." });
+  }
+
+  if (!driverId || !scheduledDateRaw || !rescheduleReason) {
+    return res.status(400).json({
+      message: "driver_id, scheduled_date, and reschedule_reason are required.",
+    });
+  }
+
+  if (!scheduledDate) {
+    return res.status(400).json({
+      message: "New delivery date must be a valid date.",
+    });
+  }
+
+  if (rescheduleReason.length > 500) {
+    return res.status(400).json({
+      message: "Reschedule reason must be 500 characters or fewer.",
+    });
+  }
+
+  let conn;
+  try {
+    const rider = await ensureStaffType(driverId, "delivery_rider");
+    if (!rider) {
+      return res.status(400).json({
+        message: "Selected delivery rider was not found.",
+      });
+    }
+
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+
+    const [[sourceDelivery]] = await conn.query(
+      `SELECT * FROM deliveries WHERE id = ? LIMIT 1 FOR UPDATE`,
+      [sourceDeliveryId],
+    );
+
+    if (!sourceDelivery) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Failed delivery not found." });
+    }
+
+    if (normalizeText(sourceDelivery.status).toLowerCase() !== "failed") {
+      await conn.rollback();
+      return res.status(409).json({
+        message: "Only a failed delivery can be rescheduled.",
+      });
+    }
+
+    const [[latestAttempt]] = await conn.query(
+      `
+      SELECT id, status
+      FROM deliveries
+      WHERE order_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [sourceDelivery.order_id],
+    );
+
+    if (!latestAttempt || Number(latestAttempt.id) !== Number(sourceDeliveryId)) {
+      await conn.rollback();
+      return res.status(409).json({
+        message: "Only the latest failed delivery attempt can be rescheduled.",
+      });
+    }
+
+    const [[activeAttempt]] = await conn.query(
+      `
+      SELECT id, status
+      FROM deliveries
+      WHERE order_id = ?
+        AND status <> 'failed'
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [sourceDelivery.order_id],
+    );
+
+    if (activeAttempt) {
+      await conn.rollback();
+      return res.status(409).json({
+        message: "A newer active delivery already exists for this order.",
+      });
+    }
+
+    const [[order]] = await conn.query(
+      `
+      SELECT id, order_number, customer_id, status
+      FROM orders
+      WHERE id = ?
+      LIMIT 1
+      FOR UPDATE
+      `,
+      [sourceDelivery.order_id],
+    );
+
+    if (!order) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Linked order not found." });
+    }
+
+    const orderStatus = normalizeText(order.status).toLowerCase();
+    if (["cancelled", "delivered", "completed"].includes(orderStatus)) {
+      await conn.rollback();
+      return res.status(409).json({
+        message: "This order can no longer be rescheduled for delivery.",
+      });
+    }
+
+    const finalNotes = [
+      `Reschedule Reason: ${rescheduleReason}`,
+      notes,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const [insertResult] = await conn.query(
+      `
+      INSERT INTO deliveries (
+        order_id,
+        driver_id,
+        assigned_by,
+        assigned_at,
+        scheduled_date,
+        delivered_date,
+        address,
+        status,
+        notes,
+        signed_receipt
+      )
+      VALUES (?, ?, ?, NOW(), ?, NULL, ?, 'scheduled', ?, NULL)
+      `,
+      [
+        sourceDelivery.order_id,
+        driverId,
+        req.user.id,
+        scheduledDate,
+        sourceDelivery.address,
+        finalNotes,
+      ],
+    );
+
+    const [[delivery]] = await conn.query(
+      `
+      SELECT
+        d.id,
+        d.order_id,
+        d.driver_id,
+        d.assigned_by,
+        d.assigned_at,
+        d.scheduled_date,
+        d.delivered_date,
+        d.address,
+        d.status,
+        d.notes,
+        d.signed_receipt,
+        d.updated_at,
+        o.order_number,
+        o.total,
+        o.payment_method,
+        o.delivery_lat,
+        o.delivery_lng,
+        o.created_at AS order_created_at,
+        COALESCE(o.walkin_customer_name, customer.name, 'Walk-in Customer') AS customer_name,
+        COALESCE(o.walkin_customer_phone, customer.phone, '') AS customer_phone,
+        driver.name AS driver_name
+      FROM deliveries d
+      INNER JOIN orders o ON o.id = d.order_id
+      LEFT JOIN users customer ON customer.id = o.customer_id
+      LEFT JOIN users driver ON driver.id = d.driver_id
+      WHERE d.id = ?
+      LIMIT 1
+      `,
+      [insertResult.insertId],
+    );
+
+    await conn.commit();
+
+    req.auditRecord = {
+      id: insertResult.insertId,
+      old: {
+        source_delivery_id: sourceDeliveryId,
+        source_status: sourceDelivery.status,
+        source_scheduled_date: sourceDelivery.scheduled_date,
+        source_driver_id: sourceDelivery.driver_id,
+      },
+      new: {
+        id: delivery?.id ?? insertResult.insertId,
+        order_id: sourceDelivery.order_id,
+        driver_id: delivery?.driver_id ?? driverId,
+        assigned_by: delivery?.assigned_by ?? req.user.id,
+        scheduled_date: delivery?.scheduled_date ?? scheduledDate,
+        status: delivery?.status ?? "scheduled",
+        rescheduled_from_delivery_id: sourceDeliveryId,
+        reschedule_reason_present: true,
+        notes_present: Boolean(notes),
+      },
+    };
+
+    await createNotificationSafe(db, {
+      userId: driverId,
+      type: "assignment",
+      title: "Redelivery Assigned",
+      message: `You have been assigned another delivery attempt for ${order.order_number}, scheduled for ${scheduledDate}.`,
+      targetType: "delivery",
+      targetId: delivery?.id ?? insertResult.insertId,
+      targetOrderId: sourceDelivery.order_id,
+    });
+
+    if (order.customer_id) {
+      await createNotificationSafe(db, {
+        userId: order.customer_id,
+        type: "delivery_update",
+        title: "Redelivery Scheduled",
+        message: `A new delivery schedule for your order ${order.order_number} has been arranged for ${scheduledDate}.`,
+        targetType: "order",
+        targetId: sourceDelivery.order_id,
+        targetOrderId: sourceDelivery.order_id,
+      });
+    }
+
+    res.status(201).json({
+      message: "Delivery rescheduled successfully.",
+      delivery,
+      source_delivery_id: sourceDeliveryId,
+      assigned_driver: {
+        id: rider.id,
+        name: rider.name,
+      },
+    });
+  } catch (err) {
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rollbackErr) {
+        console.error("POST /api/pos/deliveries/:id/reschedule rollback error:", rollbackErr);
+      }
+    }
+    console.error("POST /api/pos/deliveries/:id/reschedule error:", err);
+    res.status(500).json({ message: "Failed to reschedule delivery." });
+  } finally {
+    if (conn) conn.release();
   }
 };
 

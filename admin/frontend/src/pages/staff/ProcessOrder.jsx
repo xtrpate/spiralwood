@@ -352,7 +352,7 @@ export default function ProcessOrder() {
       if (!hasValidDeliveryPin)
         return setError("Pin the exact delivery location on the map.");
       if (!form.delivery_requested_date)
-        return setError("Preferred delivery date and time is required.");
+        return setError("Delivery date is required.");
     }
 
     setLoading(true);
@@ -416,7 +416,7 @@ export default function ProcessOrder() {
     if (form.need_delivery && !hasValidDeliveryPin)
       return "Pin the exact delivery location on the map.";
     if (form.need_delivery && !form.delivery_requested_date)
-      return "Preferred delivery date and time is required.";
+      return "Delivery date is required.";
     return null;
   };
 
@@ -934,7 +934,7 @@ export default function ProcessOrder() {
 
           {success.delivery && (
             <p style={{ color: "#52525b", marginBottom: 6, fontSize: 14 }}>
-              Delivery Request Saved
+              Delivery details saved
             </p>
           )}
 
@@ -1374,7 +1374,7 @@ export default function ProcessOrder() {
                     </div>
 
                     <div>
-                      <label style={labelStyle}>Delivery Date and Time *</label>
+                      <label style={labelStyle}>Delivery Date *</label>
                       <input
                         type="datetime-local"
                         value={form.delivery_requested_date}
