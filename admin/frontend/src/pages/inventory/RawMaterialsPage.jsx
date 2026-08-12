@@ -45,6 +45,7 @@ const formatStatus = (value) => {
 // WISDOM RAW MATERIALS FINISHING POLISH V3.0.1
 // WISDOM RAW MATERIALS DESKTOP FIT V1
 // WISDOM RAW MATERIALS ACTION DISCLOSURE V1
+// WISDOM RAW RESERVED HEADER FIX V1
 // WISDOM RAW MATERIALS TYPOGRAPHY CONSISTENCY V1.0.1
 // WISDOM RAW MATERIALS SIZE BOOST V1
 // WISDOM RAW MATERIALS READABILITY V1
@@ -410,7 +411,13 @@ export default function RawMaterialsPage() {
                 "Stock Level",
                 "Actions",
               ].map((heading) => (
-                <th key={heading} style={th}>
+                <th
+                  key={heading}
+                  style={{
+                    ...th,
+                    ...(heading === "Reserved" ? { whiteSpace: "nowrap" } : {}),
+                  }}
+                >
                   {heading}
                 </th>
               ))}

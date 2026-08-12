@@ -170,6 +170,8 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(true);
+  // WISDOM ADMIN OFFICIAL LOGO V1
+  const [brandLogo, setBrandLogo] = useState("");
   const { clearCart } = useCart();
 
   const mainRef = useRef(null);
@@ -198,6 +200,7 @@ export default function AdminLayout() {
           }
           if (res.data?.display?.site_logo) {
             const faviconUrl = buildAssetUrl(res.data.display.site_logo);
+            setBrandLogo(faviconUrl);
             let link = document.querySelector("link[rel~='icon']");
             if (!link) {
               link = document.createElement("link");
@@ -359,7 +362,19 @@ export default function AdminLayout() {
               gap: 10,
             }}
           >
-            <span style={{ fontSize: 22 }}>🪵</span>
+            {brandLogo && (
+              <img
+                src={brandLogo}
+                alt="WISDOM logo"
+                style={{
+                  width: 28,
+                  height: 28,
+                  flex: "0 0 28px",
+                  objectFit: "contain",
+                  display: "block",
+                }}
+              />
+            )}
             {open && (
               <span
                 style={{
