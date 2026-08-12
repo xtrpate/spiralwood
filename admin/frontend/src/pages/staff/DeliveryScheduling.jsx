@@ -1,7 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import api from "../../services/api";
-import { Truck, Plus } from "lucide-react";
+import { Plus, Search, CalendarDays, Truck, CheckCircle2, CircleX, RotateCcw } from "lucide-react";
+
+// WISDOM DELIVERY SCHEDULING PROFESSIONAL UI POLISH V1.0.1
+// WISDOM DELIVERY SCHEDULING RESCHEDULE UI FIX V1.0.2
+// WISDOM DELIVERY SCHEDULING MODAL FORM UI FIX V1.0.1
+// WISDOM DELIVERY SCHEDULING FORM SIZE AND ORDER WIDTH FIX V1.0.1
 
 const formatDateTime = (value) => {
   if (!value) return "—";
@@ -44,37 +49,123 @@ const getRequestedScheduleFromOrder = (order) =>
   order?.scheduled_date ||
   "";
 
-// Replaced colored badges with monochrome inline styles
-const getStatusStyle = (s) => {
-  switch (String(s || "").toLowerCase()) {
+const getDateKey = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const directMatch = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (directMatch) return directMatch[1];
+
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
+const formatScheduleParts = (value) => {
+  if (!value) return { date: "—", time: "" };
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { date: String(value), time: "" };
+  }
+
+  const dateText = date.toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+
+  const raw = String(value || "");
+  const hasExplicitTime =
+    /T\d{1,2}:\d{2}/.test(raw) ||
+    /\s\d{1,2}:\d{2}/.test(raw);
+
+  const timeText = hasExplicitTime
+    ? date.toLocaleTimeString("en-PH", {
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : "";
+
+  return { date: dateText, time: timeText };
+};
+
+const normalizeStatus = (status) =>
+  String(status || "")
+    .trim()
+    .toLowerCase();
+
+const formatStatusLabel = (status) => {
+  const normalized = normalizeStatus(status);
+  if (!normalized) return "Unknown";
+  if (normalized === "in_transit") return "In transit";
+  if (normalized === "completed") return "Delivered";
+
+  return normalized
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const deliveryStatusRank = (status) => {
+  switch (normalizeStatus(status)) {
+    case "in_transit":
+      return 1;
+    case "scheduled":
+      return 2;
+    case "failed":
+      return 3;
+    case "delivered":
+    case "completed":
+      return 4;
+    default:
+      return 5;
+  }
+};
+
+const sortDeliveries = (a, b) => {
+  const rankA = deliveryStatusRank(a.status);
+  const rankB = deliveryStatusRank(b.status);
+
+  if (rankA !== rankB) return rankA - rankB;
+
+  const dateA = new Date(a.scheduled_date || 0).getTime();
+  const dateB = new Date(b.scheduled_date || 0).getTime();
+  return dateB - dateA;
+};
+
+const getStatusStyle = (status) => {
+  switch (normalizeStatus(status)) {
     case "scheduled":
       return {
-        background: "#ffffff",
-        color: "#52525b",
-        border: "1px solid #d4d4d8",
+        background: "#eff6ff",
+        color: "#1d4ed8",
+        border: "1px solid #bfdbfe",
       };
     case "in_transit":
       return {
-        background: "#f4f4f5",
-        color: "#18181b",
-        border: "1px solid #e4e4e7",
+        background: "#fff7ed",
+        color: "#c2410c",
+        border: "1px solid #fed7aa",
       };
     case "delivered":
+    case "completed":
       return {
-        background: "#0a0a0a",
-        color: "#ffffff",
-        border: "1px solid #0a0a0a",
+        background: "#f0fdf4",
+        color: "#15803d",
+        border: "1px solid #bbf7d0",
       };
     case "failed":
       return {
         background: "#fef2f2",
-        color: "#991b1b",
+        color: "#b91c1c",
         border: "1px solid #fecaca",
       };
     default:
       return {
         background: "#fafafa",
-        color: "#71717a",
+        color: "#52525b",
         border: "1px solid #e4e4e7",
       };
   }
@@ -107,6 +198,93 @@ export default function DeliveryScheduling() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [searchParams, setSearchParams] = useSearchParams();
   const [focusedDeliveryId, setFocusedDeliveryId] = useState(null);
+  const [deliverySearch, setDeliverySearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [riderFilter, setRiderFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("");
+
+  const riderFilterOptions = useMemo(() => {
+    const names = new Set();
+
+    deliveries.forEach((delivery) => {
+      const name = String(delivery.driver_name || "").trim();
+      if (name) names.add(name);
+    });
+
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [deliveries]);
+
+  const statusCounts = useMemo(() => {
+    const counts = {
+      scheduled: 0,
+      inTransit: 0,
+      delivered: 0,
+      failed: 0,
+    };
+
+    deliveries.forEach((delivery) => {
+      const status = normalizeStatus(delivery.status);
+
+      if (status === "scheduled") counts.scheduled += 1;
+      if (status === "in_transit") counts.inTransit += 1;
+      if (status === "delivered" || status === "completed") {
+        counts.delivered += 1;
+      }
+      if (status === "failed") counts.failed += 1;
+    });
+
+    return counts;
+  }, [deliveries]);
+
+  const filteredDeliveries = useMemo(() => {
+    const query = deliverySearch.trim().toLowerCase();
+
+    return deliveries
+      .filter((delivery) => {
+        const status = normalizeStatus(delivery.status);
+
+        const matchesSearch =
+          !query ||
+          [
+            delivery.order_number,
+            delivery.customer_name,
+            delivery.address,
+            delivery.driver_name,
+          ].some((value) =>
+            String(value || "")
+              .toLowerCase()
+              .includes(query),
+          );
+
+        const matchesStatus =
+          statusFilter === "all" ||
+          (statusFilter === "delivered"
+            ? status === "delivered" || status === "completed"
+            : status === statusFilter);
+
+        const matchesRider =
+          riderFilter === "all" ||
+          String(delivery.driver_name || "") === riderFilter;
+
+        const matchesDate =
+          !dateFilter || getDateKey(delivery.scheduled_date) === dateFilter;
+
+        return matchesSearch && matchesStatus && matchesRider && matchesDate;
+      })
+      .sort(sortDeliveries);
+  }, [
+    deliveries,
+    deliverySearch,
+    statusFilter,
+    riderFilter,
+    dateFilter,
+  ]);
+
+  const hasDeliveryFilters =
+    Boolean(deliverySearch.trim()) ||
+    statusFilter !== "all" ||
+    riderFilter !== "all" ||
+    Boolean(dateFilter);
 
   const validateForm = () => {
     const nextErrors = {};
@@ -193,10 +371,9 @@ export default function DeliveryScheduling() {
     fetchRiders();
   }, [fetchDeliveries, fetchEligibleOrders, fetchRiders]);
 
-  // Notification double-click focus support. No filter on this page
-  // hides a delivery row, so we only need to locate, scroll, and
-  // briefly highlight it. Fails safely if the delivery no longer
-  // exists — never guesses a record from message text.
+  // Notification double-click focus support. Clear presentation
+  // filters first so the requested delivery is guaranteed to be visible,
+  // then scroll to and briefly highlight the exact delivery record.
   useEffect(() => {
     const focusId = searchParams.get("focus_delivery_id");
     if (!focusId || listLoading) return;
@@ -211,6 +388,10 @@ export default function DeliveryScheduling() {
       return;
     }
 
+    setDeliverySearch("");
+    setStatusFilter("all");
+    setRiderFilter("all");
+    setDateFilter("");
     setFocusedDeliveryId(numericId);
 
     const scrollTimer = setTimeout(() => {
@@ -230,6 +411,35 @@ export default function DeliveryScheduling() {
       clearTimeout(highlightTimer);
     };
   }, [searchParams, listLoading, deliveries]);
+
+  const closeScheduleModal = () => {
+    if (loading) return;
+
+    setForm({
+      order_id: "",
+      driver_id: "",
+      address: "",
+      requested_date: "",
+      scheduled_date: "",
+      notes: "",
+      reschedule_reason: "",
+    });
+    setError("");
+    setSuccess("");
+    setFieldErrors({});
+    setShowForm(false);
+  };
+
+  useEffect(() => {
+    if (!showForm) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showForm]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -289,17 +499,17 @@ export default function DeliveryScheduling() {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "flex-start",
-          marginBottom: 24,
+          marginBottom: 20,
           flexWrap: "wrap",
-          gap: 16,
-        }}
-      >
+          gap: 14,
+              }}
+            >
         <div>
           <h1
             style={{
               margin: 0,
               fontSize: 24,
-              fontWeight: 800,
+              fontWeight: 700,
               color: "#0a0a0a",
               letterSpacing: "-0.02em",
             }}
@@ -314,8 +524,7 @@ export default function DeliveryScheduling() {
               lineHeight: 1.5,
             }}
           >
-            Review requested delivery schedules, confirm or adjust them, and
-            assign riders.
+            Schedule deliveries, assign riders, and track delivery progress.
           </p>
         </div>
 
@@ -324,12 +533,12 @@ export default function DeliveryScheduling() {
           onClick={() => {
             setError("");
             setSuccess("");
-            setShowForm((prev) => !prev);
+            setShowForm(true);
           }}
-          style={showForm ? btnGhost : btnPrimary}
+          style={btnPrimary}
         >
           <Plus size={16} />
-          {showForm ? "Hide Delivery Form" : "Create Delivery Schedule"}
+          Schedule delivery
         </button>
       </div>
 
@@ -339,7 +548,7 @@ export default function DeliveryScheduling() {
             background: "#fafafa",
             color: "#18181b",
             padding: "14px 16px",
-            borderRadius: 12,
+            borderRadius: 2,
             border: "1px solid #e4e4e7",
             marginBottom: 20,
             fontSize: 13,
@@ -356,7 +565,7 @@ export default function DeliveryScheduling() {
             background: "#fef2f2",
             color: "#991b1b",
             padding: "14px 16px",
-            borderRadius: 12,
+            borderRadius: 2,
             border: "1px solid #fecaca",
             marginBottom: 20,
             fontSize: 13,
@@ -368,31 +577,61 @@ export default function DeliveryScheduling() {
       )}
 
       {showForm && (
-        <div style={{ ...cardStyle, marginBottom: 24, padding: 24 }}>
-          <h3
-            style={{
-              margin: "0 0 20px",
-              paddingBottom: 16,
-              borderBottom: "1px solid #212122",
-              fontWeight: 800,
-              fontSize: 16,
-              color: "#0a0a0a",
-              letterSpacing: "-0.01em",
-            }}
+        <div
+          style={deliveryModalBackdropStyle}
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeScheduleModal();
+            }
+          }}
+        >
+          <div
+            style={deliveryModalStyle}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delivery-schedule-modal-title"
+            onMouseDown={(event) => event.stopPropagation()}
           >
-            New Delivery Schedule
-          </h3>
+            <div style={deliveryModalHeaderStyle}>
+              <div>
+                <h2
+                  id="delivery-schedule-modal-title"
+                  style={deliveryModalTitleStyle}
+                >
+                  Schedule delivery
+                </h2>
+                <p style={deliveryModalSubtitleStyle}>
+                  Select an order, assign a rider, and confirm the delivery date.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                style={deliveryModalCloseStyle}
+                onClick={closeScheduleModal}
+                disabled={loading}
+                aria-label="Close schedule delivery"
+              >
+                ×
+              </button>
+            </div>
+
+            {error ? (
+              <div style={deliveryModalErrorStyle}>{error}</div>
+            ) : null}
 
           <form onSubmit={handleSubmit}>
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                gap: 16,
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gap: 12,
               }}
             >
               <div
                 style={{
+                  gridColumn: "1 / -1",
                   display: "flex",
                   flexDirection: "column",
                   justifyContent: "flex-end",
@@ -403,6 +642,19 @@ export default function DeliveryScheduling() {
                 </label>
                 <select
                   value={form.order_id}
+                  title={
+                    form.order_id
+                      ? (() => {
+                          const selectedOrder = eligibleOrders.find(
+                            (order) =>
+                              String(order.id) === String(form.order_id),
+                          );
+                          return selectedOrder
+                            ? `${selectedOrder.order_number} - ${selectedOrder.customer_name || ""}`
+                            : "";
+                        })()
+                      : ""
+                  }
                   onChange={(e) => {
                     const nextOrderId = e.target.value;
                     const selectedOrder = eligibleOrders.find(
@@ -482,7 +734,7 @@ export default function DeliveryScheduling() {
                 }}
               >
                 <label style={labelStyle}>
-                  Assigned Delivery Rider{" "}
+                  Rider{" "}
                   <span style={{ color: "#dc2626" }}>*</span>
                 </label>
                 <select
@@ -522,41 +774,6 @@ export default function DeliveryScheduling() {
                 )}
               </div>
 
-              {form.requested_date && (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  <label style={labelStyle}>
-                    Requested Delivery Date & Time
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={form.requested_date}
-                    readOnly
-                    placeholder="Cashier / customer requested schedule"
-                    style={{
-                      ...inputStyle,
-                      background: "#fafafa",
-                      color: "#71717a",
-                    }}
-                  />
-                  <p
-                    style={{
-                      color: "#71717a",
-                      fontSize: 12,
-                      marginTop: 6,
-                      fontWeight: 500,
-                    }}
-                  >
-                    This is the customer / cashier preferred schedule.
-                  </p>
-                </div>
-              )}
-
               <div
                 style={{
                   display: "flex",
@@ -565,17 +782,28 @@ export default function DeliveryScheduling() {
                 }}
               >
                 <label style={labelStyle}>
-                  Confirmed Delivery Schedule{" "}
+                  Delivery date{" "}
                   <span style={{ color: "#dc2626" }}>*</span>
                 </label>
                 <input
                   type="date"
                   value={form.scheduled_date}
                   onChange={(e) => {
-                    setForm((prev) => ({
-                      ...prev,
-                      scheduled_date: e.target.value,
-                    }));
+                    setForm((prev) => {
+                      const nextDate = e.target.value;
+                      const requestedDate = prev.requested_date
+                        ? prev.requested_date.slice(0, 10)
+                        : "";
+
+                      return {
+                        ...prev,
+                        scheduled_date: nextDate,
+                        reschedule_reason:
+                          requestedDate && requestedDate === nextDate
+                            ? ""
+                            : prev.reschedule_reason,
+                      };
+                    });
                     setFieldErrors((prev) => ({
                       ...prev,
                       scheduled_date: "",
@@ -591,6 +819,21 @@ export default function DeliveryScheduling() {
                       : "#e4e4e7",
                   }}
                 />
+
+                {form.requested_date ? (
+                  <div style={requestedDateHintStyle}>
+                    Requested date:{" "}
+                    <span style={requestedDateValueStyle}>
+                      {formatScheduleParts(form.requested_date).date}
+                    </span>
+                    {form.scheduled_date &&
+                    form.requested_date.slice(0, 10) !== form.scheduled_date ? (
+                      <span style={changedScheduleHintStyle}>
+                        Schedule changed
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
                 {fieldErrors.scheduled_date && (
                   <p
                     style={{
@@ -607,7 +850,7 @@ export default function DeliveryScheduling() {
 
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={labelStyle}>
-                  Delivery Address <span style={{ color: "#dc2626" }}>*</span>
+                  Delivery address <span style={{ color: "#dc2626" }}>*</span>
                 </label>
                 <input
                   type="text"
@@ -640,50 +883,55 @@ export default function DeliveryScheduling() {
                 )}
               </div>
 
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label style={labelStyle}>Reason for Reschedule</label>
-                <textarea
-                  rows={2}
-                  placeholder="Required only if the final schedule differs from the requested schedule."
-                  value={form.reschedule_reason}
-                  onChange={(e) => {
-                    setForm((prev) => ({
-                      ...prev,
-                      reschedule_reason: e.target.value,
-                    }));
-                    setFieldErrors((prev) => ({
-                      ...prev,
-                      reschedule_reason: "",
-                    }));
-                  }}
-                  style={{
-                    ...inputStyle,
-                    resize: "vertical",
-                    fontFamily: "inherit",
-                    borderColor: fieldErrors.reschedule_reason
-                      ? "#dc2626"
-                      : "#e4e4e7",
-                  }}
-                />
-                {fieldErrors.reschedule_reason && (
-                  <p
-                    style={{
-                      color: "#dc2626",
-                      fontSize: 12,
-                      marginTop: 6,
-                      fontWeight: 600,
+              {form.requested_date &&
+              form.scheduled_date &&
+              form.requested_date.slice(0, 10) !== form.scheduled_date ? (
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <div style={rescheduleHeaderStyle}>
+                    <label style={{ ...labelStyle, marginBottom: 0 }}>
+                      Reschedule reason{" "}
+                      <span style={{ color: "#dc2626" }}>*</span>
+                    </label>
+                    <span style={rescheduleHelperStyle}>
+                      Required because the delivery date was changed.
+                    </span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    placeholder="Briefly explain why the delivery date was changed"
+                    value={form.reschedule_reason}
+                    onChange={(e) => {
+                      setForm((prev) => ({
+                        ...prev,
+                        reschedule_reason: e.target.value,
+                      }));
+                      setFieldErrors((prev) => ({
+                        ...prev,
+                        reschedule_reason: "",
+                      }));
                     }}
-                  >
-                    {fieldErrors.reschedule_reason}
-                  </p>
-                )}
-              </div>
+                    style={{
+                      ...inputStyle,
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                      borderColor: fieldErrors.reschedule_reason
+                        ? "#dc2626"
+                        : "#d9dce1",
+                    }}
+                  />
+                  {fieldErrors.reschedule_reason && (
+                    <p style={fieldErrorTextStyle}>
+                      {fieldErrors.reschedule_reason}
+                    </p>
+                  )}
+                </div>
+              ) : null}
 
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={labelStyle}>Notes</label>
                 <textarea
                   rows={2}
-                  placeholder="Any delivery instructions..."
+                  placeholder="Add delivery instructions (optional)"
                   value={form.notes}
                   onChange={(e) =>
                     setForm((prev) => ({
@@ -703,8 +951,10 @@ export default function DeliveryScheduling() {
             <div
               style={{
                 display: "flex",
-                gap: 12,
-                marginTop: 24,
+                gap: 8,
+                marginTop: 4,
+                paddingTop: 16,
+                borderTop: "1px solid #ececef",
                 justifyContent: "flex-end",
                 flexWrap: "wrap",
               }}
@@ -747,182 +997,213 @@ export default function DeliveryScheduling() {
                     : btnPrimary
                 }
               >
-                {loading ? "Scheduling..." : "Schedule Delivery"}
+                {loading ? "Scheduling..." : "Schedule delivery"}
               </button>
             </div>
           </form>
         </div>
+        </div>
       )}
 
-      <div style={cardStyle}>
-        <div
-          style={{ padding: "20px 24px", borderBottom: "1px solid #f4f4f5" }}
-        >
-          <h3
-            style={{
-              margin: 0,
-              fontWeight: 800,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              fontSize: 16,
-              color: "#0a0a0a",
-            }}
-          >
-            <Truck size={20} /> All Deliveries
-          </h3>
-        </div>
+      <div style={summaryGridStyle}>
+        <SummaryCard
+          label="Scheduled"
+          value={statusCounts.scheduled}
+          Icon={CalendarDays}
+          iconColor="#2563eb"
+        />
+        <SummaryCard
+          label="In transit"
+          value={statusCounts.inTransit}
+          Icon={Truck}
+          iconColor="#c2410c"
+        />
+        <SummaryCard
+          label="Delivered"
+          value={statusCounts.delivered}
+          Icon={CheckCircle2}
+          iconColor="#15803d"
+        />
+        <SummaryCard
+          label="Failed"
+          value={statusCounts.failed}
+          Icon={CircleX}
+          iconColor="#b91c1c"
+        />
+      </div>
 
-        {listLoading ? (
-          <p
-            style={{
-              color: "#71717a",
-              fontSize: 13,
-              textAlign: "center",
-              padding: 40,
-              fontWeight: 600,
-            }}
-          >
-            Loading deliveries...
-          </p>
-        ) : deliveries.length === 0 ? (
-          <p
-            style={{
-              color: "#71717a",
-              fontSize: 13,
-              textAlign: "center",
-              padding: 40,
-              fontWeight: 600,
-            }}
-          >
-            No deliveries scheduled.
-          </p>
-        ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table
+      <div style={toolbarStyle}>
+        <div style={filterGridStyle}>
+          <div style={{ ...filterFieldStyle, minWidth: 0 }}>
+            <label style={filterLabelStyle}>Search</label>
+            <div style={searchWrapStyle}>
+              <Search
+                size={14}
+                strokeWidth={1.7}
+                aria-hidden="true"
+                style={{ color: "#71717a", flexShrink: 0 }}
+              />
+              <input
+                type="search"
+                value={deliverySearch}
+                onChange={(e) => setDeliverySearch(e.target.value)}
+                placeholder="Search order, customer, address, or rider"
+                style={searchInputStyle}
+              />
+            </div>
+          </div>
+
+          <div style={filterFieldStyle}>
+            <label style={filterLabelStyle}>Status</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={filterControlStyle}
+            >
+              <option value="all">All statuses</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="in_transit">In transit</option>
+              <option value="delivered">Delivered</option>
+              <option value="failed">Failed</option>
+            </select>
+          </div>
+
+          <div style={filterFieldStyle}>
+            <label style={filterLabelStyle}>Rider</label>
+            <select
+              value={riderFilter}
+              onChange={(e) => setRiderFilter(e.target.value)}
+              style={filterControlStyle}
+            >
+              <option value="all">All riders</option>
+              {riderFilterOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={filterFieldStyle}>
+            <label style={filterLabelStyle}>Delivery date</label>
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              style={filterControlStyle}
+            />
+          </div>
+
+          <div style={{ ...filterFieldStyle, justifyContent: "flex-end" }}>
+            <span style={{ ...filterLabelStyle, visibility: "hidden" }}>
+              Reset
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setDeliverySearch("");
+                setStatusFilter("all");
+                setRiderFilter("all");
+                setDateFilter("");
+              }}
+              disabled={!hasDeliveryFilters}
               style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 13,
-                textAlign: "left",
+                ...resetFilterButtonStyle,
+                opacity: hasDeliveryFilters ? 1 : 0.5,
+                cursor: hasDeliveryFilters ? "pointer" : "default",
               }}
             >
+              <RotateCcw size={14} strokeWidth={1.7} aria-hidden="true" />
+              Reset filters
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div style={cardStyle}>
+        {listLoading ? (
+          <p style={emptyStateStyle}>Loading deliveries...</p>
+        ) : deliveries.length === 0 ? (
+          <p style={emptyStateStyle}>No deliveries scheduled.</p>
+        ) : filteredDeliveries.length === 0 ? (
+          <p style={emptyStateStyle}>No deliveries match these filters.</p>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
               <thead>
                 <tr style={{ background: "#fafafa" }}>
-                  <th style={thStyle}>Order #</th>
+                  <th style={thStyle}>Order</th>
                   <th style={thStyle}>Customer</th>
-                  <th style={thStyle}>Address</th>
-                  <th style={thStyle}>Scheduled</th>
-                  <th style={thStyle}>Driver</th>
+                  <th style={thStyle}>Delivery address</th>
+                  <th style={thStyle}>Scheduled date</th>
+                  <th style={thStyle}>Rider</th>
                   <th style={thStyle}>Status</th>
                 </tr>
               </thead>
               <tbody>
-                {[...deliveries]
-                  .sort((a, b) => {
-                    const getRank = (status) => {
-                      switch (String(status || "").toLowerCase()) {
-                        case "in_transit":
-                          return 1;
-                        case "scheduled":
-                          return 2;
-                        case "delivered":
-                          return 3;
-                        case "completed":
-                          return 4;
-                        case "failed":
-                          return 5;
-                        default:
-                          return 6;
-                      }
-                    };
-                    const rankA = getRank(a.status);
-                    const rankB = getRank(b.status);
+                {filteredDeliveries.map((delivery) => {
+                  const schedule = formatScheduleParts(
+                    delivery.scheduled_date,
+                  );
 
-                    // Sort by hierarchy first
-                    if (rankA !== rankB) return rankA - rankB;
-
-                    // If statuses are the same, sort by scheduled date (newest first)
-                    return (
-                      new Date(b.scheduled_date) - new Date(a.scheduled_date)
-                    );
-                  })
-                  .map((d) => (
+                  return (
                     <tr
-                      key={d.id}
-                      id={`delivery-row-${d.id}`}
+                      key={delivery.id}
+                      id={`delivery-row-${delivery.id}`}
                       style={{
-                        borderBottom: "1px solid #f4f4f5",
-                        ...(focusedDeliveryId === d.id
-                          ? { boxShadow: "inset 0 0 0 2px #0a0a0a" }
+                        borderBottom: "1px solid #eeeeef",
+                        ...(focusedDeliveryId === delivery.id
+                          ? { boxShadow: "inset 0 0 0 2px #18181b" }
                           : null),
                       }}
                     >
-                      <td style={{ padding: "16px 20px", color: "#18181b" }}>
-                        <strong style={{ fontWeight: 800 }}>
-                          {d.order_number}
-                        </strong>
+                      <td style={tdStyle}>
+                        <span style={orderNumberStyle}>
+                          {delivery.order_number || "—"}
+                        </span>
                       </td>
-                      <td
-                        style={{
-                          padding: "16px 20px",
-                          color: "#52525b",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {d.customer_name || "—"}
+
+                      <td style={tdStyle}>
+                        <span style={customerStyle}>
+                          {delivery.customer_name || "—"}
+                        </span>
                       </td>
-                      <td
-                        style={{
-                          padding: "16px 20px",
-                          color: "#18181b",
-                          maxWidth: 200,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={d.address || ""}
-                      >
-                        {d.address}
+
+                      <td style={{ ...tdStyle, maxWidth: 280 }}>
+                        <span
+                          title={delivery.address || ""}
+                          style={addressStyle}
+                        >
+                          {delivery.address || "—"}
+                        </span>
                       </td>
-                      <td
-                        style={{
-                          padding: "16px 20px",
-                          fontSize: 12,
-                          color: "#52525b",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {formatDateTime(d.scheduled_date)}
+
+                      <td style={tdStyle}>
+                        <div style={scheduleDateStyle}>{schedule.date}</div>
+                        {schedule.time ? (
+                          <div style={scheduleTimeStyle}>{schedule.time}</div>
+                        ) : null}
                       </td>
-                      <td
-                        style={{
-                          padding: "16px 20px",
-                          color: "#18181b",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {d.driver_name || (
-                          <span style={{ color: "#a1a1aa" }}>Unassigned</span>
-                        )}
+
+                      <td style={tdStyle}>
+                        <span style={riderStyle}>
+                          {delivery.driver_name || "Unassigned"}
+                        </span>
                       </td>
-                      <td style={{ padding: "16px 20px" }}>
+
+                      <td style={tdStyle}>
                         <span
                           style={{
-                            ...getStatusStyle(d.status),
-                            padding: "4px 10px",
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            textTransform: "uppercase",
-                            letterSpacing: "1px",
+                            ...getStatusStyle(delivery.status),
+                            ...statusBadgeStyle,
                           }}
                         >
-                          {String(d.status || "").replace("_", " ")}
+                          {formatStatusLabel(delivery.status)}
                         </span>
                       </td>
                     </tr>
-                  ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -932,75 +1213,429 @@ export default function DeliveryScheduling() {
   );
 }
 
+function SummaryCard({ label, value, Icon, iconColor }) {
+  return (
+    <div style={summaryCardStyle}>
+      <div style={summaryLabelStyle}>{label}</div>
+      <div style={summaryValueStyle}>
+        {Number(value || 0).toLocaleString("en-PH")}
+      </div>
+
+      {Icon ? (
+        <Icon
+          size={19}
+          strokeWidth={1.65}
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: 13,
+            right: 14,
+            color: iconColor || "#71717a",
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 // ── Reusable Styles ──────────────────────────────────────────
 
 const cardStyle = {
   background: "#ffffff",
-  border: "1px solid #e4e4e7",
-  borderRadius: 16,
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+  border: "1px solid #dedfe3",
+  borderRadius: 2,
+  boxShadow: "none",
   overflow: "hidden",
 };
 
 const labelStyle = {
   display: "block",
-  marginBottom: 8,
+  marginBottom: 6,
   fontSize: 12,
-  fontWeight: 800,
-  color: "#18181b",
-  letterSpacing: "1px",
-  textTransform: "uppercase",
+  fontWeight: 600,
+  color: "#27272a",
+  letterSpacing: 0,
+  textTransform: "none",
   whiteSpace: "nowrap",
 };
 
 const inputStyle = {
   width: "100%",
-  padding: "10px 14px",
-  borderRadius: 8,
-  border: "1px solid #e4e4e7",
-  fontSize: 13,
+  minHeight: 36,
+  padding: "7px 10px",
+  borderRadius: 2,
+  border: "1px solid #d9dce1",
+  fontSize: 12,
   outline: "none",
-  color: "#18181b",
+  color: "#27272a",
   boxSizing: "border-box",
   background: "#fff",
 };
 
 const thStyle = {
-  padding: "14px 20px",
+  padding: "12px 16px",
   fontSize: 10,
-  fontWeight: 800,
+  fontWeight: 600,
   color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "1px",
-  borderBottom: "1px solid #e4e4e7",
+  letterSpacing: "1.1px",
+  borderBottom: "1px solid #dedfe3",
+  whiteSpace: "nowrap",
 };
 
 const btnPrimary = {
   display: "inline-flex",
   alignItems: "center",
-  gap: 8,
-  padding: "10px 20px",
+  justifyContent: "center",
+  gap: 7,
+  minHeight: 36,
+  padding: "8px 14px",
   background: "#18181b",
   color: "#fff",
   border: "1px solid #18181b",
-  borderRadius: 8,
+  borderRadius: 2,
   cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
+  fontSize: 12,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
 const btnGhost = {
   display: "inline-flex",
   alignItems: "center",
-  gap: 8,
-  padding: "10px 16px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  justifyContent: "center",
+  gap: 7,
+  minHeight: 36,
+  padding: "8px 14px",
+  background: "#ffffff",
+  color: "#27272a",
+  border: "1px solid #d9dce1",
+  borderRadius: 2,
   cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
+  fontSize: 12,
+  fontWeight: 600,
   transition: "background 0.2s",
+};
+
+const summaryGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 10,
+  marginBottom: 12,
+};
+
+const summaryCardStyle = {
+  minHeight: 76,
+  padding: "13px 14px",
+  background: "#ffffff",
+  border: "1px solid #dedfe3",
+  borderRadius: 2,
+  boxShadow: "none",
+  boxSizing: "border-box",
+  position: "relative",
+};
+
+const summaryLabelStyle = {
+  fontSize: 10,
+  fontWeight: 500,
+  color: "#71717a",
+  textTransform: "uppercase",
+  letterSpacing: "1.2px",
+  marginBottom: 7,
+};
+
+const summaryValueStyle = {
+  fontSize: 21,
+  lineHeight: 1,
+  fontWeight: 600,
+  color: "#18181b",
+  fontVariantNumeric: "tabular-nums",
+};
+
+const toolbarStyle = {
+  padding: "12px",
+  marginBottom: 12,
+  background: "#ffffff",
+  border: "1px solid #dedfe3",
+  borderRadius: 2,
+};
+
+const filterGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "minmax(300px, 1.8fr) minmax(135px, 0.7fr) minmax(155px, 0.8fr) minmax(150px, 0.75fr) auto",
+  gap: 10,
+  alignItems: "end",
+};
+
+const filterFieldStyle = {
+  display: "flex",
+  flexDirection: "column",
+  minWidth: 0,
+};
+
+const filterLabelStyle = {
+  marginBottom: 5,
+  fontSize: 10,
+  fontWeight: 600,
+  color: "#52525b",
+  letterSpacing: "0.7px",
+  textTransform: "uppercase",
+  whiteSpace: "nowrap",
+};
+
+const searchWrapStyle = {
+  height: 36,
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "0 11px",
+  background: "#ffffff",
+  border: "1px solid #d9dce1",
+  borderRadius: 2,
+  boxSizing: "border-box",
+};
+
+const searchInputStyle = {
+  width: "100%",
+  minWidth: 0,
+  height: "100%",
+  padding: 0,
+  border: 0,
+  outline: "none",
+  background: "transparent",
+  color: "#27272a",
+  fontSize: 12,
+  fontFamily: "inherit",
+};
+
+const filterControlStyle = {
+  width: "100%",
+  height: 36,
+  padding: "0 10px",
+  border: "1px solid #d9dce1",
+  borderRadius: 2,
+  background: "#ffffff",
+  color: "#27272a",
+  fontSize: 12,
+  fontFamily: "inherit",
+  outline: "none",
+  boxSizing: "border-box",
+};
+
+const resetFilterButtonStyle = {
+  height: 36,
+  padding: "0 12px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 7,
+  background: "#ffffff",
+  color: "#27272a",
+  border: "1px solid #d9dce1",
+  borderRadius: 2,
+  fontSize: 12,
+  fontWeight: 600,
+  fontFamily: "inherit",
+  whiteSpace: "nowrap",
+};
+
+const emptyStateStyle = {
+  margin: 0,
+  padding: "42px 20px",
+  textAlign: "center",
+  color: "#71717a",
+  fontSize: 13,
+  fontWeight: 400,
+};
+
+const tableStyle = {
+  width: "100%",
+  minWidth: 980,
+  borderCollapse: "collapse",
+  tableLayout: "fixed",
+  fontSize: 12,
+  textAlign: "left",
+};
+
+const tdStyle = {
+  padding: "13px 16px",
+  color: "#3f3f46",
+  verticalAlign: "middle",
+  lineHeight: 1.35,
+};
+
+const orderNumberStyle = {
+  color: "#18181b",
+  fontWeight: 600,
+  fontVariantNumeric: "tabular-nums",
+};
+
+const customerStyle = {
+  color: "#27272a",
+  fontWeight: 500,
+};
+
+const addressStyle = {
+  color: "#52525b",
+  fontWeight: 400,
+  lineHeight: 1.35,
+  display: "-webkit-box",
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: "vertical",
+  overflow: "hidden",
+};
+
+const scheduleDateStyle = {
+  color: "#27272a",
+  fontWeight: 500,
+  whiteSpace: "nowrap",
+};
+
+const scheduleTimeStyle = {
+  marginTop: 2,
+  color: "#71717a",
+  fontSize: 11,
+  fontWeight: 400,
+  whiteSpace: "nowrap",
+};
+
+const riderStyle = {
+  color: "#27272a",
+  fontWeight: 500,
+};
+
+const statusBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: 23,
+  padding: "2px 8px",
+  borderRadius: 2,
+  fontSize: 11,
+  fontWeight: 500,
+  whiteSpace: "nowrap",
+};
+
+const requestedDateHintStyle = {
+  marginTop: 6,
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  flexWrap: "wrap",
+  color: "#71717a",
+  fontSize: 11,
+  fontWeight: 400,
+};
+
+const requestedDateValueStyle = {
+  color: "#3f3f46",
+  fontWeight: 500,
+};
+
+const changedScheduleHintStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "1px 6px",
+  border: "1px solid #fed7aa",
+  borderRadius: 2,
+  background: "#fff7ed",
+  color: "#c2410c",
+  fontSize: 10,
+  fontWeight: 500,
+};
+
+const rescheduleHeaderStyle = {
+  marginBottom: 6,
+  display: "flex",
+  alignItems: "baseline",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const rescheduleHelperStyle = {
+  color: "#71717a",
+  fontSize: 11,
+  fontWeight: 400,
+};
+
+const fieldErrorTextStyle = {
+  margin: "6px 0 0",
+  color: "#dc2626",
+  fontSize: 11,
+  fontWeight: 500,
+};
+
+// WISDOM DELIVERY SCHEDULING MODAL FORM UI FIX V1.0.1 STYLES
+
+const deliveryModalBackdropStyle = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 1300,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 24,
+  background: "rgba(24, 24, 27, 0.48)",
+};
+
+const deliveryModalStyle = {
+  width: "min(640px, calc(100vw - 32px))",
+  maxHeight: "calc(100vh - 48px)",
+  overflowY: "auto",
+  padding: 22,
+  background: "#ffffff",
+  border: "1px solid #d7d9dd",
+  borderRadius: 2,
+  boxShadow: "none",
+  boxSizing: "border-box",
+};
+
+const deliveryModalHeaderStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 18,
+  marginBottom: 18,
+};
+
+const deliveryModalTitleStyle = {
+  margin: 0,
+  color: "#18181b",
+  fontSize: 16,
+  fontWeight: 700,
+  lineHeight: 1.25,
+};
+
+const deliveryModalSubtitleStyle = {
+  margin: "6px 0 0",
+  color: "#71717a",
+  fontSize: 11.5,
+  fontWeight: 400,
+  lineHeight: 1.5,
+};
+
+const deliveryModalCloseStyle = {
+  width: 28,
+  height: 28,
+  padding: 0,
+  flex: "0 0 auto",
+  color: "#71717a",
+  background: "transparent",
+  border: 0,
+  borderRadius: 2,
+  cursor: "pointer",
+  fontSize: 20,
+  fontWeight: 400,
+  lineHeight: 1,
+};
+
+const deliveryModalErrorStyle = {
+  marginBottom: 14,
+  padding: "9px 11px",
+  color: "#b91c1c",
+  background: "#fef2f2",
+  border: "1px solid #fecaca",
+  borderRadius: 2,
+  fontSize: 11.5,
+  fontWeight: 500,
+  lineHeight: 1.4,
 };
