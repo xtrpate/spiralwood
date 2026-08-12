@@ -82,6 +82,40 @@ function formatDateTime(value) {
   });
 }
 
+function parseDashboardDate(value) {
+  if (!value) return null;
+
+  const date =
+    /^\d{4}-\d{2}-\d{2}$/.test(String(value))
+      ? new Date(`${value}T00:00:00`)
+      : new Date(value);
+
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatDashboardDateRange(fromValue, toValue) {
+  const start = parseDashboardDate(fromValue);
+  const end = parseDashboardDate(toValue);
+
+  if (!start || !end) return "";
+
+  const sameYear = start.getFullYear() === end.getFullYear();
+
+  const startLabel = start.toLocaleDateString("en-PH", {
+    month: "long",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+
+  const endLabel = end.toLocaleDateString("en-PH", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  return `${startLabel} - ${endLabel}`;
+}
+
 function truncate(text, max = 28) {
   if (!text) return "—";
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
@@ -96,35 +130,34 @@ function MetricCard({
   title,
   value,
   meta,
-  icon,
-  alert,
-  color = "#18181b",
+  tone = "neutral",
   onClick,
 }) {
-  const borderColor = alert ? "#ef4444" : color;
+  const className = [
+    "metric-card",
+    `metric-card--${tone}`,
+    onClick ? "metric-card--clickable" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-  return (
-    <div
-      className={`metric-card ${onClick ? "metric-card--clickable" : ""}`}
-      onClick={onClick}
-      style={{
-        borderLeftColor: borderColor,
-      }}
-    >
-      <div className="metric-card__content">
-        <div className="metric-card__left">
-          <div className="metric-card__title">{title}</div>
-          <div className="metric-card__value">{value}</div>
-          {meta && <div className="metric-card__meta">{meta}</div>}
-        </div>
-
-        <div className="metric-card__right">
-          <div className="metric-card__icon">{icon}</div>
-          <span className="metric-card__arrow">→</span>
-        </div>
-      </div>
-    </div>
+  const content = (
+    <>
+      <div className="metric-card__title">{title}</div>
+      <div className="metric-card__value">{value}</div>
+      {meta ? <div className="metric-card__meta">{meta}</div> : null}
+    </>
   );
+
+  if (onClick) {
+    return (
+      <button type="button" className={className} onClick={onClick}>
+        {content}
+      </button>
+    );
+  }
+
+  return <div className={className}>{content}</div>;
 }
 
 function MiniStat({ label, value }) {
@@ -160,19 +193,38 @@ function ProgressRow({ label, value, total, color = "#18181b" }) {
 }
 
 function StatusBadge({ status }) {
-  const isCompleted = ["delivered", "completed", "paid"].includes(status);
-  const isFailed = ["cancelled"].includes(status);
+  const normalized = String(status || "unknown")
+    .trim()
+    .toLowerCase();
+
+  const meta = {
+    paid: ["#f0fdf4", "#15803d", "#bbf7d0"],
+    completed: ["#f0fdf4", "#15803d", "#bbf7d0"],
+    delivered: ["#f0fdf4", "#15803d", "#bbf7d0"],
+    pending: ["#fffbeb", "#a16207", "#fde68a"],
+    unpaid: ["#fffbeb", "#a16207", "#fde68a"],
+    partial: ["#eff6ff", "#1d4ed8", "#bfdbfe"],
+    confirmed: ["#eff6ff", "#1d4ed8", "#bfdbfe"],
+    contract_released: ["#eff6ff", "#1d4ed8", "#bfdbfe"],
+    production: ["#f5f3ff", "#6d28d9", "#ddd6fe"],
+    shipping: ["#fff7ed", "#c2410c", "#fed7aa"],
+    cancelled: ["#fef2f2", "#b91c1c", "#fecaca"],
+  }[normalized] || ["#f4f4f5", "#52525b", "#e4e4e7"];
+
+  const label = normalized
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   return (
     <span
       className="dash-badge"
       style={{
-        background: isFailed ? "#fef2f2" : isCompleted ? "#0a0a0a" : "#f4f4f5",
-        color: isFailed ? "#991b1b" : isCompleted ? "#ffffff" : "#18181b",
-        borderColor: isFailed ? "#fecaca" : isCompleted ? "#0a0a0a" : "#e4e4e7",
+        background: meta[0],
+        color: meta[1],
+        borderColor: meta[2],
       }}
     >
-      {String(status || "unknown").replace(/_/g, " ")}
+      {label}
     </span>
   );
 }
@@ -325,6 +377,10 @@ export default function DashboardPage() {
     : [];
   const dateRange = data?.dateRange || null;
   const chartMode = data?.chartMode || "daily";
+  const dashboardFontFamily = useMemo(() => {
+    if (typeof window === "undefined") return "sans-serif";
+    return window.getComputedStyle(document.body).fontFamily || "sans-serif";
+  }, []);
 
   const totalOrders = Number(orders.total_orders || 0);
   const periodCompleted = Number(orders.completed_orders || 0);
@@ -373,48 +429,78 @@ export default function DashboardPage() {
         {
           label: "Online Sales",
           data: salesChart.map((row) => Number(row.online_sales || 0)),
-          borderColor: "#0a0a0a",
-          backgroundColor: "rgba(10, 10, 10, 0.05)",
-          fill: true,
-          tension: 0.36,
-          borderWidth: 2,
-          pointRadius: chartMode === "monthly" ? 2.5 : 1.8,
+          borderColor: "#18181b",
+          backgroundColor: (context) => {
+            const { chart } = context;
+            const { ctx, chartArea } = chart;
+
+            if (!chartArea) {
+              return "rgba(24, 24, 27, 0.08)";
+            }
+
+            const gradient = ctx.createLinearGradient(
+              0,
+              chartArea.top,
+              0,
+              chartArea.bottom,
+            );
+            gradient.addColorStop(0, "rgba(24, 24, 27, 0.15)");
+            gradient.addColorStop(0.55, "rgba(24, 24, 27, 0.055)");
+            gradient.addColorStop(1, "rgba(24, 24, 27, 0.006)");
+            return gradient;
+          },
+          fill: "origin",
+          cubicInterpolationMode: "monotone",
+          tension: 0.24,
+          borderWidth: 2.25,
+          borderCapStyle: "round",
+          borderJoinStyle: "round",
+          pointRadius: 0,
           pointHoverRadius: 4,
-          pointBackgroundColor: "#0a0a0a",
+          pointHitRadius: 12,
+          pointBorderWidth: 2,
+          pointBackgroundColor: "#ffffff",
+          pointBorderColor: "#18181b",
         },
         {
           label: "Walk-in Sales",
           data: salesChart.map((row) => Number(row.walkin_sales || 0)),
-          borderColor: "#71717a",
+          borderColor: "#9ca3af",
           backgroundColor: "transparent",
-          borderDash: [5, 5],
+          borderDash: [6, 5],
           fill: false,
-          tension: 0.36,
-          borderWidth: 2,
-          pointRadius: chartMode === "monthly" ? 2.5 : 1.8,
-          pointHoverRadius: 4,
-          pointBackgroundColor: "#71717a",
+          cubicInterpolationMode: "monotone",
+          tension: 0.24,
+          borderWidth: 1.75,
+          borderCapStyle: "round",
+          borderJoinStyle: "round",
+          pointRadius: 0,
+          pointHoverRadius: 3.5,
+          pointHitRadius: 12,
+          pointBorderWidth: 2,
+          pointBackgroundColor: "#ffffff",
+          pointBorderColor: "#9ca3af",
         },
       ],
     }),
-    [salesChart, chartLabels, chartMode],
+    [salesChart, chartLabels],
   );
 
   const topProductsData = useMemo(
     () => ({
       labels: topProducts
-        .slice(0, 8)
-        .map((item) => truncate(item.product_name, 24)),
+        .slice(0, 5)
+        .map((item) => truncate(item.product_name, 31)),
       datasets: [
         {
           label: "Units Sold",
           data: topProducts
-            .slice(0, 8)
+            .slice(0, 5)
             .map((item) => Number(item.units_sold || 0)),
           backgroundColor: "#18181b",
-          borderRadius: 10,
+          borderRadius: 0,
           borderSkipped: false,
-          barThickness: 14,
+          barThickness: 12,
         },
       ],
     }),
@@ -425,27 +511,72 @@ export default function DashboardPage() {
     () => ({
       responsive: true,
       maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
+      normalized: true,
+      animation: {
+        duration: 320,
+        easing: "easeOutQuart",
+      },
+      interaction: {
+        mode: "index",
+        intersect: false,
+        axis: "x",
+      },
+      layout: {
+        padding: {
+          top: 2,
+          right: 4,
+          bottom: 0,
+          left: 2,
+        },
+      },
       plugins: {
         legend: {
           position: "top",
           align: "start",
           labels: {
             usePointStyle: true,
-            boxWidth: 8,
-            color: "#18181b",
-            font: { size: 11, weight: 600, family: "Inter" },
-            padding: 16,
+            pointStyle: "line",
+            boxWidth: 24,
+            boxHeight: 8,
+            color: "#3f3f46",
+            font: {
+              size: 10.5,
+              weight: 500,
+              family: dashboardFontFamily,
+            },
+            padding: 18,
           },
         },
         tooltip: {
-          backgroundColor: "#18181b",
+          backgroundColor: "#ffffff",
+          titleColor: "#18181b",
+          bodyColor: "#3f3f46",
+          borderColor: "#d4d4d8",
+          borderWidth: 1,
+          cornerRadius: 0,
           padding: 10,
-          titleFont: { size: 11, weight: 700, family: "Inter" },
-          bodyFont: { size: 11, family: "Inter" },
+          caretPadding: 8,
+          displayColors: true,
+          boxWidth: 8,
+          boxHeight: 8,
+          boxPadding: 5,
+          titleFont: {
+            size: 11,
+            weight: 600,
+            family: dashboardFontFamily,
+          },
+          bodyFont: {
+            size: 11,
+            weight: 400,
+            family: dashboardFontFamily,
+          },
           callbacks: {
-            label: (ctx) =>
-              `${ctx.dataset.label}: ${peso.format(ctx.parsed.y || 0)}`,
+            labelColor: (context) => ({
+              borderColor: context.dataset.borderColor,
+              backgroundColor: context.dataset.borderColor,
+            }),
+            label: (context) =>
+              `${context.dataset.label}: ${peso.format(context.parsed.y || 0)}`,
           },
         },
       },
@@ -455,27 +586,62 @@ export default function DashboardPage() {
             color: "#71717a",
             maxRotation: 0,
             autoSkip: true,
-            maxTicksLimit: chartMode === "monthly" ? 12 : 8,
-            font: { size: 11, family: "Inter" },
+            maxTicksLimit: chartMode === "monthly" ? 12 : 7,
+            padding: 8,
+            font: {
+              size: 10.5,
+              weight: 400,
+              family: dashboardFontFamily,
+            },
           },
-          grid: { display: false },
-          border: { display: false },
+          grid: {
+            display: false,
+          },
+          border: {
+            display: false,
+          },
         },
         y: {
           beginAtZero: true,
+          grace: "6%",
           ticks: {
             color: "#71717a",
-            callback: (value) => peso.format(value),
-            font: { size: 11, family: "Inter" },
+            padding: 8,
+            maxTicksLimit: 6,
+            callback: (value) => {
+              const amount = Number(value || 0);
+              const absolute = Math.abs(amount);
+
+              if (absolute >= 1000000) {
+                const compact = amount / 1000000;
+                const digits = Math.abs(compact) >= 10 ? 0 : 1;
+                return `₱${compact.toFixed(digits).replace(/\.0$/, "")}M`;
+              }
+
+              if (absolute >= 1000) {
+                return `₱${Math.round(amount / 1000)}k`;
+              }
+
+              return `₱${num.format(amount)}`;
+            },
+            font: {
+              size: 10.5,
+              weight: 400,
+              family: dashboardFontFamily,
+            },
           },
           grid: {
-            color: "#f4f4f5",
+            color: "rgba(24, 24, 27, 0.065)",
+            drawTicks: false,
+            lineWidth: 1,
           },
-          border: { display: false },
+          border: {
+            display: false,
+          },
         },
       },
     }),
-    [chartMode],
+    [chartMode, dashboardFontFamily],
   );
 
   const barOptions = useMemo(
@@ -488,9 +654,13 @@ export default function DashboardPage() {
         tooltip: {
           backgroundColor: "#18181b",
           padding: 10,
-          titleFont: { size: 11, weight: 700, family: "Inter" },
-          bodyFont: { size: 11, family: "Inter" },
+          titleFont: { size: 11, weight: 700, family: dashboardFontFamily },
+          bodyFont: { size: 11, family: dashboardFontFamily },
           callbacks: {
+            title: (items) => {
+              const index = items?.[0]?.dataIndex;
+              return topProducts[index]?.product_name || items?.[0]?.label || "";
+            },
             label: (ctx) => ` ${num.format(ctx.parsed.x || 0)} units`,
           },
         },
@@ -501,7 +671,7 @@ export default function DashboardPage() {
           ticks: {
             color: "#71717a",
             precision: 0,
-            font: { size: 11, family: "Inter" },
+            font: { size: 11, family: dashboardFontFamily },
           },
           grid: {
             color: "#f4f4f5",
@@ -511,14 +681,15 @@ export default function DashboardPage() {
         y: {
           ticks: {
             color: "#18181b",
-            font: { size: 11, weight: 600, family: "Inter" },
+            padding: 7,
+            font: { size: 10.5, weight: 500, family: dashboardFontFamily },
           },
           grid: { display: false },
           border: { display: false },
         },
       },
     }),
-    [],
+    [dashboardFontFamily, topProducts],
   );
 
   if (loading && !data) {
@@ -555,61 +726,49 @@ export default function DashboardPage() {
     <div className="dash-shell">
       <style>{dashboardCss}</style>
 
-      <section className="hero-panel hero-panel--compact">
-        <div className="hero-panel__left">
-          <div className="hero-panel__eyebrow">Management Cockpit</div>
+      <section className="dash-page-header">
+        <div>
           <h1 className="dash-title">Dashboard</h1>
           <p className="dash-subtitle">
-            Monitor sales, stock levels, fulfillment progress, and custom order
-            activity from one view.
+            Overview of sales, orders, inventory, and production activity.
           </p>
-
-          <div className="hero-period-row">
-            <span className="hero-period-chip">{activeLabel}</span>
-            {dateRange?.from && dateRange?.to ? (
-              <span className="hero-period-text">
-                {dateRange.from} → {dateRange.to}
-              </span>
-            ) : null}
-          </div>
         </div>
 
-        <div className="hero-panel__right">
-          <button
-            className="dash-btn dash-btn-ghost"
-            onClick={handleRefresh}
-            disabled={refreshing}
-          >
-            {refreshing ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
+        <button
+          className="dash-btn dash-btn-secondary"
+          onClick={handleRefresh}
+          disabled={refreshing}
+          type="button"
+        >
+          {refreshing ? "Refreshing..." : "Refresh"}
+        </button>
       </section>
 
-      <section className="dash-filter-card">
-        <div className="section-kicker">Date Filters</div>
-
-        <div className="dash-pill-row">
-          {PRESETS.map((item) => (
-            <button
-              key={item.key}
-              className={`dash-pill ${preset === item.key ? "active" : ""}`}
-              onClick={() => handlePresetChange(item.key)}
-              type="button"
-            >
-              {item.label}
-            </button>
-          ))}
+      <section className="dash-toolbar">
+        <div className="dash-field dash-field--period">
+          <label htmlFor="dash-period">Period</label>
+          <select
+            id="dash-period"
+            value={preset}
+            onChange={(event) => handlePresetChange(event.target.value)}
+          >
+            {PRESETS.map((item) => (
+              <option key={item.key} value={item.key}>
+                {item.label}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {preset === "custom" && (
-          <div className="dash-custom-row">
+        {preset === "custom" ? (
+          <>
             <div className="dash-field">
               <label htmlFor="dash-from">From</label>
               <input
                 id="dash-from"
                 type="date"
                 value={from}
-                onChange={(e) => setFrom(e.target.value)}
+                onChange={(event) => setFrom(event.target.value)}
               />
             </div>
 
@@ -619,109 +778,79 @@ export default function DashboardPage() {
                 id="dash-to"
                 type="date"
                 value={to}
-                onChange={(e) => setTo(e.target.value)}
+                onChange={(event) => setTo(event.target.value)}
               />
             </div>
 
-            <div className="dash-custom-actions">
-              <button
-                className="dash-btn dash-btn-primary"
-                onClick={handleApplyCustom}
-                type="button"
-              >
-                Apply Range
-              </button>
-            </div>
-          </div>
-        )}
-
-        {rangeError ? (
-          <div className="dash-inline-error">{rangeError}</div>
+            <button
+              className="dash-btn dash-btn-primary dash-apply-button"
+              onClick={handleApplyCustom}
+              type="button"
+            >
+              Apply
+            </button>
+          </>
         ) : null}
+
+        <div className="dash-period-summary">
+          <span>{activeLabel}</span>
+          {dateRange?.from && dateRange?.to ? (
+            <small>
+              {formatDashboardDateRange(dateRange.from, dateRange.to)}
+            </small>
+          ) : null}
+        </div>
       </section>
+
+      {rangeError ? <div className="dash-inline-error">{rangeError}</div> : null}
 
       {fetchError ? (
         <div className="dash-inline-alert">
-          <strong>Unable to refresh dashboard.</strong> {fetchError}
+          <strong>Dashboard could not refresh.</strong> {fetchError}
         </div>
       ) : null}
 
-      {/* 👉 FIX: Added the navigation onClicks only to these 6 cards! */}
-      <section className="metric-grid metric-grid--six">
+      <section className="metric-grid metric-grid--five">
         <MetricCard
-          icon="💰"
-          color="#16A34A"
+          title="Sales"
           value={peso.format(Number(sales.total_revenue || 0))}
-          title="Net Sales"
-          meta={
-            <>
-              <div>Profit: {peso.format(Number(sales.total_profit || 0))}</div>
-              <div>
-                Avg Order: {peso.format(Number(sales.avg_order_value || 0))}
-              </div>
-            </>
-          }
+          meta={`Profit ${peso.format(Number(sales.total_profit || 0))}`}
           onClick={() => navigate("/admin/sales")}
         />
 
         <MetricCard
-          icon="📦"
-          color="#2563EB"
+          title="Orders"
+          value={num.format(totalOrders)}
+          meta={`${num.format(periodCompleted)} completed`}
+          onClick={() => navigate("/admin/orders")}
+        />
+
+        <MetricCard
+          title="Open orders"
           value={num.format(currentOpenOrders)}
-          title="Open Orders"
-          meta={
-            <>
-              <div>{num.format(currentPending)} Pending</div>
-              <div>{num.format(currentProduction)} In Production</div>
-            </>
-          }
+          meta={`${num.format(currentPending)} pending`}
           onClick={() => navigate("/admin/orders")}
         />
 
         <MetricCard
-          icon="💳"
-          color="#F59E0B"
+          title="Payment reviews"
           value={num.format(pendingReviews)}
-          title="Pending Payment Review"
-          meta={`${num.format(deliveredUnpaid)} delivered but unpaid`}
+          meta={`${num.format(deliveredUnpaid)} delivered unpaid`}
+          tone={pendingReviews > 0 || deliveredUnpaid > 0 ? "warning" : "neutral"}
           onClick={() => navigate("/admin/orders")}
         />
 
         <MetricCard
-          icon="⚠️"
-          color="#EF4444"
-          alert={stockAlerts > 0}
+          title="Inventory alerts"
           value={num.format(stockAlerts)}
-          title="Low / Out of Stock"
           meta={
             <>
-              <div>{num.format(lowStockTotal)} Low Stock</div>
-              <div>{num.format(outOfStockTotal)} Critical</div>
+              <span>{num.format(lowStockTotal)} low stock</span>
+              <span className="metric-card__separator">•</span>
+              <span>{num.format(outOfStockTotal)} out of stock</span>
             </>
           }
-          onClick={() => navigate("/admin/products")}
-        />
-
-        <MetricCard
-          icon="📐"
-          color="#8B5CF6"
-          value={num.format(activeBlueprintJobs)}
-          title="Active Blueprint Jobs"
-          meta={`${num.format(
-            Number(blueprint.pending_custom_review || 0),
-          )} pending review · ${num.format(
-            Number(blueprint.quotation_waiting || 0),
-          )} waiting customer`}
-          onClick={() => navigate("/admin/blueprints")}
-        />
-
-        <MetricCard
-          icon="🌐"
-          color="#0891B2"
-          value={`${num.format(onlineOrders)} / ${num.format(walkinOrders)}`}
-          title="Online vs Walk-in"
-          meta={`${num.format(totalChannelOrders)} orders in selected range`}
-          onClick={() => navigate("/admin/orders")}
+          tone={outOfStockTotal > 0 ? "danger" : lowStockTotal > 0 ? "warning" : "neutral"}
         />
       </section>
 
@@ -729,41 +858,27 @@ export default function DashboardPage() {
         <div className="dash-card">
           <div className="card-header">
             <div>
-              <div className="section-kicker">Sales & Orders</div>
-              <h3
-                className="card-title clickable-title"
-                onClick={() => navigate("/admin/sales")}
-              >
-                Sales Trend <span className="link-arrow">→</span>
-              </h3>
+              <h2 className="card-title">Sales trend</h2>
               <p className="card-description">
-                Revenue movement and order volume in the selected date range.
+                Online and walk-in sales for the selected period.
               </p>
             </div>
+
+            <button
+              type="button"
+              className="dash-link-button"
+              onClick={() => navigate("/admin/sales")}
+            >
+              View sales report
+            </button>
           </div>
 
-          <div className="mini-stat-grid mini-stat-grid--four">
-            <MiniStat
-              label="Revenue"
-              value={peso.format(Number(sales.total_revenue || 0))}
-            />
-            <MiniStat
-              label="Profit"
-              value={peso.format(Number(sales.total_profit || 0))}
-            />
-            <MiniStat
-              label="Avg Order"
-              value={peso.format(Number(sales.avg_order_value || 0))}
-            />
-            <MiniStat label="Orders" value={num.format(totalOrders)} />
-          </div>
-
-          <div className="dash-chart-area dash-chart-area--large">
+          <div className="dash-chart-area dash-chart-area--sales">
             {salesChart.length === 0 ? (
               <div className="dash-empty-state">
-                <div className="dash-empty-title">No sales data found</div>
+                <div className="dash-empty-title">No sales recorded</div>
                 <div className="dash-empty-text">
-                  There are no recorded sales for the selected period.
+                  No sales were recorded in the selected period.
                 </div>
               </div>
             ) : (
@@ -775,102 +890,29 @@ export default function DashboardPage() {
         <div className="dash-card">
           <div className="card-header">
             <div>
-              <div className="section-kicker">Operations</div>
-              <h3
-                className="card-title clickable-title"
-                onClick={() => navigate("/admin/orders")}
-              >
-                Fulfillment Pipeline <span className="link-arrow">→</span>
-              </h3>
+              <h2 className="card-title">Order status</h2>
               <p className="card-description">
-                Current order flow and stages that need admin attention.
+                Orders created in the selected period.
               </p>
             </div>
+
+            <button
+              type="button"
+              className="dash-link-button"
+              onClick={() => navigate("/admin/orders")}
+            >
+              View orders
+            </button>
           </div>
 
-          <div className="fulfillment-summary">
-            <div className="fulfillment-summary__main">
-              <span>Current Open Orders</span>
-              <strong>{num.format(currentOpenOrders)}</strong>
-            </div>
-            <div className="fulfillment-summary__side">
-              <span>Completion Rate</span>
-              <strong>
-                {currentTotalOrders
-                  ? `${Math.round((currentCompleted / currentTotalOrders) * 100)}%`
-                  : "0%"}
-              </strong>
-            </div>
-          </div>
-
-          <div className="progress-list">
-            <ProgressRow
-              label="Pending"
-              value={currentPending}
-              total={currentTotalOrders}
-              color="#18181B"
-            />
-
-            <ProgressRow
-              label="Confirmed"
-              value={currentConfirmed}
-              total={currentTotalOrders}
-              color="#18181B"
-            />
-
-            <ProgressRow
-              label="In Production"
-              value={currentProduction}
-              total={currentTotalOrders}
-              color="#18181B"
-            />
-
-            <ProgressRow
-              label="Shipping"
-              value={currentShipping}
-              total={currentTotalOrders}
-              color="#18181B"
-            />
-
-            <ProgressRow
-              label="Delivered"
-              value={currentDelivered}
-              total={currentTotalOrders}
-              color="#94A3B8"
-            />
-
-            <ProgressRow
-              label="Completed"
-              value={currentCompleted}
-              total={currentTotalOrders}
-              color="#22C55E"
-            />
-
-            <ProgressRow
-              label="Cancelled"
-              value={currentCancelled}
-              total={currentTotalOrders}
-              color="#EF4444"
-            />
-          </div>
-
-          <div className="ops-footnote-grid">
-            <div className="ops-footnote ops-footnote--warning">
-              <span>Payment Review Queue</span>
-              <strong>{num.format(pendingReviews)}</strong>
-            </div>
-            <div className="ops-footnote ops-footnote--danger">
-              <span>Cancelled Orders</span>
-              <strong>{num.format(currentCancelled)}</strong>
-            </div>
-            <div className="ops-footnote ops-footnote--info">
-              <span>Total Orders</span>
-              <strong>{num.format(totalOrders)}</strong>
-            </div>
-            <div className="ops-footnote ops-footnote--success">
-              <span>Completed Orders</span>
-              <strong>{num.format(periodCompleted)}</strong>
-            </div>
+          <div className="progress-list progress-list--orders">
+            <ProgressRow label="Pending" value={currentPending} total={currentTotalOrders} color="#d97706" />
+            <ProgressRow label="Confirmed" value={currentConfirmed} total={currentTotalOrders} color="#2563eb" />
+            <ProgressRow label="In production" value={currentProduction} total={currentTotalOrders} color="#7c3aed" />
+            <ProgressRow label="Shipping" value={currentShipping} total={currentTotalOrders} color="#ea580c" />
+            <ProgressRow label="Delivered" value={currentDelivered} total={currentTotalOrders} color="#16a34a" />
+            <ProgressRow label="Completed" value={currentCompleted} total={currentTotalOrders} color="#15803d" />
+            <ProgressRow label="Cancelled" value={currentCancelled} total={currentTotalOrders} color="#dc2626" />
           </div>
         </div>
       </section>
@@ -879,53 +921,59 @@ export default function DashboardPage() {
         <div className="dash-card">
           <div className="card-header">
             <div>
-              <div className="section-kicker">Inventory Control</div>
-              <h3
-                className="card-title clickable-title"
-                onClick={() => navigate("/admin/products")}
-              >
-                Stock Overview <span className="link-arrow">→</span>
-              </h3>
+              <h2 className="card-title">Inventory attention</h2>
               <p className="card-description">
-                Current stock alerts and selected-range stock movement.
+                Current stock issues that need review.
               </p>
             </div>
           </div>
 
-          <div className="inventory-panel">
-            <div className="inventory-panel__grid inventory-panel__grid--triple">
-              <MiniStat
-                label="Products"
-                value={num.format(Number(inventory.total_products || 0))}
-              />
-              <MiniStat
-                label="Raw Materials"
-                value={num.format(Number(inventory.total_raw_materials || 0))}
-              />
-              <MiniStat
-                label="Stock In"
-                value={num.format(Number(inventory.stock_in_total || 0))}
-              />
-              <MiniStat
-                label="Stock Out"
-                value={num.format(Number(inventory.stock_out_total || 0))}
-              />
-              <MiniStat label="Low Stock" value={num.format(lowStockTotal)} />
-              <MiniStat
-                label="Critical Level"
-                value={num.format(outOfStockTotal)}
-              />
+          <div className="inventory-attention">
+            <div className="inventory-attention__row">
+              <div>
+                <strong>Finished products</strong>
+                <span>Ready-made inventory</span>
+              </div>
+              <div className="inventory-attention__counts">
+                <span className="stock-count stock-count--low">
+                  Low {num.format(Number(inventory.low_stock_count || 0))}
+                </span>
+                <span className="stock-count stock-count--out">
+                  Out {num.format(Number(inventory.out_of_stock_count || 0))}
+                </span>
+              </div>
             </div>
 
-            <div className="inventory-note">
-              <div className="inventory-note__title">Priority Note</div>
-              <div className="inventory-note__text">
-                {outOfStockTotal > 0
-                  ? `${num.format(outOfStockTotal)} items are already at critical level. Prioritize restocking before new commitments are accepted.`
-                  : lowStockTotal > 0
-                    ? `${num.format(lowStockTotal)} items are already low stock. Review reorder needs soon.`
-                    : "No critical inventory alert detected in the current snapshot."}
+            <div className="inventory-attention__row">
+              <div>
+                <strong>Raw materials</strong>
+                <span>Production inventory</span>
               </div>
+              <div className="inventory-attention__counts">
+                <span className="stock-count stock-count--low">
+                  Low {num.format(Number(inventory.raw_low_stock || 0))}
+                </span>
+                <span className="stock-count stock-count--out">
+                  Out {num.format(Number(inventory.raw_out_of_stock || 0))}
+                </span>
+              </div>
+            </div>
+
+            <div className="card-button-row">
+              <button
+                type="button"
+                className="dash-btn dash-btn-secondary"
+                onClick={() => navigate("/admin/products")}
+              >
+                Products
+              </button>
+              <button
+                type="button"
+                className="dash-btn dash-btn-secondary"
+                onClick={() => navigate("/admin/inventory/raw")}
+              >
+                Raw materials
+              </button>
             </div>
           </div>
         </div>
@@ -933,72 +981,68 @@ export default function DashboardPage() {
         <div className="dash-card">
           <div className="card-header">
             <div>
-              <div className="section-kicker">Blueprint / Custom</div>
-              <h3
-                className="card-title clickable-title"
-                onClick={() => navigate("/admin/orders")}
-              >
-                Custom Pipeline <span className="link-arrow">→</span>
-              </h3>
+              <h2 className="card-title">Custom orders</h2>
               <p className="card-description">
-                Current flow of blueprint and customization requests.
+                Blueprint orders moving through approval and production.
               </p>
             </div>
+
+            <button
+              type="button"
+              className="dash-link-button"
+              onClick={() => navigate("/admin/blueprints")}
+            >
+              View blueprints
+            </button>
           </div>
 
-          <div className="fulfillment-summary">
-            <div className="fulfillment-summary__main">
-              <span>Total Blueprint Orders</span>
-              <strong>
-                {num.format(Number(blueprint.total_blueprint_orders || 0))}
-              </strong>
+          <div className="compact-summary">
+            <div>
+              <span>Total orders</span>
+              <strong>{num.format(Number(blueprint.total_blueprint_orders || 0))}</strong>
             </div>
-            <div className="fulfillment-summary__side">
-              <span>Active Jobs</span>
+            <div>
+              <span>Active jobs</span>
               <strong>{num.format(activeBlueprintJobs)}</strong>
             </div>
           </div>
 
-          <div className="progress-list">
+          <div className="progress-list progress-list--compact">
             <ProgressRow
-              label="Pending Review"
+              label="Pending review"
               value={Number(blueprint.pending_custom_review || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
+              color="#d97706"
             />
             <ProgressRow
-              label="Estimate Drafting"
-              value={Number(blueprint.estimate_drafting || 0)}
-              total={Number(blueprint.total_blueprint_orders || 0)}
-            />
-            <ProgressRow
-              label="Quotation Waiting"
-              value={Number(blueprint.quotation_waiting || 0)}
-              total={Number(blueprint.total_blueprint_orders || 0)}
-            />
-            <ProgressRow
-              label="Quotation Approved"
+              label="Confirmed"
               value={Number(blueprint.quotation_approved || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
+              color="#2563eb"
             />
             <ProgressRow
-              label="Contract Released"
+              label="Contract released"
               value={Number(blueprint.contract_released || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
+              color="#7c3aed"
             />
             <ProgressRow
-              label="In Production"
+              label="In production"
               value={Number(blueprint.in_production || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
+              color="#6d28d9"
             />
             <ProgressRow
-              label="Ready for Dispatch"
+              label="Ready for dispatch"
               value={Number(blueprint.ready_for_dispatch || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
+              color="#ea580c"
             />
             <ProgressRow
               label="Completed"
               value={Number(blueprint.completed_blueprint_orders || 0)}
               total={Number(blueprint.total_blueprint_orders || 0)}
+              color="#15803d"
             />
           </div>
         </div>
@@ -1006,20 +1050,19 @@ export default function DashboardPage() {
         <div className="dash-card">
           <div className="card-header">
             <div>
-              <div className="section-kicker">Product Performance</div>
-              <h3 className="card-title">Top Products</h3>
+              <h2 className="card-title">Top products</h2>
               <p className="card-description">
-                Best-selling items ranked by units sold in the selected range.
+                Best-selling products by units sold.
               </p>
             </div>
           </div>
 
-          <div className="dash-chart-area">
+          <div className="dash-chart-area dash-chart-area--products">
             {topProducts.length === 0 ? (
               <div className="dash-empty-state">
-                <div className="dash-empty-title">No product data found</div>
+                <div className="dash-empty-title">No product sales</div>
                 <div className="dash-empty-text">
-                  Product sales will appear here once orders are recorded.
+                  Product rankings will appear after sales are recorded.
                 </div>
               </div>
             ) : (
@@ -1032,23 +1075,31 @@ export default function DashboardPage() {
       <section className="dash-card">
         <div className="card-header card-header--table">
           <div>
-            <div className="section-kicker">Activity</div>
-            <h3 className="card-title">Recent Orders</h3>
+            <h2 className="card-title">Recent orders</h2>
             <p className="card-description">
-              Latest transactions within the selected range.
+              Latest orders in the selected period.
             </p>
           </div>
 
-          <span className="dash-table-count">
-            {num.format(recentOrders.length)} orders
-          </span>
+          <div className="card-header__actions">
+            <span className="dash-table-count">
+              {num.format(Math.min(recentOrders.length, 8))} shown
+            </span>
+            <button
+              type="button"
+              className="dash-link-button"
+              onClick={() => navigate("/admin/orders")}
+            >
+              View all orders
+            </button>
+          </div>
         </div>
 
         {recentOrders.length === 0 ? (
           <div className="dash-empty-state dash-empty-state--table">
-            <div className="dash-empty-title">No orders in this range</div>
+            <div className="dash-empty-title">No recent orders</div>
             <div className="dash-empty-text">
-              Try a wider date range to view more order activity.
+              Try another period to review order activity.
             </div>
           </div>
         ) : (
@@ -1056,28 +1107,20 @@ export default function DashboardPage() {
             <table className="dash-table">
               <thead>
                 <tr>
-                  <th>Order ID</th>
+                  <th>Order</th>
                   <th>Customer</th>
-                  <th>Type</th>
-                  <th>Channel</th>
                   <th>Amount</th>
                   <th>Payment</th>
                   <th>Status</th>
-                  <th>Date &amp; Time</th>
+                  <th>Date</th>
                 </tr>
               </thead>
               <tbody>
-                {recentOrders.map((order) => (
+                {recentOrders.slice(0, 8).map((order) => (
                   <tr key={order.id}>
                     <td className="dash-strong">#{order.id}</td>
                     <td>{order.customer_name || "Walk-in"}</td>
-                    <td>
-                      <TypeBadge type={order.order_type} />
-                    </td>
-                    <td>
-                      <ChannelBadge channel={order.channel} />
-                    </td>
-                    <td className="dash-strong">
+                    <td className="dash-amount">
                       {peso.format(Number(order.total_amount || 0))}
                     </td>
                     <td>
@@ -1102,601 +1145,523 @@ const dashboardCss = `
   .dash-shell {
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    color: #0a0a0a;
-    font-family: 'Inter', sans-serif;
+    gap: 12px;
+    color: #18181b;
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
   }
 
-  .hero-panel,
-  .dash-filter-card,
-  .dash-card,
-  .metric-card {
-    background: #ffffff;
-    border: 1px solid #e4e4e7;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
-  }
-
-  .hero-panel {
-    border-radius: 16px;
-    padding: 24px;
+  .dash-page-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
-    flex-wrap: wrap;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .hero-panel__left,
-  .hero-panel__right {
-    position: relative;
-    z-index: 1;
-  }
-
-  .hero-panel__eyebrow,
-  .section-kicker {
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
-    color: #71717a;
-    margin-bottom: 8px;
+    padding: 4px 0 2px;
   }
 
   .dash-title {
     margin: 0;
-    font-size: 26px;
-    line-height: 1.12;
-    font-weight: 800;
-    color: #0a0a0a;
+    color: #18181b;
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.2;
     letter-spacing: -0.02em;
   }
 
   .dash-subtitle {
-    margin: 8px 0 0;
-    color: #52525b;
-    font-size: 13px;
-    max-width: 720px;
+    margin: 4px 0 0;
+    color: #71717a;
+    font-size: 12.5px;
+    font-weight: 400;
+    line-height: 1.5;
   }
 
-  .hero-period-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-top: 16px;
-  }
-
-  .hero-period-chip {
-    display: inline-flex;
-    align-items: center;
-    min-height: 30px;
-    padding: 0 14px;
-    border-radius: 999px;
-    background: #0a0a0a;
-    color: #ffffff;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
-  }
-
-  .hero-period-text {
-    font-size: 12px;
-    color: #52525b;
-    font-weight: 600;
-  }
-
-  .dash-filter-card,
-  .dash-card {
-    border-radius: 16px;
-  }
-
-  .dash-filter-card {
-    padding: 20px;
-  }
-
-  .dash-pill-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .dash-pill {
-    border: 1px solid #e4e4e7;
+  .dash-toolbar,
+  .dash-card,
+  .metric-card {
     background: #ffffff;
-    color: #18181b;
-    border-radius: 999px;
-    padding: 8px 14px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.15s ease;
+    border: 1px solid #e4e4e7;
+    border-radius: 0;
+    box-shadow: none;
   }
 
-  .dash-pill:hover {
-    border-color: #18181b;
-  }
-
-  .dash-pill.active {
-    background: #18181b;
-    border-color: #18181b;
-    color: #ffffff;
-  }
-
-  .dash-custom-row {
+  .dash-toolbar {
+    min-height: 64px;
+    padding: 10px 12px;
     display: flex;
-    flex-wrap: wrap;
-    align-items: end;
-    gap: 12px;
-    margin-top: 16px;
+    align-items: flex-end;
+    gap: 10px;
   }
 
   .dash-field {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    min-width: 180px;
+    gap: 5px;
+    min-width: 150px;
+  }
+
+  .dash-field--period {
+    min-width: 170px;
   }
 
   .dash-field label {
-    font-size: 11px;
-    font-weight: 700;
-    color: #52525b;
+    color: #71717a;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
-  .dash-field input {
-    height: 38px;
-    border: 1px solid #e4e4e7;
-    border-radius: 8px;
-    padding: 0 12px;
-    font-size: 13px;
-    color: #18181b;
+  .dash-field input,
+  .dash-field select {
+    height: 34px;
+    min-width: 150px;
+    padding: 0 10px;
+    border: 1px solid #d4d4d8;
+    border-radius: 0;
     outline: none;
     background: #ffffff;
+    color: #18181b;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 400;
   }
 
-  .dash-field input:focus {
+  .dash-field input:focus,
+  .dash-field select:focus {
     border-color: #18181b;
   }
 
-  .dash-custom-actions {
+  .dash-period-summary {
+    margin-left: auto;
+    min-height: 34px;
     display: flex;
-    align-items: end;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-end;
+    gap: 1px;
+    color: #18181b;
+  }
+
+  .dash-period-summary span {
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+
+  .dash-period-summary small {
+    color: #71717a;
+    font-size: 10.5px;
+    font-weight: 400;
+  }
+
+  .dash-btn,
+  .dash-link-button {
+    border-radius: 0;
+    box-shadow: none;
+    font: inherit;
+    cursor: pointer;
   }
 
   .dash-btn {
-    height: 38px;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    padding: 0 18px;
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .dash-btn:disabled {
-    cursor: not-allowed;
-    opacity: 0.7;
+    height: 34px;
+    padding: 0 12px;
+    border: 1px solid #d4d4d8;
+    font-size: 11.5px;
+    font-weight: 600;
   }
 
   .dash-btn-primary {
+    border-color: #18181b;
     background: #18181b;
     color: #ffffff;
   }
 
-  .dash-btn-primary:hover:not(:disabled) {
-    background: #3f3f46;
-  }
-
-  .dash-btn-ghost {
-    background: #f4f4f5;
-    border-color: #e4e4e7;
+  .dash-btn-secondary {
+    background: #ffffff;
     color: #18181b;
   }
 
-  .dash-btn-ghost:hover:not(:disabled) {
-    background: #e4e4e7;
+  .dash-btn:hover:not(:disabled),
+  .dash-link-button:hover {
+    background: #f4f4f5;
+  }
+
+  .dash-btn-primary:hover:not(:disabled) {
+    background: #27272a;
+  }
+
+  .dash-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+
+  .dash-apply-button {
+    align-self: flex-end;
+  }
+
+  .dash-link-button {
+    height: 30px;
+    min-height: 30px;
+    padding: 0 10px;
+    border: 1px solid #d4d4d8;
+    background: #ffffff;
+    color: #18181b;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .dash-inline-error,
+  .dash-inline-alert {
+    padding: 9px 11px;
+    border-radius: 0;
+    font-size: 11.5px;
   }
 
   .dash-inline-error {
-    margin-top: 12px;
-    color: #dc2626;
-    font-size: 12px;
-    font-weight: 600;
+    border: 1px solid #fde68a;
+    background: #fffbeb;
+    color: #a16207;
   }
 
   .dash-inline-alert {
     border: 1px solid #fecaca;
     background: #fef2f2;
-    color: #991b1b;
-    border-radius: 12px;
-    padding: 12px 16px;
-    font-size: 12px;
+    color: #b91c1c;
   }
 
   .metric-grid {
     display: grid;
-    gap: 16px;
+    gap: 8px;
   }
 
-  .metric-grid--six {
-    display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
-    gap:18px;
+  .metric-grid--five {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
   .metric-card {
-    border-radius: 16px;
-    padding: 24px;
-    border: 1px solid #e4e4e7;
-    border-left: 6px solid #18181b; 
-    background: #ffffff;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    width: 100%;
+    min-height: 88px;
+    padding: 12px 14px;
+    text-align: left;
+    color: #18181b;
   }
 
-  .metric-card--clickable {
+  button.metric-card {
     cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    font: inherit;
   }
 
   .metric-card--clickable:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 24px rgba(0,0,0,.06), 0 2px 6px rgba(0,0,0,.04);
+    background: #fafafa;
     border-color: #d4d4d8;
   }
 
-  .metric-card__content {
-    display: flex;
-    justify-content: space-between;
-    align-items: center; 
-    width: 100%;
-    gap: 16px;
+  .metric-card--warning {
+    border-top: 2px solid #d97706;
   }
 
-  .metric-card__left {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+  .metric-card--danger {
+    border-top: 2px solid #dc2626;
   }
 
   .metric-card__title {
-    font-size: 11px;
-    font-weight: 800;
+    margin-bottom: 8px;
+    color: #71717a;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #52525b; 
   }
 
   .metric-card__value {
-    font-size: 28px;
-    font-weight: 800;
-    color: #0a0a0a; 
-    line-height: 1.1;
+    color: #18181b;
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.02em;
   }
 
   .metric-card__meta {
-    font-size: 12px;
+    margin-top: 7px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
     color: #71717a;
-    line-height: 1.4;
-    margin-top: 4px;
+    font-size: 10.5px;
+    font-weight: 400;
+    line-height: 1.35;
   }
 
-  .metric-card__icon {
-    width: 48px;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 12px;
-    background: #f4f4f5; 
-    font-size: 22px;
-    flex-shrink: 0;
+  .metric-card__separator {
+    color: #a1a1aa;
   }
 
   .dashboard-grid {
     display: grid;
-    gap: 20px;
+    gap: 12px;
   }
 
   .dashboard-grid--main {
-    grid-template-columns: minmax(0, 1.7fr) minmax(340px, 1fr);
+    grid-template-columns: minmax(0, 1.75fr) minmax(300px, 0.85fr);
   }
 
   .dashboard-grid--triple {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns:
+      minmax(0, 0.95fr)
+      minmax(0, 1.05fr)
+      minmax(0, 1.12fr);
+  }
+
+  .dash-card {
+    min-width: 0;
+    overflow: hidden;
   }
 
   .card-header {
+    min-height: 62px;
+    padding: 13px 14px 10px;
+    border-bottom: 1px solid #ededf0;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
-    padding: 20px 20px 0;
   }
 
   .card-header--table {
     align-items: center;
-    padding-bottom: 16px;
-    border-bottom: 1px solid #e4e4e7;
+  }
+
+  .card-header__actions,
+  .card-button-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
   }
 
   .card-title {
     margin: 0;
-    font-size: 18px;
-    font-weight: 800;
-    color: #0a0a0a;
-    letter-spacing: -0.01em;
-  }
-
-  .clickable-title {
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    transition: color 0.15s ease;
-  }
-
-  .clickable-title:hover {
-    color: #52525b; 
-  }
-
-  .link-arrow {
-    font-size: 16px;
-    opacity: 0;
-    transform: translateX(-4px);
-    transition: all 0.2s ease;
-    color: #52525b;
-  }
-
-  .clickable-title:hover .link-arrow {
-    opacity: 1;
-    transform: translateX(0);
+    color: #18181b;
+    font-size: 15.5px;
+    font-weight: 700;
+    line-height: 1.3;
   }
 
   .card-description {
-    margin: 6px 0 0;
-    font-size: 13px;
-    color: #52525b;
-  }
-
-  .mini-stat-grid {
-    display: grid;
-    gap: 12px;
-    padding: 20px 20px 0;
-  }
-
-  .mini-stat-grid--four {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .mini-stat {
-    border-radius: 12px;
-    padding: 14px;
-    border: 1px solid #e4e4e7;
-    background: #fafafa;
-  }
-
-  .mini-stat__label {
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 1px;
-    text-transform: uppercase;
+    margin: 3px 0 0;
     color: #71717a;
-    margin-bottom: 8px;
-  }
-
-  .mini-stat__value {
-    font-size: 18px;
-    font-weight: 800;
-    color: #0a0a0a;
-    letter-spacing: -0.01em;
+    font-size: 11.5px;
+    font-weight: 400;
+    line-height: 1.4;
   }
 
   .dash-chart-area {
-    height: 320px;
-    padding: 16px 20px 20px;
+    position: relative;
+    min-height: 250px;
+    padding: 12px 14px 14px;
   }
 
-  .dash-chart-area--large {
-    height: 360px;
+  .dash-chart-area--sales {
+    height: 278px;
   }
 
-  .fulfillment-summary {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 12px;
-    margin: 20px 20px 0;
-    padding: 16px;
-    border: 1px solid #e4e4e7;
-    border-radius: 12px;
-    background: #fafafa;
-  }
-
-  .fulfillment-summary__main,
-  .fulfillment-summary__side {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .fulfillment-summary__main span,
-  .fulfillment-summary__side span {
-    font-size: 11px;
-    color: #52525b;
-    font-weight: 700;
-  }
-
-  .fulfillment-summary__main strong,
-  .fulfillment-summary__side strong {
-    font-size: 22px;
-    line-height: 1.1;
-    color: #0a0a0a;
-    font-weight: 800;
+  .dash-chart-area--products {
+    height: 258px;
   }
 
   .progress-list {
-    padding: 20px;
+    padding: 13px 14px 15px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
+  }
+
+  .progress-list--orders {
+    min-height: 278px;
+    padding-top: 11px;
+    padding-bottom: 11px;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .progress-list--compact {
+    padding-top: 11px;
+    gap: 8px;
   }
 
   .progress-row__top {
+    margin-bottom: 5px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    font-size: 13px;
     color: #52525b;
-    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 400;
   }
 
   .progress-row__top strong {
-    color: #0a0a0a;
-    font-size: 13px;
+    color: #18181b;
+    font-size: 11px;
+    font-weight: 600;
   }
 
   .progress-row__track {
-    height: 8px;
-    border-radius: 999px;
-    background: #f4f4f5;
+    height: 5px;
     overflow: hidden;
+    background: #f1f1f3;
+    border-radius: 0;
   }
 
   .progress-row__fill {
     height: 100%;
-    border-radius: 999px;
+    border-radius: 0;
   }
 
-  .ops-footnote-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .inventory-attention {
+    padding: 4px 14px 14px;
+  }
+
+  .inventory-attention__row {
+    min-height: 66px;
+    padding: 10px 0;
+    border-bottom: 1px solid #ededf0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     gap: 12px;
-    padding: 0 20px 20px;
   }
 
-  .ops-footnote {
-    border-radius: 12px;
-    padding: 14px;
-    border: 1px solid #e4e4e7;
+  .inventory-attention__row > div:first-child {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .inventory-attention__row strong {
+    color: #18181b;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .inventory-attention__row > div:first-child span {
+    color: #71717a;
+    font-size: 10.5px;
+    font-weight: 400;
+  }
+
+  .inventory-attention__counts {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    background: #fafafa;
+    gap: 6px;
   }
 
-  .ops-footnote span {
-    font-size: 11px;
-    font-weight: 700;
-    color: #52525b;
+  .stock-count {
+    min-width: 42px;
+    min-height: 22px;
+    padding: 0 7px;
+    border: 1px solid;
+    border-radius: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10.5px;
+    font-weight: 500;
+    white-space: nowrap;
   }
 
-  .ops-footnote strong {
-    font-size: 16px;
-    font-weight: 800;
-    color: #0a0a0a;
+  .stock-count--low {
+    border-color: #fde68a;
+    background: #fffbeb;
+    color: #a16207;
   }
 
-  .ops-footnote--warning {
-    border-color: #fde047;
-    background: #fefce8;
-  }
-
-  .ops-footnote--danger {
+  .stock-count--out {
     border-color: #fecaca;
     background: #fef2f2;
+    color: #b91c1c;
   }
 
-  .ops-footnote--info {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-}
-
-.ops-footnote--success {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
-}
-
-  .inventory-panel {
-    padding: 20px;
+  .card-button-row {
+    padding-top: 12px;
   }
 
-  .inventory-panel__grid {
+  .compact-summary {
     display: grid;
-    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-bottom: 1px solid #ededf0;
   }
 
-  .inventory-panel__grid--triple {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .compact-summary > div {
+    padding: 11px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
-  .inventory-note {
-    margin-top: 16px;
-    border-radius: 12px;
-    padding: 16px;
-    border: 1px solid #e4e4e7;
-    background: #fafafa;
+  .compact-summary > div + div {
+    border-left: 1px solid #ededf0;
   }
 
-  .inventory-note__title {
-    font-size: 12px;
-    font-weight: 800;
+  .compact-summary span {
+    color: #71717a;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .compact-summary strong {
     color: #18181b;
-    margin-bottom: 6px;
-  }
-
-  .inventory-note__text {
-    font-size: 13px;
-    line-height: 1.55;
-    color: #52525b;
+    font-size: 20px;
+    font-weight: 700;
+    line-height: 1;
   }
 
   .dash-empty-state {
-    height: 100%;
+    min-height: 170px;
+    padding: 24px;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    flex-direction: column;
     text-align: center;
-    color: #52525b;
-    padding: 20px;
   }
 
   .dash-empty-state--table {
-    min-height: 180px;
+    min-height: 130px;
   }
 
   .dash-empty-title {
-    font-size: 15px;
-    font-weight: 800;
+    margin-bottom: 4px;
     color: #18181b;
-    margin-bottom: 6px;
+    font-size: 12.5px;
+    font-weight: 600;
   }
 
   .dash-empty-text {
-    font-size: 13px;
-    max-width: 420px;
+    max-width: 380px;
+    color: #71717a;
+    font-size: 11px;
+    font-weight: 400;
+    line-height: 1.45;
   }
 
   .dash-table-count {
-    font-size: 11px;
-    font-weight: 800;
-    color: #52525b;
-    background: #f4f4f5;
-    border: 1px solid #e4e4e7;
-    padding: 8px 12px;
-    border-radius: 999px;
+    color: #71717a;
+    font-size: 10.5px;
+    font-weight: 400;
     white-space: nowrap;
   }
 
   .dash-table-wrap {
-    overflow-x: auto;
+    max-height: 340px;
+    overflow: auto;
   }
 
   .dash-table {
@@ -1704,24 +1669,31 @@ const dashboardCss = `
     border-collapse: collapse;
   }
 
+  .dash-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
   .dash-table thead th {
-    text-align: left;
-    font-size: 10px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: #71717a;
-    background: #fafafa;
-    padding: 14px 20px;
+    padding: 9px 12px;
     border-bottom: 1px solid #e4e4e7;
+    background: #fafafa;
+    color: #71717a;
+    text-align: left;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
     white-space: nowrap;
   }
 
   .dash-table tbody td {
-    padding: 16px 20px;
-    font-size: 13px;
-    color: #18181b;
-    border-bottom: 1px solid #f4f4f5;
+    padding: 8px 12px;
+    border-bottom: 1px solid #ededf0;
+    color: #3f3f46;
+    font-size: 11.5px;
+    font-weight: 400;
     vertical-align: middle;
     white-space: nowrap;
   }
@@ -1730,164 +1702,140 @@ const dashboardCss = `
     background: #fafafa;
   }
 
-  .dash-strong {
-    font-weight: 800;
-    color: #0a0a0a;
+  .dash-strong,
+  .dash-amount {
+    color: #18181b !important;
+    font-weight: 600 !important;
   }
 
   .dash-badge {
+    min-height: 24px;
+    padding: 0 8px;
+    border: 1px solid;
+    border-radius: 0;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    min-height: 28px;
-    padding: 0 12px;
-    border-radius: 999px;
-    border: 1px solid;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: capitalize;
+    font-size: 10px;
+    font-weight: 600;
     white-space: nowrap;
   }
 
   .dash-loading-wrap,
   .dash-error-page {
-    min-height: 300px;
+    min-height: 280px;
+    padding: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 32px;
   }
 
   .dash-loading-wrap {
     flex-direction: column;
-    gap: 12px;
-    color: #52525b;
-    font-size: 13px;
+    gap: 10px;
+    color: #71717a;
+    font-size: 12px;
   }
 
   .dash-spinner {
-    width: 24px;
-    height: 24px;
-    border: 3px solid #e4e4e7;
+    width: 22px;
+    height: 22px;
+    border: 2px solid #e4e4e7;
     border-top-color: #18181b;
     border-radius: 50%;
     animation: dash-spin 0.9s linear infinite;
   }
 
   .dash-error-card {
-    max-width: 560px;
-    width: 100%;
-    background: #ffffff;
+    width: min(520px, 100%);
+    padding: 18px;
     border: 1px solid #fecaca;
-    border-radius: 16px;
-    padding: 24px;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+    border-radius: 0;
+    background: #ffffff;
   }
 
   .dash-error-title {
-    font-size: 18px;
-    font-weight: 800;
-    color: #991b1b;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
+    color: #b91c1c;
+    font-size: 15px;
+    font-weight: 700;
   }
 
   .dash-error-message {
-    color: #7f1d1d;
-    font-size: 13px;
-    margin-bottom: 18px;
+    margin-bottom: 12px;
+    color: #52525b;
+    font-size: 11.5px;
+    line-height: 1.45;
   }
 
   @keyframes dash-spin {
-    to {
-      transform: rotate(360deg);
-    }
+    to { transform: rotate(360deg); }
   }
 
-  @media (max-width: 1400px) {
-    .metric-grid--six {
+  @media (max-width: 1280px) {
+    .metric-grid--five {
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .dashboard-grid--triple {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  @media (max-width: 1200px) {
-    .dashboard-grid--main {
-      grid-template-columns: 1fr;
-    }
-
-    .mini-stat-grid--four,
-    .inventory-panel__grid--triple {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 
-  @media (max-width: 768px) {
-    .dash-title {
-      font-size: 22px;
-    }
-
-    .metric-grid--six,
-    .mini-stat-grid--four,
-    .inventory-panel__grid--triple,
-    .ops-footnote-grid {
+  @media (max-width: 980px) {
+    .dashboard-grid--main,
+    .dashboard-grid--triple {
       grid-template-columns: 1fr;
     }
 
-    .card-header--table,
-    .hero-panel {
+    .metric-grid--five {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dash-toolbar {
+      align-items: stretch;
+      flex-wrap: wrap;
+    }
+
+    .dash-period-summary {
+      width: 100%;
+      margin-left: 0;
+      align-items: flex-start;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .dash-page-header {
+      flex-direction: column;
+    }
+
+    .metric-grid--five {
+      grid-template-columns: 1fr;
+    }
+
+    .dash-field,
+    .dash-field--period,
+    .dash-field input,
+    .dash-field select {
+      width: 100%;
+      min-width: 0;
+    }
+
+    .card-header {
+      flex-direction: column;
+    }
+
+    .card-header__actions {
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .inventory-attention__row {
       align-items: flex-start;
       flex-direction: column;
     }
 
-    .dash-chart-area,
-    .dash-chart-area--large {
-      height: 300px;
+    .dash-chart-area--sales {
+      height: 260px;
     }
   }
-
-  .metric-card__header{
-    display:flex;
-    justify-content:space-between;
-    align-items:flex-start;
-    margin-bottom:14px;
-}
-
-.metric-card__icon{
-    width:52px;
-    height:52px;
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-
-    border-radius:14px;
-
-    background:#fafafa;
-    border:1px solid #ececec;
-
-    font-size:24px;
-}
-
-.metric-card__title{
-    font-size:14px;
-    font-weight:700;
-}
-
-.metric-card__arrow{
-    opacity:0;
-    transform:translateX(-6px);
-    transition:.2s;
-
-    font-size:18px;
-    color:#71717a;
-}
-
-.metric-card--clickable:hover .metric-card__arrow{
-    opacity:1;
-    transform:translateX(0);
-}
-    
 `;
