@@ -1214,6 +1214,36 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
+    const usesManagedBlueprintDeliveryFlow =
+      isBlueprintOrder && hasDeliveryRequirement;
+
+    if (usesManagedBlueprintDeliveryFlow && nextStatus === "shipping") {
+      await conn.rollback();
+      return res.status(409).json({
+        message:
+          "Shipping starts automatically when the assigned rider marks the delivery In Transit.",
+      });
+    }
+
+    if (usesManagedBlueprintDeliveryFlow && nextStatus === "delivered") {
+      await conn.rollback();
+      return res.status(409).json({
+        message:
+          "Delivered is recorded automatically when the assigned rider completes the delivery.",
+      });
+    }
+
+    if (
+      usesManagedBlueprintDeliveryFlow &&
+      nextStatus === "completed" &&
+      currentStatus !== "delivered"
+    ) {
+      await conn.rollback();
+      return res.status(409).json({
+        message:
+          "Complete the actual delivery first. A Blueprint delivery order can only be completed after Delivered.",
+      });
+    }
     const totalAmount = Number(order.total_amount || order.total || 0);
 
     const [[paymentSummary]] = await conn.query(
