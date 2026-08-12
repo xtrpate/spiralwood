@@ -242,6 +242,18 @@ function SectionCard({ title, subtitle, children, id }) {
     </section>
   );
 }
+function AdminSummaryCard({ label, count, hint }) {
+  return (
+    <div style={adminSummaryCardStyle}>
+      <span style={adminSummaryLabelStyle}>{label}</span>
+      <span style={adminSummaryValueStyle}>
+        {Number(count || 0).toLocaleString("en-PH")}
+      </span>
+      <span style={adminSummaryHintStyle}>{hint}</span>
+    </div>
+  );
+}
+
 // WISDOM INDOOR APPOINTMENTS UI V1
 const getIndoorStatusLabel = (status) => {
   const key = String(status || "").toLowerCase();
@@ -1234,90 +1246,30 @@ export default function AppointmentScheduling() {
             </button>
           </div>
 
-          <div
-            style={adminTabsStyle}
-            role="tablist"
-            aria-label="Appointment views"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={adminActiveTab === "new"}
-              style={
-                adminActiveTab === "new"
-                  ? adminTabButtonActiveStyle
-                  : adminTabButtonStyle
-              }
-              onClick={() => setAdminActiveTab("new")}
-            >
-              New Requests
-              <span style={adminTabCountStyle}>{adminNewRequests.length.toLocaleString("en-PH")}</span>
-            </button>
+          <div style={adminSummaryGridStyle}>
+            <AdminSummaryCard
+              label="New Requests"
+              count={adminNewRequests.length}
+              hint="Needs review"
+            />
 
-            <button
-              type="button"
-              role="tab"
-              aria-selected={adminActiveTab === "awaiting"}
-              style={
-                adminActiveTab === "awaiting"
-                  ? adminTabButtonActiveStyle
-                  : adminTabButtonStyle
-              }
-              onClick={() => setAdminActiveTab("awaiting")}
-            >
-              Awaiting Staff
-              <span style={adminTabCountStyle}>
-                {adminAwaitingAcceptance.length.toLocaleString("en-PH")}
-              </span>
-            </button>
+            <AdminSummaryCard
+              label="Awaiting Staff"
+              count={adminAwaitingAcceptance.length}
+              hint="Waiting for staff"
+            />
 
-            <button
-              type="button"
-              role="tab"
-              aria-selected={adminActiveTab === "confirmed"}
-              style={
-                adminActiveTab === "confirmed"
-                  ? adminTabButtonActiveStyle
-                  : adminTabButtonStyle
-              }
-              onClick={() => setAdminActiveTab("confirmed")}
-            >
-              Confirmed
-              <span style={adminTabCountStyle}>
-                {adminConfirmedAppointments.length.toLocaleString("en-PH")}
-              </span>
-            </button>
+            <AdminSummaryCard
+              label="Confirmed"
+              count={adminConfirmedAppointments.length}
+              hint="Active appointments"
+            />
 
-            <button
-              type="button"
-              role="tab"
-              aria-selected={adminActiveTab === "calendar"}
-              style={
-                adminActiveTab === "calendar"
-                  ? adminTabButtonActiveStyle
-                  : adminTabButtonStyle
-              }
-              onClick={() => setAdminActiveTab("calendar")}
-            >
-              Calendar
-            </button>
-
-            <button
-              type="button"
-              role="tab"
-              aria-selected={adminActiveTab === "history"}
-              style={
-                adminActiveTab === "history"
-                  ? adminTabButtonActiveStyle
-                  : adminTabButtonStyle
-              }
-              onClick={() => setAdminActiveTab("history")}
-            >
-              History
-              <span style={adminTabCountStyle}>
-                {adminClosedAppointments.length.toLocaleString("en-PH")}
-              </span>
-            </button>
+            <AdminSummaryCard
+              label="History"
+              count={adminClosedAppointments.length}
+              hint="Closed records"
+            />
           </div>
 
           {adminActiveTab !== "calendar" ? (
@@ -1370,6 +1322,81 @@ export default function AppointmentScheduling() {
             </div>
           ) : null}
 
+          <div
+            style={adminTabsStyle}
+            role="tablist"
+            aria-label="Appointment views"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={adminActiveTab === "new"}
+              style={
+                adminActiveTab === "new"
+                  ? adminTabButtonActiveStyle
+                  : adminTabButtonStyle
+              }
+              onClick={() => setAdminActiveTab("new")}
+            >
+              New Requests
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={adminActiveTab === "awaiting"}
+              style={
+                adminActiveTab === "awaiting"
+                  ? adminTabButtonActiveStyle
+                  : adminTabButtonStyle
+              }
+              onClick={() => setAdminActiveTab("awaiting")}
+            >
+              Awaiting Staff
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={adminActiveTab === "confirmed"}
+              style={
+                adminActiveTab === "confirmed"
+                  ? adminTabButtonActiveStyle
+                  : adminTabButtonStyle
+              }
+              onClick={() => setAdminActiveTab("confirmed")}
+            >
+              Confirmed
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={adminActiveTab === "calendar"}
+              style={
+                adminActiveTab === "calendar"
+                  ? adminTabButtonActiveStyle
+                  : adminTabButtonStyle
+              }
+              onClick={() => setAdminActiveTab("calendar")}
+            >
+              Calendar
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={adminActiveTab === "history"}
+              style={
+                adminActiveTab === "history"
+                  ? adminTabButtonActiveStyle
+                  : adminTabButtonStyle
+              }
+              onClick={() => setAdminActiveTab("history")}
+            >
+              History
+            </button>
+          </div>
         </>
       ) : null}
 
@@ -2685,6 +2712,58 @@ export default function AppointmentScheduling() {
 
 // ── Reusable Inline Styles ───────────────────────────────────────────────
 
+const adminSummaryGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 10,
+  marginBottom: 10,
+};
+
+const adminSummaryCardStyle = {
+  minHeight: 82,
+  padding: "13px 15px",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  justifyContent: "center",
+  boxSizing: "border-box",
+  border: "1px solid #e4e4e7",
+  borderRadius: 0,
+  background: "#ffffff",
+  color: "#18181b",
+  fontFamily: "inherit",
+  textAlign: "left",
+  cursor: "default",
+  boxShadow: "none",
+};
+
+const adminSummaryLabelStyle = {
+  color: "#6b6c72",
+  fontSize: 9.5,
+  fontWeight: 600,
+  lineHeight: 1.2,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+};
+
+const adminSummaryValueStyle = {
+  marginTop: 7,
+  color: "#18181b",
+  fontSize: 25,
+  fontWeight: 700,
+  lineHeight: 1,
+  letterSpacing: "-0.02em",
+  fontVariantNumeric: "tabular-nums",
+};
+
+const adminSummaryHintStyle = {
+  marginTop: 6,
+  color: "#8a8b90",
+  fontSize: 10.5,
+  fontWeight: 400,
+  lineHeight: 1.35,
+};
+
 const adminTabsStyle = {
   display: "flex",
   alignItems: "stretch",
@@ -2720,13 +2799,6 @@ const adminTabButtonActiveStyle = {
   color: "#18181b",
   fontWeight: 600,
   borderBottom: "2px solid #18181b",
-};
-
-const adminTabCountStyle = {
-  color: "#8a8b90",
-  fontSize: 10.5,
-  fontWeight: 400,
-  fontVariantNumeric: "tabular-nums",
 };
 
 const adminModalOverlayStyle = {
