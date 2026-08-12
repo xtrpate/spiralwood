@@ -809,12 +809,35 @@ const humanizeKey = (key = "") =>
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
+const dedupeCustomizationEntries = (entries = []) => {
+  const finishColorEntry = entries.find(
+    (entry) => normalizeText(entry?.label).toLowerCase() === "finish color",
+  );
+  const finishColorValue = normalizeText(finishColorEntry?.value).toLowerCase();
+
+  if (!finishColorValue) return entries;
+
+  return entries.filter((entry) => {
+    const label = normalizeText(entry?.label).toLowerCase();
+    if (label !== "color") return true;
+    return normalizeText(entry?.value).toLowerCase() !== finishColorValue;
+  });
+};
+
 const getCustomizationEntries = (orderContext = {}) => {
   const entries = [];
+  const hiddenFields = new Set([
+    "blueprint_id",
+    "template_profile",
+    "template_category",
+  ]);
+
   (Array.isArray(orderContext?.items) ? orderContext.items : []).forEach(
     (item) => {
       const customization = item?.customization || {};
       Object.entries(customization).forEach(([key, value]) => {
+        const normalizedKey = String(key || "").trim().toLowerCase();
+        if (hiddenFields.has(normalizedKey)) return;
         if (value === null || value === undefined || typeof value === "object")
           return;
         const normalizedValue = String(value).trim();
@@ -827,7 +850,7 @@ const getCustomizationEntries = (orderContext = {}) => {
       });
     },
   );
-  return entries.slice(0, 12);
+  return dedupeCustomizationEntries(entries).slice(0, 10);
 };
 
 const formatInventoryQuantity = (value) => {
@@ -1126,20 +1149,20 @@ function EstimateTable({
                 {isInventory ? "Inventory Material" : "Description"}
               </th>
               {isInventory && (
-                <th style={{ ...th, width: "13%" }}>Available Stock</th>
+                <th style={{ ...th, width: "13%" }}>Available</th>
               )}
               <th style={{ ...th, width: "10%" }}>Unit</th>
               <th style={{ ...th, width: "10%" }}>
-                {isInventory ? "Required Qty" : "Quantity"}
+                {isInventory ? "Required" : "Quantity"}
               </th>
               {isInventory && (
-                <th style={{ ...th, width: "18%" }}>Stock Status</th>
+                <th style={{ ...th, width: "18%" }}>Stock</th>
               )}
               {(!isInventory || showInventoryPricing) && (
-                <th style={{ ...th, width: "12%" }}>Unit Rate</th>
+                <th style={{ ...th, width: "12%" }}>Rate</th>
               )}
               {(!isInventory || showInventoryPricing) && (
-                <th style={{ ...th, width: "13%" }}>Line Total</th>
+                <th style={{ ...th, width: "13%" }}>Total</th>
               )}
               <th style={{ ...th, width: isInventory ? "27%" : "20%" }}>
                 Notes
@@ -1504,8 +1527,7 @@ function EstimateTable({
                         fontWeight: 700,
                       }}
                     >
-                      All selected inventory materials are currently sufficient.
-                      Stock is not reserved or deducted yet.
+                      Selected materials have sufficient available stock.
                     </div>
                   ) : rows.length === 0 ? (
                     <div
@@ -1517,8 +1539,7 @@ function EstimateTable({
                         fontWeight: 700,
                       }}
                     >
-                      Add at least one Required Inventory Material before sending
-                      the quotation. You may save the estimate as a draft first.
+                      Add at least one required material before sending the quotation.
                     </div>
                   ) : (
                     <div style={{ color: "#52525b", fontWeight: 700 }}>
@@ -1565,14 +1586,13 @@ function ProductionSnapshotPanel({ snapshot }) {
     <div style={productionSnapshotCard}>
       <div style={productionSnapshotHeader}>
         <div>
-          <div style={productionEyebrow}>Production Reference</div>
+          <div style={productionEyebrow}>Production Guide</div>
           <h3 style={{ ...sectionTitle, marginTop: 5 }}>
-            Blueprint Production Requirements
+            Production Requirements
           </h3>
-          <p style={{ ...helperText, maxWidth: 850 }}>
-            Use the saved Blueprint details as a production guide. Admin
-            manually selects the actual Required Inventory Materials. Nothing in
-            this panel reserves, deducts, or automatically matches inventory.
+          <p style={{ ...helperText, maxWidth: 760 }}>
+            Review the blueprint production details, then select the actual
+            inventory materials below.
           </p>
         </div>
         <div
@@ -1581,17 +1601,17 @@ function ProductionSnapshotPanel({ snapshot }) {
             ...(isReady ? productionStatusReady : productionStatusReview),
           }}
         >
-          <span style={productionStatusLabel}>Production Status</span>
+          <span style={productionStatusLabel}>Guide Status</span>
           <strong>{summary.handoffStatus || "REVIEW"}</strong>
         </div>
       </div>
 
       <div style={productionSummaryGrid}>
         {[
-          ["Production Parts", summary.productionParts || 0],
-          ["Material Types", summary.materialTypes || 0],
-          ["Edge-Treated Parts", summary.edgeTreatedParts || 0],
-          ["Hardware Items", summary.hardwareQty || 0],
+          ["Parts", summary.productionParts || 0],
+          ["Materials", summary.materialTypes || 0],
+          ["Edge Treatments", summary.edgeTreatedParts || 0],
+          ["Hardware", summary.hardwareQty || 0],
           ["Custom Profiles", summary.customProfiles || 0],
           ["Machining Steps", summary.machiningOps || 0],
         ].map(([label, value]) => (
@@ -1618,11 +1638,8 @@ function ProductionSnapshotPanel({ snapshot }) {
           )}
 
           <div style={productionGuide}>
-            <strong>Inventory selection is manual.</strong>
-            <span>
-              Review the requirements below, then choose the actual stock items
-              and quantities in Required Inventory Materials.
-            </span>
+            <strong>Select inventory manually.</strong>
+            <span>Choose the actual stock items and required quantities below.</span>
           </div>
 
           <div style={{ overflowX: "auto" }}>
@@ -1714,9 +1731,8 @@ function ProductionSnapshotPanel({ snapshot }) {
           </div>
 
           <div style={productionFooterNote}>
-            This production reference does not change pricing. Quotation amounts
-            still come from Blueprint Components, Additional Items, Labor,
-            Logistics, and the existing quotation fields.
+            Production reference only. Quotation pricing is calculated from the
+            estimate sections below.
           </div>
         </>
       )}
@@ -2513,14 +2529,11 @@ export default function EstimationPage() {
           </button>
           <div>
             <h1 style={pageTitle}>
-              Project Estimate — {getBlueprintDisplayTitle(blueprint)}
+              Estimate — {getBlueprintDisplayTitle(blueprint)}
             </h1>
             <p style={pageSubTitle}>
-              Blueprint #{String(id).padStart(5, "0")} · Customer:{" "}
-              {getCustomerDisplayName(blueprint)}
-              {blueprint.order_number
-                ? ` · Order: ${blueprint.order_number}`
-                : ""}
+              Blueprint #{String(id).padStart(5, "0")} · {getCustomerDisplayName(blueprint)}
+              {blueprint.order_number ? ` · ${blueprint.order_number}` : ""}
             </p>
           </div>
         </div>
@@ -2536,7 +2549,7 @@ export default function EstimationPage() {
                 : btnGhost
             }
           >
-            Refresh Components
+            Refresh Items
           </button>
           <button type="button" onClick={exportPDF} style={btnGhost}>
             Export PDF
@@ -2594,7 +2607,7 @@ export default function EstimationPage() {
 
       <div style={metaGrid}>
         <div style={metaCard}>
-          <span style={metaLabel}>Quotation Status</span>
+          <span style={metaLabel}>Status</span>
           <span style={statusValue}>{status}</span>
         </div>
         <div style={metaCard}>
@@ -2653,14 +2666,13 @@ export default function EstimationPage() {
         <div style={sectionHeaderSmall}>
           <h3 style={sectionTitle}>Customer Request</h3>
           <p style={helperText}>
-            Review the order request, design specifications, messages, and
-            reference files before preparing the quotation.
+            Review the request details before preparing the quotation.
           </p>
         </div>
         <div style={{ padding: 20 }}>
           <div style={requestGrid}>
             <div style={requestInfoCard}>
-              <span style={metaLabel}>Order Overview</span>
+              <span style={metaLabel}>Request</span>
               <strong>{blueprint.order_number || "No linked order"}</strong>
               {blueprint.order_context?.order_notes && (
                 <p style={requestText}>{blueprint.order_context.order_notes}</p>
@@ -2677,7 +2689,7 @@ export default function EstimationPage() {
                 )}
             </div>
             <div style={requestInfoCard}>
-              <span style={metaLabel}>Design Specifications</span>
+              <span style={metaLabel}>Design Details</span>
               {customizationEntries.length ? (
                 <div style={{ display: "grid", gap: 6 }}>
                   {customizationEntries.map((entry, index) => (
@@ -2697,7 +2709,7 @@ export default function EstimationPage() {
 
           <div style={{ marginTop: 18 }}>
             <div style={{ ...metaLabel, marginBottom: 8 }}>
-              Customer Messages
+              Messages
             </div>
             {discussionLoading ? (
               <p style={mutedText}>Loading customer discussion...</p>
@@ -2723,7 +2735,7 @@ export default function EstimationPage() {
 
           <div style={{ marginTop: 18 }}>
             <div style={{ ...metaLabel, marginBottom: 8 }}>
-              Customer References
+              Reference Files
             </div>
             {referenceFiles.length ? (
               <div style={attachmentGrid}>
@@ -2764,7 +2776,7 @@ export default function EstimationPage() {
 
       <EstimateTable
         title="Blueprint Components"
-        helper="Generated from the latest blueprint design. Confirm each component, quantity, unit rate, and note."
+        helper="Review the generated components, quantities, rates, and notes."
         section="blueprint"
         rows={blueprintItems}
         rawMaterials={rawMaterials}
@@ -2776,7 +2788,7 @@ export default function EstimationPage() {
 
       <EstimateTable
         title="Required Inventory Materials"
-        helper="Select the materials required for production. Available stock excludes quantities already reserved for paid blueprint orders. Saving this estimate does not reserve or deduct stock."
+        helper="Select the materials and quantities required for production."
         section="inventory"
         rows={inventoryItems}
         rawMaterials={rawMaterials}
@@ -2790,7 +2802,7 @@ export default function EstimationPage() {
 
       <EstimateTable
         title="Additional Items"
-        helper="Add billable custom work, special materials, and customer-requested changes that are not included in the blueprint components."
+        helper="Add billable work or materials not included in the blueprint."
         section="other"
         rows={otherItems}
         rawMaterials={rawMaterials}
@@ -2806,12 +2818,12 @@ export default function EstimationPage() {
           <div style={sectionHeaderSmall}>
             <h3 style={sectionTitle}>Quotation Details</h3>
             <p style={helperText}>
-              Enter the service charges, adjustments, tax, and quotation notes.
+              Enter labor, logistics, adjustments, and notes.
             </p>
           </div>
           <div style={{ padding: "20px 24px" }}>
             <div style={{ marginBottom: 16 }}>
-              <label style={labelSm}>Labor Cost (₱)</label>
+              <label style={labelSm}>Labor (₱)</label>
               <input
                 type="number"
                 min="0"
@@ -2829,7 +2841,7 @@ export default function EstimationPage() {
               />
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={labelSm}>Logistics Cost (₱)</label>
+              <label style={labelSm}>Logistics (₱)</label>
               <input
                 type="number"
                 min="0"
@@ -2915,8 +2927,7 @@ export default function EstimationPage() {
           <div style={sectionHeaderSmall}>
             <h3 style={sectionTitle}>Quotation Summary</h3>
             <p style={helperText}>
-              Confirm the quotation breakdown before saving or sending it to the
-              customer.
+              Review the final breakdown before saving or sending.
             </p>
           </div>
           <div style={{ padding: 24 }}>
@@ -2986,16 +2997,16 @@ export default function EstimationPage() {
 }
 
 const pageShell = {
-  maxWidth: 1240,
+  maxWidth: 1400,
   margin: "0 auto",
-  padding: "0 0 48px",
+  padding: "0 0 36px",
 };
 
 const card = {
   background: "#fff",
-  borderRadius: 16,
+  borderRadius: 0,
   border: "1px solid #e4e4e7",
-  boxShadow: "0 8px 24px rgba(24,24,27,.04)",
+  boxShadow: "none",
   overflow: "hidden",
 };
 
@@ -3013,79 +3024,79 @@ const pageHeader = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  gap: 20,
-  marginBottom: 16,
-  padding: "20px 22px",
+  gap: 16,
+  marginBottom: 12,
+  padding: "16px 18px",
   flexWrap: "wrap",
   background: "#fff",
   border: "1px solid #e4e4e7",
-  borderRadius: 16,
-  boxShadow: "0 8px 24px rgba(24,24,27,.04)",
+  borderRadius: 0,
+  boxShadow: "none",
 };
 
 const titleBlock = {
   display: "flex",
   alignItems: "flex-start",
-  gap: 14,
+  gap: 12,
   minWidth: 280,
-  flex: "1 1 480px",
+  flex: "1 1 520px",
 };
 
 const pageTitle = {
-  fontSize: 25,
-  fontWeight: 850,
-  color: "#0a0a0a",
+  fontSize: 22,
+  fontWeight: 750,
+  color: "#18181b",
   margin: 0,
-  letterSpacing: "-0.025em",
-  lineHeight: 1.2,
+  letterSpacing: "-0.02em",
+  lineHeight: 1.22,
 };
 
 const pageSubTitle = {
-  fontSize: 12,
+  fontSize: 11,
   color: "#71717a",
-  margin: "7px 0 0",
-  lineHeight: 1.5,
+  margin: "5px 0 0",
+  lineHeight: 1.45,
 };
 
 const headerActions = {
   marginLeft: "auto",
   display: "flex",
   justifyContent: "flex-end",
-  gap: 8,
+  gap: 7,
   flexWrap: "wrap",
   alignItems: "center",
 };
 
 const metaGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12,
-  marginBottom: 20,
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 10,
+  marginBottom: 12,
 };
 
 const metaCard = {
   background: "#fff",
   border: "1px solid #e4e4e7",
-  borderRadius: 12,
-  padding: "15px 18px",
+  borderRadius: 0,
+  padding: "11px 14px",
   display: "flex",
   flexDirection: "column",
-  gap: 7,
-  minHeight: 64,
-  boxShadow: "0 1px 2px rgba(24,24,27,.03)",
+  gap: 5,
+  minHeight: 54,
+  boxShadow: "none",
 };
 
 const metaLabel = {
   fontSize: 9,
-  fontWeight: 850,
+  fontWeight: 700,
   color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "0.12em",
+  letterSpacing: "0.11em",
 };
 
 const metaValue = {
-  fontSize: 15,
-  fontWeight: 800,
+  fontSize: 14,
+  fontWeight: 700,
   color: "#18181b",
 };
 
@@ -3094,55 +3105,55 @@ const statusValue = {
   display: "inline-flex",
   alignItems: "center",
   alignSelf: "flex-start",
-  padding: "5px 9px",
-  borderRadius: 999,
+  padding: "4px 7px",
+  borderRadius: 0,
   background: "#f4f4f5",
   border: "1px solid #e4e4e7",
-  fontSize: 12,
+  fontSize: 11,
 };
 
 const lockedBanner = {
-  marginBottom: 20,
-  padding: "13px 16px",
-  borderRadius: 12,
+  marginBottom: 12,
+  padding: "10px 13px",
+  borderRadius: 0,
   background: "#fffbeb",
   border: "1px solid #fde68a",
   color: "#78350f",
-  fontSize: 12,
-  fontWeight: 650,
-  lineHeight: 1.5,
+  fontSize: 11,
+  fontWeight: 600,
+  lineHeight: 1.45,
 };
 
 const sectionHeader = {
-  padding: "18px 22px",
+  padding: "13px 16px",
   borderBottom: "1px solid #e4e4e7",
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   flexWrap: "wrap",
-  gap: 14,
+  gap: 10,
   background: "#fff",
 };
 
 const sectionHeaderSmall = {
-  padding: "17px 22px",
+  padding: "13px 16px",
   borderBottom: "1px solid #e4e4e7",
   background: "#fff",
 };
 
 const sectionTitle = {
   margin: 0,
-  fontSize: 16,
-  fontWeight: 850,
+  fontSize: 15,
+  fontWeight: 700,
   color: "#18181b",
   letterSpacing: "-0.01em",
 };
 
 const helperText = {
-  margin: "6px 0 0",
-  fontSize: 11,
+  margin: "4px 0 0",
+  fontSize: 10.5,
   color: "#71717a",
-  lineHeight: 1.55,
+  lineHeight: 1.45,
   maxWidth: 760,
 };
 
@@ -3153,11 +3164,11 @@ const productionSnapshotCard = {
 };
 
 const productionSnapshotHeader = {
-  padding: "20px 22px",
+  padding: "14px 16px",
   display: "flex",
   alignItems: "flex-start",
   justifyContent: "space-between",
-  gap: 20,
+  gap: 14,
   flexWrap: "wrap",
   borderBottom: "1px solid #e4e4e7",
   background: "#fff",
@@ -3172,10 +3183,10 @@ const productionEyebrow = {
 };
 
 const productionStatus = {
-  minWidth: 126,
-  padding: "10px 12px",
+  minWidth: 110,
+  padding: "8px 10px",
   display: "grid",
-  gap: 3,
+  gap: 2,
   textAlign: "right",
   borderRadius: 0,
 };
@@ -3202,77 +3213,78 @@ const productionStatusLabel = {
 
 const productionSummaryGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))",
+  gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
   gap: 0,
   borderBottom: "1px solid #e4e4e7",
   background: "#fafafa",
 };
 
 const productionMetricCard = {
-  minHeight: 72,
-  padding: "14px 16px",
+  minHeight: 54,
+  padding: "9px 11px",
   display: "flex",
   flexDirection: "column",
   justifyContent: "space-between",
-  gap: 8,
+  gap: 5,
   borderRight: "1px solid #e4e4e7",
   background: "#fafafa",
 };
 
 const productionMetricLabel = {
-  fontSize: 8,
-  fontWeight: 900,
+  fontSize: 7.5,
+  fontWeight: 700,
   color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "0.1em",
+  letterSpacing: "0.09em",
 };
 
 const productionMetricValue = {
-  fontSize: 20,
+  fontSize: 17,
+  fontWeight: 700,
   lineHeight: 1,
   color: "#18181b",
 };
 
 const productionGuide = {
-  margin: "16px 18px 0",
-  padding: "12px 14px",
+  margin: "10px 14px 0",
+  padding: "9px 11px",
   display: "flex",
   flexWrap: "wrap",
-  gap: 6,
-  fontSize: 11,
-  lineHeight: 1.5,
+  gap: 5,
+  fontSize: 10.5,
+  lineHeight: 1.45,
   color: "#3f3f46",
   background: "#f4f4f5",
   borderLeft: "3px solid #18181b",
 };
 
 const productionReviewNotice = {
-  margin: "16px 18px 0",
-  padding: "11px 13px",
-  fontSize: 11,
-  fontWeight: 700,
+  margin: "10px 14px 0",
+  padding: "9px 11px",
+  fontSize: 10.5,
+  fontWeight: 600,
   color: "#9a3412",
   background: "#fff7ed",
   borderLeft: "3px solid #f97316",
 };
 
 const productionEmpty = {
-  padding: 28,
+  padding: 18,
   color: "#71717a",
   textAlign: "center",
-  fontSize: 12,
-  lineHeight: 1.6,
+  fontSize: 11,
+  lineHeight: 1.5,
   background: "#fcfcfd",
 };
 
 const productionTable = {
   width: "100%",
-  minWidth: 1080,
-  marginTop: 14,
+  minWidth: 980,
+  marginTop: 10,
   borderCollapse: "separate",
   borderSpacing: 0,
   tableLayout: "fixed",
-  fontSize: 11,
+  fontSize: 10.5,
 };
 
 const productionTableHead = {
@@ -3280,13 +3292,13 @@ const productionTableHead = {
 };
 
 const productionTh = {
-  padding: "11px 12px",
+  padding: "9px 10px",
   textAlign: "left",
   color: "#fff",
-  fontSize: 8,
-  fontWeight: 900,
+  fontSize: 7.5,
+  fontWeight: 750,
   textTransform: "uppercase",
-  letterSpacing: "0.1em",
+  letterSpacing: "0.09em",
   borderRight: "1px solid #3f3f46",
 };
 
@@ -3295,11 +3307,11 @@ const productionRow = {
 };
 
 const productionTd = {
-  padding: "10px 12px",
+  padding: "8px 10px",
   verticalAlign: "middle",
   borderBottom: "1px solid #e4e4e7",
   color: "#27272a",
-  lineHeight: 1.4,
+  lineHeight: 1.35,
 };
 
 const productionPartCode = {
@@ -3384,10 +3396,10 @@ const productionDetailList = {
 };
 
 const productionFooterNote = {
-  padding: "12px 18px 16px",
+  padding: "9px 14px 12px",
   color: "#71717a",
   fontSize: 9,
-  lineHeight: 1.5,
+  lineHeight: 1.45,
   background: "#fff",
 };
 
@@ -3395,9 +3407,9 @@ const estimateTableStyle = {
   width: "100%",
   borderCollapse: "separate",
   borderSpacing: 0,
-  fontSize: 12,
+  fontSize: 11,
   tableLayout: "fixed",
-  minWidth: 1040,
+  minWidth: 980,
 };
 
 const tableHeadRow = {
@@ -3411,18 +3423,18 @@ const tableFooterRow = {
 
 const th = {
   textAlign: "left",
-  padding: "12px 11px",
-  fontSize: 9,
-  fontWeight: 850,
+  padding: "9px 9px",
+  fontSize: 8,
+  fontWeight: 700,
   color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: "0.11em",
+  letterSpacing: "0.09em",
   borderBottom: "1px solid #e4e4e7",
   whiteSpace: "nowrap",
 };
 
 const td = {
-  padding: "11px",
+  padding: "8px 9px",
   color: "#27272a",
   verticalAlign: "middle",
   background: "#fff",
@@ -3430,18 +3442,18 @@ const td = {
 
 const emptyCell = {
   ...td,
-  padding: 34,
+  padding: 18,
   textAlign: "center",
   color: "#71717a",
   background: "#fcfcfd",
 };
 
 const cellInput = {
-  minHeight: 38,
-  padding: "8px 10px",
+  minHeight: 34,
+  padding: "7px 8px",
   border: "1px solid #d4d4d8",
-  borderRadius: 8,
-  fontSize: 12,
+  borderRadius: 0,
+  fontSize: 11,
   color: "#18181b",
   background: "#fff",
   outline: "none",
@@ -3450,11 +3462,11 @@ const cellInput = {
 
 const inputFull = {
   width: "100%",
-  minHeight: 42,
-  padding: "10px 12px",
+  minHeight: 38,
+  padding: "9px 10px",
   border: "1px solid #d4d4d8",
-  borderRadius: 9,
-  fontSize: 13,
+  borderRadius: 0,
+  fontSize: 12,
   color: "#18181b",
   background: "#fff",
   boxSizing: "border-box",
@@ -3471,80 +3483,81 @@ const readOnlyFieldStyle = (locked) =>
     : {};
 
 const labelSm = {
-  fontSize: 12,
-  fontWeight: 800,
+  fontSize: 11,
+  fontWeight: 650,
   color: "#27272a",
   display: "block",
-  marginBottom: 7,
+  marginBottom: 6,
 };
 
 const chargesGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
-  gap: 20,
+  gridTemplateColumns: "minmax(0, 0.95fr) minmax(0, 1.05fr)",
+  gap: 12,
   alignItems: "start",
 };
 
 const dualFieldGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: 14,
-  marginBottom: 16,
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 10,
+  marginBottom: 12,
 };
 
 const summaryRow = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  padding: "9px 0",
-  gap: 16,
+  padding: "7px 0",
+  gap: 14,
 };
 
 const summaryLabel = {
   color: "#71717a",
-  fontSize: 12,
-  fontWeight: 650,
+  fontSize: 11,
+  fontWeight: 550,
 };
 
 const grandTotalBox = {
-  marginTop: 18,
+  marginTop: 14,
   background: "#18181b",
-  borderRadius: 12,
-  padding: "18px 20px",
+  borderRadius: 0,
+  padding: "14px 16px",
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   gap: 12,
   color: "#fff",
-  fontSize: 18,
-  fontWeight: 800,
+  fontSize: 17,
+  fontWeight: 750,
 };
 
 const savedInfo = {
-  marginTop: 14,
-  padding: "10px 12px",
+  marginTop: 10,
+  padding: "8px 10px",
   background: "#fafafa",
   border: "1px solid #e4e4e7",
-  borderRadius: 9,
-  fontSize: 11,
+  borderRadius: 0,
+  fontSize: 10,
   color: "#71717a",
   textAlign: "center",
 };
 
 const requestGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-  gap: 14,
+  gridTemplateColumns: "minmax(280px, 0.8fr) minmax(420px, 1.2fr)",
+  gap: 10,
+  alignItems: "start",
 };
 
 const requestInfoCard = {
   border: "1px solid #e4e4e7",
-  borderRadius: 12,
-  padding: 16,
+  borderRadius: 0,
+  padding: 13,
   display: "flex",
   flexDirection: "column",
-  gap: 8,
-  minHeight: 96,
+  gap: 7,
+  minHeight: 0,
   background: "#fcfcfd",
 };
 
@@ -3581,12 +3594,12 @@ const messageList = {
 };
 
 const messageCard = {
-  padding: 13,
+  padding: 10,
   border: "1px solid #e4e4e7",
-  borderRadius: 10,
+  borderRadius: 0,
   background: "#fafafa",
-  fontSize: 12,
-  lineHeight: 1.45,
+  fontSize: 11,
+  lineHeight: 1.4,
 };
 
 const attachmentGrid = {
@@ -3600,10 +3613,10 @@ const attachmentCard = {
   textDecoration: "none",
   color: "#18181b",
   border: "1px solid #e4e4e7",
-  borderRadius: 10,
+  borderRadius: 0,
   overflow: "hidden",
   background: "#fff",
-  boxShadow: "0 1px 2px rgba(24,24,27,.03)",
+  boxShadow: "none",
 };
 
 const attachmentImage = {
@@ -3634,67 +3647,67 @@ const attachmentLabel = {
 };
 
 const btnPrimary = {
-  minHeight: 38,
-  padding: "9px 16px",
+  minHeight: 36,
+  padding: "8px 14px",
   background: "#18181b",
   color: "#fff",
-  border: "none",
+  border: "1px solid #18181b",
   borderRadius: 0,
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 800,
+  fontSize: 11,
+  fontWeight: 700,
   whiteSpace: "nowrap",
 };
 
 const btnGhost = {
-  minHeight: 38,
-  padding: "9px 14px",
-  background: "#f4f4f5",
+  minHeight: 36,
+  padding: "8px 12px",
+  background: "#fff",
   color: "#27272a",
-  border: "none",
+  border: "1px solid #d4d4d8",
   borderRadius: 0,
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 750,
+  fontSize: 11,
+  fontWeight: 650,
   whiteSpace: "nowrap",
 };
 
 const btnBack = {
-  minWidth: 72,
-  padding: "8px 11px",
-  background: "#f4f4f5",
-  color: "#52525b",
-  border: "none",
-  borderRadius: 0,
-  cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 750,
-};
-
-const btnAdd = {
-  minHeight: 36,
-  padding: "8px 13px",
-  background: "#18181b",
-  color: "#fff",
-  border: "none",
+  minWidth: 66,
+  padding: "7px 10px",
+  background: "#fff",
+  color: "#3f3f46",
+  border: "1px solid #d4d4d8",
   borderRadius: 0,
   cursor: "pointer",
   fontSize: 11,
-  fontWeight: 800,
+  fontWeight: 650,
+};
+
+const btnAdd = {
+  minHeight: 34,
+  padding: "7px 11px",
+  background: "#18181b",
+  color: "#fff",
+  border: "1px solid #18181b",
+  borderRadius: 0,
+  cursor: "pointer",
+  fontSize: 10.5,
+  fontWeight: 700,
   whiteSpace: "nowrap",
 };
 
 const btnRemove = {
-  width: 32,
-  height: 32,
+  width: 30,
+  height: 30,
   padding: 0,
-  background: "#fef2f2",
+  background: "#fff",
   color: "#b91c1c",
-  border: "none",
+  border: "1px solid #fecaca",
   borderRadius: 0,
   cursor: "pointer",
   fontSize: 12,
-  fontWeight: 800,
+  fontWeight: 700,
 };
 
 const btnDisabled = {
