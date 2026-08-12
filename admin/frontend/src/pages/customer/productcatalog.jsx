@@ -132,6 +132,7 @@ export default function ProductCatalog() {
   const [toastMsg, setToastMsg] = useState("");
   const [isHiding, setIsHiding] = useState(false);
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [mobileSortOpen, setMobileSortOpen] = useState(false);
 
   useEffect(() => {
     if (!toastMsg) return;
@@ -763,17 +764,54 @@ export default function ProductCatalog() {
             <div className="mobile-filter-body">
               <div className="filter-section">
                 <div className="sidebar-title">Sort By</div>
-                <select
-                  className="mobile-sort-select"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
-                >
-                  <option value="name_asc">Name A–Z</option>
-                  <option value="name_desc">Name Z–A</option>
-                  <option value="price_asc">Price: Low to High</option>
-                  <option value="price_desc">Price: High to Low</option>
-                  <option value="newest">Newest First</option>
-                </select>
+                <div className="mobile-custom-sort">
+                  <button
+                    type="button"
+                    className="mobile-custom-sort-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMobileSortOpen((prev) => !prev);
+                    }}
+                  >
+                    <span>
+                      {{
+                        name_asc: "Name A–Z",
+                        name_desc: "Name Z–A",
+                        price_asc: "Price: Low to High",
+                        price_desc: "Price: High to Low",
+                        newest: "Newest First",
+                      }[sortBy] || "Name A–Z"}
+                    </span>
+
+                    <span className="mobile-custom-sort-arrow">⌄</span>
+                  </button>
+
+                  {mobileSortOpen && (
+                    <div className="mobile-custom-sort-menu">
+                      {[
+                        ["name_asc", "Name A–Z"],
+                        ["name_desc", "Name Z–A"],
+                        ["price_asc", "Price: Low to High"],
+                        ["price_desc", "Price: High to Low"],
+                        ["newest", "Newest First"],
+                      ].map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          className={`mobile-custom-sort-option ${
+                            sortBy === value ? "active" : ""
+                          }`}
+                          onClick={() => {
+                            setSortBy(value);
+                            setMobileSortOpen(false);
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="filter-section">
