@@ -167,7 +167,7 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
     <div
       style={{
         border: "1px solid #dfe2e5",
-        borderRadius: 4,
+        borderRadius: 0,
         background: "#fff",
         overflow: "hidden",
       }}
@@ -183,14 +183,14 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
           letterSpacing: "-0.01em",
         }}
       >
-        Discussion / Chat
+        Discussion
       </div>
 
       <div style={{ padding: 20, display: "grid", gap: 16 }}>
         <div
           style={{
             border: "1px solid #e4e4e7",
-            borderRadius: 12,
+            borderRadius: 0,
             overflow: "hidden",
             background: "#fff",
           }}
@@ -220,7 +220,7 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
               <div
                 style={{
                   padding: 32,
-                  borderRadius: 12,
+                  borderRadius: 0,
                   background: "#fafafa",
                   color: "#71717a",
                   border: "1px dashed #d4d4d8",
@@ -404,7 +404,7 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
           onSubmit={handleSend}
           style={{
             border: "1px solid #e4e4e7",
-            borderRadius: 12,
+            borderRadius: 0,
             background: "#fafafa",
             padding: 20,
             display: "grid",
@@ -418,14 +418,14 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
               fontSize: 14,
             }}
           >
-            Reply to Customer
+            Reply
           </div>
 
           <textarea
             rows={4}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Write your admin reply, clarification, or request update here..."
+            placeholder="Write a reply or request an update..."
             style={{
               width: "100%",
               borderRadius: 8,
@@ -449,7 +449,7 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
                 marginBottom: 8,
               }}
             >
-              Attach Images or PDF
+              Attachments
             </label>
 
             <input
@@ -561,7 +561,7 @@ export default function OrderDiscussionPanel({ orderId, enabled = true }) {
                 !sending && (e.currentTarget.style.background = "#18181b")
               }
             >
-              {sending ? "Sending..." : "Send Reply"}
+              {sending ? "Sending..." : "Send"}
             </button>
           </div>
         </form>
