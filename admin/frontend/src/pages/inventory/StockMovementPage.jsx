@@ -9,7 +9,8 @@ const PAGE_SIZE = 30;
 const SOURCE_LABELS = {
   blueprint_production: "Blueprint production",
   build_production: "Build production",
-  product_production: "Product production",
+  ready_made_stock: "Ready-made stock",
+  product_production: "Ready-made stock",
   order_fulfillment: "Order fulfillment",
   manual: "Manual entry",
 };
@@ -24,6 +25,7 @@ const MOVEMENT_LABELS = {
 const SOURCE_BADGES = {
   blueprint_production: ["#eff6ff", "#1d4ed8", "#bfdbfe"],
   build_production: ["#f5f3ff", "#6d28d9", "#ddd6fe"],
+  ready_made_stock: ["#ecfdf5", "#166534", "#bbf7d0"],
   product_production: ["#ecfdf5", "#166534", "#bbf7d0"],
   order_fulfillment: ["#fff7ed", "#9a3412", "#fed7aa"],
   manual: ["#f4f4f5", "#3f3f46", "#d4d4d8"],
@@ -37,6 +39,7 @@ const EMPTY_SUMMARY = {
   return_count: 0,
   blueprint_production_count: 0,
   build_production_count: 0,
+  ready_made_stock_count: 0,
   order_fulfillment_count: 0,
   manual_count: 0,
 };
@@ -60,6 +63,8 @@ const formatDateTime = (value) => {
   });
 };
 
+// WISDOM STOCK READY-MADE SEPARATION V1
+// WISDOM STOCK MOVEMENT ORDER LINK CLEANUP V1
 export default function StockMovementPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -117,7 +122,14 @@ export default function StockMovementPage() {
       .then((r) => setRawMats(r.data.rows || []));
     api
       .get("/products", { params: { limit: 1000 } })
-      .then((r) => setProducts(r.data.products || []));
+      .then((r) =>
+        setProducts(
+          (r.data.products || []).filter(
+            (product) =>
+              String(product.type || "standard").toLowerCase() !== "blueprint",
+          ),
+        ),
+      );
   }, []);
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -126,7 +138,7 @@ export default function StockMovementPage() {
     () => [
       ["Records shown", summary.record_count],
       ["Blueprint production", summary.blueprint_production_count],
-      ["Build production", summary.build_production_count],
+      ["Ready-made stock", summary.ready_made_stock_count],
       ["Order fulfillment", summary.order_fulfillment_count],
       ["Manual entries", summary.manual_count],
     ],
@@ -220,7 +232,7 @@ export default function StockMovementPage() {
                 )} ${selectedMaterial?.unit || "unit"}. Reserved blueprint stock cannot be withdrawn.`
               : itemKind === "material"
                 ? "Choose a raw material to continue."
-                : "Choose a product or build material to continue.";
+                : "Choose a ready-made product to continue.";
 
   const handleSave = async (event) => {
     event.preventDefault();
@@ -273,7 +285,7 @@ export default function StockMovementPage() {
         <div>
           <h1 style={title}>Stock Movements</h1>
           <p style={subtitle}>
-            Review physical stock in and stock out records for materials and products.
+            Review physical stock changes for raw materials and ready-made products. Blueprint production appears when raw materials are consumed.
           </p>
         </div>
         <button onClick={() => setModal(true)} style={btnPrimary}>
@@ -328,7 +340,7 @@ export default function StockMovementPage() {
             <option value="">All sources</option>
             <option value="blueprint_production">Blueprint production</option>
             <option value="build_production">Build production</option>
-            <option value="product_production">Product production</option>
+            <option value="ready_made_stock">Ready-made stock</option>
             <option value="order_fulfillment">Order fulfillment</option>
             <option value="manual">Manual entry</option>
           </select>
@@ -584,7 +596,7 @@ export default function StockMovementPage() {
                   style={inputFull}
                 >
                   <option value="material">Raw material</option>
-                  <option value="product">Product or build material</option>
+                  <option value="product">Ready-made product</option>
                 </select>
               </div>
 
@@ -611,7 +623,7 @@ export default function StockMovementPage() {
                     onChange={(event) => handleProductChange(event.target.value)}
                     style={inputFull}
                   >
-                    <option value="">Select product or build material</option>
+                    <option value="">Select ready-made product</option>
                     {products.map((product) => (
                       <option key={product.id} value={product.id}>
                         {product.name}
@@ -882,9 +894,10 @@ const orderLink = {
   background: "none",
   border: "none",
   color: "#18181b",
+  fontFamily: "inherit",
   fontSize: 12,
   fontWeight: 600,
-  textDecoration: "underline",
+  textDecoration: "none",
   cursor: "pointer",
   textAlign: "left",
 };

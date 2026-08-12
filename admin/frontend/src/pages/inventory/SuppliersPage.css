@@ -561,3 +561,19 @@
   background: #f7f7f8 !important;
   border-color: #bfc3c8 !important;
 }
+
+
+/* WISDOM SUPPLIERS PRIMARY CTA ALIGNMENT V1.0.1 */
+.suppliers-page-header .suppliers-btn-primary {
+  min-height: 34px;
+  padding: 0 16px;
+  border-radius: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* Keep clickable supplier contact text clean and consistent. */
+.suppliers-contact a:hover {
+  text-decoration: none;
+}

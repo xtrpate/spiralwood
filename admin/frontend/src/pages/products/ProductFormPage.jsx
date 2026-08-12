@@ -38,17 +38,14 @@ export default function ProductFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEdit = Boolean(id);
-
   const [form, setForm] = useState(DEFAULT);
   const [image, setImage] = useState(null);
   const [preview, setPreview] = useState("");
   const [categories, setCategories] = useState(SHOP_CATEGORIES);
-  const [rawMats, setRawMats] = useState([]);
   const [bom, setBom] = useState([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.get("/inventory/raw").then((r) => setRawMats(r.data.rows || []));
 
     if (isEdit) {
       api.get(`/products/${id}`).then((r) => {
@@ -62,13 +59,8 @@ export default function ProductFormPage() {
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const addBom = () =>
-    setBom((b) => [...b, { raw_material_id: "", quantity: "" }]);
-
-  const setBomRow = (i, k, v) =>
-    setBom((rows) => rows.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
-
-  const removeBom = (i) => setBom((rows) => rows.filter((_, idx) => idx !== i));
+  // WISDOM PRODUCT BOM UI REMOVED V2
+  // Existing saved BOM data is preserved but is no longer edited here.
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -372,68 +364,7 @@ export default function ProductFormPage() {
           </Field>
         </Section>
 
-        <Section title="Bill of Materials (Linked Raw Materials)">
-          {bom.length === 0 ? (
-            <p style={{ fontSize: 13, color: "#71717a", marginBottom: 16 }}>
-              No materials linked yet.
-            </p>
-          ) : null}
-
-          {bom.map((row, i) => (
-            <div
-              key={i}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 1fr auto",
-                gap: 12,
-                marginBottom: 12,
-                alignItems: "end",
-                background: "#fafafa",
-                padding: "12px 16px",
-                borderRadius: 12,
-                border: "1px solid #e4e4e7",
-              }}
-            >
-              <Field label="Raw Material">
-                <select
-                  value={row.raw_material_id}
-                  onChange={(e) =>
-                    setBomRow(i, "raw_material_id", e.target.value)
-                  }
-                  style={input}
-                >
-                  <option value="">Select material...</option>
-                  {rawMats.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} ({m.unit})
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Quantity Required">
-                <input
-                  type="number"
-                  step="0.01"
-                  value={row.quantity}
-                  onChange={(e) => setBomRow(i, "quantity", e.target.value)}
-                  style={input}
-                  placeholder="0.00"
-                />
-              </Field>
-              <button
-                type="button"
-                onClick={() => removeBom(i)}
-                style={btnDel}
-                title="Remove Material"
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-          <button type="button" onClick={addBom} style={btnOutline}>
-            + Add Material
-          </button>
-        </Section>
+                {/* WISDOM PRODUCT BOM UI REMOVED V2 */}
 
         <div
           style={{

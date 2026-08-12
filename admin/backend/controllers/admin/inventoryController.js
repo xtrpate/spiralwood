@@ -957,7 +957,7 @@ exports.getStockMovements = async (req, res) => {
         AND sm.type = 'out' THEN 'build_production'
       WHEN sm.material_id IS NULL
         AND sm.product_id IS NOT NULL
-        AND sm.type = 'in' THEN 'product_production'
+        AND sm.order_id IS NULL THEN 'ready_made_stock'
       WHEN sm.order_id IS NOT NULL THEN 'order_fulfillment'
       ELSE 'manual'
     END`;
@@ -988,7 +988,7 @@ exports.getStockMovements = async (req, res) => {
       const allowedSources = new Set([
         "blueprint_production",
         "build_production",
-        "product_production",
+        "ready_made_stock",
         "order_fulfillment",
         "manual",
       ]);
@@ -1067,7 +1067,8 @@ exports.getStockMovements = async (req, res) => {
           SUM(CASE WHEN sm.type = 'adjustment' THEN 1 ELSE 0 END) AS adjustment_count,
           SUM(CASE WHEN sm.type = 'return' THEN 1 ELSE 0 END) AS return_count,
           SUM(CASE WHEN (${movementSourceSql}) = 'blueprint_production' THEN 1 ELSE 0 END) AS blueprint_production_count,
-          SUM(CASE WHEN (${movementSourceSql}) IN ('build_production', 'product_production') THEN 1 ELSE 0 END) AS build_production_count,
+          SUM(CASE WHEN (${movementSourceSql}) = 'build_production' THEN 1 ELSE 0 END) AS build_production_count,
+          SUM(CASE WHEN (${movementSourceSql}) = 'ready_made_stock' THEN 1 ELSE 0 END) AS ready_made_stock_count,
           SUM(CASE WHEN (${movementSourceSql}) = 'order_fulfillment' THEN 1 ELSE 0 END) AS order_fulfillment_count,
           SUM(CASE WHEN (${movementSourceSql}) = 'manual' THEN 1 ELSE 0 END) AS manual_count
        FROM stock_movements sm
@@ -1091,6 +1092,7 @@ exports.getStockMovements = async (req, res) => {
           summary?.blueprint_production_count || 0,
         ),
         build_production_count: Number(summary?.build_production_count || 0),
+        ready_made_stock_count: Number(summary?.ready_made_stock_count || 0),
         order_fulfillment_count: Number(
           summary?.order_fulfillment_count || 0,
         ),
@@ -1129,7 +1131,7 @@ exports.createStockMovement = async (req, res) => {
     if (!material_id && !product_id) {
       await conn.rollback();
       return res.status(400).json({
-        message: "Please select either a raw material or a build material.",
+        message: "Please select either a raw material or a ready-made product.",
       });
     }
 
@@ -1137,7 +1139,7 @@ exports.createStockMovement = async (req, res) => {
       await conn.rollback();
       return res.status(400).json({
         message:
-          "Only one target is allowed per movement: raw material OR build material.",
+          "Only one target is allowed per movement: raw material or ready-made product.",
       });
     }
 
@@ -1362,11 +1364,12 @@ exports.createStockMovement = async (req, res) => {
       });
     }
 
+    // WISDOM READY-MADE STOCK MOVEMENT V1
     // ───────────────────────────────────────────────────────────
-    // BUILD MATERIAL / PRODUCT MOVEMENT
+    // READY-MADE PRODUCT MOVEMENT
     // ───────────────────────────────────────────────────────────
     const [[product]] = await conn.query(
-      `SELECT id, name, stock, reorder_point
+      `SELECT id, name, type, stock, reorder_point
        FROM products
        WHERE id = ?
        FOR UPDATE`,
@@ -1375,137 +1378,24 @@ exports.createStockMovement = async (req, res) => {
 
     if (!product) {
       await conn.rollback();
-      return res.status(404).json({ message: "Build material not found." });
+      return res.status(404).json({ message: "Ready-made product not found." });
+    }
+
+    if (String(product.type || "").toLowerCase() === "blueprint") {
+      await conn.rollback();
+      return res.status(409).json({
+        message:
+          "Blueprint products are made to order and do not use finished-product stock movements.",
+      });
     }
 
     const currentProductStock = Number(product.stock) || 0;
 
-    // PRODUCT STOCK-IN = PRODUCTION
-    // kapag nag-stock in ng build material, automatic deduct sa BOM raw materials
+    // PRODUCT STOCK-IN = RECEIVE READY-MADE FINISHED PRODUCT
+    // Ready-made products are treated as complete inventory items.
+    // No raw-material BOM deduction is performed here.
     if (type === "in") {
-      const [bomRows] = await conn.query(
-        `SELECT
-            bom.id AS bom_id,
-            bom.raw_material_id,
-            bom.quantity AS bom_quantity,
-            rm.name AS material_name,
-            rm.unit AS material_unit,
-            rm.quantity AS on_hand_quantity,
-            rm.reorder_point,
-            rm.is_active
-         FROM bill_of_materials bom
-         INNER JOIN raw_materials rm ON rm.id = bom.raw_material_id
-         WHERE bom.product_id = ?
-         ORDER BY rm.id, bom.id
-         FOR UPDATE`,
-        [parseInt(product_id, 10)],
-      );
-
-      if (!bomRows.length) {
-        await conn.rollback();
-        return res.status(400).json({
-          message: `No bill of materials found for ${product.name}.`,
-        });
-      }
-
-      const materialIds = [
-        ...new Set(
-          bomRows
-            .map((row) => Number(row.raw_material_id))
-            .filter((value) => Number.isInteger(value) && value > 0),
-        ),
-      ].sort((a, b) => a - b);
-
-      if (materialIds.length === 0) {
-        await conn.rollback();
-        return res.status(409).json({
-          message:
-            "The product bill of materials has no valid raw material links.",
-        });
-      }
-
-      // Raw material rows were locked above. Lock reservation rows next to
-      // preserve the same material-before-reservation order used by BPI-3/4.
-      const activeReservations = await lockActiveBlueprintReservations(
-        conn,
-        materialIds,
-      );
-      const reservedByMaterial =
-        getReservedQuantityByMaterial(activeReservations);
-
-      const groupedRequirements = new Map();
-      const shortages = [];
-
-      for (const row of bomRows) {
-        const materialId = Number(row.raw_material_id);
-        const perProductQty = Number(row.bom_quantity);
-        const requiredQty = perProductQty * movementQty;
-
-        if (
-          !Number.isFinite(perProductQty) ||
-          perProductQty <= 0 ||
-          !Number.isFinite(requiredQty) ||
-          requiredQty <= 0
-        ) {
-          shortages.push(
-            `${row.material_name || `Material ${materialId}`} has an invalid BOM quantity.`,
-          );
-          continue;
-        }
-
-        const existing = groupedRequirements.get(materialId);
-        if (existing) {
-          existing.requiredQty += requiredQty;
-          continue;
-        }
-
-        groupedRequirements.set(materialId, {
-          raw_material_id: materialId,
-          material_name: row.material_name,
-          material_unit: row.material_unit,
-          onHandQty: normalizeQuantity(row.on_hand_quantity),
-          reservedQty: reservedByMaterial.get(materialId) || 0,
-          reorder_point: normalizeQuantity(row.reorder_point),
-          is_active: Number(row.is_active) === 1,
-          requiredQty,
-        });
-      }
-
-      const consumptionRows = [...groupedRequirements.values()].sort(
-        (left, right) => left.raw_material_id - right.raw_material_id,
-      );
-
-      for (const item of consumptionRows) {
-        item.availableQty = Math.max(0, item.onHandQty - item.reservedQty);
-        item.newRawQty = item.onHandQty - item.requiredQty;
-
-        if (!item.is_active) {
-          shortages.push(
-            `${item.material_name} is archived and cannot be used for production.`,
-          );
-        } else if (item.availableQty + 0.0000001 < item.requiredQty) {
-          shortages.push(
-            `${item.material_name} (on hand: ${formatQuantityForMessage(
-              item.onHandQty,
-            )}, reserved: ${formatQuantityForMessage(
-              item.reservedQty,
-            )}, available: ${formatQuantityForMessage(
-              item.availableQty,
-            )}, needed: ${formatQuantityForMessage(item.requiredQty)})`,
-          );
-        }
-      }
-
-      if (shortages.length) {
-        await conn.rollback();
-        return res.status(409).json({
-          message: `Insufficient unreserved raw materials: ${shortages.join(", ")}`,
-          shortages,
-        });
-      }
-
-      // 1) Record the finished product stock-in movement.
-      const [productMovementResult] = await conn.query(
+      const [movementResult] = await conn.query(
         `INSERT INTO stock_movements
            (material_id, product_id, type, quantity, supplier_id, order_id,
             reference, notes, created_by)
@@ -1523,10 +1413,9 @@ exports.createStockMovement = async (req, res) => {
         ],
       );
 
-      // 2) Add finished product stock.
       const newProductStock = currentProductStock + movementQty;
 
-      await conn.query(
+      const [stockUpdateResult] = await conn.query(
         `UPDATE products
          SET stock = ?, stock_status = ?
          WHERE id = ?`,
@@ -1537,86 +1426,18 @@ exports.createStockMovement = async (req, res) => {
         ],
       );
 
-      // 3) Deduct only unreserved raw material stock.
-      const bomDeductions = [];
-
-      for (const item of consumptionRows) {
-        const minimumProtectedStock = item.requiredQty + item.reservedQty;
-
-        const [deductResult] = await conn.query(
-          `UPDATE raw_materials
-           SET quantity = quantity - ?
-           WHERE id = ?
-             AND quantity >= ?`,
-          [
-            item.requiredQty,
-            item.raw_material_id,
-            minimumProtectedStock,
-          ],
-        );
-
-        if (deductResult.affectedRows !== 1) {
-          await conn.rollback();
-          return res.status(409).json({
-            message: `${item.material_name} changed before production could be recorded. Refresh and try again.`,
-          });
-        }
-
-        await conn.query(
-          `UPDATE raw_materials
-           SET stock_status = CASE
-             WHEN quantity <= 0 THEN 'out_of_stock'
-             WHEN quantity <= reorder_point THEN 'low_stock'
-             ELSE 'in_stock'
-           END
-           WHERE id = ?`,
-          [item.raw_material_id],
-        );
-
-        const movementReference =
-          reference ||
-          `BOM-PRODUCTION-${productMovementResult.insertId}-${item.raw_material_id}`;
-
-        const [materialMovementResult] = await conn.query(
-          `INSERT INTO stock_movements
-             (material_id, product_id, type, quantity, supplier_id, order_id,
-              reference, notes, created_by)
-           VALUES (?,?,?,?,?,?,?,?,?)`,
-          [
-            item.raw_material_id,
-            parseInt(product_id, 10),
-            "out",
-            item.requiredQty,
-            null,
-            order_id ? parseInt(order_id, 10) : null,
-            movementReference,
-            notes
-              ? `${notes} | Auto-deducted for production of ${product.name}`
-              : `Auto-deducted for production of ${product.name} x ${movementQty}`,
-            parseInt(req.user.id, 10),
-          ],
-        );
-
-        bomDeductions.push({
-          movement_id: materialMovementResult.insertId,
-          material_id: item.raw_material_id,
-          material_name: item.material_name,
-          quantity: item.requiredQty,
-          previous_stock: item.onHandQty,
-          reserved_stock: item.reservedQty,
-          available_before: item.availableQty,
-          new_stock: item.newRawQty,
-          available_after: Math.max(
-            0,
-            item.newRawQty - item.reservedQty,
-          ),
+      if (stockUpdateResult.affectedRows !== 1) {
+        await conn.rollback();
+        return res.status(409).json({
+          message:
+            "Product stock changed before the movement could be completed. Refresh and try again.",
         });
       }
 
       await conn.commit();
 
       req.auditRecord = {
-        id: productMovementResult.insertId,
+        id: movementResult.insertId,
         old: null,
         new: {
           material_id: null,
@@ -1629,14 +1450,12 @@ exports.createStockMovement = async (req, res) => {
           notes: notes || null,
           previous_stock: currentProductStock,
           new_stock: newProductStock,
-          auto_raw_material_deductions: bomDeductions,
         },
       };
 
       return res.status(201).json({
-        message:
-          "Product stock added. Only unreserved BOM raw materials were deducted.",
-        id: productMovementResult.insertId,
+        message: "Ready-made product stock added.",
+        id: movementResult.insertId,
       });
     }
 

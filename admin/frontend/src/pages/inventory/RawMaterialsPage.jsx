@@ -31,18 +31,29 @@ const formatDateTime = (value) => {
   });
 };
 
-const formatStatus = (value) =>
-  String(value || "")
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+const formatStatus = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized === "consumed") return "Used";
+  if (normalized === "pending_stock") return "Waiting for stock";
+  const words = normalized.replaceAll("_", " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
 
 // WISDOM Material Physical Specs V1.1
+// WISDOM RAW MATERIALS UI POLISH V2
+// WISDOM RAW MATERIALS FINISHING POLISH V3.0.1
+// WISDOM RAW MATERIALS DESKTOP FIT V1
+// WISDOM RAW MATERIALS ACTION DISCLOSURE V1
+// WISDOM RAW MATERIALS TYPOGRAPHY CONSISTENCY V1.0.1
+// WISDOM RAW MATERIALS SIZE BOOST V1
+// WISDOM RAW MATERIALS READABILITY V1
 const MATERIAL_FORM_OPTIONS = [
-  ["other", "Other / Not Dimension-Based"],
-  ["sheet", "Sheet / Board"],
+  ["other", "Other material"],
+  ["sheet", "Sheet or Board"],
   ["linear", "Linear Material"],
-  ["piece", "Solid / Stock Piece"],
-  ["hardware", "Hardware / Counted Item"],
+  ["piece", "Solid Stock Piece"],
+  ["hardware", "Hardware or Counted Item"],
 ];
 
 const MATERIAL_FORM_LABELS = Object.fromEntries(MATERIAL_FORM_OPTIONS);
@@ -78,9 +89,9 @@ const formatMaterialPhysicalSpec = (item = {}) => {
 
 const RESERVATION_FILTERS = [
   ["all", "All"],
-  ["pending_stock", "Pending Stock"],
+  ["pending_stock", "Waiting for Stock"],
   ["reserved", "Reserved"],
-  ["consumed", "Consumed"],
+  ["consumed", "Used"],
   ["released", "Released"],
 ];
 
@@ -109,6 +120,8 @@ export default function RawMaterialsPage() {
   const [suppliers, setSuppliers] = useState([]);
   const [reservationModal, setReservationModal] = useState(null);
   const [reservationFilter, setReservationFilter] = useState("all");
+  const [actionMenuId, setActionMenuId] = useState(null);
+  const [confirmAction, setConfirmAction] = useState(null);
 
   const load = useCallback(async () => {
     const { data } = await api.get("/inventory/raw", {
@@ -198,32 +211,18 @@ export default function RawMaterialsPage() {
     }
   };
 
-  const handleArchive = async (item) => {
+  const handleArchive = (item) => {
     const reservedQuantity = Number(item.reserved_quantity || 0);
     const pendingNeedQuantity = Number(item.pending_need_quantity || 0);
 
     if (reservedQuantity > 0 || pendingNeedQuantity > 0) {
       toast.error(
-        "This material has active blueprint reservations or pending stock needs. Resolve or cancel those orders before archiving it.",
+        "This material has active blueprint reservations or stock needs. Resolve those orders before archiving it.",
       );
       return;
     }
 
-    if (
-      !window.confirm(
-        `Archive "${item.name}"? It will be hidden from active inventory and new material selectors, but its history will remain.`,
-      )
-    ) {
-      return;
-    }
-
-    try {
-      await api.patch(`/inventory/raw/${item.id}/archive`);
-      toast.success("Raw material archived.");
-      load();
-    } catch (error) {
-      // The global API interceptor shows the server message.
-    }
+    setConfirmAction({ type: "archive", item });
   };
 
   const handleRestore = async (item) => {
@@ -238,18 +237,23 @@ export default function RawMaterialsPage() {
     }
   };
 
-  const handleDelete = async (item) => {
-    if (
-      !window.confirm(
-        `Permanently delete "${item.name}"? This is only allowed when it has no linked or historical records.`,
-      )
-    ) {
-      return;
-    }
+  const handleDelete = (item) => {
+    setConfirmAction({ type: "delete", item });
+  };
 
+  const confirmMaterialAction = async () => {
+    if (!confirmAction?.item) return;
+
+    const { type, item } = confirmAction;
     try {
-      await api.delete(`/inventory/raw/${item.id}`);
-      toast.success("Raw material permanently deleted.");
+      if (type === "archive") {
+        await api.patch(`/inventory/raw/${item.id}/archive`);
+        toast.success("Raw material archived.");
+      } else {
+        await api.delete(`/inventory/raw/${item.id}`);
+        toast.success("Raw material permanently deleted.");
+      }
+      setConfirmAction(null);
       load();
     } catch (error) {
       // The global API interceptor shows the server message.
@@ -261,6 +265,23 @@ export default function RawMaterialsPage() {
       ...current,
       data: { ...current.data, [key]: value },
     }));
+
+  useEffect(() => {
+    if (actionMenuId == null) return undefined;
+
+    const closeMenu = () => setActionMenuId(null);
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") closeMenu();
+    };
+
+    document.addEventListener("click", closeMenu);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("click", closeMenu);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [actionMenuId]);
 
   const filteredReservationRows = (reservationModal?.rows || []).filter(
     (row) => reservationFilter === "all" || row.status === reservationFilter,
@@ -278,87 +299,115 @@ export default function RawMaterialsPage() {
     <div>
       <div style={header}>
         <div>
-          <h1 style={title}>Raw Materials Inventory</h1>
+          {/* WISDOM RAW MATERIAL ROLE COPY V1 */}
+          <h1 style={title}>Raw Materials</h1>
           <div style={subtitle}>
-            On hand is physical stock. Reserved stock is allocated to paid
-            blueprint orders, while available stock can still be assigned to new
-            work. Add physical size for sheet and board materials so Blueprint
-            material requirements can use real stock dimensions.
+            Manage materials used for custom furniture. Track physical stock,
+            blueprint reservations, and quantities available for new work. Use
+            Stock Movement whenever physical inventory changes.
           </div>
         </div>
         <button onClick={openAdd} style={btnPrimary}>
-          + Add Material
+          Add material
         </button>
       </div>
 
       <div style={filterRow}>
-        <input
-          placeholder="Search..."
-          value={filters.search}
-          onChange={(e) =>
-            setFilters((current) => ({
-              ...current,
-              search: e.target.value,
-              page: 1,
-            }))
-          }
-          style={inputSm}
-        />
-        <select
-          value={filters.status}
-          onChange={(e) =>
-            setFilters((current) => ({
-              ...current,
-              status: e.target.value,
-              page: 1,
-            }))
-          }
-          style={inputSm}
-        >
-          <option value="">All Stock Status</option>
-          <option value="in_stock">In Stock</option>
-          <option value="low_stock">Low Stock</option>
-          <option value="out_of_stock">Out of Stock</option>
-        </select>
-        <select
-          value={filters.archive_status}
-          onChange={(e) =>
-            setFilters((current) => ({
-              ...current,
-              archive_status: e.target.value,
-              page: 1,
-            }))
-          }
-          style={inputSm}
-        >
-          <option value="active">Active</option>
-          <option value="archived">Archived</option>
-          <option value="all">All Records</option>
-        </select>
+        <div style={{ ...filterField, flex: "0 1 520px", width: "min(520px, 100%)" }}>
+          <label style={filterLabel}>Search</label>
+          <input
+            placeholder="Search materials"
+            value={filters.search}
+            onChange={(e) =>
+              setFilters((current) => ({
+                ...current,
+                search: e.target.value,
+                page: 1,
+              }))
+            }
+            style={{ ...inputSm, width: "100%", boxSizing: "border-box" }}
+          />
+        </div>
+        <div style={filterField}>
+          <label style={filterLabel}>Stock level</label>
+          <select
+            value={filters.status}
+            onChange={(e) =>
+              setFilters((current) => ({
+                ...current,
+                status: e.target.value,
+                page: 1,
+              }))
+            }
+            style={inputSm}
+          >
+            <option value="">All stock levels</option>
+            <option value="in_stock">In stock</option>
+            <option value="low_stock">Low stock</option>
+            <option value="out_of_stock">Out of stock</option>
+          </select>
+        </div>
+        <div style={filterField}>
+          <label style={filterLabel}>Record status</label>
+          <select
+            value={filters.archive_status}
+            onChange={(e) =>
+              setFilters((current) => ({
+                ...current,
+                archive_status: e.target.value,
+                page: 1,
+              }))
+            }
+            style={inputSm}
+          >
+            <option value="active">Active materials</option>
+            <option value="archived">Archived materials</option>
+            <option value="all">All materials</option>
+          </select>
+        </div>
         <span style={resultCount}>
-          {total} record{total === 1 ? "" : "s"}
+          {total.toLocaleString("en-PH")} material{total === 1 ? "" : "s"}
         </span>
       </div>
 
       <div style={tableCard}>
         <table
-          style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            tableLayout: "fixed",
+            fontSize: 13,
+            fontFamily: "inherit",
+          }}
         >
+          <colgroup>
+            <col style={{ width: "20.5%" }} />
+            <col style={{ width: "9.5%" }} />
+            <col style={{ width: "5%" }} />
+            <col style={{ width: "5%" }} />
+            <col style={{ width: "5%" }} />
+            <col style={{ width: "5.5%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "7.5%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "10%" }} />
+          </colgroup>
           <thead>
             <tr style={{ background: "#fafafa" }}>
               {[
-                "Name",
+                "Material",
                 "Supplier",
                 "Unit",
                 "On Hand",
                 "Reserved",
                 "Available",
-                "Pending Need",
-                "Reorder Pt",
+                "Needed for Orders",
+                "Reorder Point",
                 "Unit Cost",
-                "Total Value",
-                "Stock Status",
-                "Record",
+                "Inventory Value",
+                "Stock Level",
                 "Actions",
               ].map((heading) => (
                 <th key={heading} style={th}>
@@ -370,7 +419,7 @@ export default function RawMaterialsPage() {
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={13} style={emptyCell}>
+                <td colSpan={12} style={emptyCell}>
                   No raw materials found for the selected filters.
                 </td>
               </tr>
@@ -400,7 +449,10 @@ export default function RawMaterialsPage() {
                   >
                     <td style={td}>
                       <strong
-                        style={{ color: isActive ? "#0a0a0a" : "#71717a" }}
+                        style={{
+                          color: isActive ? "#0a0a0a" : "#71717a",
+                          fontWeight: 600,
+                        }}
                       >
                         {item.name}
                       </strong>
@@ -409,21 +461,24 @@ export default function RawMaterialsPage() {
                           marginTop: 3,
                           color: "#71717a",
                           fontSize: 10.5,
+                          fontWeight: 400,
+                          fontFamily: "inherit",
                           lineHeight: 1.35,
-                          whiteSpace: "nowrap",
+                          whiteSpace: "normal",
                         }}
                       >
                         {formatMaterialPhysicalSpec(item)}
+                        {!isActive ? " · Archived" : ""}
                       </div>
                     </td>
                     <td style={{ ...td, color: "#52525b" }}>
                       {item.supplier_name || "—"}
                     </td>
                     <td style={{ ...td, color: "#71717a" }}>{item.unit}</td>
-                    <td style={{ ...td, fontWeight: 700 }}>
+                    <td style={{ ...td, fontWeight: 600 }}>
                       {formatQuantity(item.on_hand_quantity ?? item.quantity)}
                     </td>
-                    <td style={{ ...td, fontWeight: 700 }}>
+                    <td style={{ ...td, fontWeight: 600 }}>
                       {reservedQuantity > 0 ? (
                         <button
                           type="button"
@@ -439,10 +494,10 @@ export default function RawMaterialsPage() {
                         formatQuantity(reservedQuantity)
                       )}
                     </td>
-                    <td style={{ ...td, fontWeight: 800 }}>
+                    <td style={{ ...td, color: "#18181b", fontWeight: 600 }}>
                       {formatQuantity(item.available_quantity ?? item.quantity)}
                     </td>
-                    <td style={{ ...td, color: "#991b1b", fontWeight: 700 }}>
+                    <td style={{ ...td, color: "#991b1b", fontWeight: 600 }}>
                       {pendingNeedQuantity > 0 ? (
                         <button
                           type="button"
@@ -475,78 +530,117 @@ export default function RawMaterialsPage() {
                           color,
                           border: `1px solid ${border}`,
                           padding: "2px 10px",
-                          borderRadius: 12,
+                          borderRadius: 2,
                           fontSize: 11,
                           fontWeight: 600,
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {availabilityStatus?.replaceAll("_", " ")}
+                        {formatStatus(availabilityStatus)}
                       </span>
                     </td>
-                    <td style={td}>
-                      <span style={isActive ? activeBadge : archivedBadge}>
-                        {isActive ? "active" : "archived"}
-                      </span>
-                    </td>
-                    <td style={{ ...td, whiteSpace: "nowrap" }}>
-                      {reservationRecordCount > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => openReservationHistory(item)}
-                          style={{ ...btnEdit, ...btnHistory, marginRight: 6 }}
-                        >
-                          History
-                        </button>
-                      )}
-                      {isActive ? (
-                        <>
+<td style={{ ...td, whiteSpace: "normal" }}>
+                      <div style={rowActions}>
+                        {isActive ? (
                           <button
+                            type="button"
                             onClick={() => openEdit(item)}
                             style={btnEdit}
                           >
                             Edit
                           </button>
+                        ) : (
                           <button
-                            onClick={() => handleArchive(item)}
-                            disabled={hasActiveReservations}
-                            title={
-                              hasActiveReservations
-                                ? "Resolve active reservations or pending stock needs before archiving."
-                                : "Archive raw material"
-                            }
-                            style={{
-                              ...btnEdit,
-                              ...btnArchive,
-                              ...(hasActiveReservations ? btnDisabled : {}),
-                              marginLeft: 6,
-                            }}
+                            type="button"
+                            onClick={() => handleRestore(item)}
+                            style={btnEdit}
                           >
-                            Archive
+                            Restore
                           </button>
-                          {!hasReferences && (
-                            <button
-                              onClick={() => handleDelete(item)}
-                              style={{
-                                ...btnEdit,
-                                ...btnDelete,
-                                marginLeft: 6,
-                              }}
-                            >
-                              Delete
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => handleRestore(item)}
-                          style={btnRestore}
+                        )}
+
+                        <div
+                          style={moreActionsWrap}
+                          onClick={(event) => event.stopPropagation()}
                         >
-                          Restore
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                          <button
+                            type="button"
+                            aria-label={`More actions for ${item.name}`}
+                            aria-haspopup="menu"
+                            aria-expanded={actionMenuId === item.id}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setActionMenuId((current) =>
+                                current === item.id ? null : item.id,
+                              );
+                            }}
+                            style={btnMore}
+                          >
+                            ⋯
+                          </button>
+
+                          {actionMenuId === item.id && (
+                            <div role="menu" style={moreActionsMenu}>
+                              {reservationRecordCount > 0 && (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setActionMenuId(null);
+                                    openReservationHistory(item);
+                                  }}
+                                  style={moreActionsItem}
+                                >
+                                  View history
+                                </button>
+                              )}
+
+                              {isActive && (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={hasActiveReservations}
+                                  title={
+                                    hasActiveReservations
+                                      ? "Resolve active reservations or waiting stock needs before archiving."
+                                      : "Archive material"
+                                  }
+                                  onClick={() => {
+                                    setActionMenuId(null);
+                                    handleArchive(item);
+                                  }}
+                                  style={{
+                                    ...moreActionsItem,
+                                    ...(hasActiveReservations
+                                      ? moreActionsItemDisabled
+                                      : {}),
+                                  }}
+                                >
+                                  Archive
+                                </button>
+                              )}
+
+                              {!hasReferences && (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setActionMenuId(null);
+                                    handleDelete(item);
+                                  }}
+                                  style={{
+                                    ...moreActionsItem,
+                                    ...moreActionsDanger,
+                                  }}
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td></tr>
                 );
               })
             )}
@@ -560,14 +654,22 @@ export default function RawMaterialsPage() {
             <h3 style={modalTitle}>
               {modal.mode === "add" ? "Add Raw Material" : "Edit Raw Material"}
             </h3>
+            {modal.mode === "add" && (
+              <div style={modalInfo}>
+                Create the material record here. Add the physical quantity later
+                through Stock Movement so every stock change is recorded.
+              </div>
+            )}
             <form onSubmit={handleSave}>
-              {[
+              {([
                 ["Name *", "name", "text", true],
                 ["Unit *", "unit", "text", true],
-                ["Quantity", "quantity", "number"],
+                ...(modal.mode === "edit"
+                  ? [["Quantity", "quantity", "number"]]
+                  : []),
                 ["Reorder Point", "reorder_point", "number"],
                 ["Unit Cost (₱)", "unit_cost", "number"],
-              ].map(([label, key, type, required]) => {
+              ]).map(([label, key, type, required]) => {
                 const quantityLocked =
                   modal.mode === "edit" && key === "quantity";
 
@@ -624,7 +726,7 @@ export default function RawMaterialsPage() {
                   background: "#fafafa",
                 }}
               >
-                <label style={labelSm}>Material Form</label>
+                <label style={labelSm}>Material Type</label>
                 <select
                   value={currentMaterialForm}
                   onChange={(e) => {
@@ -654,8 +756,8 @@ export default function RawMaterialsPage() {
                 </select>
 
                 <div style={{ ...fieldHelp, marginTop: 6 }}>
-                  This describes how one stock unit is physically measured. It
-                  does not change the on-hand quantity.
+                  Choose how one inventory unit is measured. This does not
+                  change the physical stock quantity.
                 </div>
 
                 {showPhysicalDimensions && (
@@ -733,10 +835,49 @@ export default function RawMaterialsPage() {
                   Cancel
                 </button>
                 <button type="submit" disabled={saving} style={btnPrimary}>
-                  {saving ? "Saving..." : "Save"}
+                  {saving ? "Saving..." : modal.mode === "add" ? "Add material" : "Save changes"}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+
+
+      {confirmAction && (
+        <div
+          style={overlay}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setConfirmAction(null);
+          }}
+        >
+          <div style={confirmModalBox}>
+            <div style={confirmEyebrow}>
+              {confirmAction.type === "delete" ? "Permanent action" : "Inventory record"}
+            </div>
+            <h3 style={{ ...modalTitle, marginBottom: 8 }}>
+              {confirmAction.type === "delete"
+                ? "Delete raw material?"
+                : "Archive raw material?"}
+            </h3>
+            <p style={confirmCopy}>
+              {confirmAction.type === "delete"
+                ? 'Delete "' + confirmAction.item.name + '" permanently? This is only available when the material has no linked or historical records.'
+                : 'Archive "' + confirmAction.item.name + '"? It will be hidden from active inventory and new material selectors, while its history stays available.'}
+            </p>
+            <div style={modalActions}>
+              <button type="button" onClick={() => setConfirmAction(null)} style={btnGhost}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmMaterialAction}
+                style={confirmAction.type === "delete" ? btnDanger : btnPrimary}
+              >
+                {confirmAction.type === "delete" ? "Delete permanently" : "Archive material"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -752,15 +893,15 @@ export default function RawMaterialsPage() {
             <div style={historyHeader}>
               <div>
                 <h3 style={{ ...modalTitle, marginBottom: 5 }}>
-                  Reservation History
+                  Material Reservation History
                 </h3>
                 <div
-                  style={{ fontSize: 13, fontWeight: 700, color: "#27272a" }}
+                  style={{ fontSize: 13, fontWeight: 600, color: "#27272a" }}
                 >
                   {reservationModal.material?.name || "Raw material"}
                 </div>
                 <div style={{ fontSize: 11, color: "#71717a", marginTop: 3 }}>
-                  Read-only allocation and usage trail for blueprint orders.
+                  Review how this material was reserved, used, or released for blueprint orders.
                 </div>
               </div>
               <button
@@ -799,7 +940,7 @@ export default function RawMaterialsPage() {
                       "Can be assigned",
                     ],
                     [
-                      "Pending Need",
+                      "Waiting for Stock",
                       reservationModal.summary?.pending_need_quantity,
                       `${reservationModal.summary?.pending_stock_count || 0} order(s)`,
                     ],
@@ -847,9 +988,9 @@ export default function RawMaterialsPage() {
                           "Required",
                           "Status",
                           "Reserved",
-                          "Consumed",
+                          "Used",
                           "Released",
-                          "Issue / Reason",
+                          "Notes",
                         ].map((heading) => (
                           <th key={heading} style={historyTh}>
                             {heading}
@@ -893,7 +1034,7 @@ export default function RawMaterialsPage() {
                               <td style={historyTd}>
                                 {row.customer_name || "—"}
                               </td>
-                              <td style={{ ...historyTd, fontWeight: 800 }}>
+                              <td style={{ ...historyTd, fontWeight: 600 }}>
                                 {formatQuantity(row.quantity)} {row.unit || ""}
                               </td>
                               <td style={historyTd}>
@@ -967,7 +1108,7 @@ const header = {
 };
 const title = {
   fontSize: 24,
-  fontWeight: 800,
+  fontWeight: 700,
   color: "#0a0a0a",
   margin: 0,
   letterSpacing: "-0.02em",
@@ -975,39 +1116,68 @@ const title = {
 const subtitle = { marginTop: 5, fontSize: 12, color: "#71717a" };
 const filterRow = {
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-end",
   gap: 10,
-  marginBottom: 16,
+  marginBottom: 14,
+  padding: "12px 14px",
+  background: "#fff",
+  border: "1px solid #e4e4e7",
+  borderRadius: 2,
   flexWrap: "wrap",
 };
-const resultCount = { marginLeft: "auto", fontSize: 12, color: "#71717a" };
+const filterField = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  flex: "0 0 auto",
+};
+const filterLabel = {
+  fontSize: 11,
+  fontWeight: 600,
+  color: "#3f3f46",
+};
+const resultCount = {
+  marginLeft: "auto",
+  paddingBottom: 9,
+  fontSize: 12,
+  color: "#71717a",
+  whiteSpace: "nowrap",
+};
 const tableCard = {
   background: "#fff",
-  borderRadius: 12,
+  borderRadius: 2,
   border: "1px solid #e4e4e7",
   boxShadow: "0 1px 2px rgba(0,0,0,.02)",
-  overflowX: "auto",
+  overflowX: "hidden",
 };
 const th = {
   textAlign: "left",
-  padding: "13px 16px",
+  padding: "11px 8px",
   fontSize: 10,
-  fontWeight: 800,
+  fontWeight: 600,
+  fontFamily: "inherit",
   color: "#71717a",
   textTransform: "uppercase",
-  letterSpacing: 1,
-  whiteSpace: "nowrap",
+  letterSpacing: "0.08em",
+  lineHeight: 1.3,
+  whiteSpace: "normal",
+  overflowWrap: "anywhere",
 };
 const td = {
-  padding: "14px 16px",
-  color: "#18181b",
+  padding: "12px 8px",
+  color: "#3f3f46",
   verticalAlign: "middle",
+  fontSize: 13,
+  fontWeight: 400,
+  fontFamily: "inherit",
+  lineHeight: 1.35,
+  overflowWrap: "anywhere",
 };
 const emptyCell = { ...td, textAlign: "center", color: "#71717a", padding: 32 };
 const inputSm = {
   padding: "8px 12px",
   border: "1px solid #e4e4e7",
-  borderRadius: 6,
+  borderRadius: 2,
   fontSize: 13,
   minWidth: 160,
   outline: "none",
@@ -1017,7 +1187,7 @@ const inputFull = {
   width: "100%",
   padding: "10px 12px",
   border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  borderRadius: 2,
   fontSize: 13,
   boxSizing: "border-box",
   outline: "none",
@@ -1025,7 +1195,7 @@ const inputFull = {
 };
 const labelSm = {
   fontSize: 12,
-  fontWeight: 700,
+  fontWeight: 600,
   color: "#52525b",
   display: "block",
   marginBottom: 6,
@@ -1046,65 +1216,71 @@ const btnPrimary = {
   background: "#18181b",
   color: "#fff",
   border: "1px solid #18181b",
-  borderRadius: 7,
+  borderRadius: 2,
   fontSize: 13,
   fontWeight: 600,
   cursor: "pointer",
 };
 const btnEdit = {
-  padding: "6px 12px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 6,
-  fontSize: 12,
+  minHeight: 30,
+  padding: "0 10px",
+  background: "#18181b",
+  color: "#ffffff",
+  border: "1px solid #18181b",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  fontSize: 11.5,
+  fontWeight: 600,
+  lineHeight: 1,
   cursor: "pointer",
+  whiteSpace: "nowrap",
 };
 const btnArchive = {
-  background: "#fff7ed",
-  color: "#9a3412",
-  border: "1px solid #fed7aa",
+  background: "#fff",
+  color: "#3f3f46",
+  border: "1px solid #d4d4d8",
 };
 const btnDisabled = {
   opacity: 0.5,
   cursor: "not-allowed",
 };
 const btnHistory = {
-  background: "#eff6ff",
-  color: "#1d4ed8",
-  border: "1px solid #bfdbfe",
+  background: "#fff",
+  color: "#18181b",
+  border: "1px solid #d4d4d8",
 };
 const quantityLink = {
   padding: 0,
-  background: "transparent",
   border: 0,
+  background: "transparent",
   color: "#1d4ed8",
-  font: "inherit",
-  fontWeight: 800,
-  textDecoration: "underline",
-  textUnderlineOffset: 2,
+  fontFamily: "inherit",
+  fontSize: 13,
+  fontWeight: 600,
+  lineHeight: 1.35,
+  textDecoration: "none",
   cursor: "pointer",
 };
 const btnDelete = {
-  background: "#fef2f2",
-  color: "#991b1b",
+  background: "#fff",
+  color: "#b42318",
   border: "1px solid #fecaca",
 };
 const btnRestore = {
   ...btnEdit,
-  background: "#ecfdf5",
-  color: "#166534",
-  border: "1px solid #bbf7d0",
+  background: "#18181b",
+  color: "#fff",
+  border: "1px solid #18181b",
 };
 const activeBadge = {
   display: "inline-block",
   padding: "2px 9px",
-  borderRadius: 12,
+  borderRadius: 2,
   background: "#ecfdf5",
   color: "#166534",
   border: "1px solid #bbf7d0",
   fontSize: 11,
-  fontWeight: 700,
+  fontWeight: 600,
 };
 const archivedBadge = {
   ...activeBadge,
@@ -1123,7 +1299,7 @@ const overlay = {
 };
 const modalBox = {
   background: "#fff",
-  borderRadius: 14,
+  borderRadius: 2,
   width: 380,
   padding: 28,
   boxShadow: "0 20px 60px rgba(0,0,0,.25)",
@@ -1131,7 +1307,7 @@ const modalBox = {
 const modalTitle = {
   margin: "0 0 20px",
   fontSize: 18,
-  fontWeight: 800,
+  fontWeight: 700,
   color: "#0a0a0a",
 };
 const modalActions = {
@@ -1144,15 +1320,55 @@ const btnGhost = {
   padding: "9px 16px",
   background: "#fff",
   color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 7,
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
   fontSize: 13,
+  fontWeight: 500,
   cursor: "pointer",
+};
+const btnDanger = {
+  ...btnGhost,
+  color: "#ffffff",
+  background: "#b42318",
+  border: "1px solid #b42318",
+  fontWeight: 600,
+};
+const modalInfo = {
+  margin: "-8px 0 16px",
+  padding: "10px 12px",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
+  borderRadius: 2,
+  color: "#52525b",
+  fontSize: 11.5,
+  lineHeight: 1.5,
+};
+const confirmModalBox = {
+  background: "#fff",
+  width: "min(430px, calc(100vw - 32px))",
+  padding: 24,
+  border: "1px solid #e4e4e7",
+  borderRadius: 2,
+  boxShadow: "0 20px 60px rgba(0,0,0,.25)",
+};
+const confirmEyebrow = {
+  marginBottom: 7,
+  color: "#71717a",
+  fontSize: 10,
+  fontWeight: 600,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+};
+const confirmCopy = {
+  margin: 0,
+  color: "#52525b",
+  fontSize: 12.5,
+  lineHeight: 1.55,
 };
 
 const historyModalBox = {
   background: "#fff",
-  borderRadius: 14,
+  borderRadius: 2,
   width: "min(1180px, calc(100vw - 36px))",
   maxHeight: "calc(100vh - 48px)",
   padding: 24,
@@ -1169,7 +1385,7 @@ const historyHeader = {
 const closeButton = {
   width: 34,
   height: 34,
-  borderRadius: 8,
+  borderRadius: 2,
   border: "1px solid #e4e4e7",
   background: "#fff",
   color: "#3f3f46",
@@ -1185,13 +1401,13 @@ const summaryGrid = {
 };
 const summaryCard = {
   border: "1px solid #e4e4e7",
-  borderRadius: 10,
+  borderRadius: 2,
   padding: "12px 14px",
   background: "#fafafa",
 };
 const summaryLabel = {
   fontSize: 10,
-  fontWeight: 800,
+  fontWeight: 700,
   color: "#71717a",
   textTransform: "uppercase",
   letterSpacing: 1,
@@ -1199,7 +1415,7 @@ const summaryLabel = {
 const summaryValue = {
   marginTop: 5,
   fontSize: 18,
-  fontWeight: 800,
+  fontWeight: 700,
   color: "#18181b",
 };
 const summaryDetail = { marginTop: 3, fontSize: 11, color: "#71717a" };
@@ -1211,12 +1427,12 @@ const historyFilters = {
 };
 const historyFilterButton = {
   padding: "7px 11px",
-  borderRadius: 7,
+  borderRadius: 2,
   border: "1px solid #e4e4e7",
   background: "#fff",
   color: "#52525b",
   fontSize: 11,
-  fontWeight: 700,
+  fontWeight: 600,
   cursor: "pointer",
 };
 const historyFilterActive = {
@@ -1227,7 +1443,7 @@ const historyFilterActive = {
 };
 const historyTableWrap = {
   border: "1px solid #e4e4e7",
-  borderRadius: 10,
+  borderRadius: 2,
   overflowX: "auto",
 };
 const historyTable = {
@@ -1254,9 +1470,9 @@ const historyEmpty = {
 const reservationBadge = {
   display: "inline-block",
   padding: "3px 8px",
-  borderRadius: 12,
+  borderRadius: 2,
   fontSize: 10,
-  fontWeight: 800,
+  fontWeight: 700,
   whiteSpace: "nowrap",
 };
 const orderLink = {
@@ -1265,13 +1481,83 @@ const orderLink = {
   background: "transparent",
   color: "#1d4ed8",
   fontSize: 12,
-  fontWeight: 800,
-  textDecoration: "underline",
-  textUnderlineOffset: 2,
+  fontWeight: 600,
+  textDecoration: "none",
   cursor: "pointer",
 };
 const orderMeta = {
   marginTop: 3,
   fontSize: 10,
   color: "#71717a",
+};
+
+
+const rowActions = {
+  display: "flex",
+  alignItems: "center",
+  gap: 5,
+  flexWrap: "nowrap",
+};
+
+const moreActionsWrap = {
+  position: "relative",
+  display: "inline-flex",
+};
+
+const btnMore = {
+  width: 32,
+  minWidth: 32,
+  height: 30,
+  padding: 0,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#ffffff",
+  color: "#18181b",
+  border: "1px solid #d7d9dd",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  fontSize: 16,
+  fontWeight: 600,
+  lineHeight: 1,
+  cursor: "pointer",
+};
+
+const moreActionsMenu = {
+  position: "absolute",
+  top: "calc(100% + 5px)",
+  right: 0,
+  zIndex: 30,
+  minWidth: 142,
+  padding: 4,
+  background: "#ffffff",
+  border: "1px solid #d7d9dd",
+  borderRadius: 2,
+  boxShadow: "0 8px 20px rgba(0,0,0,0.10)",
+};
+
+const moreActionsItem = {
+  width: "100%",
+  minHeight: 32,
+  padding: "0 9px",
+  display: "flex",
+  alignItems: "center",
+  background: "#ffffff",
+  color: "#27272a",
+  border: 0,
+  borderRadius: 2,
+  fontSize: 11.5,
+  fontWeight: 500,
+  textAlign: "left",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const moreActionsItemDisabled = {
+  color: "#a1a1aa",
+  cursor: "not-allowed",
+};
+
+const moreActionsDanger = {
+  color: "#b42318",
 };
