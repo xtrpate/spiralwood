@@ -76,6 +76,8 @@ a {
   background-color: #ffffff;
   border-bottom: 1px solid #e5e7eb;
   transition: box-shadow 0.3s ease;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .cust-navbar.scrolled {
@@ -229,9 +231,12 @@ a {
 }
 
 .cust-brand-badge.header .cust-brand-logo {
+  width: 100%;
+  height: 100%;
+  display: block;
   object-fit: cover;
   object-position: left center;
-  transform: scale(1.7);
+  transform: none;
 }
 
 .cust-brand-badge.footer .cust-brand-logo {
@@ -883,7 +888,7 @@ a {
   }
 
   .cust-brand-badge.header .cust-brand-logo {
-    transform: scale(1.5);
+    transform: none;
   }
 
   .cust-brand-name {
