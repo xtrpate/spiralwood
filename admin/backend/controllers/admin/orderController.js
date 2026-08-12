@@ -1473,13 +1473,39 @@ exports.updateStatus = async (req, res) => {
       await restoreStandardOrderStock(conn, parseInt(req.params.id));
     }
 
-    // 👉 NEW: Automatically sync the Rider's delivery status
-    if (nextStatus === "completed" || nextStatus === "cancelled") {
+    // Keep delivery-attempt history immutable when the order reaches a
+    // terminal state. A failed attempt must stay failed even after a later
+    // rescheduled attempt succeeds and the order is completed.
+    if (nextStatus === "completed") {
+      const [[latestSuccessfulDelivery]] = await conn.query(
+        `SELECT id
+         FROM deliveries
+         WHERE order_id = ?
+           AND status = 'delivered'
+         ORDER BY id DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [parseInt(req.params.id)],
+      );
+
+      if (latestSuccessfulDelivery?.id) {
+        await conn.query(
+          `UPDATE deliveries
+           SET status = 'completed'
+           WHERE id = ?
+             AND status = 'delivered'`,
+          [latestSuccessfulDelivery.id],
+        );
+      }
+    } else if (nextStatus === "cancelled") {
+      // Only cancel the currently actionable attempts. Historical failed
+      // or delivered attempts remain unchanged for audit/history.
       await conn.query(
         `UPDATE deliveries
-         SET status = ?
-         WHERE order_id = ?`,
-        [nextStatus, parseInt(req.params.id)],
+         SET status = 'cancelled'
+         WHERE order_id = ?
+           AND status IN ('scheduled', 'in_transit')`,
+        [parseInt(req.params.id)],
       );
     }
 

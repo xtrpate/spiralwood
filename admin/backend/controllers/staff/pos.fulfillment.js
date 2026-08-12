@@ -1646,7 +1646,7 @@ exports.getRiderHistory = async (req, res) => {
   try {
     const riderId = req.user.id;
 
-    // Fetch completed/failed deliveries and safely grab online or walk-in customer names
+    // Fetch delivered/completed/failed deliveries and safely grab online or walk-in customer names
     const [history] = await db.query(
       `SELECT 
          d.id AS delivery_id, 
@@ -1654,7 +1654,15 @@ exports.getRiderHistory = async (req, res) => {
          o.order_type,
          COALESCE(o.walkin_customer_name, u.name, 'Walk-in Customer') AS customer_name, 
          d.address, 
-         d.status, 
+         d.status,
+         CASE
+           WHEN d.status = 'completed'
+             AND LOWER(COALESCE(d.notes, '')) LIKE '%failure reason:%'
+             THEN 'failed'
+           WHEN d.status = 'completed'
+             THEN 'delivered'
+           ELSE d.status
+         END AS history_result,
          o.payment_status, 
          o.total, 
          o.delivery_lat,
@@ -1664,7 +1672,7 @@ exports.getRiderHistory = async (req, res) => {
        FROM deliveries d
        JOIN orders o ON d.order_id = o.id
        LEFT JOIN users u ON u.id = o.customer_id
-       WHERE d.driver_id = ? AND d.status IN ('delivered', 'failed')
+       WHERE d.driver_id = ? AND d.status IN ('delivered', 'completed', 'failed')
        ORDER BY d.updated_at DESC
        LIMIT 50`,
       [riderId],

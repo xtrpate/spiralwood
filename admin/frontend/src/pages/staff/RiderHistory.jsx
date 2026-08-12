@@ -12,6 +12,12 @@ import "./RiderScreen.css";
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 
+const isSuccessfulDeliveryResult = (status) =>
+  ["delivered", "completed"].includes(normalize(status));
+
+const getHistoryResult = (record = {}) =>
+  normalize(record.history_result || record.status);
+
 const parseCoordinate = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -50,7 +56,7 @@ const formatDateTime = (value) => {
 };
 
 const getRecordDate = (record) =>
-  normalize(record.status) === "delivered"
+  isSuccessfulDeliveryResult(getHistoryResult(record))
     ? record.delivered_date || record.updated_at
     : record.updated_at;
 
@@ -128,8 +134,20 @@ export default function RiderHistory() {
 
     return history
       .filter((record) => {
-        const status = normalize(record.status);
-        if (statusFilter !== "all" && status !== statusFilter) {
+        const status = getHistoryResult(record);
+
+        if (
+          statusFilter === "delivered" &&
+          !isSuccessfulDeliveryResult(status)
+        ) {
+          return false;
+        }
+
+        if (
+          statusFilter !== "all" &&
+          statusFilter !== "delivered" &&
+          status !== statusFilter
+        ) {
           return false;
         }
 
@@ -156,6 +174,7 @@ export default function RiderHistory() {
           record.order_number,
           record.customer_name,
           record.address,
+          record.history_result,
           record.status,
         ].some((field) =>
           String(field || "")
@@ -291,12 +310,12 @@ export default function RiderHistory() {
                     <td data-label="Result">
                       <span
                         className={`rider-history-result ${
-                          normalize(record.status) === "delivered"
+                          isSuccessfulDeliveryResult(getHistoryResult(record))
                             ? "is-delivered"
                             : ""
                         }`}
                       >
-                        {normalize(record.status) === "delivered"
+                        {isSuccessfulDeliveryResult(getHistoryResult(record))
                           ? "Delivered"
                           : "Failed"}
                       </span>
@@ -346,12 +365,16 @@ export default function RiderHistory() {
             <div className="rider-history-detail-status">
               <span
                 className={`rider-history-result ${
-                  normalize(selectedRecord.status) === "delivered"
+                  isSuccessfulDeliveryResult(
+                    getHistoryResult(selectedRecord),
+                  )
                     ? "is-delivered"
                     : ""
                 }`}
               >
-                {normalize(selectedRecord.status) === "delivered"
+                {isSuccessfulDeliveryResult(
+                  getHistoryResult(selectedRecord),
+                )
                   ? "Delivered"
                   : "Failed"}
               </span>
@@ -381,7 +404,9 @@ export default function RiderHistory() {
 
               <div className="rider-history-detail-item">
                 <span>
-                  {normalize(selectedRecord.status) === "delivered"
+                  {isSuccessfulDeliveryResult(
+                    getHistoryResult(selectedRecord),
+                  )
                     ? "Completed"
                     : "Attempted"}
                 </span>
