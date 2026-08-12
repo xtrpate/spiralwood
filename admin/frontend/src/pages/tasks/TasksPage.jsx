@@ -737,7 +737,7 @@ export default function TasksPage() {
     rowActions: {
       display: "flex",
       alignItems: "center",
-      justifyContent: "flex-end",
+      justifyContent: "flex-start",
       gap: 7,
       flexWrap: "nowrap",
       whiteSpace: "nowrap",
@@ -936,11 +936,11 @@ export default function TasksPage() {
           <table style={S.table}>
             <thead>
               <tr>
-                <th style={{ ...S.th, width: "45%" }}>Task</th>
-                <th style={{ ...S.th, width: "17%" }}>Staff</th>
-                <th style={{ ...S.th, width: "15%" }}>Due</th>
-                <th style={{ ...S.th, width: "11%" }}>Status</th>
-                <th style={{ ...S.th, width: "12%", textAlign: "right" }}>
+                <th style={{ ...S.th, width: "32%" }}>Task</th>
+                <th style={{ ...S.th, width: "18%" }}>Staff</th>
+                <th style={{ ...S.th, width: "17%" }}>Due</th>
+                <th style={{ ...S.th, width: "12%" }}>Status</th>
+                <th style={{ ...S.th, width: "21%", textAlign: "left" }}>
                   Actions
                 </th>
               </tr>

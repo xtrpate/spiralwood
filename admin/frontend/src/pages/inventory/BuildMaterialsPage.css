@@ -224,6 +224,13 @@
   white-space: nowrap;
 }
 
+/* WISDOM BUILD MATERIALS STATUS COLORS V1.0.0 */
+.build-materials-status-neutral {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #15803d;
+}
+
 .build-materials-status-warning {
   border-color: #f3d59d;
   background: #fffbeb;

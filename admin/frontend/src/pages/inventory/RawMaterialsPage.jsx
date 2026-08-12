@@ -5,9 +5,9 @@ import api from "../../services/api";
 import toast from "react-hot-toast";
 
 const STOCK_COLORS = {
-  in_stock: ["#f4f4f5", "#18181b", "#e4e4e7"],
-  low_stock: ["#ffffff", "#52525b", "#d4d4d8"],
-  out_of_stock: ["#fef2f2", "#991b1b", "#fecaca"],
+  in_stock: ["#f0fdf4", "#15803d", "#bbf7d0"],
+  low_stock: ["#fffbeb", "#a16207", "#fde68a"],
+  out_of_stock: ["#fef2f2", "#b91c1c", "#fecaca"],
 };
 
 const formatQuantity = (value) => {
