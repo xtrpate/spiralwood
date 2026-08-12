@@ -2,7 +2,10 @@
 // Sales reporting separates order value from money that was actually collected.
 const pool = require("../../config/db");
 
-const normalize = (value) => String(value || "").trim().toLowerCase();
+const normalize = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const VALID_CHANNELS = new Set(["online", "walkin"]);
 const VALID_PERIODS = new Set(["daily", "weekly", "monthly", "yearly"]);
@@ -290,18 +293,89 @@ exports.getReport = async (req, res) => {
       orderParams,
     );
 
+    const [salesByChannelRows] = await pool.query(
+      `
+  SELECT
+    o.type AS channel,
+    COUNT(*) AS order_count,
+    COALESCE(SUM(o.total), 0) AS sales_revenue
+  FROM orders o
+  WHERE ${orderWhereSql}
+  GROUP BY o.type
+  ORDER BY o.type
+  `,
+      orderParams,
+    );
+
+    const salesByChannel = [
+      {
+        channel: "online",
+        order_count: 0,
+        sales_revenue: 0,
+      },
+      {
+        channel: "walkin",
+        order_count: 0,
+        sales_revenue: 0,
+      },
+    ].map((base) => {
+      const found = salesByChannelRows.find(
+        (row) => String(row.channel || "").toLowerCase() === base.channel,
+      );
+
+      return {
+        channel: base.channel,
+        order_count: Number(found?.order_count || 0),
+        sales_revenue: Number(found?.sales_revenue || 0),
+      };
+    });
+
+    const [printProducts] = await pool.query(
+      `
+  SELECT
+    oi.product_name,
+    o.type AS channel,
+    COALESCE(oi.unit_price, 0) AS unit_price,
+    SUM(COALESCE(oi.quantity, 0)) AS units_sold,
+    COALESCE(
+      SUM(
+        COALESCE(
+          oi.subtotal,
+          COALESCE(oi.unit_price, 0) * COALESCE(oi.quantity, 0)
+        )
+      ),
+      0
+    ) AS sales_amount
+  FROM order_items oi
+  INNER JOIN orders o ON o.id = oi.order_id
+  WHERE ${orderWhereSql}
+  GROUP BY
+    oi.product_name,
+    o.type,
+    oi.unit_price
+  ORDER BY
+    sales_amount DESC,
+    units_sold DESC,
+    oi.product_name ASC
+  `,
+      orderParams,
+    );
+
     const summary = {
       total_orders: Number(orderSummary?.total_orders || 0),
       gross_order_value: Number(orderSummary?.gross_order_value || 0),
       actual_collected: Number(collectionSummary?.actual_collected || 0),
-      // Kept as a compatibility alias, but it now correctly means money
-      // actually collected in the selected payment period.
+
+      // Compatibility alias.
       total_revenue: Number(collectionSummary?.actual_collected || 0),
+
       outstanding_balance: Number(orderSummary?.outstanding_balance || 0),
       total_profit: Number(orderSummary?.total_profit || 0),
       avg_order_value: Number(orderSummary?.avg_order_value || 0),
+
       online_count: Number(orderSummary?.online_count || 0),
       walkin_count: Number(orderSummary?.walkin_count || 0),
+
       collection_count: Number(collectionSummary?.collection_count || 0),
     };
 
@@ -311,6 +385,8 @@ exports.getReport = async (req, res) => {
       collections,
       payment_methods: paymentMethods,
       products,
+      sales_by_channel: salesByChannel,
+      print_products: printProducts,
     });
   } catch (err) {
     const statusCode = Number(err.statusCode) || 500;
@@ -319,7 +395,9 @@ exports.getReport = async (req, res) => {
     }
     res.status(statusCode).json({
       message:
-        statusCode === 400 ? err.message : "Failed to generate the sales report.",
+        statusCode === 400
+          ? err.message
+          : "Failed to generate the sales report.",
     });
   }
 };

@@ -506,7 +506,6 @@
   }
 }
 
-
 /* WISDOM SALES REPORT TYPOGRAPHY CONSISTENCY V1 */
 /*
   Typography-only alignment with the rest of the WISDOM admin UI.
@@ -663,4 +662,121 @@
 .sales-loading {
   font-family: inherit !important;
   letter-spacing: 0 !important;
+}
+
+/* ==========================================================
+   WISDOM SALES REPORT — PRINT ONLY
+   Does not affect the normal screen UI.
+   ========================================================== */
+
+.sales-print-report {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
+  body {
+    background: #ffffff !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .sales-print-report,
+  .sales-print-report * {
+    visibility: visible !important;
+  }
+
+  .sales-print-report {
+    display: block !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    color: #111111;
+    background: #ffffff;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+
+  .sales-print-header {
+    margin-bottom: 18px;
+    text-align: center;
+  }
+
+  .sales-print-header h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .sales-print-header h2 {
+    margin: 4px 0 10px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .sales-print-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 9px;
+    color: #444444;
+    text-align: left;
+  }
+
+  .sales-print-section {
+    margin-bottom: 18px;
+    break-inside: avoid;
+  }
+
+  .sales-print-section h3 {
+    margin: 0 0 7px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #111111;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .sales-print-section table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8.5px;
+  }
+
+  .sales-print-section th {
+    padding: 5px 6px;
+    border: 1px solid #d6d6d6;
+    background: #f3f3f3;
+    color: #222222;
+    font-size: 8px;
+    font-weight: 700;
+    text-align: left;
+  }
+
+  .sales-print-section td {
+    padding: 5px 6px;
+    border: 1px solid #dddddd;
+    color: #333333;
+    vertical-align: middle;
+  }
+
+  .sales-print-total-row td {
+    font-weight: 700;
+    background: #f7f7f7;
+  }
+
+  .sales-print-footer {
+    margin-top: 20px;
+    padding-top: 8px;
+    border-top: 1px solid #dddddd;
+    color: #777777;
+    font-size: 8px;
+    text-align: center;
+  }
 }
