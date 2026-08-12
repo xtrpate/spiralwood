@@ -278,12 +278,13 @@ export default function RawMaterialsPage() {
     <div>
       <div style={header}>
         <div>
-          <h1 style={title}>Raw Materials Inventory</h1>
+          {/* WISDOM RAW MATERIAL ROLE COPY V1 */}
+          <h1 style={title}>Raw Materials</h1>
           <div style={subtitle}>
-            On hand is physical stock. Reserved stock is allocated to paid
-            blueprint orders, while available stock can still be assigned to new
-            work. Add physical size for sheet and board materials so Blueprint
-            material requirements can use real stock dimensions.
+            Manage materials used for custom furniture production. On hand is
+            physical stock, Reserved is allocated to paid blueprint orders, and
+            Available can be used for new work. Add dimensions for sheet and board
+            materials when accurate blueprint sizing is needed.
           </div>
         </div>
         <button onClick={openAdd} style={btnPrimary}>

@@ -3,231 +3,207 @@ import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
 
+import "./BuildMaterialsPage.css";
+// WISDOM BUILD MATERIALS UI POLISH V1.0.1
+// WISDOM INVENTORY ROLE SEPARATION V1
 export default function BuildMaterialsPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
+
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState(null); // for BOM view
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+
     api
-      .get("/products", { params: { limit: 100, search } })
-      .then((r) => setProducts(r.data.products));
+      .get("/products", { params: { limit: 1000, search } })
+      .then((response) => {
+        if (!active) return;
+        const readyMadeProducts = (response.data.products || []).filter(
+          (product) =>
+            String(product.type || "standard").toLowerCase() !== "blueprint",
+        );
+        setProducts(readyMadeProducts);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [search]);
 
-  return (
-    <div>
-      <h1 style={title}>Build Materials Inventory</h1>
-      <p style={{ color: "#52525b", fontSize: 13, marginBottom: 16 }}>
-        Finished goods linked to Bill of Materials. Stock auto-updates on each
-        transaction.
-      </p>
-      <input
-        placeholder="Search products..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={inputSm}
-      />
+  const formatMoney = (value) => {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return "—";
+    return amount.toLocaleString("en-PH", {
+      style: "currency",
+      currency: "PHP",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: selected ? "1fr 1fr" : "1fr",
-          gap: 20,
-          marginTop: 16,
-        }}
-      >
-        <div style={tableCard}>
-          <table
-            style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
-          >
-            <thead>
-              <tr style={{ background: "#fafafa" }}>
-                {[
-                  "Name",
-                  "Type",
-                  "Walk-in Price",
-                  "Prod Cost",
-                  "Profit",
-                  "Stock",
-                  "Status",
-                  "BOM",
-                ].map((h) => (
-                  <th key={h} style={th}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((p) => {
-                const margin = (
-                  (p.profit_margin / p.walkin_price) *
-                  100
-                ).toFixed(1);
-                const sc = p.stock_status;
-                const badge =
-                  sc === "in_stock"
-                    ? ["#f4f4f5", "#18181b", "#e4e4e7"]
-                    : sc === "low_stock"
-                      ? ["#ffffff", "#52525b", "#d4d4d8"]
-                      : ["#fef2f2", "#991b1b", "#fecaca"];
-                return (
-                  <tr key={p.id} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                    <td style={td}>
-                      <strong style={{ color: "#0a0a0a", fontWeight: 700 }}>
-                        {p.name}
-                      </strong>
-                    </td>
-                    <td style={td}>{p.type}</td>
-                    <td style={td}>
-                      ₱ {Number(p.walkin_price).toLocaleString()}
-                    </td>
-                    <td style={td}>
-                      ₱ {Number(p.production_cost).toLocaleString()}
-                    </td>
-                    <td
-                      style={{
-                        ...td,
-                        fontWeight: 600,
-                        color: p.profit_margin > 0 ? "#18181b" : "#dc2626",
-                      }}
-                    >
-                      ₱ {Number(p.profit_margin).toLocaleString()} ({margin}%)
-                    </td>
-                    <td style={{ ...td, fontWeight: 600 }}>{p.stock}</td>
-                    <td style={td}>
-                      <span
-                        style={{
-                          background: badge[0],
-                          color: badge[1],
-                          border: `1px solid ${badge[2]}`,
-                          padding: "2px 10px",
-                          borderRadius: 12,
-                          fontSize: 11,
-                          fontWeight: 600,
-                        }}
-                      >
-                        {sc?.replace("_", " ")}
-                      </span>
-                    </td>
-                    <td style={td}>
-                      <button
-                        onClick={() =>
-                          setSelected(selected?.id === p.id ? null : p)
-                        }
-                        style={btnEdit}
-                      >
-                        View BOM
-                      </button>
+  const getStatus = (product) => {
+    const stock = Number(product.stock || 0);
+    const reorderPoint = Number(product.reorder_point || 0);
+    const status = String(product.stock_status || "").toLowerCase();
+
+    if (status === "in_stock") return { label: "In stock", tone: "neutral" };
+    if (status === "low_stock") return { label: "Low stock", tone: "warning" };
+    if (status === "out_of_stock") return { label: "Out of stock", tone: "danger" };
+    if (stock <= 0) return { label: "Out of stock", tone: "danger" };
+    if (stock <= reorderPoint) return { label: "Low stock", tone: "warning" };
+    return { label: "In stock", tone: "neutral" };
+  };
+
+  return (
+    <div className="build-materials-admin">
+      <div className="build-materials-header">
+        <div>
+          <h1>Build Materials</h1>
+          <p>
+            Review ready-made finished products kept in stock, including price,
+            product cost, profit, and stock level.
+          </p>
+        </div>
+      </div>
+
+      <div className="build-materials-toolbar">
+        <div className="build-materials-search-field">
+          <label htmlFor="build-material-search">Search products</label>
+          <input
+            id="build-material-search"
+            type="search"
+            placeholder="Search by product name"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+        <div className="build-materials-count">
+          {loading
+            ? "Loading products..."
+            : `${products.length.toLocaleString("en-PH")} ready-made product${
+                products.length === 1 ? "" : "s"
+              } shown`}
+        </div>
+      </div>
+
+      <div className="build-materials-layout">
+        <div className="build-materials-table-card">
+          <div className="build-materials-table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Walk-in Price</th>
+                  <th>Product Cost</th>
+                  <th>Profit</th>
+                  <th>Available Stock</th>
+                  <th>Reorder Point</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!loading && products.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" className="build-materials-empty">
+                      No ready-made products match your search.
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  products.map((product) => {
+                    const sellingPrice = Number(product.walkin_price || 0);
+                    const productCost = Number(product.production_cost || 0);
+                    const storedProfit = Number(product.profit_margin);
+                    const hasSellingPrice =
+                      Number.isFinite(sellingPrice) && sellingPrice > 0;
+                    const hasProductCost =
+                      Number.isFinite(productCost) && productCost > 0;
+                    const profit =
+                      hasSellingPrice && hasProductCost
+                        ? Number.isFinite(storedProfit)
+                          ? storedProfit
+                          : sellingPrice - productCost
+                        : null;
+                    const margin =
+                      Number.isFinite(profit) && hasSellingPrice
+                        ? (profit / sellingPrice) * 100
+                        : null;
+                    const status = getStatus(product);
 
-        {selected && (
-          <BOMPanel product={selected} onClose={() => setSelected(null)} />
-        )}
+                    return (
+                      <tr key={product.id}>
+                        <td>
+                          <div className="build-materials-product-name">
+                            {product.name}
+                          </div>
+                        </td>
+                        <td>
+                          {hasSellingPrice ? (
+                            <span className="build-materials-money">
+                              {formatMoney(sellingPrice)}
+                            </span>
+                          ) : (
+                            <span className="build-materials-muted">Not set</span>
+                          )}
+                        </td>
+                        <td>
+                          {hasProductCost ? (
+                            formatMoney(productCost)
+                          ) : (
+                            <span className="build-materials-muted">Not set</span>
+                          )}
+                        </td>
+                        <td>
+                          {Number.isFinite(profit) ? (
+                            <div className="build-materials-profit">
+                              <span>{formatMoney(profit)}</span>
+                              {Number.isFinite(margin) && (
+                                <small>{margin.toFixed(1)}% margin</small>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="build-materials-muted">
+                              Not available
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <span className="build-materials-stock">
+                            {Number(product.stock || 0).toLocaleString("en-PH")}
+                          </span>
+                        </td>
+                        <td>
+                          {Number(product.reorder_point || 0).toLocaleString(
+                            "en-PH",
+                          )}
+                        </td>
+                        <td>
+                          <span
+                            className={`build-materials-status build-materials-status-${status.tone}`}
+                          >
+                            {status.label}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function BOMPanel({ product, onClose }) {
-  const [bom, setBom] = useState([]);
-  const navigate = useNavigate();
-  useEffect(() => {
-    api
-      .get(`/products/${product.id}`)
-      .then((r) => setBom(r.data.bill_of_materials || []));
-  }, [product.id]);
-
-  return (
-    <div
-      style={{
-        background: "#fff",
-        borderRadius: 12,
-        padding: 24,
-        border: "1px solid #e4e4e7",
-        boxShadow: "0 1px 2px rgba(0,0,0,.02)",
-        position: "sticky",
-        top: 0,
-        alignSelf: "start",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 16,
-        }}
-      >
-        <h3
-          style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#0a0a0a" }}
-        >
-          Bill of Materials: {product.name}
-        </h3>
-        <button
-          onClick={onClose}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            fontSize: 18,
-            color: "#71717a",
-          }}
-        >
-          ✕
-        </button>
-      </div>
-      {bom.length === 0 ? (
-        <div>
-          <p style={{ color: "#71717a", fontSize: 13, marginBottom: 12 }}>
-            No bill of materials defined. Add or edit BOM from the Product Edit
-            page before using Product Stock-In.
-          </p>
-          <button
-            onClick={() => navigate(`/admin/products/${product.id}/edit`)}
-            style={btnEdit}
-          >
-            Edit Product
-          </button>
-        </div>
-      ) : (
-        <table
-          style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
-        >
-          <thead>
-            <tr>
-              <th style={{ ...th, background: "#fafafa" }}>Material</th>
-              <th style={{ ...th, background: "#fafafa" }}>Unit</th>
-              <th style={{ ...th, background: "#fafafa" }}>Quantity</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bom.map((b, i) => (
-              <tr key={i} style={{ borderBottom: "1px solid #f4f4f5" }}>
-                <td style={td}>{b.material_name}</td>
-                <td style={{ ...td, color: "#71717a" }}>{b.unit}</td>
-                <td style={{ ...td, fontWeight: 600 }}>{b.quantity}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// Stock Movement Page
-// ────────────────────────────────────────────────────────────────────────────
 export function StockMovementPage() {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
