@@ -64,6 +64,7 @@ const formatDateTime = (value) => {
 };
 
 // WISDOM STOCK READY-MADE SEPARATION V1
+// WISDOM STOCK MOVEMENT ORDER LINK CLEANUP V1
 export default function StockMovementPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -893,9 +894,10 @@ const orderLink = {
   background: "none",
   border: "none",
   color: "#18181b",
+  fontFamily: "inherit",
   fontSize: 12,
   fontWeight: 600,
-  textDecoration: "underline",
+  textDecoration: "none",
   cursor: "pointer",
   textAlign: "left",
 };

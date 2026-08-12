@@ -146,7 +146,7 @@ export default function SuppliersPage() {
           className="suppliers-btn suppliers-btn-primary"
           onClick={openAdd}
         >
-          Add Supplier
+          Add supplier
         </button>
       </div>
 

@@ -2999,3 +2999,30 @@
 .admin-support-page .reply-send-btn:hover:not(:disabled) {
   background: #303034 !important;
 }
+
+
+/* WISDOM ADMIN SUPPORT ICON CLEANUP V1 */
+.admin-support-page .support-summary-card {
+  border-radius: 2px !important;
+}
+
+.admin-support-page .admin-support-stat-icon,
+.admin-support-page .admin-support-stat.tone-open .admin-support-stat-icon,
+.admin-support-page .admin-support-stat.tone-assigned .admin-support-stat-icon,
+.admin-support-page .admin-support-stat.tone-waiting .admin-support-stat-icon,
+.admin-support-page .admin-support-stat.tone-resolved .admin-support-stat-icon {
+  width: 20px !important;
+  height: 20px !important;
+  flex: 0 0 20px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: #60666d !important;
+}
+
+.admin-support-page .admin-support-stat-icon svg {
+  width: 18px;
+  height: 18px;
+}

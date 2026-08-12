@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import "./BuildMaterialsPage.css";
 // WISDOM BUILD MATERIALS UI POLISH V1.0.1
 // WISDOM INVENTORY ROLE SEPARATION V1
+// WISDOM BUILD MATERIALS STOCK FILTER V1
 export default function BuildMaterialsPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -13,6 +14,7 @@ export default function BuildMaterialsPage() {
 
   const [products, setProducts] = useState([]);
   const [search, setSearch] = useState("");
+  const [stockFilter, setStockFilter] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -54,13 +56,22 @@ export default function BuildMaterialsPage() {
     const reorderPoint = Number(product.reorder_point || 0);
     const status = String(product.stock_status || "").toLowerCase();
 
-    if (status === "in_stock") return { label: "In stock", tone: "neutral" };
-    if (status === "low_stock") return { label: "Low stock", tone: "warning" };
-    if (status === "out_of_stock") return { label: "Out of stock", tone: "danger" };
-    if (stock <= 0) return { label: "Out of stock", tone: "danger" };
-    if (stock <= reorderPoint) return { label: "Low stock", tone: "warning" };
-    return { label: "In stock", tone: "neutral" };
+    if (status === "in_stock")
+      return { key: "in_stock", label: "In stock", tone: "neutral" };
+    if (status === "low_stock")
+      return { key: "low_stock", label: "Low stock", tone: "warning" };
+    if (status === "out_of_stock")
+      return { key: "out_of_stock", label: "Out of stock", tone: "danger" };
+    if (stock <= 0)
+      return { key: "out_of_stock", label: "Out of stock", tone: "danger" };
+    if (stock <= reorderPoint)
+      return { key: "low_stock", label: "Low stock", tone: "warning" };
+    return { key: "in_stock", label: "In stock", tone: "neutral" };
   };
+
+  const visibleProducts = products.filter((product) =>
+    stockFilter ? getStatus(product).key === stockFilter : true,
+  );
 
   return (
     <div className="build-materials-admin">
@@ -75,21 +86,36 @@ export default function BuildMaterialsPage() {
       </div>
 
       <div className="build-materials-toolbar">
-        <div className="build-materials-search-field">
-          <label htmlFor="build-material-search">Search products</label>
-          <input
-            id="build-material-search"
-            type="search"
-            placeholder="Search by product name"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
+        <div className="build-materials-toolbar-controls">
+          <div className="build-materials-search-field">
+            <label htmlFor="build-material-search">Search products</label>
+            <input
+              id="build-material-search"
+              type="search"
+              placeholder="Search by product name"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+          <div className="build-materials-filter-field">
+            <label htmlFor="build-material-stock-filter">Stock level</label>
+            <select
+              id="build-material-stock-filter"
+              value={stockFilter}
+              onChange={(event) => setStockFilter(event.target.value)}
+            >
+              <option value="">All stock levels</option>
+              <option value="in_stock">In stock</option>
+              <option value="low_stock">Low stock</option>
+              <option value="out_of_stock">Out of stock</option>
+            </select>
+          </div>
         </div>
         <div className="build-materials-count">
           {loading
             ? "Loading products..."
-            : `${products.length.toLocaleString("en-PH")} ready-made product${
-                products.length === 1 ? "" : "s"
+            : `${visibleProducts.length.toLocaleString("en-PH")} ready-made product${
+                visibleProducts.length === 1 ? "" : "s"
               } shown`}
         </div>
       </div>
@@ -110,14 +136,14 @@ export default function BuildMaterialsPage() {
                 </tr>
               </thead>
               <tbody>
-                {!loading && products.length === 0 ? (
+                {!loading && visibleProducts.length === 0 ? (
                   <tr>
                     <td colSpan="7" className="build-materials-empty">
-                      No ready-made products match your search.
+                      No ready-made products match the selected filters.
                     </td>
                   </tr>
                 ) : (
-                  products.map((product) => {
+                  visibleProducts.map((product) => {
                     const sellingPrice = Number(product.walkin_price || 0);
                     const productCost = Number(product.production_cost || 0);
                     const storedProfit = Number(product.profit_margin);

@@ -190,6 +190,11 @@ export default function ContractsPage() {
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [contractSearch, setContractSearch] = useState("");
+  // WISDOM CONTRACT DATE FILTER V1
+  // WISDOM CONTRACT DATE FILTER CLEANUP V1
+  const [contractDateFilter, setContractDateFilter] = useState("all");
+  const [contractFrom, setContractFrom] = useState("");
+  const [contractTo, setContractTo] = useState("");
 
   const [selectedOrderInfo, setSelectedOrderInfo] = useState(null);
   const [loadingOrderInfo, setLoadingOrderInfo] = useState(false);
@@ -646,7 +651,56 @@ export default function ContractsPage() {
 
   const filteredContracts = useMemo(() => {
     const query = normalize(contractSearch);
-    if (!query) return contracts;
+    const now = new Date();
+
+    const startOfDay = (date) =>
+      new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+    const endOfDay = (date) =>
+      new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+
+    let rangeStart = null;
+    let rangeEnd = null;
+
+    if (contractDateFilter === "this_month") {
+      rangeStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      rangeEnd = new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        0,
+        23,
+        59,
+        59,
+        999,
+      );
+    } else if (contractDateFilter === "last_month") {
+      rangeStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      rangeEnd = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        0,
+        23,
+        59,
+        59,
+        999,
+      );
+    } else if (contractDateFilter === "this_year") {
+      rangeStart = new Date(now.getFullYear(), 0, 1);
+      rangeEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+    } else if (contractDateFilter === "custom") {
+      if (contractFrom) {
+        const parsedFrom = new Date(`${contractFrom}T00:00:00`);
+        if (!Number.isNaN(parsedFrom.getTime())) {
+          rangeStart = startOfDay(parsedFrom);
+        }
+      }
+
+      if (contractTo) {
+        const parsedTo = new Date(`${contractTo}T00:00:00`);
+        if (!Number.isNaN(parsedTo.getTime())) {
+          rangeEnd = endOfDay(parsedTo);
+        }
+      }
+    }
 
     return contracts.filter((contract) => {
       const haystack = [
@@ -662,9 +716,24 @@ export default function ContractsPage() {
         .map(normalize)
         .join(" ");
 
-      return haystack.includes(query);
+      const matchesSearch = !query || haystack.includes(query);
+
+      const issuedAt = new Date(contract.created_at);
+      const validIssuedDate = !Number.isNaN(issuedAt.getTime());
+      const matchesStart =
+        !rangeStart || (validIssuedDate && issuedAt >= rangeStart);
+      const matchesEnd =
+        !rangeEnd || (validIssuedDate && issuedAt <= rangeEnd);
+
+      return matchesSearch && matchesStart && matchesEnd;
     });
-  }, [contractSearch, contracts]);
+  }, [
+    contractSearch,
+    contractDateFilter,
+    contractFrom,
+    contractTo,
+    contracts,
+  ]);
 
   const contractedOrderIds = new Set(
     contracts.map((c) => String(c.order_id || "")),
@@ -1091,16 +1160,62 @@ export default function ContractsPage() {
             <h2>Contract Records</h2>
             <p>Review issued contracts and access related order details.</p>
           </div>
-          <div className="contracts-search-wrap">
-            <span className="contracts-search-icon" aria-hidden="true">⌕</span>
-            <input
-              type="search"
-              value={contractSearch}
-              onChange={(event) => setContractSearch(event.target.value)}
-              placeholder="Search contract, order, customer, or blueprint"
-              aria-label="Search contracts"
-            />
-          </div>
+          <div className="contracts-records-controls">
+            <div className="contracts-search-wrap">
+              <span className="contracts-search-icon" aria-hidden="true">⌕</span>
+              <input
+                type="search"
+                value={contractSearch}
+                onChange={(event) => setContractSearch(event.target.value)}
+                placeholder="Search contract, order, customer, or blueprint"
+                aria-label="Search contracts"
+              />
+            </div>
+
+            <label className="contracts-date-filter-field">
+              <select
+                value={contractDateFilter}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setContractDateFilter(nextValue);
+
+                  if (nextValue !== "custom") {
+                    setContractFrom("");
+                    setContractTo("");
+                  }
+                }}
+              >
+                <option value="all">All dates</option>
+                <option value="this_month">This month</option>
+                <option value="last_month">Last month</option>
+                <option value="this_year">This year</option>
+                <option value="custom">Custom range</option>
+              </select>
+            </label>
+
+            {contractDateFilter === "custom" && (
+              <>
+                <label className="contracts-date-filter-field contracts-date-input-field">
+                  <span>From</span>
+                  <input
+                    type="date"
+                    value={contractFrom}
+                    max={contractTo || undefined}
+                    onChange={(event) => setContractFrom(event.target.value)}
+                  />
+                </label>
+                <label className="contracts-date-filter-field contracts-date-input-field">
+                  <span>To</span>
+                  <input
+                    type="date"
+                    value={contractTo}
+                    min={contractFrom || undefined}
+                    onChange={(event) => setContractTo(event.target.value)}
+                  />
+                </label>
+              </>
+            )}
+</div>
         </div>
 
         <div className="contracts-table-scroll">
@@ -1125,7 +1240,9 @@ export default function ContractsPage() {
               ) : filteredContracts.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="contracts-empty-cell">
-                    {contractSearch ? "No contracts match your search." : "No contracts have been generated yet."}
+                    {contractSearch || contractDateFilter !== "all"
+                      ? "No contracts match the current filters."
+                      : "No contracts have been generated yet."}
                   </td>
                 </tr>
               ) : (

@@ -627,3 +627,394 @@
   letter-spacing: normal !important;
 }
 /* END WISDOM CONTRACTS MATCH ORDERS NUMBER STYLE V1 */
+
+
+/* WISDOM CONTRACT DATE FILTER V1 */
+.contracts-records-toolbar {
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.contracts-records-controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 1 1 720px;
+  flex-wrap: wrap;
+}
+
+.contracts-records-controls .contracts-search-wrap {
+  width: min(340px, 34vw);
+  flex: 1 1 290px;
+}
+
+.contracts-date-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.contracts-date-filter-field > span {
+  color: #52525b;
+  font-size: 10px;
+  line-height: 1.2;
+  font-weight: 600;
+}
+
+.contracts-date-filter-field select,
+.contracts-date-filter-field input {
+  height: 38px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid #d4d4d8;
+  border-radius: 2px;
+  background: #ffffff;
+  color: #18181b;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 400;
+  outline: none;
+}
+
+.contracts-date-filter-field select {
+  min-width: 150px;
+}
+
+.contracts-date-input-field input {
+  width: 132px;
+}
+
+.contracts-date-filter-field select:focus,
+.contracts-date-filter-field input:focus {
+  border-color: #52525b;
+}
+
+.contracts-filter-count {
+  align-self: flex-end;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 2px 0 4px;
+  color: #71717a;
+  font-size: 10.5px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+@media (max-width: 1080px) {
+  .contracts-records-controls {
+    justify-content: flex-start;
+    flex-basis: 100%;
+  }
+
+  .contracts-records-controls .contracts-search-wrap {
+    width: min(100%, 420px);
+    flex-basis: 320px;
+  }
+}
+
+@media (max-width: 720px) {
+  .contracts-records-controls {
+    align-items: stretch;
+  }
+
+  .contracts-records-controls .contracts-search-wrap,
+  .contracts-date-filter-field,
+  .contracts-date-filter-field select,
+  .contracts-date-input-field input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .contracts-filter-count {
+    min-height: 24px;
+  }
+}
+
+
+/* WISDOM CONTRACT TOOLBAR COMPACT ROW V1 */
+
+/* Contract Records title stays above the controls.
+   Search and Date range stay beside each other on desktop. */
+.contracts-records-toolbar {
+  align-items: stretch !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  gap: 12px !important;
+  min-height: 0 !important;
+  padding: 14px 16px !important;
+}
+
+.contracts-records-controls {
+  width: 100%;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  flex: 0 0 auto !important;
+  flex-wrap: nowrap !important;
+}
+
+/* Keep search useful but not oversized. */
+.contracts-records-controls .contracts-search-wrap {
+  width: 360px !important;
+  max-width: 360px !important;
+  flex: 0 0 360px !important;
+}
+
+.contracts-date-filter-field {
+  flex: 0 0 auto !important;
+}
+
+.contracts-date-filter-field select {
+  width: 150px !important;
+  min-width: 150px !important;
+}
+
+.contracts-filter-count {
+  margin-left: auto;
+  align-self: flex-end;
+  min-height: 38px;
+}
+
+/* Match the project's small-radius system. */
+.contracts-search-wrap input,
+.contracts-date-filter-field select,
+.contracts-date-filter-field input {
+  border-radius: 2px !important;
+}
+
+@media (max-width: 980px) {
+  .contracts-records-controls {
+    flex-wrap: wrap !important;
+  }
+
+  .contracts-records-controls .contracts-search-wrap {
+    width: min(360px, 100%) !important;
+    max-width: 100% !important;
+    flex: 1 1 320px !important;
+  }
+
+  .contracts-filter-count {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 620px) {
+  .contracts-records-controls {
+    align-items: stretch !important;
+  }
+
+  .contracts-records-controls .contracts-search-wrap,
+  .contracts-date-filter-field,
+  .contracts-date-filter-field select,
+  .contracts-date-input-field input {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex-basis: 100% !important;
+  }
+}
+
+
+/* WISDOM CONTRACT FILTER LEFT OF SEARCH V1 */
+
+/* Restore the Contract Records toolbar composition:
+   title/subtitle on the left, controls on the right. */
+.contracts-records-toolbar {
+  min-height: 70px !important;
+  padding: 14px 16px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  flex-wrap: nowrap !important;
+}
+
+/* Keep Date range immediately to the LEFT of Search on desktop. */
+.contracts-records-controls {
+  width: auto !important;
+  display: flex !important;
+  flex: 0 0 auto !important;
+  align-items: flex-end !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  flex-wrap: nowrap !important;
+}
+
+.contracts-date-filter-field {
+  order: 1;
+}
+
+.contracts-records-controls .contracts-search-wrap {
+  order: 2;
+  width: 390px !important;
+  max-width: 390px !important;
+  flex: 0 0 390px !important;
+}
+
+.contracts-filter-count {
+  order: 3;
+  margin-left: 4px !important;
+  align-self: flex-end !important;
+}
+
+/* Custom date fields remain beside Date range and before Search. */
+.contracts-date-input-field {
+  order: 1;
+}
+
+@media (max-width: 1100px) {
+  .contracts-records-toolbar {
+    align-items: flex-start !important;
+    flex-wrap: wrap !important;
+  }
+
+  .contracts-records-controls {
+    flex-wrap: wrap !important;
+    justify-content: flex-start !important;
+  }
+
+  .contracts-records-controls .contracts-search-wrap {
+    width: min(390px, 100%) !important;
+    max-width: 100% !important;
+    flex: 1 1 320px !important;
+  }
+
+  .contracts-filter-count {
+    margin-left: 0 !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .contracts-records-toolbar {
+    flex-direction: column !important;
+  }
+
+  .contracts-records-controls {
+    width: 100% !important;
+    align-items: stretch !important;
+  }
+
+  .contracts-date-filter-field,
+  .contracts-records-controls .contracts-search-wrap,
+  .contracts-date-filter-field select,
+  .contracts-date-input-field input {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex-basis: 100% !important;
+  }
+}
+
+
+/* WISDOM CONTRACT OLD TOOLBAR + DATE SELECT V1 */
+
+/* Keep the same Contract Records composition the page had before:
+   heading on the left, controls on the right. The only addition is the date select. */
+.contracts-records-toolbar {
+  min-height: 70px !important;
+  padding: 14px 16px !important;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 18px !important;
+  flex-wrap: nowrap !important;
+}
+
+.contracts-records-controls {
+  width: auto !important;
+  display: flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  gap: 8px !important;
+  flex-wrap: nowrap !important;
+}
+
+/* Date select directly LEFT of Search. No visible field label. */
+.contracts-date-filter-field {
+  order: 1 !important;
+  display: block !important;
+  gap: 0 !important;
+}
+
+.contracts-date-filter-field > span {
+  display: none !important;
+}
+
+.contracts-date-filter-field select {
+  width: 145px !important;
+  min-width: 145px !important;
+  height: 38px !important;
+  border-radius: 2px !important;
+}
+
+.contracts-records-controls .contracts-search-wrap {
+  order: 2 !important;
+  width: 390px !important;
+  max-width: 390px !important;
+  flex: 0 0 390px !important;
+}
+
+.contracts-records-controls .contracts-search-wrap input {
+  border-radius: 2px !important;
+}
+
+/* The user does not want the "43 contracts shown" copy. */
+.contracts-filter-count {
+  display: none !important;
+}
+
+/* Custom From / To fields still appear when Custom range is selected. */
+.contracts-date-input-field {
+  order: 1 !important;
+  display: flex !important;
+}
+
+.contracts-date-input-field > span {
+  display: block !important;
+}
+
+@media (max-width: 1100px) {
+  .contracts-records-toolbar {
+    align-items: flex-start !important;
+    flex-wrap: wrap !important;
+  }
+
+  .contracts-records-controls {
+    flex-wrap: wrap !important;
+    justify-content: flex-start !important;
+  }
+
+  .contracts-records-controls .contracts-search-wrap {
+    width: min(390px, 100%) !important;
+    max-width: 100% !important;
+    flex: 1 1 320px !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .contracts-records-toolbar {
+    flex-direction: column !important;
+  }
+
+  .contracts-records-controls {
+    width: 100% !important;
+    align-items: stretch !important;
+  }
+
+  .contracts-date-filter-field,
+  .contracts-records-controls .contracts-search-wrap,
+  .contracts-date-filter-field select,
+  .contracts-date-input-field input {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex-basis: 100% !important;
+  }
+}
