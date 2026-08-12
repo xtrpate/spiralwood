@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import "./orders.css";
 import { PackageSearch, ShoppingBag } from "lucide-react";
+import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 
 const STATUS_META = {
   pending: {
@@ -375,7 +376,24 @@ function OrderModal({
                     {(order.items || []).map((item, i) => (
                       <div key={i} className="om-item">
                         <div className="om-item-img">
-                          {item.image_url ? (
+                          {order.blueprint_id &&
+                          i === 0 &&
+                          order.blueprint_detail_preview ? (
+                            <div className="wisdom-order-blueprint-detail-live">
+                              <CustomerBlueprintViewer
+                                blueprint={{
+                                  ...order.blueprint_detail_preview,
+                                  thumbnail_url: null,
+                                }}
+                                readOnly
+                                showHumanControls={false}
+                                compact
+                                compactHeight={96}
+                                defaultPreset="isometric"
+                                defaultShowHuman={false}
+                              />
+                            </div>
+                          ) : item.image_url ? (
                             <img
                               src={buildAssetUrl(item.image_url)}
                               alt={item.product_name || "Order item"}
@@ -897,7 +915,24 @@ export default function OrdersPage() {
                           className="wisdom-order-item"
                         >
                           <div className="wisdom-order-item-image">
-                            {item.image_url ? (
+                            {order.blueprint_id &&
+                            index === 0 &&
+                            order.blueprint_preview ? (
+                              <div className="wisdom-order-blueprint-live">
+                                <CustomerBlueprintViewer
+                                  blueprint={{
+                                    ...order.blueprint_preview,
+                                    thumbnail_url: null,
+                                  }}
+                                  readOnly
+                                  showHumanControls={false}
+                                  compact
+                                  compactHeight={64}
+                                  defaultPreset="isometric"
+                                  defaultShowHuman={false}
+                                />
+                              </div>
+                            ) : item.image_url ? (
                               <img
                                 src={buildAssetUrl(item.image_url)}
                                 alt={item.product_name || "Order item"}

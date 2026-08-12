@@ -197,14 +197,41 @@ const isRenderableComponentSet = (items = []) => {
 
   if (!normalized.length) return false;
 
+  // WISDOM MEANINGFUL SINGLE COMPONENT PREVIEW V1
+  // An empty/legacy blueprint can retain one very thin stale panel row.
+  // Do not present that row as if it were a complete furniture preview.
+  if (normalized.length === 1) {
+    const only = normalized[0];
+    const dimensions = [
+      Math.max(1, Number(only.width) || 1),
+      Math.max(1, Number(only.height) || 1),
+      Math.max(1, Number(only.depth) || 1),
+    ].sort((a, b) => a - b);
+
+    const shortest = dimensions[0];
+    const longest = dimensions[2];
+
+    if (shortest <= 24 || shortest / Math.max(longest, 1) < 0.04) {
+      return false;
+    }
+  }
+
   const bounds = getBounds(normalized);
   if (!bounds) return false;
 
-  if (bounds.width < 50 || bounds.height < 50 || bounds.depth < 50) {
+  // WISDOM COMPACT REAL-FURNITURE PREVIEW HOTFIX V1
+  // Compact previews use a front camera, so shallow legacy scenes are still
+  // useful and should render as furniture instead of falling back to an image.
+  if (bounds.width < 20 || bounds.height < 20) {
     return false;
   }
 
-  return normalized.some((component) => Number(component.depth) >= 20);
+  return normalized.some(
+    (component) =>
+      Number(component.width) >= 1 &&
+      Number(component.height) >= 1 &&
+      Number(component.depth) >= 1,
+  );
 };
 
 const extractRenderableComponentsFromSource = (source = {}) => {

@@ -22,6 +22,7 @@ import {
 import { buildAssetUrl } from "../../services/api";
 import { useCart } from "./cartcontext";
 import useAuthStore from "../../store/authStore";
+import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import "./cart.css";
 
 const resolveImageSrc = (value) => {
@@ -47,6 +48,43 @@ const isBlueprintItem = (item = {}) =>
   String(item?.cart_type || item?.item_type || "")
     .trim()
     .toLowerCase() === "blueprint";
+
+const parseCartEditorSnapshot = (value) => {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+const buildLiveCartBlueprintPreview = (item = {}) => {
+  const editorSnapshot = parseCartEditorSnapshot(item?.editor_snapshot);
+  const components = Array.isArray(editorSnapshot?.components)
+    ? editorSnapshot.components
+    : [];
+
+  if (!components.length) return null;
+
+  return {
+    id: item?.blueprint_id || item?.key || null,
+    title:
+      item?.base_blueprint_title ||
+      item?.product_name ||
+      "Custom Furniture",
+    thumbnail_url: null,
+    components,
+    view_3d_data: {
+      components,
+      worldSize: editorSnapshot?.worldSize || null,
+    },
+  };
+};
 
 const formatPeso = (value) =>
   `₱${Number(value || 0).toLocaleString("en-PH", {
@@ -486,6 +524,9 @@ export default function CartPage() {
               const imageSrc = resolveImageSrc(
                 item.image_url || item.preview_image_url,
               );
+              const liveBlueprintPreview = blueprint
+                ? buildLiveCartBlueprintPreview(item)
+                : null;
               const lineSubtotal =
                 Number(item.unit_price || 0) * Number(item.quantity || 0);
 
@@ -515,7 +556,17 @@ export default function CartPage() {
                       />
 
                       <div className="fm-cart-thumb">
-                        {imageSrc ? (
+                        {blueprint && liveBlueprintPreview ? (
+                          <CustomerBlueprintViewer
+                            blueprint={liveBlueprintPreview}
+                            readOnly
+                            showHumanControls={false}
+                            compact
+                            compactHeight={80}
+                            defaultPreset="isometric"
+                            defaultShowHuman={false}
+                          />
+                        ) : !blueprint && imageSrc ? (
                           <img
                             src={imageSrc}
                             alt={item.product_name}
@@ -534,7 +585,7 @@ export default function CartPage() {
                           className="fm-cart-thumb-fallback"
                           style={{ display: imageSrc ? "none" : "flex" }}
                         >
-                          {blueprint ? "📐" : "🪵"}
+                          {blueprint ? "Design" : "Item"}
                         </div>
                       </div>
 

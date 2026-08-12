@@ -1051,3 +1051,174 @@
     min-width: 0 !important;
   }
 }
+
+
+/* WISDOM WARRANTY ADMIN SIZE TYPOGRAPHY CONSISTENCY V1 */
+/*
+  Visual consistency only.
+  Match Warranty Claims to the calmer scale used by Orders, Sales Report,
+  Contracts, and Backup. No warranty flow, data, status, filter, or modal
+  behavior changes.
+*/
+
+.warranty-admin-v2 {
+  font-family: inherit !important;
+  gap: 12px !important;
+}
+
+.warranty-admin-v2 .warranty-header {
+  margin-bottom: 0 !important;
+}
+
+.warranty-admin-v2 .warranty-header h1 {
+  margin: 0 !important;
+  font-family: inherit !important;
+  font-size: 24px !important;
+  line-height: 1.2 !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.015em !important;
+}
+
+.warranty-admin-v2 .warranty-header p {
+  margin-top: 6px !important;
+  font-family: inherit !important;
+  font-size: 12.5px !important;
+  line-height: 1.45 !important;
+  font-weight: 400 !important;
+  letter-spacing: 0 !important;
+}
+
+.warranty-admin-v2 .warranty-summary-grid {
+  gap: 10px !important;
+}
+
+.warranty-admin-v2 .warranty-summary-card {
+  min-height: 76px !important;
+  padding: 12px 14px !important;
+  border-radius: 2px !important;
+}
+
+.warranty-admin-v2 .warranty-summary-card > div:first-child {
+  margin-bottom: 7px !important;
+  font-family: inherit !important;
+  font-size: 9.5px !important;
+  line-height: 1.2 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.045em !important;
+}
+
+.warranty-admin-v2 .warranty-summary-card > div:last-child {
+  font-family: inherit !important;
+  font-size: 22px !important;
+  line-height: 1.15 !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.015em !important;
+}
+
+.warranty-admin-v2 .warranty-toolbar {
+  padding: 11px 13px !important;
+  border-radius: 2px !important;
+}
+
+.warranty-admin-v2 .warranty-filter-label {
+  font-family: inherit !important;
+  font-size: 9.5px !important;
+  line-height: 1.2 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+}
+
+.warranty-admin-v2 .warranty-filter-field input,
+.warranty-admin-v2 .warranty-filter-field select {
+  height: 36px !important;
+  min-height: 36px !important;
+  font-family: inherit !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0 !important;
+  border-radius: 2px !important;
+}
+
+.warranty-admin-v2 .warranty-filter-reset {
+  height: 36px !important;
+  min-height: 36px !important;
+  border-radius: 2px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+.warranty-admin-v2 .warranty-filter-result {
+  padding-bottom: 8px !important;
+  font-family: inherit !important;
+  font-size: 10px !important;
+  font-weight: 400 !important;
+}
+
+.warranty-admin-v2 .warranty-table-card {
+  border-radius: 2px !important;
+}
+
+.warranty-admin-v2 .warranty-section-head {
+  padding: 13px 14px 11px !important;
+}
+
+.warranty-admin-v2 .warranty-section-head h2 {
+  margin: 0 !important;
+  font-family: inherit !important;
+  font-size: 15px !important;
+  line-height: 1.25 !important;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+}
+
+.warranty-admin-v2 .warranty-section-head p {
+  margin: 4px 0 0 !important;
+  font-family: inherit !important;
+  font-size: 10.5px !important;
+  line-height: 1.4 !important;
+  font-weight: 400 !important;
+  letter-spacing: 0 !important;
+}
+
+.warranty-admin-v2 .warranty-table th {
+  padding: 10px 12px !important;
+  font-family: inherit !important;
+  font-size: 9.25px !important;
+  line-height: 1.25 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em !important;
+}
+
+.warranty-admin-v2 .warranty-table td {
+  padding: 11px 12px !important;
+  font-family: inherit !important;
+  font-size: 11.5px !important;
+  line-height: 1.35 !important;
+  font-weight: 400 !important;
+  letter-spacing: 0 !important;
+}
+
+.warranty-admin-v2 .warranty-table td > div:first-child {
+  font-weight: 600 !important;
+}
+
+.warranty-admin-v2 .warranty-status {
+  font-family: inherit !important;
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+}
+
+.warranty-admin-v2 .warranty-status::before {
+  width: 6px !important;
+  height: 6px !important;
+  flex-basis: 6px !important;
+}
+
+.warranty-admin-v2 .warranty-row-actions > button {
+  min-height: 31px !important;
+  padding: 0 10px !important;
+  border-radius: 2px !important;
+  font-family: inherit !important;
+  font-size: 10.5px !important;
+  font-weight: 600 !important;
+}

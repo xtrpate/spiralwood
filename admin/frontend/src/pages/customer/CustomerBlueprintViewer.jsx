@@ -227,6 +227,96 @@ const hasExactAdmin3DSource = (blueprint = {}) => {
   );
 };
 
+// WISDOM PERSISTENT GENERATED PREVIEW CACHE V1.0.6
+const COMPACT_PREVIEW_CACHE_PREFIX = "wisdom:generated-blueprint-preview:v1:";
+
+const compactPreviewHash = (value = "") => {
+  const text = String(value || "");
+  let hash = 2166136261;
+
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(36);
+};
+
+const buildCompactPreviewCacheKey = (
+  blueprint = {},
+  preset = "iso",
+  compactHeight = 240,
+) => {
+  let geometrySource = "";
+
+  try {
+    geometrySource = JSON.stringify({
+      id: blueprint?.id || "",
+      updated_at: blueprint?.updated_at || blueprint?.updatedAt || "",
+      components: blueprint?.components || null,
+      design_data: blueprint?.design_data || null,
+      view_3d_data: blueprint?.view_3d_data || null,
+    });
+  } catch {
+    geometrySource = String(blueprint?.id || "");
+  }
+
+  return (
+    COMPACT_PREVIEW_CACHE_PREFIX +
+    compactPreviewHash(
+      [preset, compactHeight, geometrySource].join("|"),
+    )
+  );
+};
+
+const readGeneratedCompactPreview = (cacheKey) => {
+  if (!cacheKey || typeof window === "undefined") return "";
+
+  try {
+    return window.localStorage.getItem(cacheKey) || "";
+  } catch {
+    return "";
+  }
+};
+
+const writeGeneratedCompactPreview = (cacheKey, dataUrl) => {
+  if (
+    !cacheKey ||
+    !dataUrl ||
+    typeof window === "undefined" ||
+    !String(dataUrl).startsWith("data:image/")
+  ) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(cacheKey, dataUrl);
+    return;
+  } catch {
+    // Keep this cache isolated from the rest of the application. If browser
+    // storage is full, prune only generated WISDOM preview entries.
+  }
+
+  try {
+    const previewKeys = [];
+
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith(COMPACT_PREVIEW_CACHE_PREFIX)) {
+        previewKeys.push(key);
+      }
+    }
+
+    previewKeys.slice(0, Math.max(8, previewKeys.length - 36)).forEach((key) => {
+      window.localStorage.removeItem(key);
+    });
+
+    window.localStorage.setItem(cacheKey, dataUrl);
+  } catch {
+    // Preview caching is an optimization only; rendering still works without it.
+  }
+};
+
 const formatMm = (value) => {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? `${Math.round(n)} mm` : "—";
@@ -260,6 +350,7 @@ export default function CustomerBlueprintViewer({
   compact = false,
   defaultPreset = "iso",
   defaultShowHuman = true,
+  compactHeight = 240,
 }) {
   const mountRef = useRef(null);
   const previewHostRef = useRef(null);
@@ -280,6 +371,17 @@ export default function CustomerBlueprintViewer({
   const [fallbackImageError, setFallbackImageError] = useState(false);
   const [compactPreviewVisible, setCompactPreviewVisible] = useState(!compact);
   const [webglContextLost, setWebglContextLost] = useState(false);
+  const [compactSnapshotUrl, setCompactSnapshotUrl] = useState(() =>
+    compact
+      ? readGeneratedCompactPreview(
+          buildCompactPreviewCacheKey(
+            blueprint,
+            defaultPreset,
+            compactHeight,
+          ),
+        )
+      : "",
+  );
 
   useEffect(() => {
     setViewPreset(defaultPreset);
@@ -294,10 +396,34 @@ export default function CustomerBlueprintViewer({
     [blueprint],
   );
 
+  const compactPreviewCacheKey = useMemo(
+    () =>
+      compact
+        ? buildCompactPreviewCacheKey(
+            blueprint,
+            defaultPreset,
+            compactHeight,
+          )
+        : "",
+    [blueprint, compact, compactHeight, defaultPreset],
+  );
+
   useEffect(() => {
     setFallbackImageError(false);
     setWebglContextLost(false);
-  }, [blueprint?.id, sceneData?.thumbnail_url]);
+
+    setCompactSnapshotUrl(
+      compact
+        ? readGeneratedCompactPreview(compactPreviewCacheKey)
+        : "",
+    );
+  }, [
+    blueprint?.id,
+    sceneData?.thumbnail_url,
+    sceneData?.components,
+    compact,
+    compactPreviewCacheKey,
+  ]);
 
   useEffect(() => {
     // WISDOM MOBILE COMPACT 3D LIFECYCLE V1
@@ -427,18 +553,20 @@ export default function CustomerBlueprintViewer({
 
   useEffect(() => {
     if (compact && !compactPreviewVisible) return undefined;
+    if (compact && compactSnapshotUrl) return undefined;
     if (webglContextLost) return undefined;
 
     const mount = mountRef.current;
     if (!mount) return undefined;
 
     const width = mount.clientWidth || 640;
-    const height = mount.clientHeight || (compact ? 240 : 420);
+    const height = mount.clientHeight || (compact ? compactHeight : 420);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: false,
       powerPreference: "high-performance",
+      preserveDrawingBuffer: compact,
     });
 
     renderer.setSize(width, height);
@@ -450,9 +578,16 @@ export default function CustomerBlueprintViewer({
     mount.innerHTML = "";
     mount.appendChild(renderer.domElement);
 
+    // WISDOM COMPACT CONTEXT RETRY V1.0.5
     const handleContextLost = (event) => {
       event.preventDefault();
       setWebglContextLost(true);
+
+      if (compact) {
+        window.setTimeout(() => {
+          setWebglContextLost(false);
+        }, 180);
+      }
     };
 
     renderer.domElement.addEventListener(
@@ -517,9 +652,12 @@ export default function CustomerBlueprintViewer({
     helperGroupRef.current = helperGroup;
     floorRef.current = showroomBase;
 
+    // WISDOM COMPACT RUNTIME SNAPSHOT STABILITY V1.0.5
     const handleResize = () => {
+      if (compact) return;
+
       const nextWidth = mount.clientWidth || 640;
-      const nextHeight = mount.clientHeight || (compact ? 240 : 420);
+      const nextHeight = mount.clientHeight || 420;
 
       renderer.setSize(nextWidth, nextHeight);
       camera.aspect = nextWidth / nextHeight;
@@ -549,11 +687,15 @@ export default function CustomerBlueprintViewer({
       animate();
     }
 
-    window.addEventListener("resize", handleResize);
+    if (!compact) {
+      window.addEventListener("resize", handleResize);
+    }
 
     return () => {
       cancelAnimationFrame(frameRef.current);
-      window.removeEventListener("resize", handleResize);
+      if (!compact) {
+        window.removeEventListener("resize", handleResize);
+      }
       renderer.domElement.removeEventListener(
         "webglcontextlost",
         handleContextLost,
@@ -564,6 +706,15 @@ export default function CustomerBlueprintViewer({
       disposeObjectTree(productGroupRef.current);
 
       controls.dispose();
+
+      if (compact) {
+        try {
+          renderer.forceContextLoss?.();
+        } catch {
+          // Best-effort compact context release.
+        }
+      }
+
       renderer.dispose();
 
       if (rendererRef.current === renderer) rendererRef.current = null;
@@ -583,6 +734,7 @@ export default function CustomerBlueprintViewer({
     compact,
     compactPreviewVisible,
     webglContextLost,
+    compactSnapshotUrl,
   ]);
 
   useEffect(() => {
@@ -691,6 +843,25 @@ export default function CustomerBlueprintViewer({
       if (renderer && scene && camera) {
         try {
           renderer.render(scene, camera);
+
+          // WISDOM CAPTURE COMPACT RUNTIME PREVIEW V1.0.5
+          // Generated from the real Three.js furniture scene; never from
+          // blueprint.thumbnail_url / preview_image_url.
+          const runtimeFrame = renderer.domElement.toDataURL(
+            "image/webp",
+            0.9,
+          );
+          if (
+            runtimeFrame &&
+            runtimeFrame.startsWith("data:image/") &&
+            runtimeFrame.length > 100
+          ) {
+            setCompactSnapshotUrl(runtimeFrame);
+            writeGeneratedCompactPreview(
+              compactPreviewCacheKey,
+              runtimeFrame,
+            );
+          }
         } catch (error) {
           console.warn("[customer-blueprint compact render]", error);
           setWebglContextLost(true);
@@ -708,6 +879,7 @@ export default function CustomerBlueprintViewer({
     compact,
     compactPreviewVisible,
     webglContextLost,
+    compactPreviewCacheKey,
   ]);
 
   const exactAdmin3D = useMemo(
@@ -715,14 +887,17 @@ export default function CustomerBlueprintViewer({
     [blueprint],
   );
 
+  // WISDOM COMPACT REAL-FURNITURE PREVIEW HOTFIX V1
   const has3D =
     exactAdmin3D &&
     Array.isArray(sceneData.components) &&
     sceneData.components.length > 0 &&
     sceneData.bounds &&
-    sceneData.bounds.width > 50 &&
-    sceneData.bounds.height > 50 &&
-    sceneData.bounds.depth > 50;
+    sceneData.bounds.width > 20 &&
+    sceneData.bounds.height > 20 &&
+    (compact
+      ? sceneData.bounds.depth >= 1
+      : sceneData.bounds.depth > 20);
 
   return (
     <div
@@ -731,7 +906,7 @@ export default function CustomerBlueprintViewer({
       style={
         compact
           ? {
-              minHeight: 240,
+              minHeight: compactHeight,
               border: "none",
               borderRadius: 0,
               background: "#f7f2ea",
@@ -783,32 +958,46 @@ export default function CustomerBlueprintViewer({
 
       <div
         className="cust-viewer-stage"
-        style={compact ? { minHeight: 240, background: "#f7f2ea" } : undefined}
+        style={compact ? { minHeight: compactHeight, background: "#f7f2ea" } : undefined}
       >
-        {has3D &&
+        {has3D && compact && compactSnapshotUrl ? (
+          <img
+            src={compactSnapshotUrl}
+            alt=""
+            aria-hidden="true"
+            className="cust-viewer-runtime-snapshot"
+            style={{
+              display: "block",
+              width: "100%",
+              height: compactHeight,
+              objectFit: "contain",
+              background: "#f7f2ea",
+            }}
+          />
+        ) : has3D &&
         (!compact || compactPreviewVisible) &&
         !webglContextLost ? (
           <div
             ref={mountRef}
             className="cust-viewer-canvas"
-            style={compact ? { height: 240 } : undefined}
+            style={compact ? { height: compactHeight } : undefined}
           />
         ) : has3D && compact && !compactPreviewVisible ? (
           <div
             className="cust-viewer-empty"
-            style={{ minHeight: 240, padding: 0, background: "#f7f2ea" }}
+            style={{ minHeight: compactHeight, padding: 0, background: "#f7f2ea" }}
             aria-hidden="true"
           />
-        ) : sceneData?.thumbnail_url && !fallbackImageError ? (
+        ) : !compact && sceneData?.thumbnail_url && !fallbackImageError ? (
           <div
             className="cust-viewer-fallback"
-            style={compact ? { minHeight: 240, padding: 0 } : undefined}
+            style={compact ? { minHeight: compactHeight, padding: 0 } : undefined}
           >
             <img
               src={resolveAsset(sceneData.thumbnail_url)}
               alt={sceneData.title}
               className="cust-viewer-fallback-img"
-              style={compact ? { height: 240, borderRadius: 0 } : undefined}
+              style={compact ? { height: compactHeight, borderRadius: 0 } : undefined}
               loading="lazy"
               decoding="async"
               onError={() => setFallbackImageError(true)}
@@ -822,10 +1011,22 @@ export default function CustomerBlueprintViewer({
         ) : (
           <div
             className="cust-viewer-empty"
-            style={compact ? { minHeight: 240, padding: 0 } : undefined}
+            style={
+              compact
+                ? {
+                    minHeight: compactHeight,
+                    padding: 0,
+                    background: "#f7f2ea",
+                  }
+                : undefined
+            }
           >
-            <div className="cust-viewer-empty-icon">🪵</div>
-            {!compact ? <div>No 3D preview available yet</div> : null}
+            {!compact ? (
+              <>
+                <div className="cust-viewer-empty-icon">—</div>
+                <div>No 3D preview available yet</div>
+              </>
+            ) : null}
           </div>
         )}
       </div>

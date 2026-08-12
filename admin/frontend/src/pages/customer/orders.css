@@ -2264,3 +2264,57 @@
   font-size: 12px !important;
   font-weight: 600 !important;
 }
+
+/* Real furniture preview for linked blueprint orders */
+.wisdom-order-blueprint-live,
+.wisdom-order-blueprint-live .cust-viewer-card,
+.wisdom-order-blueprint-live .cust-viewer-stage,
+.wisdom-order-blueprint-live .cust-viewer-canvas,
+.wisdom-order-blueprint-live canvas,
+.wisdom-order-blueprint-live .cust-viewer-fallback,
+.wisdom-order-blueprint-live .cust-viewer-fallback-img,
+.wisdom-order-blueprint-live .cust-viewer-empty {
+  width: 60px !important;
+  height: 60px !important;
+  min-height: 60px !important;
+  border-radius: 0 !important;
+}
+.wisdom-order-blueprint-live { overflow: hidden; background: #f7f2ea; }
+
+
+/* WISDOM CUSTOMER ORDERS LIVE BLUEPRINT FINAL V1.0.1 */
+.wisdom-order-blueprint-live,
+.wisdom-order-blueprint-live .cust-viewer-card,
+.wisdom-order-blueprint-live .cust-viewer-stage,
+.wisdom-order-blueprint-live .cust-viewer-canvas,
+.wisdom-order-blueprint-live canvas,
+.wisdom-order-blueprint-live .cust-viewer-fallback,
+.wisdom-order-blueprint-live .cust-viewer-empty {
+  width: 64px !important;
+  height: 64px !important;
+  min-height: 64px !important;
+  border-radius: 0 !important;
+}
+
+.wisdom-order-blueprint-live {
+  overflow: hidden !important;
+  background: #f7f2ea !important;
+}
+
+.wisdom-order-blueprint-detail-live,
+.wisdom-order-blueprint-detail-live .cust-viewer-card,
+.wisdom-order-blueprint-detail-live .cust-viewer-stage,
+.wisdom-order-blueprint-detail-live .cust-viewer-canvas,
+.wisdom-order-blueprint-detail-live canvas,
+.wisdom-order-blueprint-detail-live .cust-viewer-fallback,
+.wisdom-order-blueprint-detail-live .cust-viewer-empty {
+  width: 96px !important;
+  height: 96px !important;
+  min-height: 96px !important;
+  border-radius: 0 !important;
+}
+
+.wisdom-order-blueprint-detail-live {
+  overflow: hidden !important;
+  background: #f7f2ea !important;
+}

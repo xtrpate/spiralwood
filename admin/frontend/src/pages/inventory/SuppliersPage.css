@@ -1,0 +1,563 @@
+/* WISDOM SUPPLIERS UI POLISH V1 */
+
+.suppliers-page {
+  width: 100%;
+  color: #18181b;
+}
+
+.suppliers-page,
+.suppliers-page * {
+  box-sizing: border-box;
+}
+
+.suppliers-page button,
+.suppliers-page input,
+.suppliers-page textarea {
+  font: inherit;
+}
+
+.suppliers-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.suppliers-page-header h1 {
+  margin: 0;
+  color: #18181b;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.suppliers-page-header p {
+  margin: 7px 0 0;
+  color: #71717a;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.suppliers-directory {
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #dfe1e5;
+  border-radius: 2px;
+}
+
+.suppliers-toolbar {
+  min-height: 72px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid #e8e8eb;
+  background: #ffffff;
+}
+
+.suppliers-search-group {
+  width: min(520px, 100%);
+}
+
+.suppliers-search-group > label {
+  display: block;
+  margin-bottom: 5px;
+  color: #3f3f46;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.suppliers-search-wrap {
+  position: relative;
+}
+
+.suppliers-search-wrap > span {
+  position: absolute;
+  top: 50%;
+  left: 11px;
+  transform: translateY(-50%);
+  color: #71717a;
+  font-size: 15px;
+  pointer-events: none;
+}
+
+.suppliers-search-wrap input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px 0 34px;
+  color: #18181b;
+  background: #ffffff;
+  border: 1px solid #cfd3d8;
+  border-radius: 2px;
+  outline: none;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.suppliers-search-wrap input::placeholder {
+  color: #a1a1aa;
+}
+
+.suppliers-search-wrap input:focus {
+  border-color: #52525b;
+}
+
+.suppliers-result-count {
+  padding-bottom: 9px;
+  color: #71717a;
+  font-size: 11px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.suppliers-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.suppliers-table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.suppliers-table th {
+  height: 34px;
+  padding: 0 14px;
+  color: #71717a;
+  background: #fafafa;
+  border-bottom: 1px solid #e8e8eb;
+  text-align: left;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.suppliers-table th:nth-child(1) {
+  width: 24%;
+}
+
+.suppliers-table th:nth-child(2) {
+  width: 26%;
+}
+
+.suppliers-table th:nth-child(3) {
+  width: 34%;
+}
+
+.suppliers-table th:nth-child(4) {
+  width: 16%;
+}
+
+.suppliers-table td {
+  min-height: 60px;
+  padding: 11px 14px;
+  border-bottom: 1px solid #ececef;
+  color: #3f3f46;
+  vertical-align: middle;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.suppliers-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.suppliers-table tbody tr:hover {
+  background: #fcfcfc;
+}
+
+.suppliers-name {
+  color: #18181b;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.suppliers-contact {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.suppliers-contact a {
+  max-width: 100%;
+  overflow: hidden;
+  color: #27272a;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suppliers-contact a:hover {
+  text-decoration: underline;
+}
+
+.suppliers-contact-secondary {
+  color: #71717a !important;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.suppliers-location {
+  max-width: 460px;
+  color: #52525b;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.suppliers-muted {
+  color: #a1a1aa;
+  font-weight: 400;
+}
+
+.suppliers-actions-heading {
+  text-align: right !important;
+}
+
+.suppliers-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.suppliers-btn {
+  min-height: 32px;
+  padding: 0 13px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.suppliers-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.suppliers-btn-primary {
+  min-height: 34px;
+  padding: 0 16px;
+  color: #ffffff;
+  background: #18181b;
+  border: 1px solid #18181b;
+}
+
+.suppliers-btn-primary:hover:not(:disabled) {
+  background: #27272a;
+  border-color: #27272a;
+}
+
+.suppliers-btn-secondary {
+  color: #27272a;
+  background: #ffffff;
+  border: 1px solid #d7d9dd;
+}
+
+.suppliers-btn-secondary:hover:not(:disabled) {
+  background: #f7f7f8;
+  border-color: #bfc3c8;
+}
+
+.suppliers-btn-danger {
+  color: #b42318;
+  background: #ffffff;
+  border: 1px solid #efc3bf;
+}
+
+.suppliers-btn-danger:hover:not(:disabled) {
+  color: #912018;
+  background: #fff7f6;
+  border-color: #e6aaa5;
+}
+
+.suppliers-btn-danger-solid {
+  color: #ffffff;
+  background: #b42318;
+  border: 1px solid #b42318;
+}
+
+.suppliers-btn-danger-solid:hover:not(:disabled) {
+  background: #912018;
+  border-color: #912018;
+}
+
+.suppliers-empty {
+  height: 120px;
+  color: #71717a !important;
+  text-align: center;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+}
+
+.suppliers-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(24, 24, 27, 0.48);
+}
+
+.suppliers-modal {
+  width: min(520px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 22px;
+  background: #ffffff;
+  border: 1px solid #d7d9dd;
+  border-radius: 2px;
+}
+
+.suppliers-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+
+.suppliers-modal-header h2,
+.suppliers-delete-copy h2 {
+  margin: 0;
+  color: #18181b;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.suppliers-modal-header p,
+.suppliers-delete-copy p {
+  margin: 6px 0 0;
+  color: #71717a;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.suppliers-delete-copy strong {
+  color: #27272a;
+  font-weight: 600;
+}
+
+.suppliers-modal-close {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex: 0 0 auto;
+  color: #71717a;
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.suppliers-modal-close:hover:not(:disabled) {
+  color: #18181b;
+  background: #f4f4f5;
+}
+
+.suppliers-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.suppliers-form-field {
+  margin-bottom: 14px;
+}
+
+.suppliers-form-field label {
+  display: block;
+  margin-bottom: 5px;
+  color: #3f3f46;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.suppliers-form-field input,
+.suppliers-form-field textarea {
+  width: 100%;
+  padding: 9px 11px;
+  color: #18181b;
+  background: #ffffff;
+  border: 1px solid #cfd3d8;
+  border-radius: 2px;
+  outline: none;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.suppliers-form-field input {
+  height: 36px;
+}
+
+.suppliers-form-field textarea {
+  min-height: 82px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.suppliers-form-field input:focus,
+.suppliers-form-field textarea:focus {
+  border-color: #52525b;
+}
+
+.suppliers-form-field input::placeholder,
+.suppliers-form-field textarea::placeholder {
+  color: #a1a1aa;
+}
+
+.suppliers-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 16px;
+  margin-top: 4px;
+  border-top: 1px solid #ececef;
+}
+
+.suppliers-btn-modal {
+  min-width: 96px;
+  min-height: 34px;
+}
+
+.suppliers-delete-modal {
+  width: min(440px, 100%);
+}
+
+.suppliers-delete-copy {
+  margin-bottom: 20px;
+}
+
+@media (max-width: 760px) {
+  .suppliers-page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .suppliers-page-header .suppliers-btn-primary {
+    align-self: flex-start;
+  }
+
+  .suppliers-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .suppliers-search-group {
+    width: 100%;
+  }
+
+  .suppliers-result-count {
+    padding-bottom: 0;
+  }
+
+  .suppliers-form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+
+/* WISDOM SUPPLIERS EDIT BUTTON + SEARCH SIZE FIX V1 */
+
+/* Keep the supplier search useful without dominating the page width. */
+.suppliers-search-group {
+  width: min(400px, 100%) !important;
+}
+
+/* Edit is the primary row action: black button with white text. */
+.suppliers-row-actions .suppliers-btn-secondary {
+  color: #ffffff !important;
+  background: #18181b !important;
+  border-color: #18181b !important;
+}
+
+.suppliers-row-actions .suppliers-btn-secondary:hover:not(:disabled) {
+  color: #ffffff !important;
+  background: #27272a !important;
+  border-color: #27272a !important;
+}
+
+/* Keep modal Cancel buttons secondary/white. */
+.suppliers-modal-actions .suppliers-btn-secondary {
+  color: #27272a !important;
+  background: #ffffff !important;
+  border-color: #d7d9dd !important;
+}
+
+.suppliers-modal-actions .suppliers-btn-secondary:hover:not(:disabled) {
+  color: #27272a !important;
+  background: #f7f7f8 !important;
+  border-color: #bfc3c8 !important;
+}
+
+
+/* WISDOM SUPPLIERS DELETE + SEARCH RESTORE V1 */
+
+/* Restore the original Supplier UI search width from V1. */
+.suppliers-search-group {
+  width: min(520px, 100%) !important;
+}
+
+/* Keep Edit as the primary black action. */
+.suppliers-row-actions .suppliers-btn-secondary {
+  color: #ffffff !important;
+  background: #18181b !important;
+  border-color: #18181b !important;
+}
+
+.suppliers-row-actions .suppliers-btn-secondary:hover:not(:disabled) {
+  color: #ffffff !important;
+  background: #27272a !important;
+  border-color: #27272a !important;
+}
+
+/* Delete returns to a neutral white button with black text. */
+.suppliers-row-actions .suppliers-btn-danger {
+  color: #18181b !important;
+  background: #ffffff !important;
+  border-color: #d7d9dd !important;
+}
+
+.suppliers-row-actions .suppliers-btn-danger:hover:not(:disabled) {
+  color: #18181b !important;
+  background: #f7f7f8 !important;
+  border-color: #bfc3c8 !important;
+}
+
+/* Modal Cancel remains neutral white. */
+.suppliers-modal-actions .suppliers-btn-secondary {
+  color: #27272a !important;
+  background: #ffffff !important;
+  border-color: #d7d9dd !important;
+}
+
+.suppliers-modal-actions .suppliers-btn-secondary:hover:not(:disabled) {
+  color: #27272a !important;
+  background: #f7f7f8 !important;
+  border-color: #bfc3c8 !important;
+}

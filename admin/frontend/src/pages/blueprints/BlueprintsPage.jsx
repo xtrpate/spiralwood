@@ -3,6 +3,8 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
+import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
+import "./BlueprintsPage.css";
 
 const STAGE_COLORS = {
   design: ["#ffffff", "#52525b", "#d4d4d8"],
@@ -74,23 +76,13 @@ function getBlueprintIcon(fileType) {
   return "🗺️";
 }
 
-function canEstimateAtStage(stage = "") {
-  return ["design", "estimation", "approval"].includes(
-    String(stage || "").toLowerCase(),
-  );
-}
-
-function getDesignActionLabel(stage = "", isImported = false) {
+function getDesignActionLabel(stage = "") {
   const normalizedStage = String(stage || "").toLowerCase();
   const isViewOnlyStage = ["production", "delivery", "completed"].includes(
     normalizedStage,
   );
 
-  if (isImported) {
-    return isViewOnlyStage ? "🧩 View Design" : "🧩 Open Design";
-  }
-
-  return isViewOnlyStage ? "👁 View Design" : "✏️ Design";
+  return isViewOnlyStage ? "View Design" : "Open Design";
 }
 
 function getStageLabel(stage = "") {
@@ -411,7 +403,7 @@ export default function BlueprintsPage() {
   };
 
   return (
-    <div>
+    <div className="blueprints-admin-v2">
       <div
         style={{
           display: "flex",
@@ -424,11 +416,12 @@ export default function BlueprintsPage() {
       >
         <div>
           <h1 style={pageTitle}>Blueprint Management</h1>
+          <p className="blueprints-page-subtitle">Create, review, estimate, and manage furniture blueprints.</p>
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={() => setCreateModal(true)} style={btnPrimary}>
-            + New Blueprint
+            Create Blueprint
           </button>
         </div>
       </div>
@@ -463,7 +456,7 @@ export default function BlueprintsPage() {
               transition: "all 0.2s ease",
             }}
           >
-            {t === "my" ? "My Blueprints" : "Archive"}
+            {t === "my" ? "Active Blueprints" : "Archive"}
           </button>
         ))}
 
@@ -476,12 +469,13 @@ export default function BlueprintsPage() {
             alignSelf: "center",
           }}
         >
-          {total} items
+          {total} blueprints
         </span>
       </div>
 
       <input
-        placeholder="Search blueprints..."
+        className="blueprints-search"
+        placeholder="Search by title or customer"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         style={{ ...inputSm, marginBottom: 20, minWidth: 300 }}
@@ -489,6 +483,7 @@ export default function BlueprintsPage() {
 
       {loading ? (
         <div
+          className="blueprints-card-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
@@ -500,7 +495,7 @@ export default function BlueprintsPage() {
               key={i}
               style={{
                 background: "#fff",
-                borderRadius: 16,
+                borderRadius: 2,
                 border: "1px solid #e4e4e7",
                 boxShadow: "0 1px 2px rgba(0,0,0,.02)",
                 overflow: "hidden",
@@ -557,7 +552,7 @@ export default function BlueprintsPage() {
                       width: 70,
                       height: 32,
                       background: "#f4f4f5",
-                      borderRadius: 6,
+                      borderRadius: 2,
                     }}
                   />
                   <div
@@ -565,7 +560,7 @@ export default function BlueprintsPage() {
                       width: 90,
                       height: 32,
                       background: "#f4f4f5",
-                      borderRadius: 6,
+                      borderRadius: 2,
                     }}
                   />
                 </div>
@@ -577,7 +572,7 @@ export default function BlueprintsPage() {
         <div
           style={{
             background: "#fff",
-            borderRadius: 16,
+            borderRadius: 2,
             padding: 60,
             textAlign: "center",
             color: "#71717a",
@@ -591,6 +586,7 @@ export default function BlueprintsPage() {
         </div>
       ) : (
         <div
+          className="blueprints-card-grid"
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
@@ -606,6 +602,7 @@ export default function BlueprintsPage() {
             ] || ["#f4f4f5", "#18181b", "#e4e4e7"];
             const isTemplate = Number(bp.is_template) === 1;
             const hasThumbnail = !!bp.thumbnail_url && !imageErrors[bp.id];
+            const hasLivePreview = Boolean(bp.design_data || bp.view_3d_data);
             const isImported =
               String(bp.source || "").toLowerCase() === "imported";
             const isCompleted = displayStage === "completed";
@@ -627,9 +624,10 @@ export default function BlueprintsPage() {
             return (
               <div
                 key={bp.id}
+                className="blueprint-card"
                 style={{
                   background: "#fff",
-                  borderRadius: 16,
+                  borderRadius: 2,
                   border: `1px solid ${cardBorderColor}`,
                   boxShadow: "0 1px 2px rgba(0,0,0,.02)",
                   overflow: "hidden",
@@ -640,6 +638,7 @@ export default function BlueprintsPage() {
                 }}
               >
                 <div
+                  className="blueprint-card-preview"
                   style={{
                     height: 140,
                     background: hasThumbnail ? "#f4f4f5" : "#fafafa",
@@ -651,7 +650,17 @@ export default function BlueprintsPage() {
                     overflow: "hidden",
                   }}
                 >
-                  {hasThumbnail ? (
+                  {hasLivePreview ? (
+                    <CustomerBlueprintViewer
+                      blueprint={bp}
+                      readOnly
+                      showHumanControls={false}
+                      compact
+                      compactHeight={190}
+                      defaultPreset="front"
+                      defaultShowHuman={false}
+                    />
+                  ) : hasThumbnail ? (
                     <img
                       src={buildAssetUrl(bp.thumbnail_url)}
                       alt=""
@@ -756,7 +765,7 @@ export default function BlueprintsPage() {
                         letterSpacing: "1px",
                       }}
                     >
-                      GALLERY
+                      CUSTOMER GALLERY
                     </span>
                   )}
                   {isImported && (
@@ -782,6 +791,7 @@ export default function BlueprintsPage() {
                 </div>
 
                 <div
+                  className="blueprint-card-body"
                   style={{
                     padding: 16,
                     display: "flex",
@@ -824,7 +834,7 @@ export default function BlueprintsPage() {
                           overflow: "hidden",
                         }}
                       >
-                        Client: {bp.client_name}
+                        Customer: {bp.client_name}
                       </p>
                     )}
 
@@ -838,10 +848,7 @@ export default function BlueprintsPage() {
                           fontWeight: 500,
                         }}
                       >
-                        Imported reference
-                        {bp.file_type
-                          ? ` · ${String(bp.file_type).toUpperCase()}`
-                          : ""}
+                        {bp.file_type ? `${String(bp.file_type).toUpperCase()} reference file` : "Imported reference"}
                       </p>
                     )}
                   </div>
@@ -854,7 +861,7 @@ export default function BlueprintsPage() {
                       fontWeight: 500,
                     }}
                   >
-                    By {bp.creator_name || "Admin"} · {formatDate(displayDate)}
+                    {tab === "archive" ? "Archived" : "Updated"} {formatDate(displayDate)}
                   </p>
 
                   {tab === "archive" && bp.archive_days_left != null && (
@@ -872,12 +879,13 @@ export default function BlueprintsPage() {
                       }}
                     >
                       {Number(bp.archive_days_left) === 0
-                        ? "Expires today"
-                        : `${bp.archive_days_left} day${Number(bp.archive_days_left) === 1 ? "" : "s"} left`}
+                        ? "Permanent deletion today"
+                        : `${bp.archive_days_left} day${Number(bp.archive_days_left) === 1 ? "" : "s"} until permanent deletion`}
                     </p>
                   )}
 
                   <div
+                    className="blueprint-card-actions"
                     style={{
                       marginTop: "auto",
                       paddingTop: 14,
@@ -890,9 +898,11 @@ export default function BlueprintsPage() {
                     {tab !== "archive" ? (
                       <>
                         <button
-                          onClick={() =>
-                            navigate(`/admin/blueprints/${bp.id}/design`)
-                          }
+                          type="button"
+                          className="wisdom-blueprint-open-design"
+                          onClick={() => {
+                            navigate(`/admin/blueprints/${bp.id}/design`);
+                          }}
                           style={
                             isCompleted
                               ? {
@@ -905,7 +915,7 @@ export default function BlueprintsPage() {
                           }
                           disabled={isBusy}
                         >
-                          {getDesignActionLabel(displayStage, isImported)}
+                          {getDesignActionLabel(displayStage)}
                         </button>
 
                         {isImported && !!bp.file_url && (
@@ -914,21 +924,10 @@ export default function BlueprintsPage() {
                             style={btnGhost}
                             disabled={isBusy}
                           >
-                            📄 Open File
+                            Open Source File
                           </button>
                         )}
 
-                        {canEstimateAtStage(displayStage) && (
-                          <button
-                            onClick={() =>
-                              navigate(`/admin/blueprints/${bp.id}/estimation`)
-                            }
-                            style={btnPrimary}
-                            disabled={isBusy}
-                          >
-                            💰 Estimate
-                          </button>
-                        )}
 
                         <button
                           onClick={() => openArchiveConfirm(bp)}
@@ -939,7 +938,7 @@ export default function BlueprintsPage() {
                           }}
                           disabled={isBusy}
                         >
-                          {isArchiving ? "Archiving..." : "🗑 Archive"}
+                          {isArchiving ? "Archiving..." : "Archive"}
                         </button>
                       </>
                     ) : (
@@ -953,7 +952,7 @@ export default function BlueprintsPage() {
                           }}
                           disabled={isBusy}
                         >
-                          {isRestoring ? "Restoring..." : "↩ Restore"}
+                          {isRestoring ? "Restoring..." : "Restore"}
                         </button>
 
                         <button
@@ -965,7 +964,7 @@ export default function BlueprintsPage() {
                           }}
                           disabled={isBusy}
                         >
-                          {isDeleting ? "Deleting..." : "🗑 Delete"}
+                          {isDeleting ? "Deleting..." : "Delete Permanently"}
                         </button>
                       </>
                     )}
@@ -1007,7 +1006,7 @@ export default function BlueprintsPage() {
 
             <form onSubmit={handleImport}>
               <div style={{ marginBottom: 16 }}>
-                <label style={labelSm}>Blueprint Title *</label>
+                <label style={labelSm}>Blueprint Title</label>
                 <input
                   required
                   value={importForm.title}
@@ -1021,7 +1020,7 @@ export default function BlueprintsPage() {
 
               <div style={{ marginBottom: 16 }}>
                 <label style={labelSm}>
-                  Blueprint File (PDF / PNG / JPG / JPEG / SVG) *
+                  Blueprint File (PDF, PNG, JPG, JPEG, or SVG)
                 </label>
                 <input
                   type="file"
@@ -1044,7 +1043,7 @@ export default function BlueprintsPage() {
                     padding: "12px 14px",
                     background: "#fafafa",
                     border: "1px solid #e4e4e7",
-                    borderRadius: 8,
+                    borderRadius: 2,
                     fontSize: 13,
                     color: "#18181b",
                   }}
@@ -1094,7 +1093,7 @@ export default function BlueprintsPage() {
                 letterSpacing: "-0.01em",
               }}
             >
-              Create New Blueprint
+              Create Blueprint
             </h3>
 
             <form onSubmit={handleCreateBlueprint}>
@@ -1122,7 +1121,7 @@ export default function BlueprintsPage() {
                     resize: "vertical",
                     fontFamily: "inherit",
                   }}
-                  placeholder="Short admin description for this furniture blueprint"
+                  placeholder="Add a short note about the furniture design"
                 />
               </div>
 
@@ -1130,7 +1129,7 @@ export default function BlueprintsPage() {
                 style={{
                   marginBottom: 24,
                   padding: "14px 16px",
-                  borderRadius: 10,
+                  borderRadius: 2,
                   background: "#f7f7f8",
                   border: "1px solid #e4e4e7",
                   fontSize: 13,
@@ -1141,12 +1140,10 @@ export default function BlueprintsPage() {
                 <div
                   style={{ fontWeight: 800, color: "#18181b", marginBottom: 4 }}
                 >
-                  Blank editable workspace · MM units
+                  Workspace setup
                 </div>
                 <div>
-                  The blueprint will open directly in the design editor. Publish
-                  it to the customer customize gallery only after the design is
-                  complete.
+                  Start with a blank editable furniture design using millimeters. The design opens directly in the editor after creation.
                 </div>
               </div>
 
@@ -1161,7 +1158,7 @@ export default function BlueprintsPage() {
                   Cancel
                 </button>
                 <button type="submit" disabled={creating} style={btnPrimary}>
-                  {creating ? "Creating..." : "Create"}
+                  {creating ? "Creating..." : "Create Blueprint"}
                 </button>
               </div>
             </form>
@@ -1194,12 +1191,12 @@ export default function BlueprintsPage() {
               style={{
                 margin: "0 0 10px",
                 fontSize: 20,
-                fontWeight: 800,
+                fontWeight: 700,
                 color: "#0a0a0a",
                 letterSpacing: "-0.01em",
               }}
             >
-              Delete Archived Blueprint?
+              Delete Blueprint Permanently?
             </h3>
 
             <p
@@ -1217,11 +1214,11 @@ export default function BlueprintsPage() {
               style={{
                 marginBottom: 16,
                 padding: "14px 16px",
-                borderRadius: 10,
+                borderRadius: 2,
                 background: "#fafafa",
                 border: "1px solid #e4e4e7",
                 fontSize: 14,
-                fontWeight: 800,
+                fontWeight: 700,
                 color: "#0a0a0a",
                 wordBreak: "break-word",
               }}
@@ -1271,7 +1268,7 @@ export default function BlueprintsPage() {
               >
                 {deletingId === deleteTarget.id
                   ? "Deleting..."
-                  : "Yes, Delete Permanently"}
+                  : "Delete Permanently"}
               </button>
             </div>
           </div>
@@ -1285,7 +1282,7 @@ export default function BlueprintsPage() {
               style={{
                 margin: "0 0 10px",
                 fontSize: 20,
-                fontWeight: 800,
+                fontWeight: 700,
                 color: "#0a0a0a",
                 letterSpacing: "-0.01em",
               }}
@@ -1302,7 +1299,7 @@ export default function BlueprintsPage() {
               }}
             >
               Are you sure you want to move{" "}
-              <strong>"{archiveTarget.title || "Untitled Blueprint"}"</strong>{" "}
+              <strong style={{ fontWeight: 600 }}>"{archiveTarget.title || "Untitled Blueprint"}"</strong>{" "}
               to the archive? Archived blueprints will be permanently deleted
               after 30 days.
             </p>
@@ -1363,7 +1360,7 @@ const pageTitle = {
 const inputSm = {
   padding: "9px 14px",
   border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  borderRadius: 2,
   fontSize: 13,
   outline: "none",
   color: "#18181b",
@@ -1373,7 +1370,7 @@ const inputFull = {
   width: "100%",
   padding: "10px 14px",
   border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  borderRadius: 2,
   fontSize: 13,
   color: "#18181b",
   boxSizing: "border-box",
@@ -1393,10 +1390,10 @@ const btnPrimary = {
   background: "#18181b",
   color: "#fff",
   border: "1px solid #18181b",
-  borderRadius: 8,
+  borderRadius: 2,
   cursor: "pointer",
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
@@ -1405,10 +1402,10 @@ const btnGhost = {
   background: "#f4f4f5",
   color: "#18181b",
   border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  borderRadius: 2,
   cursor: "pointer",
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
@@ -1417,10 +1414,10 @@ const btnEdit = {
   background: "#f4f4f5",
   color: "#18181b",
   border: "1px solid #e4e4e7",
-  borderRadius: 6,
+  borderRadius: 2,
   cursor: "pointer",
   fontSize: 12,
-  fontWeight: 700,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
@@ -1429,10 +1426,10 @@ const btnGhostMini = {
   background: "#ffffff",
   color: "#52525b",
   border: "1px solid #e4e4e7",
-  borderRadius: 6,
+  borderRadius: 2,
   cursor: "pointer",
   fontSize: 12,
-  fontWeight: 700,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
@@ -1441,10 +1438,10 @@ const btnDanger = {
   background: "#fef2f2",
   color: "#dc2626",
   border: "1px solid #fecaca",
-  borderRadius: 8,
+  borderRadius: 2,
   cursor: "pointer",
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
@@ -1461,7 +1458,7 @@ const overlay = {
 
 const modalBox = {
   background: "#fff",
-  borderRadius: 16,
+  borderRadius: 2,
   padding: 32,
   width: 480,
   maxHeight: "90vh",
