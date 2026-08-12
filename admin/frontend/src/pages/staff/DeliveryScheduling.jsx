@@ -98,6 +98,26 @@ const normalizeStatus = (status) =>
     .trim()
     .toLowerCase();
 
+const getDeliveryAttemptStatus = (delivery = {}) => {
+  const status = normalizeStatus(delivery.status);
+  const notes = String(delivery.notes || "")
+    .trim()
+    .toLowerCase();
+
+  // Some older/admin receipt flows overwrote every attempt for an order
+  // as delivered. Preserve a failed attempt when its own notes still
+  // contain the rider's recorded failure reason.
+  if (
+    (status === "delivered" || status === "completed") &&
+    notes.includes("failure reason:")
+  ) {
+    return "failed";
+  }
+
+  if (status === "completed") return "delivered";
+  return status;
+};
+
 const formatStatusLabel = (status) => {
   const normalized = normalizeStatus(status);
   if (!normalized) return "Unknown";
@@ -126,8 +146,8 @@ const deliveryStatusRank = (status) => {
 };
 
 const sortDeliveries = (a, b) => {
-  const rankA = deliveryStatusRank(a.status);
-  const rankB = deliveryStatusRank(b.status);
+  const rankA = deliveryStatusRank(getDeliveryAttemptStatus(a));
+  const rankB = deliveryStatusRank(getDeliveryAttemptStatus(b));
 
   if (rankA !== rankB) return rankA - rankB;
 
@@ -247,7 +267,7 @@ export default function DeliveryScheduling() {
     };
 
     deliveries.forEach((delivery) => {
-      const status = normalizeStatus(delivery.status);
+      const status = getDeliveryAttemptStatus(delivery);
 
       if (status === "scheduled") counts.scheduled += 1;
       if (status === "in_transit") counts.inTransit += 1;
@@ -265,7 +285,7 @@ export default function DeliveryScheduling() {
 
     return deliveries
       .filter((delivery) => {
-        const status = normalizeStatus(delivery.status);
+        const status = getDeliveryAttemptStatus(delivery);
 
         const matchesSearch =
           !query ||
@@ -1435,6 +1455,7 @@ export default function DeliveryScheduling() {
                   const schedule = formatScheduleParts(
                     delivery.scheduled_date,
                   );
+                  const displayStatus = getDeliveryAttemptStatus(delivery);
                   const canReschedule =
                     normalizeStatus(delivery.status) === "failed" &&
                     Number(latestDeliveryIdByOrder.get(String(delivery.order_id))) ===
@@ -1488,11 +1509,11 @@ export default function DeliveryScheduling() {
                       <td style={tdStyle}>
                         <span
                           style={{
-                            ...getStatusStyle(delivery.status),
+                            ...getStatusStyle(displayStatus),
                             ...statusBadgeStyle,
                           }}
                         >
-                          {formatStatusLabel(delivery.status)}
+                          {formatStatusLabel(displayStatus)}
                         </span>
                       </td>
 

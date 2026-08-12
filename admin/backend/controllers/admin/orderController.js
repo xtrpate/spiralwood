@@ -2178,13 +2178,31 @@ exports.uploadDeliveryReceipt = async (req, res) => {
     const orderId = parseInt(req.params.id);
     const url = `/uploads/deliveries/${req.file.filename}`;
 
+    // Delivery history is attempt-based. Uploading proof for the current
+    // delivery must never rewrite older failed/delivered attempts.
+    const [[latestDelivery]] = await pool.query(
+      `SELECT id
+       FROM deliveries
+       WHERE order_id = ?
+       ORDER BY id DESC
+       LIMIT 1`,
+      [orderId],
+    );
+
+    if (!latestDelivery) {
+      return res.status(404).json({ message: "Delivery record not found." });
+    }
+
     const [result] = await pool.query(
       `UPDATE deliveries
        SET signed_receipt = ?,
-           status = 'delivered',
+           status = CASE
+             WHEN status = 'completed' THEN 'completed'
+             ELSE 'delivered'
+           END,
            delivered_date = COALESCE(delivered_date, NOW())
-       WHERE order_id = ?`,
-      [url, orderId],
+       WHERE id = ?`,
+      [url, latestDelivery.id],
     );
 
     if (!result.affectedRows) {
