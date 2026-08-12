@@ -68,7 +68,6 @@ export default function CustomerLayout() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [isScrolled, setIsScrolled] = useState(false);
   const [activeOrdersCount, setActiveOrdersCount] = useState(0);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [itemToRemove, setItemToRemove] = useState(null);
@@ -143,15 +142,6 @@ export default function CustomerLayout() {
     }
     return true;
   });
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
 
   useEffect(() => {
     setMenuOpen(false);
@@ -522,9 +512,7 @@ export default function CustomerLayout() {
     return {
       id: item?.blueprint_id || item?.key || null,
       title:
-        item?.base_blueprint_title ||
-        item?.product_name ||
-        "Custom Furniture",
+        item?.base_blueprint_title || item?.product_name || "Custom Furniture",
       thumbnail_url: null,
       components,
       view_3d_data: {
@@ -533,7 +521,6 @@ export default function CustomerLayout() {
       },
     };
   };
-
 
   const hasBlueprintItems = cart.some((item) => isBlueprintItem(item));
   const hasStandardItems = cart.some((item) => !isBlueprintItem(item));
@@ -686,7 +673,7 @@ export default function CustomerLayout() {
         </span>
       </div>
 
-      <header className={`cust-navbar ${isScrolled ? "scrolled" : ""}`}>
+      <header className="cust-navbar">
         <div className="cust-header-main">
           <div className="cust-header-left">
             <button
@@ -1239,7 +1226,9 @@ export default function CustomerLayout() {
                           alt={item.base_blueprint_title || item.product_name}
                         />
                       ) : (
-                        <div className="cust-mini-cart-thumb-fallback">Item</div>
+                        <div className="cust-mini-cart-thumb-fallback">
+                          Item
+                        </div>
                       )}
                     </div>
 
