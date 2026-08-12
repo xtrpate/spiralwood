@@ -124,6 +124,7 @@ export default function BlueprintDesign() {
   const [publishForm, setPublishForm] = useState({
     name: blueprint?.title || "",
     description: "Custom blueprint product.",
+    category_id: "",
   });
 
   const {

@@ -3,8 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import api from "../../services/api";
 import useAuthStore from "../../store/authStore";
 import {
-  CalendarClock,
   Plus,
+  Search,
   UserCheck,
   CheckCircle2,
   Ban,
@@ -160,10 +160,15 @@ const parseNotes = (notes) => {
 
 const inputStyle = {
   width: "100%",
-  padding: "10px 14px",
-  borderRadius: 8,
-  border: "1px solid #e4e4e7",
+  minHeight: 36,
+  padding: "8px 11px",
+  borderRadius: 0,
+  border: "1px solid #d4d4d8",
+  background: "#ffffff",
+  fontFamily: "inherit",
   fontSize: 13,
+  fontWeight: 400,
+  fontVariantNumeric: "tabular-nums",
   outline: "none",
   color: "#18181b",
   boxSizing: "border-box",
@@ -171,52 +176,44 @@ const inputStyle = {
 
 const labelStyle = {
   display: "block",
-  marginBottom: 8,
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#18181b",
-  letterSpacing: "0.02em",
-};
-
-const summaryCardStyle = {
-  border: "1px solid #e4e4e7",
-  borderRadius: 16,
-  background: "#fff",
-  padding: "16px 20px",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+  marginBottom: 6,
+  fontSize: 11,
+  fontWeight: 600,
+  color: "#3f3f46",
+  letterSpacing: 0,
 };
 
 const subTextStyle = {
-  fontSize: 12,
+  marginTop: 2,
   color: "#71717a",
-  marginTop: 4,
-  lineHeight: 1.45,
+  fontSize: 10.5,
+  fontWeight: 400,
+  lineHeight: 1.35,
 };
 
 const sectionTitleStyle = {
-  marginBottom: 6,
-  fontWeight: 800,
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  color: "#0a0a0a",
-  fontSize: 16,
-  letterSpacing: "-0.01em",
+  marginBottom: 5,
+  color: "#18181b",
+  fontSize: 15.5,
+  fontWeight: 700,
+  lineHeight: 1.3,
+  letterSpacing: "-0.015em",
 };
 
 const sectionHintStyle = {
-  margin: "0 0 20px",
-  color: "#52525b",
-  fontSize: 13,
-  lineHeight: 1.5,
+  margin: "0 0 15px",
+  color: "#71717a",
+  fontSize: 11.5,
+  fontWeight: 400,
+  lineHeight: 1.45,
 };
 
 const emptyStateStyle = {
   color: "#71717a",
-  fontSize: 13,
+  fontSize: 11.5,
   textAlign: "center",
-  padding: 32,
-  fontWeight: 600,
+  padding: "40px 20px",
+  fontWeight: 400,
 };
 
 const formatRequestNumber = (id) =>
@@ -227,63 +224,32 @@ const getStatusLabel = (status) =>
 
 function SectionCard({ title, subtitle, children, id }) {
   return (
-    <div
+    <section
       id={id}
       style={{
-        background: "#fff",
-        borderRadius: 16,
-        border: "1px solid #e4e4e7",
-        padding: "24px",
-        marginBottom: 20,
-        boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+        background: "#ffffff",
+        borderRadius: 0,
+        border: "1px solid #dddddf",
+        padding: "20px",
+        marginBottom: 16,
+        boxShadow: "none",
         scrollMarginTop: "64px",
       }}
     >
-      <h3 style={sectionTitleStyle}>
-        <CalendarClock size={20} /> {title}
-      </h3>
+      <h3 style={sectionTitleStyle}>{title}</h3>
       {subtitle ? <p style={sectionHintStyle}>{subtitle}</p> : null}
       {children}
-    </div>
+    </section>
   );
 }
-
-function SummaryCard({ label, count, hint }) {
+function AdminSummaryCard({ label, count, hint }) {
   return (
-    <div style={summaryCardStyle}>
-      <div
-        style={{
-          fontSize: 10,
-          color: "#71717a",
-          fontWeight: 800,
-          textTransform: "uppercase",
-          letterSpacing: "1px",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          marginTop: 8,
-          fontSize: 28,
-          fontWeight: 800,
-          color: "#0a0a0a",
-          lineHeight: 1,
-          letterSpacing: "-0.02em",
-        }}
-      >
-        {count}
-      </div>
-      <div
-        style={{
-          marginTop: 8,
-          fontSize: 12,
-          color: "#a1a1aa",
-          fontWeight: 500,
-        }}
-      >
-        {hint}
-      </div>
+    <div style={adminSummaryCardStyle}>
+      <span style={adminSummaryLabelStyle}>{label}</span>
+      <span style={adminSummaryValueStyle}>
+        {Number(count || 0).toLocaleString("en-PH")}
+      </span>
+      <span style={adminSummaryHintStyle}>{hint}</span>
     </div>
   );
 }
@@ -659,6 +625,9 @@ export default function AppointmentScheduling() {
   const [showForm, setShowForm] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [focusedAppointmentId, setFocusedAppointmentId] = useState(null);
+  const [adminSearch, setAdminSearch] = useState("");
+  const [adminServiceFilter, setAdminServiceFilter] = useState("all");
+  const [adminActiveTab, setAdminActiveTab] = useState("new");
 
   const [form, setForm] = useState({
     order_id: "",
@@ -770,13 +739,27 @@ export default function AppointmentScheduling() {
       return;
     }
 
+    if (isAdmin) {
+      const status = String(match.status || "").toLowerCase();
+
+      if (status === "pending") {
+        setAdminActiveTab("new");
+      } else if (status === "awaiting_staff_acceptance") {
+        setAdminActiveTab("awaiting");
+      } else if (status === "confirmed") {
+        setAdminActiveTab("confirmed");
+      } else if (["completed", "rejected", "cancelled"].includes(status)) {
+        setAdminActiveTab("history");
+      }
+    }
+
     setFocusedAppointmentId(numericId);
 
     const scrollTimer = setTimeout(() => {
       document
         .getElementById(`appointment-row-${numericId}`)
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 50);
+    }, 90);
 
     const highlightTimer = setTimeout(
       () => setFocusedAppointmentId(null),
@@ -791,7 +774,7 @@ export default function AppointmentScheduling() {
       clearTimeout(scrollTimer);
       clearTimeout(highlightTimer);
     };
-  }, [searchParams, loading, appointments]);
+  }, [searchParams, loading, appointments, isAdmin]);
 
   useEffect(() => {
     const fetchWeeklyAvailability = async () => {
@@ -1035,7 +1018,7 @@ export default function AppointmentScheduling() {
     }
 
     if (Number(appointment.order_id || 0) > 0) {
-      return "POS / Walk-in";
+      return "Walk-in POS";
     }
 
     return "Manual Request";
@@ -1044,93 +1027,138 @@ export default function AppointmentScheduling() {
   const getAssignedStaff = (appointment) =>
     appointment.assigned_staff_name || "Not assigned";
 
+  const matchesAdminFilters = (appointment) => {
+    if (
+      adminServiceFilter !== "all" &&
+      String(appointment.purpose || "").toLowerCase() !== adminServiceFilter
+    ) {
+      return false;
+    }
+
+    const keyword = adminSearch.trim().toLowerCase();
+    if (!keyword) return true;
+
+    return [
+      formatRequestNumber(appointment.id),
+      appointment.order_number,
+      appointment.customer_name,
+      getContact(appointment),
+      humanizePurpose(appointment.purpose),
+      getScope(appointment),
+      getAddress(appointment),
+      getRequestedBy(appointment),
+      getAssignedStaff(appointment),
+    ].some((value) => String(value || "").toLowerCase().includes(keyword));
+  };
+
+  const filteredAdminNewRequests = adminNewRequests.filter(matchesAdminFilters);
+  const filteredAdminAwaitingAcceptance =
+    adminAwaitingAcceptance.filter(matchesAdminFilters);
+  const filteredAdminConfirmedAppointments =
+    adminConfirmedAppointments.filter(matchesAdminFilters);
+  const filteredAdminClosedAppointments =
+    adminClosedAppointments.filter(matchesAdminFilters);
+
+  const adminFilteredCount =
+    adminActiveTab === "new"
+      ? filteredAdminNewRequests.length
+      : adminActiveTab === "awaiting"
+        ? filteredAdminAwaitingAcceptance.length
+        : adminActiveTab === "confirmed"
+          ? filteredAdminConfirmedAppointments.length
+          : adminActiveTab === "history"
+            ? filteredAdminClosedAppointments.length
+            : 0;
+
+  const hasAdminFilters =
+    Boolean(adminSearch.trim()) || adminServiceFilter !== "all";
+
   const renderRequestRefCell = (appointment) => (
     <td style={tdStyle}>
-      <div style={{ fontWeight: 800, color: "#0a0a0a" }}>
+      <div style={{ fontWeight: 700, color: "#18181b" }}>
         {formatRequestNumber(appointment.id)}
       </div>
-      <div style={subTextStyle}>Order: {appointment.order_number || "—"}</div>
+      {appointment.order_number ? (
+        <div style={subTextStyle}>{appointment.order_number}</div>
+      ) : null}
     </td>
   );
-
   const renderCustomerCell = (appointment) => (
     <td style={tdStyle}>
-      <div style={{ fontWeight: 700, color: "#18181b" }}>
-        {appointment.customer_name || "Unlinked Customer"}
+      <div style={{ fontWeight: 600, color: "#18181b" }}>
+        {appointment.customer_name || "Customer"}
       </div>
       <div style={subTextStyle}>{getContact(appointment)}</div>
     </td>
   );
+  const renderServiceCell = (appointment) => {
+    const scope = getScope(appointment);
 
-  const renderServiceCell = (appointment) => (
-    <td style={{ ...tdStyle, minWidth: 190 }}>
-      <div style={{ fontWeight: 700, color: "#18181b" }}>
-        {humanizePurpose(appointment.purpose)}
-      </div>
-      <div style={subTextStyle}>{getScope(appointment)}</div>
-    </td>
-  );
-
+    return (
+      <td style={{ ...tdStyle, minWidth: 180 }}>
+        <div style={{ fontWeight: 600, color: "#18181b" }}>
+          {humanizePurpose(appointment.purpose)}
+        </div>
+        {scope && scope !== "No additional scope details" ? (
+          <div style={subTextStyle}>{scope}</div>
+        ) : null}
+      </td>
+    );
+  };
   const renderPreferredScheduleCell = (appointment) => (
     <td style={tdStyle}>
-      <div style={{ fontWeight: 600, color: "#18181b" }}>
+      <div style={{ fontWeight: 400, color: "#3f3f46" }}>
         {formatDateTime(
           appointment.preferred_date || appointment.scheduled_date,
         )}
       </div>
-      <div style={subTextStyle}>Preferred schedule</div>
     </td>
   );
-
   const renderConfirmedScheduleCell = (appointment) => (
     <td style={tdStyle}>
-      <div style={{ fontWeight: 600, color: "#18181b" }}>
+      <div style={{ fontWeight: 400, color: "#3f3f46" }}>
         {formatDateTime(
           appointment.scheduled_date || appointment.preferred_date,
         )}
       </div>
-      <div style={subTextStyle}>Confirmed / working schedule</div>
     </td>
   );
-
   const renderAddressCell = (appointment) => (
-    <td style={{ ...tdStyle, minWidth: 220 }}>
-      <div style={{ fontWeight: 600, color: "#18181b" }}>
+    <td style={{ ...tdStyle, minWidth: 190 }}>
+      <div style={{ fontWeight: 400, color: "#3f3f46" }}>
         {getAddress(appointment)}
       </div>
-      <div style={subTextStyle}>Service location</div>
     </td>
   );
-
   const renderRequestedByCell = (appointment) => (
     <td style={tdStyle}>
-      <div style={{ fontWeight: 600, color: "#18181b" }}>
+      <div style={{ fontWeight: 400, color: "#3f3f46" }}>
         {getRequestedBy(appointment)}
       </div>
-      <div style={subTextStyle}>Request source / dispatcher</div>
     </td>
   );
-
   const renderAssignedStaffCell = (appointment) => (
     <td style={tdStyle}>
-      <div style={{ fontWeight: 600, color: "#18181b" }}>
+      <div style={{ fontWeight: 500, color: "#3f3f46" }}>
         {getAssignedStaff(appointment)}
       </div>
-      <div style={subTextStyle}>Assigned indoor staff</div>
     </td>
   );
-
   const renderStatusCell = (appointment) => {
     const style = getStatusStyle(appointment.status);
+
     return (
       <td style={tdStyle}>
         <span
           style={{
             ...style,
-            padding: "4px 10px",
-            borderRadius: 999,
+            minHeight: 24,
+            padding: "0 8px",
+            display: "inline-flex",
+            alignItems: "center",
+            borderRadius: 0,
             fontSize: 11,
-            fontWeight: 700,
+            fontWeight: 500,
             whiteSpace: "nowrap",
           }}
         >
@@ -1139,30 +1167,6 @@ export default function AppointmentScheduling() {
       </td>
     );
   };
-
-  const adminSummary = [
-    {
-      label: "New Requests",
-      count: adminNewRequests.length,
-      hint: "Waiting for admin review",
-    },
-    {
-      label: "Awaiting Acceptance",
-      count: adminAwaitingAcceptance.length,
-      hint: "Assigned to staff but not yet accepted",
-    },
-    {
-      label: "Confirmed",
-      count: adminConfirmedAppointments.length,
-      hint: "Operational appointments in progress",
-    },
-    {
-      label: "Closed",
-      count: adminClosedAppointments.length,
-      hint: "Completed, rejected, or cancelled",
-    },
-  ];
-
   const staffSummary = [
     {
       label: "New Assignments",
@@ -1182,7 +1186,13 @@ export default function AppointmentScheduling() {
   ];
 
   return (
-    <div style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div
+      style={
+        isAdmin
+          ? adminPageStyle
+          : { fontFamily: "'Inter', sans-serif" }
+      }
+    >
       {isAdmin ? (
         <>
           <div
@@ -1190,8 +1200,8 @@ export default function AppointmentScheduling() {
               display: "flex",
               justifyContent: "space-between",
               alignItems: "flex-start",
-              gap: 16,
-              marginBottom: 24,
+              gap: 14,
+              marginBottom: 18,
               flexWrap: "wrap",
             }}
           >
@@ -1199,78 +1209,201 @@ export default function AppointmentScheduling() {
               <h2
                 style={{
                   margin: 0,
-                  fontWeight: 800,
+                  fontWeight: 700,
                   fontSize: 24,
-                  color: "#0a0a0a",
+                  lineHeight: 1.2,
+                  color: "#18181b",
                   letterSpacing: "-0.02em",
                 }}
               >
-                Appointment Dispatch & Triage
+                Appointments
               </h2>
               <p
                 style={{
                   margin: "6px 0 0",
-                  color: "#52525b",
+                  color: "#71717a",
                   fontSize: 13,
+                  fontWeight: 400,
                   lineHeight: 1.5,
                   maxWidth: 720,
                 }}
               >
-                Review incoming appointment requests, assign indoor staff, track
-                staff acceptance, and monitor confirmed or closed appointments.
+                Review requests, assign staff, and track appointment status.
               </p>
             </div>
 
             <button
-              style={showForm ? btnGhost : btnPrimary}
+              type="button"
+              style={btnPrimary}
               onClick={() => {
-                setShowForm((prev) => {
-                  const nextState = !prev;
-                  if (nextState) {
-                    setTimeout(() => {
-                      document
-                        .getElementById("manual-appointment-form")
-                        ?.scrollIntoView({
-                          behavior: "smooth",
-                          block: "start",
-                        });
-                    }, 50);
-                  }
-                  return nextState;
-                });
+                setShowForm(true);
                 setError("");
                 setSuccess("");
               }}
             >
               <Plus size={16} />
-              {showForm ? "Close Manual Form" : "Create Manual Appointment"}
+              New appointment
             </button>
           </div>
 
+          <div style={adminSummaryGridStyle}>
+            <AdminSummaryCard
+              label="New Requests"
+              count={adminNewRequests.length}
+              hint="Needs review"
+            />
+
+            <AdminSummaryCard
+              label="Awaiting Staff"
+              count={adminAwaitingAcceptance.length}
+              hint="Waiting for staff"
+            />
+
+            <AdminSummaryCard
+              label="Confirmed"
+              count={adminConfirmedAppointments.length}
+              hint="Active appointments"
+            />
+
+            <AdminSummaryCard
+              label="History"
+              count={adminClosedAppointments.length}
+              hint="Closed records"
+            />
+          </div>
+
+          {adminActiveTab !== "calendar" ? (
+            <div style={adminToolbarStyle}>
+              <div style={adminSearchWrapStyle}>
+                <Search
+                  size={14}
+                  strokeWidth={1.8}
+                  style={adminSearchIconStyle}
+                  aria-hidden="true"
+                />
+                <input
+                  type="search"
+                  value={adminSearch}
+                  onChange={(event) => setAdminSearch(event.target.value)}
+                  placeholder="Search appointments"
+                  style={adminSearchStyle}
+                  aria-label="Search appointments"
+                />
+              </div>
+
+              <select
+                value={adminServiceFilter}
+                onChange={(event) => setAdminServiceFilter(event.target.value)}
+                style={adminFilterSelectStyle}
+                aria-label="Filter appointments by service"
+              >
+                <option value="all">All services</option>
+                <option value="consultation">Consultation</option>
+                <option value="site_measurement">Site Measurement</option>
+                <option value="installation">Installation</option>
+              </select>
+
+              <button
+                type="button"
+                style={btnGhost}
+                onClick={() => {
+                  setAdminSearch("");
+                  setAdminServiceFilter("all");
+                }}
+              >
+                Reset
+              </button>
+
+              <span style={adminResultCountStyle}>
+                {hasAdminFilters
+                  ? `${adminFilteredCount.toLocaleString("en-PH")} matching`
+                  : `${adminFilteredCount.toLocaleString("en-PH")} shown`}
+              </span>
+            </div>
+          ) : null}
+
           <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 16,
-              marginBottom: 24,
-            }}
+            style={adminTabsStyle}
+            role="tablist"
+            aria-label="Appointment views"
           >
-            {adminSummary.map((item) => (
-              <SummaryCard
-                key={item.label}
-                label={item.label}
-                count={item.count}
-                hint={item.hint}
-              />
-            ))}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={adminActiveTab === "new"}
+              style={
+                adminActiveTab === "new"
+                  ? adminTabButtonActiveStyle
+                  : adminTabButtonStyle
+              }
+              onClick={() => setAdminActiveTab("new")}
+            >
+              New Requests
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={adminActiveTab === "awaiting"}
+              style={
+                adminActiveTab === "awaiting"
+                  ? adminTabButtonActiveStyle
+                  : adminTabButtonStyle
+              }
+              onClick={() => setAdminActiveTab("awaiting")}
+            >
+              Awaiting Staff
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={adminActiveTab === "confirmed"}
+              style={
+                adminActiveTab === "confirmed"
+                  ? adminTabButtonActiveStyle
+                  : adminTabButtonStyle
+              }
+              onClick={() => setAdminActiveTab("confirmed")}
+            >
+              Confirmed
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={adminActiveTab === "calendar"}
+              style={
+                adminActiveTab === "calendar"
+                  ? adminTabButtonActiveStyle
+                  : adminTabButtonStyle
+              }
+              onClick={() => setAdminActiveTab("calendar")}
+            >
+              Calendar
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={adminActiveTab === "history"}
+              style={
+                adminActiveTab === "history"
+                  ? adminTabButtonActiveStyle
+                  : adminTabButtonStyle
+              }
+              onClick={() => setAdminActiveTab("history")}
+            >
+              History
+            </button>
           </div>
         </>
       ) : null}
 
-      {isAdmin && (
+      {isAdmin && adminActiveTab === "calendar" && (
         <SectionCard
           title="Appointment Calendar"
-          subtitle="View weekly appointment availability before assigning or creating appointments."
+          subtitle="Check available time slots before assigning or creating appointments."
         >
           <div
             style={{
@@ -1389,7 +1522,7 @@ export default function AppointmentScheduling() {
                         key={`${toYMD(day)}-${slot}`}
                         style={{
                           border: "1px solid #e4e4e7",
-                          height: 90,
+                          height: 72,
                           padding: 10,
                           textAlign: "center",
                           verticalAlign: "middle",
@@ -1422,14 +1555,14 @@ export default function AppointmentScheduling() {
                                   alignItems: "center",
                                   width: "100%",
                                   height: "100%",
-                                  borderRadius: 10,
+                                  borderRadius: 0,
                                   background: "#fafafa",
                                 }}
                               >
                                 <div
                                   style={{
                                     padding: "6px 12px",
-                                    borderRadius: 999,
+                                    borderRadius: 0,
                                     fontSize: 12,
                                     fontWeight: 700,
                                     background: "#f4f4f5",
@@ -1438,15 +1571,6 @@ export default function AppointmentScheduling() {
                                   }}
                                 >
                                   Unavailable
-                                </div>
-                                <div
-                                  style={{
-                                    marginTop: 6,
-                                    fontSize: 11,
-                                    color: "#a1a1aa",
-                                  }}
-                                >
-                                  Closed
                                 </div>
                               </div>
                             );
@@ -1463,14 +1587,14 @@ export default function AppointmentScheduling() {
                                     alignItems: "center",
                                     width: "100%",
                                     height: "100%",
-                                    borderRadius: 10,
+                                    borderRadius: 0,
                                     background: "#f4f4f5",
                                   }}
                                 >
                                   <div
                                     style={{
                                       padding: "6px 12px",
-                                      borderRadius: 999,
+                                      borderRadius: 0,
                                       fontSize: 12,
                                       fontWeight: 700,
                                       background: "#18181b",
@@ -1493,14 +1617,14 @@ export default function AppointmentScheduling() {
                                   alignItems: "center",
                                   width: "100%",
                                   height: "100%",
-                                  borderRadius: 10,
+                                  borderRadius: 0,
                                   background: "#fef2f2",
                                 }}
                               >
                                 <div
                                   style={{
                                     padding: "6px 12px",
-                                    borderRadius: 999,
+                                    borderRadius: 0,
                                     fontSize: 12,
                                     fontWeight: 700,
                                     background: "#fef2f2",
@@ -1509,15 +1633,6 @@ export default function AppointmentScheduling() {
                                   }}
                                 >
                                   Booked
-                                </div>
-                                <div
-                                  style={{
-                                    marginTop: 6,
-                                    fontSize: 11,
-                                    color: "#991b1b",
-                                  }}
-                                >
-                                  Occupied
                                 </div>
                               </div>
                             );
@@ -1533,14 +1648,14 @@ export default function AppointmentScheduling() {
                                   alignItems: "center",
                                   width: "100%",
                                   height: "100%",
-                                  borderRadius: 10,
+                                  borderRadius: 0,
                                   background: "#fafafa",
                                 }}
                               >
                                 <div
                                   style={{
                                     padding: "6px 12px",
-                                    borderRadius: 999,
+                                    borderRadius: 0,
                                     fontSize: 12,
                                     fontWeight: 700,
                                     background: "#f4f4f5",
@@ -1549,15 +1664,6 @@ export default function AppointmentScheduling() {
                                   }}
                                 >
                                   Unavailable
-                                </div>
-                                <div
-                                  style={{
-                                    marginTop: 6,
-                                    fontSize: 11,
-                                    color: "#a1a1aa",
-                                  }}
-                                >
-                                  Past
                                 </div>
                               </div>
                             );
@@ -1572,14 +1678,14 @@ export default function AppointmentScheduling() {
                                 alignItems: "center",
                                 width: "100%",
                                 height: "100%",
-                                borderRadius: 10,
+                                borderRadius: 0,
                                 background: "#f8fffa",
                               }}
                             >
                               <div
                                 style={{
                                   padding: "6px 12px",
-                                  borderRadius: 999,
+                                  borderRadius: 0,
                                   fontSize: 12,
                                   fontWeight: 700,
                                   background: "#f0fdf4",
@@ -1607,7 +1713,7 @@ export default function AppointmentScheduling() {
           style={{
             marginBottom: 20,
             padding: "14px 16px",
-            borderRadius: 12,
+            borderRadius: 0,
             background: "#fef2f2",
             color: "#991b1b",
             border: "1px solid #fecaca",
@@ -1624,7 +1730,7 @@ export default function AppointmentScheduling() {
           style={{
             marginBottom: 20,
             padding: "14px 16px",
-            borderRadius: 12,
+            borderRadius: 0,
             background: "#fafafa",
             color: "#18181b",
             border: "1px solid #e4e4e7",
@@ -1637,10 +1743,34 @@ export default function AppointmentScheduling() {
       ) : null}
 
       {isAdmin && showForm && (
-        <SectionCard
-          id="manual-appointment-form"
-          title="Create Manual Appointment Request"
-          subtitle="Use this form only for walk-in, phone, or manually encoded requests that still need dispatch handling."
+        <div
+          style={adminModalOverlayStyle}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !loading) {
+              setShowForm(false);
+            }
+          }}
+        >
+          <div
+            style={adminModalShellStyle}
+            role="dialog"
+            aria-modal="true"
+            aria-label="New Appointment"
+          >
+            <button
+              type="button"
+              style={adminModalCloseStyle}
+              onClick={() => setShowForm(false)}
+              disabled={loading}
+              aria-label="Close new appointment"
+            >
+              &times;
+            </button>
+
+            <SectionCard
+              id="manual-appointment-form"
+              title="New Appointment"
+          subtitle="For walk-in, phone, or staff-created appointment requests."
         >
           <form onSubmit={handleManualSubmit}>
             <div
@@ -1651,7 +1781,7 @@ export default function AppointmentScheduling() {
               }}
             >
               <div>
-                <label style={labelStyle}>Linked Order ID (optional)</label>
+                <label style={labelStyle}>Order ID (optional)</label>
                 <input
                   style={inputStyle}
                   type="number"
@@ -1664,7 +1794,7 @@ export default function AppointmentScheduling() {
               </div>
 
               <div>
-                <label style={labelStyle}>Linked Customer ID (optional)</label>
+                <label style={labelStyle}>Customer ID (optional)</label>
                 <input
                   style={inputStyle}
                   type="number"
@@ -1680,7 +1810,7 @@ export default function AppointmentScheduling() {
               </div>
 
               <div>
-                <label style={labelStyle}>Assign Indoor Staff (optional)</label>
+                <label style={labelStyle}>Staff (optional)</label>
                 <select
                   style={inputStyle}
                   value={form.assigned_staff_id}
@@ -1702,7 +1832,7 @@ export default function AppointmentScheduling() {
 
               <div>
                 <label style={labelStyle}>
-                  Service Type <span style={{ color: "#ef4444" }}>*</span>
+                  Service <span style={{ color: "#ef4444" }}>*</span>
                 </label>
                 <select
                   style={inputStyle}
@@ -1720,7 +1850,7 @@ export default function AppointmentScheduling() {
 
               <div>
                 <label style={labelStyle}>
-                  Schedule Date <span style={{ color: "#ef4444" }}>*</span>
+                  Date <span style={{ color: "#ef4444" }}>*</span>
                 </label>
                 <input
                   style={inputStyle}
@@ -1753,7 +1883,7 @@ export default function AppointmentScheduling() {
                     color: form.scheduled_date ? "#18181b" : "#a1a1aa",
                   }}
                 >
-                  Schedule Time <span style={{ color: "#ef4444" }}>*</span>
+                  Time <span style={{ color: "#ef4444" }}>*</span>
                 </label>
                 <select
                   style={{
@@ -1829,7 +1959,7 @@ export default function AppointmentScheduling() {
 
             <div style={{ marginTop: 20 }}>
               <label style={labelStyle}>
-                Scope / Notes <span style={{ color: "#ef4444" }}>*</span>
+                Notes <span style={{ color: "#ef4444" }}>*</span>
               </label>
               <textarea
                 style={{
@@ -1842,28 +1972,25 @@ export default function AppointmentScheduling() {
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, notes: e.target.value }))
                 }
-                placeholder="Project description, address, contact number, customer notes, or dispatch remarks"
+                placeholder="Description, address, contact number, or customer notes"
                 required
               />
             </div>
 
             <div
               style={{
-                marginTop: 20,
-                padding: "14px 16px",
-                borderRadius: 12,
+                marginTop: 16,
+                padding: "10px 12px",
+                borderRadius: 0,
                 background: "#fafafa",
                 border: "1px solid #e4e4e7",
-                fontSize: 12,
-                color: "#52525b",
-                lineHeight: 1.55,
+                fontSize: 11.5,
+                fontWeight: 400,
+                color: "#6f7076",
+                lineHeight: 1.45,
               }}
             >
-              <strong style={{ color: "#18181b" }}>Workflow note:</strong>{" "}
-              assigning an indoor staff here only creates an{" "}
-              <strong>Awaiting Staff Acceptance</strong> record. The assigned
-              indoor staff must still accept the appointment before it becomes{" "}
-              <strong>Confirmed</strong>.
+              Assigned staff must accept the appointment before it becomes confirmed.
             </div>
 
             <div
@@ -1885,38 +2012,41 @@ export default function AppointmentScheduling() {
               </button>
               <button style={btnPrimary} type="submit" disabled={loading}>
                 <Plus size={16} />
-                {loading ? "Saving..." : "Save Manual Request"}
+                {loading ? "Saving..." : "Save appointment"}
               </button>
             </div>
           </form>
-        </SectionCard>
+            </SectionCard>
+          </div>
+        </div>
       )}
 
       {isAdmin && (
         <>
+          {adminActiveTab === "new" && (
           <SectionCard
-            title="New Appointment Requests"
-            subtitle="Fresh requests waiting for admin review and staff assignment."
+            title="New Requests"
+            subtitle="Requests that need review and staff assignment."
           >
-            {adminNewRequests.length === 0 ? (
-              <p style={emptyStateStyle}>No new appointment requests.</p>
+            {filteredAdminNewRequests.length === 0 ? (
+              <p style={emptyStateStyle}>No appointments to show.</p>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <div style={adminTableScrollStyle}>
                 <table style={tableStyle}>
                   <thead>
                     <tr style={thRowStyle}>
-                      <th style={thStyle}>Request #</th>
+                      <th style={thStyle}>Request</th>
                       <th style={thStyle}>Customer</th>
-                      <th style={thStyle}>Service Type</th>
-                      <th style={thStyle}>Preferred Schedule</th>
-                      <th style={thStyle}>Location / Address</th>
-                      <th style={thStyle}>Requested By</th>
-                      <th style={thStyle}>Assign Indoor Staff</th>
-                      <th style={thStyle}>Dispatch Actions</th>
+                      <th style={thStyle}>Service</th>
+                      <th style={thStyle}>Schedule</th>
+                      <th style={thStyle}>Location</th>
+                      <th style={thStyle}>Source</th>
+                      <th style={thStyle}>Staff</th>
+                      <th style={thStyle}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {adminNewRequests.map((a) => (
+                    {filteredAdminNewRequests.map((a) => (
                       <tr
                         key={a.id}
                         id={`appointment-row-${a.id}`}
@@ -1936,7 +2066,7 @@ export default function AppointmentScheduling() {
                         {renderAddressCell(a)}
                         {renderRequestedByCell(a)}
 
-                        <td style={{ ...tdStyle, minWidth: 210 }}>
+                        <td style={{ ...tdStyle, minWidth: 180 }}>
                           <select
                             style={inputStyle}
                             value={assignmentDrafts[a.id] ?? ""}
@@ -1947,7 +2077,7 @@ export default function AppointmentScheduling() {
                               }))
                             }
                           >
-                            <option value="">Select indoor staff</option>
+                            <option value="">Select staff</option>
                             {assignedStaff.map((p) => (
                               <option key={p.id} value={p.id}>
                                 {p.name}
@@ -1957,13 +2087,7 @@ export default function AppointmentScheduling() {
                         </td>
 
                         <td style={tdStyle}>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: 8,
-                            }}
-                          >
+                          <div style={adminRowActionsStyle}>
                             <button
                               style={btnGhost}
                               disabled={actionLoadingId === a.id}
@@ -1994,31 +2118,32 @@ export default function AppointmentScheduling() {
               </div>
             )}
           </SectionCard>
+          )}
 
+          {adminActiveTab === "awaiting" && (
           <SectionCard
             title="Awaiting Staff Acceptance"
-            subtitle="Requests already assigned to indoor staff but not yet accepted."
+            subtitle="Assigned requests waiting for staff response."
           >
-            {adminAwaitingAcceptance.length === 0 ? (
+            {filteredAdminAwaitingAcceptance.length === 0 ? (
               <p style={emptyStateStyle}>
-                No appointments are waiting for staff acceptance.
+                No appointments to show.
               </p>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <div style={adminTableScrollStyle}>
                 <table style={tableStyle}>
                   <thead>
                     <tr style={thRowStyle}>
-                      <th style={thStyle}>Request #</th>
+                      <th style={thStyle}>Request</th>
                       <th style={thStyle}>Customer</th>
-                      <th style={thStyle}>Service Type</th>
-                      <th style={thStyle}>Proposed Schedule</th>
-                      <th style={thStyle}>Assigned Indoor Staff</th>
-                      <th style={thStyle}>Status</th>
-                      <th style={thStyle}>Dispatch Actions</th>
+                      <th style={thStyle}>Service</th>
+                      <th style={thStyle}>Schedule</th>
+                      <th style={thStyle}>Staff</th>
+                      <th style={thStyle}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {adminAwaitingAcceptance.map((a) => (
+                    {filteredAdminAwaitingAcceptance.map((a) => (
                       <tr
                         key={a.id}
                         id={`appointment-row-${a.id}`}
@@ -2035,17 +2160,28 @@ export default function AppointmentScheduling() {
                         {renderCustomerCell(a)}
                         {renderServiceCell(a)}
                         {renderConfirmedScheduleCell(a)}
-                        {renderAssignedStaffCell(a)}
-                        {renderStatusCell(a)}
+                        <td style={{ ...tdStyle, minWidth: 180 }}>
+                          <select
+                            style={inputStyle}
+                            value={assignmentDrafts[a.id] ?? ""}
+                            onChange={(event) =>
+                              setAssignmentDrafts((prev) => ({
+                                ...prev,
+                                [a.id]: event.target.value,
+                              }))
+                            }
+                          >
+                            <option value="">Select staff</option>
+                            {assignedStaff.map((staff) => (
+                              <option key={staff.id} value={staff.id}>
+                                {staff.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
 
                         <td style={tdStyle}>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: 8,
-                            }}
-                          >
+                          <div style={adminRowActionsStyle}>
                             <button
                               style={btnGhost}
                               disabled={actionLoadingId === a.id}
@@ -2076,30 +2212,31 @@ export default function AppointmentScheduling() {
               </div>
             )}
           </SectionCard>
+          )}
 
+          {adminActiveTab === "confirmed" && (
           <SectionCard
             title="Confirmed Appointments"
-            subtitle="Appointments already accepted by indoor staff and currently active in operations."
+            subtitle="Accepted appointments currently active."
           >
-            {adminConfirmedAppointments.length === 0 ? (
-              <p style={emptyStateStyle}>No confirmed appointments yet.</p>
+            {filteredAdminConfirmedAppointments.length === 0 ? (
+              <p style={emptyStateStyle}>No appointments to show.</p>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <div style={adminTableScrollStyle}>
                 <table style={tableStyle}>
                   <thead>
                     <tr style={thRowStyle}>
-                      <th style={thStyle}>Request #</th>
+                      <th style={thStyle}>Request</th>
                       <th style={thStyle}>Customer</th>
-                      <th style={thStyle}>Service Type</th>
-                      <th style={thStyle}>Confirmed Schedule</th>
-                      <th style={thStyle}>Location / Address</th>
-                      <th style={thStyle}>Assigned Indoor Staff</th>
-                      <th style={thStyle}>Status</th>
+                      <th style={thStyle}>Service</th>
+                      <th style={thStyle}>Schedule</th>
+                      <th style={thStyle}>Location</th>
+                      <th style={thStyle}>Staff</th>
                       <th style={thStyle}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {adminConfirmedAppointments.map((a) => (
+                    {filteredAdminConfirmedAppointments.map((a) => (
                       <tr
                         key={a.id}
                         id={`appointment-row-${a.id}`}
@@ -2118,16 +2255,9 @@ export default function AppointmentScheduling() {
                         {renderConfirmedScheduleCell(a)}
                         {renderAddressCell(a)}
                         {renderAssignedStaffCell(a)}
-                        {renderStatusCell(a)}
 
                         <td style={tdStyle}>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: 8,
-                            }}
-                          >
+                          <div style={adminRowActionsStyle}>
                             <button
                               style={btnDanger}
                               disabled={actionLoadingId === a.id}
@@ -2150,29 +2280,31 @@ export default function AppointmentScheduling() {
               </div>
             )}
           </SectionCard>
+          )}
 
+          {adminActiveTab === "history" && (
           <SectionCard
-            title="Closed Appointment History"
-            subtitle="Completed, rejected, and cancelled appointment records for audit and review."
+            title="Appointment History"
+            subtitle="Completed, rejected, and cancelled appointments."
           >
-            {adminClosedAppointments.length === 0 ? (
-              <p style={emptyStateStyle}>No closed appointment history yet.</p>
+            {filteredAdminClosedAppointments.length === 0 ? (
+              <p style={emptyStateStyle}>No appointments to show.</p>
             ) : (
-              <div style={{ overflowX: "auto" }}>
+              <div style={adminTableScrollStyle}>
                 <table style={tableStyle}>
                   <thead>
                     <tr style={thRowStyle}>
-                      <th style={thStyle}>Request #</th>
+                      <th style={thStyle}>Request</th>
                       <th style={thStyle}>Customer</th>
-                      <th style={thStyle}>Service Type</th>
-                      <th style={thStyle}>Final Schedule</th>
-                      <th style={thStyle}>Assigned Indoor Staff</th>
+                      <th style={thStyle}>Service</th>
+                      <th style={thStyle}>Schedule</th>
+                      <th style={thStyle}>Staff</th>
                       <th style={thStyle}>Status</th>
-                      <th style={thStyle}>Last Updated</th>
+                      <th style={thStyle}>Updated</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {adminClosedAppointments.map((a) => (
+                    {filteredAdminClosedAppointments.map((a) => (
                       <tr
                         key={a.id}
                         id={`appointment-row-${a.id}`}
@@ -2203,6 +2335,8 @@ export default function AppointmentScheduling() {
               </div>
             )}
           </SectionCard>
+          )}
+
         </>
       )}
 
@@ -2578,56 +2712,269 @@ export default function AppointmentScheduling() {
 
 // ── Reusable Inline Styles ───────────────────────────────────────────────
 
-const btnPrimary = {
+const adminSummaryGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 10,
+  marginBottom: 10,
+};
+
+const adminSummaryCardStyle = {
+  minHeight: 82,
+  padding: "13px 15px",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  justifyContent: "center",
+  boxSizing: "border-box",
+  border: "1px solid #e4e4e7",
+  borderRadius: 0,
+  background: "#ffffff",
+  color: "#18181b",
+  fontFamily: "inherit",
+  textAlign: "left",
+  cursor: "default",
+  boxShadow: "none",
+};
+
+const adminSummaryLabelStyle = {
+  color: "#6b6c72",
+  fontSize: 9.5,
+  fontWeight: 600,
+  lineHeight: 1.2,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+};
+
+const adminSummaryValueStyle = {
+  marginTop: 7,
+  color: "#18181b",
+  fontSize: 25,
+  fontWeight: 700,
+  lineHeight: 1,
+  letterSpacing: "-0.02em",
+  fontVariantNumeric: "tabular-nums",
+};
+
+const adminSummaryHintStyle = {
+  marginTop: 6,
+  color: "#8a8b90",
+  fontSize: 10.5,
+  fontWeight: 400,
+  lineHeight: 1.35,
+};
+
+const adminTabsStyle = {
+  display: "flex",
+  alignItems: "stretch",
+  gap: 0,
+  minHeight: 40,
+  marginBottom: 10,
+  overflowX: "auto",
+  borderBottom: "1px solid #d9d9dd",
+  scrollbarWidth: "thin",
+};
+
+const adminTabButtonStyle = {
+  minHeight: 40,
+  padding: "8px 13px",
   display: "inline-flex",
   alignItems: "center",
-  gap: 8,
-  padding: "9px 16px",
-  background: "#18181b",
-  color: "#fff",
-  border: "1px solid #18181b",
-  borderRadius: 8,
+  gap: 6,
+  flex: "0 0 auto",
+  border: 0,
+  borderBottom: "2px solid transparent",
+  background: "#ffffff",
+  color: "#71717a",
+  fontFamily: "inherit",
+  fontSize: 12,
+  fontWeight: 400,
+  lineHeight: 1,
   cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
-  transition: "background 0.2s",
+  whiteSpace: "nowrap",
+};
+
+const adminTabButtonActiveStyle = {
+  ...adminTabButtonStyle,
+  color: "#18181b",
+  fontWeight: 600,
+  borderBottom: "2px solid #18181b",
+};
+
+const adminModalOverlayStyle = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 1200,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 20,
+  background: "rgba(0, 0, 0, 0.42)",
+};
+
+const adminModalShellStyle = {
+  position: "relative",
+  width: "min(860px, 100%)",
+  maxHeight: "88vh",
+  overflowY: "auto",
+  background: "#ffffff",
+  border: "1px solid #d4d4d8",
+};
+
+const adminModalCloseStyle = {
+  position: "absolute",
+  top: 9,
+  right: 10,
+  zIndex: 2,
+  width: 32,
+  height: 32,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: "1px solid #d4d4d8",
+  borderRadius: 0,
+  background: "#ffffff",
+  color: "#52525b",
+  fontFamily: "inherit",
+  fontSize: 20,
+  fontWeight: 400,
+  lineHeight: 1,
+  cursor: "pointer",
+};
+
+const adminToolbarStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+  padding: "10px 12px",
+  marginBottom: 12,
+  background: "#ffffff",
+  border: "1px solid #e4e4e7",
+};
+
+const adminSearchWrapStyle = {
+  position: "relative",
+  flex: "0 1 360px",
+  width: 360,
+  maxWidth: "100%",
+};
+
+const adminSearchIconStyle = {
+  position: "absolute",
+  left: 11,
+  top: "50%",
+  transform: "translateY(-50%)",
+  color: "#71717a",
+  pointerEvents: "none",
+};
+
+const adminSearchStyle = {
+  ...inputStyle,
+  width: "100%",
+  paddingLeft: 34,
+};
+
+const adminFilterSelectStyle = {
+  ...inputStyle,
+  flex: "0 0 170px",
+  width: 170,
+};
+
+const adminResultCountStyle = {
+  marginLeft: "auto",
+  paddingRight: 2,
+  color: "#71717a",
+  fontSize: 11,
+  fontWeight: 400,
+  fontVariantNumeric: "tabular-nums",
+  whiteSpace: "nowrap",
+};
+const adminPageStyle = {
+  width: "min(100%, 1480px)",
+  maxWidth: 1480,
+  margin: "0 auto",
+  color: "#18181b",
+  fontVariantNumeric: "tabular-nums",
+};
+
+const adminTableScrollStyle = {
+  width: "100%",
+  maxHeight: "calc(100vh - 320px)",
+  overflow: "auto",
+};
+
+const adminRowActionsStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 7,
+  flexWrap: "nowrap",
+  whiteSpace: "nowrap",
+};
+
+const btnPrimary = {
+  minHeight: 36,
+  padding: "0 14px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  border: "1px solid #18181b",
+  borderRadius: 0,
+  background: "#18181b",
+  color: "#ffffff",
+  fontFamily: "inherit",
+  fontSize: 12,
+  lineHeight: 1,
+  fontWeight: 600,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
 };
 
 const btnGhost = {
+  minHeight: 34,
+  padding: "0 11px",
   display: "inline-flex",
   alignItems: "center",
-  gap: 8,
-  padding: "9px 14px",
-  background: "#f4f4f5",
+  justifyContent: "center",
+  gap: 6,
+  border: "1px solid #d4d4d8",
+  borderRadius: 0,
+  background: "#ffffff",
   color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  fontFamily: "inherit",
+  fontSize: 11.5,
+  lineHeight: 1,
+  fontWeight: 600,
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 700,
-  transition: "background 0.2s",
+  whiteSpace: "nowrap",
 };
 
 const btnDanger = {
+  minHeight: 34,
+  padding: "0 11px",
   display: "inline-flex",
   alignItems: "center",
-  gap: 8,
-  padding: "9px 14px",
-  background: "#fef2f2",
+  justifyContent: "center",
+  gap: 6,
+  border: "1px solid #efb6b6",
+  borderRadius: 0,
+  background: "#ffffff",
   color: "#991b1b",
-  border: "1px solid #fecaca",
-  borderRadius: 8,
+  fontFamily: "inherit",
+  fontSize: 11.5,
+  lineHeight: 1,
+  fontWeight: 600,
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 700,
-  transition: "background 0.2s",
+  whiteSpace: "nowrap",
 };
 
 const tableStyle = {
   width: "100%",
+  minWidth: 1040,
   borderCollapse: "collapse",
-  fontSize: 13,
-  minWidth: 800,
+  fontSize: 12.5,
+  fontVariantNumeric: "tabular-nums",
 };
 
 const thRowStyle = {
@@ -2636,22 +2983,32 @@ const thRowStyle = {
 };
 
 const thStyle = {
-  textAlign: "left",
-  padding: "14px 16px",
-  fontSize: 10,
-  fontWeight: 800,
+  position: "sticky",
+  top: 0,
+  zIndex: 2,
+  padding: "11px 12px",
+  background: "#fafafa",
   color: "#71717a",
+  textAlign: "left",
+  fontSize: 9.5,
+  fontWeight: 600,
+  lineHeight: 1.3,
+  letterSpacing: "0.08em",
   textTransform: "uppercase",
-  letterSpacing: "1px",
+  whiteSpace: "nowrap",
 };
 
 const trStyle = {
-  borderBottom: "1px solid #f4f4f5",
+  borderBottom: "1px solid #eeeeef",
   background: "#ffffff",
 };
 
 const tdStyle = {
-  padding: "16px",
-  color: "#18181b",
+  padding: "12px 12px",
+  color: "#3f3f46",
+  fontSize: 12.5,
+  fontWeight: 400,
+  lineHeight: 1.35,
+  fontVariantNumeric: "tabular-nums",
   verticalAlign: "middle",
 };

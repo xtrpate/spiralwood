@@ -1,5 +1,16 @@
 import React from "react";
 
+const SHOP_CATEGORIES = [
+  { id: 1, name: "Bedroom Furniture" },
+  { id: 2, name: "Kitchen Furniture" },
+  { id: 3, name: "Bathroom Furniture" },
+  { id: 4, name: "Office Furniture" },
+  { id: 5, name: "Living Room Furniture" },
+  { id: 6, name: "Dining Room Furniture" },
+  { id: 7, name: "Wardrobe and Closet" },
+  { id: 8, name: "TV Console and Storage" },
+];
+
 export function BlueprintPublishModal({
   publishing,
   setPublishModal,
@@ -29,7 +40,7 @@ export function BlueprintPublishModal({
         style={{
           background: "#ffffff",
           width: "min(520px, 100%)",
-          borderRadius: 12,
+          borderRadius: 2,
           boxShadow: "0 24px 70px rgba(2, 6, 23, 0.28)",
           border: "1px solid #dfe3e8",
           overflow: "hidden",
@@ -105,7 +116,7 @@ export function BlueprintPublishModal({
                 minHeight: 46,
                 padding: "0 14px",
                 border: "1px solid #cfd6df",
-                borderRadius: 8,
+                borderRadius: 2,
                 boxSizing: "border-box",
                 outline: "none",
                 fontSize: 13,
@@ -143,7 +154,7 @@ export function BlueprintPublishModal({
                 width: "100%",
                 padding: "12px 14px",
                 border: "1px solid #cfd6df",
-                borderRadius: 8,
+                borderRadius: 2,
                 boxSizing: "border-box",
                 outline: "none",
                 fontSize: 13,
@@ -152,6 +163,54 @@ export function BlueprintPublishModal({
                 resize: "vertical",
               }}
             />
+          </div>
+
+          <div style={{ marginBottom: 18 }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: 11,
+                fontWeight: 800,
+                marginBottom: 7,
+                color: "#334155",
+                textTransform: "uppercase",
+                letterSpacing: "0.09em",
+              }}
+            >
+              Category <span style={{ color: "#b42318" }}>*</span>
+            </label>
+            <select
+              required
+              value={publishForm.category_id || ""}
+              onChange={(event) =>
+                setPublishForm({
+                  ...publishForm,
+                  category_id: event.target.value,
+                })
+              }
+              style={{
+                width: "100%",
+                minHeight: 46,
+                padding: "0 14px",
+                border: "1px solid #cfd6df",
+                borderRadius: 2,
+                boxSizing: "border-box",
+                outline: "none",
+                fontSize: 13,
+                color: "#0f172a",
+                background: "#ffffff",
+              }}
+            >
+              <option value="">Select furniture category</option>
+              {SHOP_CATEGORIES.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+            <div style={{ marginTop: 6, fontSize: 11, color: "#64748b" }}>
+              This category is used by Product Management filters after publishing.
+            </div>
           </div>
 
           <div
@@ -167,7 +226,7 @@ export function BlueprintPublishModal({
                 padding: "12px 14px",
                 background: "#f8fafc",
                 border: "1px solid #e2e8f0",
-                borderRadius: 8,
+                borderRadius: 2,
               }}
             >
               <div style={{ fontSize: 10, color: "#64748b", fontWeight: 800 }}>
@@ -182,7 +241,7 @@ export function BlueprintPublishModal({
                 padding: "12px 14px",
                 background: "#f8fafc",
                 border: "1px solid #e2e8f0",
-                borderRadius: 8,
+                borderRadius: 2,
               }}
             >
               <div style={{ fontSize: 10, color: "#64748b", fontWeight: 800 }}>
@@ -207,7 +266,7 @@ export function BlueprintPublishModal({
                 background: "#ffffff",
                 border: "1px solid #cfd6df",
                 color: "#0f172a",
-                borderRadius: 8,
+                borderRadius: 2,
                 cursor: publishing ? "not-allowed" : "pointer",
                 fontSize: 13,
                 fontWeight: 700,
@@ -224,7 +283,7 @@ export function BlueprintPublishModal({
                 background: "#111827",
                 color: "#ffffff",
                 border: "1px solid #111827",
-                borderRadius: 8,
+                borderRadius: 2,
                 cursor: publishing ? "not-allowed" : "pointer",
                 fontWeight: 800,
                 fontSize: 13,
