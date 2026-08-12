@@ -269,12 +269,14 @@ export function useBlueprintPersistence({
         return;
       }
 
-      const automaticPrice = Math.max(
-        0,
-        Math.round(
-          Number(estimatedPrice !== null ? estimatedPrice : designTotal || 0),
-        ),
-      );
+      const categoryId = Number(publishForm.category_id || 0);
+      if (!Number.isInteger(categoryId) || categoryId <= 0) {
+        toast.error("Select a furniture category before publishing.");
+        return;
+      }
+
+      // Blueprint gallery templates intentionally have no fixed selling price.
+      const automaticPrice = 0;
 
       const saveResult = await saveDesign();
       if (!saveResult?.ok) {
@@ -290,13 +292,13 @@ export function useBlueprintPersistence({
           description: String(
             publishForm.description || "Custom blueprint product",
           ).trim(),
-          category_id: 2,
+          category_id: categoryId,
           type: "blueprint",
           online_price: automaticPrice,
           walkin_price: automaticPrice,
           production_cost: 0,
-          stock: 999,
-          stock_status: "in_stock",
+          stock: 0,
+          stock_status: "out_of_stock",
           reorder_point: 0,
           is_featured: 0,
           is_published: 1,

@@ -61,9 +61,14 @@ exports.getAll = async (req, res) => {
     }
 
     const [products] = await pool.query(
-      `SELECT p.*, c.name AS category_name
+      `SELECT p.*, c.name AS category_name,
+              b.title AS blueprint_title,
+              b.thumbnail_url AS blueprint_thumbnail_url,
+              b.design_data AS blueprint_design_data,
+              b.view_3d_data AS blueprint_view_3d_data
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN blueprints b ON b.id = p.blueprint_id
        WHERE ${where.join(" AND ")}
        ORDER BY 
          CASE 
@@ -94,8 +99,14 @@ exports.getAll = async (req, res) => {
 exports.getOne = async (req, res) => {
   try {
     const [[product]] = await pool.query(
-      `SELECT p.*, c.name AS category_name
-       FROM products p LEFT JOIN categories c ON c.id = p.category_id
+      `SELECT p.*, c.name AS category_name,
+              b.title AS blueprint_title,
+              b.thumbnail_url AS blueprint_thumbnail_url,
+              b.design_data AS blueprint_design_data,
+              b.view_3d_data AS blueprint_view_3d_data
+       FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN blueprints b ON b.id = p.blueprint_id
        WHERE p.id = ?`,
       [parseInt(req.params.id)],
     );
