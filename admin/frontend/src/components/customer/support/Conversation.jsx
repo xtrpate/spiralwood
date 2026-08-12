@@ -1,5 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SendHorizontal, Ticket } from "lucide-react";
+import useAuthStore from "../../../store/authStore";
+import { buildAssetUrl } from "../../../services/api";
 
 export default function Conversation({
   ticket,
@@ -7,7 +9,38 @@ export default function Conversation({
   onReply,
   onClose,
 }) {
+  const { user } = useAuthStore();
+
   const [reply, setReply] = useState("");
+  const [avatarFailed, setAvatarFailed] = useState(false);
+
+  useEffect(() => {
+    setAvatarFailed(false);
+  }, [user?.profile_photo]);
+
+  const getAvatarUrl = (value) => {
+    const raw = String(value || "").trim();
+
+    if (!raw) return "";
+
+    if (/^(https?:|data:|blob:)/i.test(raw)) {
+      return buildAssetUrl(raw);
+    }
+
+    const cleaned = raw.replace(/\\/g, "/").replace(/^\/+/, "");
+
+    const withPrefix = cleaned.startsWith("uploads/avatars/")
+      ? `/${cleaned}`
+      : `/uploads/avatars/${cleaned}`;
+
+    return buildAssetUrl(withPrefix);
+  };
+
+  const profileImage =
+    user?.profile_photo && !avatarFailed
+      ? getAvatarUrl(user.profile_photo)
+      : "";
+
   const [sending, setSending] = useState(false);
   const textareaRef = useRef(null);
   if (!ticket) {
@@ -100,7 +133,16 @@ export default function Conversation({
                     </div>
 
                     <div className="support-conversation-avatar">
-                      {initials}
+                      {profileImage ? (
+                        <img
+                          src={profileImage}
+                          alt="Your profile"
+                          className="support-conversation-avatar-img"
+                          onError={() => setAvatarFailed(true)}
+                        />
+                      ) : (
+                        initials
+                      )}
                     </div>
                   </div>
 

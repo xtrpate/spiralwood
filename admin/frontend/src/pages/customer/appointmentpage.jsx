@@ -212,25 +212,15 @@ export default function AppointmentPage() {
   useEffect(() => {
     const fetchWeeklyAvailability = async () => {
       setLoadingSlots(true);
+
       try {
-        const days = Array.from({ length: 7 }).map((_, i) => {
-          const d = new Date(weekStart);
-          d.setDate(d.getDate() + i);
-          return toYMD(d);
-        });
+        const startDate = toYMD(weekStart);
 
-        // Ping the backend for all 7 days simultaneously
-        const promises = days.map((dateStr) =>
-          api.get(`/customer/appointments/availability?date=${dateStr}`),
+        const res = await api.get(
+          `/customer/appointments/availability/weekly?start=${startDate}`,
         );
-        const results = await Promise.all(promises);
 
-        const newBooked = {};
-        days.forEach((dateStr, i) => {
-          newBooked[dateStr] = results[i].data.booked || [];
-        });
-
-        setBookedSlots(newBooked);
+        setBookedSlots(res.data || {});
       } catch (err) {
         console.error("Failed to fetch weekly slots", err);
         setBookedSlots({});

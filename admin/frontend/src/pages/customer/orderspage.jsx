@@ -213,12 +213,7 @@ function TrackingList({ order }) {
   );
 }
 
-function OrderModal({
-  orderId,
-  onClose,
-  onConfirmOrder,
-  onCancelOrder,
-}) {
+function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -430,12 +425,7 @@ function OrderModal({
                                 aria-hidden="true"
                                 focusable="false"
                               >
-                                <rect
-                                  x="8"
-                                  y="5"
-                                  width="32"
-                                  height="38"
-                                />
+                                <rect x="8" y="5" width="32" height="38" />
                                 <path d="M14 14h20M14 20h20M14 26h9M27 26h7M14 32h20M18 10v28M31 10v28" />
                               </svg>
                               <span>Blueprint</span>
@@ -453,9 +443,7 @@ function OrderModal({
                                 : "Custom Blueprint Order"
                               : item.product_name}
                           </div>
-                          <div className="om-item-qty">
-                            Qty {item.quantity}
-                          </div>
+                          <div className="om-item-qty">Qty {item.quantity}</div>
                         </div>
 
                         <div className="om-item-price">
@@ -559,7 +547,9 @@ function OrderModal({
                         <button
                           className="order-inline-btn order-inline-btn-outline om-action-btn"
                           onClick={() => onCancelOrder(order.id)}
-                        >Cancel Order</button>
+                        >
+                          Cancel Order
+                        </button>
                       )}
 
                       {canCustomerConfirm && (
@@ -567,7 +557,9 @@ function OrderModal({
                           <button
                             className="order-inline-btn order-inline-btn-primary om-action-btn"
                             onClick={() => onConfirmOrder(order.id)}
-                          >Confirm Received</button>
+                          >
+                            Confirm Received
+                          </button>
                         </>
                       )}
                     </div>
@@ -753,9 +745,7 @@ export default function OrdersPage() {
       <div className="orders-hero">
         <div>
           <h1>My Orders</h1>
-          <p>
-            Track your orders, payments, and delivery status.
-          </p>
+          <p>Track your orders, payments, and delivery status.</p>
         </div>
 
         <button
@@ -786,74 +776,66 @@ export default function OrdersPage() {
       </div>
 
       {loading ? (
-        <div
-          style={{
-            animation: "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-            marginTop: "24px",
-          }}
-        >
+        <div className="orders-skeleton-list">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="order-card"
-              style={{
-                height: "180px",
-                background: "#ffffff",
-                borderColor: "#e5e7eb",
-                marginBottom: "16px",
-                padding: "24px",
-              }}
-            >
-              <div
-                style={{
-                  height: "24px",
-                  width: "200px",
-                  background: "#f3f4f6",
-                  marginBottom: "16px",
-                }}
-              />
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(4, 1fr)",
-                  gap: "16px",
-                }}
-              >
-                <div style={{ height: "60px", background: "#f3f4f6" }} />
-                <div style={{ height: "60px", background: "#f3f4f6" }} />
-                <div style={{ height: "60px", background: "#f3f4f6" }} />
-                <div style={{ height: "60px", background: "#f3f4f6" }} />
+            <div className="orders-skeleton-card" key={i}>
+              {/* Header */}
+              <div className="orders-skeleton-head">
+                <div className="orders-skeleton-head-left">
+                  <div className="orders-skeleton-line orders-skeleton-order-number" />
+                  <div className="orders-skeleton-line orders-skeleton-date" />
+                </div>
+
+                <div className="orders-skeleton-badge" />
+              </div>
+
+              {/* Product */}
+              <div className="orders-skeleton-items">
+                <div className="orders-skeleton-item">
+                  <div className="orders-skeleton-image" />
+
+                  <div className="orders-skeleton-product">
+                    <div className="orders-skeleton-line orders-skeleton-product-name" />
+                  </div>
+
+                  <div className="orders-skeleton-qty" />
+
+                  <div className="orders-skeleton-price" />
+                </div>
+              </div>
+
+              {/* Bottom */}
+              <div className="orders-skeleton-bottom">
+                <div className="orders-skeleton-status">
+                  <div className="orders-skeleton-line orders-skeleton-status-title" />
+                  <div className="orders-skeleton-line orders-skeleton-status-desc" />
+                </div>
+
+                <div className="orders-skeleton-bottom-right">
+                  <div className="orders-skeleton-total">
+                    <div className="orders-skeleton-total-label" />
+                    <div className="orders-skeleton-total-value" />
+                  </div>
+
+                  <div className="orders-skeleton-action" />
+                </div>
               </div>
             </div>
           ))}
-          <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="orders-empty-premium">
-          <div className="orders-empty-icon-wrapper">
-            <PackageSearch size={48} strokeWidth={1.5} />
-          </div>
-          <h2>
-            {filter === "all" ? "No orders found" : `No ${filter} orders`}
-          </h2>
-          <p>
-            {filter === "all"
-              ? "You haven't placed any orders yet. Once you do, they will appear here so you can track their status and delivery."
-              : `You currently don't have any orders in the "${filter}" status.`}
-          </p>
 
-          {filter === "all" && (
-            <div className="orders-empty-actions">
-              <button
-                type="button"
-                className="orders-primary-btn"
-                onClick={() => navigate("/catalog")}
-              >
-                <ShoppingBag size={16} />
-                Start Shopping
-              </button>
-            </div>
-          )}
+          <style>{`
+      @keyframes ordersSkeletonShimmer {
+        0% {
+          opacity: 0.55;
+        }
+        50% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0.55;
+        }
+      }
+    `}</style>
         </div>
       ) : (
         <div className="orders-list">
@@ -872,7 +854,6 @@ export default function OrdersPage() {
             const canCustomerConfirm =
               order.status === "delivered" &&
               String(order.payment_status || "").toLowerCase() === "paid";
-
 
             const canPayNow =
               String(order?.status || "").toLowerCase() === "pending" &&
@@ -969,12 +950,7 @@ export default function OrdersPage() {
                                   aria-hidden="true"
                                   focusable="false"
                                 >
-                                  <rect
-                                    x="8"
-                                    y="5"
-                                    width="32"
-                                    height="38"
-                                  />
+                                  <rect x="8" y="5" width="32" height="38" />
                                   <path d="M14 14h20M14 20h20M14 26h9M27 26h7M14 32h20M18 10v28M31 10v28" />
                                 </svg>
                                 <span>Blueprint</span>
@@ -1094,7 +1070,8 @@ export default function OrdersPage() {
                   </div>
                 </div>
               </div>
-            );          })}
+            );
+          })}
         </div>
       )}
 

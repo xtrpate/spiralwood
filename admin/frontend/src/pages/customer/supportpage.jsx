@@ -132,23 +132,47 @@ export default function SupportPage() {
         </section>
 
         <section className="support-summary-grid">
-          <SummaryCard
-            label="Open"
-            value={stats.open}
-            subtitle="Active requests"
-          />
+          {loading ? (
+            <>
+              <div className="support-summary-card support-summary-skeleton">
+                <div className="support-skeleton-line support-summary-skeleton-label" />
+                <div className="support-skeleton-line support-summary-skeleton-value" />
+                <div className="support-skeleton-line support-summary-skeleton-subtitle" />
+              </div>
 
-          <SummaryCard
-            label="Waiting for you"
-            value={stats.awaiting}
-            subtitle="Needs your reply"
-          />
+              <div className="support-summary-card support-summary-skeleton">
+                <div className="support-skeleton-line support-summary-skeleton-label" />
+                <div className="support-skeleton-line support-summary-skeleton-value" />
+                <div className="support-skeleton-line support-summary-skeleton-subtitle" />
+              </div>
 
-          <SummaryCard
-            label="Resolved"
-            value={stats.resolved}
-            subtitle="Finished requests"
-          />
+              <div className="support-summary-card support-summary-skeleton">
+                <div className="support-skeleton-line support-summary-skeleton-label" />
+                <div className="support-skeleton-line support-summary-skeleton-value" />
+                <div className="support-skeleton-line support-summary-skeleton-subtitle" />
+              </div>
+            </>
+          ) : (
+            <>
+              <SummaryCard
+                label="Open"
+                value={stats.open}
+                subtitle="Active requests"
+              />
+
+              <SummaryCard
+                label="Waiting for you"
+                value={stats.awaiting}
+                subtitle="Needs your reply"
+              />
+
+              <SummaryCard
+                label="Resolved"
+                value={stats.resolved}
+                subtitle="Finished requests"
+              />
+            </>
+          )}
         </section>
 
         {showForm && (
@@ -206,7 +230,20 @@ export default function SupportPage() {
             </div>
 
             {loading ? (
-              <div className="support-loading">Loading tickets...</div>
+              <div className="support-ticket-skeleton-list">
+                {[1, 2, 3].map((i) => (
+                  <div className="support-ticket-skeleton-card" key={i}>
+                    <div className="support-skeleton-line support-skeleton-subject" />
+
+                    <div className="support-skeleton-line support-skeleton-category" />
+
+                    <div className="support-skeleton-footer-row">
+                      <div className="support-skeleton-line support-skeleton-date" />
+                      <div className="support-skeleton-badge" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : tickets.length === 0 ? (
               <div className="support-empty">
                 <Ticket size={56} strokeWidth={1.5} color="#71717a" />
@@ -254,34 +291,82 @@ export default function SupportPage() {
           </aside>
 
           <section className="support-conversation-section">
-            <Conversation
-              ticket={selectedTicket}
-              messages={messages}
-              onReply={async (reply) => {
-                if (!selectedTicket) return;
+            {loading ? (
+              <div className="support-conversation-skeleton">
+                <div className="support-conversation-skeleton-header">
+                  <div>
+                    <div className="support-skeleton-line support-skeleton-title" />
+                    <div className="support-skeleton-line support-skeleton-meta" />
+                  </div>
 
-                await supportService.reply(selectedTicket.id, reply);
+                  <div className="support-skeleton-button" />
+                </div>
 
-                const data = await supportService.getTicket(selectedTicket.id);
+                <div className="support-conversation-skeleton-body">
+                  <div className="support-skeleton-message support-message-left">
+                    <div className="support-skeleton-avatar" />
+                    <div className="support-skeleton-message-content">
+                      <div className="support-skeleton-line support-skeleton-name" />
+                      <div className="support-skeleton-bubble support-bubble-small" />
+                    </div>
+                  </div>
 
-                setSelectedTicket(data.ticket);
-                setMessages(data.messages);
+                  <div className="support-skeleton-message support-message-right">
+                    <div className="support-skeleton-message-content">
+                      <div className="support-skeleton-line support-skeleton-name support-name-right" />
+                      <div className="support-skeleton-bubble support-bubble-large" />
+                    </div>
+                    <div className="support-skeleton-avatar" />
+                  </div>
 
-                await loadTickets();
-              }}
-              onClose={async () => {
-                if (!selectedTicket) return;
+                  <div className="support-skeleton-message support-message-left">
+                    <div className="support-skeleton-avatar" />
+                    <div className="support-skeleton-message-content">
+                      <div className="support-skeleton-line support-skeleton-name" />
+                      <div className="support-skeleton-bubble support-bubble-medium" />
+                    </div>
+                  </div>
+                </div>
 
-                await supportService.close(selectedTicket.id);
+                <div className="support-reply-skeleton">
+                  <div className="support-skeleton-reply-input" />
+                  <div className="support-skeleton-send-button" />
+                </div>
+              </div>
+            ) : (
+              <Conversation
+                ticket={selectedTicket}
+                messages={messages}
+                onReply={async (reply) => {
+                  if (!selectedTicket) return;
 
-                const data = await supportService.getTicket(selectedTicket.id);
+                  await supportService.reply(selectedTicket.id, reply);
 
-                setSelectedTicket(data.ticket);
-                setMessages(data.messages);
+                  const data = await supportService.getTicket(
+                    selectedTicket.id,
+                  );
 
-                await loadTickets();
-              }}
-            />
+                  setSelectedTicket(data.ticket);
+                  setMessages(data.messages);
+
+                  await loadTickets();
+                }}
+                onClose={async () => {
+                  if (!selectedTicket) return;
+
+                  await supportService.close(selectedTicket.id);
+
+                  const data = await supportService.getTicket(
+                    selectedTicket.id,
+                  );
+
+                  setSelectedTicket(data.ticket);
+                  setMessages(data.messages);
+
+                  await loadTickets();
+                }}
+              />
+            )}
           </section>
         </section>
       </div>

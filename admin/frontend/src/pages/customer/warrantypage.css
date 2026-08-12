@@ -1712,7 +1712,8 @@
 }
 
 .warranty-center-v21 .warranty-form-wrap {
-  max-width: 980px;
+  max-width: none;
+  width: 100%;
 }
 
 .warranty-center-v21 .warranty-form-card {
@@ -1738,9 +1739,9 @@
 }
 
 .warranty-open-btn-v21 {
-  width: auto !important;
-  min-width: 180px;
-  max-width: 240px;
+  width: 100% !important;
+  min-width: 0;
+  max-width: none;
   padding: 0 18px;
 }
 
@@ -1868,4 +1869,25 @@
   .warranty-center-v21 .wclaim-right {
     min-width: 0;
   }
+}
+
+/* Full-width Warranty Center when filing a claim */
+.warranty-center-v21.is-file-tab {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.warranty-center-v21.is-file-tab .warranty-left-column {
+  width: 100%;
+  min-width: 0;
+}
+
+.warranty-center-v21.is-file-tab .warranty-form-wrap {
+  width: 100%;
+  min-width: 0;
+}
+
+.warranty-center-v21.is-file-tab .warranty-open-btn-v21 {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
 }

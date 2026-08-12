@@ -34,4 +34,11 @@ router.get(
   appointmentController.getAvailability,
 );
 
+router.get(
+  "/availability/weekly",
+  authenticate,
+  requireCustomer,
+  appointmentController.getWeeklyAvailability,
+);
+
 module.exports = router;

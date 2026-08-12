@@ -113,7 +113,7 @@ export default function WarrantyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState("");
-  const [showForm, setShowForm] = useState(true);
+  const [showForm, setShowForm] = useState(false);
   const [warrantyCenterTab, setWarrantyCenterTab] = useState("file");
 
   const [claims, setClaims] = useState([]);
@@ -158,7 +158,9 @@ export default function WarrantyPage() {
       claims
         .filter(
           (claim) =>
-            String(claim.status || "").trim().toLowerCase() !== "cancelled",
+            String(claim.status || "")
+              .trim()
+              .toLowerCase() !== "cancelled",
         )
         .map((claim) => String(claim.order_id || "").trim())
         .filter(Boolean),
@@ -321,7 +323,7 @@ export default function WarrantyPage() {
     <div className="warranty-page">
       <div className="warranty-shell">
         {/* 👉 STATIC HEADER - ALWAYS VISIBLE */}
-                <section className="warranty-page-head">
+        <section className="warranty-page-head">
           <div className="warranty-page-copy">
             <h1>Warranty & Claims</h1>
             <p>
@@ -422,16 +424,23 @@ export default function WarrantyPage() {
           </div>
         ) : (
           <>
-            <section className="warranty-glance-v2" aria-label="Warranty at a glance">
+            <section
+              className="warranty-glance-v2"
+              aria-label="Warranty at a glance"
+            >
               <div className="warranty-glance-card-v2">
-                <div className="warranty-glance-label-v2">Warranty coverage</div>
+                <div className="warranty-glance-label-v2">
+                  Warranty coverage
+                </div>
                 <div className="warranty-glance-value-v2">1 year</div>
                 <p>Coverage starts from the completed order date.</p>
               </div>
 
               <div className="warranty-glance-card-v2">
                 <div className="warranty-glance-label-v2">Claim review</div>
-                <div className="warranty-glance-value-v2">3-5 business days</div>
+                <div className="warranty-glance-value-v2">
+                  3-5 business days
+                </div>
                 <p>Track updates anytime from your claims list.</p>
               </div>
             </section>
@@ -462,7 +471,10 @@ export default function WarrantyPage() {
                   <ul>
                     <li>Misuse, accidents, negligence, or improper handling</li>
                     <li>Normal wear and tear over time</li>
-                    <li>Unauthorized modifications by the customer or third parties</li>
+                    <li>
+                      Unauthorized modifications by the customer or third
+                      parties
+                    </li>
                     <li>Damage from improper cleaning or maintenance</li>
                   </ul>
                 </div>
@@ -473,9 +485,13 @@ export default function WarrantyPage() {
                     <span>Claim conditions</span>
                   </div>
                   <ul className="wpolicy-condition-list-v2">
-                    <li>File the claim within the active 1-year warranty period.</li>
+                    <li>
+                      File the claim within the active 1-year warranty period.
+                    </li>
                     <li>The order must be completed and fully paid.</li>
-                    <li>Approved warranty repairs are completed at no added cost.</li>
+                    <li>
+                      Approved warranty repairs are completed at no added cost.
+                    </li>
                   </ul>
                 </div>
               </div>
@@ -512,11 +528,18 @@ export default function WarrantyPage() {
                 ))}
               </div>
             </section>
-            <section className="warranty-main-grid warranty-center-v21">
+            <section
+              className={`warranty-main-grid warranty-center-v21 ${
+                warrantyCenterTab === "file" ? "is-file-tab" : "is-claims-tab"
+              }`}
+            >
               <div className="warranty-center-head-v21">
                 <div>
                   <h2>Warranty center</h2>
-                  <p>Submit a new claim or review your existing warranty requests.</p>
+                  <p>
+                    Submit a new claim or review your existing warranty
+                    requests.
+                  </p>
                 </div>
 
                 <div
@@ -535,7 +558,6 @@ export default function WarrantyPage() {
                     }
                     onClick={() => {
                       setWarrantyCenterTab("file");
-                      if (!submitted) setShowForm(true);
                     }}
                   >
                     File a claim
@@ -559,279 +581,286 @@ export default function WarrantyPage() {
 
               {warrantyCenterTab === "file" && (
                 <div className="warranty-left-column">
-                <div className="warranty-form-wrap">
-                  {!showForm && !submitted && hasEligibleOrders && (
-                    <button
-                      type="button"
-                      className="warranty-open-btn warranty-open-btn-v21"
-                      onClick={() => setShowForm(true)}
-                    >
-                      <ShieldCheck size={18} />
-                      <span>File a warranty claim</span>
-                    </button>
-                  )}
+                  <div className="warranty-form-wrap">
+                    {!showForm && !submitted && hasEligibleOrders && (
+                      <button
+                        type="button"
+                        className="warranty-open-btn warranty-open-btn-v21"
+                        onClick={() => setShowForm(true)}
+                      >
+                        <ShieldCheck size={18} />
+                        <span>File a warranty claim</span>
+                      </button>
+                    )}
 
-                  {!showForm && !submitted && !hasEligibleOrders && (
-                    <div className="warranty-no-eligible-card">
-                      <ShieldCheck
-                        size={20}
-                        className="warranty-no-eligible-icon"
-                      />
-                      <div>
-                        <strong>No warranty claims available right now</strong>
-                        <p>
-                          You currently have no completed and paid orders
-                          eligible for a new warranty claim.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {showForm && !submitted && (
-                    <div className="warranty-form-card">
-                      <div className="warranty-form-header">
+                    {!showForm && !submitted && !hasEligibleOrders && (
+                      <div className="warranty-no-eligible-card">
+                        <ShieldCheck
+                          size={20}
+                          className="warranty-no-eligible-icon"
+                        />
                         <div>
-                          <h2>Submit a warranty claim</h2>
-                          <p className="warranty-form-subtext">
-                            Tell us about the issue and add the required files.
+                          <strong>
+                            No warranty claims available right now
+                          </strong>
+                          <p>
+                            You currently have no completed and paid orders
+                            eligible for a new warranty claim.
                           </p>
                         </div>
-
-
                       </div>
+                    )}
 
-                      <form onSubmit={handleSubmit} className="warranty-form">
-                        <div className="wfield">
-                          <label className="wlabel">
-                            Eligible order <span className="wrequired">*</span>
-                          </label>
+                    {showForm && !submitted && (
+                      <div className="warranty-form-card">
+                        <div className="warranty-form-header">
+                          <div>
+                            <h2>Submit a warranty claim</h2>
+                            <p className="warranty-form-subtext">
+                              Tell us about the issue and add the required
+                              files.
+                            </p>
+                          </div>
+                        </div>
 
-                          {hasEligibleOrders ? (
+                        <form onSubmit={handleSubmit} className="warranty-form">
+                          <div className="wfield">
+                            <label className="wlabel">
+                              Eligible order{" "}
+                              <span className="wrequired">*</span>
+                            </label>
+
+                            {hasEligibleOrders ? (
+                              <div className="wselect-wrap">
+                                <select
+                                  className="winput wselect"
+                                  value={orderId}
+                                  onChange={handleOrderSelect}
+                                >
+                                  <option value="">
+                                    Select a completed and paid order
+                                  </option>
+                                  {visibleOrders.map((order) => (
+                                    <option key={order.id} value={order.id}>
+                                      {order.order_number} —{" "}
+                                      {formatDate(order.created_at)}
+                                      {" — "}valid until{" "}
+                                      {formatDate(order.warranty_expiry)}
+                                    </option>
+                                  ))}
+                                </select>
+                                <ChevronDown
+                                  size={15}
+                                  className="wselect-icon"
+                                />
+                              </div>
+                            ) : (
+                              <input
+                                type="text"
+                                className="winput"
+                                value="No eligible completed and paid orders available."
+                                readOnly
+                              />
+                            )}
+                          </div>
+
+                          <div className="wfield">
+                            <label className="wlabel">
+                              Affected product{" "}
+                              <span className="wrequired">*</span>
+                            </label>
                             <div className="wselect-wrap">
                               <select
                                 className="winput wselect"
-                                value={orderId}
-                                onChange={handleOrderSelect}
+                                value={productName}
+                                onChange={(e) => setProductName(e.target.value)}
                               >
                                 <option value="">
-                                  Select a completed and paid order
+                                  Select the affected product
                                 </option>
-                                {visibleOrders.map((order) => (
-                                  <option key={order.id} value={order.id}>
-                                    {order.order_number} —{" "}
-                                    {formatDate(order.created_at)}
-                                    {" — "}valid until{" "}
-                                    {formatDate(order.warranty_expiry)}
+
+                                {products.map((item) => (
+                                  <option
+                                    key={item.product_id}
+                                    value={item.product_name}
+                                  >
+                                    {item.product_name}
                                   </option>
                                 ))}
                               </select>
+
                               <ChevronDown size={15} className="wselect-icon" />
                             </div>
-                          ) : (
-                            <input
-                              type="text"
-                              className="winput"
-                              value="No eligible completed and paid orders available."
-                              readOnly
+                          </div>
+
+                          <div className="wfield">
+                            <label className="wlabel">
+                              Describe the issue{" "}
+                              <span className="wrequired">*</span>
+                            </label>
+                            <textarea
+                              className="winput wtextarea"
+                              placeholder="Describe the defect clearly — what is affected, where it appears, and when you noticed it."
+                              value={description}
+                              onChange={(e) => setDescription(e.target.value)}
+                              rows={4}
+                              maxLength={1000}
                             />
+                            <div className="wchar-count">
+                              {description.length}/1000
+                            </div>
+                          </div>
+
+                          <div className="wfield-row">
+                            <FileUpload
+                              label={
+                                <>
+                                  Photo of the issue{" "}
+                                  <span className="wrequired">*</span>
+                                </>
+                              }
+                              hint="Required — upload a clear image of the issue"
+                              name="photo"
+                              file={photoFile}
+                              accept="image/jpeg,image/png,image/webp"
+                              onChange={(e) =>
+                                setPhotoFile(e.target.files?.[0] || null)
+                              }
+                              onClear={() => setPhotoFile(null)}
+                            />
+
+                            <FileUpload
+                              label={
+                                <>
+                                  Proof of purchase{" "}
+                                  <span className="wrequired">*</span>
+                                </>
+                              }
+                              hint="Required — upload your receipt or confirmation"
+                              name="proof"
+                              file={proofFile}
+                              accept="image/jpeg,image/png,image/webp,application/pdf"
+                              onChange={(e) =>
+                                setProofFile(e.target.files?.[0] || null)
+                              }
+                              onClear={() => setProofFile(null)}
+                            />
+                          </div>
+
+                          {formError && (
+                            <div className="werror">{formError}</div>
                           )}
-                        </div>
 
-                        <div className="wfield">
-                          <label className="wlabel">
-                            Affected product{" "}
-                            <span className="wrequired">*</span>
-                          </label>
-                          <div className="wselect-wrap">
-                            <select
-                              className="winput wselect"
-                              value={productName}
-                              onChange={(e) => setProductName(e.target.value)}
-                            >
-                              <option value="">
-                                Select the affected product
-                              </option>
-
-                              {products.map((item) => (
-                                <option
-                                  key={item.product_id}
-                                  value={item.product_name}
-                                >
-                                  {item.product_name}
-                                </option>
-                              ))}
-                            </select>
-
-                            <ChevronDown size={15} className="wselect-icon" />
-                          </div>
-                        </div>
-
-                        <div className="wfield">
-                          <label className="wlabel">
-                            Describe the issue{" "}
-                            <span className="wrequired">*</span>
-                          </label>
-                          <textarea
-                            className="winput wtextarea"
-                            placeholder="Describe the defect clearly — what is affected, where it appears, and when you noticed it."
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            rows={4}
-                            maxLength={1000}
-                          />
-                          <div className="wchar-count">
-                            {description.length}/1000
-                          </div>
-                        </div>
-
-                        <div className="wfield-row">
-                          <FileUpload
-                            label={
+                          <button
+                            type="submit"
+                            className="wsubmit-btn"
+                            disabled={submitting || !hasEligibleOrders}
+                          >
+                            {submitting ? (
                               <>
-                                Photo of the issue{" "}
-                                <span className="wrequired">*</span>
+                                <span className="wspinner" />
+                                <span>Submitting…</span>
                               </>
-                            }
-                            hint="Required — upload a clear image of the issue"
-                            name="photo"
-                            file={photoFile}
-                            accept="image/jpeg,image/png,image/webp"
-                            onChange={(e) =>
-                              setPhotoFile(e.target.files?.[0] || null)
-                            }
-                            onClear={() => setPhotoFile(null)}
-                          />
-
-                          <FileUpload
-                            label={
+                            ) : (
                               <>
-                                Proof of purchase{" "}
-                                <span className="wrequired">*</span>
+                                <ShieldCheck size={16} />
+                                <span>Submit claim</span>
                               </>
-                            }
-                            hint="Required — upload your receipt or confirmation"
-                            name="proof"
-                            file={proofFile}
-                            accept="image/jpeg,image/png,image/webp,application/pdf"
-                            onChange={(e) =>
-                              setProofFile(e.target.files?.[0] || null)
-                            }
-                            onClear={() => setProofFile(null)}
-                          />
-                        </div>
+                            )}
+                          </button>
+                        </form>
+                      </div>
+                    )}
 
-                        {formError && <div className="werror">{formError}</div>}
-
+                    {submitted && (
+                      <div className="warranty-success">
+                        <CheckCircle size={52} strokeWidth={1.5} />
+                        <h2>Claim submitted</h2>
+                        <p>
+                          Your warranty request has been received. Our team will
+                          review it within 3–5 business days and contact you for
+                          the next step.
+                        </p>
                         <button
-                          type="submit"
+                          type="button"
                           className="wsubmit-btn"
-                          disabled={submitting || !hasEligibleOrders}
+                          style={{ maxWidth: 260 }}
+                          onClick={resetForm}
                         >
-                          {submitting ? (
-                            <>
-                              <span className="wspinner" />
-                              <span>Submitting…</span>
-                            </>
-                          ) : (
-                            <>
-                              <ShieldCheck size={16} />
-                              <span>Submit claim</span>
-                            </>
-                          )}
+                          Submit another claim
                         </button>
-                      </form>
-                    </div>
-                  )}
-
-                  {submitted && (
-                    <div className="warranty-success">
-                      <CheckCircle size={52} strokeWidth={1.5} />
-                      <h2>Claim submitted</h2>
-                      <p>
-                        Your warranty request has been received. Our team will
-                        review it within 3–5 business days and contact you for
-                        the next step.
-                      </p>
-                      <button
-                        type="button"
-                        className="wsubmit-btn"
-                        style={{ maxWidth: 260 }}
-                        onClick={resetForm}
-                      >
-                        Submit another claim
-                      </button>
-                    </div>
-                  )}
-                </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
               {warrantyCenterTab === "claims" && (
                 <aside className="warranty-claims-wrap">
-                <div className="warranty-claims-head">
-                  <div>
-                    <h2 className="warranty-claims-title">Your claims</h2>
-                    <p className="warranty-claims-subtitle">
-                      View the latest status, files, and service updates for your warranty requests.
-                    </p>
+                  <div className="warranty-claims-head">
+                    <div>
+                      <h2 className="warranty-claims-title">Your claims</h2>
+                      <p className="warranty-claims-subtitle">
+                        View the latest status, files, and service updates for
+                        your warranty requests.
+                      </p>
+                    </div>
                   </div>
 
-                </div>
-
-                {loadingClaims ? (
-                  <div
-                    style={{
-                      animation:
-                        "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-                      display: "grid",
-                      gap: "10px",
-                    }}
-                  >
-                    {[1, 2, 3].map((i) => (
-                      <div
-                        key={i}
-                        style={{
-                          height: "86px",
-                          background: "#ffffff",
-                          border: "1px solid #e5e7eb",
-                          padding: "16px",
-                        }}
-                      >
+                  {loadingClaims ? (
+                    <div
+                      style={{
+                        animation:
+                          "appt-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+                        display: "grid",
+                        gap: "10px",
+                      }}
+                    >
+                      {[1, 2, 3].map((i) => (
                         <div
+                          key={i}
                           style={{
-                            height: "18px",
-                            width: "60%",
-                            background: "#f3f4f6",
-                            marginBottom: "8px",
+                            height: "86px",
+                            background: "#ffffff",
+                            border: "1px solid #e5e7eb",
+                            padding: "16px",
                           }}
+                        >
+                          <div
+                            style={{
+                              height: "18px",
+                              width: "60%",
+                              background: "#f3f4f6",
+                              marginBottom: "8px",
+                            }}
+                          />
+                          <div
+                            style={{
+                              height: "14px",
+                              width: "40%",
+                              background: "#f3f4f6",
+                            }}
+                          />
+                        </div>
+                      ))}
+                      <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
+                    </div>
+                  ) : claims.length === 0 ? (
+                    <div className="wclaims-empty">
+                      <ShieldCheck size={36} strokeWidth={1} />
+                      <p>You haven't filed any warranty claims yet.</p>
+                    </div>
+                  ) : (
+                    <div className="wclaims-list">
+                      {claims.map((claim) => (
+                        <ClaimCard
+                          key={claim.id}
+                          claim={claim}
+                          onCancel={openCancelModal}
                         />
-                        <div
-                          style={{
-                            height: "14px",
-                            width: "40%",
-                            background: "#f3f4f6",
-                          }}
-                        />
-                      </div>
-                    ))}
-                    <style>{`@keyframes appt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .6; } }`}</style>
-                  </div>
-                ) : claims.length === 0 ? (
-                  <div className="wclaims-empty">
-                    <ShieldCheck size={36} strokeWidth={1} />
-                    <p>You haven't filed any warranty claims yet.</p>
-                  </div>
-                ) : (
-                  <div className="wclaims-list">
-                    {claims.map((claim) => (
-                      <ClaimCard
-                        key={claim.id}
-                        claim={claim}
-                        onCancel={openCancelModal}
-                      />
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
                 </aside>
               )}
             </section>
@@ -959,9 +988,7 @@ function ClaimCard({ claim, onCancel }) {
 
           {claim.admin_note && (
             <div className="wclaim-admin-note">
-              <strong>
-                {isRejected ? "Reason:" : "Service update:"}
-              </strong>{" "}
+              <strong>{isRejected ? "Reason:" : "Service update:"}</strong>{" "}
               {claim.admin_note}
             </div>
           )}

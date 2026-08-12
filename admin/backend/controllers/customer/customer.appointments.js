@@ -258,3 +258,69 @@ exports.getAvailability = async (req, res) => {
     });
   }
 };
+
+/* ── Check Weekly Availability ── */
+exports.getWeeklyAvailability = async (req, res) => {
+  try {
+    const { start } = req.query;
+
+    if (!start) {
+      return res.status(400).json({
+        message: "Start date is required.",
+      });
+    }
+
+    const [rows] = await db.query(
+      `
+      SELECT
+        DATE(scheduled_date) AS booked_date,
+        TIME(scheduled_date) AS booked_time
+      FROM appointments
+      WHERE DATE(scheduled_date) BETWEEN ? AND DATE_ADD(?, INTERVAL 6 DAY)
+        AND status IN (
+          'pending',
+          'awaiting_staff_acceptance',
+          'confirmed'
+        )
+      `,
+      [start, start],
+    );
+
+    const result = {};
+
+    // Always return all 7 days, even when there are no bookings.
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(`${start}T00:00:00`);
+      date.setDate(date.getDate() + i);
+
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+
+      result[`${year}-${month}-${day}`] = [];
+    }
+
+    rows.forEach((row) => {
+      const dateKey = row.booked_date
+        ? new Date(row.booked_date).toISOString().slice(0, 10)
+        : null;
+
+      const timeValue = row.booked_time
+        ? String(row.booked_time).substring(0, 5)
+        : null;
+
+      if (dateKey && timeValue && result[dateKey]) {
+        result[dateKey].push(timeValue);
+      }
+    });
+
+    return res.json(result);
+  } catch (err) {
+    console.error("[customer.appointments WEEKLY AVAILABILITY]", err);
+
+    return res.status(500).json({
+      message: "Server error.",
+      error: err.message,
+    });
+  }
+};
