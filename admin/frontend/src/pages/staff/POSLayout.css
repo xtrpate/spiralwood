@@ -171,7 +171,7 @@ body {
   align-items: center;
   gap: 10px;
   flex: 1;
-  overflow: hidden;
+  min-width: 0;
 }
 
 .user-avatar {
@@ -186,6 +186,8 @@ body {
   justify-content: center;
   font-size: 14px;
   font-weight: 800;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 
 .user-details {
@@ -234,7 +236,6 @@ body {
 .pos-main {
   flex: 1;
   padding: 32px 40px;
-  overflow-y: auto;
   transition: margin-left 0.25s ease;
 }
 .sidebar-open .pos-main {
@@ -497,11 +498,120 @@ body {
   }
   .pos-main {
     padding: 24px 20px;
+    margin-left: 68px !important;
   }
   .stat-grid {
     grid-template-columns: 1fr 1fr;
   }
   .sidebar-open .pos-sidebar {
     width: 100%;
+  }
+}
+
+.loading-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 14px;
+  font-weight: 600;
+  color: #71717a;
+}
+
+/* ─── MINI ACTIONS POPUP (Collapsed Sidebar) ─── */
+.mini-logout-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+.mini-actions-popup {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+
+  position: relative; /* Gives the popup structure */
+  z-index: 100; /* Forces it to sit ABOVE the invisible closing overlay */
+
+  max-height: 0;
+  opacity: 0;
+  margin-bottom: 0;
+  overflow: hidden;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mini-actions-popup.visible {
+  max-height: 150px;
+  opacity: 1;
+  margin-bottom: 12px;
+  overflow: visible; /* Prevents the notification bell dropdown from getting cut off */
+}
+
+.mini-action-btn {
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  color: #a1a1aa;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.mini-action-btn:hover {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+.mini-bell-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: #0a0a0a;
+  flex-shrink: 0;
+}
+
+/* ─── MOBILE OVERLAY & BLUR ─── */
+.sidebar-overlay {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Activate the blurry background when open */
+  .sidebar-open .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45); /* Dark tint */
+    backdrop-filter: blur(5px); /* The blur effect */
+    -webkit-backdrop-filter: blur(5px);
+    z-index: 90; /* Sits just behind the sidebar */
+  }
+
+  /* Shrink sidebar to leave a gap on the right */
+  .sidebar-open .pos-sidebar {
+    width: 82%;
+    max-width: 320px;
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5); /* Adds a shadow over the blur */
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pos-main {
+    padding: 24px 20px;
+    margin-left: 68px !important;
+  }
+
+  .stat-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }

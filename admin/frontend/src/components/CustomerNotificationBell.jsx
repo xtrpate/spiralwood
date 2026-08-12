@@ -217,8 +217,25 @@ export default function CustomerNotificationBell() {
                     userSelect: "none",
                     background: n.is_read ? "#ffffff" : "#fafafa",
                     border: `1px solid ${n.is_read ? "#e4e4e7" : "#d4d4d8"}`,
+                    position: "relative" /* Required for the red dot */,
                   }}
                 >
+                  {/* The Unread Red Dot */}
+                  {!n.is_read && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: "14px",
+                        right: "14px",
+                        width: "8px",
+                        height: "8px",
+                        backgroundColor: "#ef4444",
+                        borderRadius: "50%",
+                      }}
+                      aria-hidden="true"
+                    />
+                  )}
+
                   <div
                     style={{
                       fontSize: 13,

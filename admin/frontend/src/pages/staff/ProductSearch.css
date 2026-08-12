@@ -400,7 +400,8 @@
 /* Cart */
 .cart-panel {
   position: sticky;
-  top: 0;
+  top: 32px;
+  align-self: start;
   max-height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
@@ -409,6 +410,7 @@
   border-radius: 0 !important;
   background: #ffffff;
   box-shadow: none;
+  z-index: 10;
 }
 
 .cart-header {
@@ -1297,7 +1299,9 @@
   color: #111111 !important;
 }
 
-.product-card-action .product-card-qty-control button:last-child:hover:not(:disabled) {
+.product-card-action
+  .product-card-qty-control
+  button:last-child:hover:not(:disabled) {
   background: #111111 !important;
   color: #ffffff !important;
 }

@@ -23,8 +23,8 @@ import NotificationBell from "../../components/NotificationBell";
 
 export default function POSLayout() {
   const { user, logout } = useAuthStore();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  // WISDOM UNIFIED SIGN OUT UI V1
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
+  const [showMiniLogout, setShowMiniLogout] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const { clearCart } = useCart();
 
@@ -140,6 +140,12 @@ export default function POSLayout() {
     <div
       className={`pos-root ${sidebarOpen ? "sidebar-open" : "sidebar-closed"}`}
     >
+      <div
+        className="sidebar-overlay"
+        onClick={() => setSidebarOpen(false)}
+        aria-hidden="true"
+      />
+
       <aside className="pos-sidebar">
         <div
           className="sidebar-header"
@@ -170,6 +176,11 @@ export default function POSLayout() {
               className={({ isActive }) =>
                 `nav-item ${isActive ? "active" : ""}`
               }
+              onClick={() => {
+                if (window.innerWidth <= 768) {
+                  setSidebarOpen(false);
+                }
+              }}
             >
               <item.icon size={20} />
               {sidebarOpen && <span>{item.label}</span>}
@@ -188,10 +199,6 @@ export default function POSLayout() {
             gap: sidebarOpen ? "8px" : "16px",
           }}
         >
-          {!sidebarOpen && (isCashier || isIndoorStaff || isDeliveryRider) && (
-            <NotificationBell compact />
-          )}
-
           <div
             className="user-info"
             style={{
@@ -201,11 +208,61 @@ export default function POSLayout() {
             }}
           >
             <div
-              className="user-avatar"
-              style={{ margin: sidebarOpen ? "0" : "0 auto" }}
+              className="user-avatar-container"
+              style={{
+                position: "relative",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: sidebarOpen ? "0" : "0 auto",
+              }}
             >
-              {user?.name?.charAt(0)?.toUpperCase() || "U"}
+              {showMiniLogout && !sidebarOpen && (
+                <div
+                  className="mini-logout-overlay"
+                  onClick={() => setShowMiniLogout(false)}
+                />
+              )}
+
+              {/* Stacked popup containing BOTH Logout and Notifications */}
+              {!sidebarOpen && (
+                <div
+                  className={`mini-actions-popup ${showMiniLogout ? "visible" : ""}`}
+                >
+                  <button
+                    className="mini-action-btn"
+                    onClick={() => {
+                      setShowMiniLogout(false);
+                      openLogoutConfirm();
+                    }}
+                    title="Sign out"
+                    aria-label="Sign out"
+                  >
+                    <LogOut size={18} />
+                  </button>
+
+                  {(isCashier || isIndoorStaff || isDeliveryRider) && (
+                    <div className="mini-bell-wrapper">
+                      <NotificationBell compact />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div
+                className="user-avatar"
+                onClick={() => {
+                  if (!sidebarOpen) setShowMiniLogout(!showMiniLogout);
+                }}
+                style={{
+                  cursor: sidebarOpen ? "default" : "pointer",
+                }}
+              >
+                {user?.name?.charAt(0)?.toUpperCase() || "U"}
+              </div>
             </div>
+
             {sidebarOpen && (
               <div className="user-details">
                 <span className="user-name">{user?.name}</span>
@@ -214,6 +271,7 @@ export default function POSLayout() {
             )}
           </div>
 
+          {/* Regular desktop layout when sidebar is OPEN */}
           {sidebarOpen && (isCashier || isIndoorStaff || isDeliveryRider) && (
             <NotificationBell compact />
           )}
