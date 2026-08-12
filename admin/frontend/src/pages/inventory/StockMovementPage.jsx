@@ -5,12 +5,20 @@ import toast from "react-hot-toast";
 
 const PAGE_SIZE = 30;
 
+// WISDOM STOCK MOVEMENTS UI POLISH V1
 const SOURCE_LABELS = {
-  blueprint_production: "Blueprint Production",
-  build_production: "BOM Material Use",
-  product_production: "Finished Product Production",
-  order_fulfillment: "Order Fulfillment",
-  manual: "Manual Movement",
+  blueprint_production: "Blueprint production",
+  build_production: "Build production",
+  product_production: "Product production",
+  order_fulfillment: "Order fulfillment",
+  manual: "Manual entry",
+};
+
+const MOVEMENT_LABELS = {
+  in: "Stock in",
+  out: "Stock out",
+  adjustment: "Adjustment",
+  return: "Return",
 };
 
 const SOURCE_BADGES = {
@@ -71,6 +79,7 @@ export default function StockMovementPage() {
   });
   const [modal, setModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [itemKind, setItemKind] = useState("material");
   const [form, setForm] = useState({
     material_id: "",
     product_id: "",
@@ -115,16 +124,17 @@ export default function StockMovementPage() {
 
   const summaryCards = useMemo(
     () => [
-      ["Filtered Records", summary.record_count],
-      ["Blueprint Production", summary.blueprint_production_count],
-      ["Build Production", summary.build_production_count],
-      ["Order-linked", summary.order_fulfillment_count],
-      ["Manual", summary.manual_count],
+      ["Records shown", summary.record_count],
+      ["Blueprint production", summary.blueprint_production_count],
+      ["Build production", summary.build_production_count],
+      ["Order fulfillment", summary.order_fulfillment_count],
+      ["Manual entries", summary.manual_count],
     ],
     [summary],
   );
 
   const resetForm = () => {
+    setItemKind("material");
     setForm({
       material_id: "",
       product_id: "",
@@ -166,6 +176,15 @@ export default function StockMovementPage() {
     }));
   };
 
+  const handleItemKindChange = (value) => {
+    setItemKind(value);
+    setForm((current) => ({
+      ...current,
+      material_id: "",
+      product_id: "",
+    }));
+  };
+
   const isMaterialTarget = Boolean(form.material_id);
   const isProductTarget = Boolean(form.product_id);
   const selectedMaterial = useMemo(
@@ -188,24 +207,26 @@ export default function StockMovementPage() {
 
   const helperMessage =
     isProductTarget && form.type === "in"
-      ? "Finished product production: product stock will increase, but only unreserved BOM raw materials may be deducted."
+      ? "Stock in adds the selected item to inventory. Existing production rules remain unchanged."
       : isProductTarget && form.type === "out"
-        ? "Finished product stock-out: the selected product stock will decrease."
+        ? "Stock out removes the selected item from inventory."
         : isMaterialTarget && form.type === "in"
-          ? "Raw material stock-in: use this for supplier deliveries or restocking. Pending blueprint needs may be recovered automatically."
+          ? "Use Stock in for supplier deliveries or restocking."
           : isMaterialTarget && form.type === "return"
-            ? "Returned raw material increases physical stock and may recover pending blueprint needs."
+            ? "Use Return when material is placed back into inventory."
             : protectsReservedStock
-              ? `This movement may use only ${formatQuantity(
+              ? `Available for this movement: ${formatQuantity(
                   selectedAvailable,
-                )} ${selectedMaterial?.unit || "unit"} of unreserved stock.`
-              : "Select one target only: a raw material or a finished product.";
+                )} ${selectedMaterial?.unit || "unit"}. Reserved blueprint stock cannot be withdrawn.`
+              : itemKind === "material"
+                ? "Choose a raw material to continue."
+                : "Choose a product or build material to continue.";
 
   const handleSave = async (event) => {
     event.preventDefault();
 
     if (!form.material_id && !form.product_id) {
-      toast.error("Select a raw material or finished product.");
+      toast.error("Select an inventory item.");
       return;
     }
 
@@ -250,15 +271,13 @@ export default function StockMovementPage() {
     <div>
       <div style={header}>
         <div>
-          <h1 style={title}>Stock Movement Tracking</h1>
+          <h1 style={title}>Stock Movements</h1>
           <p style={subtitle}>
-            This report records physical stock changes. Blueprint reservation,
-            pending need, and release events do not create stock movements;
-            blueprint materials appear here only when production consumes them.
+            Review physical stock in and stock out records for materials and products.
           </p>
         </div>
         <button onClick={() => setModal(true)} style={btnPrimary}>
-          + Record Movement
+          Record movement
         </button>
       </div>
 
@@ -274,72 +293,104 @@ export default function StockMovementPage() {
       </div>
 
       <div style={filterCard}>
-        <input
-          placeholder="Search material, product, order, reference, customer..."
-          value={filters.search}
-          onChange={(event) => updateFilter("search", event.target.value)}
-          style={{ ...inputSm, minWidth: 300, flex: "1 1 300px" }}
-        />
-        <select
-          value={filters.type}
-          onChange={(event) => updateFilter("type", event.target.value)}
-          style={inputSm}
-        >
-          <option value="">All Types</option>
-          <option value="in">In</option>
-          <option value="out">Out</option>
-          <option value="adjustment">Adjustment</option>
-          <option value="return">Return</option>
-        </select>
-        <select
-          value={filters.source}
-          onChange={(event) => updateFilter("source", event.target.value)}
-          style={inputSm}
-        >
-          <option value="">All Sources</option>
-          <option value="blueprint_production">Blueprint Production</option>
-          <option value="build_production">BOM Material Use</option>
-          <option value="product_production">
-            Finished Product Production
-          </option>
-          <option value="order_fulfillment">Order Fulfillment</option>
-          <option value="manual">Manual Movement</option>
-        </select>
-        <input
-          type="date"
-          value={filters.from}
-          onChange={(event) => updateFilter("from", event.target.value)}
-          style={inputSm}
-          aria-label="From date"
-        />
-        <input
-          type="date"
-          value={filters.to}
-          onChange={(event) => updateFilter("to", event.target.value)}
-          style={inputSm}
-          aria-label="To date"
-        />
-        <button onClick={clearFilters} style={btnGhost}>
-          Clear
-        </button>
+        <div style={{ ...filterField, flex: "1 1 320px" }}>
+          <label style={filterLabel}>Search</label>
+          <input
+            placeholder="Search material, product, order, reference, or customer"
+            value={filters.search}
+            onChange={(event) => updateFilter("search", event.target.value)}
+            style={{ ...inputSm, width: "100%", boxSizing: "border-box" }}
+          />
+        </div>
+
+        <div style={filterField}>
+          <label style={filterLabel}>Movement</label>
+          <select
+            value={filters.type}
+            onChange={(event) => updateFilter("type", event.target.value)}
+            style={inputSm}
+          >
+            <option value="">All movements</option>
+            <option value="in">Stock in</option>
+            <option value="out">Stock out</option>
+            <option value="adjustment">Adjustment</option>
+            <option value="return">Return</option>
+          </select>
+        </div>
+
+        <div style={filterField}>
+          <label style={filterLabel}>Source</label>
+          <select
+            value={filters.source}
+            onChange={(event) => updateFilter("source", event.target.value)}
+            style={inputSm}
+          >
+            <option value="">All sources</option>
+            <option value="blueprint_production">Blueprint production</option>
+            <option value="build_production">Build production</option>
+            <option value="product_production">Product production</option>
+            <option value="order_fulfillment">Order fulfillment</option>
+            <option value="manual">Manual entry</option>
+          </select>
+        </div>
+
+        <div style={filterField}>
+          <label style={filterLabel}>From</label>
+          <input
+            type="date"
+            value={filters.from}
+            onChange={(event) => updateFilter("from", event.target.value)}
+            style={inputSm}
+            aria-label="From date"
+          />
+        </div>
+
+        <div style={filterField}>
+          <label style={filterLabel}>To</label>
+          <input
+            type="date"
+            value={filters.to}
+            onChange={(event) => updateFilter("to", event.target.value)}
+            style={inputSm}
+            aria-label="To date"
+          />
+        </div>
+
+        <div style={{ ...filterField, justifyContent: "flex-end" }}>
+          <span style={{ ...filterLabel, visibility: "hidden" }}>Action</span>
+          <button onClick={clearFilters} style={btnGhost}>
+            Reset filters
+          </button>
+        </div>
       </div>
 
       <div style={tableCard}>
+        <div style={tableSectionHeader}>
+          <div>
+            <div style={tableSectionTitle}>Movement history</div>
+            <div style={tableSectionSubtitle}>
+              Physical stock changes recorded by the system and staff.
+            </div>
+          </div>
+          <div style={tableCount}>
+            {total.toLocaleString("en-PH")} records
+          </div>
+        </div>
         <table
           style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
         >
           <thead>
             <tr style={{ background: "#fafafa" }}>
               {[
-                "Date",
-                "Type",
+                "Date and time",
+                "Movement",
                 "Source",
-                "Material / Product",
-                "Qty",
+                "Item",
+                "Quantity",
                 "Order",
                 "Reference",
                 "Notes",
-                "By",
+                "Recorded by",
               ].map((heading) => (
                 <th key={heading} style={th}>
                   {heading}
@@ -381,7 +432,7 @@ export default function StockMovementPage() {
                     </td>
                     <td style={td}>
                       <span style={typeBadge}>
-                        {String(row.type || "").replaceAll("_", " ")}
+                        {MOVEMENT_LABELS[row.type] || "Movement"}
                       </span>
                     </td>
                     <td style={td}>
@@ -393,7 +444,7 @@ export default function StockMovementPage() {
                           border: `1px solid ${sourceBorder}`,
                         }}
                       >
-                        {SOURCE_LABELS[source] || "Manual Movement"}
+                        {SOURCE_LABELS[source] || "Manual entry"}
                       </span>
                       {row.reservation_status && (
                         <div style={subMeta}>
@@ -403,7 +454,7 @@ export default function StockMovementPage() {
                       )}
                     </td>
                     <td style={{ ...td, minWidth: 190 }}>
-                      <div style={{ fontWeight: 700, color: "#0a0a0a" }}>
+                      <div style={{ fontWeight: 600, color: "#0a0a0a" }}>
                         {itemName}
                       </div>
                       {row.product_name && row.material_name && (
@@ -413,8 +464,8 @@ export default function StockMovementPage() {
                     <td
                       style={{
                         ...td,
-                        fontWeight: 800,
-                        color: isPositive ? "#166534" : "#991b1b",
+                        fontWeight: 700,
+                        color: isPositive ? "#166534" : "#b42318",
                         whiteSpace: "nowrap",
                       }}
                     >
@@ -447,7 +498,7 @@ export default function StockMovementPage() {
                     </td>
                     <td style={{ ...td, minWidth: 170 }}>
                       {row.reservation_id && (
-                        <div style={{ fontWeight: 700 }}>
+                        <div style={{ fontWeight: 600 }}>
                           Reservation #{row.reservation_id}
                         </div>
                       )}
@@ -499,10 +550,13 @@ export default function StockMovementPage() {
       {modal && (
         <div style={overlay}>
           <div style={modalBox}>
-            <h3 style={modalTitle}>Record Stock Movement</h3>
+            <h3 style={modalTitle}>Record stock movement</h3>
+            <p style={modalSubtitle}>
+              Choose the movement, item, and quantity for this physical stock change.
+            </p>
             <form onSubmit={handleSave}>
               <div style={fieldGroup}>
-                <label style={label}>Movement Type *</label>
+                <label style={label}>Movement *</label>
                 <select
                   required
                   value={form.type}
@@ -514,35 +568,63 @@ export default function StockMovementPage() {
                   }
                   style={inputFull}
                 >
-                  <option value="in">In – Delivery / Production</option>
-                  <option value="out">Out – Sales / Usage</option>
-                  <option value="adjustment">
-                    Adjustment – Downward stock correction
-                  </option>
-                  <option value="return">Return – Stock returned</option>
+                  <option value="in">Stock in</option>
+                  <option value="out">Stock out</option>
+                  <option value="adjustment">Adjustment</option>
+                  <option value="return">Return</option>
                 </select>
               </div>
 
               <div style={fieldGroup}>
-                <label style={label}>Raw Material</label>
+                <label style={label}>Item type *</label>
                 <select
-                  value={form.material_id}
-                  onChange={(event) => handleMaterialChange(event.target.value)}
+                  required
+                  value={itemKind}
+                  onChange={(event) => handleItemKindChange(event.target.value)}
                   style={inputFull}
                 >
-                  <option value="">None</option>
-                  {rawMats.map((material) => (
-                    <option key={material.id} value={material.id}>
-                      {material.name}
-                    </option>
-                  ))}
+                  <option value="material">Raw material</option>
+                  <option value="product">Product or build material</option>
                 </select>
+              </div>
+
+              <div style={fieldGroup}>
+                <label style={label}>Item *</label>
+                {itemKind === "material" ? (
+                  <select
+                    required
+                    value={form.material_id}
+                    onChange={(event) => handleMaterialChange(event.target.value)}
+                    style={inputFull}
+                  >
+                    <option value="">Select raw material</option>
+                    {rawMats.map((material) => (
+                      <option key={material.id} value={material.id}>
+                        {material.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    required
+                    value={form.product_id}
+                    onChange={(event) => handleProductChange(event.target.value)}
+                    style={inputFull}
+                  >
+                    <option value="">Select product or build material</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {selectedMaterial && (
                 <div style={availabilityBox}>
                   <div>
-                    <span style={availabilityLabel}>On Hand</span>
+                    <span style={availabilityLabel}>On hand</span>
                     <strong>
                       {formatQuantity(selectedOnHand)} {selectedMaterial.unit}
                     </strong>
@@ -562,22 +644,6 @@ export default function StockMovementPage() {
                   </div>
                 </div>
               )}
-
-              <div style={fieldGroup}>
-                <label style={label}>Product / Build Material</label>
-                <select
-                  value={form.product_id}
-                  onChange={(event) => handleProductChange(event.target.value)}
-                  style={inputFull}
-                >
-                  <option value="">None</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
 
               <div style={helperBox}>{helperMessage}</div>
 
@@ -605,7 +671,7 @@ export default function StockMovementPage() {
               </div>
 
               <div style={fieldGroup}>
-                <label style={label}>Reference</label>
+                <label style={label}>Reference <span style={optionalText}>Optional</span></label>
                 <input
                   value={form.reference}
                   onChange={(event) =>
@@ -614,14 +680,14 @@ export default function StockMovementPage() {
                       reference: event.target.value,
                     }))
                   }
-                  placeholder="PO number, delivery receipt, adjustment reference..."
+                  placeholder="PO number, receipt number, or adjustment reference"
                   maxLength={100}
                   style={inputFull}
                 />
               </div>
 
               <div style={{ ...fieldGroup, marginBottom: 20 }}>
-                <label style={label}>Notes</label>
+                <label style={label}>Notes <span style={optionalText}>Optional</span></label>
                 <textarea
                   value={form.notes}
                   onChange={(event) =>
@@ -647,7 +713,7 @@ export default function StockMovementPage() {
                   Cancel
                 </button>
                 <button type="submit" disabled={saving} style={btnPrimary}>
-                  {saving ? "Saving..." : "Save"}
+                  {saving ? "Saving..." : "Save movement"}
                 </button>
               </div>
             </form>
@@ -668,7 +734,7 @@ const header = {
 const title = {
   margin: 0,
   fontSize: 24,
-  fontWeight: 800,
+  fontWeight: 700,
   color: "#0a0a0a",
   letterSpacing: "-0.02em",
 };
@@ -688,12 +754,12 @@ const summaryGrid = {
 const summaryCard = {
   background: "#fff",
   border: "1px solid #e4e4e7",
-  borderRadius: 10,
+  borderRadius: 2,
   padding: "13px 15px",
 };
 const summaryLabel = {
   fontSize: 10,
-  fontWeight: 800,
+  fontWeight: 600,
   color: "#71717a",
   textTransform: "uppercase",
   letterSpacing: 0.7,
@@ -701,32 +767,68 @@ const summaryLabel = {
 const summaryValue = {
   marginTop: 5,
   fontSize: 21,
-  fontWeight: 800,
+  fontWeight: 700,
   color: "#18181b",
 };
 const filterCard = {
   display: "flex",
-  alignItems: "center",
-  gap: 9,
+  alignItems: "flex-end",
+  gap: 10,
   flexWrap: "wrap",
   padding: 12,
   marginBottom: 14,
   background: "#fff",
   border: "1px solid #e4e4e7",
-  borderRadius: 10,
+  borderRadius: 2,
+};
+const filterField = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 5,
+  minWidth: 130,
+};
+const filterLabel = {
+  fontSize: 10,
+  fontWeight: 600,
+  color: "#52525b",
+  textTransform: "uppercase",
+  letterSpacing: 0.55,
 };
 const tableCard = {
   background: "#fff",
   border: "1px solid #e4e4e7",
-  borderRadius: 12,
-  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
+  borderRadius: 2,
   overflowX: "auto",
+};
+const tableSectionHeader = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 16,
+  padding: "13px 14px",
+  borderBottom: "1px solid #e4e4e7",
+};
+const tableSectionTitle = {
+  fontSize: 14,
+  fontWeight: 650,
+  color: "#18181b",
+};
+const tableSectionSubtitle = {
+  marginTop: 3,
+  fontSize: 11,
+  color: "#71717a",
+};
+const tableCount = {
+  paddingTop: 2,
+  fontSize: 11,
+  color: "#71717a",
+  whiteSpace: "nowrap",
 };
 const th = {
   padding: "12px 14px",
   textAlign: "left",
   fontSize: 10,
-  fontWeight: 800,
+  fontWeight: 600,
   color: "#71717a",
   textTransform: "uppercase",
   letterSpacing: 0.8,
@@ -745,22 +847,22 @@ const emptyCell = {
 };
 const typeBadge = {
   display: "inline-block",
-  padding: "3px 9px",
-  borderRadius: 12,
+  padding: "3px 8px",
+  borderRadius: 2,
   background: "#f4f4f5",
   color: "#18181b",
   border: "1px solid #e4e4e7",
   fontSize: 11,
-  fontWeight: 700,
+  fontWeight: 600,
   textTransform: "capitalize",
   whiteSpace: "nowrap",
 };
 const sourceBadge = {
   display: "inline-block",
-  padding: "3px 9px",
-  borderRadius: 12,
+  padding: "3px 8px",
+  borderRadius: 2,
   fontSize: 11,
-  fontWeight: 700,
+  fontWeight: 600,
   whiteSpace: "nowrap",
 };
 const subMeta = {
@@ -781,7 +883,7 @@ const orderLink = {
   border: "none",
   color: "#18181b",
   fontSize: 12,
-  fontWeight: 800,
+  fontWeight: 600,
   textDecoration: "underline",
   cursor: "pointer",
   textAlign: "left",
@@ -794,9 +896,10 @@ const paginationRow = {
   marginTop: 14,
 };
 const inputSm = {
-  padding: "8px 11px",
-  border: "1px solid #e4e4e7",
-  borderRadius: 7,
+  minHeight: 36,
+  padding: "8px 10px",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
   background: "#fff",
   color: "#18181b",
   fontSize: 12,
@@ -804,31 +907,34 @@ const inputSm = {
 };
 const inputFull = {
   width: "100%",
-  padding: "10px 12px",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  minHeight: 38,
+  padding: "9px 11px",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
   color: "#18181b",
   fontSize: 13,
   boxSizing: "border-box",
   outline: "none",
 };
 const btnPrimary = {
-  padding: "9px 16px",
+  minHeight: 36,
+  padding: "8px 14px",
   background: "#18181b",
   color: "#fff",
   border: "1px solid #18181b",
-  borderRadius: 7,
+  borderRadius: 2,
   fontSize: 12,
-  fontWeight: 700,
+  fontWeight: 600,
   cursor: "pointer",
   whiteSpace: "nowrap",
 };
 const btnGhost = {
-  padding: "8px 13px",
+  minHeight: 36,
+  padding: "8px 12px",
   background: "#fff",
   color: "#18181b",
   border: "1px solid #d4d4d8",
-  borderRadius: 7,
+  borderRadius: 2,
   fontSize: 12,
   fontWeight: 600,
   cursor: "pointer",
@@ -850,28 +956,40 @@ const overlay = {
   padding: 20,
 };
 const modalBox = {
-  width: 440,
+  width: 500,
   maxWidth: "100%",
   maxHeight: "90vh",
   overflowY: "auto",
-  padding: 26,
+  padding: 24,
   background: "#fff",
-  borderRadius: 14,
-  boxShadow: "0 20px 60px rgba(0,0,0,.25)",
+  borderRadius: 2,
+  boxShadow: "0 18px 50px rgba(0,0,0,.22)",
 };
 const modalTitle = {
-  margin: "0 0 20px",
+  margin: 0,
   fontSize: 18,
-  fontWeight: 800,
+  fontWeight: 700,
   color: "#0a0a0a",
+};
+const modalSubtitle = {
+  margin: "5px 0 18px",
+  fontSize: 12,
+  lineHeight: 1.45,
+  color: "#71717a",
 };
 const fieldGroup = { marginBottom: 12 };
 const label = {
   display: "block",
   marginBottom: 6,
   fontSize: 12,
-  fontWeight: 700,
-  color: "#52525b",
+  fontWeight: 600,
+  color: "#3f3f46",
+};
+const optionalText = {
+  marginLeft: 4,
+  fontSize: 10,
+  fontWeight: 400,
+  color: "#a1a1aa",
 };
 const availabilityBox = {
   display: "grid",
@@ -880,10 +998,10 @@ const availabilityBox = {
   marginTop: -4,
   marginBottom: 12,
   padding: "10px 12px",
-  borderRadius: 8,
-  background: "#eff6ff",
-  border: "1px solid #bfdbfe",
-  color: "#1e3a8a",
+  borderRadius: 2,
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
+  color: "#18181b",
   fontSize: 12,
 };
 const availabilityLabel = {
@@ -891,15 +1009,15 @@ const availabilityLabel = {
   marginBottom: 3,
   color: "#64748b",
   fontSize: 10,
-  fontWeight: 700,
+  fontWeight: 600,
   textTransform: "uppercase",
   letterSpacing: 0.5,
 };
 const helperBox = {
   marginBottom: 16,
-  padding: "11px 13px",
-  borderRadius: 8,
-  background: "#f4f4f5",
+  padding: "10px 12px",
+  borderRadius: 2,
+  background: "#fafafa",
   border: "1px solid #e4e4e7",
   color: "#52525b",
   fontSize: 12,
