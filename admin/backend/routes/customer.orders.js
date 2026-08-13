@@ -10,6 +10,7 @@ const fs = require("fs");
 const { authenticate, requireCustomer } = require("../middleware/auth");
 const { logAction } = require("../middleware/auditLog");
 const orderController = require("../controllers/customer/customer.orders");
+const standardReceiptsController = require("../controllers/customer/customer.standard-receipts");
 
 // 👉 ADDED: We must import the new cart controller so the routes can use it!
 const cartController = require("../controllers/customer/customer.cart");
@@ -65,6 +66,14 @@ router.post(
 );
 
 router.get("/", authenticate, requireCustomer, orderController.getOrders);
+
+router.get(
+  "/:id/receipts/:receiptId",
+  authenticate,
+  requireCustomer,
+  standardReceiptsController.getReceiptById,
+);
+
 router.get("/:id", authenticate, requireCustomer, orderController.getOrderById);
 router.put(
   "/:id/confirm",

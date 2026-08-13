@@ -214,6 +214,7 @@ function TrackingList({ order }) {
 }
 
 function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
+  const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -502,6 +503,39 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
                       <strong>{fmtDate(order.created_at)}</strong>
                     </div>
                   </div>
+
+                  {order.receipt?.id && (
+                    <div
+                      style={{
+                        marginTop: 16,
+                        paddingTop: 14,
+                        borderTop: "1px solid #e4e4e7",
+                      }}
+                    >
+                      <div
+                        className="om-detail-row"
+                        style={{ marginBottom: 12 }}
+                      >
+                        <span>Receipt</span>
+                        <strong>
+                          {order.receipt.receipt_number}
+                        </strong>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="order-inline-btn order-inline-btn-primary om-action-btn"
+                        style={{ width: "100%" }}
+                        onClick={() =>
+                          navigate(
+                            `/orders/${order.id}/receipts/${order.receipt.id}`,
+                          )
+                        }
+                      >
+                        View Receipt
+                      </button>
+                    </div>
+                  )}
 
                   {order.notes && (
                     <div className="om-note-block">

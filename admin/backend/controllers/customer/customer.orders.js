@@ -705,6 +705,30 @@ exports.getOrderById = async (req, res) => {
     );
     order.items = items;
 
+    // WISDOM STANDARD ORDER RECEIPT METADATA V1
+    // My Orders only needs the newest real, verified receipt reference.
+    // Receipt content is loaded separately through an ownership-checked
+    // customer endpoint.
+    const [[receipt]] = await db.query(
+      `SELECT
+         r.id,
+         r.receipt_number,
+         r.payment_method_snapshot,
+         r.created_at
+       FROM receipts r
+       INNER JOIN payment_transactions pt
+         ON pt.id = r.payment_transaction_id
+         AND pt.order_id = r.order_id
+         AND LOWER(pt.status) = 'verified'
+       WHERE r.order_id = ?
+         AND r.receipt_type = 'pos_sale'
+       ORDER BY r.id DESC
+       LIMIT 1`,
+      [order.id],
+    );
+
+    order.receipt = receipt || null;
+
     res.json(order);
   } catch (err) {
     console.error("[customer.orders/:id]", err);

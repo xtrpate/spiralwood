@@ -17,6 +17,9 @@ const {
   ensureReceiptForVerifiedPayment,
 } = require("../../services/blueprintReceiptService");
 const {
+  ensureStandardVerifiedPaymentReceipt,
+} = require("../../services/receiptService");
+const {
   consumeBlueprintMaterialsForProduction,
   BlueprintMaterialConsumptionError,
 } = require("../../services/blueprintMaterialConsumptionService");
@@ -2173,6 +2176,21 @@ exports.verifyPayment = async (req, res) => {
         paymentTransactionId: writtenPaymentTransactionId,
         issuedByUserId: req.user.id,
       });
+    } else if (
+      normalizedAction === "verified" &&
+      normalize(order.order_type) === "standard"
+    ) {
+      // WISDOM STANDARD COD / READY-TO-SHIP RECEIPT V1
+      // Rider collection remains pending. Only a successful admin
+      // verification reaches this branch and creates the receipt.
+      receiptResult = await ensureStandardVerifiedPaymentReceipt(
+        conn,
+        {
+          orderId: order.id,
+          paymentTransactionId: writtenPaymentTransactionId,
+          issuedByUserId: req.user.id,
+        },
+      );
     }
 
     if (order.customer_id) {
