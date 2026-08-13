@@ -334,7 +334,9 @@ const replyToTicket = async (req, res) => {
       `
       SELECT
         id,
-        status
+        status,
+        assigned_to,
+        subject
       FROM support_tickets
       WHERE id = ?
         AND customer_id = ?
@@ -395,6 +397,36 @@ const replyToTicket = async (req, res) => {
       `,
       [ticketId],
     );
+
+    try {
+      const customerName = req.user.name || "The customer";
+      if (ticket.assigned_to) {
+        await createNotificationSafe(connection, {
+          userId: ticket.assigned_to,
+          type: "support_customer_reply",
+          title: "Customer Replied to Support",
+          message: `${customerName} replied to “${ticket.subject}”. Open the ticket to continue the conversation.`,
+          targetType: "support_ticket",
+          targetId: ticketId,
+        });
+      } else {
+        const [admins] = await connection.query(
+          `SELECT id FROM users WHERE role = 'admin' AND is_active = 1`,
+        );
+        for (const admin of admins) {
+          await createNotificationSafe(connection, {
+            userId: admin.id,
+            type: "support_customer_reply",
+            title: "Customer Replied to Support",
+            message: `${customerName} replied to “${ticket.subject}”. Open the ticket to continue the conversation.`,
+            targetType: "support_ticket",
+            targetId: ticketId,
+          });
+        }
+      }
+    } catch (notificationErr) {
+      console.error("[customer.support reply notification skipped]", notificationErr.message || notificationErr);
+    }
 
     await connection.commit();
 

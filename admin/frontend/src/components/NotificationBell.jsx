@@ -148,6 +148,10 @@ function resolveNotificationRoute(
 
       return safeFallback();
 
+    case "warranty":
+      if (isAdmin) return `/admin/warranty?focus_claim_id=${targetId}`;
+      return safeFallback();
+
     default:
       return safeFallback();
   }
@@ -244,6 +248,7 @@ export default function NotificationBell({ compact = false }) {
     setOpen(false);
     const dest = resolveNotificationRoute(n, {
       isAdmin,
+      isCashier,
       isIndoorStaff,
       isDeliveryRider,
     });

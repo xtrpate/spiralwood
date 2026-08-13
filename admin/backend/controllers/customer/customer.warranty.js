@@ -2,6 +2,7 @@
 // controllers/customer/customer.warranty.js
 const db = require("../../config/db");
 const { signUploadPath } = require("../../utils/signedUrl");
+const { createNotificationSafe } = require("../../utils/notificationHelper");
 
 /* ── Helper: split stored proof_url into separate frontend fields ── */
 const splitStoredProofs = (value) => {
@@ -283,6 +284,26 @@ const submitClaim = async (req, res) => {
         linkedOrder.warranty_expiry,
       ],
     );
+
+    try {
+      const [admins] = await db.query(
+        `SELECT id FROM users WHERE role = 'admin' AND is_active = 1`,
+      );
+      const customerName = req.user.name || "A customer";
+      for (const admin of admins) {
+        await createNotificationSafe(db, {
+          userId: admin.id,
+          type: "warranty_claim",
+          title: "New Warranty Claim",
+          message: `${customerName} submitted a warranty claim for ${product_name.trim()} from Order ${linkedOrder.order_number}. Review the issue and uploaded proof.`,
+          targetType: "warranty",
+          targetId: result.insertId,
+          targetOrderId: linkedOrder.id,
+        });
+      }
+    } catch (notificationErr) {
+      console.error("[customer.warranty notification skipped]", notificationErr.message || notificationErr);
+    }
 
     res.status(201).json({
       message: "Warranty claim submitted successfully.",

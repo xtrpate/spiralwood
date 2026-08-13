@@ -9,6 +9,7 @@ const {
   getGlobalEmailFooter,
   sendBrevoEmail,
 } = require("../../utils/emailHelper");
+const { createNotificationSafe } = require("../../utils/notificationHelper");
 
 /* ── Standard checkout constants ── */
 const ALLOWED_PAYMENT_METHODS = ["cod", "cop", "paymongo"];
@@ -16,6 +17,14 @@ const MAX_ITEM_QUANTITY = 1000; // sanity ceiling, not a business limit
 
 const roundMoney = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
+const getPaymentMethodLabel = (method) => {
+  const normalized = String(method || "").trim().toLowerCase();
+  if (normalized === "cod") return "Cash on Delivery";
+  if (normalized === "cop") return "Cash on Pickup";
+  if (normalized === "paymongo") return "Online Payment";
+  return "the selected payment method";
+};
 
 /* ── Get Settings (Payment Info) ── */
 exports.getSettings = async (req, res) => {
@@ -298,6 +307,33 @@ exports.createOrder = async (req, res) => {
     }
 
     await conn.commit();
+
+    // In-system admin alert: email remains unchanged, but the dashboard bell
+    // should also surface a new online order immediately.
+    try {
+      const [activeAdmins] = await conn.query(
+        `SELECT id FROM users WHERE role = 'admin' AND is_active = 1`,
+      );
+      const totalLabel = Number(total || 0).toLocaleString("en-PH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      const paymentLabel = getPaymentMethodLabel(normalizedPaymentMethod);
+
+      for (const admin of activeAdmins) {
+        await createNotificationSafe(conn, {
+          userId: admin.id,
+          type: "new_online_order",
+          title: "New Online Order",
+          message: `Order ${order_number} from ${String(name).trim()} was placed for ₱${totalLabel} using ${paymentLabel}. Review the order before processing.`,
+          targetType: "order",
+          targetId: order_id,
+          targetOrderId: order_id,
+        });
+      }
+    } catch (notificationErr) {
+      console.error("[New Order Notification Error]", notificationErr.message);
+    }
 
     // 👉 D. Admin Alert Routing
     try {

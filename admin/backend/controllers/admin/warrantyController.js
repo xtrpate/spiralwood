@@ -1,6 +1,7 @@
 // controllers/warrantyController.js (Admin)
 const db = require("../../config/db");
 const { signUploadPath } = require("../../utils/signedUrl");
+const { createNotificationSafe } = require("../../utils/notificationHelper");
 
 const splitStoredProofs = (value) => {
   const parts = String(value || "")
@@ -112,9 +113,11 @@ exports.decideClaim = async (req, res) => {
     // ── FIXED: Switched to .query ──
     const [[claim]] = await db.query(
       `
-      SELECT id, status
-      FROM warranties
-      WHERE id = ?
+      SELECT w.id, w.status, w.customer_id, w.order_id, w.product_name,
+             o.order_number
+      FROM warranties w
+      LEFT JOIN orders o ON o.id = w.order_id
+      WHERE w.id = ?
       LIMIT 1
       `,
       [id],
@@ -151,6 +154,22 @@ exports.decideClaim = async (req, res) => {
       `,
       [decision, adminNote || null, id],
     );
+
+    if (claim.customer_id) {
+      const orderLabel = claim.order_number || `#${claim.order_id}`;
+      await createNotificationSafe(db, {
+        userId: claim.customer_id,
+        type: "warranty_update",
+        title: decision === "approved" ? "Warranty Claim Approved" : "Warranty Claim Not Approved",
+        message:
+          decision === "approved"
+            ? `Your warranty claim for ${claim.product_name} from Order ${orderLabel} has been approved. Our team will proceed with the warranty service.`
+            : `We could not approve your warranty claim for ${claim.product_name} from Order ${orderLabel}. Reason: ${adminNote}`,
+        targetType: "warranty",
+        targetId: claim.id,
+        targetOrderId: claim.order_id,
+      });
+    }
 
     req.auditRecord = {
       id,
@@ -190,9 +209,11 @@ exports.fulfillClaim = async (req, res) => {
     // ── FIXED: Switched to .query ──
     const [[claim]] = await db.query(
       `
-      SELECT id, status, replacement_receipt
-      FROM warranties
-      WHERE id = ?
+      SELECT w.id, w.status, w.replacement_receipt, w.customer_id,
+             w.order_id, w.product_name, o.order_number
+      FROM warranties w
+      LEFT JOIN orders o ON o.id = w.order_id
+      WHERE w.id = ?
       LIMIT 1
       `,
       [id],
@@ -232,6 +253,19 @@ exports.fulfillClaim = async (req, res) => {
       `,
       [finalReceipt, parseInt(req.user.id), id],
     );
+
+    if (claim.customer_id) {
+      const orderLabel = claim.order_number || `#${claim.order_id}`;
+      await createNotificationSafe(db, {
+        userId: claim.customer_id,
+        type: "warranty_update",
+        title: "Warranty Service Completed",
+        message: `Your warranty claim for ${claim.product_name} from Order ${orderLabel} has been completed. You can view the fulfillment proof in your warranty details.`,
+        targetType: "warranty",
+        targetId: claim.id,
+        targetOrderId: claim.order_id,
+      });
+    }
 
     req.auditRecord = {
       id,
