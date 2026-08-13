@@ -1,0 +1,26 @@
+/* WISDOM ADMIN SEARCH ICON ONLY V1.0.1
+   Only the requested magnifying-glass icon is applied.
+   No admin title, typography, button, card, page-height, scroll, focus,
+   FAQ, or Page Content redesign rules are included. */
+
+.wisdom-admin-shell :where(
+  input[type="search"],
+  input[placeholder*="search" i],
+  input[aria-label*="search" i]
+) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%236f747b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: 12px center !important;
+  background-size: 16px 16px !important;
+  padding-left: 38px !important;
+}
+
+/* If an older search control already renders a separate leading glyph,
+   hide only that duplicate so one magnifying-glass remains visible. */
+.wisdom-admin-shell :is(div, label):has(
+  > input[type="search"],
+  > input[placeholder*="search" i],
+  > input[aria-label*="search" i]
+) > :is(svg, span[aria-hidden="true"]):first-child {
+  display: none !important;
+}
