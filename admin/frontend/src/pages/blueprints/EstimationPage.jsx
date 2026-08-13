@@ -6,6 +6,9 @@ import autoTable from "jspdf-autotable";
 import api, { buildAssetUrl } from "../../services/api";
 import { buildEstimateProductionSnapshot } from "./data/estimateProductionSummary";
 
+// WISDOM Project Estimate UI Friendly Polish Fix V1.0.1
+// WISDOM Project Estimate Readability V1.0.0
+// WISDOM Project Estimate Production Readability V1.0.1
 const UNIT_OPTIONS = [
   "pc",
   "pcs",
@@ -814,13 +817,26 @@ const dedupeCustomizationEntries = (entries = []) => {
     (entry) => normalizeText(entry?.label).toLowerCase() === "finish color",
   );
   const finishColorValue = normalizeText(finishColorEntry?.value).toLowerCase();
-
-  if (!finishColorValue) return entries;
+  const productNameEntry = entries.find(
+    (entry) => normalizeText(entry?.label).toLowerCase() === "product name",
+  );
+  const productNameValue = normalizeText(productNameEntry?.value).toLowerCase();
 
   return entries.filter((entry) => {
     const label = normalizeText(entry?.label).toLowerCase();
-    if (label !== "color") return true;
-    return normalizeText(entry?.value).toLowerCase() !== finishColorValue;
+    const value = normalizeText(entry?.value).toLowerCase();
+
+    if (label === "color" && finishColorValue && value === finishColorValue) {
+      return false;
+    }
+    if (
+      label === "base blueprint title" &&
+      productNameValue &&
+      value === productNameValue
+    ) {
+      return false;
+    }
+    return true;
   });
 };
 
@@ -845,7 +861,10 @@ const getCustomizationEntries = (orderContext = {}) => {
           return;
         entries.push({
           label: humanizeKey(key),
-          value: normalizedValue,
+          value:
+            normalizedKey === "finish_color"
+              ? humanizeKey(normalizedValue.replace(/-/g, "_"))
+              : normalizedValue,
         });
       });
     },
@@ -864,11 +883,11 @@ const formatInventoryQuantity = (value) => {
 
 // WISDOM Project Estimate Physical Specs V1
 const INVENTORY_MATERIAL_FORM_LABELS = {
-  sheet: "Sheet / Board",
+  sheet: "Sheet or Board",
   linear: "Linear Material",
-  piece: "Solid / Stock Piece",
-  hardware: "Hardware / Counted Item",
-  other: "Other / Not Dimension-Based",
+  piece: "Solid Stock Piece",
+  hardware: "Hardware Item",
+  other: "Other Material",
 };
 
 const formatPhysicalDimension = (value) => {
@@ -887,7 +906,7 @@ const getInventoryPhysicalSpec = (material = null) => {
     .trim()
     .toLowerCase();
   const formLabel =
-    INVENTORY_MATERIAL_FORM_LABELS[form] || "Other / Not Dimension-Based";
+    INVENTORY_MATERIAL_FORM_LABELS[form] || "Other Material";
   const length = formatPhysicalDimension(material.length_mm);
   const width = formatPhysicalDimension(material.width_mm);
   const thickness = formatPhysicalDimension(material.thickness_mm);
@@ -991,7 +1010,7 @@ const getQuotationInventoryIssues = (inventoryItems = [], rawMaterials = []) => 
       {
         code: "NO_REQUIRED_INVENTORY_MATERIALS",
         message:
-          "Add at least one Required Inventory Material before sending the quotation.",
+          "Add at least one required material before sending the quotation.",
       },
     ];
   }
@@ -1091,6 +1110,7 @@ function EstimateTable({
   inventoryTrackingOnly = false,
 }) {
   const isInventory = section === "inventory";
+  const showNotes = section !== "blueprint";
   const showInventoryPricing = isInventory && !inventoryTrackingOnly;
   const emptyText =
     section === "blueprint"
@@ -1098,7 +1118,13 @@ function EstimateTable({
       : section === "inventory"
         ? "No required inventory materials added yet."
         : "No additional items added yet.";
-  const columnCount = isInventory ? (showInventoryPricing ? 10 : 8) : 8;
+  const columnCount = isInventory
+    ? showInventoryPricing
+      ? 10
+      : 8
+    : showNotes
+      ? 8
+      : 7;
   const inventoryChecks = isInventory
     ? rows.map((item) => {
         const material = rawMaterials.find(
@@ -1134,8 +1160,7 @@ function EstimateTable({
             disabled={readOnly}
             style={readOnly ? { ...btnAdd, ...btnDisabled } : btnAdd}
           >
-            + Add{" "}
-            {section === "inventory" ? "Required Material" : "Additional Item"}
+            {section === "inventory" ? "Add Required Material" : "Add Additional Item"}
           </button>
         )}
       </div>
@@ -1164,9 +1189,11 @@ function EstimateTable({
               {(!isInventory || showInventoryPricing) && (
                 <th style={{ ...th, width: "13%" }}>Total</th>
               )}
-              <th style={{ ...th, width: isInventory ? "27%" : "20%" }}>
-                Notes
-              </th>
+              {showNotes && (
+                <th style={{ ...th, width: isInventory ? "27%" : "20%" }}>
+                  Notes
+                </th>
+              )}
               <th style={{ ...th, width: "5%" }} />
             </tr>
           </thead>
@@ -1208,7 +1235,7 @@ function EstimateTable({
                     key={item._row_key}
                     style={{ borderBottom: "1px solid #f4f4f5" }}
                   >
-                    <td style={{ ...td, color: "#71717a", fontWeight: 800 }}>
+                    <td style={{ ...td, color: "#71717a", fontWeight: 600 }}>
                       {index + 1}
                     </td>
                     <td style={td}>
@@ -1270,7 +1297,7 @@ function EstimateTable({
                             ...cellInput,
                             ...readOnlyFieldStyle(readOnly),
                             width: "100%",
-                            fontWeight: 600,
+                            fontWeight: section === "blueprint" ? 500 : 600,
                           }}
                           placeholder={
                             section === "blueprint"
@@ -1428,31 +1455,33 @@ function EstimateTable({
                     )}
                     {(!isInventory || showInventoryPricing) && (
                       <td
-                        style={{ ...td, fontWeight: 800, whiteSpace: "nowrap" }}
+                        style={{ ...td, fontWeight: 700, whiteSpace: "nowrap" }}
                       >
                         {formatMoney(getItemAmount(item))}
                       </td>
                     )}
-                    <td style={td}>
-                      <input
-                        value={item.note}
-                        onChange={(event) =>
-                          onUpdate(item._row_key, "note", event.target.value)
-                        }
-                        style={{
-                          ...cellInput,
-                          ...readOnlyFieldStyle(readOnly),
-                          width: "100%",
-                        }}
-                        placeholder={
-                          isInventory
-                            ? "Size, thickness, finish..."
-                            : "Reference photo, inclusions, details..."
-                        }
-                        maxLength={500}
-                        disabled={readOnly}
-                      />
-                    </td>
+                    {showNotes && (
+                      <td style={td}>
+                        <input
+                          value={item.note}
+                          onChange={(event) =>
+                            onUpdate(item._row_key, "note", event.target.value)
+                          }
+                          style={{
+                            ...cellInput,
+                            ...readOnlyFieldStyle(readOnly),
+                            width: "100%",
+                          }}
+                          placeholder={
+                            isInventory
+                              ? "Size, thickness, finish..."
+                              : "Notes or special instructions..."
+                          }
+                          maxLength={500}
+                          disabled={readOnly}
+                        />
+                      </td>
+                    )}
                     <td style={{ ...td, textAlign: "center" }}>
                       {!readOnly && (
                         <button
@@ -1494,7 +1523,7 @@ function EstimateTable({
                         ({ item, material, availability }) => (
                           <div
                             key={item._row_key}
-                            style={{ fontSize: 12, marginTop: 4 }}
+                            style={{ fontSize: 12.5, marginTop: 4 }}
                           >
                             {material?.name || item.name}: required{" "}
                             {formatInventoryQuantity(availability.required)}{" "}
@@ -1507,7 +1536,7 @@ function EstimateTable({
                         ),
                       )}
                       <div
-                        style={{ fontSize: 11, marginTop: 7, color: "#7f1d1d" }}
+                        style={{ fontSize: 12, marginTop: 7, color: "#7f1d1d" }}
                       >
                         You may still save this estimate as a draft, but the
                         quotation cannot be sent until these inventory shortages
@@ -1553,21 +1582,21 @@ function EstimateTable({
               <tr style={tableFooterRow}>
                 <td
                   colSpan={isInventory ? 6 : 5}
-                  style={{ ...td, textAlign: "right", fontWeight: 800 }}
+                  style={{ ...td, textAlign: "right", fontWeight: 600 }}
                 >
                   {title} Subtotal
                 </td>
                 <td
                   style={{
                     ...td,
-                    fontWeight: 800,
-                    fontSize: 15,
+                    fontWeight: 700,
+                    fontSize: 16,
                     whiteSpace: "nowrap",
                   }}
                 >
                   {formatMoney(subtotal)}
                 </td>
-                <td colSpan={2} />
+                <td colSpan={showNotes ? 2 : 1} />
               </tr>
             )}
           </tfoot>
@@ -1586,7 +1615,7 @@ function ProductionSnapshotPanel({ snapshot }) {
     <div style={productionSnapshotCard}>
       <div style={productionSnapshotHeader}>
         <div>
-          <div style={productionEyebrow}>Production Guide</div>
+          <div style={productionEyebrow}>Production</div>
           <h3 style={{ ...sectionTitle, marginTop: 5 }}>
             Production Requirements
           </h3>
@@ -1601,7 +1630,7 @@ function ProductionSnapshotPanel({ snapshot }) {
             ...(isReady ? productionStatusReady : productionStatusReview),
           }}
         >
-          <span style={productionStatusLabel}>Guide Status</span>
+          <span style={productionStatusLabel}>Status</span>
           <strong>{summary.handoffStatus || "REVIEW"}</strong>
         </div>
       </div>
@@ -1677,14 +1706,14 @@ function ProductionSnapshotPanel({ snapshot }) {
                           </div>
                         )}
                       </td>
-                      <td style={{ ...productionTd, fontWeight: 850 }}>
+                      <td style={{ ...productionTd, fontWeight: 600 }}>
                         {part.quantity}
                       </td>
                       <td style={productionTd}>
                         <span style={productionMono}>{part.cutSize}</span>
                       </td>
                       <td style={productionTd}>
-                        <div style={{ fontWeight: 800 }}>{part.material}</div>
+                        <div style={{ fontWeight: 600 }}>{part.material}</div>
                       </td>
                       <td style={productionTd}>
                         <div style={productionGrain}>{part.grain}</div>
@@ -1779,6 +1808,7 @@ export default function EstimationPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [activeEstimateTab, setActiveEstimateTab] = useState("request");
 
   const parsedDesign = useMemo(
     () => parseBlueprintDesignData(blueprint),
@@ -1984,10 +2014,10 @@ export default function EstimationPage() {
     if (quotationInventoryIssues.length > 0) {
       reasons.push({
         key: "inventory",
-        title: "Inventory requirements are not ready",
+        title: "Required materials needed",
         message:
           quotationInventoryIssues[0]?.message ||
-          "Complete the Required Inventory Materials before sending the quotation.",
+          "Add the required material before sending the quotation.",
       });
     }
 
@@ -1996,7 +2026,7 @@ export default function EstimationPage() {
         key: "delivery",
         title: "Delivery assessment is required",
         message:
-          "This furniture exceeds the standard truck limit. Complete the larger-truck / additional-delivery-fee assessment before sending the quotation.",
+          "This furniture exceeds the standard truck limit. Complete the larger truck and delivery fee assessment before sending the quotation.",
       });
     }
 
@@ -2004,6 +2034,10 @@ export default function EstimationPage() {
   }, [quotationInventoryIssues, isOversizedDeliveryPending]);
 
   const isSendQuotationBlocked = quotationGateReasons.length > 0;
+  const visibleQuotationGateReasons =
+    activeEstimateTab === "materials"
+      ? quotationGateReasons.filter((reason) => reason.key !== "inventory")
+      : quotationGateReasons;
 
   const inventoryPricingMode =
     estimation?.inventory_pricing_mode === "legacy_billable"
@@ -2342,7 +2376,7 @@ export default function EstimationPage() {
     if (quotationInventoryIssues.length > 0) {
       toast.error(
         quotationInventoryIssues[0]?.message ||
-          "Complete the Required Inventory Materials before sending the quotation.",
+          "Add the required material before sending the quotation.",
       );
       return;
     }
@@ -2628,7 +2662,7 @@ export default function EstimationPage() {
         </div>
       )}
 
-      {!isReadOnly && quotationGateReasons.length > 0 && (
+      {!isReadOnly && visibleQuotationGateReasons.length > 0 && (
         <div
           style={{
             border: "1px solid #fecaca",
@@ -2639,21 +2673,21 @@ export default function EstimationPage() {
         >
           <div
             style={{
-              fontSize: 13,
+              fontSize: 14,
               fontWeight: 800,
               color: "#991b1b",
               marginBottom: 7,
             }}
           >
-            Quotation cannot be sent yet
+            Action needed
           </div>
           <div style={{ display: "grid", gap: 7 }}>
-            {quotationGateReasons.map((reason) => (
+            {visibleQuotationGateReasons.map((reason) => (
               <div key={reason.key} style={{ color: "#7f1d1d" }}>
-                <div style={{ fontSize: 12, fontWeight: 700 }}>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>
                   {reason.title}
                 </div>
-                <div style={{ fontSize: 11, lineHeight: 1.5, marginTop: 2 }}>
+                <div style={{ fontSize: 12, lineHeight: 1.5, marginTop: 2 }}>
                   {reason.message}
                 </div>
               </div>
@@ -2662,6 +2696,34 @@ export default function EstimationPage() {
         </div>
       )}
 
+      <div style={estimateTabs} role="tablist" aria-label="Estimate sections">
+        {[
+          ["request", "Request"],
+          ["components", "Components"],
+          ["materials", "Materials"],
+          ["quotation", "Quotation"],
+        ].map(([key, label]) => {
+          const active = activeEstimateTab === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setActiveEstimateTab(key)}
+              style={
+                active
+                  ? { ...estimateTabButton, ...estimateTabButtonActive }
+                  : estimateTabButton
+              }
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {activeEstimateTab === "request" && (
       <div style={{ ...card, marginBottom: 20 }}>
         <div style={sectionHeaderSmall}>
           <h3 style={sectionTitle}>Customer Request</h3>
@@ -2672,7 +2734,7 @@ export default function EstimationPage() {
         <div style={{ padding: 20 }}>
           <div style={requestGrid}>
             <div style={requestInfoCard}>
-              <span style={metaLabel}>Request</span>
+              <span style={metaLabel}>Order</span>
               <strong>{blueprint.order_number || "No linked order"}</strong>
               {blueprint.order_context?.order_notes && (
                 <p style={requestText}>{blueprint.order_context.order_notes}</p>
@@ -2695,7 +2757,9 @@ export default function EstimationPage() {
                   {customizationEntries.map((entry, index) => (
                     <div key={`${entry.label}-${index}`} style={detailRow}>
                       <span>{entry.label}</span>
-                      <strong>{entry.value}</strong>
+                      <span style={{ fontWeight: 500, color: "#27272a" }}>
+                        {entry.value}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -2721,7 +2785,7 @@ export default function EstimationPage() {
                       {entry.message || "Attachment uploaded."}
                     </div>
                     <div
-                      style={{ fontSize: 11, color: "#71717a", marginTop: 5 }}
+                      style={{ fontSize: 12, color: "#71717a", marginTop: 5 }}
                     >
                       {formatDateTime(entry.created_at)}
                     </div>
@@ -2771,12 +2835,15 @@ export default function EstimationPage() {
           </div>
         </div>
       </div>
+      )}
 
+      {activeEstimateTab === "components" && (
+        <>
       <ProductionSnapshotPanel snapshot={productionSnapshot} />
 
       <EstimateTable
         title="Blueprint Components"
-        helper="Review the generated components, quantities, rates, and notes."
+        helper="Review the generated components, quantities, and rates."
         section="blueprint"
         rows={blueprintItems}
         rawMaterials={rawMaterials}
@@ -2785,7 +2852,10 @@ export default function EstimationPage() {
         onUpdate={updateItem}
         subtotal={blueprintSubtotal}
       />
+        </>
+      )}
 
+      {activeEstimateTab === "materials" && (
       <EstimateTable
         title="Required Inventory Materials"
         helper="Select the materials and quantities required for production."
@@ -2799,7 +2869,10 @@ export default function EstimationPage() {
         subtotal={inventorySubtotal}
         inventoryTrackingOnly={inventoryTrackingOnly}
       />
+      )}
 
+      {activeEstimateTab === "quotation" && (
+        <>
       <EstimateTable
         title="Additional Items"
         helper="Add billable work or materials not included in the blueprint."
@@ -2992,11 +3065,45 @@ export default function EstimationPage() {
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }
 
+const estimateTabs = {
+  display: "flex",
+  alignItems: "center",
+  gap: 0,
+  marginBottom: 12,
+  borderBottom: "1px solid #d4d4d8",
+  background: "#fff",
+};
+
+const estimateTabButton = {
+  fontFamily: "inherit",
+  minHeight: 40,
+  padding: "9px 16px",
+  border: 0,
+  borderRight: "1px solid #e4e4e7",
+  borderRadius: 0,
+  background: "#fff",
+  color: "#52525b",
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 500,
+};
+
+const estimateTabButtonActive = {
+  background: "#18181b",
+  color: "#fff",
+  fontWeight: 600,
+};
+
 const pageShell = {
+  lineHeight: 1.45,
+  fontSize: 13,
+  fontFamily: "\"Segoe UI\", Inter, Arial, sans-serif",
   maxWidth: 1400,
   margin: "0 auto",
   padding: "0 0 36px",
@@ -3043,8 +3150,8 @@ const titleBlock = {
 };
 
 const pageTitle = {
-  fontSize: 22,
-  fontWeight: 750,
+  fontSize: 23,
+  fontWeight: 700,
   color: "#18181b",
   margin: 0,
   letterSpacing: "-0.02em",
@@ -3087,16 +3194,16 @@ const metaCard = {
 };
 
 const metaLabel = {
-  fontSize: 9,
-  fontWeight: 700,
+  fontSize: 10,
+  fontWeight: 600,
   color: "#71717a",
   textTransform: "uppercase",
   letterSpacing: "0.11em",
 };
 
 const metaValue = {
-  fontSize: 14,
-  fontWeight: 700,
+  fontSize: 15,
+  fontWeight: 600,
   color: "#18181b",
 };
 
@@ -3109,7 +3216,7 @@ const statusValue = {
   borderRadius: 0,
   background: "#f4f4f5",
   border: "1px solid #e4e4e7",
-  fontSize: 11,
+  fontSize: 12,
 };
 
 const lockedBanner = {
@@ -3119,7 +3226,7 @@ const lockedBanner = {
   background: "#fffbeb",
   border: "1px solid #fde68a",
   color: "#78350f",
-  fontSize: 11,
+  fontSize: 12,
   fontWeight: 600,
   lineHeight: 1.45,
 };
@@ -3143,15 +3250,15 @@ const sectionHeaderSmall = {
 
 const sectionTitle = {
   margin: 0,
-  fontSize: 15,
-  fontWeight: 700,
+  fontSize: 16,
+  fontWeight: 650,
   color: "#18181b",
   letterSpacing: "-0.01em",
 };
 
 const helperText = {
   margin: "4px 0 0",
-  fontSize: 10.5,
+  fontSize: 12,
   color: "#71717a",
   lineHeight: 1.45,
   maxWidth: 760,
@@ -3164,7 +3271,7 @@ const productionSnapshotCard = {
 };
 
 const productionSnapshotHeader = {
-  padding: "14px 16px",
+  padding: "16px 18px",
   display: "flex",
   alignItems: "flex-start",
   justifyContent: "space-between",
@@ -3175,14 +3282,15 @@ const productionSnapshotHeader = {
 };
 
 const productionEyebrow = {
-  fontSize: 9,
-  fontWeight: 900,
+  fontSize: 10.5,
+  fontWeight: 600,
   color: "#52525b",
   textTransform: "uppercase",
   letterSpacing: "0.14em",
 };
 
 const productionStatus = {
+  fontSize: 14,
   minWidth: 110,
   padding: "8px 10px",
   display: "grid",
@@ -3204,8 +3312,8 @@ const productionStatusReview = {
 };
 
 const productionStatusLabel = {
-  fontSize: 8,
-  fontWeight: 900,
+  fontSize: 9.5,
+  fontWeight: 600,
   textTransform: "uppercase",
   letterSpacing: "0.12em",
   opacity: 0.78,
@@ -3220,8 +3328,8 @@ const productionSummaryGrid = {
 };
 
 const productionMetricCard = {
-  minHeight: 54,
-  padding: "9px 11px",
+  minHeight: 62,
+  padding: "11px 13px",
   display: "flex",
   flexDirection: "column",
   justifyContent: "space-between",
@@ -3231,27 +3339,27 @@ const productionMetricCard = {
 };
 
 const productionMetricLabel = {
-  fontSize: 7.5,
-  fontWeight: 700,
+  fontSize: 10,
+  fontWeight: 600,
   color: "#71717a",
   textTransform: "uppercase",
   letterSpacing: "0.09em",
 };
 
 const productionMetricValue = {
-  fontSize: 17,
-  fontWeight: 700,
+  fontSize: 20,
+  fontWeight: 650,
   lineHeight: 1,
   color: "#18181b",
 };
 
 const productionGuide = {
-  margin: "10px 14px 0",
-  padding: "9px 11px",
+  margin: "12px 14px 0",
+  padding: "11px 13px",
   display: "flex",
   flexWrap: "wrap",
   gap: 5,
-  fontSize: 10.5,
+  fontSize: 12.5,
   lineHeight: 1.45,
   color: "#3f3f46",
   background: "#f4f4f5",
@@ -3261,7 +3369,7 @@ const productionGuide = {
 const productionReviewNotice = {
   margin: "10px 14px 0",
   padding: "9px 11px",
-  fontSize: 10.5,
+  fontSize: 12.5,
   fontWeight: 600,
   color: "#9a3412",
   background: "#fff7ed",
@@ -3272,19 +3380,19 @@ const productionEmpty = {
   padding: 18,
   color: "#71717a",
   textAlign: "center",
-  fontSize: 11,
+  fontSize: 13,
   lineHeight: 1.5,
   background: "#fcfcfd",
 };
 
 const productionTable = {
   width: "100%",
-  minWidth: 980,
+  minWidth: 1040,
   marginTop: 10,
   borderCollapse: "separate",
   borderSpacing: 0,
   tableLayout: "fixed",
-  fontSize: 10.5,
+  fontSize: 13,
 };
 
 const productionTableHead = {
@@ -3292,10 +3400,10 @@ const productionTableHead = {
 };
 
 const productionTh = {
-  padding: "9px 10px",
+  padding: "10px 11px",
   textAlign: "left",
   color: "#fff",
-  fontSize: 7.5,
+  fontSize: 10,
   fontWeight: 750,
   textTransform: "uppercase",
   letterSpacing: "0.09em",
@@ -3307,30 +3415,31 @@ const productionRow = {
 };
 
 const productionTd = {
-  padding: "8px 10px",
+  fontSize: 13,
+  padding: "10px 11px",
   verticalAlign: "middle",
   borderBottom: "1px solid #e4e4e7",
   color: "#27272a",
-  lineHeight: 1.35,
+  lineHeight: 1.4,
 };
 
 const productionPartCode = {
-  fontSize: 10,
-  fontWeight: 900,
+  fontSize: 12,
+  fontWeight: 650,
   color: "#18181b",
   letterSpacing: "0.04em",
 };
 
 const productionPartName = {
-  marginTop: 3,
-  fontSize: 11,
-  fontWeight: 700,
+  marginTop: 4,
+  fontSize: 13,
+  fontWeight: 500,
   color: "#3f3f46",
 };
 
 const productionPartReview = {
   marginTop: 6,
-  fontSize: 9,
+  fontSize: 11,
   fontWeight: 750,
   color: "#c2410c",
 };
@@ -3338,33 +3447,33 @@ const productionPartReview = {
 const productionMono = {
   fontFamily:
     "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-  fontSize: 10,
-  fontWeight: 700,
+  fontSize: 12,
+  fontWeight: 600,
   color: "#18181b",
 };
 
 const productionSecondary = {
   marginTop: 4,
-  fontSize: 9,
+  fontSize: 11.5,
   color: "#71717a",
   lineHeight: 1.4,
 };
 
 const productionGrain = {
-  fontSize: 9,
-  fontWeight: 750,
+  fontSize: 11.5,
+  fontWeight: 500,
   color: "#52525b",
 };
 
 const productionStandard = {
   display: "inline-flex",
   alignItems: "center",
-  minHeight: 20,
-  padding: "3px 6px",
+  minHeight: 22,
+  padding: "4px 7px",
   background: "#fafafa",
   color: "#71717a",
-  fontSize: 8,
-  fontWeight: 750,
+  fontSize: 10.5,
+  fontWeight: 500,
   borderRadius: 0,
 };
 
@@ -3382,23 +3491,23 @@ const productionTag = {
   padding: "4px 7px",
   background: "#f4f4f5",
   color: "#3f3f46",
-  fontSize: 8,
-  fontWeight: 800,
+  fontSize: 10.5,
+  fontWeight: 600,
   borderRadius: 0,
 };
 
 const productionDetailList = {
   display: "grid",
   gap: 3,
-  fontSize: 9,
+  fontSize: 11.5,
   color: "#52525b",
   lineHeight: 1.45,
 };
 
 const productionFooterNote = {
-  padding: "9px 14px 12px",
+  padding: "10px 14px 13px",
   color: "#71717a",
-  fontSize: 9,
+  fontSize: 11,
   lineHeight: 1.45,
   background: "#fff",
 };
@@ -3407,7 +3516,7 @@ const estimateTableStyle = {
   width: "100%",
   borderCollapse: "separate",
   borderSpacing: 0,
-  fontSize: 11,
+  fontSize: 12,
   tableLayout: "fixed",
   minWidth: 980,
 };
@@ -3424,8 +3533,8 @@ const tableFooterRow = {
 const th = {
   textAlign: "left",
   padding: "9px 9px",
-  fontSize: 8,
-  fontWeight: 700,
+  fontSize: 9.5,
+  fontWeight: 600,
   color: "#71717a",
   textTransform: "uppercase",
   letterSpacing: "0.09em",
@@ -3434,6 +3543,7 @@ const th = {
 };
 
 const td = {
+  fontSize: 12,
   padding: "8px 9px",
   color: "#27272a",
   verticalAlign: "middle",
@@ -3441,6 +3551,7 @@ const td = {
 };
 
 const emptyCell = {
+  fontSize: 12,
   ...td,
   padding: 18,
   textAlign: "center",
@@ -3449,11 +3560,13 @@ const emptyCell = {
 };
 
 const cellInput = {
-  minHeight: 34,
+  fontWeight: 500,
+  fontFamily: "inherit",
+  minHeight: 36,
   padding: "7px 8px",
   border: "1px solid #d4d4d8",
   borderRadius: 0,
-  fontSize: 11,
+  fontSize: 12.5,
   color: "#18181b",
   background: "#fff",
   outline: "none",
@@ -3461,12 +3574,13 @@ const cellInput = {
 };
 
 const inputFull = {
+  fontFamily: "inherit",
   width: "100%",
-  minHeight: 38,
+  minHeight: 40,
   padding: "9px 10px",
   border: "1px solid #d4d4d8",
   borderRadius: 0,
-  fontSize: 12,
+  fontSize: 13,
   color: "#18181b",
   background: "#fff",
   boxSizing: "border-box",
@@ -3483,8 +3597,8 @@ const readOnlyFieldStyle = (locked) =>
     : {};
 
 const labelSm = {
-  fontSize: 11,
-  fontWeight: 650,
+  fontSize: 12.5,
+  fontWeight: 600,
   color: "#27272a",
   display: "block",
   marginBottom: 6,
@@ -3505,6 +3619,7 @@ const dualFieldGrid = {
 };
 
 const summaryRow = {
+  fontSize: 13,
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
@@ -3514,7 +3629,7 @@ const summaryRow = {
 
 const summaryLabel = {
   color: "#71717a",
-  fontSize: 11,
+  fontSize: 12.5,
   fontWeight: 550,
 };
 
@@ -3528,8 +3643,8 @@ const grandTotalBox = {
   alignItems: "center",
   gap: 12,
   color: "#fff",
-  fontSize: 17,
-  fontWeight: 750,
+  fontSize: 18,
+  fontWeight: 700,
 };
 
 const savedInfo = {
@@ -3538,7 +3653,7 @@ const savedInfo = {
   background: "#fafafa",
   border: "1px solid #e4e4e7",
   borderRadius: 0,
-  fontSize: 10,
+  fontSize: 11,
   color: "#71717a",
   textAlign: "center",
 };
@@ -3563,14 +3678,14 @@ const requestInfoCard = {
 
 const requestText = {
   margin: 0,
-  fontSize: 12,
+  fontSize: 12.5,
   lineHeight: 1.55,
   color: "#3f3f46",
 };
 
 const mutedText = {
   margin: 0,
-  fontSize: 11,
+  fontSize: 12,
   color: "#71717a",
   lineHeight: 1.5,
 };
@@ -3583,7 +3698,7 @@ const detailRow = {
   gap: 10,
   paddingBottom: 6,
   borderBottom: "1px solid #f0f0f2",
-  fontSize: 11,
+  fontSize: 12.5,
   color: "#52525b",
 };
 
@@ -3598,7 +3713,7 @@ const messageCard = {
   border: "1px solid #e4e4e7",
   borderRadius: 0,
   background: "#fafafa",
-  fontSize: 11,
+  fontSize: 12,
   lineHeight: 1.4,
 };
 
@@ -3639,14 +3754,15 @@ const filePlaceholder = {
 
 const attachmentLabel = {
   padding: "9px 10px",
-  fontSize: 11,
-  fontWeight: 750,
+  fontSize: 12,
+  fontWeight: 600,
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
 };
 
 const btnPrimary = {
+  fontFamily: "inherit",
   minHeight: 36,
   padding: "8px 14px",
   background: "#18181b",
@@ -3654,12 +3770,13 @@ const btnPrimary = {
   border: "1px solid #18181b",
   borderRadius: 0,
   cursor: "pointer",
-  fontSize: 11,
-  fontWeight: 700,
+  fontSize: 12,
+  fontWeight: 600,
   whiteSpace: "nowrap",
 };
 
 const btnGhost = {
+  fontFamily: "inherit",
   minHeight: 36,
   padding: "8px 12px",
   background: "#fff",
@@ -3667,12 +3784,13 @@ const btnGhost = {
   border: "1px solid #d4d4d8",
   borderRadius: 0,
   cursor: "pointer",
-  fontSize: 11,
-  fontWeight: 650,
+  fontSize: 12,
+  fontWeight: 600,
   whiteSpace: "nowrap",
 };
 
 const btnBack = {
+  fontFamily: "inherit",
   minWidth: 66,
   padding: "7px 10px",
   background: "#fff",
@@ -3680,11 +3798,12 @@ const btnBack = {
   border: "1px solid #d4d4d8",
   borderRadius: 0,
   cursor: "pointer",
-  fontSize: 11,
-  fontWeight: 650,
+  fontSize: 12,
+  fontWeight: 600,
 };
 
 const btnAdd = {
+  fontFamily: "inherit",
   minHeight: 34,
   padding: "7px 11px",
   background: "#18181b",
@@ -3692,12 +3811,13 @@ const btnAdd = {
   border: "1px solid #18181b",
   borderRadius: 0,
   cursor: "pointer",
-  fontSize: 10.5,
-  fontWeight: 700,
+  fontSize: 11.5,
+  fontWeight: 600,
   whiteSpace: "nowrap",
 };
 
 const btnRemove = {
+  fontFamily: "inherit",
   width: 30,
   height: 30,
   padding: 0,
@@ -3706,8 +3826,8 @@ const btnRemove = {
   border: "1px solid #fecaca",
   borderRadius: 0,
   cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 700,
+  fontSize: 13,
+  fontWeight: 600,
 };
 
 const btnDisabled = {
