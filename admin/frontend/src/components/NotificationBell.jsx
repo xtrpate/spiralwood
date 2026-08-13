@@ -157,7 +157,10 @@ function resolveNotificationRoute(
   }
 }
 
-export default function NotificationBell({ compact = false }) {
+export default function NotificationBell({
+  compact = false,
+  headerCompact = false,
+}) {
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
@@ -170,8 +173,12 @@ export default function NotificationBell({ compact = false }) {
 
   const [notifications, setNotifications] = useState([]);
   const [open, setOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [historyHasMore, setHistoryHasMore] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  // WISDOM CUSTOM ORANGE NOTIFICATION BELL V1
+  const NOTIFICATION_PAGE_SIZE = 50;
 
   const markingInFlightRef = useRef(new Set());
   const isMountedRef = useRef(true);
@@ -183,29 +190,87 @@ export default function NotificationBell({ compact = false }) {
     };
   }, []);
 
-  const fetchNotifications = useCallback(async () => {
+  const mergeNotifications = useCallback((current, incoming) => {
+    const byId = new Map(current.map((item) => [item.id, item]));
+    incoming.forEach((item) => byId.set(item.id, item));
+
+    return Array.from(byId.values()).sort((a, b) => {
+      const timeDiff =
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return timeDiff || Number(b.id) - Number(a.id);
+    });
+  }, []);
+
+  const fetchUnreadCount = useCallback(async () => {
     try {
-      const { data } = await api.get("/tasks/notifications");
-      if (isMountedRef.current) setNotifications(data);
+      const { data } = await api.get("/tasks/unread-count");
+      if (isMountedRef.current) {
+        setUnreadCount(Number(data?.notification_count) || 0);
+      }
     } catch {
-      // A failed notification fetch must never break the surrounding page.
+      // Badge failure must never break the surrounding page.
     }
   }, []);
 
-  useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const { data } = await api.get(
+        `/tasks/notifications?limit=${NOTIFICATION_PAGE_SIZE}&offset=0`,
+      );
+      if (isMountedRef.current) {
+        setNotifications((current) => mergeNotifications(current, data));
+        setHistoryHasMore(data.length === NOTIFICATION_PAGE_SIZE);
+      }
+    } catch {
+      // A failed notification fetch must never break the surrounding page.
+    }
+  }, [mergeNotifications]);
+
+  const loadOlderNotifications = useCallback(async () => {
+    if (historyLoading || !historyHasMore) return;
+
+    setHistoryLoading(true);
+    try {
+      const offset = notifications.length;
+      const { data } = await api.get(
+        `/tasks/notifications?limit=${NOTIFICATION_PAGE_SIZE}&offset=${offset}`,
+      );
+
+      if (isMountedRef.current) {
+        setNotifications((current) => mergeNotifications(current, data));
+        setHistoryHasMore(data.length === NOTIFICATION_PAGE_SIZE);
+      }
+    } catch {
+      toast.error("Could not load older notifications.");
+    } finally {
+      if (isMountedRef.current) setHistoryLoading(false);
+    }
+  }, [
+    historyHasMore,
+    historyLoading,
+    mergeNotifications,
+    notifications.length,
+  ]);
 
   useEffect(() => {
-    const iv = setInterval(fetchNotifications, 30000);
+    fetchNotifications();
+    fetchUnreadCount();
+  }, [fetchNotifications, fetchUnreadCount]);
+
+  useEffect(() => {
+    const iv = setInterval(() => {
+      fetchNotifications();
+      fetchUnreadCount();
+    }, 30000);
     return () => clearInterval(iv);
-  }, [fetchNotifications]);
+  }, [fetchNotifications, fetchUnreadCount]);
 
   const markAllRead = async () => {
     try {
       await api.patch("/tasks/notifications/read-all");
       setNotifications((p) => p.map((n) => ({ ...n, is_read: 1 })));
-      toast.success("All notifications cleared.");
+      setUnreadCount(0);
+      toast.success("All notifications marked as read.");
     } catch {}
   };
 
@@ -224,6 +289,7 @@ export default function NotificationBell({ compact = false }) {
           setNotifications((p) =>
             p.map((n) => (n.id === id ? { ...n, is_read: 1 } : n)),
           );
+          setUnreadCount((count) => Math.max(0, count - 1));
         }
       } catch {
         // Best-effort — a failed mark-as-read must never block navigation
@@ -260,15 +326,36 @@ export default function NotificationBell({ compact = false }) {
       <button
         className={useMonochromeNotification ? "cashier-notification-trigger" : undefined}
         style={
-          compact
-            ? { ...S.btnIcon, position: "relative" }
-            : { ...S.btn, ...S.btnGray, position: "relative" }
+          headerCompact
+            ? {
+                width: 38,
+                height: 38,
+                padding: 0,
+                borderRadius: 7,
+                border: "1px solid #e4e4e7",
+                background: "#ffffff",
+                color: "#3f3f46",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                position: "relative",
+              }
+            : compact
+              ? { ...S.btnIcon, position: "relative" }
+              : { ...S.btn, ...S.btnGray, position: "relative" }
         }
         onClick={() => setOpen(true)}
-        aria-label={compact ? "Notifications" : undefined}
-        title={compact ? "Notifications" : undefined}
+        aria-label={compact || headerCompact ? "Notifications" : undefined}
+        title={compact || headerCompact ? "Notifications" : undefined}
       >
-        {compact ? (
+        {headerCompact ? (
+          <Bell
+            size={18}
+            strokeWidth={1.8}
+            style={{ color: "#D99500" }}
+          />
+        ) : compact ? (
           useMonochromeNotification ? (
             <Bell size={20} strokeWidth={1.8} />
           ) : (
@@ -284,29 +371,27 @@ export default function NotificationBell({ compact = false }) {
         )}
         {unreadCount > 0 && (
           <span
-            className={
-              useMonochromeNotification
-                ? "cashier-notification-count"
-                : undefined
-            }
             style={{
               position: "absolute",
-              top: -6,
-              right: -6,
-              background: "#dc2626",
-              color: "#fff",
-              borderRadius: "50%",
-              width: 20,
-              height: 20,
-              fontSize: 10,
-              fontWeight: 800,
+              top: -5,
+              right: -5,
+              minWidth: 18,
+              height: 18,
+              padding: unreadCount > 9 ? "0 4px" : 0,
+              borderRadius: 999,
+              background: "#E15869",
+              color: "#ffffff",
+              border: "2px solid #ffffff",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              border: "2px solid #f4f4f5",
+              boxSizing: "border-box",
+              fontSize: 9.5,
+              lineHeight: 1,
+              fontWeight: 700,
             }}
           >
-            {unreadCount > 9 ? "9+" : unreadCount}
+            {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
       </button>
@@ -314,8 +399,23 @@ export default function NotificationBell({ compact = false }) {
       {open && (
         <div style={S.overlay} onClick={() => setOpen(false)}>
           <div
-            className={useMonochromeNotification ? "cashier-notification-modal" : undefined}
-            style={{ ...S.modal, width: 480 }}
+            className={
+              useMonochromeNotification
+                ? "cashier-notification-modal"
+                : undefined
+            }
+            style={{
+              ...S.modal,
+              width: 480,
+              maxWidth: "calc(100vw - 32px)",
+              height: "min(760px, 84vh)",
+              maxHeight: "84vh",
+              padding: 18,
+              borderRadius: 6,
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             <div
@@ -323,111 +423,230 @@ export default function NotificationBell({ compact = false }) {
                 display: "flex",
                 justifyContent: "space-between",
                 alignItems: "center",
-                marginBottom: 20,
+                gap: 12,
+                marginBottom: 16,
               }}
             >
               <div
-                className={useMonochromeNotification ? "cashier-notification-title" : undefined}
-                style={{ ...S.mTitle, marginBottom: 0 }}
+                className={
+                  useMonochromeNotification
+                    ? "cashier-notification-title"
+                    : undefined
+                }
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  color: "#18181b",
+                  fontSize: 16,
+                  fontWeight: 700,
+                  letterSpacing: "-0.01em",
+                }}
               >
                 {useMonochromeNotification ? (
-                  <>
-                    <Bell size={18} strokeWidth={1.8} />
-                    <span>Notifications</span>
-                  </>
+                  <Bell size={18} strokeWidth={1.8} />
                 ) : (
-                  "🔔 Notifications"
+                  <Bell
+                    size={18}
+                    strokeWidth={1.8}
+                    style={{ color: "#D99500" }}
+                  />
                 )}
+                <span>Notifications</span>
               </div>
+
               {unreadCount > 0 && (
                 <button
-                  className={useMonochromeNotification ? "cashier-notification-mark-all" : undefined}
+                  type="button"
+                  className={
+                    useMonochromeNotification
+                      ? "cashier-notification-mark-all"
+                      : undefined
+                  }
                   style={{
                     ...S.btn,
                     ...S.btnGray,
-                    fontSize: 12,
-                    padding: "6px 12px",
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    padding: "6px 10px",
+                    borderRadius: 5,
                   }}
                   onClick={markAllRead}
                 >
-                  Mark all as read
+                  Mark all read
                 </button>
               )}
             </div>
-            {notifications.length === 0 ? (
-              <div
-                style={{
-                  textAlign: "center",
-                  color: "#71717a",
-                  padding: 30,
-                  fontSize: 13,
-                  fontWeight: 600,
-                }}
-              >
-                No notifications yet.
-              </div>
-            ) : (
-              notifications.map((n) => (
+
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                overflowY: "auto",
+                overflowX: "hidden",
+                paddingRight: 3,
+              }}
+            >
+              {notifications.length === 0 ? (
                 <div
-                  key={n.id}
-                  className={useMonochromeNotification ? "cashier-notification-item" : undefined}
-                  style={S.notifItem(!n.is_read)}
-                  onClick={() => handleNotificationClick(n)}
+                  style={{
+                    textAlign: "center",
+                    color: "#71717a",
+                    padding: "28px 8px",
+                    fontSize: 13,
+                    fontWeight: 400,
+                  }}
                 >
-                  <div
-                    className={useMonochromeNotification ? "cashier-notification-item-title" : undefined}
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 800,
-                      color: "#18181b",
-                      marginBottom: 4,
-                    }}
-                  >
-                    {n.title}
-                  </div>
-                  <div
-                    className={useMonochromeNotification ? "cashier-notification-item-message" : undefined}
-                    style={{
-                      fontSize: 13,
-                      color: "#52525b",
-                      marginBottom: 8,
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    {n.message}
-                  </div>
-                  <div
-                    className={useMonochromeNotification ? "cashier-notification-meta" : undefined}
-                    style={{
-                      fontSize: 11,
-                      color: "#71717a",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <span>
-                      {new Date(n.created_at).toLocaleString("en-PH")}
-                    </span>
-                    {!n.is_read && (
-                      <span className={useMonochromeNotification ? "cashier-notification-unread" : undefined} style={{ color: "#0a0a0a", fontWeight: 800 }}>
-                        ● Unread
-                      </span>
-                    )}
-                  </div>
+                  No notifications yet.
                 </div>
-              ))
-            )}
+              ) : (
+                notifications.map((n) => (
+                  <div
+                    key={n.id}
+                    className={
+                      useMonochromeNotification
+                        ? "cashier-notification-item"
+                        : undefined
+                    }
+                    style={{
+                      ...S.notifItem(!n.is_read),
+                      padding: "11px 12px",
+                      borderRadius: 5,
+                      marginBottom: 8,
+                      position: "relative",
+                    }}
+                    onClick={() => handleNotificationClick(n)}
+                  >
+                    {!n.is_read && !useMonochromeNotification && (
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          position: "absolute",
+                          top: 13,
+                          right: 13,
+                          width: 7,
+                          height: 7,
+                          borderRadius: "50%",
+                          background: "#ef4444",
+                        }}
+                      />
+                    )}
+
+                    <div
+                      className={
+                        useMonochromeNotification
+                          ? "cashier-notification-item-title"
+                          : undefined
+                      }
+                      style={{
+                        paddingRight: !n.is_read ? 18 : 0,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "#18181b",
+                        marginBottom: 4,
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {n.title}
+                    </div>
+
+                    <div
+                      className={
+                        useMonochromeNotification
+                          ? "cashier-notification-item-message"
+                          : undefined
+                      }
+                      style={{
+                        fontSize: 12.5,
+                        color: "#52525b",
+                        marginBottom: 7,
+                        lineHeight: 1.45,
+                        fontWeight: 400,
+                      }}
+                    >
+                      {n.message}
+                    </div>
+
+                    <div
+                      className={
+                        useMonochromeNotification
+                          ? "cashier-notification-meta"
+                          : undefined
+                      }
+                      style={{
+                        fontSize: 10.5,
+                        color: "#71717a",
+                        fontWeight: 500,
+                      }}
+                    >
+                      {new Date(n.created_at).toLocaleString("en-PH")}
+                    </div>
+                  </div>
+                ))
+              )}
+
+              {notifications.length > 0 && historyHasMore && (
+                <button
+                  type="button"
+                  onClick={loadOlderNotifications}
+                  disabled={historyLoading}
+                  style={{
+                    width: "100%",
+                    minHeight: 36,
+                    marginTop: 4,
+                    border: "1px solid #d4d4d8",
+                    borderRadius: 5,
+                    background: "#ffffff",
+                    color: historyLoading ? "#a1a1aa" : "#3f3f46",
+                    fontFamily: "inherit",
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    cursor: historyLoading ? "wait" : "pointer",
+                  }}
+                >
+                  {historyLoading
+                    ? "Loading older notifications..."
+                    : "Load older notifications"}
+                </button>
+              )}
+
+              {notifications.length > 0 && !historyHasMore && (
+                <div
+                  style={{
+                    padding: "10px 4px 2px",
+                    color: "#a1a1aa",
+                    fontSize: 10.5,
+                    fontWeight: 400,
+                    textAlign: "center",
+                  }}
+                >
+                  No older notifications.
+                </div>
+              )}
+            </div>
+
             <div
               style={{
                 display: "flex",
                 justifyContent: "flex-end",
-                marginTop: 16,
+                marginTop: 14,
               }}
             >
               <button
-                className={useMonochromeNotification ? "cashier-notification-close" : undefined}
-                style={{ ...S.btn, ...S.btnGray }}
+                type="button"
+                className={
+                  useMonochromeNotification
+                    ? "cashier-notification-close"
+                    : undefined
+                }
+                style={{
+                  ...S.btn,
+                  ...S.btnGray,
+                  padding: "7px 14px",
+                  borderRadius: 5,
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
                 onClick={() => setOpen(false)}
               >
                 Close

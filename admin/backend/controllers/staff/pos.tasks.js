@@ -107,11 +107,27 @@ const validateProductionSequence = async ({
 /* ── Get User Notifications ── */
 exports.getNotifications = async (req, res) => {
   try {
-    // ── FIXED: Switched to .query and parsed ID ──
+    // WISDOM NOTIFICATION HISTORY PAGING V1
+    // Keep this endpoint array-shaped for existing clients while allowing
+    // the admin notification center to progressively load older history.
+    const requestedLimit = Number.parseInt(req.query.limit, 10);
+    const requestedOffset = Number.parseInt(req.query.offset, 10);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 100)
+      : 50;
+    const offset = Number.isFinite(requestedOffset)
+      ? Math.max(requestedOffset, 0)
+      : 0;
+
     const [notifications] = await db.query(
-      `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 20`,
-      [parseInt(req.user.id)],
+      `SELECT *
+       FROM notifications
+       WHERE user_id = ?
+       ORDER BY created_at DESC, id DESC
+       LIMIT ? OFFSET ?`,
+      [parseInt(req.user.id), limit, offset],
     );
+
     res.json(notifications);
   } catch (err) {
     console.error("[pos.tasks GET /notifications]", err);

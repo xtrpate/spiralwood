@@ -7,6 +7,7 @@ import React, {
   useRef,
 } from "react";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
+import { LogOut } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
 import useAuthStore from "../../store/authStore";
 import toast from "react-hot-toast";
@@ -14,6 +15,7 @@ import { useCart } from "../../pages/customer/cartcontext";
 import NotificationBell from "../NotificationBell";
 import OversizedDeliveryEstimatorPanel from "../OversizedDeliveryEstimatorPanel";
 import "./AdminLayout.css";
+import adminSystemIcon from "../../assets/admin-system-icon.png";
 
 const NAV_ITEMS = [
   { section: "Dashboard" },
@@ -462,6 +464,59 @@ export default function AdminLayout() {
               </NavLink>
             );
           })}
+
+          {/* WISDOM ADMIN LOGOUT AFTER BACKUP V1 */}
+          {/* WISDOM ADMIN WHITE BELL ALIGNED LOGOUT V1 */}
+          {/* WISDOM ADMIN YELLOW BELL LOGOUT ALIGNMENT V1 */}
+          <button
+            type="button"
+            onClick={handleLogout}
+            title={!open ? "Logout" : undefined}
+            aria-label="Logout"
+            style={{
+              width: "100%",
+              minHeight: 36,
+              padding: open ? "9px 21px" : "9px 0",
+              border: "none",
+              borderLeft: "3px solid transparent",
+              background: "transparent",
+              color: "#a1a1aa",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: open ? "flex-start" : "center",
+              gap: 10,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              fontSize: 13,
+              fontWeight: 500,
+              whiteSpace: "nowrap",
+              textAlign: "left",
+              transition: "all .15s",
+            }}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.background = "#18181b";
+              event.currentTarget.style.color = "#ffffff";
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.background = "transparent";
+              event.currentTarget.style.color = "#a1a1aa";
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                width: 16,
+                height: 16,
+                flex: "0 0 16px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <LogOut size={16} strokeWidth={1.8} />
+            </span>
+            {open && <span>Logout</span>}
+          </button>
         </nav>
 
         <button
@@ -522,55 +577,107 @@ export default function AdminLayout() {
             ☰
           </button>
 
-          <NotificationBell />
+          {/* WISDOM ADMIN HEADER COMPACT ACCOUNT V1 */}
+          {/* WISDOM ADMIN HEADER SIZE ALIGNMENT V1.0.1 */}
+          <NotificationBell headerCompact />
 
-          <span
+          <div
+            aria-hidden="true"
+            style={{
+              width: 1,
+              height: 32,
+              background: "#e4e4e7",
+              flexShrink: 0,
+            }}
+          />
+
+          <div
             className="wisdom-admin-user-badge"
             style={{
-              fontSize: 13,
-              color: "#52525b",
-              fontWeight: 500,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              minWidth: 0,
+              minHeight: 38,
             }}
           >
-            👤 {user?.name}{" "}
-            <span
+            {user?.profile_photo ? (
+              <img
+                src={buildAssetUrl(user.profile_photo)}
+                alt=""
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  flexShrink: 0,
+                  border: "1px solid #e4e4e7",
+                }}
+              />
+            ) : (
+              <div
+                aria-hidden="true"
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  background: "#ffffff",
+                  border: "1px solid #dedee3",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                  flexShrink: 0,
+                }}
+              >
+                <img
+                  src={adminSystemIcon}
+                  alt=""
+                  style={{
+                    width: 29,
+                    height: 29,
+                    objectFit: "contain",
+                    display: "block",
+                  }}
+                />
+              </div>
+            )}
+
+            <div
               style={{
-                fontSize: 11,
-                background: "#f4f4f5",
-                color: "#18181b",
-                padding: "3px 10px",
-                borderRadius: 20,
-                fontWeight: 600,
-                letterSpacing: "0.02em",
-                marginLeft: "4px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                minWidth: 0,
+                minHeight: 34,
+                lineHeight: 1.2,
               }}
             >
-              {user?.role}
-            </span>
-          </span>
-
-          <button
-            onClick={handleLogout}
-            style={{
-              background: "#18181b",
-              color: "#ffffff",
-              border: "none",
-              padding: "7px 18px",
-              borderRadius: 6,
-              cursor: "pointer",
-              fontSize: 12,
-              fontWeight: 600,
-              transition: "background 0.2s",
-            }}
-            onMouseEnter={(event) => {
-              event.currentTarget.style.background = "#3f3f46";
-            }}
-            onMouseLeave={(event) => {
-              event.currentTarget.style.background = "#18181b";
-            }}
-          >
-            Logout
-          </button>
+              <span
+                style={{
+                  maxWidth: 170,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  color: "#18181b",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                {user?.name || "System Administrator"}
+              </span>
+              <span
+                style={{
+                  marginTop: 3,
+                  color: "#71717a",
+                  fontSize: 10.5,
+                  fontWeight: 400,
+                }}
+              >
+                {user?.role === "admin" ? "Admin" : "Staff"}
+              </span>
+            </div>
+          </div>
         </header>
 
         <main
