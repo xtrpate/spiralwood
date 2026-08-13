@@ -1170,17 +1170,17 @@ const eyebrow = {
 
 const pageTitle = {
   margin: 0,
-  fontSize: 26,
-  lineHeight: 1.15,
-  fontWeight: 760,
-  color: "#0a0a0a",
+  fontSize: 24,
+  lineHeight: 1.2,
+  fontWeight: 700,
+  color: "#18181b",
   letterSpacing: "-0.02em",
 };
 
 const pageSubtitle = {
-  margin: "7px 0 0",
-  color: "#656b74",
-  fontSize: 13,
+  margin: "4px 0 0",
+  color: "#71717a",
+  fontSize: 12.5,
   lineHeight: 1.5,
   fontWeight: 400,
   maxWidth: 680,

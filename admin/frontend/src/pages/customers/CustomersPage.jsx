@@ -742,17 +742,17 @@ const styles = `
 
   .cm-page-title {
     margin: 0;
-    color: #0a0a0a;
-    font-size: 26px;
-    line-height: 1.15;
-    font-weight: 760;
+    color: #18181b;
+    font-size: 24px;
+    line-height: 1.2;
+    font-weight: 700;
     letter-spacing: -0.02em;
   }
 
   .cm-page-subtitle {
-    margin: 6px 0 0;
+    margin: 4px 0 0;
     max-width: 720px;
-    color: #626871;
+    color: #71717a;
     font-size: 12.5px;
     line-height: 1.5;
     font-weight: 400;

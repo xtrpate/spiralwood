@@ -20,17 +20,26 @@
 
 .support-header h1 {
   margin: 0;
-  font-size: 36px;
+  color: #18181b;
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .support-header p {
-  margin-top: 10px;
-  color: #6b7280;
+  margin: 4px 0 0;
+  color: #71717a;
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-weight: 400;
 }
 
 .support-refresh-btn {
   padding: 12px 24px;
   cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 600;
 }
 
 .support-content {
@@ -3026,3 +3035,6 @@
   width: 18px;
   height: 18px;
 }
+
+/* WISDOM SUPPORT DASHBOARD ALIGNMENT V1
+   Marker for targeted Dashboard spacing/typography pass only. */

@@ -1222,3 +1222,27 @@
   font-size: 10.5px !important;
   font-weight: 600 !important;
 }
+
+/* WISDOM WARRANTY DASHBOARD ALIGNMENT V1
+   Does not change the warranty queue, cards, modal, or actions. */
+.warranty-admin-v2 {
+  width: min(100%, 1180px) !important;
+  max-width: 1180px !important;
+  margin: 0 auto !important;
+}
+
+.warranty-admin-v2 .warranty-header h1 {
+  margin: 0 !important;
+  font-size: 24px !important;
+  line-height: 1.2 !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+}
+
+.warranty-admin-v2 .warranty-header p {
+  margin-top: 4px !important;
+  color: #71717a !important;
+  font-size: 12.5px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}

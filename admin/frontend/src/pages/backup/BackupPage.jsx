@@ -202,20 +202,20 @@ export default function BackupPage() {
 
         .backup-page-title {
           margin: 0;
-          font-size: 26px;
-          line-height: 1.15;
-          font-weight: 760;
-          letter-spacing: -0.022em;
-          color: #111111;
+          font-size: 24px;
+          line-height: 1.2;
+          font-weight: 700;
+          letter-spacing: -0.02em;
+          color: #18181b;
         }
 
         .backup-page-subtitle {
           max-width: 720px;
-          margin: 7px 0 0;
-          font-size: 13px;
-          line-height: 1.55;
+          margin: 4px 0 0;
+          font-size: 12.5px;
+          line-height: 1.5;
           font-weight: 400;
-          color: var(--backup-muted);
+          color: #71717a;
         }
 
         .backup-primary-btn,
@@ -241,8 +241,8 @@ export default function BackupPage() {
           align-items: center;
           justify-content: center;
           gap: 7px;
-          font-size: 12px;
-          font-weight: 650;
+          font-size: 11.5px;
+          font-weight: 600;
           white-space: nowrap;
           box-shadow: none;
         }

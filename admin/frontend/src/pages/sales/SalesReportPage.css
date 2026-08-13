@@ -780,3 +780,25 @@
     text-align: center;
   }
 }
+
+/* WISDOM SALES DASHBOARD ALIGNMENT V1
+   Existing report cards/data stay unchanged. */
+.sales-admin-v3 {
+  width: min(100%, 1460px);
+  max-width: 1460px;
+  margin: 0 auto;
+}
+
+.sales-page-header h1 {
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.sales-page-header p {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-weight: 400;
+}
