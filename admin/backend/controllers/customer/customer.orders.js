@@ -11,6 +11,7 @@ const {
 } = require("../../utils/emailHelper");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
+const { createStandardOnlineReceipt } = require("../../services/receiptService");
 
 /* ── Standard checkout constants ── */
 const ALLOWED_PAYMENT_METHODS = ["cod", "cop", "paymongo"];
@@ -25,6 +26,62 @@ const getPaymentMethodLabel = (method) => {
   if (normalized === "cop") return "Cash on Pickup";
   if (normalized === "paymongo") return "Online Payment";
   return "the selected payment method";
+};
+
+/* WISDOM STANDARD PAYMONGO IDEMPOTENCY + RECEIPT V1 */
+const getVerifiedStandardPaymongoPayment = async (conn, orderId) => {
+  const [[payment]] = await conn.query(
+    `SELECT id, amount, payment_method, status
+     FROM payment_transactions
+     WHERE order_id = ?
+       AND LOWER(status) = 'verified'
+       AND LOWER(payment_method) = 'paymongo'
+     ORDER BY id ASC
+     LIMIT 1`,
+    [orderId],
+  );
+  return payment || null;
+};
+
+const ensureStandardPaymongoReceipt = async (conn, order, paymentTransactionId) => {
+  const [[existing]] = await conn.query(
+    `SELECT id, receipt_number
+     FROM receipts
+     WHERE payment_transaction_id = ?
+     LIMIT 1`,
+    [paymentTransactionId],
+  );
+
+  if (existing) {
+    return {
+      receiptId: existing.id,
+      receiptNumber: existing.receipt_number,
+      created: false,
+    };
+  }
+
+  const [items] = await conn.query(
+    `SELECT product_name, quantity, unit_price
+     FROM order_items
+     WHERE order_id = ?
+     ORDER BY id ASC`,
+    [order.id],
+  );
+
+  const receiptNumber = `OR-${Date.now()}`;
+  const receipt = await createStandardOnlineReceipt(conn, {
+    orderId: order.id,
+    paymentTransactionId,
+    receiptNumber,
+    issuedTo:
+      order.customer_name || order.walkin_customer_name || "Customer",
+    issuedBy: order.customer_id,
+    totalAmount: Number(order.total || 0),
+    providerReference: order.paymongo_session_id || null,
+    itemsSnapshot: JSON.stringify(items || []),
+  });
+
+  return { ...receipt, created: true };
 };
 
 /* ── Get Settings (Payment Info) ── */
@@ -720,11 +777,18 @@ exports.verifyPayment = async (req, res) => {
       return res.status(400).json({ message: "Order number is required." });
     }
 
-    // 1. Quick read (No transaction locking yet)
     const [[order]] = await db.query(
-      `SELECT id, order_number, total, payment_status, paymongo_session_id
-       FROM orders 
-       WHERE order_number = ? AND customer_id = ? LIMIT 1`,
+      `SELECT id, order_number, total, payment_status, paymongo_session_id,
+              customer_id,
+              COALESCE(
+                (SELECT name FROM users WHERE id = customer_id LIMIT 1),
+                walkin_customer_name,
+                'Customer'
+              ) AS customer_name,
+              walkin_customer_name
+       FROM orders
+       WHERE order_number = ? AND customer_id = ?
+       LIMIT 1`,
       [order_number, req.user.id],
     );
 
@@ -732,76 +796,193 @@ exports.verifyPayment = async (req, res) => {
       return res.status(404).json({ message: "Order not found." });
     }
 
-    // If already verified, stop here.
-    if (order.payment_status === "partial" || order.payment_status === "paid") {
-      return res.json({ success: true, message: "Payment already verified." });
-    }
+    // Already-paid returns still run through a short locked transaction so
+    // older successful orders can gain their missing receipt idempotently.
+    if (String(order.payment_status || "").toLowerCase() === "paid") {
+      const conn = await db.getConnection();
+      try {
+        await conn.beginTransaction();
 
-    // 2. Ask PayMongo over the network (Database is completely free and unlocked right now)
-    if (order.paymongo_session_id) {
-      const session = await retrieveCheckoutSession(order.paymongo_session_id);
+        const [[lockedOrder]] = await conn.query(
+          `SELECT id, order_number, total, payment_status, paymongo_session_id,
+                  customer_id,
+                  COALESCE(
+                    (SELECT name FROM users WHERE id = customer_id LIMIT 1),
+                    walkin_customer_name,
+                    'Customer'
+                  ) AS customer_name,
+                  walkin_customer_name
+           FROM orders
+           WHERE id = ? AND customer_id = ?
+           LIMIT 1
+           FOR UPDATE`,
+          [order.id, req.user.id],
+        );
 
-      const payments = session.attributes.payments || [];
-      const hasSuccessfulPayment = payments.some(
-        (payment) => payment.attributes.status === "paid",
-      );
-
-      // 3. ONLY if PayMongo says "Paid" do we open a strict transaction to write the data
-      if (hasSuccessfulPayment) {
-        const conn = await db.getConnection();
-        try {
-          await conn.beginTransaction();
-
-          await conn.query(
-            `UPDATE orders 
-             SET payment_status = 'paid', status = 'confirmed' 
-             WHERE id = ?`,
-            [order.id],
-          );
-
-          const [paymentInsertResult] = await conn.query(
-            `INSERT INTO payment_transactions
-              (order_id, amount, payment_method, proof_url, status, verified_at, notes)
-             VALUES (?, ?, 'paymongo', '', 'verified', NOW(), 'Automatically verified via PayMongo checkout.')`,
-            [order.id, order.total],
-          );
-
-          await conn.commit();
-
-          await writeAuditLogSafe({
-            userId: req.user.id,
-            action: "verify_online_payment",
-            tableName: "payment_transactions",
-            recordId: paymentInsertResult.insertId,
-            newValues: {
-              order_id: order.id,
-              order_number: order.order_number,
-              amount: order.total,
-              payment_method: "paymongo",
-              payment_status: "paid",
-              result: "verified",
-            },
-            ipAddress: req.ip || null,
-          });
-
-          return res.json({
-            success: true,
-            message: "Payment verified successfully!",
-          });
-        } catch (dbErr) {
-          if (!conn.connection._fatalError) await conn.rollback();
-          throw dbErr; // Pass to the outer catch block
-        } finally {
-          conn.release();
+        if (!lockedOrder) {
+          await conn.rollback();
+          return res.status(404).json({ message: "Order not found." });
         }
+
+        const existingPayment = await getVerifiedStandardPaymongoPayment(
+          conn,
+          lockedOrder.id,
+        );
+
+        let receipt = null;
+        if (existingPayment) {
+          receipt = await ensureStandardPaymongoReceipt(
+            conn,
+            lockedOrder,
+            existingPayment.id,
+          );
+        }
+
+        await conn.commit();
+
+        return res.json({
+          success: true,
+          already_verified: true,
+          message: "Payment already verified.",
+          order_id: lockedOrder.id,
+          order_number: lockedOrder.order_number,
+          payment_status: "paid",
+          receipt_id: receipt?.receiptId || null,
+          receipt_number: receipt?.receiptNumber || null,
+        });
+      } catch (dbErr) {
+        if (!conn.connection._fatalError) await conn.rollback();
+        throw dbErr;
+      } finally {
+        conn.release();
       }
     }
 
-    // 4. Verification Failed (Customer abandoned or payment declined)
-    return res.json({
-      success: false,
-      message: "Payment has not been completed yet. Order remains unpaid.",
-    });
+    if (!order.paymongo_session_id) {
+      return res.json({
+        success: false,
+        message: "Payment session is unavailable. Order remains unpaid.",
+      });
+    }
+
+    // Provider lookup intentionally occurs before taking a DB lock.
+    const session = await retrieveCheckoutSession(order.paymongo_session_id);
+    const payments = session.attributes.payments || [];
+    const hasSuccessfulPayment = payments.some(
+      (payment) => payment.attributes.status === "paid",
+    );
+
+    if (!hasSuccessfulPayment) {
+      return res.json({
+        success: false,
+        message: "Payment has not been completed yet. Order remains unpaid.",
+      });
+    }
+
+    // PayMongo says paid. Serialize finalization on the order row. This second
+    // check is the critical race fix: two simultaneous browser verification
+    // calls can no longer both insert a verified payment transaction.
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      const [[lockedOrder]] = await conn.query(
+        `SELECT id, order_number, total, payment_status, paymongo_session_id,
+                customer_id,
+                COALESCE(
+                  (SELECT name FROM users WHERE id = customer_id LIMIT 1),
+                  walkin_customer_name,
+                  'Customer'
+                ) AS customer_name,
+                walkin_customer_name
+         FROM orders
+         WHERE id = ? AND customer_id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [order.id, req.user.id],
+      );
+
+      if (!lockedOrder) {
+        await conn.rollback();
+        return res.status(404).json({ message: "Order not found." });
+      }
+
+      let verifiedPayment = await getVerifiedStandardPaymongoPayment(
+        conn,
+        lockedOrder.id,
+      );
+      let insertedPayment = false;
+
+      if (!verifiedPayment) {
+        const [paymentInsertResult] = await conn.query(
+          `INSERT INTO payment_transactions
+            (order_id, amount, payment_method, proof_url, status, verified_at, notes)
+           VALUES (?, ?, 'paymongo', '', 'verified', NOW(),
+                   'Automatically verified via PayMongo checkout.')`,
+          [lockedOrder.id, lockedOrder.total],
+        );
+
+        verifiedPayment = {
+          id: paymentInsertResult.insertId,
+          amount: lockedOrder.total,
+          payment_method: "paymongo",
+          status: "verified",
+        };
+        insertedPayment = true;
+      }
+
+      await conn.query(
+        `UPDATE orders
+         SET payment_status = 'paid', status = 'confirmed'
+         WHERE id = ?`,
+        [lockedOrder.id],
+      );
+
+      const receipt = await ensureStandardPaymongoReceipt(
+        conn,
+        lockedOrder,
+        verifiedPayment.id,
+      );
+
+      await conn.commit();
+
+      if (insertedPayment) {
+        await writeAuditLogSafe({
+          userId: req.user.id,
+          action: "verify_online_payment",
+          tableName: "payment_transactions",
+          recordId: verifiedPayment.id,
+          newValues: {
+            order_id: lockedOrder.id,
+            order_number: lockedOrder.order_number,
+            amount: lockedOrder.total,
+            payment_method: "paymongo",
+            payment_status: "paid",
+            result: "verified",
+            receipt_number: receipt.receiptNumber,
+          },
+          ipAddress: req.ip || null,
+        });
+      }
+
+      return res.json({
+        success: true,
+        already_verified: !insertedPayment,
+        message: insertedPayment
+          ? "Payment verified successfully!"
+          : "Payment already verified.",
+        order_id: lockedOrder.id,
+        order_number: lockedOrder.order_number,
+        payment_status: "paid",
+        receipt_id: receipt.receiptId,
+        receipt_number: receipt.receiptNumber,
+      });
+    } catch (dbErr) {
+      if (!conn.connection._fatalError) await conn.rollback();
+      throw dbErr;
+    } finally {
+      conn.release();
+    }
   } catch (err) {
     console.error(
       "[customer.orders verifyPayment]",
@@ -939,22 +1120,60 @@ exports.autoCancelExpiredOrders = async () => {
         await conn.beginTransaction();
 
         if (isActuallyPaid) {
-          // 🚨 RECOVERED PAYMENT! The customer paid but closed the tab.
-          await conn.query(
-            `UPDATE orders 
-             SET payment_status = 'paid', status = 'confirmed' 
-             WHERE id = ?`,
+          // RECOVERED PAYMENT. Lock + re-check so the cron and customer
+          // return flow cannot create two verified rows for the same standard order.
+          const [[lockedOrder]] = await conn.query(
+            `SELECT id, order_number, total, payment_status, paymongo_session_id,
+                    customer_id,
+                    COALESCE(
+                      (SELECT name FROM users WHERE id = customer_id LIMIT 1),
+                      walkin_customer_name,
+                      'Customer'
+                    ) AS customer_name,
+                    walkin_customer_name
+             FROM orders
+             WHERE id = ?
+             LIMIT 1
+             FOR UPDATE`,
             [order.id],
           );
 
-          await conn.query(
-            `INSERT INTO payment_transactions
-              (order_id, amount, payment_method, proof_url, status, verified_at, notes)
-             VALUES (?, ?, 'paymongo', '', 'verified', NOW(), 'Automatically verified via PayMongo checkout (Recovered by System Audit).')`,
-            [order.id, order.total],
+          if (!lockedOrder) {
+            await conn.rollback();
+            continue;
+          }
+
+          let verifiedPayment = await getVerifiedStandardPaymongoPayment(
+            conn,
+            lockedOrder.id,
           );
+
+          if (!verifiedPayment) {
+            const [paymentInsertResult] = await conn.query(
+              `INSERT INTO payment_transactions
+                (order_id, amount, payment_method, proof_url, status, verified_at, notes)
+               VALUES (?, ?, 'paymongo', '', 'verified', NOW(),
+                       'Automatically verified via PayMongo checkout (Recovered by System Audit).')`,
+              [lockedOrder.id, lockedOrder.total],
+            );
+            verifiedPayment = { id: paymentInsertResult.insertId };
+          }
+
+          await conn.query(
+            `UPDATE orders
+             SET payment_status = 'paid', status = 'confirmed'
+             WHERE id = ?`,
+            [lockedOrder.id],
+          );
+
+          await ensureStandardPaymongoReceipt(
+            conn,
+            lockedOrder,
+            verifiedPayment.id,
+          );
+
           console.log(
-            `[Cron] Recovered missing payment for order ${order.order_number}`,
+            `[Cron] Recovered payment safely for order ${lockedOrder.order_number}`,
           );
         } else {
           // Cancel the order and return the stock.

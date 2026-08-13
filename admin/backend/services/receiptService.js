@@ -102,4 +102,70 @@ const createPosSaleReceipt = async (
   return { receiptId: result.insertId, receiptNumber };
 };
 
-module.exports = { createPosSaleReceipt };
+
+
+// WISDOM STANDARD ONLINE RECEIPT V1
+// Standard storefront PayMongo orders use the existing 'pos_sale' receipt
+// classification because the current schema intentionally has only
+// pos_sale / blueprint_payment. No migration is needed. This helper differs
+// from cashier POS receipts in one important way: the receipt is system/provider
+// issued, so issued_by remains NULL rather than falsely attributing it to the
+// customer who happened to return from PayMongo.
+const createStandardOnlineReceipt = async (
+  conn,
+  {
+    orderId,
+    paymentTransactionId,
+    receiptNumber,
+    issuedTo,
+    totalAmount,
+    itemsSnapshot,
+    providerReference = null,
+    issuedBy,
+  },
+) => {
+  if (!orderId) throw new Error("createStandardOnlineReceipt: orderId is required.");
+  if (!paymentTransactionId) {
+    throw new Error("createStandardOnlineReceipt: paymentTransactionId is required.");
+  }
+  if (!receiptNumber) {
+    throw new Error("createStandardOnlineReceipt: receiptNumber is required.");
+  }
+  if (!itemsSnapshot) {
+    throw new Error("createStandardOnlineReceipt: itemsSnapshot is required.");
+  }
+  if (!issuedBy) {
+    throw new Error(
+      "createStandardOnlineReceipt: issuedBy (owning customer user id) is required.",
+    );
+  }
+
+  const [result] = await conn.query(
+    `
+    INSERT INTO receipts
+      (order_id, payment_transaction_id, receipt_type, receipt_number,
+       issued_to, issued_by, total_amount, cash_received, change_amount,
+       payment_method_snapshot, payment_label, previous_paid_amount,
+       amount_paid, total_paid_after, remaining_balance_after,
+       provider_reference, items_snapshot, printed_at)
+    VALUES (?, ?, 'pos_sale', ?, ?, ?, ?, NULL, NULL,
+            'paymongo', 'full_payment', 0, ?, ?, 0, ?, ?, NOW())
+    `,
+    [
+      orderId,
+      paymentTransactionId,
+      receiptNumber,
+      issuedTo || "Customer",
+      issuedBy,
+      totalAmount,
+      totalAmount,
+      totalAmount,
+      providerReference,
+      itemsSnapshot,
+    ],
+  );
+
+  return { receiptId: result.insertId, receiptNumber };
+};
+
+module.exports = { createPosSaleReceipt, createStandardOnlineReceipt };

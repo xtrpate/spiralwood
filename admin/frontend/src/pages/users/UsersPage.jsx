@@ -854,7 +854,7 @@ function AccountModal({
         <div className="um-modal-footer">
           <button
             type="button"
-            className="um-btn um-btn-secondary"
+            className="um-btn um-btn-secondary um-account-modal-action"
             onClick={onClose}
             disabled={saving}
           >
@@ -863,7 +863,7 @@ function AccountModal({
 
           <button
             type="submit"
-            className="um-btn um-btn-primary"
+            className="um-btn um-btn-primary um-account-modal-action"
             disabled={saving}
           >
             {saving ? "Saving..." : isEdit ? "Save Changes" : "Create Account"}
@@ -1142,6 +1142,16 @@ const styles = `
     background: #2f2f33;
   }
 
+  /* WISDOM USER ACCOUNT MODAL BUTTON FONT V1
+     Font only: Cancel + Create Account / Save Changes. */
+  .um-modal-footer .um-account-modal-action {
+    font-family: "Inter", sans-serif !important;
+    font-size: 11.5px !important;
+    line-height: 1 !important;
+    font-weight: 700 !important;
+    letter-spacing: 0 !important;
+  }
+
   .um-add-account-btn {
     min-height: 34px;
     padding: 0 13px;
@@ -1158,6 +1168,16 @@ const styles = `
 
   .um-add-account-btn svg {
     flex: 0 0 auto;
+  }
+
+  /* WISDOM ADD ACCOUNT TEXT FORCE MATCH V1
+     Target the rendered text directly so no broader button rule can alter it. */
+  .wisdom-admin-users-v2 .um-add-account-btn > span {
+    font-family: "Inter", sans-serif !important;
+    font-size: 11.5px !important;
+    line-height: 1 !important;
+    font-weight: 700 !important;
+    letter-spacing: 0 !important;
   }
 
   .um-add-account-btn:hover:not(:disabled) {

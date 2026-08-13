@@ -610,25 +610,61 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const verifySuccess = searchParams.get("verify_success");
-    const orderNumber = searchParams.get("order");
+    const redirectParams = new URLSearchParams(window.location.search);
+    const verifySuccess = redirectParams.get("verify_success");
+    const orderNumber = redirectParams.get("order");
 
     if (verifySuccess === "true" && orderNumber) {
       setLoading(true);
+
       api
         .post("/customer/orders/verify-payment", {
           order_number: orderNumber,
         })
-        .then(() => {
+        .then(({ data }) => {
           window.history.replaceState(
             {},
             document.title,
             window.location.pathname,
           );
+
+          if (data?.success && data?.payment_status === "paid") {
+            try {
+              const raw = sessionStorage.getItem(
+                "wisdom_last_order_confirmation",
+              );
+              const confirmation = raw ? JSON.parse(raw) : {};
+
+              sessionStorage.setItem(
+                "wisdom_last_order_confirmation",
+                JSON.stringify({
+                  ...(confirmation && typeof confirmation === "object"
+                    ? confirmation
+                    : {}),
+                  order_number:
+                    data.order_number ||
+                    confirmation?.order_number ||
+                    orderNumber,
+                  payment_method: "paymongo",
+                  payment_status: "paid",
+                  receipt_id: data.receipt_id || null,
+                  receipt_number: data.receipt_number || null,
+                }),
+              );
+            } catch {
+              // Verification remains successful even if browser storage is unavailable.
+            }
+
+            navigate("/order-complete", { replace: true });
+            return;
+          }
+
+          fetchOrders();
         })
-        .catch((err) => console.error("Verification error:", err))
-        .finally(() => {
+        .catch((err) => {
+          console.error("Verification error:", err);
+          // Keep verify_success + order in the URL on failure so a refresh can
+          // safely retry after a temporary backend/database issue is fixed.
           fetchOrders();
         });
     } else {
