@@ -467,7 +467,7 @@ exports.getCustomers = async (req, res) => {
 
     const [rows] = await pool.query(
       `SELECT id, name, email, phone, address, is_active, is_verified,
-              approval_status, created_at, last_login
+              approval_status, profile_photo, created_at, last_login
        FROM users WHERE ${where.join(" AND ")}
        ORDER BY created_at DESC
        LIMIT ? OFFSET ?`,
@@ -556,6 +556,7 @@ exports.getUsers = async (req, res) => {
          role,
          staff_type,
          phone,
+         profile_photo,
          is_active,
          last_login,
          created_at
