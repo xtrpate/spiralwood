@@ -3149,11 +3149,11 @@ function TableShell({ children }) {
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const pageShell = {
-  maxWidth: 1480, // Widened to match the new Orders grid
+  maxWidth: 1260, // Compact centered Admin Order detail
   margin: "0 auto",
   display: "flex",
   flexDirection: "column",
-  gap: 16,
+  gap: 12,
   color: "#202124",
 };
 
@@ -3161,16 +3161,16 @@ const heroCard = {
   background: "#ffffff",
   border: "1px solid #dfe2e5",
   borderRadius: 0,
-  padding: "16px 20px",
+  padding: "14px 16px",
 };
 
 const heroTop = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
-  gap: 12,
+  gap: 10,
   flexWrap: "wrap",
-  marginBottom: 12,
+  marginBottom: 10,
 };
 
 const eyebrow = {
@@ -3215,10 +3215,10 @@ const heroActions = {
 
 const detailTabRow = {
   display: "flex",
-  gap: 8,
+  gap: 6,
   flexWrap: "wrap",
-  marginTop: 16,
-  paddingTop: 16,
+  marginTop: 12,
+  paddingTop: 12,
   borderTop: "1px solid #dfe2e5",
 };
 
@@ -3238,15 +3238,15 @@ const detailTabButton = {
 const statsGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-  gap: 10,
+  gap: 8,
 };
 
 const statCard = {
   background: "#ffffff",
   border: "1px solid #dfe2e5",
   borderRadius: 0,
-  padding: "14px 16px",
-  minHeight: 78,
+  padding: "12px 14px",
+  minHeight: 72,
   display: "flex",
   flexDirection: "column",
   justifyContent: "center",
@@ -3286,13 +3286,13 @@ const statValue = {
 const sectionGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-  gap: 16,
+  gap: 12,
 };
 
 const detailPairGrid = {
   display: "grid",
-  gridTemplateColumns: "1.1fr 0.9fr",
-  gap: 16,
+  gridTemplateColumns: "1fr 1fr",
+  gap: 12,
   alignItems: "start",
 };
 
@@ -3300,12 +3300,12 @@ const sectionCard = {
   background: "#ffffff",
   border: "1px solid #dfe2e5",
   borderRadius: 0,
-  padding: "16px 20px",
+  padding: "14px 16px",
 };
 
 const sectionHeader = {
-  marginBottom: 14,
-  paddingBottom: 10,
+  marginBottom: 10,
+  paddingBottom: 8,
   borderBottom: "1px solid #eff0f1",
 };
 
@@ -3320,8 +3320,8 @@ const infoRow = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
-  gap: 14,
-  padding: "8px 0",
+  gap: 12,
+  padding: "6px 0",
   borderBottom: "1px solid #fafafa",
 };
 
@@ -3345,7 +3345,7 @@ const tableShell = {
   width: "100%",
   overflowX: "auto",
   border: "1px solid #dfe2e5",
-  borderRadius: 4,
+  borderRadius: 0,
 };
 
 const table = {
@@ -3361,7 +3361,7 @@ const tfootRow = { background: "#fafafa" };
 
 const th = {
   textAlign: "left",
-  padding: "10px 14px",
+  padding: "8px 12px",
   fontSize: 9.5,
   fontWeight: 600,
   color: "#60656d",
@@ -3371,7 +3371,7 @@ const th = {
 };
 
 const td = {
-  padding: "11px 14px",
+  padding: "9px 12px",
   color: "#34383d",
   fontSize: 11.5,
   borderBottom: "1px solid #eff0f1",
