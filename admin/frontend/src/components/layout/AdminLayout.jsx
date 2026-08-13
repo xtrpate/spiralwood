@@ -703,109 +703,111 @@ export default function AdminLayout() {
 
       {showLogoutModal && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="admin-logout-title"
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            backdropFilter: "blur(4px)",
-            zIndex: 9999,
+            zIndex: 12000,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            padding: "20px",
+            background: "rgba(0,0,0,0.52)",
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowLogoutModal(false);
+            }
           }}
         >
           <div
             style={{
-              background: "#0a0a0a",
-              width: "min(360px, 90vw)",
-              padding: 24,
-              borderRadius: 16,
-              boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
-              border: "1px solid #27272a",
+              width: "100%",
+              maxWidth: "390px",
+              background: "#ffffff",
+              border: "1px solid #d9d9dc",
+              borderRadius: 6,
+              boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
+              padding: "24px",
               fontFamily: "Inter, sans-serif",
             }}
           >
-            <h2
+            <h3
+              id="admin-logout-title"
               style={{
-                marginTop: 0,
-                color: "#ffffff",
-                fontWeight: 800,
-                fontSize: 18,
-                letterSpacing: "-0.01em",
-                marginBottom: 8,
+                margin: 0,
+                color: "#111111",
+                fontSize: "22px",
+                fontWeight: 750,
+                lineHeight: 1.2,
+                letterSpacing: "-0.015em",
               }}
             >
-              Sign out
-            </h2>
+              Logout
+            </h3>
 
             <p
               style={{
-                fontSize: 13,
-                color: "#a1a1aa",
-                marginBottom: 24,
+                margin: "8px 0 0",
+                color: "#66666b",
+                fontSize: "14px",
+                fontWeight: 400,
                 lineHeight: 1.5,
               }}
             >
-              Are you sure you want to log out of your account? You will need to
-              sign back in to access the admin portal.
+              Are you sure you want to log out?
             </p>
 
             <div
               style={{
                 display: "flex",
-                gap: 12,
                 justifyContent: "flex-end",
+                gap: "8px",
+                marginTop: "22px",
               }}
             >
               <button
+                type="button"
                 onClick={() => setShowLogoutModal(false)}
                 style={{
-                  padding: "9px 16px",
-                  background: "transparent",
-                  border: "1px solid #3f3f46",
-                  color: "#e5e7eb",
-                  borderRadius: 8,
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #bfc0c4",
+                  borderRadius: 6,
+                  background: "#ffffff",
+                  color: "#111111",
                   cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  transition: "background 0.2s",
-                }}
-                onMouseEnter={(event) => {
-                  event.currentTarget.style.background = "#27272a";
-                }}
-                onMouseLeave={(event) => {
-                  event.currentTarget.style.background = "transparent";
+                  fontSize: "13px",
+                  fontWeight: 650,
                 }}
               >
                 Cancel
               </button>
 
               <button
+                type="button"
                 onClick={confirmLogout}
                 style={{
-                  padding: "9px 16px",
-                  background: "#ffffff",
-                  color: "#0a0a0a",
-                  border: "none",
-                  borderRadius: 8,
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #111111",
+                  borderRadius: 6,
+                  background: "#111111",
+                  color: "#ffffff",
                   cursor: "pointer",
-                  fontWeight: 700,
-                  fontSize: 13,
-                  transition: "opacity 0.2s",
-                }}
-                onMouseEnter={(event) => {
-                  event.currentTarget.style.opacity = "0.8";
-                }}
-                onMouseLeave={(event) => {
-                  event.currentTarget.style.opacity = "1";
+                  fontSize: "13px",
+                  fontWeight: 650,
                 }}
               >
-                Yes, log out
+                Logout
               </button>
             </div>
           </div>
         </div>
-      )}
-    </div>
+      )}    </div>
   );
 }

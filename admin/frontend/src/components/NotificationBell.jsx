@@ -350,14 +350,73 @@ export default function NotificationBell({
         title={compact || headerCompact ? "Notifications" : undefined}
       >
         {headerCompact ? (
-          <Bell
-            size={18}
-            strokeWidth={1.8}
-            style={{ color: "#D99500" }}
-          />
+          <span
+            style={{
+              position: "relative",
+              width: 21,
+              height: 21,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Bell
+              size={19}
+              strokeWidth={1.7}
+              fill="#FACC15"
+              style={{ color: "#C88900" }}
+            />
+            {unreadCount > 0 && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: -7,
+                  right: -9,
+                  minWidth: 17,
+                  height: 17,
+                  padding: unreadCount > 9 ? "0 4px" : 0,
+                  borderRadius: 999,
+                  background: "#dc2626",
+                  color: "#ffffff",
+                  border: "2px solid #ffffff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxSizing: "border-box",
+                  fontSize: 9,
+                  lineHeight: 1,
+                  fontWeight: 700,
+                  zIndex: 1,
+                }}
+              >
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </span>
         ) : compact ? (
           useMonochromeNotification ? (
-            <Bell size={20} strokeWidth={1.8} />
+            <span
+              style={{
+                width: 20,
+                height: 20,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                lineHeight: 0,
+                transform: "translateY(-0.5px)",
+              }}
+            >
+              <Bell
+                size={18}
+                strokeWidth={1.65}
+                fill="#FBBF24"
+                style={{
+                  color: "#92400E",
+                  filter: "drop-shadow(0 1px 1px rgba(146,64,14,0.20))",
+                }}
+              />
+            </span>
           ) : (
             "🔔"
           )
@@ -369,7 +428,7 @@ export default function NotificationBell({
         ) : (
           "🔔 Notifications"
         )}
-        {unreadCount > 0 && (
+        {!headerCompact && unreadCount > 0 && (
           <span
             style={{
               position: "absolute",
@@ -448,8 +507,9 @@ export default function NotificationBell({
                 ) : (
                   <Bell
                     size={18}
-                    strokeWidth={1.8}
-                    style={{ color: "#D99500" }}
+                    strokeWidth={1.7}
+                    fill="#FACC15"
+                    style={{ color: "#C88900" }}
                   />
                 )}
                 <span>Notifications</span>
