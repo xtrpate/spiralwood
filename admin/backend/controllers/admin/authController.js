@@ -5,6 +5,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 // const nodemailer = require("nodemailer");
 const pool = require("../../config/db");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 
 require("dotenv").config();
 
@@ -66,8 +67,25 @@ const sendOtpEmail = async (email, otp, name) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
+    const attemptedEmail = String(email || "").trim().toLowerCase();
+    const auditLogin = async ({ action, user = null, reason }) =>
+      writeAuditLogSafe({
+        userId: user?.id || null,
+        action,
+        tableName: "security",
+        recordId: user?.id || null,
+        newValues: {
+          attempted_email: attemptedEmail || null,
+          result: action === "login_success" ? "success" : "failed",
+          reason,
+          user_role: user?.role || null,
+          staff_type: user?.staff_type || null,
+        },
+        ipAddress: req.ip || null,
+      });
 
     if (!email || !password) {
+      await auditLogin({ action: "login_failed", reason: "missing_credentials" });
       return res
         .status(400)
         .json({ message: "Email and password are required." });
@@ -88,11 +106,20 @@ exports.login = async (req, res) => {
       [normalizedEmail],
     );
 
-    if (!user) return res.status(401).json({ message: "Invalid credentials." });
+    if (!user) {
+      await auditLogin({ action: "login_failed", reason: "invalid_credentials" });
+      return res.status(401).json({ message: "Invalid credentials." });
+    }
 
     const match = await bcrypt.compare(password, user.password || "");
-    if (!match)
+    if (!match) {
+      await auditLogin({
+        action: "login_failed",
+        user,
+        reason: "invalid_credentials",
+      });
       return res.status(401).json({ message: "Invalid credentials." });
+    }
 
     // 2. ROLE-SPECIFIC CHECKS
 
@@ -108,6 +135,11 @@ exports.login = async (req, res) => {
 
       const firstName = user.name ? user.name.split(" ")[0] : "Customer";
       await sendOtpEmail(user.email, newOtp, firstName);
+      await auditLogin({
+        action: "login_failed",
+        user,
+        reason: "email_not_verified",
+      });
 
       return res.status(403).json({
         message:
@@ -119,6 +151,11 @@ exports.login = async (req, res) => {
 
     // B. Staff Configuration Check
     if (user.role === "staff" && !user.staff_type) {
+      await auditLogin({
+        action: "login_failed",
+        user,
+        reason: "staff_type_not_configured",
+      });
       return res.status(403).json({
         message: "Staff account type is not configured yet. Contact admin.",
       });
@@ -126,6 +163,11 @@ exports.login = async (req, res) => {
 
     // C. Global Active Check (Handles banned/deactivated accounts)
     if (!user.is_active) {
+      await auditLogin({
+        action: "login_failed",
+        user,
+        reason: "account_inactive",
+      });
       return res.status(403).json({
         message: "Your account has been deactivated. Please contact support.",
         code: "ACCOUNT_INACTIVE",
@@ -136,6 +178,12 @@ exports.login = async (req, res) => {
     await pool.query("UPDATE users SET last_login = NOW() WHERE id = ?", [
       user.id,
     ]);
+
+    await auditLogin({
+      action: "login_success",
+      user,
+      reason: "authenticated",
+    });
 
     const token = jwt.sign(
       {
@@ -193,6 +241,21 @@ exports.updateProfile = async (req, res) => {
     const vals = [...Object.values(fields), req.user.id];
 
     await pool.query(`UPDATE users SET ${sets} WHERE id = ?`, vals);
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "update_own_profile",
+      tableName: "users",
+      recordId: req.user.id,
+      newValues: {
+        name_changed: name !== undefined,
+        phone_changed: phone !== undefined,
+        address_changed: address !== undefined,
+        profile_photo_changed: Boolean(photo),
+      },
+      ipAddress: req.ip || null,
+    });
+
     res.json({ message: "Profile updated." });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -220,6 +283,15 @@ exports.changePassword = async (req, res) => {
       hashed,
       req.user.id,
     ]);
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "password_changed",
+      tableName: "users",
+      recordId: req.user.id,
+      newValues: { password_changed: true },
+      ipAddress: req.ip || null,
+    });
 
     res.json({ message: "Password changed successfully." });
   } catch (err) {

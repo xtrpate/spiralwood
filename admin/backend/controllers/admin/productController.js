@@ -5,6 +5,7 @@ const {
   isValidNonNegativeInteger,
   isNonEmptyString,
 } = require("../../utils/validators");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 
 // Shared helper: rolls back the transaction, releases the connection,
 // and sends a clear 400 error. Used by both create and update below.
@@ -529,15 +530,32 @@ exports.remove = async (req, res) => {
 // ── PATCH /api/products/:id/featured ─────────────────────────────────────────
 exports.toggleFeatured = async (req, res) => {
   try {
+    const productId = parseInt(req.params.id);
     await pool.query(
       "UPDATE products SET is_featured = NOT is_featured WHERE id = ?",
-      [parseInt(req.params.id)],
+      [productId],
     );
-    const [[{ is_featured }]] = await pool.query(
-      "SELECT is_featured FROM products WHERE id = ?",
-      [parseInt(req.params.id)],
+    const [[product]] = await pool.query(
+      "SELECT name, is_featured FROM products WHERE id = ?",
+      [productId],
     );
-    res.json({ is_featured: !!is_featured });
+    const is_featured = Boolean(product?.is_featured);
+
+    if (product) {
+      await writeAuditLogSafe({
+        userId: req.user?.id || null,
+        action: is_featured ? "feature_product" : "unfeature_product",
+        tableName: "products",
+        recordId: productId,
+        newValues: {
+          name: product.name,
+          is_featured,
+        },
+        ipAddress: req.ip || null,
+      });
+    }
+
+    res.json({ is_featured });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -570,14 +588,24 @@ exports.bulkPublish = async (req, res) => {
       return res.status(400).json({ message: "No product IDs provided." });
     }
 
-    // Convert true/false to MySQL's 1/0
     const publishValue = is_published ? 1 : 0;
 
-    // The (?) automatically unpacks the array of IDs for MySQL
-    await pool.query("UPDATE products SET is_published = ? WHERE id IN (?)", [
-      publishValue,
-      ids,
-    ]);
+    const [result] = await pool.query(
+      "UPDATE products SET is_published = ? WHERE id IN (?)",
+      [publishValue, ids],
+    );
+
+    await writeAuditLogSafe({
+      userId: req.user?.id || null,
+      action: publishValue ? "bulk_publish_products" : "bulk_unpublish_products",
+      tableName: "products",
+      newValues: {
+        is_published: Boolean(publishValue),
+        product_count: Number(result.affectedRows || 0),
+        product_ids: ids.slice(0, 100),
+      },
+      ipAddress: req.ip || null,
+    });
 
     res.json({ message: "Products updated successfully." });
   } catch (err) {
@@ -591,11 +619,31 @@ exports.togglePublish = async (req, res) => {
   try {
     const { is_published } = req.body;
     const publishValue = is_published ? 1 : 0;
+    const productId = parseInt(req.params.id);
 
     await pool.query("UPDATE products SET is_published = ? WHERE id = ?", [
       publishValue,
-      parseInt(req.params.id),
+      productId,
     ]);
+
+    const [[product]] = await pool.query(
+      "SELECT name FROM products WHERE id = ? LIMIT 1",
+      [productId],
+    );
+
+    if (product) {
+      await writeAuditLogSafe({
+        userId: req.user?.id || null,
+        action: publishValue ? "publish_product" : "unpublish_product",
+        tableName: "products",
+        recordId: productId,
+        newValues: {
+          name: product.name,
+          is_published: Boolean(publishValue),
+        },
+        ipAddress: req.ip || null,
+      });
+    }
 
     res.json({ is_published: !!publishValue });
   } catch (err) {
@@ -620,6 +668,18 @@ exports.unpublishByBlueprint = async (req, res) => {
         .json({ message: "No live products found for this blueprint." });
     }
 
+    await writeAuditLogSafe({
+      userId: req.user?.id || null,
+      action: "unpublish_blueprint_products",
+      tableName: "products",
+      newValues: {
+        blueprint_id: blueprintId,
+        affected_products: Number(result.affectedRows || 0),
+        is_published: false,
+      },
+      ipAddress: req.ip || null,
+    });
+
     res.json({ message: "Blueprint product unpublished successfully." });
   } catch (err) {
     console.error("[unpublishByBlueprint Error]:", err);
@@ -632,11 +692,27 @@ exports.toggleActive = async (req, res) => {
   try {
     const { is_active } = req.body;
     const activeValue = is_active ? 1 : 0;
+    const productId = parseInt(req.params.id);
+    const [[before]] = await pool.query(
+      "SELECT name, is_active FROM products WHERE id = ? LIMIT 1",
+      [productId],
+    );
 
     await pool.query("UPDATE products SET is_active = ? WHERE id = ?", [
       activeValue,
-      parseInt(req.params.id),
+      productId,
     ]);
+
+    req.auditRecord = {
+      id: productId,
+      old: before
+        ? { name: before.name, is_active: Boolean(before.is_active) }
+        : null,
+      new: {
+        name: before?.name || null,
+        is_active: Boolean(activeValue),
+      },
+    };
 
     res.json({
       is_active: !!activeValue,

@@ -3,6 +3,7 @@
 const db = require("../../config/db");
 const { signUploadPath } = require("../../utils/signedUrl");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 
 /* ── Helper: split stored proof_url into separate frontend fields ── */
 const splitStoredProofs = (value) => {
@@ -284,6 +285,21 @@ const submitClaim = async (req, res) => {
         linkedOrder.warranty_expiry,
       ],
     );
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "submit_warranty_claim",
+      tableName: "warranties",
+      recordId: result.insertId,
+      newValues: {
+        order_id: linkedOrder.id,
+        order_number: linkedOrder.order_number,
+        product_name: product_name.trim(),
+        status: "pending",
+        evidence_uploaded: true,
+      },
+      ipAddress: req.ip || null,
+    });
 
     try {
       const [admins] = await db.query(

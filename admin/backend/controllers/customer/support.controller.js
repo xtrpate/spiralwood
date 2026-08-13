@@ -9,6 +9,7 @@ const VALID_CATEGORIES = [
 ];
 
 const { createNotificationSafe } = require("../../utils/notificationHelper");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 
 /* ──────────────────────────────────────────────────────────────
    Create Support Ticket
@@ -120,6 +121,19 @@ const createTicket = async (req, res) => {
     }
 
     await connection.commit();
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "create_support_ticket",
+      tableName: "support_tickets",
+      recordId: ticketId,
+      newValues: {
+        category,
+        order_id: linkedOrderId,
+        status: "open",
+      },
+      ipAddress: req.ip || null,
+    });
 
     res.status(201).json({
       message: "Support ticket created successfully.",
@@ -430,6 +444,21 @@ const replyToTicket = async (req, res) => {
 
     await connection.commit();
 
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "reply_support_ticket",
+      tableName: "support_tickets",
+      recordId: ticketId,
+      oldValues: { status: ticket.status },
+      newValues: {
+        reply_added: true,
+        status: ["resolved", "awaiting_customer"].includes(ticket.status)
+          ? "open"
+          : ticket.status,
+      },
+      ipAddress: req.ip || null,
+    });
+
     res.json({
       message: "Reply sent successfully.",
     });
@@ -498,6 +527,16 @@ const closeTicket = async (req, res) => {
       `,
       [ticketId],
     );
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "close_support_ticket",
+      tableName: "support_tickets",
+      recordId: ticketId,
+      oldValues: { status: ticket.status },
+      newValues: { status: "closed" },
+      ipAddress: req.ip || null,
+    });
 
     res.json({
       message: "Support ticket closed successfully.",

@@ -10,6 +10,7 @@ const {
   sendBrevoEmail,
 } = require("../../utils/emailHelper");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 
 /* ── Standard checkout constants ── */
 const ALLOWED_PAYMENT_METHODS = ["cod", "cop", "paymongo"];
@@ -307,6 +308,25 @@ exports.createOrder = async (req, res) => {
     }
 
     await conn.commit();
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "create_online_order",
+      tableName: "orders",
+      recordId: order_id,
+      newValues: {
+        order_number,
+        status: "pending",
+        payment_status,
+        payment_method: normalizedPaymentMethod,
+        total,
+        item_count: validatedItems.reduce(
+          (sum, item) => sum + Number(item.quantity || 0),
+          0,
+        ),
+      },
+      ipAddress: req.ip || null,
+    });
 
     // In-system admin alert: email remains unchanged, but the dashboard bell
     // should also surface a new online order immediately.
@@ -702,7 +722,7 @@ exports.verifyPayment = async (req, res) => {
 
     // 1. Quick read (No transaction locking yet)
     const [[order]] = await db.query(
-      `SELECT id, total, payment_status, paymongo_session_id 
+      `SELECT id, order_number, total, payment_status, paymongo_session_id
        FROM orders 
        WHERE order_number = ? AND customer_id = ? LIMIT 1`,
       [order_number, req.user.id],
@@ -739,7 +759,7 @@ exports.verifyPayment = async (req, res) => {
             [order.id],
           );
 
-          await conn.query(
+          const [paymentInsertResult] = await conn.query(
             `INSERT INTO payment_transactions
               (order_id, amount, payment_method, proof_url, status, verified_at, notes)
              VALUES (?, ?, 'paymongo', '', 'verified', NOW(), 'Automatically verified via PayMongo checkout.')`,
@@ -747,6 +767,23 @@ exports.verifyPayment = async (req, res) => {
           );
 
           await conn.commit();
+
+          await writeAuditLogSafe({
+            userId: req.user.id,
+            action: "verify_online_payment",
+            tableName: "payment_transactions",
+            recordId: paymentInsertResult.insertId,
+            newValues: {
+              order_id: order.id,
+              order_number: order.order_number,
+              amount: order.total,
+              payment_method: "paymongo",
+              payment_status: "paid",
+              result: "verified",
+            },
+            ipAddress: req.ip || null,
+          });
+
           return res.json({
             success: true,
             message: "Payment verified successfully!",
@@ -834,6 +871,20 @@ exports.cancelOrder = async (req, res) => {
     }
 
     await conn.commit();
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "cancel_online_order",
+      tableName: "orders",
+      recordId: orderId,
+      oldValues: { status: "pending" },
+      newValues: {
+        status: "cancelled",
+        cancellation_reason_provided: Boolean(String(reason || "").trim()),
+      },
+      ipAddress: req.ip || null,
+    });
+
     res.json({ message: "Order cancelled and submitted for admin review." });
   } catch (err) {
     if (!conn.connection._fatalError) await conn.rollback();
@@ -947,6 +998,30 @@ exports.autoCancelExpiredOrders = async () => {
         }
 
         await conn.commit();
+
+        await writeAuditLogSafe({
+          userId: null,
+          action: isActuallyPaid
+            ? "system_recover_online_payment"
+            : "system_cancel_unpaid_order",
+          tableName: "orders",
+          recordId: order.id,
+          newValues: isActuallyPaid
+            ? {
+                order_number: order.order_number,
+                payment_status: "paid",
+                order_status: "confirmed",
+                amount: order.total,
+                result: "recovered",
+              }
+            : {
+                order_number: order.order_number,
+                order_status: "cancelled",
+                reason: "payment_timeout",
+                result: "auto_cancelled",
+              },
+          ipAddress: null,
+        });
       } catch (dbErr) {
         if (!conn.connection._fatalError) await conn.rollback();
         console.error(`[Cron DB Error] Order ${order.order_number}:`, dbErr);

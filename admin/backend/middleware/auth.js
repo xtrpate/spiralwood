@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const pool = require("../config/db");
+const { writeAuditLogSafe } = require("./auditLog");
 require("dotenv").config();
 
 async function authenticate(req, res, next) {
@@ -53,8 +54,24 @@ async function authenticate(req, res, next) {
 }
 
 function authorize(...allowedRoles) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.user || !allowedRoles.includes(req.user.role)) {
+      await writeAuditLogSafe({
+        userId: req.user?.id || null,
+        action: "access_denied",
+        tableName: "security",
+        recordId: req.user?.id || null,
+        newValues: {
+          request_method: req.method,
+          request_path: String(req.originalUrl || req.path || "").split("?")[0],
+          user_role: req.user?.role || null,
+          staff_type: req.user?.staff_type || null,
+          required_roles: allowedRoles,
+          reason: "role_not_allowed",
+        },
+        ipAddress: req.ip || null,
+      });
+
       return res
         .status(403)
         .json({ message: "Forbidden. You lack the required permissions." });
@@ -64,7 +81,7 @@ function authorize(...allowedRoles) {
 }
 
 function authorizeStaffType(...allowedTypes) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ message: "Authentication required." });
     }
@@ -73,11 +90,30 @@ function authorizeStaffType(...allowedTypes) {
       return next();
     }
 
-    if (req.user.role !== "staff") {
-      return res.status(403).json({ message: "Staff access required." });
-    }
+    if (req.user.role !== "staff" || !allowedTypes.includes(req.user.staff_type)) {
+      await writeAuditLogSafe({
+        userId: req.user.id,
+        action: "access_denied",
+        tableName: "security",
+        recordId: req.user.id,
+        newValues: {
+          request_method: req.method,
+          request_path: String(req.originalUrl || req.path || "").split("?")[0],
+          user_role: req.user.role,
+          staff_type: req.user.staff_type || null,
+          required_staff_types: allowedTypes,
+          reason:
+            req.user.role !== "staff"
+              ? "staff_access_required"
+              : "staff_assignment_not_allowed",
+        },
+        ipAddress: req.ip || null,
+      });
 
-    if (!allowedTypes.includes(req.user.staff_type)) {
+      if (req.user.role !== "staff") {
+        return res.status(403).json({ message: "Staff access required." });
+      }
+
       return res.status(403).json({
         message: "Forbidden. You do not have the correct staff assignment.",
       });

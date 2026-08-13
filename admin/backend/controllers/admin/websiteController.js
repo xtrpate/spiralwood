@@ -2,6 +2,7 @@
 const pool = require("../../config/db");
 const path = require("path");
 const fs = require("fs");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 
 // Setting-key categorization for audit metadata only — does not affect
 // validation or business behavior. Values are never logged, only which
@@ -621,7 +622,7 @@ exports.triggerManualBackup = async (req, res) => {
 
     const status = backupError ? "failed" : "success";
 
-    await pool.query(
+    const [backupLogResult] = await pool.query(
       `INSERT INTO backup_logs (type, triggered_by, file_name, file_size_kb, storage_path, status, notes)
        VALUES ('manual', ?, ?, ?, ?, ?, ?)`,
       [
@@ -635,8 +636,34 @@ exports.triggerManualBackup = async (req, res) => {
     );
 
     if (backupError) {
+      await writeAuditLogSafe({
+        userId: req.user.id,
+        action: "manual_backup_failed",
+        tableName: "backup_logs",
+        recordId: backupLogResult.insertId,
+        newValues: {
+          file_name: fileName,
+          file_size_kb: sizeKb,
+          result: "failed",
+        },
+        ipAddress: req.ip || null,
+      });
+
       return res.status(500).json({ message: "Backup failed: " + backupError });
     }
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "manual_backup_created",
+      tableName: "backup_logs",
+      recordId: backupLogResult.insertId,
+      newValues: {
+        file_name: fileName,
+        file_size_kb: sizeKb,
+        result: "success",
+      },
+      ipAddress: req.ip || null,
+    });
 
     res.json({
       message: "Backup completed successfully.",
@@ -676,6 +703,20 @@ exports.downloadBackup = async (req, res) => {
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ message: "Backup file not found." });
     }
+
+    const [[backupRow]] = await pool.query(
+      `SELECT id FROM backup_logs WHERE file_name = ? ORDER BY id DESC LIMIT 1`,
+      [filename],
+    );
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "backup_downloaded",
+      tableName: "backup_logs",
+      recordId: backupRow?.id || null,
+      newValues: { file_name: filename, result: "download_started" },
+      ipAddress: req.ip || null,
+    });
 
     res.download(filePath, filename);
   } catch (err) {

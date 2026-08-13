@@ -27,6 +27,7 @@ const {
 } = require("../../utils/paymentAmounts");
 const { parseStrictPositiveInt } = require("../../utils/validators");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
   getGlobalEmailFooter,
   sendBrevoEmail,
@@ -728,6 +729,24 @@ exports.createCustomOrder = async (req, res) => {
     }
 
     await conn.commit();
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "create_custom_request",
+      tableName: "orders",
+      recordId: order_id,
+      newValues: {
+        order_number,
+        order_type: "blueprint",
+        status: "pending",
+        item_count: cleanedItems.reduce(
+          (sum, item) => sum + Number(item.quantity || 0),
+          0,
+        ),
+        blueprint_id: primaryBlueprintId,
+      },
+      ipAddress: req.ip || null,
+    });
 
     try {
       const [[adminEmailSetting]] = await conn.execute(
@@ -1591,6 +1610,22 @@ exports.acceptEstimation = async (req, res) => {
     await conn.commit();
     transactionActive = false;
 
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "accept_custom_estimate",
+      tableName: "estimations",
+      recordId: estimation.id,
+      oldValues: { status: "sent" },
+      newValues: {
+        status: "approved",
+        order_id: order.id,
+        order_number: order.order_number,
+        quoted_total: quotedTotal,
+        down_payment: downPaymentAmount,
+      },
+      ipAddress: req.ip || null,
+    });
+
     return res.json({
       message: "Quotation approved successfully.",
       quoted_total: quotedTotal,
@@ -1775,6 +1810,22 @@ exports.requestEstimationRevision = async (req, res) => {
 
     await conn.commit();
     transactionActive = false;
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "request_custom_estimate_revision",
+      tableName: "estimations",
+      recordId: estimation.id,
+      oldValues: { status: "sent" },
+      newValues: {
+        status: "rejected",
+        customer_decision: "revision_requested",
+        order_id: order.id,
+        order_number: order.order_number,
+        revision_note_provided: Boolean(note),
+      },
+      ipAddress: req.ip || null,
+    });
 
     return res.json({
       message: "Revision request sent successfully.",
@@ -1967,6 +2018,22 @@ exports.rejectEstimation = async (req, res) => {
 
     await conn.commit();
     transactionActive = false;
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "reject_custom_estimate",
+      tableName: "estimations",
+      recordId: estimation.id,
+      oldValues: { status: "sent" },
+      newValues: {
+        status: "rejected",
+        order_id: order.id,
+        order_number: order.order_number,
+        order_status: "cancelled",
+        rejection_reason_provided: Boolean(reason),
+      },
+      ipAddress: req.ip || null,
+    });
 
     return res.json({
       message: "Quotation rejected successfully.",
@@ -2190,7 +2257,7 @@ exports.submitDownPayment = async (req, res) => {
       });
     }
 
-    await conn.execute(
+    const [paymentInsertResult] = await conn.execute(
       `INSERT INTO payment_transactions
         (order_id, amount, payment_method, proof_url, status, notes)
       VALUES (?, ?, ?, ?, 'pending', ?)`,
@@ -2245,6 +2312,21 @@ exports.submitDownPayment = async (req, res) => {
     await conn.commit();
     transactionActive = false;
     proofCommitted = true;
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "submit_blueprint_down_payment",
+      tableName: "payment_transactions",
+      recordId: paymentInsertResult.insertId,
+      newValues: {
+        order_id: order.id,
+        order_number: order.order_number,
+        amount: submittedAmount,
+        payment_method: txPaymentMethod,
+        status: "pending",
+      },
+      ipAddress: req.ip || null,
+    });
 
     return res.json({
       message: "Down payment proof submitted successfully.",

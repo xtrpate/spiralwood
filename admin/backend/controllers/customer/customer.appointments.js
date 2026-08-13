@@ -1,6 +1,7 @@
 // controllers/customer/customer.appointments.js
 const db = require("../../config/db");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 
 const ALLOWED_PURPOSES = new Set(["consultation", "site_measurement"]);
 
@@ -156,6 +157,19 @@ exports.createAppointment = async (req, res) => {
       [req.user.id, purpose, scheduled_date, preferred_schedule, fullNotes],
     );
 
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "request_appointment",
+      tableName: "appointments",
+      recordId: result.insertId,
+      newValues: {
+        purpose,
+        scheduled_date,
+        status: "pending",
+      },
+      ipAddress: req.ip || null,
+    });
+
     try {
       const [admins] = await db.query(
         `SELECT id FROM users WHERE role = 'admin' AND is_active = 1`,
@@ -267,6 +281,20 @@ exports.cancelAppointment = async (req, res) => {
       `UPDATE appointments SET status = 'cancelled' WHERE id = ?`,
       [parseInt(req.params.id)],
     );
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "cancel_appointment",
+      tableName: "appointments",
+      recordId: appointment.id,
+      oldValues: { status: appointment.status },
+      newValues: {
+        status: "cancelled",
+        purpose: appointment.purpose,
+        scheduled_date: appointment.scheduled_date,
+      },
+      ipAddress: req.ip || null,
+    });
 
     try {
       const [admins] = await db.query(

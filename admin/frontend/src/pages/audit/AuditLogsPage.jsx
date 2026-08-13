@@ -2,22 +2,26 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import api from "../../services/api";
 
 const ACTION_LABELS = {
+  // Security and account access
+  login_success: "Signed in successfully",
+  login_failed: "Sign-in attempt failed",
+  access_denied: "Access was denied",
+  password_changed: "Changed own password",
+  password_reset_completed: "Completed password reset",
+  update_own_profile: "Updated own profile",
+
+  // Products and inventory
   create_product: "Created product",
   update_product: "Updated product",
   delete_product: "Deleted product",
   toggle_active_product: "Changed product availability",
-  update_order_status: "Updated order status",
-  accept_order: "Accepted order",
-  decline_order: "Declined order",
-  verify_payment: "Verified payment",
-  assign_production_staff: "Assigned production staff",
-  reassign_production_staff: "Reassigned production staff",
-  update_project_task_status: "Updated production task",
-  update_customer_status: "Updated customer status",
-  create_user: "Created user account",
-  update_user: "Updated user account",
-  reset_user_password: "Reset user password",
-  delete_user: "Deleted user account",
+  feature_product: "Featured product",
+  unfeature_product: "Removed product from featured",
+  publish_product: "Published product",
+  unpublish_product: "Unpublished product",
+  bulk_publish_products: "Published products",
+  bulk_unpublish_products: "Unpublished products",
+  unpublish_blueprint_products: "Unpublished blueprint products",
   create_raw_material: "Created raw material",
   update_raw_material: "Updated raw material",
   archive_raw_material: "Archived raw material",
@@ -27,66 +31,147 @@ const ACTION_LABELS = {
   update_supplier: "Updated supplier",
   delete_supplier: "Deleted supplier",
   create_stock_movement: "Recorded stock movement",
+
+  // Orders, sales, payments, and delivery
+  create_online_order: "Placed online order",
+  cancel_online_order: "Cancelled online order",
+  verify_online_payment: "Verified online payment",
+  system_recover_online_payment: "Recovered online payment",
+  system_cancel_unpaid_order: "Auto-cancelled unpaid order",
+  create_pos_sale: "Created POS sale",
+  update_order_status: "Updated order status",
+  accept_order: "Accepted order",
+  decline_order: "Declined order",
+  confirm_order_receipt: "Confirmed order receipt",
+  process_cancellation: "Processed cancellation",
+  verify_payment: "Reviewed payment",
+  record_blueprint_cash_down_payment: "Recorded blueprint cash down payment",
+  record_blueprint_cash_payment: "Recorded blueprint cash payment",
+  confirm_blueprint_rider_cash_collection: "Confirmed rider cash collection",
+  select_blueprint_payment_method: "Selected blueprint payment method",
+  select_blueprint_remaining_payment_method: "Selected remaining payment method",
+  verify_blueprint_remaining_balance_payment: "Verified remaining balance payment",
+  submit_blueprint_down_payment: "Submitted blueprint down payment",
+  verify_pos_qr_payment: "Verified POS QR payment",
+  recovery_verify_pos_qr_payment: "Recovered POS QR payment",
+  attach_pos_qr_provider_session: "Linked POS QR provider session",
+  expire_pos_qr_payment_attempt: "Expired POS QR payment attempt",
+  admin_manual_release_pos_qr_attempt: "Released POS QR payment attempt",
+  admin_resolve_unpaid_pos_qr_attempt: "Resolved unpaid POS QR attempt",
   create_delivery: "Created delivery",
+  reschedule_delivery: "Rescheduled delivery",
   update_delivery_status: "Updated delivery status",
-  decide_warranty_claim: "Reviewed warranty claim",
-  fulfill_warranty_claim: "Fulfilled warranty claim",
-  update_website_settings: "Updated website settings",
-  create_faq: "Created FAQ",
-  update_faq: "Updated FAQ",
-  delete_faq: "Deleted FAQ",
-  update_page: "Updated page content",
+
+  // Production and blueprints
+  assign_production_staff: "Assigned production staff",
+  reassign_production_staff: "Reassigned production staff",
+  update_project_task: "Updated production task",
+  update_project_task_status: "Updated production task status",
+  delete_project_task: "Deleted production task",
+  mark_production_ready_for_shipping: "Marked production ready for shipping",
   create_blueprint: "Created blueprint",
   update_blueprint: "Updated blueprint",
   archive_blueprint: "Archived blueprint",
   restore_blueprint: "Restored blueprint",
   permanently_delete_blueprint: "Permanently deleted blueprint",
-  create_blueprint_estimation: "Created blueprint estimate",
-  send_blueprint_estimation: "Approved blueprint estimate",
+  create_blueprint_estimation: "Created blueprint quotation",
+  send_blueprint_estimation: "Sent blueprint quotation",
   generate_contract: "Generated contract",
-  process_cancellation: "Processed cancellation",
+  create_custom_request: "Submitted custom request",
+  approve_custom_request: "Approved custom request",
+  reject_custom_request: "Rejected custom request",
+  accept_custom_estimate: "Approved custom quotation",
+  request_custom_estimate_revision: "Requested quotation revision",
+  reject_custom_estimate: "Rejected custom quotation",
+
+  // Appointments, warranty, and support
+  request_appointment: "Requested appointment",
+  create_appointment: "Created appointment",
+  update_appointment: "Updated appointment",
+  cancel_appointment: "Cancelled appointment",
+  submit_warranty_claim: "Submitted warranty claim",
+  cancel_warranty_claim: "Cancelled warranty claim",
+  decide_warranty_claim: "Reviewed warranty claim",
+  fulfill_warranty_claim: "Completed warranty service",
+  create_support_ticket: "Created support ticket",
+  assign_support_ticket: "Assigned support ticket",
+  update_support_ticket: "Updated support ticket",
+  reply_support_ticket: "Replied to support ticket",
+  close_support_ticket: "Closed support ticket",
+
+  // Users and customer accounts
+  update_customer_status: "Updated customer account",
+  create_user: "Created user account",
+  update_user: "Updated user account",
+  reset_user_password: "Reset user password",
+  delete_user: "Deactivated user account",
+  update_customer_avatar: "Updated customer profile photo",
+  update_customer_email: "Updated customer email",
+  update_customer_password: "Changed customer password",
+  update_customer_phone: "Updated customer phone",
+  update_customer_profile: "Updated customer profile",
+
+  // Website and backups
+  update_website_settings: "Updated website settings",
+  create_faq: "Created FAQ",
+  update_faq: "Updated FAQ",
+  delete_faq: "Deleted FAQ",
+  update_page: "Updated page content",
+  manual_backup_created: "Created database backup",
+  manual_backup_failed: "Database backup failed",
+  backup_downloaded: "Downloaded database backup",
 };
 
 const MODULE_LABELS = {
+  security: "Security",
+  users: "Accounts",
   products: "Products",
   orders: "Orders",
   payment_transactions: "Payments",
-  users: "Users",
+  pos_qr_payment_attempts: "POS QR Recovery",
   raw_materials: "Raw Materials",
   suppliers: "Suppliers",
   stock_movements: "Inventory Activity",
   deliveries: "Deliveries",
+  appointments: "Appointments",
   warranties: "Warranty",
+  support_tickets: "Support",
   website_content: "Website Settings",
   website_settings: "Website Settings",
   faqs: "FAQs",
   static_pages: "Page Content",
   blueprints: "Blueprints",
-  estimations: "Estimates",
+  estimations: "Quotations",
   project_tasks: "Production",
   contracts: "Contracts",
   cancellations: "Cancellations",
+  backup_logs: "Backups",
 };
 
 const TARGET_LABELS = {
+  security: "Account",
+  users: "Account",
   products: "Product",
   orders: "Order",
   payment_transactions: "Payment",
-  users: "User",
+  pos_qr_payment_attempts: "POS QR Attempt",
   raw_materials: "Raw Material",
   suppliers: "Supplier",
   stock_movements: "Stock Movement",
   deliveries: "Delivery",
-  warranties: "Warranty",
+  appointments: "Appointment",
+  warranties: "Warranty Claim",
+  support_tickets: "Support Ticket",
   website_content: "Website Settings",
   website_settings: "Website Settings",
   faqs: "FAQ",
   static_pages: "Page",
   blueprints: "Blueprint",
-  estimations: "Estimate",
+  estimations: "Quotation",
   project_tasks: "Production Task",
   contracts: "Contract",
   cancellations: "Cancellation",
+  backup_logs: "Backup",
 };
 
 const FIELD_LABELS = {
@@ -121,6 +206,36 @@ const FIELD_LABELS = {
   stock: "Stock",
   role: "Role",
   staff_type: "Staff Role",
+  user_role: "Account Role",
+  attempted_email: "Attempted Email",
+  result: "Result",
+  reason: "Reason",
+  request_method: "Request Method",
+  request_path: "Requested Page",
+  required_roles: "Allowed Roles",
+  required_staff_types: "Allowed Staff Roles",
+  order_number: "Order Number",
+  order_id: "Order",
+  item_count: "Units",
+  total: "Total Amount",
+  amount: "Amount",
+  payment_method: "Payment Method",
+  payment_id: "Payment",
+  payment_transaction_id: "Payment",
+  product_count: "Products",
+  product_ids: "Product IDs",
+  is_published: "Published",
+  is_featured: "Featured",
+  blueprint_id: "Blueprint",
+  affected_products: "Affected Products",
+  file_name: "Backup File",
+  file_size_kb: "File Size (KB)",
+  category: "Category",
+  quoted_total: "Quoted Total",
+  down_payment: "Required Down Payment",
+  customer_decision: "Customer Decision",
+  reply_added: "Reply Added",
+  evidence_uploaded: "Evidence Uploaded",
 };
 
 const KNOWN_ACTIONS = Object.keys(ACTION_LABELS);
@@ -206,6 +321,12 @@ const formatValue = (value) => {
       .join(" · ");
   }
 
+  if (typeof value === "string") {
+    const clean = value.trim();
+    if (/^[a-z0-9]+(?:_[a-z0-9]+)+$/i.test(clean)) return humanize(clean);
+    return clean;
+  }
+
   return String(value);
 };
 
@@ -269,12 +390,85 @@ const getChangedFieldKeys = (log) => {
 
 const getActivityLabel = (log) => {
   const base = ACTION_LABELS[log?.action] || humanize(log?.action);
+  const newValues = getReadableObject(log?.new_values);
+  const nextStatus = String(
+    newValues.status || newValues.order_status || newValues.payment_status || "",
+  )
+    .trim()
+    .toLowerCase();
 
   if (log?.action === "update_website_settings") {
     const changed = getChangedFieldKeys(log);
     if (changed.length === 1) {
       return `Updated ${formatFieldLabel(changed[0]).toLowerCase()}`;
     }
+  }
+
+  if (log?.action === "update_order_status" && nextStatus) {
+    return `Changed order status to ${humanize(nextStatus)}`;
+  }
+
+  if (log?.action === "update_delivery_status" && nextStatus) {
+    return `Changed delivery status to ${humanize(nextStatus)}`;
+  }
+
+  if (log?.action === "update_project_task_status" && nextStatus) {
+    const labels = {
+      in_progress: "Started production task",
+      completed: "Completed production task",
+      blocked: "Blocked production task",
+      pending: "Returned production task to pending",
+    };
+    return labels[nextStatus] || `Changed production task to ${humanize(nextStatus)}`;
+  }
+
+  if (log?.action === "update_appointment" && nextStatus) {
+    return `Changed appointment to ${humanize(nextStatus)}`;
+  }
+
+  if (log?.action === "decide_warranty_claim" && nextStatus) {
+    if (nextStatus === "approved") return "Approved warranty claim";
+    if (nextStatus === "rejected") return "Rejected warranty claim";
+  }
+
+  if (log?.action === "update_support_ticket" && nextStatus) {
+    return `Changed support ticket to ${humanize(nextStatus)}`;
+  }
+
+  if (log?.action === "verify_payment") {
+    const decision = String(newValues.action || "").trim().toLowerCase();
+    if (decision === "verified") return "Verified payment";
+    if (decision === "rejected") return "Rejected payment";
+  }
+
+  if (log?.action === "update_customer_status") {
+    const active = newValues.is_active;
+    const decision = String(newValues.action || "").trim().toLowerCase();
+    if (active === true || active === 1 || decision === "activate") {
+      return "Activated customer account";
+    }
+    if (active === false || active === 0 || ["deactivate", "delete"].includes(decision)) {
+      return "Deactivated customer account";
+    }
+  }
+
+  if (log?.action === "toggle_active_product") {
+    const active = newValues.is_active;
+    if (active === true || active === 1) return "Enabled product";
+    if (active === false || active === 0) return "Disabled product";
+  }
+
+  if (log?.action === "send_blueprint_estimation") {
+    return "Sent blueprint quotation";
+  }
+
+  if (log?.action === "delete_user") return "Deactivated user account";
+
+  if (log?.action === "login_failed") {
+    const reason = String(newValues.reason || "").trim().toLowerCase();
+    if (reason === "account_inactive") return "Sign-in blocked for inactive account";
+    if (reason === "email_not_verified") return "Sign-in blocked until email verification";
+    return "Sign-in attempt failed";
   }
 
   return base;
@@ -291,6 +485,36 @@ const getTargetLabel = (log) => {
     return "Website Settings";
   }
 
+  const merged = {
+    ...getReadableObject(log?.old_values),
+    ...getReadableObject(log?.new_values),
+  };
+
+  if (tableName === "payment_transactions") {
+    const paymentId =
+      merged.payment_id ||
+      merged.payment_transaction_id ||
+      (log?.action === "verify_payment" ? null : log?.record_id);
+    const orderId =
+      merged.order_id ||
+      (log?.action === "verify_payment" ? log?.record_id : null);
+
+    if (paymentId && orderId) return `Payment #${paymentId} · Order #${orderId}`;
+    if (paymentId) return `Payment #${paymentId}`;
+    if (orderId) return `Order #${orderId} payment`;
+  }
+
+  if (tableName === "security") {
+    if (log?.record_id) return `Account #${log.record_id}`;
+    if (merged.attempted_email) return `Sign-in: ${merged.attempted_email}`;
+    if (merged.request_path) return merged.request_path;
+    return "Security event";
+  }
+
+  if (tableName === "backup_logs" && merged.file_name) {
+    return merged.file_name;
+  }
+
   if (
     log?.record_id !== null &&
     log?.record_id !== undefined &&
@@ -298,11 +522,6 @@ const getTargetLabel = (log) => {
   ) {
     return `${base} #${log.record_id}`;
   }
-
-  const merged = {
-    ...getReadableObject(log?.old_values),
-    ...getReadableObject(log?.new_values),
-  };
 
   for (const key of [
     "product_name",
@@ -320,6 +539,30 @@ const getTargetLabel = (log) => {
   }
 
   return base || "System";
+};
+
+const getPerformedBy = (log) => {
+  const values = {
+    ...getReadableObject(log?.old_values),
+    ...getReadableObject(log?.new_values),
+  };
+
+  if (log?.user_name) {
+    return { name: log.user_name, secondary: log.user_email || "" };
+  }
+
+  if (log?.action === "login_failed" && values.attempted_email) {
+    return {
+      name: "Unknown sign-in attempt",
+      secondary: values.attempted_email,
+    };
+  }
+
+  if (String(log?.action || "").startsWith("system_")) {
+    return { name: "System", secondary: "Automated process" };
+  }
+
+  return { name: "System", secondary: "" };
 };
 
 const getChangeSummary = (log) => {
@@ -514,7 +757,7 @@ export default function AuditLogsPage() {
           <div style={eyebrow}>Management</div>
           <h1 style={pageTitle}>Audit Logs</h1>
           <p style={pageSubtitle}>
-            Review important admin and staff activity across WISDOM.
+            Review important security, account, sales, inventory, and staff activity across WISDOM.
           </p>
         </div>
 
@@ -658,14 +901,16 @@ export default function AuditLogsPage() {
                   </td>
                 </tr>
               ) : (
-                logs.map((log) => (
+                logs.map((log) => {
+                  const performedBy = getPerformedBy(log);
+                  return (
                   <tr key={log.id} style={tbodyRow}>
                     <td style={td}>{formatDateTime(log.created_at)}</td>
 
                     <td style={td}>
-                      <div style={personName}>{log.user_name || "System"}</div>
-                      {log.user_email && (
-                        <div style={personEmail}>{log.user_email}</div>
+                      <div style={personName}>{performedBy.name}</div>
+                      {performedBy.secondary && (
+                        <div style={personEmail}>{performedBy.secondary}</div>
                       )}
                     </td>
 
@@ -695,7 +940,8 @@ export default function AuditLogsPage() {
                       </button>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -804,6 +1050,7 @@ function ValuesPanel({ title, emptyLabel, entries }) {
 
 function AuditDetailModal({ log, onClose }) {
   const summary = getChangeSummary(log);
+  const performedBy = getPerformedBy(log);
   const beforeEntries = getPanelEntries(log, "before");
   const afterEntries = getPanelEntries(log, "after");
 
@@ -846,14 +1093,18 @@ function AuditDetailModal({ log, onClose }) {
           <div style={detailGrid}>
             <DetailRow
               label="Performed By"
-              value={log.user_name || "System"}
-              secondary={log.user_email || ""}
+              value={performedBy.name}
+              secondary={performedBy.secondary}
             />
             <DetailRow
               label="Area"
               value={formatModuleLabel(log.table_name)}
             />
             <DetailRow label="Target" value={getTargetLabel(log)} />
+            <DetailRow
+              label="Source IP"
+              value={log.ip_address || "Not recorded"}
+            />
           </div>
 
           {summary && (

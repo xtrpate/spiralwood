@@ -804,9 +804,11 @@ exports.getAuditLogs = async (req, res) => {
       const likeValue = `%${rawSearch}%`;
       if (/^\d+$/.test(rawSearch)) {
         where.push(
-          "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ? OR al.record_id = ?)",
+          "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ? OR al.old_values LIKE ? OR al.new_values LIKE ? OR al.record_id = ?)",
         );
         params.push(
+          likeValue,
+          likeValue,
           likeValue,
           likeValue,
           likeValue,
@@ -815,9 +817,16 @@ exports.getAuditLogs = async (req, res) => {
         );
       } else {
         where.push(
-          "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ?)",
+          "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ? OR al.old_values LIKE ? OR al.new_values LIKE ?)",
         );
-        params.push(likeValue, likeValue, likeValue, likeValue);
+        params.push(
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+        );
       }
     }
     if (rawAction) {
