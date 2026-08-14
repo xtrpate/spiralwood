@@ -877,6 +877,8 @@ exports.getCustomOrderById = async (req, res) => {
           payment_url,
           payment_status,
           delivery_address,
+          delivery_lat,
+          delivery_lng,
           notes,
           subtotal,
           tax,
@@ -962,15 +964,46 @@ exports.getCustomOrderById = async (req, res) => {
     // pos.fulfillment.js) always re-read and lock this table themselves
     // under transaction; this copy is never used to authorize a write.
     const [deliveryRows] = await conn.execute(
-      `SELECT id, status
-       FROM deliveries
-       WHERE order_id = ?
-       ORDER BY id DESC
+      `SELECT
+          d.id,
+          d.driver_id,
+          d.assigned_at,
+          d.scheduled_date,
+          d.delivered_date,
+          d.address,
+          d.status,
+          d.signed_receipt,
+          d.updated_at,
+          u.name AS driver_name
+       FROM deliveries d
+       LEFT JOIN users u
+         ON u.id = d.driver_id
+       WHERE d.order_id = ?
+       ORDER BY d.id DESC
        LIMIT 1`,
       [orderId],
     );
     const deliveryRow = deliveryRows[0] || null;
     const deliveryStatus = deliveryRow ? normalize(deliveryRow.status) : null;
+    const customerDeliveryDetails = deliveryRow
+      ? {
+          id: deliveryRow.id,
+          status: deliveryStatus,
+          assigned_at: deliveryRow.assigned_at || null,
+          scheduled_date: deliveryRow.scheduled_date || null,
+          delivered_date: deliveryRow.delivered_date || null,
+          updated_at: deliveryRow.updated_at || null,
+          address:
+            toTrimmedStringOrNull(deliveryRow.address) ||
+            toTrimmedStringOrNull(order.delivery_address),
+          latitude: parseStrictCoordinate(order.delivery_lat),
+          longitude: parseStrictCoordinate(order.delivery_lng),
+          driver_name: toTrimmedStringOrNull(deliveryRow.driver_name),
+          proof_url: signUploadPath(
+            toTrimmedStringOrNull(deliveryRow.signed_receipt),
+          ),
+        }
+      : null;
 
     const totalVerifiedPayments = roundMoney(
       normalizedPayments
@@ -1224,6 +1257,7 @@ exports.getCustomOrderById = async (req, res) => {
       quotation_message: quotationMessage,
       payment_transactions: normalizedPayments,
       discussion: discussionData.messages,
+      delivery_details: customerDeliveryDetails,
       payment_summary: {
         quoted_total: quotedTotal,
         down_payment_due: downPaymentDue,

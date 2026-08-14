@@ -3654,3 +3654,1521 @@
     max-height: 76px !important;
   }
 }
+
+/* WISDOM REQUEST DETAILS PREMIUM CUSTOMER UI V1.0.0 */
+
+/* The journey hero already owns status + next action. Remove the duplicate
+   sticky summary and let the customer content use the full page width. */
+.crd-page .crd-layout {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 18px !important;
+}
+
+.crd-page .crd-project-summary-v2 {
+  display: none !important;
+}
+
+.crd-page .wisdom-request-details-main-v11 {
+  width: 100%;
+  max-width: none;
+  gap: 18px !important;
+}
+
+/* Softer page rhythm: professional furniture portal, not an admin form. */
+.crd-page .page-hero {
+  padding-top: 26px;
+  padding-bottom: 20px;
+}
+
+.crd-page .page-hero h1 {
+  font-size: 2rem;
+  letter-spacing: -0.025em;
+}
+
+.crd-page .page-hero p {
+  max-width: 620px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: #62666b;
+}
+
+.crd-page .crd-request-meta-v12 {
+  margin-top: 8px;
+  color: #73777c;
+}
+
+/* One strong project-status surface. */
+.crd-page .crd-journey-hero-v2 {
+  grid-template-columns: minmax(390px, 0.78fr) minmax(0, 1.22fr);
+  margin-bottom: 22px;
+  border: 1px solid #dededb;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.crd-page .crd-journey-current-v2 {
+  padding: 26px 28px 24px;
+}
+
+.crd-page .crd-journey-current-v2 h2 {
+  max-width: 540px;
+  font-size: 24px;
+  letter-spacing: -0.015em;
+}
+
+.crd-page .crd-journey-current-v2 > p {
+  max-width: 590px;
+  font-size: 13px;
+}
+
+.crd-page .crd-journey-action-v2 {
+  margin-top: 17px;
+  padding-top: 13px;
+}
+
+/* Essential customer facts belong beside the current project state. */
+.crd-journey-facts-v3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 17px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.crd-journey-facts-v3 > div {
+  min-width: 0;
+  padding: 0 14px;
+  border-right: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.crd-journey-facts-v3 > div:first-child {
+  padding-left: 0;
+}
+
+.crd-journey-facts-v3 > div:last-child {
+  padding-right: 0;
+  border-right: 0;
+}
+
+.crd-journey-facts-v3 span,
+.crd-journey-facts-v3 strong {
+  display: block;
+}
+
+.crd-journey-facts-v3 span {
+  margin-bottom: 4px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.crd-journey-facts-v3 strong {
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crd-page .crd-journey-process-v2 {
+  padding: 24px 26px;
+}
+
+.crd-page .crd-journey-process-title-v2 {
+  margin-bottom: 17px;
+  color: #73777c;
+}
+
+/* Major sections use whitespace and typography first, borders second. */
+.crd-page .wisdom-request-details-main-v11 > .checkout-section {
+  border: 1px solid #e3e3df !important;
+  border-radius: 4px !important;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.crd-page .wisdom-request-details-main-v11 .checkout-section-header {
+  min-height: 54px;
+  padding: 0 20px;
+  border-bottom-color: #ecece8;
+}
+
+.crd-page .wisdom-request-details-main-v11 .checkout-section-header h3 {
+  font-size: 15.5px;
+  font-weight: 650;
+}
+
+.crd-page .wisdom-request-details-main-v11 .checkout-section-body {
+  padding: 20px;
+}
+
+/* Furniture is the emotional anchor of the customer page. */
+.crd-page .wisdom-request-items-v11 .checkout-items-preview {
+  padding: 0;
+}
+
+.crd-page .wisdom-request-items-v11 .checkout-item-row {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 22px;
+  align-items: center;
+  padding: 22px 20px;
+  border-bottom: 0;
+}
+
+.crd-page .wisdom-request-items-v11 .checkout-item-thumb {
+  width: 168px !important;
+  height: 126px !important;
+  min-width: 168px;
+  border: 1px solid #e5e2dc;
+  border-radius: 4px !important;
+  overflow: hidden;
+  background: #f7f5f1;
+}
+
+.crd-page .wisdom-request-items-v11 .crd-design-thumb-v2 > *,
+.crd-page .wisdom-request-items-v11 .crd-design-thumb-v2 canvas,
+.crd-page .wisdom-request-items-v11 .crd-design-thumb-v2 img {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.crd-page .wisdom-request-items-v11 .checkout-item-details {
+  min-width: 0;
+}
+
+.crd-page .wisdom-request-items-v11 .checkout-item-name {
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.crd-page .wisdom-request-items-v11 .crd-item-subtitle {
+  margin-top: 5px;
+  font-size: 12.5px;
+}
+
+.crd-page .wisdom-request-items-v11 .crd-tag-wrap {
+  margin-top: 13px;
+  gap: 6px;
+}
+
+.crd-page .wisdom-request-items-v11 .custom-spec-tag {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid #deded9 !important;
+  border-radius: 3px !important;
+  background: #faf9f7 !important;
+  color: #3f4246 !important;
+  font-size: 11px;
+}
+
+.crd-page .crd-design-access-v2 {
+  flex: 0 0 min(330px, 38%);
+  border: 1px solid #e4e4e0;
+  border-radius: 4px;
+  background: #faf9f7;
+}
+
+.crd-page .crd-design-view-btn-v2 {
+  border-radius: 3px !important;
+}
+
+/* Delivery reads like a customer detail, not a disabled form field. */
+.crd-page .wisdom-request-project-v11 .crd-field-label {
+  margin-bottom: 8px;
+  color: #5d6268;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.crd-page .wisdom-request-project-v11 .crd-read-box {
+  min-height: 48px;
+  padding: 14px 16px;
+  border: 1px solid #e5e5e1;
+  border-radius: 3px !important;
+  background: #faf9f7;
+  color: #222426;
+  font-size: 13.5px;
+}
+
+/* Detailed component lines are secondary. Keep them available without
+   making a completed project feel like an inventory screen. */
+.crd-quote-breakdown-v3 {
+  margin: 0 0 16px;
+  border: 1px solid #e2e2de;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.crd-quote-breakdown-v3 > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 46px;
+  padding: 0 14px;
+  cursor: pointer;
+  list-style: none;
+  color: #242629;
+  background: #faf9f7;
+  font-size: 12.5px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.crd-quote-breakdown-v3 > summary::-webkit-details-marker {
+  display: none;
+}
+
+.crd-quote-breakdown-v3 > summary > span:last-child {
+  color: #7a7e83;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.crd-quote-breakdown-v3 > summary::after {
+  content: "+";
+  flex: 0 0 auto;
+  margin-left: 2px;
+  color: #55595e;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.crd-quote-breakdown-v3[open] > summary::after {
+  content: "−";
+}
+
+.crd-quote-breakdown-v3[open] > summary {
+  border-bottom: 1px solid #e6e6e2;
+}
+
+.crd-page .crd-quote-breakdown-v3 .crd-table {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.crd-page .crd-quote-breakdown-v3 .crd-table-head {
+  border-top: 0;
+}
+
+.crd-page .crd-quote-summary-v141 {
+  border-radius: 4px !important;
+  background: #faf9f7 !important;
+}
+
+/* Payment remains complete, but supporting panels stop competing with money. */
+.crd-page .wisdom-request-payment-v11
+  > .checkout-section-body
+  > .crd-grid-split {
+  grid-template-columns: minmax(360px, 1.1fr) minmax(300px, 0.75fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.crd-page .wisdom-payment-summary-v16,
+.crd-page .wisdom-request-payment-v11 .crd-panel,
+.crd-page .wisdom-request-remaining-payment-v184 .wisdom-remaining-current-v184,
+.crd-page .wisdom-request-remaining-payment-v184 .wisdom-remaining-online-option-v184 {
+  border-radius: 4px !important;
+}
+
+.crd-page .wisdom-payment-summary-v16 {
+  background: #faf9f7 !important;
+}
+
+.crd-page .wisdom-request-payment-v11 .crd-info-box {
+  border-radius: 3px !important;
+}
+
+.crd-page .wisdom-request-payment-history-v11 table {
+  font-size: 12.5px !important;
+}
+
+.crd-page .wisdom-request-payment-history-v11 th {
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+  color: #6d7277 !important;
+  font-size: 10.5px !important;
+}
+
+.crd-page .wisdom-request-payment-history-v11 td {
+  padding-top: 12px !important;
+  padding-bottom: 12px !important;
+}
+
+/* Conversation already works well; make it feel integrated with the page. */
+.crd-page .crd-messenger-shell-v2 {
+  border-radius: 4px !important;
+  overflow: hidden;
+}
+
+.crd-page .crd-messenger-composer-v2 {
+  background: #ffffff !important;
+}
+
+.crd-page .crd-messenger-input-v2,
+.crd-page .crd-messenger-icon-btn-v2,
+.crd-page .crd-messenger-send-v2 {
+  border-radius: 3px !important;
+}
+
+/* Responsive: keep the same hierarchy on smaller screens. */
+@media (max-width: 1180px) {
+  .crd-page .crd-journey-hero-v2 {
+    grid-template-columns: 1fr;
+  }
+
+  .crd-page .crd-journey-current-v2 {
+    border-right: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .crd-page .wisdom-request-items-v11 .checkout-item-row {
+    grid-template-columns: 136px minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .crd-page .wisdom-request-items-v11 .checkout-item-thumb {
+    width: 136px !important;
+    height: 104px !important;
+    min-width: 136px;
+  }
+
+  .crd-page .crd-design-access-v2 {
+    flex-basis: 100%;
+    max-width: none;
+    margin-top: 12px;
+  }
+
+  .crd-page .wisdom-request-payment-v11
+    > .checkout-section-body
+    > .crd-grid-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .crd-page .page-hero h1 {
+    font-size: 1.65rem;
+  }
+
+  .crd-page .crd-journey-current-v2,
+  .crd-page .crd-journey-process-v2 {
+    padding: 20px 17px;
+  }
+
+  .crd-journey-facts-v3 {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .crd-journey-facts-v3 > div,
+  .crd-journey-facts-v3 > div:first-child,
+  .crd-journey-facts-v3 > div:last-child {
+    padding: 0;
+    border-right: 0;
+  }
+
+  .crd-page .wisdom-request-details-main-v11 .checkout-section-header,
+  .crd-page .wisdom-request-details-main-v11 .checkout-section-body {
+    padding-left: 15px;
+    padding-right: 15px;
+  }
+
+  .crd-page .wisdom-request-items-v11 .checkout-item-row {
+    grid-template-columns: 1fr;
+    padding: 16px 15px;
+  }
+
+  .crd-page .wisdom-request-items-v11 .checkout-item-thumb {
+    width: 100% !important;
+    height: 180px !important;
+    min-width: 0;
+  }
+
+  .crd-page .wisdom-request-items-v11 .crd-item-head {
+    flex-direction: column;
+  }
+
+  .crd-page .crd-design-access-v2 {
+    width: 100%;
+    margin-top: 12px;
+  }
+
+  .crd-quote-breakdown-v3 > summary {
+    padding: 10px 12px;
+  }
+}
+
+/* WISDOM REQUEST DETAILS LAYOUT BALANCE V1.0.2 */
+
+/* Keep large desktop layouts premium rather than stretched edge-to-edge. */
+.crd-page > .page-hero,
+.crd-page > .crd-journey-hero-v2,
+.crd-page > .crd-layout {
+  width: min(100%, 1360px);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.crd-page .crd-journey-hero-v2 {
+  min-height: 238px;
+}
+
+.crd-page .crd-journey-current-v2,
+.crd-page .crd-journey-process-v2 {
+  min-height: 238px;
+}
+
+/* Slightly taller furniture presentation so the page does not feel like
+   a sequence of very wide, shallow strips. */
+.crd-page .wisdom-request-items-v11 .checkout-item-row {
+  min-height: 170px;
+}
+
+.crd-page .wisdom-request-items-v11 .checkout-item-thumb {
+  height: 136px !important;
+}
+
+/* A finished project becomes a compact two-column customer record:
+   Payment on the left, Conversation on the right. */
+.crd-completed-layout-v4 {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.12fr) minmax(390px, 0.88fr);
+  column-gap: 18px !important;
+  row-gap: 18px !important;
+  align-items: stretch;
+}
+
+.crd-completed-layout-v4 > .checkout-section {
+  order: initial !important;
+}
+
+.crd-completed-layout-v4 > .wisdom-request-items-v11 {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.crd-completed-layout-v4 > .wisdom-request-project-v11 {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.crd-completed-layout-v4 > .wisdom-request-quotation-v11 {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+.crd-completed-layout-v4 > .wisdom-request-payment-v11 {
+  grid-column: 1;
+  grid-row: 4;
+  height: 100%;
+  min-height: 430px;
+}
+
+.crd-completed-layout-v4 > .wisdom-request-messages-v11 {
+  grid-column: 2;
+  grid-row: 4;
+  height: 100%;
+  min-height: 430px;
+  margin-top: 0 !important;
+}
+
+.crd-completed-layout-v4 > .wisdom-request-payment-history-v11 {
+  grid-column: 1 / -1;
+  grid-row: 5;
+}
+
+/* Fully paid: no unused second column inside Payment. */
+.crd-payment-layout-v4.is-paid {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.crd-payment-layout-v4.is-paid > .wisdom-payment-summary-v16 {
+  width: 100%;
+  height: 100%;
+  min-height: 350px;
+}
+
+/* Latest Transaction now uses its own width instead of another separate
+   Payment Method card. */
+.crd-latest-transaction-v4 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(210px, 0.85fr);
+  gap: 18px;
+  align-items: stretch;
+  margin-top: 14px !important;
+  padding: 16px !important;
+}
+
+.crd-latest-transaction-main-v4 {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  min-width: 0;
+}
+
+.crd-latest-initial-method-v4 {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding-left: 18px;
+  border-left: 1px solid #deded9;
+}
+
+.crd-latest-initial-method-v4 span {
+  margin-bottom: 5px;
+  color: #71767b;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.crd-latest-initial-method-v4 strong {
+  color: #111111;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.crd-latest-initial-method-v4 small {
+  margin-top: 5px;
+  color: #777c81;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+/* Use the quotation width rather than leaving an oversized empty side. */
+.crd-completed-layout-v4
+  .crd-quote-bottom-v141.is-summary-only {
+  grid-template-columns: minmax(0, 1fr) !important;
+  justify-content: stretch !important;
+}
+
+.crd-completed-layout-v4
+  .crd-quote-bottom-v141.is-summary-only
+  .crd-quote-summary-v141 {
+  max-width: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 34px;
+  padding: 18px 20px !important;
+}
+
+.crd-completed-layout-v4
+  .crd-quote-bottom-v141.is-summary-only
+  .crd-quote-summary-v141
+  > h4,
+.crd-completed-layout-v4
+  .crd-quote-bottom-v141.is-summary-only
+  .crd-quote-summary-v141
+  > .crd-grand-total {
+  grid-column: 1 / -1;
+}
+
+/* Conversation replaces the old empty Payment Method column visually. */
+.crd-completed-layout-v4
+  .wisdom-request-messages-v11
+  .checkout-section-body {
+  height: calc(100% - 54px);
+  min-height: 374px;
+  padding: 14px !important;
+}
+
+.crd-completed-layout-v4 .crd-messenger-shell-v2 {
+  height: 100%;
+  min-height: 344px !important;
+}
+
+.crd-completed-layout-v4
+  .crd-messenger-shell-v2
+  .crd-chat-card {
+  min-height: 0;
+}
+
+.crd-completed-layout-v4
+  .crd-messenger-shell-v2
+  .crd-chat-thread.has-messages {
+  min-height: 225px !important;
+  max-height: 300px !important;
+}
+
+.crd-completed-layout-v4
+  .crd-messenger-shell-v2
+  .crd-chat-thread.is-empty {
+  min-height: 250px !important;
+  height: 250px;
+}
+
+/* Payment history can breathe vertically without becoming a wide, shallow bar. */
+.crd-completed-layout-v4 .wisdom-request-payment-history-v11 .checkout-section-body {
+  padding-top: 12px;
+  padding-bottom: 16px;
+}
+
+/* Keep the desktop composition balanced as the viewport narrows. */
+@media (max-width: 1180px) {
+  .crd-page > .page-hero,
+  .crd-page > .crd-journey-hero-v2,
+  .crd-page > .crd-layout {
+    width: 100%;
+  }
+
+  .crd-completed-layout-v4 {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 0.82fr);
+  }
+
+  .crd-latest-transaction-v4 {
+    grid-template-columns: 1fr;
+  }
+
+  .crd-latest-initial-method-v4 {
+    padding-top: 12px;
+    padding-left: 0;
+    border-top: 1px solid #deded9;
+    border-left: 0;
+  }
+}
+
+@media (max-width: 940px) {
+  .crd-completed-layout-v4 {
+    display: flex !important;
+    flex-direction: column;
+    gap: 16px !important;
+  }
+
+  .crd-completed-layout-v4 > .wisdom-request-payment-v11,
+  .crd-completed-layout-v4 > .wisdom-request-messages-v11 {
+    min-height: 0;
+    height: auto;
+  }
+
+  .crd-completed-layout-v4
+    .crd-quote-bottom-v141.is-summary-only
+    .crd-quote-summary-v141 {
+    grid-template-columns: 1fr;
+  }
+
+  .crd-completed-layout-v4
+    .crd-quote-bottom-v141.is-summary-only
+    .crd-quote-summary-v141
+    > * {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .crd-latest-transaction-v4 {
+    padding: 13px !important;
+  }
+}
+
+/* WISDOM REQUEST DETAILS FINAL COMPACT UI V1.0.3 */
+
+/* Overall rhythm: same structure, less dead space and less oversized height. */
+.crd-page .wisdom-request-details-main-v11 {
+  gap: 14px !important;
+}
+
+.crd-page .wisdom-request-details-main-v11 > .checkout-section {
+  border-radius: 3px !important;
+}
+
+.crd-page .wisdom-request-details-main-v11 .checkout-section-header {
+  min-height: 46px !important;
+  padding: 0 16px !important;
+}
+
+.crd-page .wisdom-request-details-main-v11 .checkout-section-body {
+  padding: 16px !important;
+}
+
+.crd-page .wisdom-request-details-main-v11 .checkout-section-header h3 {
+  font-size: 15px !important;
+}
+
+.crd-page .crd-journey-hero-v2,
+.crd-page .crd-journey-current-v2,
+.crd-page .crd-journey-process-v2 {
+  min-height: 210px !important;
+}
+
+.crd-page .crd-journey-current-v2 {
+  padding: 22px 24px 20px !important;
+}
+
+.crd-page .crd-journey-process-v2 {
+  padding: 21px 22px !important;
+}
+
+.crd-page .crd-journey-current-v2 h2 {
+  font-size: 22px !important;
+}
+
+/* Furniture remains prominent, but the card height now hugs its content. */
+.crd-page .wisdom-request-items-v11 .checkout-item-row {
+  min-height: 142px !important;
+  padding: 16px !important;
+  gap: 18px !important;
+  grid-template-columns: 150px minmax(0, 1fr) !important;
+}
+
+.crd-page .wisdom-request-items-v11 .checkout-item-thumb {
+  width: 150px !important;
+  min-width: 150px !important;
+  height: 116px !important;
+}
+
+.crd-page .wisdom-request-items-v11 .crd-tag-wrap {
+  margin-top: 10px !important;
+}
+
+/* DELIVERY — two useful columns, compact content-sized rows. */
+.crd-delivery-layout-v5 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(300px, 0.82fr);
+  border: 1px solid #e4e4e0;
+  border-radius: 3px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.crd-delivery-column-v5 {
+  min-width: 0;
+  padding: 15px 17px;
+}
+
+.crd-delivery-column-v5.is-confirmation {
+  border-left: 1px solid #e4e4e0;
+  background: #faf9f7;
+}
+
+.crd-delivery-column-title-v5 {
+  margin-bottom: 12px;
+  color: #222426;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.crd-delivery-pair-v5 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin-bottom: 13px;
+}
+
+.crd-delivery-fact-v5,
+.crd-delivery-address-v5,
+.crd-delivery-confirmation-row-v5 {
+  min-width: 0;
+}
+
+.crd-delivery-fact-v5 span,
+.crd-delivery-address-v5 > span,
+.crd-delivery-confirmation-row-v5 > span,
+.crd-delivery-note-v5 > span {
+  display: block;
+  margin-bottom: 4px;
+  color: #73777c;
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.crd-delivery-fact-v5 strong,
+.crd-delivery-address-v5 strong,
+.crd-delivery-confirmation-row-v5 strong {
+  display: block;
+  color: #17191b;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.crd-delivery-address-v5 {
+  padding-top: 11px;
+  border-top: 1px solid #ecece8;
+}
+
+.crd-delivery-link-v5 {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+  color: #111111;
+  font-size: 11.5px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.crd-delivery-note-v5 {
+  margin-top: 11px;
+  padding-top: 10px;
+  border-top: 1px solid #ecece8;
+}
+
+.crd-delivery-note-v5 p {
+  margin: 0;
+  color: #4e5358;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.crd-delivery-confirmation-row-v5 + .crd-delivery-confirmation-row-v5 {
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid #e3e3df;
+}
+
+.crd-delivery-confirmation-row-v5 small {
+  display: block;
+  margin-top: 4px;
+  color: #777c81;
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.crd-delivery-proof-btn-v5 {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  margin-top: 2px;
+  padding: 0 12px;
+  border: 1px solid #111111;
+  border-radius: 2px;
+  background: #111111;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+/* QUOTATION — completed records use the width instead of stacking everything. */
+.crd-completed-layout-v4
+  > .wisdom-request-quotation-v11
+  > .checkout-section-body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 0.82fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.crd-completed-layout-v4
+  .wisdom-request-quotation-v11
+  .crd-quote-breakdown-v3 {
+  margin: 0 !important;
+}
+
+.crd-completed-layout-v4
+  .wisdom-request-quotation-v11
+  .crd-quote-bottom-v141.is-summary-only {
+  display: block !important;
+  margin: 0 !important;
+}
+
+.crd-completed-layout-v4
+  .wisdom-request-quotation-v11
+  .crd-quote-bottom-v141.is-summary-only
+  .crd-quote-summary-v141 {
+  display: block !important;
+  width: 100%;
+  max-width: none !important;
+  min-height: 0 !important;
+  padding: 14px 15px !important;
+}
+
+.crd-completed-layout-v4
+  .wisdom-request-quotation-v11
+  .crd-table-head,
+.crd-completed-layout-v4
+  .wisdom-request-quotation-v11
+  .crd-table-row {
+  grid-template-columns: minmax(0, 1fr) 58px 94px 104px !important;
+  gap: 9px !important;
+  padding: 9px 11px !important;
+}
+
+.crd-completed-layout-v4
+  .wisdom-request-quotation-v11
+  .crd-table-head {
+  font-size: 10.5px !important;
+}
+
+.crd-completed-layout-v4
+  .wisdom-request-quotation-v11
+  .crd-table-row {
+  font-size: 12px !important;
+}
+
+.crd-completed-layout-v4
+  .wisdom-request-quotation-v11
+  .crd-quote-summary-v141
+  .summary-row {
+  min-height: 30px;
+}
+
+.crd-completed-layout-v4
+  .wisdom-request-quotation-v11
+  .crd-grand-total {
+  margin-top: 7px !important;
+  padding-top: 9px !important;
+}
+
+/* Completed desktop structure: balanced but not artificially tall. */
+.crd-completed-layout-v4 {
+  column-gap: 14px !important;
+  row-gap: 14px !important;
+}
+
+.crd-completed-layout-v4 > .wisdom-request-payment-v11,
+.crd-completed-layout-v4 > .wisdom-request-messages-v11 {
+  min-height: 372px !important;
+}
+
+.crd-payment-layout-v4.is-paid > .wisdom-payment-summary-v16 {
+  min-height: 0 !important;
+  height: auto !important;
+  padding: 14px !important;
+}
+
+/* Latest Transaction left + original Payment Method card right. */
+.crd-latest-transaction-v4 {
+  grid-template-columns: minmax(0, 1.08fr) minmax(235px, 0.92fr) !important;
+  gap: 14px !important;
+  padding: 14px !important;
+  margin-top: 12px !important;
+  align-items: stretch !important;
+}
+
+.crd-latest-transaction-main-v4 {
+  align-content: center !important;
+  gap: 4px !important;
+}
+
+.crd-latest-payment-method-v5 {
+  min-width: 0;
+  padding-left: 14px;
+  border-left: 1px solid #deded9;
+}
+
+.crd-latest-payment-method-v5 h4 {
+  margin: 0 0 8px;
+  color: #17191b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.crd-latest-payment-method-v5 .crd-info-box {
+  padding: 11px 12px !important;
+  background: #ffffff !important;
+}
+
+.crd-latest-payment-method-v5 .crd-info-title {
+  margin-bottom: 0;
+  font-size: 12.5px;
+}
+
+.crd-latest-payment-method-v5 p {
+  color: #4f5459;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Conversation: enough room to chat, without a tall empty wall. */
+.crd-completed-layout-v4
+  .wisdom-request-messages-v11
+  .checkout-section-body {
+  height: calc(100% - 46px) !important;
+  min-height: 326px !important;
+  padding: 12px !important;
+}
+
+.crd-completed-layout-v4 .crd-messenger-shell-v2 {
+  min-height: 302px !important;
+}
+
+.crd-completed-layout-v4
+  .crd-messenger-shell-v2
+  .crd-chat-thread.has-messages {
+  min-height: 188px !important;
+  max-height: 238px !important;
+}
+
+.crd-completed-layout-v4
+  .crd-messenger-shell-v2
+  .crd-chat-thread.is-empty {
+  min-height: 208px !important;
+  height: 208px !important;
+}
+
+/* Payment activity: compact rows, no oversized section body. */
+.crd-completed-layout-v4
+  .wisdom-request-payment-history-v11
+  .checkout-section-body {
+  padding: 9px 14px 12px !important;
+}
+
+.crd-page .wisdom-request-payment-history-v11 th {
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+}
+
+.crd-page .wisdom-request-payment-history-v11 td {
+  padding-top: 9px !important;
+  padding-bottom: 9px !important;
+}
+
+/* Responsive — stack logically when two-column layouts would become cramped. */
+@media (max-width: 1080px) {
+  .crd-delivery-layout-v5,
+  .crd-completed-layout-v4
+    > .wisdom-request-quotation-v11
+    > .checkout-section-body {
+    grid-template-columns: 1fr;
+  }
+
+  .crd-delivery-column-v5.is-confirmation {
+    border-top: 1px solid #e4e4e0;
+    border-left: 0;
+  }
+
+  .crd-latest-transaction-v4 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .crd-latest-payment-method-v5 {
+    padding-top: 12px;
+    padding-left: 0;
+    border-top: 1px solid #deded9;
+    border-left: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .crd-page .wisdom-request-items-v11 .checkout-item-row {
+    grid-template-columns: 126px minmax(0, 1fr) !important;
+  }
+
+  .crd-page .wisdom-request-items-v11 .checkout-item-thumb {
+    width: 126px !important;
+    min-width: 126px !important;
+    height: 102px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .crd-page .wisdom-request-details-main-v11 .checkout-section-header {
+    min-height: 44px !important;
+    padding: 0 13px !important;
+  }
+
+  .crd-page .wisdom-request-details-main-v11 .checkout-section-body {
+    padding: 13px !important;
+  }
+
+  .crd-delivery-column-v5 {
+    padding: 13px;
+  }
+
+  .crd-delivery-pair-v5 {
+    grid-template-columns: 1fr;
+  }
+
+  .crd-page .wisdom-request-items-v11 .checkout-item-row {
+    grid-template-columns: 1fr !important;
+    min-height: 0 !important;
+  }
+
+  .crd-page .wisdom-request-items-v11 .checkout-item-thumb {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 170px !important;
+  }
+}
+
+/* WISDOM REQUEST DETAILS DELIVERY + FURNITURE POLISH V1.0.4 */
+
+/* Furniture metadata should sit directly below the title/subtitle,
+   not at the bottom of the row. */
+.crd-page .wisdom-request-items-v11 .checkout-item-details {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  align-self: start !important;
+  min-height: 0 !important;
+  height: auto !important;
+  padding-top: 1px;
+}
+
+.crd-page .wisdom-request-items-v11 .crd-item-head {
+  flex: 0 0 auto;
+}
+
+.crd-page .wisdom-request-items-v11 .crd-tag-wrap {
+  flex: 0 0 auto;
+  margin-top: 8px !important;
+  margin-bottom: 0 !important;
+}
+
+.crd-page .wisdom-request-items-v11 .checkout-item-name {
+  font-family: inherit !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+.crd-page .wisdom-request-items-v11 .crd-item-subtitle {
+  margin-top: 3px !important;
+  color: #666b70 !important;
+  font-family: inherit !important;
+  font-size: 11.5px !important;
+  font-weight: 400 !important;
+}
+
+/* Delivery typography: labels regular, only meaningful values emphasized. */
+.crd-delivery-layout-v6,
+.crd-delivery-layout-v6 * {
+  font-family: inherit;
+}
+
+.crd-delivery-layout-v6 .crd-delivery-column-title-v5 {
+  margin-bottom: 11px;
+  color: #202326;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.crd-delivery-layout-v6 .crd-delivery-fact-v5 span,
+.crd-delivery-layout-v6 .crd-delivery-address-v5 > span,
+.crd-delivery-layout-v6 .crd-delivery-confirmation-row-v5 > span,
+.crd-delivery-layout-v6 .crd-delivery-note-v5 > span {
+  margin-bottom: 4px;
+  color: #74787d;
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.crd-delivery-layout-v6 .crd-delivery-fact-v5 strong,
+.crd-delivery-layout-v6 .crd-delivery-confirmation-row-v5 strong {
+  color: #17191b;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.crd-delivery-layout-v6 .crd-delivery-address-v5 strong {
+  color: #24272a;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.crd-delivery-layout-v6 .crd-delivery-confirmation-row-v5 small {
+  color: #7a7e83;
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+/* Replace the underlined text-arrow map link with a compact location button. */
+.crd-delivery-location-btn-v6 {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 32px;
+  margin-top: 10px;
+  padding: 0 11px;
+  border: 1px solid #d7d9dc;
+  border-radius: 2px;
+  background: #ffffff;
+  color: #1f2225;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none !important;
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.crd-delivery-location-btn-v6:hover {
+  border-color: #aeb2b6;
+  background: #f7f7f6;
+  color: #111111;
+  text-decoration: none !important;
+}
+
+.crd-delivery-location-btn-v6 svg {
+  flex: 0 0 auto;
+}
+
+/* Consistent restrained button radius. */
+.crd-page .crd-design-view-btn-v2,
+.crd-page .crd-delivery-proof-btn-v5,
+.crd-page .crd-delivery-location-btn-v6,
+.crd-page .receipt-btn {
+  border-radius: 2px !important;
+}
+
+.crd-delivery-layout-v6 .crd-delivery-proof-btn-v5 {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* Keep the delivery panel compact and balanced. */
+.crd-delivery-layout-v6 .crd-delivery-column-v5 {
+  padding: 14px 16px;
+}
+
+.crd-delivery-layout-v6 .crd-delivery-pair-v5 {
+  margin-bottom: 11px;
+}
+
+.crd-delivery-layout-v6 .crd-delivery-address-v5 {
+  padding-top: 10px;
+}
+
+.crd-delivery-layout-v6
+  .crd-delivery-confirmation-row-v5
+  + .crd-delivery-confirmation-row-v5 {
+  margin-top: 12px;
+  padding-top: 11px;
+}
+
+/* Avoid excessive bolding in the customer detail surface. */
+.crd-page .wisdom-request-details-main-v11 .checkout-section-header h3,
+.crd-page .crd-quote-breakdown-v3 > summary,
+.crd-page .crd-quote-summary-v141 h4 {
+  font-weight: 600 !important;
+}
+
+@media (max-width: 640px) {
+  .crd-delivery-location-btn-v6 {
+    width: 100%;
+  }
+}
+
+/* WISDOM REQUEST DETAILS PROGRESS + FURNITURE ALIGNMENT V1.0.6 */
+
+/* WHAT HAPPENS NEXT
+   Make the progress feel intentional and centered rather than sitting
+   too high with small markers. */
+.crd-page .crd-journey-process-v2 {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  padding: 24px 30px 25px !important;
+}
+
+.crd-page .crd-journey-process-title-v2 {
+  width: min(100%, 820px);
+  margin: 0 auto 18px !important;
+  color: #555b61 !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.055em !important;
+}
+
+.crd-page .crd-journey-steps-v2 {
+  position: relative;
+  width: min(100%, 820px) !important;
+  margin: 0 auto !important;
+  align-items: start;
+}
+
+.crd-page .crd-journey-step-v2 {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  min-width: 0;
+  padding: 0 5px !important;
+  text-align: center !important;
+}
+
+/* Re-center the connector through the middle of the larger marker. */
+.crd-page .crd-journey-step-v2:not(:last-child)::after {
+  top: 15px !important;
+  left: calc(50% + 16px) !important;
+  right: calc(-50% + 16px) !important;
+  height: 1px !important;
+  width: auto !important;
+  bottom: auto !important;
+  background: #d7d9dc;
+}
+
+.crd-page .crd-journey-step-v2.is-complete:not(:last-child)::after {
+  background: #111111 !important;
+}
+
+.crd-page .crd-journey-step-marker-v2 {
+  width: 31px !important;
+  height: 31px !important;
+  flex: 0 0 31px !important;
+  border: 1px solid #bfc3c7 !important;
+  border-radius: 1px !important;
+  background: #ffffff;
+  color: #555b61;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+
+.crd-page .crd-journey-step-v2.is-complete .crd-journey-step-marker-v2,
+.crd-page .crd-journey-step-v2.is-current .crd-journey-step-marker-v2 {
+  border-color: #111111 !important;
+  background: #111111 !important;
+  color: #ffffff !important;
+}
+
+.crd-page .crd-journey-check-v5 {
+  display: block;
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+.crd-page .crd-journey-step-copy-v2 {
+  display: block !important;
+  width: 100%;
+  margin-top: 9px !important;
+}
+
+.crd-page .crd-journey-step-copy-v2 strong {
+  display: block;
+  color: #24272a !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  line-height: 1.3 !important;
+  white-space: normal;
+}
+
+.crd-page .crd-journey-step-copy-v2 span {
+  display: none !important;
+}
+
+/* FURNITURE
+   Title/subtitle/specs now form one compact block beside the preview. */
+.crd-page .wisdom-request-items-v11 .checkout-item-details {
+  justify-content: flex-start !important;
+  align-self: stretch !important;
+  padding-top: 8px !important;
+}
+
+.crd-page .wisdom-request-items-v11 .crd-item-head {
+  align-items: flex-start !important;
+}
+
+.crd-page .wisdom-request-items-v11 .crd-item-primary-copy-v5 {
+  flex: 1 1 440px;
+  min-width: 0;
+  padding: 3px 16px 0 0;
+}
+
+.crd-page
+  .wisdom-request-items-v11
+  .crd-item-primary-copy-v5
+  .checkout-item-name {
+  margin: 0;
+}
+
+.crd-page
+  .wisdom-request-items-v11
+  .crd-item-primary-copy-v5
+  .crd-item-subtitle {
+  margin-top: 4px !important;
+}
+
+.crd-page .wisdom-request-items-v11 .crd-tag-wrap-inline-v5 {
+  display: flex !important;
+  align-items: center !important;
+  flex-wrap: wrap !important;
+  gap: 4px !important;
+  margin: 11px 0 0 !important;
+}
+
+.crd-page
+  .wisdom-request-items-v11
+  .crd-tag-wrap-inline-v5
+  .custom-spec-tag {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px !important;
+  font-size: 10.5px !important;
+  font-weight: 400 !important;
+}
+
+/* Keep the submitted-design action aligned to the top of the same row. */
+.crd-page .wisdom-request-items-v11 .crd-design-access-v2 {
+  align-self: flex-start !important;
+  margin-top: 0 !important;
+}
+
+@media (max-width: 900px) {
+  .crd-page .crd-journey-process-v2 {
+    padding: 20px 18px 22px !important;
+  }
+
+  .crd-page .crd-journey-process-title-v2,
+  .crd-page .crd-journey-steps-v2 {
+    width: 100% !important;
+  }
+
+  .crd-page .crd-journey-step-copy-v2 strong {
+    font-size: 11.5px !important;
+  }
+
+  .crd-page .wisdom-request-items-v11 .crd-item-primary-copy-v5 {
+    flex-basis: 100%;
+    padding-right: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Restore the existing vertical mobile journey while keeping the
+     larger, clearer markers. */
+  .crd-page .crd-journey-step-v2 {
+    display: grid !important;
+    grid-template-columns: 31px minmax(0, 1fr) !important;
+    gap: 10px !important;
+    align-items: start !important;
+    padding: 0 0 14px !important;
+    text-align: left !important;
+  }
+
+  .crd-page .crd-journey-step-v2:not(:last-child)::after {
+    top: 31px !important;
+    bottom: 0 !important;
+    left: 15px !important;
+    right: auto !important;
+    width: 1px !important;
+    height: auto !important;
+  }
+
+  .crd-page .crd-journey-step-copy-v2 {
+    margin-top: 5px !important;
+    text-align: left !important;
+  }
+
+  .crd-page .crd-journey-process-title-v2 {
+    margin-bottom: 14px !important;
+  }
+}
