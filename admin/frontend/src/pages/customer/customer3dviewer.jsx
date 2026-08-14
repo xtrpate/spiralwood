@@ -422,8 +422,9 @@ export default function Customer3DViewer({
       : {};
 
     const material =
-      String(firstComponent?.material || firstComponent?.wood_type || "").trim() ||
-      "Standard material";
+      String(
+        firstComponent?.material || firstComponent?.wood_type || "",
+      ).trim() || "Standard material";
 
     const finishId = String(
       firstComponent?.finish_id ||
@@ -461,10 +462,7 @@ export default function Customer3DViewer({
         );
       })
       .catch((error) => {
-        console.error(
-          "Failed to load standard-truck delivery limits:",
-          error,
-        );
+        console.error("Failed to load standard-truck delivery limits:", error);
 
         if (active) {
           setStandardTruckLimits(null);
@@ -529,7 +527,7 @@ export default function Customer3DViewer({
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(40, w / h, 0.5, 12000);
-    camera.position.set(1500, 1000, 1500);
+    camera.position.set(1500, 700, 1500);
     cameraRef.current = camera;
 
     scene.add(new THREE.AmbientLight(0xffffff, 1.8));
@@ -558,12 +556,18 @@ export default function Customer3DViewer({
     personGroupRef.current = personGroup;
 
     const orbit = new OrbitControls(camera, renderer.domElement);
+
     orbit.enableDamping = true;
     orbit.dampingFactor = 0.06;
     orbit.maxPolarAngle = Math.PI / 2 - 0.05;
     orbit.minDistance = 500;
     orbit.maxDistance = 5000;
     orbit.target.set(0, 0, 0);
+
+    // Keep the 3D viewer interactive.
+    // The page itself can still scroll from the options/sidebar area.
+    orbit.enabled = true;
+
     orbitRef.current = orbit;
 
     const rootGroup = new THREE.Group();
@@ -743,14 +747,11 @@ export default function Customer3DViewer({
       0.5,
       Number(camera.aspect || canvasAspect || 1),
     );
-    const horizontalFov =
-      2 * Math.atan(Math.tan(verticalFov / 2) * safeAspect);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * safeAspect);
 
     const fitPlaneDistance = (planeWidth, planeHeight) => {
-      const distanceForHeight =
-        planeHeight / (2 * Math.tan(verticalFov / 2));
-      const distanceForWidth =
-        planeWidth / (2 * Math.tan(horizontalFov / 2));
+      const distanceForHeight = planeHeight / (2 * Math.tan(verticalFov / 2));
+      const distanceForWidth = planeWidth / (2 * Math.tan(horizontalFov / 2));
 
       return Math.max(distanceForHeight, distanceForWidth) * 1.18;
     };
@@ -790,8 +791,7 @@ export default function Customer3DViewer({
     camera.updateProjectionMatrix();
 
     orbit.enableRotate = viewMode === "3D";
-    orbit.maxPolarAngle =
-      viewMode === "3D" ? Math.PI / 2 - 0.05 : Math.PI;
+    orbit.maxPolarAngle = viewMode === "3D" ? Math.PI / 2 - 0.05 : Math.PI;
 
     switch (viewMode) {
       case "Front":
@@ -804,18 +804,10 @@ export default function Customer3DViewer({
         camera.position.set(center.x - distance, center.y, center.z);
         break;
       case "Top":
-        camera.position.set(
-          center.x,
-          center.y + distance,
-          center.z + 0.1,
-        );
+        camera.position.set(center.x, center.y + distance, center.z + 0.1);
         break;
       case "Bottom":
-        camera.position.set(
-          center.x,
-          center.y - distance,
-          center.z + 0.1,
-        );
+        camera.position.set(center.x, center.y - distance, center.z + 0.1);
         break;
       case "3D":
       default: {
@@ -1483,8 +1475,19 @@ export default function Customer3DViewer({
         </div>
       </div>
 
-      <div style={{ ...styles.viewerShell, ...(!readOnly ? styles.customizeViewerShell : {}) }}>
-        <div style={styles.canvasWrap}>
+      <div
+        className={`customer-3d-viewer-shell ${
+          !readOnly ? "customer-3d-viewer-shell-customize" : ""
+        }`}
+        style={{
+          ...styles.viewerShell,
+          ...(!readOnly ? styles.customizeViewerShell : {}),
+        }}
+      >
+        <div
+          className="customer-3d-viewer-canvas-wrap"
+          style={styles.canvasWrap}
+        >
           <div style={styles.cameraToolbar}>
             {["3D", "Front", "Back", "Side", "Top", "Bottom"].map((view) => (
               <button
@@ -1503,13 +1506,27 @@ export default function Customer3DViewer({
 
           <div ref={mountRef} style={styles.canvasContainer} />
 
-          <div ref={labelWRef} style={styles.floatingLabel}>
+          <div
+            ref={labelWRef}
+            className="customer-3d-floating-label"
+            style={styles.floatingLabel}
+          >
             {formatUnitLabel(overallBounds.width_mm)}
           </div>
-          <div ref={labelHRef} style={styles.floatingLabel}>
+
+          <div
+            ref={labelHRef}
+            className="customer-3d-floating-label"
+            style={styles.floatingLabel}
+          >
             {formatUnitLabel(overallBounds.height_mm)}
           </div>
-          <div ref={labelDRef} style={styles.floatingLabel}>
+
+          <div
+            ref={labelDRef}
+            className="customer-3d-floating-label"
+            style={styles.floatingLabel}
+          >
             {formatUnitLabel(overallBounds.depth_mm)}
           </div>
         </div>
@@ -1574,7 +1591,9 @@ export default function Customer3DViewer({
 
                   <div style={styles.viewDetailRowLast}>
                     <span style={styles.viewDetailLabel}>Order Type</span>
-                    <strong style={styles.viewDetailValue}>Made to Order</strong>
+                    <strong style={styles.viewDetailValue}>
+                      Made to Order
+                    </strong>
                   </div>
                 </div>
               </section>
@@ -1598,472 +1617,483 @@ export default function Customer3DViewer({
             }}
           >
             <div style={styles.sidebarScroll}>
-            <section
-              style={{
-                ...styles.sidebarSection,
-                ...styles.customizeIntroSection,
-              }}
-            >
-              <div style={styles.sidebarSectionHeader}>
-                <div style={styles.sidebarSectionTitle}>
-                  Design Options
-                </div>
-              </div>
-
-              <p style={styles.sidebarSectionNote}>
-                Set the size and finish. Optional tools are below.
-              </p>
-
-
-              <OversizedDeliveryWarning
-                assessment={deliveryAssessment}
-                compact
-              />
-            </section>
-
-            <div style={styles.customizeOptionalToolsHeading}>
-              <span style={styles.customizeOptionalToolsTitle}>Optional Tools</span>
-              <span style={styles.customizeOptionalToolsNote}>Use only when needed</span>
-            </div>
-
-            <section
-              style={{
-                ...styles.sidebarSection,
-                ...styles.customizeOptionalSection,
-                ...(selectionMode ? styles.sidebarSectionActive : {}),
-              }}
-            >
-              <div style={styles.sectionRow}>
-                <label style={styles.label}>Edit Individual Parts</label>
-
-                <label style={styles.inlineCheck}>
-                  <input
-                    type="checkbox"
-                    checked={selectionMode}
-                    onChange={(e) => {
-                      setSelectionMode(e.target.checked);
-                      if (!e.target.checked) setSelectedCompIds([]);
-                    }}
-                  />
-                  <span style={selectionMode ? styles.inlineCheckActive : null}>
-                    Enable
-                  </span>
-                </label>
-              </div>
-
-              {selectionMode ? (
-                <>
-                  <div style={styles.helperText}>
-                    Select a part in the 3D preview, or choose one from the options
-                    below.
-                  </div>
-
-                  <select
-                    value={
-                      selectedCompIds.length
-                        ? String(
-                            partGroups.findIndex((group) =>
-                              group.ids.some((id) =>
-                                selectedCompIds.includes(id),
-                              ),
-                            ),
-                          )
-                        : ""
-                    }
-                    onChange={(e) => {
-                      const index = Number(e.target.value);
-                      if (!Number.isInteger(index) || index < 0) {
-                        setSelectedCompIds([]);
-                        return;
-                      }
-
-                      const group = partGroups[index];
-                      setSelectedCompIds(group?.ids || []);
-                    }}
-                    style={styles.partGroupSelect}
-                  >
-                    <option value="">Choose a furniture part</option>
-                    {partGroups.map((group, index) => (
-                      <option key={`${group.label}_${index}`} value={index}>
-                        {group.label} ({group.ids.length})
-                      </option>
-                    ))}
-                  </select>
-                </>
-              ) : (
-                <div style={styles.helperTextMuted}>
-                  Turn this on to select and edit repeated parts such as legs, shelves, or panels.
-                </div>
-              )}
-            </section>
-
-            {selectionMode && selectedGroup.length > 0 && sampleSelectedPart ? (
-              <section style={styles.sidebarSection}>
-                <div style={styles.sectionRow}>
-                  <label style={styles.label}>
-                    Selected Parts: {selectedGroup.length}
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedCompIds([])}
-                    style={styles.clearBtn}
-                  >
-                    Clear
-                  </button>
-                </div>
-
-                <div style={styles.dimensionGrid}>
-                  <div style={styles.inputGroup}>
-                    <span style={styles.dimLabel}>
-                      {getPartAxisLabels(sampleSelectedPart).width}
-                    </span>
-                    <input
-                      type="number"
-                      value={partDrafts.width}
-                      onChange={(e) =>
-                        setPartDrafts((prev) => ({
-                          ...prev,
-                          width: e.target.value,
-                        }))
-                      }
-                      onBlur={(e) =>
-                        commitPartDimension("width", e.target.value)
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          commitPartDimension("width", e.target.value);
-                        }
-                      }}
-                      style={styles.input}
-                    />
-                  </div>
-
-                  <div style={styles.inputGroup}>
-                    <span style={styles.dimLabel}>
-                      {getPartAxisLabels(sampleSelectedPart).height}
-                    </span>
-                    <input
-                      type="number"
-                      value={partDrafts.height}
-                      onChange={(e) =>
-                        setPartDrafts((prev) => ({
-                          ...prev,
-                          height: e.target.value,
-                        }))
-                      }
-                      onBlur={(e) =>
-                        commitPartDimension("height", e.target.value)
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          commitPartDimension("height", e.target.value);
-                        }
-                      }}
-                      style={styles.input}
-                    />
-                  </div>
-
-                  <div style={styles.inputGroup}>
-                    <span style={styles.dimLabel}>
-                      {getPartAxisLabels(sampleSelectedPart).depth}
-                    </span>
-                    <input
-                      type="number"
-                      value={partDrafts.depth}
-                      onChange={(e) =>
-                        setPartDrafts((prev) => ({
-                          ...prev,
-                          depth: e.target.value,
-                        }))
-                      }
-                      onBlur={(e) =>
-                        commitPartDimension("depth", e.target.value)
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          commitPartDimension("depth", e.target.value);
-                        }
-                      }}
-                      style={styles.input}
-                    />
-                  </div>
-                </div>
-              </section>
-            ) : (
               <section
                 style={{
                   ...styles.sidebarSection,
-                  ...styles.customizeSizeSection,
+                  ...styles.customizeIntroSection,
+                }}
+              >
+                <div style={styles.sidebarSectionHeader}>
+                  <div style={styles.sidebarSectionTitle}>Design Options</div>
+                </div>
+
+                <p style={styles.sidebarSectionNote}>
+                  Set the size and finish. Optional tools are below.
+                </p>
+
+                <OversizedDeliveryWarning
+                  assessment={deliveryAssessment}
+                  compact
+                />
+              </section>
+
+              <div style={styles.customizeOptionalToolsHeading}>
+                <span style={styles.customizeOptionalToolsTitle}>
+                  Optional Tools
+                </span>
+                <span style={styles.customizeOptionalToolsNote}>
+                  Use only when needed
+                </span>
+              </div>
+
+              <section
+                style={{
+                  ...styles.sidebarSection,
+                  ...styles.customizeOptionalSection,
+                  ...(selectionMode ? styles.sidebarSectionActive : {}),
                 }}
               >
                 <div style={styles.sectionRow}>
-                  <label style={styles.label}>
-                    Furniture Size ({unit})
+                  <label style={styles.label}>Edit Individual Parts</label>
+
+                  <label style={styles.inlineCheck}>
+                    <input
+                      type="checkbox"
+                      checked={selectionMode}
+                      onChange={(e) => {
+                        setSelectionMode(e.target.checked);
+                        if (!e.target.checked) setSelectedCompIds([]);
+                      }}
+                    />
+                    <span
+                      style={selectionMode ? styles.inlineCheckActive : null}
+                    >
+                      Enable
+                    </span>
                   </label>
-                  <span style={styles.pill}>Keeps proportions</span>
                 </div>
 
-                <div style={styles.dimensionGrid}>
-                  <div style={styles.inputGroup}>
-                    <span style={styles.dimLabel}>Width</span>
-                    <input
-                      type="number"
-                      value={overallDrafts.width}
-                      disabled={!isCustomizable || readOnly}
-                      onChange={(e) =>
-                        handleOverallDraftChange("width", e.target.value)
-                      }
-                      onBlur={() => commitOverallDimension("width")}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") commitOverallDimension("width");
-                      }}
-                      style={styles.input}
-                    />
-                  </div>
+                {selectionMode ? (
+                  <>
+                    <div style={styles.helperText}>
+                      Select a part in the 3D preview, or choose one from the
+                      options below.
+                    </div>
 
-                  <div style={styles.inputGroup}>
-                    <span style={styles.dimLabel}>Height</span>
-                    <input
-                      type="number"
-                      value={overallDrafts.height}
-                      disabled={!isCustomizable || readOnly}
-                      onChange={(e) =>
-                        handleOverallDraftChange("height", e.target.value)
+                    <select
+                      value={
+                        selectedCompIds.length
+                          ? String(
+                              partGroups.findIndex((group) =>
+                                group.ids.some((id) =>
+                                  selectedCompIds.includes(id),
+                                ),
+                              ),
+                            )
+                          : ""
                       }
-                      onBlur={() => commitOverallDimension("height")}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") commitOverallDimension("height");
-                      }}
-                      style={styles.input}
-                    />
-                  </div>
+                      onChange={(e) => {
+                        const index = Number(e.target.value);
+                        if (!Number.isInteger(index) || index < 0) {
+                          setSelectedCompIds([]);
+                          return;
+                        }
 
-                  <div style={styles.inputGroup}>
-                    <span style={styles.dimLabel}>Depth</span>
-                    <input
-                      type="number"
-                      value={overallDrafts.depth}
-                      disabled={!isCustomizable || readOnly}
-                      onChange={(e) =>
-                        handleOverallDraftChange("depth", e.target.value)
-                      }
-                      onBlur={() => commitOverallDimension("depth")}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") commitOverallDimension("depth");
+                        const group = partGroups[index];
+                        setSelectedCompIds(group?.ids || []);
                       }}
-                      style={styles.input}
-                    />
+                      style={styles.partGroupSelect}
+                    >
+                      <option value="">Choose a furniture part</option>
+                      {partGroups.map((group, index) => (
+                        <option key={`${group.label}_${index}`} value={index}>
+                          {group.label} ({group.ids.length})
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                ) : (
+                  <div style={styles.helperTextMuted}>
+                    Turn this on to select and edit repeated parts such as legs,
+                    shelves, or panels.
                   </div>
-                </div>
+                )}
               </section>
-            )}
 
-            <section
-              style={{
-                ...styles.sidebarSection,
-                ...styles.customizeFinishSection,
-                ...(readOnly || !editable.finish_color
-                  ? styles.sidebarSectionDisabled
-                  : {}),
-              }}
-            >
-              <div style={styles.sectionRow}>
-                <label style={styles.label}>Finish & Color</label>
-                {selectedGroup.length > 0 ? (
-                  <span style={styles.pill}>Applies to selection</span>
-                ) : null}
-              </div>
+              {selectionMode &&
+              selectedGroup.length > 0 &&
+              sampleSelectedPart ? (
+                <section style={styles.sidebarSection}>
+                  <div style={styles.sectionRow}>
+                    <label style={styles.label}>
+                      Selected Parts: {selectedGroup.length}
+                    </label>
 
-              <div style={styles.inputGroup}>
-                <span style={styles.dimLabel}>Wood Finish</span>
-                <select
-                  onChange={(e) => handleFinishChange(e.target.value)}
-                  style={styles.input}
-                  disabled={readOnly || !editable.finish_color}
-                >
-                  <option value="">Original / Custom</option>
-                  {WOOD_FINISHES?.map((finish) => (
-                    <option key={finish.id} value={finish.id}>
-                      {finish.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCompIds([])}
+                      style={styles.clearBtn}
+                    >
+                      Clear
+                    </button>
+                  </div>
 
-              <div style={styles.colorPickerRow}>
-                <input
-                  type="color"
-                  value={customHex}
-                  onChange={(e) => handleColorChange(e.target.value)}
-                  style={styles.colorPicker}
-                  disabled={readOnly || !editable.finish_color}
-                />
+                  <div style={styles.dimensionGrid}>
+                    <div style={styles.inputGroup}>
+                      <span style={styles.dimLabel}>
+                        {getPartAxisLabels(sampleSelectedPart).width}
+                      </span>
+                      <input
+                        type="number"
+                        value={partDrafts.width}
+                        onChange={(e) =>
+                          setPartDrafts((prev) => ({
+                            ...prev,
+                            width: e.target.value,
+                          }))
+                        }
+                        onBlur={(e) =>
+                          commitPartDimension("width", e.target.value)
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            commitPartDimension("width", e.target.value);
+                          }
+                        }}
+                        style={styles.input}
+                      />
+                    </div>
 
-                <input
-                  type="text"
-                  value={customHex}
-                  onChange={(e) => setCustomHex(e.target.value)}
-                  onBlur={(e) => handleColorChange(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleColorChange(e.target.value);
+                    <div style={styles.inputGroup}>
+                      <span style={styles.dimLabel}>
+                        {getPartAxisLabels(sampleSelectedPart).height}
+                      </span>
+                      <input
+                        type="number"
+                        value={partDrafts.height}
+                        onChange={(e) =>
+                          setPartDrafts((prev) => ({
+                            ...prev,
+                            height: e.target.value,
+                          }))
+                        }
+                        onBlur={(e) =>
+                          commitPartDimension("height", e.target.value)
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            commitPartDimension("height", e.target.value);
+                          }
+                        }}
+                        style={styles.input}
+                      />
+                    </div>
+
+                    <div style={styles.inputGroup}>
+                      <span style={styles.dimLabel}>
+                        {getPartAxisLabels(sampleSelectedPart).depth}
+                      </span>
+                      <input
+                        type="number"
+                        value={partDrafts.depth}
+                        onChange={(e) =>
+                          setPartDrafts((prev) => ({
+                            ...prev,
+                            depth: e.target.value,
+                          }))
+                        }
+                        onBlur={(e) =>
+                          commitPartDimension("depth", e.target.value)
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            commitPartDimension("depth", e.target.value);
+                          }
+                        }}
+                        style={styles.input}
+                      />
+                    </div>
+                  </div>
+                </section>
+              ) : (
+                <section
+                  style={{
+                    ...styles.sidebarSection,
+                    ...styles.customizeSizeSection,
                   }}
-                  placeholder="#HexCode"
-                  style={{ ...styles.input, fontFamily: "monospace" }}
-                  disabled={readOnly || !editable.finish_color}
-                />
-              </div>
-            </section>
-
-            <section
-              style={{
-                ...styles.sidebarSection,
-                ...styles.customizeHumanSection,
-              }}
-            >
-              <div style={styles.sectionRow}>
-                <label style={styles.label}>Human Size Reference</label>
-
-                <label style={styles.inlineCheck}>
-                  <input
-                    type="checkbox"
-                    checked={showPerson}
-                    onChange={(e) => setShowPerson(e.target.checked)}
-                  />
-                  <span>Show</span>
-                </label>
-              </div>
-
-              {showPerson ? (
-                <div style={styles.inputGroup}>
-                  <span style={styles.dimLabel}>Height ({unit})</span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={convertMmToUnit(personHeightMm, unit)}
-                    onChange={(e) =>
-                      setPersonHeightMm(convertUnitToMm(e.target.value, unit))
-                    }
-                    style={styles.input}
-                  />
-                </div>
-              ) : null}
-            </section>
-          </div>
-
-          {!readOnly ? (
-            <div style={styles.sidebarFooter}>
-              <div style={styles.footerHeader}>
-                <div>
-                  <div style={styles.footerTitle}>Order Details</div>
-                  <div style={styles.footerNote}>
-                    Add reference photos or notes if needed.
+                >
+                  <div style={styles.sectionRow}>
+                    <label style={styles.label}>Furniture Size ({unit})</label>
+                    <span style={styles.pill}>Keeps proportions</span>
                   </div>
-                </div>
 
-                <div style={styles.qtyBox}>
-                  <button
-                    type="button"
-                    disabled={!editable.quantity}
-                    onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
-                    style={styles.qtyBtn}
-                  >
-                    −
-                  </button>
+                  <div style={styles.dimensionGrid}>
+                    <div style={styles.inputGroup}>
+                      <span style={styles.dimLabel}>Width</span>
+                      <input
+                        type="number"
+                        value={overallDrafts.width}
+                        disabled={!isCustomizable || readOnly}
+                        onChange={(e) =>
+                          handleOverallDraftChange("width", e.target.value)
+                        }
+                        onBlur={() => commitOverallDimension("width")}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter")
+                            commitOverallDimension("width");
+                        }}
+                        style={styles.input}
+                      />
+                    </div>
 
-                  <strong style={styles.qtyValue}>{quantity}</strong>
+                    <div style={styles.inputGroup}>
+                      <span style={styles.dimLabel}>Height</span>
+                      <input
+                        type="number"
+                        value={overallDrafts.height}
+                        disabled={!isCustomizable || readOnly}
+                        onChange={(e) =>
+                          handleOverallDraftChange("height", e.target.value)
+                        }
+                        onBlur={() => commitOverallDimension("height")}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter")
+                            commitOverallDimension("height");
+                        }}
+                        style={styles.input}
+                      />
+                    </div>
 
-                  <button
-                    type="button"
-                    disabled={!editable.quantity}
-                    onClick={() => setQuantity((prev) => Math.max(1, prev + 1))}
-                    style={styles.qtyBtn}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-
-              <div style={styles.footerField}>
-                <div style={styles.uploadHeader}>
-                  <label style={styles.footerLabel}>Reference Photos</label>
-                  <span style={styles.uploadHint}>
-                    Up to 5 images • JPG / JPEG / PNG / WEBP • 5MB each
-                  </span>
-                </div>
-
-                <label style={styles.uploadButton}>
-                  Upload Photos
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/webp"
-                    multiple
-                    hidden
-                    onChange={onPickReferencePhotos}
-                  />
-                </label>
-
-                {uploadError ? (
-                  <div style={styles.uploadError}>{uploadError}</div>
-                ) : null}
-
-                {referencePhotos?.length ? (
-                  <div style={styles.photoGrid}>
-                    {referencePhotos.map((photo) => (
-                      <div key={photo.id} style={styles.photoCard}>
-                        <div style={styles.photoThumb}>
-                          <img
-                            src={photo.data_url}
-                            alt={photo.name}
-                            style={styles.photoThumbImg}
-                          />
-                        </div>
-
-                        <div style={styles.photoMeta}>
-                          <div style={styles.photoName}>{photo.name}</div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => onRemoveReferencePhoto?.(photo.id)}
-                          style={styles.photoRemove}
-                          aria-label={`Remove ${photo.name}`}
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
+                    <div style={styles.inputGroup}>
+                      <span style={styles.dimLabel}>Depth</span>
+                      <input
+                        type="number"
+                        value={overallDrafts.depth}
+                        disabled={!isCustomizable || readOnly}
+                        onChange={(e) =>
+                          handleOverallDraftChange("depth", e.target.value)
+                        }
+                        onBlur={() => commitOverallDimension("depth")}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter")
+                            commitOverallDimension("depth");
+                        }}
+                        style={styles.input}
+                      />
+                    </div>
                   </div>
-                ) : null}
-              </div>
+                </section>
+              )}
 
-              <div
+              <section
                 style={{
-                  ...styles.footerField,
-                  ...styles.notesFooterField,
+                  ...styles.sidebarSection,
+                  ...styles.customizeFinishSection,
+                  ...(readOnly || !editable.finish_color
+                    ? styles.sidebarSectionDisabled
+                    : {}),
                 }}
               >
-                <label style={styles.footerLabel}>{commentsLabel}</label>
-                <textarea
-                  rows={2}
-                  maxLength={500}
-                  value={comments}
-                  disabled={!editable.comments}
-                  onChange={(e) => setComments(e.target.value)}
-                  placeholder={commentsPlaceholder}
-                  style={styles.textarea}
-                />
-              </div>
+                <div style={styles.sectionRow}>
+                  <label style={styles.label}>Finish & Color</label>
+                  {selectedGroup.length > 0 ? (
+                    <span style={styles.pill}>Applies to selection</span>
+                  ) : null}
+                </div>
 
-              <button
-                type="button"
-                onClick={handleApply}
-                style={styles.applyBtn}
+                <div style={styles.inputGroup}>
+                  <span style={styles.dimLabel}>Wood Finish</span>
+                  <select
+                    onChange={(e) => handleFinishChange(e.target.value)}
+                    style={styles.input}
+                    disabled={readOnly || !editable.finish_color}
+                  >
+                    <option value="">Original / Custom</option>
+                    {WOOD_FINISHES?.map((finish) => (
+                      <option key={finish.id} value={finish.id}>
+                        {finish.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div style={styles.colorPickerRow}>
+                  <input
+                    type="color"
+                    value={customHex}
+                    onChange={(e) => handleColorChange(e.target.value)}
+                    style={styles.colorPicker}
+                    disabled={readOnly || !editable.finish_color}
+                  />
+
+                  <input
+                    type="text"
+                    value={customHex}
+                    onChange={(e) => setCustomHex(e.target.value)}
+                    onBlur={(e) => handleColorChange(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleColorChange(e.target.value);
+                    }}
+                    placeholder="#HexCode"
+                    style={{ ...styles.input, fontFamily: "monospace" }}
+                    disabled={readOnly || !editable.finish_color}
+                  />
+                </div>
+              </section>
+
+              <section
+                style={{
+                  ...styles.sidebarSection,
+                  ...styles.customizeHumanSection,
+                }}
               >
-                {applyLabel}
-              </button>
+                <div style={styles.sectionRow}>
+                  <label style={styles.label}>Human Size Reference</label>
+
+                  <label style={styles.inlineCheck}>
+                    <input
+                      type="checkbox"
+                      checked={showPerson}
+                      onChange={(e) => setShowPerson(e.target.checked)}
+                    />
+                    <span>Show</span>
+                  </label>
+                </div>
+
+                {showPerson ? (
+                  <div style={styles.inputGroup}>
+                    <span style={styles.dimLabel}>Height ({unit})</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={convertMmToUnit(personHeightMm, unit)}
+                      onChange={(e) =>
+                        setPersonHeightMm(convertUnitToMm(e.target.value, unit))
+                      }
+                      style={styles.input}
+                    />
+                  </div>
+                ) : null}
+              </section>
             </div>
-          ) : null}
+
+            {!readOnly ? (
+              <div style={styles.sidebarFooter}>
+                <div style={styles.footerHeader}>
+                  <div>
+                    <div style={styles.footerTitle}>Order Details</div>
+                    <div style={styles.footerNote}>
+                      Add reference photos or notes if needed.
+                    </div>
+                  </div>
+
+                  <div style={styles.qtyBox}>
+                    <button
+                      type="button"
+                      disabled={!editable.quantity}
+                      onClick={() =>
+                        setQuantity((prev) => Math.max(1, prev - 1))
+                      }
+                      style={styles.qtyBtn}
+                    >
+                      −
+                    </button>
+
+                    <strong style={styles.qtyValue}>{quantity}</strong>
+
+                    <button
+                      type="button"
+                      disabled={!editable.quantity}
+                      onClick={() =>
+                        setQuantity((prev) => Math.max(1, prev + 1))
+                      }
+                      style={styles.qtyBtn}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                <div style={styles.footerField}>
+                  <div style={styles.uploadHeader}>
+                    <label style={styles.footerLabel}>Reference Photos</label>
+                    <span style={styles.uploadHint}>
+                      Up to 5 images • JPG / JPEG / PNG / WEBP • 5MB each
+                    </span>
+                  </div>
+
+                  <label style={styles.uploadButton}>
+                    Upload Photos
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/jpg,image/png,image/webp"
+                      multiple
+                      hidden
+                      onChange={onPickReferencePhotos}
+                    />
+                  </label>
+
+                  {uploadError ? (
+                    <div style={styles.uploadError}>{uploadError}</div>
+                  ) : null}
+
+                  {referencePhotos?.length ? (
+                    <div style={styles.photoGrid}>
+                      {referencePhotos.map((photo) => (
+                        <div key={photo.id} style={styles.photoCard}>
+                          <div style={styles.photoThumb}>
+                            <img
+                              src={photo.data_url}
+                              alt={photo.name}
+                              style={styles.photoThumbImg}
+                            />
+                          </div>
+
+                          <div style={styles.photoMeta}>
+                            <div style={styles.photoName}>{photo.name}</div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => onRemoveReferencePhoto?.(photo.id)}
+                            style={styles.photoRemove}
+                            aria-label={`Remove ${photo.name}`}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div
+                  style={{
+                    ...styles.footerField,
+                    ...styles.notesFooterField,
+                  }}
+                >
+                  <label style={styles.footerLabel}>{commentsLabel}</label>
+                  <textarea
+                    rows={2}
+                    maxLength={500}
+                    value={comments}
+                    disabled={!editable.comments}
+                    onChange={(e) => setComments(e.target.value)}
+                    placeholder={commentsPlaceholder}
+                    style={styles.textarea}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleApply}
+                  style={styles.applyBtn}
+                >
+                  {applyLabel}
+                </button>
+              </div>
+            ) : null}
           </aside>
         )}
       </div>
@@ -2179,7 +2209,7 @@ const styles = {
   customizeViewerShell: {
     gridTemplateColumns: "minmax(0, 1fr) 400px",
     height: "min(735px, calc(100vh - 128px))",
-    minHeight: 565,
+    minHeight: 0,
   },
 
   rightShiftFillSpaceV10: {
@@ -2206,7 +2236,7 @@ const styles = {
   canvasContainer: {
     width: "100%",
     height: "100%",
-    minHeight: 500,
+    minHeight: 0,
     backgroundColor: "#f7f7f7",
   },
 

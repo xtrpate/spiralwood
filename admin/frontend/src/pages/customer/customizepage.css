@@ -1970,3 +1970,149 @@
     grid-template-columns: 88px minmax(0, 1fr);
   }
 }
+
+/* ==========================================================
+   CUSTOMER TEMPLATE WORKBENCH - MOBILE FIX
+   ========================================================== */
+
+@media (max-width: 900px) {
+  /*
+    The modal content is the ONLY scroll container.
+  */
+  .cust-modal-customize .cust-modal-content {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
+  }
+
+  /*
+    Mobile workbench becomes:
+    3D viewer
+    ↓
+    Design options
+  */
+  .customer-3d-viewer-shell-customize {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 240px auto !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  /*
+    Actual 3D viewer area.
+    Your current JSX really does have this as the first child.
+  */
+  .customer-3d-viewer-shell-customize > .customer-3d-viewer-canvas-wrap {
+    width: 100% !important;
+    height: 240px !important;
+    min-height: 240px !important;
+    overflow: hidden !important;
+  }
+
+  /*
+    IMPORTANT:
+    The customization sidebar is currently using inline
+    height: 100% and overflow-y: auto.
+    Override those inline values for mobile.
+  */
+  .customer-3d-viewer-shell-customize > aside {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  /*
+    The actual inner sidebar wrapper.
+  */
+  .customer-3d-viewer-shell-customize > aside > div {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .customer-3d-viewer-shell-customize > .customer-3d-viewer-canvas-wrap {
+    touch-action: none !important;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /*
+    Do not let the sidebar create another scrollbar.
+  */
+  .customer-3d-viewer-shell-customize > aside > div > section {
+    min-height: 0;
+  }
+
+  /*
+    Dimension labels are useful on desktop,
+    but they interfere with the mobile layout.
+  */
+  .customer-3d-floating-label {
+    display: none !important;
+  }
+}
+
+/* ==========================================================
+   SHORT LANDSCAPE MOBILE
+   ========================================================== */
+
+@media (max-height: 560px) and (orientation: landscape) {
+  .cust-modal-customize {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+  }
+
+  .cust-modal-customize .cust-modal-content {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
+  }
+
+  .customer-3d-viewer-shell-customize {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 220px auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .customer-3d-viewer-shell-customize > .customer-3d-viewer-canvas-wrap {
+    height: 220px !important;
+    min-height: 220px !important;
+  }
+
+  .customer-3d-viewer-shell-customize > aside {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .customer-3d-viewer-shell-customize > aside > div {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .customer-3d-floating-label {
+    display: none !important;
+  }
+}
