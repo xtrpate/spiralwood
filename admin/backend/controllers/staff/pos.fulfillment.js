@@ -1044,7 +1044,7 @@ exports.updateDeliveryStatus = async (req, res) => {
 
     const [[order]] = await conn.query(
       `SELECT id, order_number, total, status, payment_status, customer_id,
-              order_type, remaining_payment_method
+              order_type, payment_method, remaining_payment_method
        FROM orders
        WHERE id = ?
        LIMIT 1
@@ -1354,6 +1354,25 @@ exports.updateDeliveryStatus = async (req, res) => {
     const currentBalance = Math.max(0, totalAmount - verifiedTotalBefore);
     const hasPendingPaymentBefore =
       Number(paymentSummaryBefore?.has_pending || 0) === 1;
+    const isStandardCodOrder =
+      !isBlueprintOrder &&
+      normalizeText(order.order_type || "").toLowerCase() === "standard" &&
+      normalizeText(order.payment_method || "").toLowerCase() === "cod";
+
+    if (
+      isCompletingDeliveryNow &&
+      isStandardCodOrder &&
+      currentBalance > 0.009 &&
+      hasPendingPaymentBefore
+    ) {
+      await conn.rollback();
+      cleanupFreshUpload(req.file);
+      return res.status(409).json({
+        reason_code: "COD_PAYMENT_REVIEW_PENDING",
+        message:
+          "A payment is already awaiting admin review for this COD order. Verify or reject it before completing delivery.",
+      });
+    }
 
     // isCompletingDeliveryNow is already declared above (needed earlier
     // for the Phase 5 blueprint branch's own gating).
@@ -1382,21 +1401,43 @@ exports.updateDeliveryStatus = async (req, res) => {
     if (shouldRecordDeliveryCollection) {
       if (!(collectedAmount > 0)) {
         await conn.rollback();
+        cleanupFreshUpload(req.file);
         return res.status(400).json({
           message:
             "Please enter the amount collected by the rider before completing this delivery.",
         });
       }
 
-      if (!DELIVERY_COLLECTION_METHODS.includes(collectedPaymentMethod)) {
+      const paymentMethodIsValid = isStandardCodOrder
+        ? collectedPaymentMethod === "cash"
+        : DELIVERY_COLLECTION_METHODS.includes(collectedPaymentMethod);
+
+      if (!paymentMethodIsValid) {
         await conn.rollback();
+        cleanupFreshUpload(req.file);
         return res.status(400).json({
-          message: "Invalid collected payment method.",
+          message: isStandardCodOrder
+            ? "Cash is the only allowed payment method for COD delivery collection."
+            : "Invalid collected payment method.",
         });
       }
 
-      if (collectedAmount > currentBalance + 0.01) {
+      const exactRemainingBalance = Number(currentBalance.toFixed(2));
+      if (isStandardCodOrder && collectedAmount !== exactRemainingBalance) {
         await conn.rollback();
+        cleanupFreshUpload(req.file);
+        return res.status(400).json({
+          reason_code: "COD_EXACT_BALANCE_REQUIRED",
+          message: `Collect the exact remaining balance of ₱${exactRemainingBalance.toLocaleString(
+            "en-PH",
+            { minimumFractionDigits: 2 },
+          )} before completing this COD delivery.`,
+        });
+      }
+
+      if (!isStandardCodOrder && collectedAmount > currentBalance + 0.01) {
+        await conn.rollback();
+        cleanupFreshUpload(req.file);
         return res.status(400).json({
           message: `Collected amount exceeds the remaining balance of ₱${currentBalance.toLocaleString(
             "en-PH",
@@ -1474,8 +1515,10 @@ exports.updateDeliveryStatus = async (req, res) => {
          VALUES (?, ?, ?, ?, NULL, NULL, 'pending', ?)`,
         [
           existing.order_id,
-          collectedAmount,
-          collectedPaymentMethod,
+          isStandardCodOrder
+            ? Number(currentBalance.toFixed(2))
+            : collectedAmount,
+          isStandardCodOrder ? "cash" : collectedPaymentMethod,
           nextSignedReceipt || null,
           paymentNotes,
         ],

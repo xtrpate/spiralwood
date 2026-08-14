@@ -321,6 +321,9 @@ export default function DeliveryManagement() {
     const paymentMethod = String(
       collectionForm?.payment_method || "cash",
     ).toLowerCase();
+    const isStandardCodDelivery =
+      normalize(delivery.order_type) === "standard" &&
+      normalize(delivery.payment_method) === "cod";
 
     if (paymentBalance <= 0.009) {
       return "";
@@ -338,7 +341,18 @@ export default function DeliveryManagement() {
       return "Collected amount must be greater than zero.";
     }
 
-    if (rawAmount && amount > paymentBalance + 0.01) {
+    if (
+      isStandardCodDelivery &&
+      rawAmount &&
+      Math.abs(amount - Number(paymentBalance.toFixed(2))) > 0.009
+    ) {
+      return `Collect the exact remaining balance of ₱${paymentBalance.toLocaleString(
+        "en-PH",
+        { minimumFractionDigits: 2 },
+      )} before completing this COD delivery.`;
+    }
+
+    if (!isStandardCodDelivery && rawAmount && amount > paymentBalance + 0.01) {
       return `Collected amount cannot exceed the remaining balance of ₱${paymentBalance.toLocaleString(
         "en-PH",
         { minimumFractionDigits: 2 },
@@ -598,6 +612,10 @@ export default function DeliveryManagement() {
             // original standard/walk-in/COD/COP behavior when false.
             const isBlueprintDelivery =
               normalize(delivery.order_type) === "blueprint";
+            const isStandardCodDelivery =
+              !isBlueprintDelivery &&
+              normalize(delivery.order_type) === "standard" &&
+              normalize(delivery.payment_method) === "cod";
             // Keep rider UI consistent with backend completion logic:
             // NULL/blank means the default Cash on Delivery method.
             const remainingPaymentMethod =
@@ -605,6 +623,10 @@ export default function DeliveryManagement() {
             const pendingPaymentCount = Number(
               delivery.pending_payment_count || 0,
             );
+            const standardCodHasPendingPayment =
+              isStandardCodDelivery &&
+              paymentBalance > 0.009 &&
+              pendingPaymentCount > 0;
             const blueprintHasPendingCollection =
               isBlueprintDelivery && pendingPaymentCount > 0;
             const blueprintAwaitingOnline =
@@ -638,6 +660,13 @@ export default function DeliveryManagement() {
             const collectedAmountExceedsBalance =
               hasCollectedAmountValue &&
               parsedCollectedAmount > paymentBalance + 0.01;
+            const collectedAmountDoesNotMatchCodBalance =
+              isStandardCodDelivery &&
+              hasOutstandingBalance &&
+              hasCollectedAmountValue &&
+              Math.abs(
+                parsedCollectedAmount - Number(paymentBalance.toFixed(2)),
+              ) > 0.009;
 
             const completeDeliveryDisabled = isBlueprintDelivery
               ? savingId === delivery.id ||
@@ -647,19 +676,23 @@ export default function DeliveryManagement() {
                 blueprintMethodRequired
               : savingId === delivery.id ||
                 (!hasReceipt && !selectedFile) ||
+                standardCodHasPendingPayment ||
                 (canCompleteDelivery &&
                   hasOutstandingBalance &&
                   (!hasCollectedAmountValue ||
                     collectedAmountInvalid ||
-                    collectedAmountExceedsBalance));
+                    collectedAmountExceedsBalance ||
+                    collectedAmountDoesNotMatchCodBalance));
 
             const canUploadProof = isBlueprintDelivery
               ? true
-              : !canCompleteDelivery ||
-                !hasOutstandingBalance ||
-                (hasCollectedAmountValue &&
-                  !collectedAmountInvalid &&
-                  !collectedAmountExceedsBalance);
+              : !standardCodHasPendingPayment &&
+                (!canCompleteDelivery ||
+                  !hasOutstandingBalance ||
+                  (hasCollectedAmountValue &&
+                    !collectedAmountInvalid &&
+                    !collectedAmountExceedsBalance &&
+                    !collectedAmountDoesNotMatchCodBalance));
 
             return (
               <div
@@ -973,9 +1006,11 @@ export default function DeliveryManagement() {
                             Remaining Balance Collection
                           </div>
                           <div style={helperText}>
-                            Record the amount collected from the customer during
-                            delivery. Admin will verify this payment before the
-                            order can be completed.
+                            {standardCodHasPendingPayment
+                              ? "A payment is already awaiting admin review. Complete Delivery is locked until it is verified or rejected."
+                              : isStandardCodDelivery
+                                ? "Collect the exact remaining balance from the customer. Admin will verify the cash collection before the order can be completed."
+                                : "Record the amount collected from the customer during delivery. Admin will verify this payment before the order can be completed."}
                           </div>
 
                           <div
@@ -988,26 +1023,49 @@ export default function DeliveryManagement() {
                             }}
                           >
                             <div>
-                              <label style={infoLabel}>Collected Amount</label>
-                              <input
-                                type="number"
-                                min="0"
-                                max={paymentBalance.toFixed(2)}
-                                step="0.01"
-                                value={collectionForm.amount}
-                                onChange={(e) =>
-                                  updateCollectionForm(
-                                    delivery.id,
-                                    "amount",
-                                    e.target.value,
-                                  )
-                                }
-                                style={searchInput}
-                                placeholder={`Max ${paymentBalance.toFixed(2)}`}
-                              />
-                              {(!hasCollectedAmountValue ||
-                                collectedAmountInvalid ||
-                                collectedAmountExceedsBalance) && (
+                              <label style={infoLabel}>
+                                {isStandardCodDelivery
+                                  ? "Amount to Collect"
+                                  : "Collected Amount"}
+                              </label>
+                              {isStandardCodDelivery ? (
+                                <input
+                                  type="text"
+                                  value={`₱${paymentBalance.toLocaleString(
+                                    "en-PH",
+                                    { minimumFractionDigits: 2 },
+                                  )}`}
+                                  readOnly
+                                  style={{
+                                    ...searchInput,
+                                    background: "#fafafa",
+                                    color: "#18181b",
+                                    fontWeight: 700,
+                                    cursor: "not-allowed",
+                                  }}
+                                />
+                              ) : (
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={paymentBalance.toFixed(2)}
+                                  step="0.01"
+                                  value={collectionForm.amount}
+                                  onChange={(e) =>
+                                    updateCollectionForm(
+                                      delivery.id,
+                                      "amount",
+                                      e.target.value,
+                                    )
+                                  }
+                                  style={searchInput}
+                                  placeholder={`Max ${paymentBalance.toFixed(2)}`}
+                                />
+                              )}
+                              {(!isStandardCodDelivery &&
+                                (!hasCollectedAmountValue ||
+                                  collectedAmountInvalid ||
+                                  collectedAmountExceedsBalance)) && (
                                 <div
                                   style={{
                                     marginTop: 6,
