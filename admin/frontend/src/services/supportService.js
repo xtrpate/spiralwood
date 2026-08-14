@@ -29,11 +29,19 @@ const supportService = {
     return res.data;
   },
 
-  // Reply
-  async reply(ticketId, message) {
-    const res = await api.post(`${BASE_URL}/${ticketId}/messages`, {
-      message,
+  // Reply with optional attachment
+  async reply(ticketId, message, attachments = []) {
+    const formData = new FormData();
+
+    if (message?.trim()) {
+      formData.append("message", message.trim());
+    }
+
+    attachments.forEach((file) => {
+      formData.append("attachments", file);
     });
+
+    const res = await api.post(`${BASE_URL}/${ticketId}/messages`, formData);
 
     return res.data;
   },

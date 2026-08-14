@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { SendHorizontal, Ticket } from "lucide-react";
+import { SendHorizontal, Ticket, Paperclip, X, FileText } from "lucide-react";
 import useAuthStore from "../../../store/authStore";
 import { buildAssetUrl } from "../../../services/api";
 
@@ -13,6 +13,9 @@ export default function Conversation({
 
   const [reply, setReply] = useState("");
   const [avatarFailed, setAvatarFailed] = useState(false);
+
+  const [attachments, setAttachments] = useState([]);
+  const attachmentInputRef = useRef(null);
 
   useEffect(() => {
     setAvatarFailed(false);
@@ -36,6 +39,103 @@ export default function Conversation({
     return buildAssetUrl(withPrefix);
   };
 
+  const getAttachmentUrl = (value) => {
+    const raw = String(value || "").trim();
+
+    if (!raw) return "";
+
+    if (/^(https?:|data:|blob:)/i.test(raw)) {
+      return raw;
+    }
+
+    return buildAssetUrl(raw);
+  };
+
+  const getAttachmentDownloadUrl = (url, fileName = "download") => {
+    const normalizedUrl = getAttachmentUrl(url);
+
+    if (!normalizedUrl) {
+      return "";
+    }
+
+    // Only transform Cloudinary URLs.
+    if (!normalizedUrl.includes("res.cloudinary.com")) {
+      return normalizedUrl;
+    }
+
+    // Already configured as a download URL.
+    if (normalizedUrl.includes("/fl_attachment")) {
+      return normalizedUrl;
+    }
+
+    const safeFileName = String(fileName || "download").replace(
+      /[^\w.-]+/g,
+      "_",
+    );
+
+    return normalizedUrl.replace(
+      "/upload/",
+      `/upload/fl_attachment:${encodeURIComponent(safeFileName)}/`,
+    );
+  };
+
+  const handleAttachmentChange = (e) => {
+    const selectedFiles = Array.from(e.target.files || []);
+
+    if (!selectedFiles.length) return;
+
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "application/pdf",
+    ];
+
+    const maxSize = 15 * 1024 * 1024;
+    const maxFiles = 5;
+
+    const validFiles = selectedFiles.filter((file) => {
+      if (!allowedTypes.includes(file.type)) {
+        return false;
+      }
+
+      if (file.size > maxSize) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (validFiles.length !== selectedFiles.length) {
+      alert("Only JPG, PNG, WEBP, and PDF files up to 15 MB each are allowed.");
+    }
+
+    setAttachments((prev) => {
+      const combined = [...prev, ...validFiles];
+
+      const unique = combined.filter(
+        (file, index, array) =>
+          index ===
+          array.findIndex(
+            (item) =>
+              item.name === file.name &&
+              item.size === file.size &&
+              item.lastModified === file.lastModified,
+          ),
+      );
+
+      return unique.slice(0, maxFiles);
+    });
+
+    e.target.value = "";
+  };
+
+  const removeAttachment = (index) => {
+    setAttachments((prev) =>
+      prev.filter((_, fileIndex) => fileIndex !== index),
+    );
+  };
+
   const profileImage =
     user?.profile_photo && !avatarFailed
       ? getAvatarUrl(user.profile_photo)
@@ -43,6 +143,18 @@ export default function Conversation({
 
   const [sending, setSending] = useState(false);
   const textareaRef = useRef(null);
+  const scrollContainerRef = useRef(null);
+
+  // Scroll ONLY the message box itself, preventing the whole page from jumping
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }, [messages]);
+
   if (!ticket) {
     return (
       <div className="support-conversation-empty">
@@ -56,19 +168,46 @@ export default function Conversation({
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!reply.trim()) return;
+    if (!reply.trim() && attachments.length === 0) return;
 
     try {
       setSending(true);
 
-      await onReply(reply);
+      await onReply({
+        message: reply.trim(),
+        attachments,
+      });
 
       setReply("");
+      setAttachments([]);
+
       if (textareaRef.current) {
         textareaRef.current.style.height = "24px";
       }
     } finally {
       setSending(false);
+    }
+  };
+
+  const isImageAttachment = (url = "") => {
+    const value = String(url || "").toLowerCase();
+
+    return (
+      value.includes("/image/upload/") ||
+      /\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(value)
+    );
+  };
+
+  const getAttachmentName = (url = "") => {
+    try {
+      const cleanUrl = String(url || "").split("?")[0];
+      const lastPart = cleanUrl.split("/").pop();
+
+      if (!lastPart) return "Attachment";
+
+      return decodeURIComponent(lastPart);
+    } catch {
+      return "Attachment";
     }
   };
 
@@ -91,7 +230,7 @@ export default function Conversation({
         )}
       </div>
 
-      <div className="support-message-list">
+      <div className="support-message-list" ref={scrollContainerRef}>
         {messages.length === 0 && (
           <div className="support-no-messages">
             <div className="support-conversation-empty-icon">💬</div>
@@ -147,7 +286,49 @@ export default function Conversation({
                   </div>
 
                   <div className="support-conversation-bubble customer">
-                    {msg.message}
+                    {msg.message && <div>{msg.message}</div>}
+
+                    {Array.isArray(msg.attachments) &&
+                      msg.attachments.length > 0 && (
+                        <div className="support-message-attachments">
+                          {msg.attachments.map((attachment) => {
+                            const url = getAttachmentUrl(attachment.file_url);
+
+                            const isImage =
+                              attachment.mime_type?.startsWith("image/");
+
+                            return isImage ? (
+                              <a
+                                key={attachment.id}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="support-message-image-link"
+                              >
+                                <img
+                                  src={url}
+                                  alt={attachment.file_name}
+                                  className="support-message-image"
+                                />
+                              </a>
+                            ) : (
+                              <a
+                                key={attachment.id}
+                                href={getAttachmentDownloadUrl(
+                                  attachment.file_url,
+                                  attachment.file_name,
+                                )}
+                                download
+                                className="support-message-file"
+                              >
+                                <FileText size={18} />
+
+                                <span>{attachment.file_name}</span>
+                              </a>
+                            );
+                          })}
+                        </div>
+                      )}
                   </div>
                 </>
               ) : (
@@ -171,7 +352,49 @@ export default function Conversation({
                   </div>
 
                   <div className="support-conversation-bubble support">
-                    {msg.message}
+                    {msg.message && <div>{msg.message}</div>}
+
+                    {Array.isArray(msg.attachments) &&
+                      msg.attachments.length > 0 && (
+                        <div className="support-message-attachments">
+                          {msg.attachments.map((attachment) => {
+                            const url = getAttachmentUrl(attachment.file_url);
+
+                            const isImage =
+                              attachment.mime_type?.startsWith("image/");
+
+                            return isImage ? (
+                              <a
+                                key={attachment.id}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="support-message-image-link"
+                              >
+                                <img
+                                  src={url}
+                                  alt={attachment.file_name}
+                                  className="support-message-image"
+                                />
+                              </a>
+                            ) : (
+                              <a
+                                key={attachment.id}
+                                href={getAttachmentDownloadUrl(
+                                  attachment.file_url,
+                                  attachment.file_name,
+                                )}
+                                download
+                                className="support-message-file"
+                              >
+                                <FileText size={18} />
+
+                                <span>{attachment.file_name}</span>
+                              </a>
+                            );
+                          })}
+                        </div>
+                      )}
                   </div>
                 </>
               )}
@@ -182,36 +405,110 @@ export default function Conversation({
 
       {ticket.status !== "closed" && (
         <form className="support-reply-form" onSubmit={handleSubmit}>
-          <div className="support-reply-box">
-            <textarea
-              ref={textareaRef}
-              rows={1}
-              placeholder="Type your message here"
-              value={reply}
-              maxLength={1000}
-              onChange={(e) => {
-                setReply(e.target.value);
+          <div
+            className={`support-reply-box ${
+              attachments.length > 0 ? "has-attachment" : ""
+            }`}
+          >
+            {attachments.length > 0 && (
+              <div className="support-reply-attachment-list">
+                {attachments.map((file, index) => (
+                  <div
+                    className="support-reply-attachment"
+                    key={`${file.name}-${file.size}-${file.lastModified}`}
+                  >
+                    {file.type.startsWith("image/") ? (
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={file.name}
+                        className="support-reply-attachment-preview"
+                      />
+                    ) : (
+                      <div className="support-reply-attachment-file-icon">
+                        <FileText size={16} />
+                      </div>
+                    )}
 
-                e.target.style.height = "0px";
-                e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
+                    <div className="support-reply-attachment-info">
+                      <div className="support-reply-attachment-name">
+                        {file.name}
+                      </div>
 
-                  handleSubmit(e);
+                      <div className="support-reply-attachment-size">
+                        {Math.max(1, Math.round(file.size / 1024))} KB
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="support-reply-attachment-remove"
+                      onClick={() => removeAttachment(index)}
+                      disabled={sending}
+                      aria-label={`Remove ${file.name}`}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="support-reply-input-row">
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp,.pdf"
+                multiple
+                onChange={handleAttachmentChange}
+                hidden
+              />
+
+              <button
+                type="button"
+                className="support-reply-attach-btn"
+                onClick={() => attachmentInputRef.current?.click()}
+                disabled={sending}
+                aria-label="Attach file"
+                title="Attach file"
+              >
+                <Paperclip size={18} />
+              </button>
+
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                placeholder="Type your message here"
+                value={reply}
+                maxLength={1000}
+                onChange={(e) => {
+                  setReply(e.target.value);
+
+                  e.target.style.height = "0px";
+                  e.target.style.height = `${Math.min(
+                    e.target.scrollHeight,
+                    140,
+                  )}px`;
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit(e);
+                  }
+                }}
+                disabled={sending}
+              />
+
+              <button
+                type="submit"
+                className="support-reply-send-btn"
+                disabled={
+                  sending || (!reply.trim() && attachments.length === 0)
                 }
-              }}
-              disabled={sending}
-            />
-
-            <button
-              type="submit"
-              className="support-reply-send-btn"
-              disabled={sending || !reply.trim()}
-            >
-              {sending ? "..." : <SendHorizontal size={18} />}
-            </button>
+                aria-label="Send message"
+              >
+                {sending ? "..." : <SendHorizontal size={18} />}
+              </button>
+            </div>
           </div>
 
           <div className="support-reply-footer">

@@ -337,10 +337,14 @@ export default function SupportPage() {
               <Conversation
                 ticket={selectedTicket}
                 messages={messages}
-                onReply={async (reply) => {
+                onReply={async ({ message, attachments }) => {
                   if (!selectedTicket) return;
 
-                  await supportService.reply(selectedTicket.id, reply);
+                  await supportService.reply(
+                    selectedTicket.id,
+                    message,
+                    attachments,
+                  );
 
                   const data = await supportService.getTicket(
                     selectedTicket.id,

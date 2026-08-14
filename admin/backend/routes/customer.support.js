@@ -4,6 +4,7 @@ const router = express.Router();
 const { authenticate, requireCustomer } = require("../middleware/auth");
 
 const supportController = require("../controllers/customer/support.controller");
+const { uploadSupportAttachment } = require("../config/upload");
 
 /* ══════════════════════════════════════════════════════════════
    CUSTOMER SUPPORT ROUTES
@@ -39,6 +40,7 @@ router.post(
   "/:id/messages",
   authenticate,
   requireCustomer,
+  uploadSupportAttachment,
   supportController.replyToTicket,
 );
 

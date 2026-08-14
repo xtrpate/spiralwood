@@ -87,6 +87,25 @@ exports.uploadDeliveryReceipt = multer({
   limits: { fileSize: MAX_MB * 1024 * 1024 },
 }).single("receipt");
 
+/* ── Support message attachment ── */
+const ALLOWED_SUPPORT_ATTACHMENTS = ["jpg", "jpeg", "png", "webp", "pdf"];
+
+const supportAttachmentStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "wisdom_uploads/support",
+    resource_type: "auto",
+    allowed_formats: ALLOWED_SUPPORT_ATTACHMENTS,
+  },
+});
+
+exports.uploadSupportAttachment = multer({
+  storage: supportAttachmentStorage,
+  limits: {
+    fileSize: MAX_MB * 1024 * 1024,
+  },
+}).array("attachments", 5);
+
 // WISDOM SITE LOGO LOCAL DEV STORAGE V1
 // Local development should not depend on an external Cloudinary request just
 // to update the customer-facing site logo. Production keeps Cloudinary so the
@@ -101,7 +120,10 @@ const siteLogoLocalDir = path.join(siteUploadRoot, "settings");
 fs.mkdirSync(siteLogoLocalDir, { recursive: true });
 
 const siteLogoFileFilter = (req, file, cb) => {
-  const ext = path.extname(file.originalname || "").toLowerCase().replace(".", "");
+  const ext = path
+    .extname(file.originalname || "")
+    .toLowerCase()
+    .replace(".", "");
   const mime = String(file.mimetype || "").toLowerCase();
   const allowedMime = ["image/jpeg", "image/png", "image/webp"];
 
@@ -119,7 +141,9 @@ const siteLogoLocalStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, siteLogoLocalDir),
   filename: (req, file, cb) => {
     const rawExt = path.extname(file.originalname || "").toLowerCase();
-    const ext = ALLOWED_IMAGES.includes(rawExt.replace(".", "")) ? rawExt : ".png";
+    const ext = ALLOWED_IMAGES.includes(rawExt.replace(".", ""))
+      ? rawExt
+      : ".png";
     cb(
       null,
       `site-logo-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`,
@@ -133,8 +157,10 @@ const siteLogoUpload = multer({
   storage: useLocalSiteLogoStorage
     ? siteLogoLocalStorage
     : cloudStorage("settings", ALLOWED_IMAGES),
-  limits: { fileSize: // WISDOM SITE LOGO 5MB LIMIT V1
-    5 * 1024 * 1024 },
+  limits: {
+    // WISDOM SITE LOGO 5MB LIMIT V1
+    fileSize: 5 * 1024 * 1024,
+  },
   fileFilter: siteLogoFileFilter,
 }).single("site_logo");
 

@@ -84,19 +84,40 @@ const createTicket = async (req, res) => {
     const ticketId = ticketResult.insertId;
 
     // First message
-    await connection.query(
+    const uploadedFiles = Array.isArray(req.files) ? req.files : [];
+
+    const [messageResult] = await connection.query(
       `
-      INSERT INTO support_ticket_messages
-      (
-        ticket_id,
-        sender_id,
-        sender_type,
-        message
-      )
-      VALUES (?, ?, 'customer', ?)
-      `,
-      [ticketId, req.user.id, message.trim()],
+  INSERT INTO support_ticket_messages
+  (
+    ticket_id,
+    sender_id,
+    sender_type,
+    message
+  )
+  VALUES (?, ?, 'customer', ?)
+  `,
+      [ticketId, req.user.id, message || null],
     );
+
+    const messageId = messageResult.insertId;
+
+    for (const file of uploadedFiles) {
+      await connection.query(
+        `
+    INSERT INTO support_ticket_message_attachments
+    (
+      message_id,
+      file_url,
+      file_name,
+      mime_type,
+      file_size
+    )
+    VALUES (?, ?, ?, ?, ?)
+    `,
+        [messageId, file.path, file.originalname, file.mimetype, file.size],
+      );
+    }
 
     // Notify all admins
     const [admins] = await connection.query(
@@ -269,27 +290,59 @@ const getTicketById = async (req, res) => {
 
     const [messages] = await db.query(
       `
-      SELECT
-        stm.id,
-        stm.sender_id,
-        stm.sender_type,
-        stm.message,
-        stm.attachment_url,
-        stm.created_at,
+  SELECT
+  stm.id,
+  stm.sender_id,
+  stm.sender_type,
+  stm.message,
+  stm.attachment_url,
+  stm.created_at,
 
-        u.name AS sender_name
+  u.name AS sender_name
 
-      FROM support_ticket_messages stm
+  FROM support_ticket_messages stm
 
-      LEFT JOIN users u
-      ON u.id = stm.sender_id
+  LEFT JOIN users u
+    ON u.id = stm.sender_id
 
-      WHERE stm.ticket_id = ?
+  WHERE stm.ticket_id = ?
 
-      ORDER BY stm.created_at ASC
-      `,
+  ORDER BY stm.created_at ASC
+  `,
       [ticketId],
     );
+
+    for (const msg of messages) {
+      const [attachments] = await db.query(
+        `
+    SELECT
+      id,
+      file_url,
+      file_name,
+      mime_type,
+      file_size,
+      created_at
+    FROM support_ticket_message_attachments
+    WHERE message_id = ?
+    ORDER BY id ASC
+    `,
+        [msg.id],
+      );
+
+      msg.attachments = attachments;
+      // Preserve attachments created before the new
+      // support_ticket_message_attachments table.
+      if (msg.attachment_url && msg.attachments.length === 0) {
+        msg.attachments.push({
+          id: `legacy-${msg.id}`,
+          file_url: msg.attachment_url,
+          file_name: "Attachment",
+          mime_type: null,
+          file_size: null,
+          created_at: msg.created_at,
+        });
+      }
+    }
 
     res.json({
       ticket,
@@ -310,7 +363,7 @@ const getTicketById = async (req, res) => {
 ────────────────────────────────────────────────────────────── */
 const replyToTicket = async (req, res) => {
   const ticketId = parseInt(req.params.id, 10);
-  const { message } = req.body;
+  const message = String(req.body?.message || "").trim();
 
   if (Number.isNaN(ticketId)) {
     return res.status(400).json({
@@ -318,12 +371,11 @@ const replyToTicket = async (req, res) => {
     });
   }
 
-  if (!message?.trim()) {
+  if (!message && (!req.files || req.files.length === 0)) {
     return res.status(400).json({
-      message: "Message is required.",
+      message: "Write a message or attach a file.",
     });
   }
-
   const connection = await db.getConnection();
 
   try {
@@ -362,21 +414,42 @@ const replyToTicket = async (req, res) => {
       });
     }
 
-    // Insert message
-    await connection.query(
+    // Insert the message first
+    const [messageResult] = await connection.query(
       `
-      INSERT INTO support_ticket_messages
-      (
-        ticket_id,
-        sender_id,
-        sender_type,
-        message
-      )
-      VALUES (?, ?, 'customer', ?)
-      `,
-      [ticketId, req.user.id, message.trim()],
+  INSERT INTO support_ticket_messages
+  (
+    ticket_id,
+    sender_id,
+    sender_type,
+    message
+  )
+  VALUES (?, ?, 'customer', ?)
+  `,
+      [ticketId, req.user.id, message || null],
     );
 
+    const messageId = messageResult.insertId;
+
+    // Save all attachments linked to this message
+    const uploadedFiles = Array.isArray(req.files) ? req.files : [];
+
+    for (const file of uploadedFiles) {
+      await connection.query(
+        `
+    INSERT INTO support_ticket_message_attachments
+    (
+      message_id,
+      file_url,
+      file_name,
+      mime_type,
+      file_size
+    )
+    VALUES (?, ?, ?, ?, ?)
+    `,
+        [messageId, file.path, file.originalname, file.mimetype, file.size],
+      );
+    }
     // Refresh updated_at and reopen if waiting on customer or resolved
     await connection.query(
       `
