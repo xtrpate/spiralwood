@@ -506,7 +506,7 @@ export default function OrdersPage() {
           <label className="orders-filter-field orders-filter-search">
             <span className="orders-filter-label">Search Orders</span>
             <div className="orders-search-control">
-              <Search size={16} strokeWidth={1.8} aria-hidden="true" />
+              <span className="orders-search-icon" aria-hidden="true"><Search size={16} strokeWidth={1.8} /></span>
               <input
                 placeholder="Search by order ID, customer, phone, or email"
                 value={filters.search}

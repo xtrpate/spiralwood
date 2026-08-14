@@ -726,3 +726,42 @@
   line-height: 1.5 !important;
   font-weight: 400 !important;
 }
+/* WISDOM ORDERS SEARCH ICON INSIDE INPUT V1.0.2 */
+.orders-admin-v2 .orders-search-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  isolation: isolate;
+}
+
+.orders-admin-v2 .orders-search-control .orders-search-icon {
+  position: absolute !important;
+  top: 50% !important;
+  left: 12px !important;
+  z-index: 3 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 16px !important;
+  height: 16px !important;
+  color: #71717a !important;
+  opacity: 1 !important;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.orders-admin-v2 .orders-search-control .orders-search-icon svg {
+  display: block !important;
+  width: 16px !important;
+  height: 16px !important;
+  color: inherit !important;
+  stroke: currentColor !important;
+  opacity: 1 !important;
+}
+
+.orders-admin-v2 .orders-search-control input {
+  position: relative;
+  z-index: 1;
+  padding-left: 37px !important;
+}
+/* END WISDOM ORDERS SEARCH ICON INSIDE INPUT V1.0.2 */
