@@ -7,6 +7,71 @@ const { parseStrictPositiveInt } = require("../../utils/validators");
 
 const normalize = (value) => String(value || "").trim().toLowerCase();
 
+const safeParseJson = (value, fallback = null) => {
+  try {
+    if (!value) return fallback;
+    if (typeof value === "object") return value;
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
+const getOrderDraftPreviewMap = async (dbPool, orderIds = []) => {
+  const ids = Array.from(
+    new Set(
+      orderIds
+        .map((value) => Number(value))
+        .filter((value) => Number.isSafeInteger(value) && value > 0),
+    ),
+  );
+
+  if (!ids.length) return new Map();
+
+  const placeholders = ids.map(() => "?").join(",");
+  const [items] = await dbPool.query(
+    `SELECT order_id, customization_json
+     FROM order_items
+     WHERE order_id IN (${placeholders})
+       AND customization_json IS NOT NULL
+     ORDER BY order_id ASC, id ASC`,
+    ids,
+  );
+
+  const previewByOrderId = new Map();
+
+  items.forEach((item) => {
+    const orderId = Number(item.order_id);
+    if (previewByOrderId.has(orderId)) return;
+
+    const customization = safeParseJson(item.customization_json, {}) || {};
+    const editorSnapshot =
+      customization?.editor_snapshot &&
+      typeof customization.editor_snapshot === "object" &&
+      !Array.isArray(customization.editor_snapshot)
+        ? customization.editor_snapshot
+        : null;
+
+    if (
+      !editorSnapshot ||
+      !Array.isArray(editorSnapshot.components) ||
+      editorSnapshot.components.length === 0
+    ) {
+      return;
+    }
+
+    previewByOrderId.set(orderId, {
+      components: editorSnapshot.components,
+      worldSize:
+        editorSnapshot.worldSize && typeof editorSnapshot.worldSize === "object"
+          ? editorSnapshot.worldSize
+          : null,
+    });
+  });
+
+  return previewByOrderId;
+};
+
 // Strict order-number validation: trimmed, non-empty, max 50 chars,
 // no control characters or line breaks. Exact-equality lookup only --
 // never LIKE, never a wildcard.
@@ -124,6 +189,8 @@ exports.listOrders = async (req, res) => {
         ) AS blueprint_title,
 
         b.thumbnail_url,
+        b.design_data AS blueprint_design_data,
+        b.view_3d_data AS blueprint_view_3d_data,
 
         COALESCE(
           SUM(
@@ -170,12 +237,19 @@ exports.listOrders = async (req, res) => {
         o.walkin_customer_name,
         customer.name,
         b.title,
-        b.thumbnail_url
+        b.thumbnail_url,
+        b.design_data,
+        b.view_3d_data
 
       ORDER BY o.updated_at DESC, o.id DESC
       LIMIT 200
       `,
       [],
+    );
+
+    const draftPreviewByOrderId = await getOrderDraftPreviewMap(
+      pool,
+      rows.map((row) => row.order_id),
     );
 
     const orders = rows.map((row) => {
@@ -203,6 +277,10 @@ exports.listOrders = async (req, res) => {
         blueprint_id: row.blueprint_id,
         blueprint_title: row.blueprint_title,
         thumbnail_url: row.thumbnail_url || null,
+        blueprint_design_data: row.blueprint_design_data || null,
+        blueprint_view_3d_data: row.blueprint_view_3d_data || null,
+        draft_editor_snapshot:
+          draftPreviewByOrderId.get(Number(row.order_id)) || null,
         created_at: row.created_at,
       };
     });
@@ -229,6 +307,7 @@ exports.lookupByOrderNumber = async (req, res) => {
       `
       SELECT
         o.id,
+        o.blueprint_id,
         COALESCE(
           NULLIF(TRIM(o.walkin_customer_name), ''),
           NULLIF(TRIM(customer.name), ''),
@@ -238,7 +317,9 @@ exports.lookupByOrderNumber = async (req, res) => {
           NULLIF(TRIM(b.title), ''),
           'Blueprint'
         ) AS blueprint_title,
-        b.thumbnail_url
+        b.thumbnail_url,
+        b.design_data AS blueprint_design_data,
+        b.view_3d_data AS blueprint_view_3d_data
       FROM orders o
       LEFT JOIN users customer
         ON customer.id = o.customer_id
@@ -256,12 +337,18 @@ exports.lookupByOrderNumber = async (req, res) => {
 
     const summary = await getRestrictedPaymentSummary(pool, row.id);
     const paymentHistory = await getPaymentHistoryForOrder(pool, row.id);
+    const draftPreviewByOrderId = await getOrderDraftPreviewMap(pool, [row.id]);
 
     return res.json({
       ...summary,
       customer_name: row.customer_name,
+      blueprint_id: row.blueprint_id || null,
       blueprint_title: row.blueprint_title,
       thumbnail_url: row.thumbnail_url || null,
+      blueprint_design_data: row.blueprint_design_data || null,
+      blueprint_view_3d_data: row.blueprint_view_3d_data || null,
+      draft_editor_snapshot:
+        draftPreviewByOrderId.get(Number(row.id)) || null,
       payment_history: paymentHistory,
     });
   } catch (err) {

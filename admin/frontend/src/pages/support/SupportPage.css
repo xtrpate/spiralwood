@@ -20,17 +20,26 @@
 
 .support-header h1 {
   margin: 0;
-  font-size: 36px;
+  color: #18181b;
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .support-header p {
-  margin-top: 10px;
-  color: #6b7280;
+  margin: 4px 0 0;
+  color: #71717a;
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-weight: 400;
 }
 
 .support-refresh-btn {
   padding: 12px 24px;
   cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 600;
 }
 
 .support-content {
@@ -3026,3 +3035,155 @@
   width: 18px;
   height: 18px;
 }
+
+/* WISDOM SUPPORT DASHBOARD ALIGNMENT V1
+   Marker for targeted Dashboard spacing/typography pass only. */
+
+/* WISDOM SUPPORT TICKET SHADED BADGES V1 */
+.admin-support-page .support-status-closed {
+  gap: 6px !important;
+  padding: 4px 8px !important;
+  border: 1px solid #d4d4d8 !important;
+  border-radius: 5px !important;
+  background: #f4f4f5 !important;
+  color: #52525b !important;
+}
+
+.admin-support-page .support-status-closed i {
+  background: #71717a !important;
+}
+
+.admin-support-page .priority {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 4px 8px !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 5px !important;
+  background: #f8fafc !important;
+  color: #475569 !important;
+  font-size: 10px !important;
+  font-weight: 550 !important;
+  line-height: 1.2 !important;
+}
+
+.admin-support-page .priority.normal {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  border-color: #cbd5e1 !important;
+}
+
+.admin-support-page .priority.normal::before {
+  background: #64748b !important;
+}
+
+.admin-support-page .priority.high {
+  background: #fff7ed !important;
+  color: #9a3412 !important;
+  border-color: #fed7aa !important;
+}
+
+.admin-support-page .priority.high::before {
+  background: #c2410c !important;
+}
+
+.admin-support-page .priority.urgent {
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+  border-color: #fecaca !important;
+}
+
+.admin-support-page .priority.urgent::before {
+  background: #dc2626 !important;
+}
+/* WISDOM STAFF SUPPORT SHADED BADGES FOLLOWUP V1 */
+.staff-support-page .support-status-badge {
+  gap: 6px !important;
+  padding: 4px 8px !important;
+  border-radius: 5px !important;
+  border: 1px solid #cbd5e1 !important;
+  background: #f8fafc !important;
+  color: #475569 !important;
+  font-size: 10px !important;
+  font-weight: 550 !important;
+  line-height: 1.2 !important;
+}
+
+.staff-support-page .support-status-open {
+  background: #f8fafc !important;
+  color: #475569 !important;
+  border-color: #cbd5e1 !important;
+}
+.staff-support-page .support-status-open i { background: #64748b !important; }
+
+.staff-support-page .support-status-assigned {
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  border-color: #bfdbfe !important;
+}
+.staff-support-page .support-status-assigned i { background: #2563eb !important; }
+
+.staff-support-page .support-status-in_progress {
+  background: #fff7ed !important;
+  color: #9a3412 !important;
+  border-color: #fed7aa !important;
+}
+.staff-support-page .support-status-in_progress i { background: #ea580c !important; }
+
+.staff-support-page .support-status-awaiting_customer {
+  background: #fffbeb !important;
+  color: #92400e !important;
+  border-color: #fde68a !important;
+}
+.staff-support-page .support-status-awaiting_customer i { background: #d97706 !important; }
+
+.staff-support-page .support-status-resolved {
+  background: #ecfdf5 !important;
+  color: #166534 !important;
+  border-color: #bbf7d0 !important;
+}
+.staff-support-page .support-status-resolved i { background: #16a34a !important; }
+
+.staff-support-page .support-status-closed {
+  background: #e9e9ec !important;
+  color: #3f3f46 !important;
+  border-color: #aeb0b5 !important;
+  font-weight: 600 !important;
+}
+.staff-support-page .support-status-closed i { background: #52525b !important; }
+
+.staff-support-page .priority {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 4px 8px !important;
+  border-radius: 5px !important;
+  font-size: 10px !important;
+  font-weight: 550 !important;
+  line-height: 1.2 !important;
+  border: 1px solid #cbd5e1 !important;
+  background: #f8fafc !important;
+  color: #475569 !important;
+}
+.staff-support-page .priority.low,
+.staff-support-page .priority.normal {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+  border-color: #cbd5e1 !important;
+}
+.staff-support-page .priority.low::before,
+.staff-support-page .priority.normal::before { background: #64748b !important; }
+
+.staff-support-page .priority.high {
+  background: #fff7ed !important;
+  color: #9a3412 !important;
+  border-color: #fed7aa !important;
+}
+.staff-support-page .priority.high::before { background: #c2410c !important; }
+
+.staff-support-page .priority.urgent {
+  background: #fef2f2 !important;
+  color: #b91c1c !important;
+  border-color: #fecaca !important;
+}
+.staff-support-page .priority.urgent::before { background: #dc2626 !important; }

@@ -10,12 +10,16 @@ const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const { parseStrictPositiveInt } = require("../../utils/validators");
+const { calcDownPaymentAmount } = require("../../utils/paymentAmounts");
 const {
   buildPaymentSummaryFromRows,
 } = require("../../services/blueprintCashPaymentService");
 const {
   ensureReceiptForVerifiedPayment,
 } = require("../../services/blueprintReceiptService");
+const {
+  ensureStandardVerifiedPaymentReceipt,
+} = require("../../services/receiptService");
 const {
   consumeBlueprintMaterialsForProduction,
   BlueprintMaterialConsumptionError,
@@ -422,8 +426,8 @@ exports.approveCustomRequest = async (req, res) => {
       type: "custom_request_approved",
       title: "Custom Request Approved",
       message: adminNote
-        ? `Your custom request ${order.order_number} was approved for admin estimation review. Note: ${adminNote}`
-        : `Your custom request ${order.order_number} was approved for admin estimation review.`,
+        ? `Your custom furniture request ${order.order_number} has been approved. Our team will now prepare your quotation. Note from our team: ${adminNote}`
+        : `Your custom furniture request ${order.order_number} has been approved. Our team will now prepare your quotation.`,
       targetType: "custom_request",
       targetId: order.id,
       targetOrderId: order.id,
@@ -488,10 +492,10 @@ exports.requestCustomRequestRevision = async (req, res) => {
 
     await sendSystemNotificationSafe(conn, order.customer_id, {
       type: "custom_request_revision",
-      title: "Revision Requested",
+      title: "Changes Requested",
       message: adminNote
-        ? `Admin requested revision for custom request ${order.order_number}. Note: ${adminNote}`
-        : `Admin requested revision for custom request ${order.order_number}. Please review and update your submitted design.`,
+        ? `We need a few changes to your custom furniture request ${order.order_number}. Feedback: ${adminNote} Open your request to review and update the design.`
+        : `We need a few changes to your custom furniture request ${order.order_number}. Open your request to review and update the design.`,
       targetType: "custom_request",
       targetId: order.id,
       targetOrderId: order.id,
@@ -550,10 +554,10 @@ exports.rejectCustomRequest = async (req, res) => {
 
     await sendSystemNotificationSafe(conn, order.customer_id, {
       type: "custom_request_rejected",
-      title: "Custom Request Rejected",
+      title: "Custom Request Could Not Be Approved",
       message: reason
-        ? `Your custom request ${order.order_number} was rejected. Reason: ${reason}`
-        : `Your custom request ${order.order_number} was rejected by admin.`,
+        ? `We could not approve your custom furniture request ${order.order_number}. Reason: ${reason}`
+        : `We could not approve your custom furniture request ${order.order_number}. Please contact our team if you need assistance.`,
       targetType: "custom_request",
       targetId: order.id,
       targetOrderId: order.id,
@@ -1214,6 +1218,36 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
+    const usesManagedBlueprintDeliveryFlow =
+      isBlueprintOrder && hasDeliveryRequirement;
+
+    if (usesManagedBlueprintDeliveryFlow && nextStatus === "shipping") {
+      await conn.rollback();
+      return res.status(409).json({
+        message:
+          "Shipping starts automatically when the assigned rider marks the delivery In Transit.",
+      });
+    }
+
+    if (usesManagedBlueprintDeliveryFlow && nextStatus === "delivered") {
+      await conn.rollback();
+      return res.status(409).json({
+        message:
+          "Delivered is recorded automatically when the assigned rider completes the delivery.",
+      });
+    }
+
+    if (
+      usesManagedBlueprintDeliveryFlow &&
+      nextStatus === "completed" &&
+      currentStatus !== "delivered"
+    ) {
+      await conn.rollback();
+      return res.status(409).json({
+        message:
+          "Complete the actual delivery first. A Blueprint delivery order can only be completed after Delivered.",
+      });
+    }
     const totalAmount = Number(order.total_amount || order.total || 0);
 
     const [[paymentSummary]] = await conn.query(
@@ -1230,7 +1264,7 @@ exports.updateStatus = async (req, res) => {
     const verifiedPaymentTotal = Number(paymentSummary?.verified_total || 0);
     const paymentBalance = Math.max(0, totalAmount - verifiedPaymentTotal);
 
-    const requiredBlueprintDownPayment = Number((totalAmount * 0.3).toFixed(2));
+    const requiredBlueprintDownPayment = calcDownPaymentAmount(totalAmount);
 
     // orders.payment_status is not trusted here — it can be stale or
     // inconsistent (that inconsistency is part of the original bug class
@@ -1473,13 +1507,39 @@ exports.updateStatus = async (req, res) => {
       await restoreStandardOrderStock(conn, parseInt(req.params.id));
     }
 
-    // 👉 NEW: Automatically sync the Rider's delivery status
-    if (nextStatus === "completed" || nextStatus === "cancelled") {
+    // Keep delivery-attempt history immutable when the order reaches a
+    // terminal state. A failed attempt must stay failed even after a later
+    // rescheduled attempt succeeds and the order is completed.
+    if (nextStatus === "completed") {
+      const [[latestSuccessfulDelivery]] = await conn.query(
+        `SELECT id
+         FROM deliveries
+         WHERE order_id = ?
+           AND status = 'delivered'
+         ORDER BY id DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [parseInt(req.params.id)],
+      );
+
+      if (latestSuccessfulDelivery?.id) {
+        await conn.query(
+          `UPDATE deliveries
+           SET status = 'completed'
+           WHERE id = ?
+             AND status = 'delivered'`,
+          [latestSuccessfulDelivery.id],
+        );
+      }
+    } else if (nextStatus === "cancelled") {
+      // Only cancel the currently actionable attempts. Historical failed
+      // or delivered attempts remain unchanged for audit/history.
       await conn.query(
         `UPDATE deliveries
-         SET status = ?
-         WHERE order_id = ?`,
-        [nextStatus, parseInt(req.params.id)],
+         SET status = 'cancelled'
+         WHERE order_id = ?
+           AND status IN ('scheduled', 'in_transit')`,
+        [parseInt(req.params.id)],
       );
     }
 
@@ -1644,6 +1704,26 @@ exports.accept = async (req, res) => {
           changed_fields: ["status"],
         },
       };
+
+      try {
+        const [[order]] = await pool.query(
+          `SELECT id, customer_id, order_number FROM orders WHERE id = ? LIMIT 1`,
+          [orderId],
+        );
+        if (order?.customer_id) {
+          await createNotificationSafe(pool, {
+            userId: order.customer_id,
+            type: "order_update",
+            title: "Order Confirmed",
+            message: `Your order ${order.order_number || `#${order.id}`} has been confirmed. Our team will prepare it for the next step.`,
+            targetType: "order",
+            targetId: order.id,
+            targetOrderId: order.id,
+          });
+        }
+      } catch (notificationErr) {
+        console.error("[orderController.accept notification skipped]", notificationErr.message || notificationErr);
+      }
     }
 
     res.json({ message: "Order accepted." });
@@ -1674,6 +1754,29 @@ exports.decline = async (req, res) => {
     await conn.commit();
 
     if (declineResult.affectedRows === 1) {
+      try {
+        const [[order]] = await pool.query(
+          `SELECT id, customer_id, order_number FROM orders WHERE id = ? LIMIT 1`,
+          [orderId],
+        );
+        if (order?.customer_id) {
+          const declineReason = String(reason || "").trim();
+          await createNotificationSafe(pool, {
+            userId: order.customer_id,
+            type: "order_update",
+            title: "Order Could Not Be Approved",
+            message: declineReason
+              ? `We could not approve Order ${order.order_number || `#${order.id}`}. Reason: ${declineReason}`
+              : `We could not approve Order ${order.order_number || `#${order.id}`}. Please contact our team if you need assistance.`,
+            targetType: "order",
+            targetId: order.id,
+            targetOrderId: order.id,
+          });
+        }
+      } catch (notificationErr) {
+        console.error("[orderController.decline notification skipped]", notificationErr.message || notificationErr);
+      }
+
       req.auditRecord = {
         id: orderId,
         old: { status: "pending" },
@@ -2074,9 +2177,35 @@ exports.verifyPayment = async (req, res) => {
         paymentTransactionId: writtenPaymentTransactionId,
         issuedByUserId: req.user.id,
       });
+    } else if (
+      normalizedAction === "verified" &&
+      normalize(order.order_type) === "standard"
+    ) {
+      // WISDOM STANDARD COD / READY-TO-SHIP RECEIPT V1
+      // Rider collection remains pending. Only a successful admin
+      // verification reaches this branch and creates the receipt.
+      receiptResult = await ensureStandardVerifiedPaymentReceipt(
+        conn,
+        {
+          orderId: order.id,
+          paymentTransactionId: writtenPaymentTransactionId,
+          issuedByUserId: req.user.id,
+        },
+      );
     }
 
     if (order.customer_id) {
+      const paymentAmountLabel = Number(targetAmount || 0).toLocaleString("en-PH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      const remainingBalance = Math.max(0, totalAmount - verifiedTotal);
+      const remainingBalanceLabel = remainingBalance.toLocaleString("en-PH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      const orderLabel = order.order_number || `#${order.id}`;
+
       await createNotificationSafe(conn, {
         userId: order.customer_id,
         type: "payment_update",
@@ -2086,8 +2215,10 @@ exports.verifyPayment = async (req, res) => {
             : "Payment Could Not Be Verified",
         message:
           normalizedAction === "verified"
-            ? `A payment for your order ${order.order_number || `#${order.id}`} has been verified.`
-            : `A payment for your order ${order.order_number || `#${order.id}`} could not be verified. Please review your order or contact our team for assistance.`,
+            ? nextPaymentStatus === "paid"
+              ? `Your ₱${paymentAmountLabel} payment for Order ${orderLabel} has been verified. This order is now fully paid.`
+              : `Your ₱${paymentAmountLabel} payment for Order ${orderLabel} has been verified. Remaining balance: ₱${remainingBalanceLabel}.`
+            : `We could not verify your ₱${paymentAmountLabel} payment for Order ${orderLabel}. Please review the payment details or contact our team for assistance.`,
         targetType: "order",
         targetId: order.id,
         targetOrderId: order.id,
@@ -2152,13 +2283,31 @@ exports.uploadDeliveryReceipt = async (req, res) => {
     const orderId = parseInt(req.params.id);
     const url = `/uploads/deliveries/${req.file.filename}`;
 
+    // Delivery history is attempt-based. Uploading proof for the current
+    // delivery must never rewrite older failed/delivered attempts.
+    const [[latestDelivery]] = await pool.query(
+      `SELECT id
+       FROM deliveries
+       WHERE order_id = ?
+       ORDER BY id DESC
+       LIMIT 1`,
+      [orderId],
+    );
+
+    if (!latestDelivery) {
+      return res.status(404).json({ message: "Delivery record not found." });
+    }
+
     const [result] = await pool.query(
       `UPDATE deliveries
        SET signed_receipt = ?,
-           status = 'delivered',
+           status = CASE
+             WHEN status = 'completed' THEN 'completed'
+             ELSE 'delivered'
+           END,
            delivered_date = COALESCE(delivered_date, NOW())
-       WHERE order_id = ?`,
-      [url, orderId],
+       WHERE id = ?`,
+      [url, latestDelivery.id],
     );
 
     if (!result.affectedRows) {

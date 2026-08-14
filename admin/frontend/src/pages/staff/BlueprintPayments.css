@@ -790,3 +790,125 @@
     grid-template-columns: 1fr;
   }
 }
+/* WISDOM BLUEPRINT PAYMENT LIVE PREVIEW + SHADED STATUS V1 */
+.bp-thumb-live {
+  background: #f7f2ea;
+}
+
+.bp-thumb-live .cust-viewer-card,
+.bp-thumb-live .cust-viewer-stage {
+  width: 100%;
+  height: 100%;
+  min-height: 100% !important;
+  border: 0 !important;
+  background: #f7f2ea !important;
+}
+
+.bp-thumb-live .cust-viewer-stage,
+.bp-thumb-live .cust-viewer-canvas,
+.bp-thumb-live .cust-viewer-runtime-snapshot {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.bp-thumb-fallback > span {
+  color: #a1a1aa;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.bp-payment-badge,
+.bp-order-status-badge {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 7px;
+  border: 1px solid #d7d7db;
+  border-radius: 5px;
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.bp-payment-unpaid {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+.bp-payment-partial,
+.bp-payment-pending {
+  background: #fffbeb;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+.bp-payment-paid {
+  background: #ecfdf5;
+  color: #166534;
+  border-color: #bbf7d0;
+}
+
+.bp-order-status > .bp-order-status-badge,
+.bp-detail-status-row > .bp-order-status-badge {
+  color: #52525b;
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+.bp-order-status-pending {
+  background: #fffbeb;
+  color: #92400e !important;
+  border-color: #fde68a;
+}
+
+.bp-order-status-confirmed {
+  background: #eff6ff;
+  color: #1d4ed8 !important;
+  border-color: #bfdbfe;
+}
+
+.bp-order-status-contract_released {
+  background: #eef2ff;
+  color: #4338ca !important;
+  border-color: #c7d2fe;
+}
+
+.bp-order-status-production {
+  background: #fff7ed;
+  color: #9a3412 !important;
+  border-color: #fed7aa;
+}
+
+.bp-order-status-shipping {
+  background: #ecfeff;
+  color: #0e7490 !important;
+  border-color: #a5f3fc;
+}
+
+.bp-order-status-delivered {
+  background: #f0fdfa;
+  color: #0f766e !important;
+  border-color: #99f6e4;
+}
+
+.bp-order-status-completed {
+  background: #ecfdf5;
+  color: #166534 !important;
+  border-color: #bbf7d0;
+}
+
+.bp-order-status-cancelled {
+  background: #fef2f2;
+  color: #b91c1c !important;
+  border-color: #fecaca;
+}
+
+.bp-order-status-unknown {
+  background: #f4f4f5;
+  color: #52525b !important;
+  border-color: #d4d4d8;
+}

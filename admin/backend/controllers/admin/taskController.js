@@ -1,14 +1,25 @@
 // controllers/taskController.js
 // Based on actual wisdom_db schema: project_tasks + notifications tables
 const pool = require("../../config/db");
+const { createNotificationSafe } = require("../../utils/notificationHelper");
 
-// ── Helper: insert into notifications table ───────────────────────────────────
-async function notify(userId, type, title, message) {
-  await pool.query(
-    `INSERT INTO notifications (user_id, type, title, message, channel, sent_at)
-     VALUES (?, ?, ?, ?, 'system', NOW())`,
-    [parseInt(userId), type, title, message],
-  );
+// ── Helper: centralized, navigation-aware notification insert ─────────────────
+async function notify(
+  userId,
+  type,
+  title,
+  message,
+  { targetType = null, targetId = null, targetOrderId = null } = {},
+) {
+  await createNotificationSafe(pool, {
+    userId: parseInt(userId),
+    type,
+    title,
+    message,
+    targetType,
+    targetId,
+    targetOrderId,
+  });
 }
 
 // ── GET /tasks ────────────────────────────────────────────────────────────────
@@ -130,7 +141,14 @@ exports.create = async (req, res) => {
       parseInt(assigned_to),
       "task_assigned",
       "New Task Assigned",
-      `You have been assigned a new task: "${title.trim()}" by ${req.user.name}.`,
+      order_id
+        ? `You were assigned "${title.trim()}" for Order #${parseInt(order_id)}. Open the task to review the work details.`
+        : `You were assigned "${title.trim()}". Open the task to review the work details.`,
+      {
+        targetType: "task",
+        targetId: result.insertId,
+        targetOrderId: order_id ? parseInt(order_id) : null,
+      },
     );
 
     res.status(201).json({
@@ -181,12 +199,31 @@ exports.update = async (req, res) => {
         [status, completedAt, acceptedAt, id],
       );
 
-      // Notify the admin who assigned
+      // Notify the admin who assigned, using a user-facing status title.
+      const statusTitle =
+        status === "in_progress"
+          ? "Task Started"
+          : status === "completed"
+            ? "Task Completed"
+            : status === "blocked"
+              ? "Task Blocked"
+              : "Task Returned to Pending";
+      const orderContext = task.order_id ? ` for Order #${task.order_id}` : "";
+      const nextStep =
+        status === "blocked"
+          ? " Review the task before work continues."
+          : "";
+
       await notify(
         parseInt(task.assigned_by),
         "task_update",
-        "Task Status Updated",
-        `"${task.title}" has been marked as ${status} by ${req.user.name}.`,
+        statusTitle,
+        `${req.user.name || "A staff member"} updated "${task.title}"${orderContext}.${nextStep}`,
+        {
+          targetType: "task",
+          targetId: task.id,
+          targetOrderId: task.order_id || null,
+        },
       );
 
       return res.json({ message: "Task status updated." });
@@ -240,7 +277,14 @@ exports.update = async (req, res) => {
         newAssignee,
         "task_assigned",
         "Task Assigned to You",
-        `You have been assigned: "${title.trim()}" by ${req.user.name}.`,
+        task.order_id
+          ? `You were assigned "${title.trim()}" for Order #${task.order_id}. Open the task to review the updated assignment.`
+          : `You were assigned "${title.trim()}". Open the task to review the updated assignment.`,
+        {
+          targetType: "task",
+          targetId: task.id,
+          targetOrderId: task.order_id || null,
+        },
       );
     }
 
@@ -275,7 +319,8 @@ exports.remove = async (req, res) => {
 exports.getNotifications = async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, type, title, message, is_read, channel, sent_at, created_at
+      `SELECT id, type, title, message, is_read, channel, sent_at, created_at,
+              target_type, target_id, target_order_id
        FROM notifications
        WHERE user_id = ?
        ORDER BY created_at DESC

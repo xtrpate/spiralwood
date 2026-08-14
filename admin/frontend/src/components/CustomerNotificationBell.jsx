@@ -33,6 +33,10 @@ function resolveCustomerNotificationRoute(n) {
       return `/orders?focus_order_id=${targetId}`;
     case "support_ticket":
       return `/support?ticket=${targetId}`;
+    case "appointment":
+      return `/appointment?focus_appointment_id=${targetId}`;
+    case "warranty":
+      return `/warranty?focus_claim_id=${targetId}`;
     default:
       return "/orders";
   }

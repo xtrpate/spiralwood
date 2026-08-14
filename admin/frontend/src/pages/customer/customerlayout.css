@@ -2753,3 +2753,41 @@ a {
     border-radius: 9px !important;
   }
 }
+
+/* WISDOM BLUEPRINT MULTI CART PREVIEW V1.0.4 */
+.cust-mini-cart-item.is-blueprint {
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+}
+
+.cust-mini-cart-item.is-blueprint .cust-mini-cart-thumb {
+  width: 112px;
+  height: 88px;
+  background: #f7f2ea;
+}
+
+.cust-mini-cart-item.is-blueprint .cust-mini-cart-thumb > *,
+.cust-mini-cart-item.is-blueprint .cust-mini-cart-thumb canvas,
+.cust-mini-cart-item.is-blueprint .cust-mini-cart-thumb img {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 88px !important;
+  object-fit: contain !important;
+}
+
+@media (max-width: 680px) {
+  .cust-mini-cart-item.is-blueprint {
+    grid-template-columns: 80px minmax(0, 1fr);
+  }
+
+  .cust-mini-cart-item.is-blueprint .cust-mini-cart-thumb {
+    width: 80px;
+    height: 68px;
+  }
+
+  .cust-mini-cart-item.is-blueprint .cust-mini-cart-thumb > *,
+  .cust-mini-cart-item.is-blueprint .cust-mini-cart-thumb canvas,
+  .cust-mini-cart-item.is-blueprint .cust-mini-cart-thumb img {
+    max-height: 68px !important;
+  }
+}

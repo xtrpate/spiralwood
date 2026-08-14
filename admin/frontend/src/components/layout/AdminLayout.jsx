@@ -2,18 +2,18 @@
 import React, {
   useState,
   useEffect,
-  useMemo,
-  useCallback,
   useRef,
 } from "react";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
+import { LogOut } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
 import useAuthStore from "../../store/authStore";
 import toast from "react-hot-toast";
 import { useCart } from "../../pages/customer/cartcontext";
 import NotificationBell from "../NotificationBell";
-import OversizedDeliveryEstimatorPanel from "../OversizedDeliveryEstimatorPanel";
+
 import "./AdminLayout.css";
+import adminSystemIcon from "../../assets/admin-system-icon.png";
 
 const NAV_ITEMS = [
   { section: "Dashboard" },
@@ -183,11 +183,6 @@ export default function AdminLayout() {
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [deliveryGate, setDeliveryGate] = useState({
-    active: false,
-    readyForQuote: true,
-    message: "",
-  });
 
   useEffect(() => {
     let active = true;
@@ -218,13 +213,6 @@ export default function AdminLayout() {
     };
   }, []);
 
-  const estimationBlueprintId = useMemo(() => {
-    const match = String(location.pathname || "").match(
-      /^\/admin\/blueprints\/([1-9][0-9]*)\/estimation\/?$/,
-    );
-
-    return match ? Number(match[1]) : null;
-  }, [location.pathname]);
 
   useEffect(() => {
     if (user && user.role === "customer") {
@@ -245,35 +233,6 @@ export default function AdminLayout() {
     };
   }, [mobileOpen]);
 
-  useEffect(() => {
-    setDeliveryGate({
-      active: Boolean(estimationBlueprintId),
-      readyForQuote: !estimationBlueprintId,
-      message: estimationBlueprintId
-        ? "Wait for the oversized-delivery assessment to finish loading."
-        : "",
-    });
-  }, [estimationBlueprintId]);
-
-  const updateDeliveryGate = useCallback((nextGate) => {
-    setDeliveryGate((current) => {
-      const normalized = {
-        active: Boolean(nextGate?.active),
-        readyForQuote: Boolean(nextGate?.readyForQuote),
-        message: String(nextGate?.message || ""),
-      };
-
-      if (
-        current.active === normalized.active &&
-        current.readyForQuote === normalized.readyForQuote &&
-        current.message === normalized.message
-      ) {
-        return current;
-      }
-
-      return normalized;
-    });
-  }, []);
 
   const handleLogout = () => {
     setShowLogoutModal(true);
@@ -284,31 +243,6 @@ export default function AdminLayout() {
     logout();
     clearCart(false);
     navigate("/login");
-  };
-
-  const handleMainClickCapture = (event) => {
-    if (!estimationBlueprintId || !deliveryGate.active) return;
-
-    const target = event.target instanceof Element ? event.target : null;
-
-    const button = target?.closest("button");
-    if (!button) return;
-
-    const label = String(button.textContent || "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .toLowerCase();
-
-    if (!label.includes("send quote")) return;
-    if (deliveryGate.readyForQuote) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    toast.error(
-      deliveryGate.message ||
-        "Complete the oversized-delivery assessment before sending the quotation.",
-    );
   };
 
   const visibleItems = NAV_ITEMS.filter(
@@ -462,6 +396,59 @@ export default function AdminLayout() {
               </NavLink>
             );
           })}
+
+          {/* WISDOM ADMIN LOGOUT AFTER BACKUP V1 */}
+          {/* WISDOM ADMIN WHITE BELL ALIGNED LOGOUT V1 */}
+          {/* WISDOM ADMIN YELLOW BELL LOGOUT ALIGNMENT V1 */}
+          <button
+            type="button"
+            onClick={handleLogout}
+            title={!open ? "Logout" : undefined}
+            aria-label="Logout"
+            style={{
+              width: "100%",
+              minHeight: 36,
+              padding: open ? "9px 21px" : "9px 0",
+              border: "none",
+              borderLeft: "3px solid transparent",
+              background: "transparent",
+              color: "#a1a1aa",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: open ? "flex-start" : "center",
+              gap: 10,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              fontSize: 13,
+              fontWeight: 500,
+              whiteSpace: "nowrap",
+              textAlign: "left",
+              transition: "all .15s",
+            }}
+            onMouseEnter={(event) => {
+              event.currentTarget.style.background = "#18181b";
+              event.currentTarget.style.color = "#ffffff";
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.background = "transparent";
+              event.currentTarget.style.color = "#a1a1aa";
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                width: 16,
+                height: 16,
+                flex: "0 0 16px",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <LogOut size={16} strokeWidth={1.8} />
+            </span>
+            {open && <span>Logout</span>}
+          </button>
         </nav>
 
         <button
@@ -522,55 +509,107 @@ export default function AdminLayout() {
             ☰
           </button>
 
-          <NotificationBell />
+          {/* WISDOM ADMIN HEADER COMPACT ACCOUNT V1 */}
+          {/* WISDOM ADMIN HEADER SIZE ALIGNMENT V1.0.1 */}
+          <NotificationBell headerCompact />
 
-          <span
+          <div
+            aria-hidden="true"
+            style={{
+              width: 1,
+              height: 32,
+              background: "#e4e4e7",
+              flexShrink: 0,
+            }}
+          />
+
+          <div
             className="wisdom-admin-user-badge"
             style={{
-              fontSize: 13,
-              color: "#52525b",
-              fontWeight: 500,
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              minWidth: 0,
+              minHeight: 38,
             }}
           >
-            👤 {user?.name}{" "}
-            <span
+            {user?.profile_photo ? (
+              <img
+                src={buildAssetUrl(user.profile_photo)}
+                alt=""
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  flexShrink: 0,
+                  border: "1px solid #e4e4e7",
+                }}
+              />
+            ) : (
+              <div
+                aria-hidden="true"
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  background: "#ffffff",
+                  border: "1px solid #dedee3",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                  flexShrink: 0,
+                }}
+              >
+                <img
+                  src={adminSystemIcon}
+                  alt=""
+                  style={{
+                    width: 29,
+                    height: 29,
+                    objectFit: "contain",
+                    display: "block",
+                  }}
+                />
+              </div>
+            )}
+
+            <div
               style={{
-                fontSize: 11,
-                background: "#f4f4f5",
-                color: "#18181b",
-                padding: "3px 10px",
-                borderRadius: 20,
-                fontWeight: 600,
-                letterSpacing: "0.02em",
-                marginLeft: "4px",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                minWidth: 0,
+                minHeight: 34,
+                lineHeight: 1.2,
               }}
             >
-              {user?.role}
-            </span>
-          </span>
-
-          <button
-            onClick={handleLogout}
-            style={{
-              background: "#18181b",
-              color: "#ffffff",
-              border: "none",
-              padding: "7px 18px",
-              borderRadius: 6,
-              cursor: "pointer",
-              fontSize: 12,
-              fontWeight: 600,
-              transition: "background 0.2s",
-            }}
-            onMouseEnter={(event) => {
-              event.currentTarget.style.background = "#3f3f46";
-            }}
-            onMouseLeave={(event) => {
-              event.currentTarget.style.background = "#18181b";
-            }}
-          >
-            Logout
-          </button>
+              <span
+                style={{
+                  maxWidth: 170,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  color: "#18181b",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                {user?.name || "System Administrator"}
+              </span>
+              <span
+                style={{
+                  marginTop: 3,
+                  color: "#71717a",
+                  fontSize: 10.5,
+                  fontWeight: 400,
+                }}
+              >
+                {user?.role === "admin" ? "Admin" : "Staff"}
+              </span>
+            </div>
+          </div>
         </header>
 
         <main
@@ -580,125 +619,118 @@ export default function AdminLayout() {
             padding: 24,
             overflowY: "auto",
           }}
-          onClickCapture={handleMainClickCapture}
         >
-          {estimationBlueprintId && (
-            <OversizedDeliveryEstimatorPanel
-              key={estimationBlueprintId}
-              blueprintId={estimationBlueprintId}
-              onGateChange={updateDeliveryGate}
-            />
-          )}
-
           <Outlet />
         </main>
       </div>
 
       {showLogoutModal && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="admin-logout-title"
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            backdropFilter: "blur(4px)",
-            zIndex: 9999,
+            zIndex: 12000,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
+            padding: "20px",
+            background: "rgba(0,0,0,0.52)",
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowLogoutModal(false);
+            }
           }}
         >
           <div
             style={{
-              background: "#0a0a0a",
-              width: "min(360px, 90vw)",
-              padding: 24,
-              borderRadius: 16,
-              boxShadow: "0 20px 40px rgba(0,0,0,0.2)",
-              border: "1px solid #27272a",
+              width: "100%",
+              maxWidth: "390px",
+              background: "#ffffff",
+              border: "1px solid #d9d9dc",
+              borderRadius: 6,
+              boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
+              padding: "24px",
               fontFamily: "Inter, sans-serif",
             }}
           >
-            <h2
+            <h3
+              id="admin-logout-title"
               style={{
-                marginTop: 0,
-                color: "#ffffff",
-                fontWeight: 800,
-                fontSize: 18,
-                letterSpacing: "-0.01em",
-                marginBottom: 8,
+                margin: 0,
+                color: "#111111",
+                fontSize: "22px",
+                fontWeight: 750,
+                lineHeight: 1.2,
+                letterSpacing: "-0.015em",
               }}
             >
-              Sign out
-            </h2>
+              Logout
+            </h3>
 
             <p
               style={{
-                fontSize: 13,
-                color: "#a1a1aa",
-                marginBottom: 24,
+                margin: "8px 0 0",
+                color: "#66666b",
+                fontSize: "14px",
+                fontWeight: 400,
                 lineHeight: 1.5,
               }}
             >
-              Are you sure you want to log out of your account? You will need to
-              sign back in to access the admin portal.
+              Are you sure you want to log out?
             </p>
 
             <div
               style={{
                 display: "flex",
-                gap: 12,
                 justifyContent: "flex-end",
+                gap: "8px",
+                marginTop: "22px",
               }}
             >
               <button
+                type="button"
                 onClick={() => setShowLogoutModal(false)}
                 style={{
-                  padding: "9px 16px",
-                  background: "transparent",
-                  border: "1px solid #3f3f46",
-                  color: "#e5e7eb",
-                  borderRadius: 8,
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #bfc0c4",
+                  borderRadius: 6,
+                  background: "#ffffff",
+                  color: "#111111",
                   cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  transition: "background 0.2s",
-                }}
-                onMouseEnter={(event) => {
-                  event.currentTarget.style.background = "#27272a";
-                }}
-                onMouseLeave={(event) => {
-                  event.currentTarget.style.background = "transparent";
+                  fontSize: "13px",
+                  fontWeight: 650,
                 }}
               >
                 Cancel
               </button>
 
               <button
+                type="button"
                 onClick={confirmLogout}
                 style={{
-                  padding: "9px 16px",
-                  background: "#ffffff",
-                  color: "#0a0a0a",
-                  border: "none",
-                  borderRadius: 8,
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #111111",
+                  borderRadius: 6,
+                  background: "#111111",
+                  color: "#ffffff",
                   cursor: "pointer",
-                  fontWeight: 700,
-                  fontSize: 13,
-                  transition: "opacity 0.2s",
-                }}
-                onMouseEnter={(event) => {
-                  event.currentTarget.style.opacity = "0.8";
-                }}
-                onMouseLeave={(event) => {
-                  event.currentTarget.style.opacity = "1";
+                  fontSize: "13px",
+                  fontWeight: 650,
                 }}
               >
-                Yes, log out
+                Logout
               </button>
             </div>
           </div>
         </div>
-      )}
-    </div>
+      )}    </div>
   );
 }

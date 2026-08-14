@@ -107,11 +107,27 @@ const validateProductionSequence = async ({
 /* ── Get User Notifications ── */
 exports.getNotifications = async (req, res) => {
   try {
-    // ── FIXED: Switched to .query and parsed ID ──
+    // WISDOM NOTIFICATION HISTORY PAGING V1
+    // Keep this endpoint array-shaped for existing clients while allowing
+    // the admin notification center to progressively load older history.
+    const requestedLimit = Number.parseInt(req.query.limit, 10);
+    const requestedOffset = Number.parseInt(req.query.offset, 10);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 100)
+      : 50;
+    const offset = Number.isFinite(requestedOffset)
+      ? Math.max(requestedOffset, 0)
+      : 0;
+
     const [notifications] = await db.query(
-      `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 20`,
-      [parseInt(req.user.id)],
+      `SELECT *
+       FROM notifications
+       WHERE user_id = ?
+       ORDER BY created_at DESC, id DESC
+       LIMIT ? OFFSET ?`,
+      [parseInt(req.user.id), limit, offset],
     );
+
     res.json(notifications);
   } catch (err) {
     console.error("[pos.tasks GET /notifications]", err);
@@ -283,7 +299,10 @@ exports.acceptTask = async (req, res) => {
 
     // ── FIXED: Switched to .query and parsed IDs ──
     const [tasks] = await db.query(
-      `SELECT * FROM project_tasks WHERE id = ? AND assigned_to = ?`,
+      `SELECT pt.*, o.order_number
+       FROM project_tasks pt
+       LEFT JOIN orders o ON o.id = pt.order_id
+       WHERE pt.id = ? AND pt.assigned_to = ?`,
       [taskId, userId],
     );
 
@@ -329,8 +348,10 @@ exports.acceptTask = async (req, res) => {
     await createNotificationSafe(db, {
       userId: parseInt(task.assigned_by),
       type: "task_update",
-      title: "Task Accepted",
-      message: `${req.user.name || "A staff member"} has accepted the task: ${task.title}`,
+      title: "Task Started",
+      message: task.order_number
+        ? `${req.user.name || "A staff member"} started ${task.task_role || task.title} for Order ${task.order_number}.`
+        : `${req.user.name || "A staff member"} started ${task.task_role || task.title}.`,
       targetType: "task",
       targetId: task.id,
       targetOrderId: task.order_id,
@@ -356,9 +377,12 @@ exports.updateTaskStatus = async (req, res) => {
   try {
     // ── FIXED: Switched to .query ──
     const [rows] = await db.query(
-      `SELECT id, title, status, assigned_to, assigned_by, accepted_at, completed_at, order_id, task_role
-       FROM project_tasks
-       WHERE id = ?
+      `SELECT pt.id, pt.title, pt.status, pt.assigned_to, pt.assigned_by,
+              pt.accepted_at, pt.completed_at, pt.order_id, pt.task_role,
+              o.order_number
+       FROM project_tasks pt
+       LEFT JOIN orders o ON o.id = pt.order_id
+       WHERE pt.id = ?
        LIMIT 1`,
       [taskId],
     );
@@ -458,14 +482,26 @@ exports.updateTaskStatus = async (req, res) => {
       },
     };
 
-    if (existing.assigned_by) {
-      const statusLabel = String(status).replace(/_/g, " ");
+    if (existing.assigned_by && status !== "blocked") {
+      const statusTitle =
+        status === "in_progress"
+          ? "Task Started"
+          : status === "completed"
+            ? "Task Completed"
+            : "Task Returned to Pending";
+      const orderLabel = existing.order_number
+        ? `Order ${existing.order_number}`
+        : existing.order_id
+          ? `Order #${existing.order_id}`
+          : "this project";
 
       await createNotificationSafe(db, {
         userId: parseInt(existing.assigned_by),
         type: "task_update",
-        title: "Task Status Updated",
-        message: `${req.user.name || "A staff member"} updated step "${existing.task_role}" to ${statusLabel} for ${existing.title}.`,
+        title: statusTitle,
+        message: `${req.user.name || "A staff member"} ${
+          status === "completed" ? "completed" : status === "in_progress" ? "started" : "returned"
+        } ${existing.task_role || existing.title} for ${orderLabel}.`,
         targetType: "task",
         targetId: existing.id,
         targetOrderId: existing.order_id,
@@ -523,8 +559,12 @@ exports.updateTaskStatus = async (req, res) => {
           await createNotificationSafe(db, {
             userId: parseInt(existing.assigned_by),
             type: "task_blocked",
-            title: "Production Blocker Reported",
-            message: `${req.user.name || "A staff member"} reported a blocker on ${existing.task_role} for Order #${existing.order_id}.`,
+            title: "Task Blocked",
+            message: `${req.user.name || "A staff member"} reported a blocker on ${existing.task_role} for ${
+              existing.order_number
+                ? `Order ${existing.order_number}`
+                : `Order #${existing.order_id}`
+            }. Review the task before production continues.`,
             targetType: "task",
             targetId: existing.id,
             targetOrderId: existing.order_id,
@@ -536,7 +576,11 @@ exports.updateTaskStatus = async (req, res) => {
             userId: parseInt(existing.assigned_by),
             type: "production_ready",
             title: "Production Ready for Shipping",
-            message: `${req.user.name || "A staff member"} completed the full production workflow for Order #${existing.order_id}. The order is now ready for shipping review.`,
+            message: `The full production workflow for ${
+              existing.order_number
+                ? `Order ${existing.order_number}`
+                : `Order #${existing.order_id}`
+            } is complete. Review the order before scheduling delivery.`,
             targetType: "order",
             targetId: existing.order_id,
             targetOrderId: existing.order_id,

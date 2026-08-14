@@ -9,6 +9,7 @@ const VALID_CATEGORIES = [
 ];
 
 const { createNotificationSafe } = require("../../utils/notificationHelper");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 
 /* ──────────────────────────────────────────────────────────────
    Create Support Ticket
@@ -141,6 +142,19 @@ const createTicket = async (req, res) => {
     }
 
     await connection.commit();
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "create_support_ticket",
+      tableName: "support_tickets",
+      recordId: ticketId,
+      newValues: {
+        category,
+        order_id: linkedOrderId,
+        status: "open",
+      },
+      ipAddress: req.ip || null,
+    });
 
     res.status(201).json({
       message: "Support ticket created successfully.",
@@ -386,7 +400,9 @@ const replyToTicket = async (req, res) => {
       `
       SELECT
         id,
-        status
+        status,
+        assigned_to,
+        subject
       FROM support_tickets
       WHERE id = ?
         AND customer_id = ?
@@ -469,7 +485,52 @@ const replyToTicket = async (req, res) => {
       [ticketId],
     );
 
+    try {
+      const customerName = req.user.name || "The customer";
+      if (ticket.assigned_to) {
+        await createNotificationSafe(connection, {
+          userId: ticket.assigned_to,
+          type: "support_customer_reply",
+          title: "Customer Replied to Support",
+          message: `${customerName} replied to “${ticket.subject}”. Open the ticket to continue the conversation.`,
+          targetType: "support_ticket",
+          targetId: ticketId,
+        });
+      } else {
+        const [admins] = await connection.query(
+          `SELECT id FROM users WHERE role = 'admin' AND is_active = 1`,
+        );
+        for (const admin of admins) {
+          await createNotificationSafe(connection, {
+            userId: admin.id,
+            type: "support_customer_reply",
+            title: "Customer Replied to Support",
+            message: `${customerName} replied to “${ticket.subject}”. Open the ticket to continue the conversation.`,
+            targetType: "support_ticket",
+            targetId: ticketId,
+          });
+        }
+      }
+    } catch (notificationErr) {
+      console.error("[customer.support reply notification skipped]", notificationErr.message || notificationErr);
+    }
+
     await connection.commit();
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "reply_support_ticket",
+      tableName: "support_tickets",
+      recordId: ticketId,
+      oldValues: { status: ticket.status },
+      newValues: {
+        reply_added: true,
+        status: ["resolved", "awaiting_customer"].includes(ticket.status)
+          ? "open"
+          : ticket.status,
+      },
+      ipAddress: req.ip || null,
+    });
 
     res.json({
       message: "Reply sent successfully.",
@@ -539,6 +600,16 @@ const closeTicket = async (req, res) => {
       `,
       [ticketId],
     );
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "close_support_ticket",
+      tableName: "support_tickets",
+      recordId: ticketId,
+      oldValues: { status: ticket.status },
+      newValues: { status: "closed" },
+      ipAddress: req.ip || null,
+    });
 
     res.json({
       message: "Support ticket closed successfully.",

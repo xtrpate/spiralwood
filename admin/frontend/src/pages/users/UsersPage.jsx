@@ -1,6 +1,6 @@
 // src/pages/users/UsersPage.jsx – User Management (Admin only)
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import api from "../../services/api";
+import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 import useAuthStore from "../../store/authStore";
 import {
@@ -48,8 +48,40 @@ const FILTERS = {
   status: "",
 };
 
-const getInitial = (name) =>
-  String(name || "?").trim().charAt(0).toUpperCase() || "?";
+const getInitial = (name) => {
+  const words = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (!words.length) return "?";
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+
+  return `${words[0][0] || ""}${words[words.length - 1][0] || ""}`.toUpperCase();
+};
+
+function UserAvatar({ src, name, isAdmin = false }) {
+  const [failed, setFailed] = useState(false);
+  const resolved = buildAssetUrl(src);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  return (
+    <div className={`um-avatar${isAdmin ? " um-avatar-admin" : ""}`}>
+      {resolved && !failed ? (
+        <img
+          src={resolved}
+          alt={`${name || "Account"} profile`}
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        getInitial(name)
+      )}
+    </div>
+  );
+}
 
 const getRoleLabel = (user) => {
   if (user?.role === "admin") return "Administrator";
@@ -546,11 +578,11 @@ function UserRow({
     <tr>
       <td>
         <div className="um-account-cell">
-          <div
-            className={`um-avatar${user.role === "admin" ? " um-avatar-admin" : ""}`}
-          >
-            {getInitial(user.name)}
-          </div>
+          <UserAvatar
+            src={user.profile_photo}
+            name={user.name}
+            isAdmin={user.role === "admin"}
+          />
 
           <div className="um-account-copy">
             <div className="um-name-row">
@@ -822,7 +854,7 @@ function AccountModal({
         <div className="um-modal-footer">
           <button
             type="button"
-            className="um-btn um-btn-secondary"
+            className="um-btn um-btn-secondary um-account-modal-action"
             onClick={onClose}
             disabled={saving}
           >
@@ -831,7 +863,7 @@ function AccountModal({
 
           <button
             type="submit"
-            className="um-btn um-btn-primary"
+            className="um-btn um-btn-primary um-account-modal-action"
             disabled={saving}
           >
             {saving ? "Saving..." : isEdit ? "Save Changes" : "Create Account"}
@@ -1063,17 +1095,17 @@ const styles = `
 
   .um-page-title {
     margin: 0;
-    color: #0a0a0a;
-    font-size: 26px;
-    line-height: 1.15;
-    font-weight: 760;
+    color: #18181b;
+    font-size: 24px;
+    line-height: 1.2;
+    font-weight: 700;
     letter-spacing: -0.02em;
   }
 
   .um-page-subtitle {
-    margin: 6px 0 0;
+    margin: 4px 0 0;
     max-width: 680px;
-    color: #626871;
+    color: #71717a;
     font-size: 12.5px;
     line-height: 1.5;
     font-weight: 400;
@@ -1110,20 +1142,42 @@ const styles = `
     background: #2f2f33;
   }
 
+  /* WISDOM USER ACCOUNT MODAL BUTTON FONT V1
+     Font only: Cancel + Create Account / Save Changes. */
+  .um-modal-footer .um-account-modal-action {
+    font-family: "Inter", sans-serif !important;
+    font-size: 11.5px !important;
+    line-height: 1 !important;
+    font-weight: 700 !important;
+    letter-spacing: 0 !important;
+  }
+
   .um-add-account-btn {
     min-height: 34px;
     padding: 0 13px;
     gap: 6px;
     border-radius: 3px;
     box-shadow: none;
-    font-size: 11px;
-    font-weight: 620;
-    letter-spacing: 0.01em;
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: 0;
     white-space: nowrap;
   }
 
   .um-add-account-btn svg {
     flex: 0 0 auto;
+  }
+
+  /* WISDOM ADD ACCOUNT TEXT FORCE MATCH V1
+     Target the rendered text directly so no broader button rule can alter it. */
+  .wisdom-admin-users-v2 .um-add-account-btn > span {
+    font-family: "Inter", sans-serif !important;
+    font-size: 11.5px !important;
+    line-height: 1 !important;
+    font-weight: 700 !important;
+    letter-spacing: 0 !important;
   }
 
   .um-add-account-btn:hover:not(:disabled) {
@@ -1221,10 +1275,10 @@ const styles = `
 
   .um-card-heading h2 {
     margin: 0;
-    color: #17191d;
-    font-size: 17px;
-    line-height: 1.3;
-    font-weight: 720;
+    color: #1e2023;
+    font-size: 16px;
+    line-height: 1.25;
+    font-weight: 700;
   }
 
   .um-card-heading p {
@@ -1333,11 +1387,11 @@ const styles = `
     padding: 11px 13px;
     border-bottom: 1px solid var(--um-border);
     background: #fbfbfb;
-    color: #727882;
-    font-size: 9px;
+    color: #60656d;
+    font-size: 9.5px;
     line-height: 1.2;
-    font-weight: 650;
-    letter-spacing: 1px;
+    font-weight: 600;
+    letter-spacing: 0.35px;
     text-align: left;
     text-transform: uppercase;
   }
@@ -1352,8 +1406,8 @@ const styles = `
   .um-table td {
     padding: 12px 13px;
     border-bottom: 1px solid var(--um-border-soft);
-    color: #2d3137;
-    font-size: 12px;
+    color: #34383d;
+    font-size: 11.5px;
     line-height: 1.35;
     font-weight: 400;
     vertical-align: middle;
@@ -1383,9 +1437,19 @@ const styles = `
     border: 1px solid #dfe2e6;
     border-radius: 50%;
     background: #f7f7f8;
-    color: #25282d;
-    font-size: 11.5px;
+    color: #535860;
+    font-size: 9.5px;
     font-weight: 700;
+    letter-spacing: 0.2px;
+    overflow: hidden;
+  }
+
+  .um-avatar img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border-radius: inherit;
+    object-fit: cover;
   }
 
   .um-avatar-admin {
@@ -1412,9 +1476,9 @@ const styles = `
 
   .um-user-name {
     overflow: hidden;
-    color: #1c1f23;
-    font-size: 12.5px;
-    font-weight: 650;
+    color: #25282c;
+    font-size: 11.8px;
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1433,8 +1497,8 @@ const styles = `
   .um-contact small,
   .um-role-cell small {
     overflow: hidden;
-    color: #8a9098;
-    font-size: 10.5px;
+    color: #858a91;
+    font-size: 9.8px;
     font-weight: 400;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1442,7 +1506,9 @@ const styles = `
 
   .um-contact > span {
     overflow: hidden;
-    color: #4f555d;
+    color: #34383d;
+    font-size: 11.5px;
+    font-weight: 400;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -1461,17 +1527,17 @@ const styles = `
   .um-status {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    color: #4d535b;
-    font-size: 11px;
-    font-weight: 550;
+    gap: 7px;
+    color: #3f444a;
+    font-size: 10.5px;
+    font-weight: 500;
   }
 
   .um-status i {
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    background: #2f7d4a;
+    background: #369060;
   }
 
   .um-status.is-inactive {
@@ -1483,8 +1549,8 @@ const styles = `
   }
 
   .um-last-login {
-    color: #696f78;
-    font-size: 11.5px;
+    color: #858a91;
+    font-size: 10.5px;
     font-weight: 400;
   }
 

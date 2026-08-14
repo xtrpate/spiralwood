@@ -1,0 +1,1082 @@
+/* WISDOM Website Content Management UI Polish V1.0.0
+   Shared only by FAQ Management and Page Content. */
+
+.website-admin-page {
+  width: 100%;
+  color: #18181b;
+}
+
+.website-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.website-page-title {
+  margin: 0;
+  color: #171717;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.018em;
+  line-height: 1.2;
+}
+
+.website-page-subtitle {
+  margin: 4px 0 0;
+  color: #656970;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.website-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.website-btn {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.website-btn:disabled {
+  cursor: not-allowed;
+}
+
+.website-btn-primary {
+  border-color: #171717;
+  background: #171717;
+  color: #ffffff;
+}
+
+.website-btn-primary:hover:not(:disabled) {
+  background: #2f2f2f;
+}
+
+.website-btn-secondary {
+  border-color: #d8dade;
+  background: #ffffff;
+  color: #25272a;
+}
+
+.website-btn-secondary:hover:not(:disabled),
+.website-btn-secondary.is-active {
+  border-color: #aeb2b7;
+  background: #f6f6f5;
+}
+
+.website-btn-saved {
+  border-color: #d8dade;
+  background: #f3f3f2;
+  color: #686d73;
+}
+
+.website-btn-compact {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 11.5px;
+}
+
+.website-btn-danger {
+  border-color: #efc4c4;
+  background: #ffffff;
+  color: #b42318;
+}
+
+.website-btn-danger:hover {
+  border-color: #dc9c9c;
+  background: #fff7f7;
+}
+
+.website-summary-grid {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.website-summary-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.website-summary-card {
+  min-height: 78px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px 16px;
+  border: 1px solid #dedfe2;
+  border-radius: 3px;
+  background: #ffffff;
+}
+
+.website-summary-card span {
+  color: #747980;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.website-summary-card strong {
+  margin-top: 5px;
+  color: #171717;
+  font-size: 21px;
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.website-panel {
+  border: 1px solid #dedfe2;
+  border-radius: 3px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.website-panel-heading,
+.website-editor-heading {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 15px;
+  border-bottom: 1px solid #e6e7e9;
+  background: #ffffff;
+}
+
+.website-panel-heading h2,
+.website-editor-heading h2 {
+  margin: 0;
+  color: #1d1f21;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.website-panel-heading p,
+.website-editor-heading p {
+  margin: 3px 0 0;
+  color: #777c82;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.website-panel-count {
+  color: #7a7f85;
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.website-empty-state {
+  min-height: 170px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 24px;
+  color: #72777d;
+  font-size: 12.5px;
+  font-weight: 400;
+  text-align: center;
+}
+
+.website-empty-state strong {
+  color: #303337;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.website-page-loader {
+  min-height: 280px;
+  gap: 12px;
+}
+
+/* FAQ Management */
+
+.website-faq-list {
+  width: 100%;
+}
+
+.website-faq-row {
+  min-height: 82px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 15px;
+  border-bottom: 1px solid #ececee;
+  background: #ffffff;
+}
+
+.website-faq-row:last-child {
+  border-bottom: 0;
+}
+
+.website-faq-row.is-hidden {
+  background: #fafafa;
+}
+
+.website-faq-content {
+  min-width: 0;
+}
+
+.website-faq-question-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.website-faq-order {
+  flex: 0 0 28px;
+  color: #7a7f85;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.website-faq-question-row h3 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #1b1d1f;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+}
+
+.website-faq-answer {
+  max-width: 980px;
+  margin: 5px 0 0 37px;
+  color: #666b71;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.website-state-badge {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border: 1px solid #dcdee1;
+  border-radius: 2px;
+  background: #f4f4f3;
+  color: #656a70;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.website-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.website-visibility-btn {
+  border-color: #d8dade;
+  background: #ffffff;
+  color: #3b3e42;
+}
+
+.website-visibility-btn.is-hidden {
+  border-color: #c7c9cc;
+  background: #f1f1f0;
+  color: #4f5358;
+}
+
+.website-visibility-btn:hover {
+  border-color: #afb2b6;
+  background: #f7f7f6;
+}
+
+/* Shared forms and modal */
+
+.website-form-group {
+  margin-bottom: 15px;
+}
+
+.website-form-label,
+.website-form-label-row .website-form-label {
+  display: block;
+  margin: 0 0 6px;
+  color: #303338;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.website-form-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.website-form-label-row .website-form-label {
+  margin: 0;
+}
+
+.website-form-label-row > span {
+  color: #858a90;
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.website-input {
+  width: 100%;
+  min-height: 38px;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border: 1px solid #d8dade;
+  border-radius: 2px;
+  outline: 0;
+  background: #ffffff;
+  color: #272a2e;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.website-input:focus {
+  border-color: #797d82;
+  box-shadow: 0 0 0 1px #797d82;
+}
+
+.website-textarea {
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.website-form-help {
+  display: block;
+  margin-top: 5px;
+  color: #888d93;
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.website-form-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.website-switch-row,
+.website-editor-visibility {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #4e5257;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.website-switch {
+  position: relative;
+  width: 38px;
+  height: 20px;
+  flex: 0 0 38px;
+  border-radius: 999px;
+  background: #c7c9cc;
+  transition: background-color 0.15s ease;
+}
+
+.website-switch > span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  transition: left 0.15s ease;
+}
+
+.website-switch.is-on {
+  background: #26282b;
+}
+
+.website-switch.is-on > span {
+  left: 21px;
+}
+
+.website-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.46);
+}
+
+.website-modal {
+  width: min(540px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 22px;
+  border: 1px solid #d9dade;
+  border-radius: 3px;
+  background: #ffffff;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.14);
+}
+
+.website-modal-heading {
+  margin-bottom: 18px;
+}
+
+.website-modal-heading h2 {
+  margin: 0;
+  color: #1b1d1f;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.website-modal-heading p {
+  margin: 4px 0 0;
+  color: #747980;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.website-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+/* Page Content */
+
+.website-unsaved-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  margin-bottom: 12px;
+  padding: 7px 11px;
+  border: 1px solid #ead79c;
+  border-radius: 2px;
+  background: #fffdf5;
+  color: #6f5a20;
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.website-unsaved-banner strong {
+  font-weight: 600;
+}
+
+.website-content-layout {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.website-page-selector-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.website-page-selector {
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid #dedfe2;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #35383c;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.website-page-selector:hover {
+  border-color: #b9bdc1;
+  background: #fafafa;
+}
+
+.website-page-selector.is-active {
+  border-color: #1d1f21;
+  background: #f7f7f6;
+}
+
+.website-page-selector-icon {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 38px;
+  border: 1px solid #e1e2e4;
+  border-radius: 2px;
+  background: #ffffff;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.website-page-selector-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.website-page-selector-copy strong {
+  overflow: hidden;
+  color: #24272a;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.website-page-selector-copy small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: #7a7f85;
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.website-visibility-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: #a8acb1;
+}
+
+.website-visibility-dot.is-visible {
+  background: #2f8f5b;
+}
+
+.website-visibility-dot.is-hidden {
+  background: #9fa3a8;
+}
+
+.website-editor-title-group {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.website-editor-icon {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 32px;
+  border: 1px solid #e1e2e4;
+  border-radius: 2px;
+  background: #f8f8f7;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.website-editor-visibility {
+  flex: 0 0 auto;
+}
+
+.website-editor-body {
+  padding: 16px;
+}
+
+.website-editor-note {
+  margin: 0 0 14px;
+  padding: 9px 11px;
+  border-left: 2px solid #b7babd;
+  background: #fafafa;
+  color: #6a6f75;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.website-page-content-textarea {
+  min-height: 330px;
+}
+
+.website-content-count {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+  color: #94999f;
+  font-size: 10.5px;
+  font-weight: 400;
+}
+
+.website-preview-surface {
+  min-height: 340px;
+  padding: 22px;
+  border: 1px solid #e1e2e4;
+  border-radius: 2px;
+  background: #fafafa;
+}
+
+.website-preview-label {
+  color: #81868c;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.website-preview-surface h2 {
+  margin: 9px 0 14px;
+  color: #1d1f21;
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+}
+
+.website-preview-copy {
+  color: #41454a;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.website-preview-empty {
+  color: #969ba1;
+  font-style: italic;
+}
+
+.website-preview-hidden {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 22px;
+  padding: 9px 11px;
+  border: 1px solid #e8bdbd;
+  border-radius: 2px;
+  background: #fff8f8;
+  color: #9a2727;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+@media (max-width: 980px) {
+  .website-content-layout {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .website-faq-row {
+    grid-template-columns: 1fr;
+  }
+
+  .website-row-actions {
+    justify-content: flex-start;
+    margin-left: 37px;
+  }
+}
+
+@media (max-width: 760px) {
+  .website-page-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .website-header-actions {
+    justify-content: flex-start;
+  }
+
+  .website-summary-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .website-content-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .website-page-selector-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .website-page-selector {
+    min-height: 78px;
+  }
+
+  .website-editor-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .website-page-selector-list {
+    grid-template-columns: 1fr;
+  }
+
+  .website-form-split {
+    grid-template-columns: 1fr;
+  }
+
+  .website-form-label-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .website-row-actions {
+    margin-left: 0;
+  }
+
+  .website-faq-answer {
+    margin-left: 0;
+  }
+
+  .website-faq-question-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+/* WISDOM WEBSITE FAQ + PAGE CONTENT FINAL REFINEMENT V1.0.2 */
+
+/* ---------- Global density / hierarchy ---------- */
+
+.website-admin-page .website-page-header {
+  margin-bottom: 13px;
+}
+
+.website-admin-page .website-page-title {
+  font-size: 23px;
+  font-weight: 650;
+}
+
+.website-admin-page .website-page-subtitle {
+  margin-top: 3px;
+  color: #6d7278;
+  font-size: 12px;
+}
+
+.website-admin-page .website-btn {
+  min-height: 34px;
+  padding-inline: 12px;
+  border-radius: 2px;
+  font-size: 11.5px;
+  font-weight: 550;
+}
+
+.website-admin-page .website-btn-compact {
+  min-height: 30px;
+  padding-inline: 9px;
+  font-size: 11px;
+  font-weight: 550;
+}
+
+/* ---------- FAQ Management ---------- */
+
+.website-faq-page .website-summary-grid {
+  gap: 9px;
+  margin-bottom: 12px;
+}
+
+.website-faq-page .website-summary-card {
+  min-height: 66px;
+  padding: 10px 14px;
+}
+
+.website-faq-page .website-summary-card span {
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.website-faq-page .website-summary-card strong {
+  margin-top: 4px;
+  font-size: 19px;
+  font-weight: 650;
+}
+
+.website-faq-page .website-panel-heading {
+  min-height: 52px;
+  padding: 9px 14px;
+}
+
+.website-faq-page .website-panel-heading h2 {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.website-faq-page .website-panel-heading p {
+  margin-top: 2px;
+  font-size: 10.5px;
+}
+
+.website-faq-page .website-faq-row {
+  min-height: 72px;
+  gap: 16px;
+  padding: 11px 14px;
+}
+
+.website-faq-page .website-faq-question-row {
+  gap: 8px;
+}
+
+.website-faq-page .website-faq-order {
+  flex-basis: 27px;
+  color: #7f848a;
+  font-size: 10.5px;
+  font-weight: 550;
+}
+
+.website-faq-page .website-faq-question-row h3 {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.website-faq-page .website-faq-answer {
+  max-width: 1050px;
+  margin-top: 4px;
+  margin-left: 35px;
+  color: #5d6268;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.48;
+}
+
+.website-faq-page .website-row-actions {
+  gap: 5px;
+}
+
+.website-faq-page .website-visibility-btn,
+.website-faq-page .website-btn-secondary {
+  color: #34383c;
+}
+
+.website-faq-page .website-btn-danger {
+  border-color: #efcaca;
+  color: #b42318;
+  font-weight: 550;
+}
+
+.website-faq-page .website-btn-danger:hover {
+  border-color: #dfa6a6;
+  background: #fff8f8;
+}
+
+/* ---------- Page Content ---------- */
+
+.website-static-page .website-content-layout {
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.website-static-page .website-page-selector-list {
+  gap: 7px;
+}
+
+.website-static-page .website-page-selector {
+  min-height: 60px;
+  gap: 9px;
+  padding: 8px 9px;
+}
+
+.website-static-page .website-page-selector-icon {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+  font-size: 18px;
+}
+
+.website-static-page .website-page-selector-copy strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.website-static-page .website-page-selector-copy small {
+  margin-top: 3px;
+  font-size: 10px;
+}
+
+.website-static-page .website-editor-heading {
+  min-height: 50px;
+  padding: 9px 13px;
+}
+
+.website-static-page .website-editor-title-group {
+  gap: 8px;
+}
+
+.website-static-page .website-editor-icon {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+  font-size: 15px;
+}
+
+.website-static-page .website-editor-heading h2 {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.website-static-page .website-editor-heading p {
+  margin-top: 1px;
+  font-size: 10.5px;
+}
+
+.website-static-page .website-editor-visibility {
+  min-height: 30px;
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.website-static-page .website-editor-body {
+  padding: 13px;
+}
+
+/* The helper should read like guidance, not another full-width card/section. */
+.website-static-page .website-editor-note {
+  margin: 0 0 11px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #777c82;
+  font-size: 10.5px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.website-static-page .website-form-group {
+  margin-bottom: 12px;
+}
+
+.website-static-page .website-form-label,
+.website-static-page .website-form-label-row .website-form-label {
+  margin-bottom: 5px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.website-static-page .website-form-label-row {
+  margin-bottom: 5px;
+}
+
+.website-static-page .website-form-label-row > span {
+  font-size: 10px;
+}
+
+.website-static-page .website-input {
+  min-height: 36px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+/* The screenshot only uses a few paragraphs; avoid a large empty editor. */
+.website-static-page .website-page-content-textarea {
+  min-height: 250px;
+  max-height: 420px;
+}
+
+.website-static-page .website-content-count {
+  margin-top: 5px;
+  font-size: 10px;
+}
+
+/* Saved should look like a quiet state, not a disabled form control. */
+.website-static-page .website-btn-saved {
+  border-color: transparent;
+  background: transparent;
+  color: #686d73;
+  padding-inline: 7px;
+  font-weight: 500;
+}
+
+.website-static-page .website-btn-saved:disabled {
+  opacity: 1;
+}
+
+.website-static-page .website-preview-surface {
+  min-height: 270px;
+  padding: 18px;
+}
+
+.website-static-page .website-preview-surface h2 {
+  margin: 8px 0 12px;
+  font-size: 19px;
+  font-weight: 650;
+}
+
+.website-static-page .website-preview-copy {
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 980px) {
+  .website-static-page .website-content-layout {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .website-static-page .website-content-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .website-static-page .website-page-selector {
+    min-height: 66px;
+  }
+
+  .website-static-page .website-page-content-textarea {
+    min-height: 230px;
+  }
+}
+
+@media (max-width: 560px) {
+  .website-faq-page .website-faq-answer {
+    margin-left: 0;
+  }
+}

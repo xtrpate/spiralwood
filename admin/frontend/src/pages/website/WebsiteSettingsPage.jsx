@@ -518,18 +518,18 @@ export default function WebsiteSettingsPage() {
 
         .website-settings-title {
           margin: 0;
-          color: #0a0a0a;
-          font-size: 28px;
-          line-height: 1.15;
-          font-weight: 780;
-          letter-spacing: -0.024em;
+          color: #18181b;
+          font-size: 24px;
+          line-height: 1.2;
+          font-weight: 700;
+          letter-spacing: -0.02em;
         }
 
         .website-settings-subtitle {
           max-width: 780px;
-          margin: 7px 0 0;
-          color: #666d77;
-          font-size: 13px;
+          margin: 4px 0 0;
+          color: #71717a;
+          font-size: 12.5px;
           line-height: 1.5;
           font-weight: 400;
         }
@@ -546,8 +546,8 @@ export default function WebsiteSettingsPage() {
           justify-content: center;
           gap: 7px;
           cursor: pointer;
-          font-size: 13px;
-          font-weight: 700;
+          font-size: 11.5px;
+          font-weight: 600;
           white-space: nowrap;
         }
 

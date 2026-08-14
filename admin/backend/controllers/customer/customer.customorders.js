@@ -27,6 +27,7 @@ const {
 } = require("../../utils/paymentAmounts");
 const { parseStrictPositiveInt } = require("../../utils/validators");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const {
   getGlobalEmailFooter,
   sendBrevoEmail,
@@ -475,7 +476,25 @@ exports.createCustomOrder = async (req, res) => {
   } = parsedBody;
 
   if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ message: "No items in custom order." });
+    return res.status(400).json({ message: "No custom design was submitted." });
+  }
+
+  if (items.length !== 1) {
+    return res.status(400).json({
+      message:
+        "Only one custom design can be submitted per request. Submit each Blueprint design separately.",
+    });
+  }
+
+  const submittedBlueprintQuantity = parseStrictPositiveInt(
+    items[0]?.quantity,
+  );
+
+  if (!submittedBlueprintQuantity) {
+    return res.status(400).json({
+      message:
+        "Quantity must be a whole number greater than zero for this custom design.",
+    });
   }
 
   if (!String(name || "").trim()) {
@@ -530,7 +549,7 @@ exports.createCustomOrder = async (req, res) => {
       product_name: String(
         item.product_name || item.base_blueprint_title || "Custom Blueprint",
       ).trim(),
-      quantity: toPositiveInt(item.quantity, 1),
+      quantity: submittedBlueprintQuantity,
 
       image_url: toTrimmedStringOrNull(item.image_url),
       preview_image_url: toTrimmedStringOrNull(
@@ -562,8 +581,10 @@ exports.createCustomOrder = async (req, res) => {
     }))
     .filter((item) => item.product_name);
 
-  if (cleanedItems.length === 0) {
-    return res.status(400).json({ message: "Custom order items are invalid." });
+  if (cleanedItems.length !== 1) {
+    return res.status(400).json({
+      message: "Submit exactly one valid custom design per request.",
+    });
   }
 
   const blueprintIds = [
@@ -574,9 +595,9 @@ exports.createCustomOrder = async (req, res) => {
     ),
   ];
 
-  if (!blueprintIds.length) {
+  if (blueprintIds.length !== 1) {
     return res.status(400).json({
-      message: "No valid blueprint/template was found in this custom request.",
+      message: "The custom request must be linked to exactly one Blueprint design.",
     });
   }
 
@@ -729,6 +750,24 @@ exports.createCustomOrder = async (req, res) => {
 
     await conn.commit();
 
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "create_custom_request",
+      tableName: "orders",
+      recordId: order_id,
+      newValues: {
+        order_number,
+        order_type: "blueprint",
+        status: "pending",
+        item_count: cleanedItems.reduce(
+          (sum, item) => sum + Number(item.quantity || 0),
+          0,
+        ),
+        blueprint_id: primaryBlueprintId,
+      },
+      ipAddress: req.ip || null,
+    });
+
     try {
       const [[adminEmailSetting]] = await conn.execute(
         "SELECT content FROM website_content WHERE content_key = 'admin_alert_email' LIMIT 1",
@@ -838,6 +877,8 @@ exports.getCustomOrderById = async (req, res) => {
           payment_url,
           payment_status,
           delivery_address,
+          delivery_lat,
+          delivery_lng,
           notes,
           subtotal,
           tax,
@@ -923,15 +964,46 @@ exports.getCustomOrderById = async (req, res) => {
     // pos.fulfillment.js) always re-read and lock this table themselves
     // under transaction; this copy is never used to authorize a write.
     const [deliveryRows] = await conn.execute(
-      `SELECT id, status
-       FROM deliveries
-       WHERE order_id = ?
-       ORDER BY id DESC
+      `SELECT
+          d.id,
+          d.driver_id,
+          d.assigned_at,
+          d.scheduled_date,
+          d.delivered_date,
+          d.address,
+          d.status,
+          d.signed_receipt,
+          d.updated_at,
+          u.name AS driver_name
+       FROM deliveries d
+       LEFT JOIN users u
+         ON u.id = d.driver_id
+       WHERE d.order_id = ?
+       ORDER BY d.id DESC
        LIMIT 1`,
       [orderId],
     );
     const deliveryRow = deliveryRows[0] || null;
     const deliveryStatus = deliveryRow ? normalize(deliveryRow.status) : null;
+    const customerDeliveryDetails = deliveryRow
+      ? {
+          id: deliveryRow.id,
+          status: deliveryStatus,
+          assigned_at: deliveryRow.assigned_at || null,
+          scheduled_date: deliveryRow.scheduled_date || null,
+          delivered_date: deliveryRow.delivered_date || null,
+          updated_at: deliveryRow.updated_at || null,
+          address:
+            toTrimmedStringOrNull(deliveryRow.address) ||
+            toTrimmedStringOrNull(order.delivery_address),
+          latitude: parseStrictCoordinate(order.delivery_lat),
+          longitude: parseStrictCoordinate(order.delivery_lng),
+          driver_name: toTrimmedStringOrNull(deliveryRow.driver_name),
+          proof_url: signUploadPath(
+            toTrimmedStringOrNull(deliveryRow.signed_receipt),
+          ),
+        }
+      : null;
 
     const totalVerifiedPayments = roundMoney(
       normalizedPayments
@@ -1185,6 +1257,7 @@ exports.getCustomOrderById = async (req, res) => {
       quotation_message: quotationMessage,
       payment_transactions: normalizedPayments,
       discussion: discussionData.messages,
+      delivery_details: customerDeliveryDetails,
       payment_summary: {
         quoted_total: quotedTotal,
         down_payment_due: downPaymentDue,
@@ -1591,6 +1664,22 @@ exports.acceptEstimation = async (req, res) => {
     await conn.commit();
     transactionActive = false;
 
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "accept_custom_estimate",
+      tableName: "estimations",
+      recordId: estimation.id,
+      oldValues: { status: "sent" },
+      newValues: {
+        status: "approved",
+        order_id: order.id,
+        order_number: order.order_number,
+        quoted_total: quotedTotal,
+        down_payment: downPaymentAmount,
+      },
+      ipAddress: req.ip || null,
+    });
+
     return res.json({
       message: "Quotation approved successfully.",
       quoted_total: quotedTotal,
@@ -1775,6 +1864,22 @@ exports.requestEstimationRevision = async (req, res) => {
 
     await conn.commit();
     transactionActive = false;
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "request_custom_estimate_revision",
+      tableName: "estimations",
+      recordId: estimation.id,
+      oldValues: { status: "sent" },
+      newValues: {
+        status: "rejected",
+        customer_decision: "revision_requested",
+        order_id: order.id,
+        order_number: order.order_number,
+        revision_note_provided: Boolean(note),
+      },
+      ipAddress: req.ip || null,
+    });
 
     return res.json({
       message: "Revision request sent successfully.",
@@ -1967,6 +2072,22 @@ exports.rejectEstimation = async (req, res) => {
 
     await conn.commit();
     transactionActive = false;
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "reject_custom_estimate",
+      tableName: "estimations",
+      recordId: estimation.id,
+      oldValues: { status: "sent" },
+      newValues: {
+        status: "rejected",
+        order_id: order.id,
+        order_number: order.order_number,
+        order_status: "cancelled",
+        rejection_reason_provided: Boolean(reason),
+      },
+      ipAddress: req.ip || null,
+    });
 
     return res.json({
       message: "Quotation rejected successfully.",
@@ -2190,7 +2311,7 @@ exports.submitDownPayment = async (req, res) => {
       });
     }
 
-    await conn.execute(
+    const [paymentInsertResult] = await conn.execute(
       `INSERT INTO payment_transactions
         (order_id, amount, payment_method, proof_url, status, notes)
       VALUES (?, ?, ?, ?, 'pending', ?)`,
@@ -2245,6 +2366,21 @@ exports.submitDownPayment = async (req, res) => {
     await conn.commit();
     transactionActive = false;
     proofCommitted = true;
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "submit_blueprint_down_payment",
+      tableName: "payment_transactions",
+      recordId: paymentInsertResult.insertId,
+      newValues: {
+        order_id: order.id,
+        order_number: order.order_number,
+        amount: submittedAmount,
+        payment_method: txPaymentMethod,
+        status: "pending",
+      },
+      ipAddress: req.ip || null,
+    });
 
     return res.json({
       message: "Down payment proof submitted successfully.",
@@ -3093,12 +3229,68 @@ exports.createPayMongoCheckout = async (req, res) => {
     }
 
     if (hasCompleteSession) {
-      await conn.commit();
-      transactionActive = false;
-      return res.json({
-        payment_url: order.payment_url,
-        reused: true,
-      });
+      // Re-check the stored PayMongo session instead of blindly reusing an
+      // expired/failed checkout URL. A provider/network failure never clears
+      // local state; only a confirmed stale session is replaced.
+      let existingSession;
+      try {
+        existingSession = await retrieveCheckoutSession(
+          order.paymongo_session_id,
+        );
+      } catch (pmErr) {
+        await conn.rollback();
+        transactionActive = false;
+        console.error(
+          "[createPayMongoCheckout] PayMongo session check failed:",
+          pmErr.response?.data || pmErr.message || pmErr,
+        );
+        return res.status(502).json({
+          message:
+            "Unable to check the existing online payment session. Please try again.",
+        });
+      }
+
+      const payments = existingSession.attributes?.payments || [];
+      const paymentIntent = existingSession.attributes?.payment_intent;
+      const hasSuccessfulPayment =
+        payments.some((p) => p.attributes?.status === "paid") ||
+        (paymentIntent && paymentIntent.attributes?.status === "succeeded");
+      const sessionStatus = normalize(existingSession.attributes?.status);
+      const sessionStillActive = sessionStatus === "active";
+
+      if (hasSuccessfulPayment || sessionStillActive) {
+        await conn.commit();
+        transactionActive = false;
+        return res.json({
+          payment_url: order.payment_url,
+          reused: true,
+        });
+      }
+
+      // Expired/failed/unknown and not paid: clear only the exact session we
+      // just checked, then continue below to create a fresh checkout.
+      const [clearResult] = await conn.execute(
+        `UPDATE orders
+         SET payment_url = NULL,
+             paymongo_session_id = NULL
+         WHERE id = ?
+           AND customer_id = ?
+           AND order_type = 'blueprint'
+           AND status = 'confirmed'
+           AND payment_status = 'unpaid'
+           AND payment_method = 'paymongo'
+           AND paymongo_session_id = ?
+           AND payment_url = ?`,
+        [order.id, req.user.id, order.paymongo_session_id, order.payment_url],
+      );
+
+      if (clearResult.affectedRows !== 1) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({
+          message: "This order's payment state changed. Please refresh and try again.",
+        });
+      }
     }
 
     const [[customer]] = await conn.execute(
@@ -3313,12 +3505,65 @@ exports.selectPaymentMethod = async (req, res) => {
     }
 
     if (hasCompleteSession) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(400).json({
-        message:
-          "An online payment session is already in progress. Complete or wait for it to expire before changing your payment method.",
-      });
+      // Allow a method switch only after PayMongo confirms that the stored
+      // checkout is stale. Active or already-paid sessions remain locked.
+      let existingSession;
+      try {
+        existingSession = await retrieveCheckoutSession(
+          order.paymongo_session_id,
+        );
+      } catch (pmErr) {
+        await conn.rollback();
+        transactionActive = false;
+        console.error(
+          "[selectPaymentMethod] PayMongo session check failed:",
+          pmErr.response?.data || pmErr.message || pmErr,
+        );
+        return res.status(502).json({
+          message:
+            "Unable to check the existing online payment session. Please try again.",
+        });
+      }
+
+      const payments = existingSession.attributes?.payments || [];
+      const paymentIntent = existingSession.attributes?.payment_intent;
+      const hasSuccessfulPayment =
+        payments.some((p) => p.attributes?.status === "paid") ||
+        (paymentIntent && paymentIntent.attributes?.status === "succeeded");
+      const sessionStatus = normalize(existingSession.attributes?.status);
+      const sessionStillActive = sessionStatus === "active";
+
+      if (hasSuccessfulPayment || sessionStillActive) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(400).json({
+          message:
+            "An online payment session is still active or already paid. Complete its verification before changing your payment method.",
+        });
+      }
+
+      const [clearResult] = await conn.execute(
+        `UPDATE orders
+         SET payment_url = NULL,
+             paymongo_session_id = NULL
+         WHERE id = ?
+           AND customer_id = ?
+           AND order_type = 'blueprint'
+           AND status = 'confirmed'
+           AND payment_status = 'unpaid'
+           AND payment_method = 'paymongo'
+           AND paymongo_session_id = ?
+           AND payment_url = ?`,
+        [order.id, req.user.id, order.paymongo_session_id, order.payment_url],
+      );
+
+      if (clearResult.affectedRows !== 1) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({
+          message: "This order's payment state changed. Please refresh and try again.",
+        });
+      }
     }
 
     const [updateResult] = await conn.execute(

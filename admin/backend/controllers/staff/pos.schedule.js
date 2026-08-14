@@ -1,4 +1,5 @@
 const db = require("../../config/db");
+const { createNotificationSafe } = require("../../utils/notificationHelper");
 
 const APPOINTMENT_STATUSES = [
   "pending",
@@ -16,6 +17,39 @@ const APPOINTMENT_PURPOSES = [
 ];
 
 const normalizeText = (value) => String(value || "").trim();
+
+const APPOINTMENT_MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+const getAppointmentPurposeLabel = (purpose) => {
+  const normalized = normalizeText(purpose).toLowerCase();
+  if (normalized === "site_measurement") return "Site Measurement";
+  if (normalized === "installation") return "Installation";
+  return "Consultation";
+};
+
+const formatAppointmentSchedule = (value) => {
+  const raw = String(value || "").trim().replace("T", " ");
+  const match = /^(\d{4})-(\d{2})-(\d{2})[ ](\d{2}):(\d{2})/.exec(raw);
+  if (!match) return "the requested schedule";
+  const [, year, month, day, hour, minute] = match;
+  const hourNumber = Number(hour);
+  const displayHour = hourNumber % 12 || 12;
+  const period = hourNumber >= 12 ? "PM" : "AM";
+  return `${APPOINTMENT_MONTHS[Number(month) - 1]} ${Number(day)}, ${year} at ${displayHour}:${minute} ${period}`;
+};
 
 const toNullableInt = (value) => {
   if (value === undefined || value === null || value === "") return null;
@@ -487,6 +521,23 @@ exports.createAppointment = async (req, res) => {
 
     const appointment = await getAppointmentById(insertId);
 
+    if (assignedStaffId) {
+      const purposeLabel = getAppointmentPurposeLabel(purpose);
+      const scheduleLabel = formatAppointmentSchedule(scheduledDate);
+      const orderContext = appointment?.order_number
+        ? ` for Order ${appointment.order_number}`
+        : "";
+      await createNotificationSafe(db, {
+        userId: assignedStaffId,
+        type: "appointment_assignment",
+        title: "New Appointment Assigned",
+        message: `You were assigned a ${purposeLabel} appointment${orderContext} for ${scheduleLabel}. Open Appointments to review the details.`,
+        targetType: "appointment",
+        targetId: insertId,
+        targetOrderId: orderId || null,
+      });
+    }
+
     req.auditRecord = {
       id: insertId,
       new: {
@@ -620,6 +671,34 @@ exports.updateAppointment = async (req, res) => {
           ],
         );
 
+        const purposeLabel = getAppointmentPurposeLabel(existing.purpose);
+        const scheduleLabel = formatAppointmentSchedule(existing.scheduled_date);
+        if (isAccept && existing.customer_id) {
+          await createNotificationSafe(conn, {
+            userId: existing.customer_id,
+            type: "appointment_confirmed",
+            title: "Appointment Confirmed",
+            message: `Your ${purposeLabel} appointment is confirmed for ${scheduleLabel}.`,
+            targetType: "appointment",
+            targetId: appointmentId,
+            targetOrderId: existing.order_id || null,
+          });
+        }
+        if (isReturnToAdmin) {
+          const ownerId = existing.request_owner_id || existing.reviewed_by;
+          if (ownerId && Number(ownerId) !== Number(req.user.id)) {
+            await createNotificationSafe(conn, {
+              userId: ownerId,
+              type: "appointment_reassignment_needed",
+              title: "Appointment Needs Reassignment",
+              message: `${req.user.name || "Indoor staff"} returned the ${purposeLabel} appointment scheduled for ${scheduleLabel}. Assign another staff member.`,
+              targetType: "appointment",
+              targetId: appointmentId,
+              targetOrderId: existing.order_id || null,
+            });
+          }
+        }
+
         await conn.commit();
         transactionActive = false;
         conn.release();
@@ -681,6 +760,23 @@ exports.updateAppointment = async (req, res) => {
         `,
         [requestedStatus, nextNotes, appointmentId],
       );
+
+      if (existing.customer_id) {
+        const purposeLabel = getAppointmentPurposeLabel(existing.purpose);
+        const scheduleLabel = formatAppointmentSchedule(existing.scheduled_date);
+        await createNotificationSafe(conn, {
+          userId: existing.customer_id,
+          type: "appointment_update",
+          title: requestedStatus === "completed" ? "Appointment Completed" : "Appointment Cancelled",
+          message:
+            requestedStatus === "completed"
+              ? `Your ${purposeLabel} appointment scheduled for ${scheduleLabel} has been completed.`
+              : `Your ${purposeLabel} appointment scheduled for ${scheduleLabel} has been cancelled.`,
+          targetType: "appointment",
+          targetId: appointmentId,
+          targetOrderId: existing.order_id || null,
+        });
+      }
 
       await conn.commit();
       transactionActive = false;
@@ -906,6 +1002,62 @@ exports.updateAppointment = async (req, res) => {
         appointmentId,
       ],
     );
+
+    const purposeLabel = getAppointmentPurposeLabel(purpose);
+    const scheduleLabel = formatAppointmentSchedule(scheduledDate);
+    const assignmentChanged = changedFields.includes("assigned_staff_id");
+    const scheduleChanged = changedFields.includes("scheduled_date");
+
+    if (assignmentChanged && assignedStaffId) {
+      await createNotificationSafe(conn, {
+        userId: assignedStaffId,
+        type: "appointment_assignment",
+        title: "New Appointment Assigned",
+        message: `You were assigned a ${purposeLabel} appointment for ${scheduleLabel}. Open Appointments to review the details.`,
+        targetType: "appointment",
+        targetId: appointmentId,
+        targetOrderId: existing.order_id || null,
+      });
+    }
+
+    if (scheduleChanged && existing.customer_id) {
+      await createNotificationSafe(conn, {
+        userId: existing.customer_id,
+        type: "appointment_rescheduled",
+        title: "Appointment Rescheduled",
+        message: `Your ${purposeLabel} appointment was moved to ${scheduleLabel}. Please review the updated schedule.`,
+        targetType: "appointment",
+        targetId: appointmentId,
+        targetOrderId: existing.order_id || null,
+      });
+    }
+
+    if (scheduleChanged && assignedStaffId && !assignmentChanged) {
+      await createNotificationSafe(conn, {
+        userId: assignedStaffId,
+        type: "appointment_rescheduled",
+        title: "Appointment Rescheduled",
+        message: `Your assigned ${purposeLabel} appointment was moved to ${scheduleLabel}.`,
+        targetType: "appointment",
+        targetId: appointmentId,
+        targetOrderId: existing.order_id || null,
+      });
+    }
+
+    if (["rejected", "cancelled"].includes(status) && status !== currentStatus && existing.customer_id) {
+      await createNotificationSafe(conn, {
+        userId: existing.customer_id,
+        type: "appointment_update",
+        title: status === "rejected" ? "Appointment Request Not Approved" : "Appointment Cancelled",
+        message:
+          status === "rejected"
+            ? `We could not approve your ${purposeLabel} appointment request for ${scheduleLabel}. Please choose another schedule or contact our team.`
+            : `Your ${purposeLabel} appointment for ${scheduleLabel} has been cancelled.`,
+        targetType: "appointment",
+        targetId: appointmentId,
+        targetOrderId: existing.order_id || null,
+      });
+    }
 
     await conn.commit();
     transactionActive = false;

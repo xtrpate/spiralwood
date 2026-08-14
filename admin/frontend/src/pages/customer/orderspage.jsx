@@ -214,6 +214,7 @@ function TrackingList({ order }) {
 }
 
 function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
+  const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -503,6 +504,39 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
                     </div>
                   </div>
 
+                  {order.receipt?.id && (
+                    <div
+                      style={{
+                        marginTop: 16,
+                        paddingTop: 14,
+                        borderTop: "1px solid #e4e4e7",
+                      }}
+                    >
+                      <div
+                        className="om-detail-row"
+                        style={{ marginBottom: 12 }}
+                      >
+                        <span>Receipt</span>
+                        <strong>
+                          {order.receipt.receipt_number}
+                        </strong>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="order-inline-btn order-inline-btn-primary om-action-btn"
+                        style={{ width: "100%" }}
+                        onClick={() =>
+                          navigate(
+                            `/orders/${order.id}/receipts/${order.receipt.id}`,
+                          )
+                        }
+                      >
+                        View Receipt
+                      </button>
+                    </div>
+                  )}
+
                   {order.notes && (
                     <div className="om-note-block">
                       <div className="om-note-label">Notes</div>
@@ -610,25 +644,61 @@ export default function OrdersPage() {
   };
 
   useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const verifySuccess = searchParams.get("verify_success");
-    const orderNumber = searchParams.get("order");
+    const redirectParams = new URLSearchParams(window.location.search);
+    const verifySuccess = redirectParams.get("verify_success");
+    const orderNumber = redirectParams.get("order");
 
     if (verifySuccess === "true" && orderNumber) {
       setLoading(true);
+
       api
         .post("/customer/orders/verify-payment", {
           order_number: orderNumber,
         })
-        .then(() => {
+        .then(({ data }) => {
           window.history.replaceState(
             {},
             document.title,
             window.location.pathname,
           );
+
+          if (data?.success && data?.payment_status === "paid") {
+            try {
+              const raw = sessionStorage.getItem(
+                "wisdom_last_order_confirmation",
+              );
+              const confirmation = raw ? JSON.parse(raw) : {};
+
+              sessionStorage.setItem(
+                "wisdom_last_order_confirmation",
+                JSON.stringify({
+                  ...(confirmation && typeof confirmation === "object"
+                    ? confirmation
+                    : {}),
+                  order_number:
+                    data.order_number ||
+                    confirmation?.order_number ||
+                    orderNumber,
+                  payment_method: "paymongo",
+                  payment_status: "paid",
+                  receipt_id: data.receipt_id || null,
+                  receipt_number: data.receipt_number || null,
+                }),
+              );
+            } catch {
+              // Verification remains successful even if browser storage is unavailable.
+            }
+
+            navigate("/order-complete", { replace: true });
+            return;
+          }
+
+          fetchOrders();
         })
-        .catch((err) => console.error("Verification error:", err))
-        .finally(() => {
+        .catch((err) => {
+          console.error("Verification error:", err);
+          // Keep verify_success + order in the URL on failure so a refresh can
+          // safely retry after a temporary backend/database issue is fixed.
           fetchOrders();
         });
     } else {
@@ -896,13 +966,15 @@ export default function OrdersPage() {
                           className="wisdom-order-item"
                         >
                           <div className="wisdom-order-item-image">
-                            {order.blueprint_id &&
-                            index === 0 &&
-                            order.blueprint_preview ? (
+                            {(item.blueprint_preview ||
+                              (order.blueprint_id &&
+                                index === 0 &&
+                                order.blueprint_preview)) ? (
                               <div className="wisdom-order-blueprint-live">
                                 <CustomerBlueprintViewer
                                   blueprint={{
-                                    ...order.blueprint_preview,
+                                    ...(item.blueprint_preview ||
+                                      order.blueprint_preview),
                                     thumbnail_url: null,
                                   }}
                                   readOnly
@@ -964,11 +1036,15 @@ export default function OrdersPage() {
 
                           <div className="wisdom-order-item-copy">
                             <div className="wisdom-order-item-name">
-                              {order.blueprint_id
-                                ? order.blueprint_preview?.title
-                                  ? `Custom Blueprint – ${order.blueprint_preview.title}`
-                                  : "Custom Blueprint Order"
-                                : item.product_name || "Order item"}
+                              {item.is_custom_blueprint
+                                ? item.blueprint_title
+                                  ? `Custom Blueprint – ${item.blueprint_title}`
+                                  : item.product_name || "Custom Blueprint Order"
+                                : order.blueprint_id
+                                  ? order.blueprint_preview?.title
+                                    ? `Custom Blueprint – ${order.blueprint_preview.title}`
+                                    : "Custom Blueprint Order"
+                                  : item.product_name || "Order item"}
                             </div>
                           </div>
 

@@ -60,6 +60,8 @@ const normalizeCartItem = (item = {}) => {
     key,
     cart_type: cartType,
     item_type: cartType === "blueprint" ? "blueprint" : "standard",
+    // Same custom design may contain multiple units.
+    // Distinct-design separation is enforced at checkout, not by forcing qty=1.
     quantity: toPositiveInt(item?.quantity, 1),
     unit_price: toMoney(item?.unit_price, 0),
     production_cost: toMoney(item?.production_cost, 0),
@@ -267,6 +269,12 @@ export function CartProvider({ children }) {
           if (item.key !== cleanKey) return item;
 
           const nextQty = toPositiveInt(item.quantity, 1) + Number(delta || 0);
+
+          // A custom design stays in the cart at quantity 1 until the
+          // customer explicitly removes it with the trash action.
+          if (item.cart_type === "blueprint" && nextQty <= 0) {
+            return item;
+          }
 
           if (nextQty <= 0) return null;
 

@@ -5,6 +5,7 @@ const bcrypt = require("bcryptjs");
 const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
+const { calcDownPaymentAmount } = require("../../utils/paymentAmounts");
 
 // ══ WARRANTY ══════════════════════════════════════════════════════════════════
 exports.getAll = async (req, res) => {
@@ -277,7 +278,7 @@ exports.generateContract = async (req, res) => {
     }
 
     // ── Gate E: verified payment — payment_transactions only ─────────
-    const requiredDownPayment = Number((estimationGrandTotal * 0.3).toFixed(2));
+    const requiredDownPayment = calcDownPaymentAmount(estimationGrandTotal);
     const verifiedPaymentTotal = Number(lifecycle.verified_payment_total || 0);
 
     if (verifiedPaymentTotal < requiredDownPayment - 0.01) {
@@ -467,7 +468,7 @@ exports.getCustomers = async (req, res) => {
 
     const [rows] = await pool.query(
       `SELECT id, name, email, phone, address, is_active, is_verified,
-              approval_status, created_at, last_login
+              approval_status, profile_photo, created_at, last_login
        FROM users WHERE ${where.join(" AND ")}
        ORDER BY created_at DESC
        LIMIT ? OFFSET ?`,
@@ -556,6 +557,7 @@ exports.getUsers = async (req, res) => {
          role,
          staff_type,
          phone,
+         profile_photo,
          is_active,
          last_login,
          created_at
@@ -804,9 +806,11 @@ exports.getAuditLogs = async (req, res) => {
       const likeValue = `%${rawSearch}%`;
       if (/^\d+$/.test(rawSearch)) {
         where.push(
-          "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ? OR al.record_id = ?)",
+          "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ? OR al.old_values LIKE ? OR al.new_values LIKE ? OR al.record_id = ?)",
         );
         params.push(
+          likeValue,
+          likeValue,
           likeValue,
           likeValue,
           likeValue,
@@ -815,9 +819,16 @@ exports.getAuditLogs = async (req, res) => {
         );
       } else {
         where.push(
-          "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ?)",
+          "(u.name LIKE ? OR u.email LIKE ? OR al.action LIKE ? OR al.table_name LIKE ? OR al.old_values LIKE ? OR al.new_values LIKE ?)",
         );
-        params.push(likeValue, likeValue, likeValue, likeValue);
+        params.push(
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+          likeValue,
+        );
       }
     }
     if (rawAction) {

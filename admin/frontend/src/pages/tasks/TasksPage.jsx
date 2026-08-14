@@ -20,29 +20,36 @@ const REQUIRED_PRODUCTION_ROLES = [
   "Packing",
 ];
 
+const TASK_ROLE_FILTERS = [
+  ...REQUIRED_PRODUCTION_ROLES,
+  ...PRIORITY_ROLES.filter(
+    (role) => !REQUIRED_PRODUCTION_ROLES.includes(role),
+  ),
+];
+
 const STATUS_META = {
   pending: {
     label: "Pending",
-    bg: "#ffffff",
-    color: "#52525b",
-    border: "#d4d4d8",
+    bg: "#fffbeb",
+    color: "#a16207",
+    border: "#fde68a",
   },
   in_progress: {
-    label: "In Progress",
-    bg: "#f4f4f5",
-    color: "#18181b",
-    border: "#e4e4e7",
+    label: "In progress",
+    bg: "#eff6ff",
+    color: "#1d4ed8",
+    border: "#bfdbfe",
   },
   completed: {
     label: "Completed",
-    bg: "#0a0a0a",
-    color: "#ffffff",
-    border: "#0a0a0a",
+    bg: "#ecfdf5",
+    color: "#15803d",
+    border: "#bbf7d0",
   },
   blocked: {
     label: "Blocked",
     bg: "#fef2f2",
-    color: "#991b1b",
+    color: "#b91c1c",
     border: "#fecaca",
   },
 };
@@ -458,129 +465,287 @@ export default function TasksPage() {
       ? `#${String(productionOrderId).padStart(5, "0")}`
       : "—";
 
+  const formatTaskDateTime = (value) => {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "—";
+    return date.toLocaleString("en-PH", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  };
+
+  const isRepeatedProductionDescription = (task) => {
+    const description = String(task?.description || "").trim().toLowerCase();
+    const role = String(task?.task_role || "").trim().toLowerCase();
+    return Boolean(
+      description &&
+        role &&
+        description === "production step: " + role
+    );
+  };
+
   // ── Styles ──────────────────────────────────────────────────────────────────
   const S = {
     page: {
       padding: "28px 32px",
       background: "#f4f4f5",
       minHeight: "100vh",
-      fontFamily: "'Inter', sans-serif",
+      fontFamily: "inherit",
+      color: "#18181b",
+      fontVariantNumeric: "tabular-nums",
     },
     header: {
       display: "flex",
       alignItems: "flex-start",
       justifyContent: "space-between",
-      marginBottom: 24,
+      marginBottom: 18,
       flexWrap: "wrap",
-      gap: 16,
+      gap: 14,
     },
     title: {
       fontSize: 24,
-      fontWeight: 800,
-      color: "#0a0a0a",
+      fontWeight: 700,
+      lineHeight: 1.2,
+      color: "#18181b",
       margin: 0,
       letterSpacing: "-0.02em",
     },
-    sub: { fontSize: 13, color: "#52525b", marginTop: 4 },
+    sub: {
+      fontSize: 13,
+      fontWeight: 400,
+      color: "#71717a",
+      lineHeight: 1.5,
+      margin: "4px 0 0",
+    },
     statRow: {
       display: "grid",
-      gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-      gap: 14,
-      marginBottom: 24,
+      gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+      gap: 10,
+      marginBottom: 12,
     },
     stat: {
-      background: "#fff",
+      background: "#ffffff",
       border: "1px solid #e4e4e7",
-      borderRadius: 12,
-      padding: "16px 20px",
-      boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+      borderRadius: 0,
+      minHeight: 78,
+      padding: "13px 15px",
+      boxSizing: "border-box",
+      boxShadow: "none",
     },
     statNum: {
-      fontSize: 26,
-      fontWeight: 800,
-      color: "#0a0a0a",
+      fontSize: 25,
+      fontWeight: 700,
+      lineHeight: 1,
+      color: "#18181b",
       letterSpacing: "-0.02em",
+      fontVariantNumeric: "tabular-nums",
     },
     statLbl: {
-      fontSize: 10,
+      fontSize: 9.5,
       color: "#71717a",
-      marginTop: 4,
+      marginTop: 0,
+      marginBottom: 8,
       textTransform: "uppercase",
-      letterSpacing: "1px",
-      fontWeight: 800,
+      letterSpacing: "0.08em",
+      fontWeight: 600,
+    },
+    panel: {
+      background: "#ffffff",
+      border: "1px solid #e4e4e7",
+      borderRadius: 0,
+      boxShadow: "none",
+      overflow: "hidden",
+    },
+    panelHeader: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 16,
+      padding: "14px 16px 10px",
+    },
+    panelTitle: {
+      margin: 0,
+      fontSize: 15.5,
+      fontWeight: 700,
+      lineHeight: 1.3,
+      color: "#18181b",
+    },
+    panelHint: {
+      margin: "3px 0 0",
+      fontSize: 11.5,
+      fontWeight: 400,
+      lineHeight: 1.4,
+      color: "#71717a",
+    },
+    countText: {
+      fontSize: 11,
+      fontWeight: 400,
+      color: "#71717a",
+      whiteSpace: "nowrap",
     },
     toolbar: {
       display: "flex",
-      gap: 10,
-      marginBottom: 20,
+      gap: 8,
+      padding: "10px 12px",
+      borderTop: "1px solid #eeeeef",
+      borderBottom: "1px solid #e4e4e7",
       alignItems: "center",
       flexWrap: "wrap",
+      background: "#ffffff",
+    },
+    searchWrap: {
+      position: "relative",
+      flex: "0 1 360px",
+      width: 360,
+      maxWidth: "100%",
+    },
+    searchIcon: {
+      position: "absolute",
+      left: 11,
+      top: "50%",
+      transform: "translateY(-50%)",
+      color: "#71717a",
+      pointerEvents: "none",
     },
     input: {
-      padding: "9px 14px",
-      border: "1px solid #e4e4e7",
-      borderRadius: 8,
-      fontSize: 13,
-      background: "#fff",
+      width: "100%",
+      minHeight: 36,
+      padding: "8px 11px 8px 34px",
+      border: "1px solid #d4d4d8",
+      borderRadius: 0,
+      fontFamily: "inherit",
+      fontSize: 12.5,
+      fontWeight: 400,
+      background: "#ffffff",
       outline: "none",
       color: "#18181b",
+      boxSizing: "border-box",
     },
     select: {
-      padding: "9px 14px",
-      border: "1px solid #e4e4e7",
-      borderRadius: 8,
-      fontSize: 13,
-      background: "#fff",
+      minHeight: 36,
+      padding: "8px 30px 8px 11px",
+      border: "1px solid #d4d4d8",
+      borderRadius: 0,
+      fontFamily: "inherit",
+      fontSize: 12.5,
+      fontWeight: 400,
+      background: "#ffffff",
       cursor: "pointer",
       color: "#18181b",
       outline: "none",
     },
     btn: {
-      padding: "9px 18px",
-      borderRadius: 8,
-      border: "none",
+      minHeight: 34,
+      padding: "0 11px",
+      borderRadius: 0,
       cursor: "pointer",
-      fontSize: 13,
-      fontWeight: 700,
-      transition: "background 0.2s",
+      fontFamily: "inherit",
+      fontSize: 11.5,
+      lineHeight: 1,
+      fontWeight: 600,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      whiteSpace: "nowrap",
+      boxSizing: "border-box",
     },
     btnPrim: {
       background: "#18181b",
-      color: "#fff",
+      color: "#ffffff",
       border: "1px solid #18181b",
     },
     btnGray: {
-      background: "#f4f4f5",
+      background: "#ffffff",
       color: "#18181b",
-      border: "1px solid #e4e4e7",
+      border: "1px solid #d4d4d8",
     },
     btnRed: {
-      background: "#fef2f2",
+      background: "#ffffff",
       color: "#991b1b",
-      border: "1px solid #fecaca",
-    },
-    card: {
-      background: "#fff",
-      border: "1px solid #e4e4e7",
-      borderRadius: 12,
-      padding: "18px 20px",
-      marginBottom: 12,
-      boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
+      border: "1px solid #efb6b6",
     },
     tag: (bg, color, border) => ({
-      display: "inline-block",
-      padding: "2px 10px",
-      borderRadius: 20,
-      fontSize: 11,
-      fontWeight: 600,
+      display: "inline-flex",
+      alignItems: "center",
+      minHeight: 24,
+      padding: "0 8px",
+      borderRadius: 0,
+      fontSize: 10.5,
+      lineHeight: 1,
+      fontWeight: 500,
       background: bg,
       color,
       border: `1px solid ${border || bg}`,
+      whiteSpace: "nowrap",
     }),
+    tableScroll: {
+      width: "100%",
+      maxHeight: "calc(100vh - 380px)",
+      minHeight: 220,
+      overflow: "auto",
+    },
+    table: {
+      width: "100%",
+      minWidth: 980,
+      borderCollapse: "collapse",
+      fontSize: 12.5,
+      fontVariantNumeric: "tabular-nums",
+    },
+    th: {
+      position: "sticky",
+      top: 0,
+      zIndex: 2,
+      padding: "10px 12px",
+      background: "#fafafa",
+      borderBottom: "1px solid #e4e4e7",
+      color: "#71717a",
+      textAlign: "left",
+      fontSize: 9.5,
+      fontWeight: 600,
+      letterSpacing: "0.08em",
+      textTransform: "uppercase",
+      whiteSpace: "nowrap",
+    },
+    tr: {
+      background: "#ffffff",
+      borderBottom: "1px solid #eeeeef",
+    },
+    td: {
+      padding: "12px",
+      color: "#3f3f46",
+      fontSize: 12.5,
+      fontWeight: 400,
+      lineHeight: 1.35,
+      verticalAlign: "middle",
+    },
+    primary: {
+      color: "#18181b",
+      fontWeight: 600,
+      lineHeight: 1.35,
+    },
+    secondary: {
+      marginTop: 3,
+      color: "#71717a",
+      fontSize: 10.5,
+      fontWeight: 400,
+      lineHeight: 1.35,
+    },
+    rowActions: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "flex-start",
+      gap: 7,
+      flexWrap: "nowrap",
+      whiteSpace: "nowrap",
+    },
     overlay: {
       position: "fixed",
       inset: 0,
-      background: "rgba(0,0,0,.6)",
+      background: "rgba(0, 0, 0, 0.48)",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
@@ -588,42 +753,60 @@ export default function TasksPage() {
       padding: 20,
     },
     modal: {
-      background: "#fff",
-      borderRadius: 16,
+      background: "#ffffff",
+      borderRadius: 0,
       width: 560,
       maxWidth: "100%",
       maxHeight: "90vh",
       overflowY: "auto",
-      padding: 32,
-      boxShadow: "0 25px 60px rgba(0,0,0,.15)",
-      border: "1px solid #e4e4e7",
+      padding: 24,
+      boxShadow: "none",
+      border: "1px solid #d4d4d8",
+      boxSizing: "border-box",
     },
     mTitle: {
       fontSize: 20,
-      fontWeight: 800,
-      color: "#0a0a0a",
-      marginBottom: 24,
-      letterSpacing: "-0.01em",
+      fontWeight: 700,
+      lineHeight: 1.25,
+      color: "#18181b",
+      marginBottom: 20,
+      letterSpacing: "-0.015em",
     },
     label: {
-      fontSize: 12,
-      fontWeight: 800,
-      color: "#18181b",
+      fontSize: 11,
+      fontWeight: 600,
+      color: "#3f3f46",
       display: "block",
-      marginBottom: 8,
+      marginBottom: 6,
     },
     mInput: {
       width: "100%",
-      padding: "10px 14px",
-      border: "1px solid #e4e4e7",
-      borderRadius: 8,
-      fontSize: 13,
+      minHeight: 38,
+      padding: "9px 11px",
+      border: "1px solid #d4d4d8",
+      borderRadius: 0,
+      fontFamily: "inherit",
+      fontSize: 12.5,
+      fontWeight: 400,
       boxSizing: "border-box",
       outline: "none",
-      color: "#0a0a0a",
+      color: "#18181b",
+      background: "#ffffff",
+      fontVariantNumeric: "tabular-nums",
     },
-    mRow: { marginBottom: 18 },
-    half: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 },
+    mRow: { marginBottom: 16 },
+    half: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+      gap: 12,
+    },
+    infoBox: {
+      border: "1px solid #e4e4e7",
+      borderRadius: 0,
+      background: "#fafafa",
+      padding: "12px 14px",
+      marginBottom: 16,
+    },
   };
 
   const isEditingRequiredProductionTask =
@@ -637,348 +820,383 @@ export default function TasksPage() {
           <h1 style={S.title}>Task Assignments</h1>
           <p style={S.sub}>
             {isAdmin
-              ? "Assign project tasks to staff and track progress."
-              : "Your assigned tasks and their current status."}
+              ? "Assign tasks to staff and track progress."
+              : "Review your assigned tasks and current progress."}
           </p>
         </div>
         {isAdmin && (
           <button
             type="button"
-            style={{ ...S.btn, ...S.btnPrim }}
+            style={{ ...S.btn, ...S.btnPrim, minHeight: 36, padding: "0 14px" }}
             onClick={openProductionOrderPicker}
           >
-            + Assign Production Staff
+            + Assign production staff
           </button>
         )}
       </div>
 
-      {/* ── Stats ──────────────────────────────────────────────────────────── */}
+      {/* ── Summary ────────────────────────────────────────────────────────── */}
       <div style={S.statRow}>
         {[
-          { label: "Total", value: stats.total, color: "#0a0a0a" },
+          { label: "Total", value: stats.total, color: "#18181b" },
           { label: "Pending", value: stats.pending, color: "#52525b" },
-          { label: "In Progress", value: stats.in_progress, color: "#18181b" },
-          { label: "Completed", value: stats.completed, color: "#0a0a0a" },
-          { label: "Blocked", value: stats.blocked, color: "#dc2626" },
-        ].map((s) => (
-          <div key={s.label} style={S.stat}>
-            <div style={{ ...S.statNum, color: s.color }}>{s.value}</div>
-            <div style={S.statLbl}>{s.label}</div>
+          { label: "In progress", value: stats.in_progress, color: "#18181b" },
+          { label: "Completed", value: stats.completed, color: "#18181b" },
+          { label: "Blocked", value: stats.blocked, color: "#b91c1c" },
+        ].map((item) => (
+          <div key={item.label} style={S.stat}>
+            <div style={S.statLbl}>{item.label}</div>
+            <div style={{ ...S.statNum, color: item.color }}>
+              {Number(item.value || 0).toLocaleString("en-PH")}
+            </div>
           </div>
         ))}
       </div>
 
-      {/* ── Toolbar ────────────────────────────────────────────────────────── */}
-      <div style={S.toolbar}>
-        <input
-          style={{ ...S.input, flex: "1 1 230px", minWidth: 200 }}
-          placeholder="Search title, staff, order…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select
-          style={S.select}
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-        >
-          <option value="all">All Status</option>
-          <option value="pending">Pending</option>
-          <option value="in_progress">In Progress</option>
-          <option value="completed">Completed</option>
-          <option value="blocked">Blocked</option>
-        </select>
-        <select
-          style={S.select}
-          value={filterRole}
-          onChange={(e) => setFilterRole(e.target.value)}
-        >
-          <option value="all">All Roles</option>
-          {REQUIRED_PRODUCTION_ROLES.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
-        <span
-          style={{
-            fontSize: 12,
-            color: "#71717a",
-            marginLeft: "auto",
-            fontWeight: 600,
-          }}
-        >
-          {filtered.length} task{filtered.length !== 1 ? "s" : ""}
-        </span>
-      </div>
+      {/* ── Tasks panel ────────────────────────────────────────────────────── */}
+      <section style={S.panel}>
+        <div style={S.panelHeader}>
+          <div>
+            <h2 style={S.panelTitle}>Tasks</h2>
+            <p style={S.panelHint}>Review staff assignments and task progress.</p>
+          </div>
+          <span style={S.countText}>
+            {filtered.length.toLocaleString("en-PH")} shown
+          </span>
+        </div>
 
-      {/* ── Task List ──────────────────────────────────────────────────────── */}
-      {loading ? (
-        <div
-          style={{
-            textAlign: "center",
-            padding: 60,
-            color: "#71717a",
-            fontWeight: 600,
-            fontSize: 13,
-          }}
-        >
-          Loading tasks…
-        </div>
-      ) : filtered.length === 0 ? (
-        <div
-          style={{
-            textAlign: "center",
-            padding: 60,
-            color: "#71717a",
-            fontWeight: 600,
-            fontSize: 13,
-          }}
-        >
-          {isAdmin
-            ? 'No tasks yet. Click "+ Assign Production Staff" to get started.'
-            : "No tasks assigned to you."}
-        </div>
-      ) : (
-        filtered.map((t) => {
-          const sm = STATUS_META[t.status] || STATUS_META.pending;
-          const rc = ROLE_COLOR[t.task_role] || ROLE_COLOR["Other"];
-          const overdue = isOverdue(t);
-          return (
-            <div
-              key={t.id}
-              id={`task-row-${t.id}`}
-              style={{
-                ...S.card,
-                borderColor: overdue ? "#fecaca" : "#e4e4e7",
-                borderLeft: `4px solid ${overdue ? "#dc2626" : sm.color}`,
-                ...(focusedTaskId === t.id
-                  ? {
-                      boxShadow: "0 0 0 3px #0a0a0a",
-                      transition: "box-shadow 0.3s ease",
-                    }
-                  : null),
-              }}
+        <div style={S.toolbar}>
+          <div style={S.searchWrap}>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={S.searchIcon}
+              aria-hidden="true"
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                }}
-              >
-                {/* Left side */}
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      alignItems: "center",
-                      marginBottom: 8,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <span style={S.tag(sm.bg, sm.color, sm.border)}>
-                      {sm.label}
-                    </span>
-                    <span style={S.tag(rc.bg, rc.color, rc.border)}>
-                      {t.task_role}
-                    </span>
-                    {overdue && (
-                      <span style={S.tag("#fef2f2", "#991b1b", "#fecaca")}>
-                        ⚠ Overdue
-                      </span>
-                    )}
-                    {!t.is_read && (
-                      <span style={S.tag("#18181b", "#ffffff", "#18181b")}>
-                        ● New
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 800,
-                      color: "#0a0a0a",
-                      marginBottom: 6,
-                    }}
-                  >
-                    {t.title}
-                  </div>
-                  {t.description && (
-                    <div
-                      style={{
-                        fontSize: 13,
-                        color: "#52525b",
-                        marginBottom: 10,
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      {t.description}
-                    </div>
-                  )}
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: "#71717a",
-                      display: "flex",
-                      gap: 16,
-                      flexWrap: "wrap",
-                      fontWeight: 500,
-                    }}
-                  >
-                    <span>
-                      👤{" "}
-                      <b style={{ color: "#18181b" }}>{t.assigned_to_name}</b>
-                    </span>
-                    <span>📌 By {t.assigned_by_name}</span>
-                    {t.order_number && <span>🛒 Order #{t.order_number}</span>}
-                    {t.blueprint_title && <span>🗺 {t.blueprint_title}</span>}
-                    {t.due_date && (
-                      <span style={{ color: overdue ? "#dc2626" : "#71717a" }}>
-                        📅 Due{" "}
-                        {new Date(t.due_date).toLocaleDateString("en-PH")}
-                      </span>
-                    )}
-                    {t.completed_at && (
-                      <span style={{ color: "#0a0a0a", fontWeight: 700 }}>
-                        ✓ {new Date(t.completed_at).toLocaleDateString("en-PH")}
-                      </span>
-                    )}
-                  </div>
-                </div>
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <input
+              type="search"
+              style={S.input}
+              placeholder="Search tasks, staff, or order"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search tasks"
+            />
+          </div>
 
-                {/* Right side actions */}
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    marginLeft: 16,
-                    flexShrink: 0,
-                    flexWrap: "wrap",
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  <button
-                    style={{ ...S.btn, ...S.btnGray, padding: "7px 14px" }}
-                    onClick={() => openView(t)}
+          <select
+            style={{ ...S.select, width: 160 }}
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            aria-label="Filter tasks by status"
+          >
+            <option value="all">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="in_progress">In progress</option>
+            <option value="completed">Completed</option>
+            <option value="blocked">Blocked</option>
+          </select>
+
+          <select
+            style={{ ...S.select, width: 180 }}
+            value={filterRole}
+            onChange={(e) => setFilterRole(e.target.value)}
+            aria-label="Filter tasks by role"
+          >
+            <option value="all">All roles</option>
+            {TASK_ROLE_FILTERS.map((role) => (
+              <option key={role} value={role}>
+                {role}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            style={{ ...S.btn, ...S.btnGray }}
+            onClick={() => {
+              setSearch("");
+              setFilterStatus("all");
+              setFilterRole("all");
+            }}
+          >
+            Reset
+          </button>
+        </div>
+
+        <div style={S.tableScroll}>
+          <table style={S.table}>
+            <thead>
+              <tr>
+                <th style={{ ...S.th, width: "32%" }}>Task</th>
+                <th style={{ ...S.th, width: "18%" }}>Staff</th>
+                <th style={{ ...S.th, width: "17%" }}>Due</th>
+                <th style={{ ...S.th, width: "12%" }}>Status</th>
+                <th style={{ ...S.th, width: "21%", textAlign: "left" }}>
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    style={{
+                      ...S.td,
+                      textAlign: "center",
+                      padding: 42,
+                      color: "#71717a",
+                    }}
                   >
-                    View
-                  </button>
-                  {isAdmin && (
-                    <>
-                      {!REQUIRED_PRODUCTION_ROLES.includes(t.task_role) && (
-                        <button
-                          style={{
-                            ...S.btn,
-                            ...S.btnGray,
-                            padding: "7px 14px",
-                          }}
-                          onClick={() => openEdit(t)}
-                        >
-                          Edit
-                        </button>
-                      )}
-                      {!REQUIRED_PRODUCTION_ROLES.includes(t.task_role) && (
-                        <button
-                          style={{ ...S.btn, ...S.btnRed, padding: "7px 14px" }}
-                          onClick={() => handleDelete(t.id)}
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </>
-                  )}
-                  {isAdmin &&
-                    REQUIRED_PRODUCTION_ROLES.includes(t.task_role) &&
-                    t.order_id && (
-                      <button
-                        style={{ ...S.btn, ...S.btnGray, padding: "7px 14px" }}
-                        onClick={() => navigate(`/admin/orders/${t.order_id}`)}
-                      >
-                        Open Order
-                      </button>
-                    )}
-                  {!isAdmin && t.status !== "completed" && (
-                    <select
+                    Loading tasks...
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    style={{
+                      ...S.td,
+                      textAlign: "center",
+                      padding: 42,
+                      color: "#71717a",
+                    }}
+                  >
+                    {tasks.length === 0
+                      ? "No tasks available yet."
+                      : "No tasks match the current filters."}
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((t) => {
+                  const sm = STATUS_META[t.status] || STATUS_META.pending;
+                  const overdue = isOverdue(t);
+                  const descriptionIsRepeated =
+                    isRepeatedProductionDescription(t);
+                  const normalizedTitle = String(t.title || "").toLowerCase();
+                  const normalizedRole = String(t.task_role || "").toLowerCase();
+                  const titleHasRole =
+                    normalizedRole && normalizedTitle.includes(normalizedRole);
+                  const titleHasOrder =
+                    t.order_number &&
+                    normalizedTitle.includes(
+                      String(t.order_number).toLowerCase(),
+                    );
+
+                  return (
+                    <tr
+                      key={t.id}
+                      id={`task-row-${t.id}`}
                       style={{
-                        ...S.select,
-                        fontSize: 12,
-                        padding: "6px 12px",
-                        height: 33,
+                        ...S.tr,
+                        ...(focusedTaskId === t.id
+                          ? {
+                              boxShadow: "inset 3px 0 0 #18181b",
+                              background: "#fafafa",
+                            }
+                          : null),
                       }}
-                      value={t.status}
-                      onChange={(e) => handleStatusUpdate(t.id, e.target.value)}
                     >
-                      <option value="pending">Pending</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="completed">Completed</option>
-                      <option value="blocked">Blocked</option>
-                    </select>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })
-      )}
+                      <td style={S.td}>
+                        <div style={S.primary}>{t.title}</div>
+                        {t.description && !descriptionIsRepeated && (
+                          <div style={{ ...S.secondary, maxWidth: 560 }}>
+                            {t.description}
+                          </div>
+                        )}
+                        <div
+                          style={{
+                            ...S.secondary,
+                            display: "flex",
+                            gap: 10,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          {!titleHasRole && t.task_role && (
+                            <span>{t.task_role}</span>
+                          )}
+                          {!titleHasOrder && t.order_number && (
+                            <span>Order #{t.order_number}</span>
+                          )}
+                          {!t.is_read && (
+                            <span
+                              style={{
+                                color: "#18181b",
+                                fontWeight: 600,
+                              }}
+                            >
+                              New
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      <td style={S.td}>
+                        <div style={{ ...S.primary, fontWeight: 500 }}>
+                          {t.assigned_to_name || "Not assigned"}
+                        </div>
+                      </td>
+
+                      <td style={S.td}>
+                        <div
+                          style={{
+                            color: overdue ? "#b91c1c" : "#3f3f46",
+                          }}
+                        >
+                          {formatTaskDateTime(t.due_date)}
+                        </div>
+                        {overdue && (
+                          <div
+                            style={{
+                              ...S.secondary,
+                              color: "#b91c1c",
+                              fontWeight: 500,
+                            }}
+                          >
+                            Overdue
+                          </div>
+                        )}
+                      </td>
+
+                      <td style={S.td}>
+                        <span style={S.tag(sm.bg, sm.color, sm.border)}>
+                          {sm.label}
+                        </span>
+                      </td>
+
+                      <td style={{ ...S.td, textAlign: "right" }}>
+                        <div style={S.rowActions}>
+                          <button
+                            type="button"
+                            style={{ ...S.btn, ...S.btnGray }}
+                            onClick={() => openView(t)}
+                          >
+                            Details
+                          </button>
+
+                          {isAdmin &&
+                            REQUIRED_PRODUCTION_ROLES.includes(t.task_role) &&
+                            t.order_id && (
+                              <button
+                                type="button"
+                                style={{ ...S.btn, ...S.btnPrim }}
+                                onClick={() =>
+                                  navigate(`/admin/orders/${t.order_id}`)
+                                }
+                              >
+                                Open order
+                              </button>
+                            )}
+
+                          {isAdmin &&
+                            !REQUIRED_PRODUCTION_ROLES.includes(t.task_role) && (
+                              <>
+                                <button
+                                  type="button"
+                                  style={{ ...S.btn, ...S.btnGray }}
+                                  onClick={() => openEdit(t)}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  style={{ ...S.btn, ...S.btnRed }}
+                                  onClick={() => handleDelete(t.id)}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            )}
+
+                          {!isAdmin && t.status !== "completed" && (
+                            <select
+                              style={{
+                                ...S.select,
+                                minHeight: 34,
+                                fontSize: 11.5,
+                              }}
+                              value={t.status}
+                              onChange={(e) =>
+                                handleStatusUpdate(t.id, e.target.value)
+                              }
+                              aria-label="Update task status"
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="in_progress">In progress</option>
+                              <option value="completed">Completed</option>
+                              <option value="blocked">Blocked</option>
+                            </select>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* ── Production Order Picker ───────────────────────────────────────── */}
       {productionOrderPickerOpen && (
         <div style={S.overlay} onClick={closeProductionOrderPicker}>
           <div
-            style={{ ...S.modal, maxWidth: 560 }}
+            style={{ ...S.modal, width: 520 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ marginBottom: 22 }}>
-              <div style={S.mTitle}>Assign Production Staff</div>
+            <div style={{ marginBottom: 18 }}>
+              <div style={S.mTitle}>Select production order</div>
               <div
                 style={{
-                  color: "#52525b",
-                  fontSize: 13,
-                  lineHeight: 1.6,
-                  marginTop: -14,
+                  color: "#71717a",
+                  fontSize: 12.5,
+                  lineHeight: 1.5,
+                  marginTop: -12,
                 }}
               >
-                Select a blueprint order that is ready for production staff
-                assignment.
+                Choose a blueprint order that is ready for production.
               </div>
             </div>
 
             <div style={S.mRow}>
-              <label style={S.label}>Blueprint Production Order *</label>
+              <label style={S.label}>Production order *</label>
               <select
                 style={S.mInput}
                 value={productionOrderSelection}
                 onChange={(e) => setProductionOrderSelection(e.target.value)}
               >
-                <option value="">Select an eligible order…</option>
+                <option value="">Select an order</option>
                 {eligibleProductionOrders.map((order) => (
                   <option key={order.id} value={order.id}>
                     {order.order_number
                       ? `#${order.order_number}`
                       : `Order #${String(order.id).padStart(5, "0")}`}
-                    {order.status
-                      ? ` — ${String(order.status).replace(/_/g, " ")}`
-                      : ""}
                   </option>
                 ))}
               </select>
             </div>
 
             {eligibleProductionOrders.length === 0 && (
-              <div
-                style={{
-                  padding: "12px 14px",
-                  marginBottom: 18,
-                  border: "1px solid #e4e4e7",
-                  background: "#fafafa",
-                  color: "#52525b",
-                  fontSize: 12,
-                  lineHeight: 1.6,
-                }}
-              >
-                No blueprint orders are currently in Contract Released or
-                Production status.
+              <div style={S.infoBox}>
+                <div
+                  style={{
+                    color: "#52525b",
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  No blueprint orders are ready for production assignment.
+                </div>
               </div>
             )}
 
@@ -986,8 +1204,8 @@ export default function TasksPage() {
               style={{
                 display: "flex",
                 justifyContent: "flex-end",
-                gap: 12,
-                marginTop: 22,
+                gap: 8,
+                marginTop: 18,
               }}
             >
               <button
@@ -1014,55 +1232,45 @@ export default function TasksPage() {
       {productionAssignModal && (
         <div style={S.overlay}>
           <div
-            style={{ ...S.modal, maxWidth: 620 }}
+            style={{ ...S.modal, width: 600 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ marginBottom: 22 }}>
-              <div style={S.mTitle}>
-                Assign Indoor Staff to Production Order
-              </div>
+            <div style={{ marginBottom: 18 }}>
+              <div style={S.mTitle}>Assign production staff</div>
               <div
                 style={{
-                  display: "flex",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  marginTop: -14,
-                  color: "#52525b",
+                  color: "#71717a",
                   fontSize: 12,
-                  fontWeight: 600,
+                  lineHeight: 1.5,
+                  marginTop: -12,
                 }}
               >
-                <span>Order {productionAssignmentOrderLabel}</span>
-                {productionBlueprintId && (
-                  <>
-                    <span>•</span>
-                    <span>
-                      Blueprint BP-
-                      {String(productionBlueprintId).padStart(5, "0")}
-                    </span>
-                  </>
-                )}
+                Order {productionAssignmentOrderLabel}
+                {productionBlueprintId
+                  ? ` · Blueprint BP-${String(productionBlueprintId).padStart(
+                      5,
+                      "0",
+                    )}`
+                  : ""}
               </div>
             </div>
 
             {productionAssignLoading ? (
               <div
                 style={{
-                  padding: "34px 16px",
+                  padding: "32px 16px",
                   textAlign: "center",
                   color: "#71717a",
-                  fontSize: 13,
-                  fontWeight: 600,
+                  fontSize: 12.5,
                 }}
               >
-                Loading available indoor staff…
+                Loading available staff...
               </div>
             ) : (
               <form onSubmit={handleProductionAssign}>
                 <div style={S.half}>
                   <div style={S.mRow}>
-                    <label style={S.label}>Primary Indoor Staff *</label>
+                    <label style={S.label}>Indoor staff *</label>
                     <select
                       style={S.mInput}
                       value={productionAssignForm.staff_id}
@@ -1074,11 +1282,10 @@ export default function TasksPage() {
                         }))
                       }
                     >
-                      <option value="">Select indoor staff…</option>
+                      <option value="">Select staff</option>
                       {productionAssignableStaff.map((person) => (
                         <option key={person.id} value={person.id}>
-                          {person.name} — {person.active_task_count} active
-                          production
+                          {person.name} — {person.active_task_count} active task
                           {Number(person.active_task_count) === 1 ? "" : "s"}
                         </option>
                       ))}
@@ -1086,7 +1293,7 @@ export default function TasksPage() {
                   </div>
 
                   <div style={S.mRow}>
-                    <label style={S.label}>Due Date & Time *</label>
+                    <label style={S.label}>Due date and time *</label>
                     <input
                       type="datetime-local"
                       style={S.mInput}
@@ -1102,42 +1309,42 @@ export default function TasksPage() {
                   </div>
                 </div>
 
-                <div
-                  style={{
-                    border: "1px solid #e4e4e7",
-                    borderRadius: 8,
-                    background: "#fafafa",
-                    padding: "14px 16px",
-                    marginBottom: 18,
-                  }}
-                >
+                <div style={S.infoBox}>
                   <div
                     style={{
-                      fontSize: 11,
-                      fontWeight: 800,
-                      color: "#18181b",
+                      fontSize: 10.5,
+                      fontWeight: 600,
+                      color: "#3f3f46",
                       textTransform: "uppercase",
                       letterSpacing: "0.08em",
-                      marginBottom: 8,
+                      marginBottom: 6,
                     }}
                   >
-                    Production workflow packet
+                    Tasks created
                   </div>
                   <div
-                    style={{ fontSize: 13, color: "#52525b", lineHeight: 1.7 }}
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 400,
+                      color: "#52525b",
+                      lineHeight: 1.55,
+                    }}
                   >
-                    The selected indoor staff will receive five linked tasks:
-                    Cutting Machine, Edge Banding, Horizontal Drilling,
-                    Retouching, and Packing.
+                    Creates five linked tasks: Cutting Machine, Edge Banding,
+                    Horizontal Drilling, Retouching, and Packing.
                   </div>
                 </div>
 
                 <div style={S.mRow}>
-                  <label style={S.label}>Assignment Note (optional)</label>
+                  <label style={S.label}>Notes</label>
                   <textarea
-                    style={{ ...S.mInput, minHeight: 96, resize: "vertical" }}
+                    style={{
+                      ...S.mInput,
+                      minHeight: 88,
+                      resize: "vertical",
+                    }}
                     value={productionAssignForm.note}
-                    placeholder="Add production instructions or notes…"
+                    placeholder="Add instructions for the assigned staff"
                     onChange={(e) =>
                       setProductionAssignForm((current) => ({
                         ...current,
@@ -1150,40 +1357,37 @@ export default function TasksPage() {
                 {productionAssignableStaff.length === 0 && (
                   <div
                     style={{
-                      padding: "12px 14px",
-                      marginBottom: 18,
-                      border: "1px solid #fecaca",
-                      background: "#fef2f2",
+                      ...S.infoBox,
+                      borderColor: "#efb6b6",
+                      background: "#fffafa",
                       color: "#991b1b",
                       fontSize: 12,
-                      fontWeight: 600,
                     }}
                   >
-                    No active indoor staff are currently available for
-                    assignment.
+                    No active indoor staff are available for assignment.
                   </div>
                 )}
 
                 <div
                   style={{
                     display: "flex",
-                    gap: 12,
+                    gap: 8,
                     justifyContent: "space-between",
                     alignItems: "center",
-                    marginTop: 12,
+                    marginTop: 10,
                     flexWrap: "wrap",
                   }}
                 >
                   <button
                     type="button"
-                    style={{ ...S.btn, ...S.btnGray }}
+                    style={{ ...S.btn, ...S.btnPrim }}
                     onClick={() =>
                       navigate(`/admin/orders/${productionOrderId}`)
                     }
                   >
-                    Open Order
+                    Open order
                   </button>
-                  <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ display: "flex", gap: 8 }}>
                     <button
                       type="button"
                       style={{ ...S.btn, ...S.btnGray }}
@@ -1200,9 +1404,7 @@ export default function TasksPage() {
                         productionAssignableStaff.length === 0
                       }
                     >
-                      {productionAssigning
-                        ? "Assigning…"
-                        : "Assign Indoor Staff"}
+                      {productionAssigning ? "Assigning..." : "Assign staff"}
                     </button>
                   </div>
                 </div>
@@ -1221,7 +1423,7 @@ export default function TasksPage() {
             </div>
             <form onSubmit={handleSave}>
               <div style={S.mRow}>
-                <label style={S.label}>Task Title *</label>
+                <label style={S.label}>Task title *</label>
                 <input
                   style={S.mInput}
                   value={form.title}
@@ -1233,7 +1435,7 @@ export default function TasksPage() {
                 />
               </div>
               <div style={S.mRow}>
-                <label style={S.label}>Description</label>
+                <label style={S.label}>Notes</label>
                 <textarea
                   style={{ ...S.mInput, height: 90, resize: "vertical" }}
                   value={form.description}
@@ -1245,7 +1447,7 @@ export default function TasksPage() {
               </div>
               <div style={S.half}>
                 <div style={S.mRow}>
-                  <label style={S.label}>Assign To *</label>
+                  <label style={S.label}>Staff *</label>
                   <select
                     style={S.mInput}
                     value={form.assigned_to}
@@ -1267,7 +1469,7 @@ export default function TasksPage() {
                   </select>
                 </div>
                 <div style={S.mRow}>
-                  <label style={S.label}>Task Role</label>
+                  <label style={S.label}>Role</label>
                   {isEditingRequiredProductionTask ? (
                     <select style={S.mInput} value={form.task_role} disabled>
                       <option value={form.task_role}>{form.task_role}</option>
@@ -1289,7 +1491,7 @@ export default function TasksPage() {
                   )}
                 </div>
                 <div style={S.mRow}>
-                  <label style={S.label}>Due Date & Time</label>
+                  <label style={S.label}>Due date and time</label>
                   <input
                     type="datetime-local"
                     style={S.mInput}
@@ -1319,7 +1521,7 @@ export default function TasksPage() {
               </div>
               <div style={S.half}>
                 <div style={S.mRow}>
-                  <label style={S.label}>Link to Order (optional)</label>
+                  <label style={S.label}>Order</label>
                   {isEditingRequiredProductionTask ? (
                     <select style={S.mInput} value={form.order_id} disabled>
                       <option value={form.order_id}>
@@ -1348,8 +1550,7 @@ export default function TasksPage() {
                     <div
                       style={{ fontSize: 11, color: "#71717a", marginTop: 4 }}
                     >
-                      Production step and order are managed through Orders →
-                      Blueprint.
+                      Production task links are managed from the order.
                     </div>
                   )}
                 </div>
@@ -1395,7 +1596,7 @@ export default function TasksPage() {
           return (
             <div style={S.overlay} onClick={() => setModal(null)}>
               <div style={S.modal} onClick={(e) => e.stopPropagation()}>
-                <div style={S.mTitle}>Task Details</div>
+                <div style={S.mTitle}>Task details</div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
                   <span style={S.tag(sm.bg, sm.color, sm.border)}>
                     {sm.label}
@@ -1405,23 +1606,23 @@ export default function TasksPage() {
                   </span>
                 </div>
                 {[
-                  ["Title", target.title],
-                  ["Description", target.description || "—"],
-                  ["Assigned To", target.assigned_to_name || "—"],
-                  ["Assigned By", target.assigned_by_name],
+                  ["Task", target.title],
+                  ["Notes", target.description || "—"],
+                  ["Staff", target.assigned_to_name || "—"],
+                  ["Assigned by", target.assigned_by_name],
                   [
-                    "Linked Order",
+                    "Order",
                     target.order_number ? `#${target.order_number}` : "—",
                   ],
                   ["Blueprint", target.blueprint_title || "—"],
                   [
-                    "Due Date",
+                    "Due date",
                     target.due_date
                       ? new Date(target.due_date).toLocaleString("en-PH")
                       : "—",
                   ],
                   [
-                    "Accepted At",
+                    "Accepted",
                     target.accepted_at
                       ? new Date(target.accepted_at).toLocaleString("en-PH")
                       : "—",
@@ -1450,14 +1651,14 @@ export default function TasksPage() {
                   >
                     <span
                       style={{
-                        fontWeight: 700,
+                        fontWeight: 600,
                         color: "#71717a",
-                        minWidth: 130,
+                        minWidth: 120,
                       }}
                     >
                       {k}
                     </span>
-                    <span style={{ color: "#18181b", fontWeight: 500 }}>
+                    <span style={{ color: "#18181b", fontWeight: 400 }}>
                       {v}
                     </span>
                   </div>

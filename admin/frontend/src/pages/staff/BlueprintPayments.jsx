@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { FileText, RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import api, { buildAssetUrl } from "../../services/api";
+import api from "../../services/api";
+import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
 import "./BlueprintPayments.css";
 
 const formatMoney = (value) =>
@@ -109,30 +110,77 @@ function PaymentBadge({ status }) {
   );
 }
 
-function BlueprintThumb({ src, title, size = "list" }) {
-  const [failed, setFailed] = useState(false);
-  const assetUrl = buildAssetUrl(src);
+function BlueprintPreview({ blueprint, title, size = "list" }) {
+  const designData = blueprint?.blueprint_design_data || null;
+  const view3dData = blueprint?.blueprint_view_3d_data || null;
+  const draftEditorSnapshot = blueprint?.draft_editor_snapshot || null;
+  const draftComponents = Array.isArray(draftEditorSnapshot?.components)
+    ? draftEditorSnapshot.components
+    : [];
+  const hasDraftScene = draftComponents.length > 0;
+  const hasSavedSceneSource = Boolean(designData || view3dData || hasDraftScene);
+  const compactHeight = size === "detail" ? 64 : 56;
 
-  if (!assetUrl || failed) {
+  if (!hasSavedSceneSource) {
     return (
       <div
         className={`bp-thumb bp-thumb-${size} bp-thumb-fallback`}
         aria-label="Blueprint preview unavailable"
         title="Blueprint preview unavailable"
       >
-        <FileText size={18} aria-hidden="true" />
+        <span aria-hidden="true">—</span>
       </div>
     );
   }
 
+  const liveBlueprint = {
+    id:
+      blueprint?.blueprint_id ||
+      blueprint?.order_id ||
+      blueprint?.id ||
+      `blueprint-payment-${blueprint?.order_number || "preview"}`,
+    title: title || blueprint?.blueprint_title || "Blueprint",
+    thumbnail_url: null,
+    components: hasDraftScene ? draftComponents : undefined,
+    design_data:
+      designData ||
+      (hasDraftScene
+        ? {
+            components: draftComponents,
+            worldSize: draftEditorSnapshot?.worldSize || null,
+          }
+        : null),
+    view_3d_data:
+      view3dData ||
+      (hasDraftScene
+        ? {
+            components: draftComponents,
+            worldSize: draftEditorSnapshot?.worldSize || null,
+          }
+        : null),
+  };
+
   return (
-    <div className={`bp-thumb bp-thumb-${size}`}>
-      <img
-        src={assetUrl}
-        alt={title || "Blueprint"}
-        onError={() => setFailed(true)}
+    <div className={`bp-thumb bp-thumb-${size} bp-thumb-live`}>
+      <CustomerBlueprintViewer
+        blueprint={liveBlueprint}
+        readOnly
+        showHumanControls={false}
+        compact
+        compactHeight={compactHeight}
+        defaultPreset="isometric"
+        defaultShowHuman={false}
       />
     </div>
+  );
+}
+
+function OrderStatusBadge({ status }) {
+  const key = normalize(status);
+  return (
+    <span className={`bp-order-status-badge bp-order-status-${key || "unknown"}`}>
+      {ORDER_STATUS_TEXT[key] || status || "-"}
+    </span>
   );
 }
 
@@ -439,8 +487,8 @@ export default function BlueprintPayments() {
                     className={`bp-order-row ${selected ? "is-selected" : ""}`}
                     onClick={() => openOrder(order.order_number)}
                   >
-                    <BlueprintThumb
-                      src={order.thumbnail_url}
+                    <BlueprintPreview
+                      blueprint={order}
                       title={order.blueprint_title}
                     />
 
@@ -454,11 +502,7 @@ export default function BlueprintPayments() {
 
                     <div className="bp-order-status">
                       <PaymentBadge status={paymentStatus} />
-                      <span>
-                        {ORDER_STATUS_TEXT[normalize(order.order_status)] ||
-                          order.order_status ||
-                          "-"}
-                      </span>
+                      <OrderStatusBadge status={order.order_status} />
                     </div>
 
                     <div className="bp-order-money">
@@ -503,8 +547,8 @@ export default function BlueprintPayments() {
           ) : summary ? (
             <>
               <div className="bp-detail-header">
-                <BlueprintThumb
-                  src={summary.thumbnail_url}
+                <BlueprintPreview
+                  blueprint={summary}
                   title={summary.blueprint_title}
                   size="detail"
                 />
@@ -530,11 +574,7 @@ export default function BlueprintPayments() {
                       : summary.payment_status
                   }
                 />
-                <span>
-                  {ORDER_STATUS_TEXT[normalize(summary.order_status)] ||
-                    summary.order_status ||
-                    "-"}
-                </span>
+                <OrderStatusBadge status={summary.order_status} />
               </div>
 
               <div className="bp-money-summary">

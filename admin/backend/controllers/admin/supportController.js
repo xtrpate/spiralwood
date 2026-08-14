@@ -219,7 +219,7 @@ exports.assignTicket = async (req, res) => {
     // Check ticket exists
     const [ticketRows] = await conn.query(
       `
-      SELECT id, status
+      SELECT id, status, subject
       FROM support_tickets
       WHERE id = ?
       `,
@@ -280,8 +280,8 @@ exports.assignTicket = async (req, res) => {
     await createNotificationSafe(conn, {
       userId: assigned_to,
       type: "support_assignment",
-      title: "New Support Ticket Assigned",
-      message: `A support ticket has been assigned to you.`,
+      title: "Support Ticket Assigned",
+      message: `You were assigned support ticket “${ticketRows[0].subject}”. Open the ticket to review the customer’s concern.`,
       targetType: "support_ticket",
       targetId: ticketId,
     });
@@ -326,7 +326,7 @@ exports.updateTicketStatus = async (req, res) => {
 
     const [ticketRows] = await conn.query(
       `
-      SELECT id
+      SELECT id, customer_id, subject, status
       FROM support_tickets
       WHERE id = ?
       `,
@@ -412,6 +412,24 @@ WHERE id = ?
       [ticketId],
     );
 
+    if (
+      status === "resolved" &&
+      ticketRows[0].status !== "resolved" &&
+      ticketRows[0].customer_id
+    ) {
+      const resolution = String(resolution_note || "").trim();
+      await createNotificationSafe(conn, {
+        userId: ticketRows[0].customer_id,
+        type: "support_resolved",
+        title: "Support Request Resolved",
+        message: resolution
+          ? `Your support request “${ticketRows[0].subject}” has been resolved. Resolution: ${resolution}`
+          : `Your support request “${ticketRows[0].subject}” has been resolved. Open the ticket to review the update.`,
+        targetType: "support_ticket",
+        targetId: ticketId,
+      });
+    }
+
     await conn.commit();
 
     return res.json({
@@ -495,8 +513,8 @@ exports.replyToTicket = async (req, res) => {
     await createNotificationSafe(conn, {
       userId: ticketRows[0].customer_id,
       type: "support_reply",
-      title: "Support Ticket Updated",
-      message: `Your support ticket "${ticketRows[0].subject}" has a new reply.`,
+      title: "New Reply from Spiral Wood Services",
+      message: `Our team replied to your support request “${ticketRows[0].subject}”. Open Support to read the message.`,
       targetType: "support_ticket",
       targetId: ticketId,
     });

@@ -16,6 +16,10 @@ const {
   createNotificationSafe,
 } = require("../../utils/notificationHelper");
 
+const {
+  resolveLifecycleByOrder,
+} = require("../../services/blueprintLifecycleService");
+
 // PHASE 5 corrective patch — deletes ONLY the file this specific request
 // freshly uploaded via multer (req.file), never an existing, already
 // persisted deliveries.signed_receipt. Never called after a successful
@@ -55,6 +59,135 @@ const DELIVERY_TRANSITIONS = {
   failed: [],
 };
 const normalizeText = (value) => String(value || "").trim();
+
+const REQUIRED_BLUEPRINT_DELIVERY_TASK_ROLES = [
+  "cutting_machine",
+  "edge_banding",
+  "horizontal_drilling",
+  "retouching",
+  "packing",
+];
+
+const normalizeBlueprintDeliveryTaskRole = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+
+const getBlueprintDeliveryReadiness = async (conn, orderId) => {
+  const lifecycle = await resolveLifecycleByOrder(conn, { orderId });
+
+  if (!lifecycle || lifecycle.status !== "OK") {
+    return {
+      ok: false,
+      message:
+        lifecycle?.message ||
+        "This blueprint order has an unresolved lifecycle issue.",
+    };
+  }
+
+  const lifecycleOrder = lifecycle.order || {};
+  const blueprint = lifecycle.blueprint || null;
+  const estimation = lifecycle.estimation || null;
+  const contract = lifecycle.contract || null;
+  const totalAmount = Number(lifecycleOrder.total || 0);
+  const estimationTotal = Number(estimation?.grand_total || 0);
+  const verifiedTotal = Number(lifecycle.verified_payment_total || 0);
+  const requiredDownPayment = Number((totalAmount * 0.3).toFixed(2));
+
+  if (!blueprint) {
+    return {
+      ok: false,
+      message: "A linked blueprint is required before delivery can be scheduled.",
+    };
+  }
+
+  if (!estimation) {
+    return {
+      ok: false,
+      message: "Create and approve the project estimate before scheduling delivery.",
+    };
+  }
+
+  if (normalizeText(estimation.status).toLowerCase() !== "approved") {
+    return {
+      ok: false,
+      message: "The approved project estimate is required before scheduling delivery.",
+    };
+  }
+
+  if (!(estimationTotal > 0) || !(totalAmount > 0)) {
+    return {
+      ok: false,
+      message: "Finalize the approved quotation amount before scheduling delivery.",
+    };
+  }
+
+  if (Math.abs(totalAmount - estimationTotal) > 0.01) {
+    return {
+      ok: false,
+      message: "The order total must match the approved estimate before scheduling delivery.",
+    };
+  }
+
+  if (!contract) {
+    return {
+      ok: false,
+      message: "Generate the contract before scheduling delivery.",
+    };
+  }
+
+  if (verifiedTotal < Math.max(0, requiredDownPayment - 0.01)) {
+    return {
+      ok: false,
+      message: "At least 30% verified down payment is required before blueprint delivery.",
+    };
+  }
+
+  const [taskRows] = await conn.query(
+    `SELECT task_role, status
+     FROM project_tasks
+     WHERE order_id = ?`,
+    [orderId],
+  );
+
+  const existingRoles = new Set(
+    taskRows
+      .map((row) => normalizeBlueprintDeliveryTaskRole(row.task_role))
+      .filter(Boolean),
+  );
+
+  const completedRoles = new Set(
+    taskRows
+      .filter((row) => normalizeText(row.status).toLowerCase() === "completed")
+      .map((row) => normalizeBlueprintDeliveryTaskRole(row.task_role))
+      .filter(Boolean),
+  );
+
+  const missingRoles = REQUIRED_BLUEPRINT_DELIVERY_TASK_ROLES.filter(
+    (role) => !existingRoles.has(role),
+  );
+
+  if (missingRoles.length) {
+    return {
+      ok: false,
+      message: "Create all required production tasks before scheduling delivery.",
+    };
+  }
+
+  const incompleteRoles = REQUIRED_BLUEPRINT_DELIVERY_TASK_ROLES.filter(
+    (role) => !completedRoles.has(role),
+  );
+
+  if (incompleteRoles.length) {
+    return {
+      ok: false,
+      message: "Finish all required production tasks before scheduling delivery.",
+    };
+  }
+
+  return { ok: true };
+};
 
 const toNullableInt = (value) => {
   if (value === undefined || value === null || value === "") return null;
@@ -211,7 +344,26 @@ exports.getDeliverableOrders = async (req, res) => {
       [], // Added this safety parameter
     );
 
-    res.json(rows);
+    const deliverableRows = [];
+
+    for (const row of rows) {
+      const isBlueprint =
+        normalizeText(row.order_type).toLowerCase() === "blueprint";
+
+      if (!isBlueprint) {
+        deliverableRows.push(row);
+        continue;
+      }
+
+      if (normalizeText(row.status).toLowerCase() !== "production") {
+        continue;
+      }
+
+      const readiness = await getBlueprintDeliveryReadiness(db, row.id);
+      if (readiness.ok) deliverableRows.push(row);
+    }
+
+    res.json(deliverableRows);
   } catch (err) {
     console.error("GET /api/pos/deliverable-orders error:", err);
     res.status(500).json({ message: "Failed to load deliverable orders" });
@@ -349,6 +501,7 @@ exports.createDelivery = async (req, res) => {
         o.order_number,
         o.customer_id,
         o.status,
+        o.order_type,
         o.payment_status,
         o.delivery_address,
         o.requested_delivery_date,
@@ -374,6 +527,19 @@ exports.createDelivery = async (req, res) => {
       return res.status(400).json({
         message: "This order can no longer be scheduled for delivery",
       });
+    }
+    if (normalizeText(order.order_type).toLowerCase() === "blueprint") {
+      if (orderStatus !== "production") {
+        return res.status(409).json({
+          message:
+            "Blueprint delivery can only be scheduled after the order reaches Production.",
+        });
+      }
+
+      const readiness = await getBlueprintDeliveryReadiness(db, orderId);
+      if (!readiness.ok) {
+        return res.status(409).json({ message: readiness.message });
+      }
     }
 
     const [[existingDelivery]] = await db.query(
@@ -610,7 +776,7 @@ exports.rescheduleDelivery = async (req, res) => {
 
     const [[order]] = await conn.query(
       `
-      SELECT id, order_number, customer_id, status
+      SELECT id, order_number, customer_id, status, order_type
       FROM orders
       WHERE id = ?
       LIMIT 1
@@ -630,6 +796,24 @@ exports.rescheduleDelivery = async (req, res) => {
       return res.status(409).json({
         message: "This order can no longer be rescheduled for delivery.",
       });
+    }
+    if (normalizeText(order.order_type).toLowerCase() === "blueprint") {
+      if (orderStatus !== "shipping") {
+        await conn.rollback();
+        return res.status(409).json({
+          message:
+            "A Blueprint redelivery must remain in Shipping until a new delivery attempt is completed.",
+        });
+      }
+
+      const readiness = await getBlueprintDeliveryReadiness(
+        conn,
+        sourceDelivery.order_id,
+      );
+      if (!readiness.ok) {
+        await conn.rollback();
+        return res.status(409).json({ message: readiness.message });
+      }
     }
 
     const finalNotes = [
@@ -860,7 +1044,7 @@ exports.updateDeliveryStatus = async (req, res) => {
 
     const [[order]] = await conn.query(
       `SELECT id, order_number, total, status, payment_status, customer_id,
-              order_type, remaining_payment_method
+              order_type, payment_method, remaining_payment_method
        FROM orders
        WHERE id = ?
        LIMIT 1
@@ -891,6 +1075,62 @@ exports.updateDeliveryStatus = async (req, res) => {
       normalizeText(order.order_type || "").toLowerCase() === "blueprint";
     isCompletingDeliveryNow =
       requestedStatus === "delivered" && currentStatus !== "delivered";
+    if (isBlueprintOrder) {
+      const linkedOrderStatus = normalizeText(order.status).toLowerCase();
+
+      if (requestedStatus === "in_transit" && currentStatus === "scheduled") {
+        if (linkedOrderStatus !== "production") {
+          await conn.rollback();
+          cleanupFreshUpload(req.file);
+          return res.status(409).json({
+            message:
+              "This Blueprint order is not ready to leave Production yet.",
+          });
+        }
+
+        const readiness = await getBlueprintDeliveryReadiness(
+          conn,
+          existing.order_id,
+        );
+        if (!readiness.ok) {
+          await conn.rollback();
+          cleanupFreshUpload(req.file);
+          return res.status(409).json({ message: readiness.message });
+        }
+      }
+
+      if (requestedStatus === "delivered" && currentStatus === "in_transit") {
+        if (linkedOrderStatus !== "shipping") {
+          await conn.rollback();
+          cleanupFreshUpload(req.file);
+          return res.status(409).json({
+            message:
+              "The Blueprint order must be in Shipping before it can be marked Delivered.",
+          });
+        }
+
+        const readiness = await getBlueprintDeliveryReadiness(
+          conn,
+          existing.order_id,
+        );
+        if (!readiness.ok) {
+          await conn.rollback();
+          cleanupFreshUpload(req.file);
+          return res.status(409).json({ message: readiness.message });
+        }
+      }
+
+      if (requestedStatus === "failed" && currentStatus === "in_transit") {
+        if (linkedOrderStatus !== "shipping") {
+          await conn.rollback();
+          cleanupFreshUpload(req.file);
+          return res.status(409).json({
+            message:
+              "A Blueprint delivery can only fail after the order enters Shipping.",
+          });
+        }
+      }
+    }
 
     // PHASE 5 -- BLUEPRINT RIDER FINAL CASH COLLECTION
     // Isolated branch inside this shared delivery-completion flow. Only
@@ -1114,6 +1354,25 @@ exports.updateDeliveryStatus = async (req, res) => {
     const currentBalance = Math.max(0, totalAmount - verifiedTotalBefore);
     const hasPendingPaymentBefore =
       Number(paymentSummaryBefore?.has_pending || 0) === 1;
+    const isStandardCodOrder =
+      !isBlueprintOrder &&
+      normalizeText(order.order_type || "").toLowerCase() === "standard" &&
+      normalizeText(order.payment_method || "").toLowerCase() === "cod";
+
+    if (
+      isCompletingDeliveryNow &&
+      isStandardCodOrder &&
+      currentBalance > 0.009 &&
+      hasPendingPaymentBefore
+    ) {
+      await conn.rollback();
+      cleanupFreshUpload(req.file);
+      return res.status(409).json({
+        reason_code: "COD_PAYMENT_REVIEW_PENDING",
+        message:
+          "A payment is already awaiting admin review for this COD order. Verify or reject it before completing delivery.",
+      });
+    }
 
     // isCompletingDeliveryNow is already declared above (needed earlier
     // for the Phase 5 blueprint branch's own gating).
@@ -1142,21 +1401,43 @@ exports.updateDeliveryStatus = async (req, res) => {
     if (shouldRecordDeliveryCollection) {
       if (!(collectedAmount > 0)) {
         await conn.rollback();
+        cleanupFreshUpload(req.file);
         return res.status(400).json({
           message:
             "Please enter the amount collected by the rider before completing this delivery.",
         });
       }
 
-      if (!DELIVERY_COLLECTION_METHODS.includes(collectedPaymentMethod)) {
+      const paymentMethodIsValid = isStandardCodOrder
+        ? collectedPaymentMethod === "cash"
+        : DELIVERY_COLLECTION_METHODS.includes(collectedPaymentMethod);
+
+      if (!paymentMethodIsValid) {
         await conn.rollback();
+        cleanupFreshUpload(req.file);
         return res.status(400).json({
-          message: "Invalid collected payment method.",
+          message: isStandardCodOrder
+            ? "Cash is the only allowed payment method for COD delivery collection."
+            : "Invalid collected payment method.",
         });
       }
 
-      if (collectedAmount > currentBalance + 0.01) {
+      const exactRemainingBalance = Number(currentBalance.toFixed(2));
+      if (isStandardCodOrder && collectedAmount !== exactRemainingBalance) {
         await conn.rollback();
+        cleanupFreshUpload(req.file);
+        return res.status(400).json({
+          reason_code: "COD_EXACT_BALANCE_REQUIRED",
+          message: `Collect the exact remaining balance of ₱${exactRemainingBalance.toLocaleString(
+            "en-PH",
+            { minimumFractionDigits: 2 },
+          )} before completing this COD delivery.`,
+        });
+      }
+
+      if (!isStandardCodOrder && collectedAmount > currentBalance + 0.01) {
+        await conn.rollback();
+        cleanupFreshUpload(req.file);
         return res.status(400).json({
           message: `Collected amount exceeds the remaining balance of ₱${currentBalance.toLocaleString(
             "en-PH",
@@ -1234,8 +1515,10 @@ exports.updateDeliveryStatus = async (req, res) => {
          VALUES (?, ?, ?, ?, NULL, NULL, 'pending', ?)`,
         [
           existing.order_id,
-          collectedAmount,
-          collectedPaymentMethod,
+          isStandardCodOrder
+            ? Number(currentBalance.toFixed(2))
+            : collectedAmount,
+          isStandardCodOrder ? "cash" : collectedPaymentMethod,
           nextSignedReceipt || null,
           paymentNotes,
         ],
@@ -1646,7 +1929,7 @@ exports.getRiderHistory = async (req, res) => {
   try {
     const riderId = req.user.id;
 
-    // Fetch completed/failed deliveries and safely grab online or walk-in customer names
+    // Fetch delivered/completed/failed deliveries and safely grab online or walk-in customer names
     const [history] = await db.query(
       `SELECT 
          d.id AS delivery_id, 
@@ -1654,7 +1937,15 @@ exports.getRiderHistory = async (req, res) => {
          o.order_type,
          COALESCE(o.walkin_customer_name, u.name, 'Walk-in Customer') AS customer_name, 
          d.address, 
-         d.status, 
+         d.status,
+         CASE
+           WHEN d.status = 'completed'
+             AND LOWER(COALESCE(d.notes, '')) LIKE '%failure reason:%'
+             THEN 'failed'
+           WHEN d.status = 'completed'
+             THEN 'delivered'
+           ELSE d.status
+         END AS history_result,
          o.payment_status, 
          o.total, 
          o.delivery_lat,
@@ -1664,7 +1955,7 @@ exports.getRiderHistory = async (req, res) => {
        FROM deliveries d
        JOIN orders o ON d.order_id = o.id
        LEFT JOIN users u ON u.id = o.customer_id
-       WHERE d.driver_id = ? AND d.status IN ('delivered', 'failed')
+       WHERE d.driver_id = ? AND d.status IN ('delivered', 'completed', 'failed')
        ORDER BY d.updated_at DESC
        LIMIT 50`,
       [riderId],

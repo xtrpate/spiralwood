@@ -45,9 +45,9 @@ const getStatusStyle = (status) => {
       };
     case "completed":
       return {
-        background: "#0a0a0a",
-        color: "#ffffff",
-        border: "1px solid #0a0a0a",
+        background: "#ecfdf5",
+        color: "#15803d",
+        border: "1px solid #bbf7d0",
       };
     case "rejected":
     case "cancelled":
@@ -2481,11 +2481,7 @@ export default function AppointmentScheduling() {
 
                         <button
                           type="button"
-                          style={
-                            actionLoadingId === a.id
-                              ? indoorDisabledButton
-                              : indoorDangerButton
-                          }
+                          style={btnGhost}
                           disabled={actionLoadingId === a.id}
                           onClick={() =>
                             handleAction(

@@ -236,8 +236,8 @@ export default function POSLayout() {
                       setShowMiniLogout(false);
                       openLogoutConfirm();
                     }}
-                    title="Sign out"
-                    aria-label="Sign out"
+                    title="Logout"
+                    aria-label="Logout"
                   >
                     <LogOut size={18} />
                   </button>
@@ -280,8 +280,8 @@ export default function POSLayout() {
             <button
               className="logout-btn"
               onClick={openLogoutConfirm}
-              title="Sign out"
-              aria-label="Sign out"
+              title="Logout"
+              aria-label="Logout"
             >
               <LogOut size={18} />
             </button>
@@ -320,7 +320,7 @@ export default function POSLayout() {
               maxWidth: "390px",
               background: "#ffffff",
               border: "1px solid #d9d9dc",
-              borderRadius: 0,
+              borderRadius: 6,
               boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
               padding: "24px",
             }}
@@ -336,7 +336,7 @@ export default function POSLayout() {
                 letterSpacing: "-0.015em",
               }}
             >
-              Sign out
+              Logout
             </h3>
 
             <p
@@ -348,7 +348,7 @@ export default function POSLayout() {
                 lineHeight: 1.5,
               }}
             >
-              Are you sure you want to sign out?
+              Are you sure you want to log out?
             </p>
 
             <div
@@ -367,7 +367,7 @@ export default function POSLayout() {
                   height: "40px",
                   padding: "0 14px",
                   border: "1px solid #bfc0c4",
-                  borderRadius: 0,
+                  borderRadius: 6,
                   background: "#ffffff",
                   color: "#111111",
                   cursor: "pointer",
@@ -386,7 +386,7 @@ export default function POSLayout() {
                   height: "40px",
                   padding: "0 14px",
                   border: "1px solid #111111",
-                  borderRadius: 0,
+                  borderRadius: 6,
                   background: "#111111",
                   color: "#ffffff",
                   cursor: "pointer",
@@ -394,7 +394,7 @@ export default function POSLayout() {
                   fontWeight: 650,
                 }}
               >
-                Sign out
+                Logout
               </button>
             </div>
           </div>

@@ -64,39 +64,96 @@ const getDateKey = (value) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 
-const formatScheduleParts = (value) => {
-  if (!value) return { date: "—", time: "" };
+// WISDOM DELIVERY DATE + ACTUAL DELIVERED TIME V1
+// Confirmed delivery scheduling is date-only. Never display a time from
+// scheduled_date, even for legacy rows that still contain one.
+//
+// delivered_date is different: the backend writes the real completion
+// timestamp exactly when the delivery changes to Delivered, so that is the
+// only timestamp used for the actual delivered line.
+const formatScheduledDate = (value) => {
+  const dateKey = getDateKey(value);
+  if (!dateKey) return value ? String(value) : "—";
 
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return { date: String(value), time: "" };
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const localDate = new Date(year, month - 1, day);
+
+  if (Number.isNaN(localDate.getTime())) {
+    return String(value);
   }
 
-  const dateText = date.toLocaleDateString("en-PH", {
+  return localDate.toLocaleDateString("en-PH", {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
+};
 
-  const raw = String(value || "");
-  const hasExplicitTime =
-    /T\d{1,2}:\d{2}/.test(raw) ||
-    /\s\d{1,2}:\d{2}/.test(raw);
+const getLocalDateKey = (value) => {
+  if (!value) return "";
 
-  const timeText = hasExplicitTime
-    ? date.toLocaleTimeString("en-PH", {
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
 
-  return { date: dateText, time: timeText };
+  const pad = (number) => String(number).padStart(2, "0");
+
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join("-");
+};
+
+const formatDeliveredLine = (scheduledDate, deliveredDate) => {
+  if (!deliveredDate) return "";
+
+  const delivered = new Date(deliveredDate);
+  if (Number.isNaN(delivered.getTime())) return "";
+
+  const deliveredTime = delivered.toLocaleTimeString("en-PH", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  const scheduledKey = getDateKey(scheduledDate);
+  const deliveredKey = getLocalDateKey(deliveredDate);
+
+  if (scheduledKey && deliveredKey && scheduledKey === deliveredKey) {
+    return `Delivered ${deliveredTime}`;
+  }
+
+  const deliveredDateText = delivered.toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+  });
+
+  return `Delivered ${deliveredDateText}, ${deliveredTime}`;
 };
 
 const normalizeStatus = (status) =>
   String(status || "")
     .trim()
     .toLowerCase();
+
+const getDeliveryAttemptStatus = (delivery = {}) => {
+  const status = normalizeStatus(delivery.status);
+  const notes = String(delivery.notes || "")
+    .trim()
+    .toLowerCase();
+
+  // Some older/admin receipt flows overwrote every attempt for an order
+  // as delivered. Preserve a failed attempt when its own notes still
+  // contain the rider's recorded failure reason.
+  if (
+    (status === "delivered" || status === "completed") &&
+    notes.includes("failure reason:")
+  ) {
+    return "failed";
+  }
+
+  if (status === "completed") return "delivered";
+  return status;
+};
 
 const formatStatusLabel = (status) => {
   const normalized = normalizeStatus(status);
@@ -126,8 +183,8 @@ const deliveryStatusRank = (status) => {
 };
 
 const sortDeliveries = (a, b) => {
-  const rankA = deliveryStatusRank(a.status);
-  const rankB = deliveryStatusRank(b.status);
+  const rankA = deliveryStatusRank(getDeliveryAttemptStatus(a));
+  const rankB = deliveryStatusRank(getDeliveryAttemptStatus(b));
 
   if (rankA !== rankB) return rankA - rankB;
 
@@ -247,7 +304,7 @@ export default function DeliveryScheduling() {
     };
 
     deliveries.forEach((delivery) => {
-      const status = normalizeStatus(delivery.status);
+      const status = getDeliveryAttemptStatus(delivery);
 
       if (status === "scheduled") counts.scheduled += 1;
       if (status === "in_transit") counts.inTransit += 1;
@@ -265,7 +322,7 @@ export default function DeliveryScheduling() {
 
     return deliveries
       .filter((delivery) => {
-        const status = normalizeStatus(delivery.status);
+        const status = getDeliveryAttemptStatus(delivery);
 
         const matchesSearch =
           !query ||
@@ -1128,7 +1185,7 @@ export default function DeliveryScheduling() {
                   <input
                     type="text"
                     readOnly
-                    value={formatScheduleParts(rescheduleTarget.scheduled_date).date}
+                    value={formatScheduledDate(rescheduleTarget.scheduled_date)}
                     style={{ ...inputStyle, background: "#f4f4f5" }}
                   />
                 </div>
@@ -1432,9 +1489,17 @@ export default function DeliveryScheduling() {
               </thead>
               <tbody>
                 {filteredDeliveries.map((delivery) => {
-                  const schedule = formatScheduleParts(
+                  const scheduledDateText = formatScheduledDate(
                     delivery.scheduled_date,
                   );
+                  const displayStatus = getDeliveryAttemptStatus(delivery);
+                  const deliveredLine =
+                    displayStatus === "delivered"
+                      ? formatDeliveredLine(
+                          delivery.scheduled_date,
+                          delivery.delivered_date,
+                        )
+                      : "";
                   const canReschedule =
                     normalizeStatus(delivery.status) === "failed" &&
                     Number(latestDeliveryIdByOrder.get(String(delivery.order_id))) ===
@@ -1473,9 +1538,13 @@ export default function DeliveryScheduling() {
                       </td>
 
                       <td style={tdStyle}>
-                        <div style={scheduleDateStyle}>{schedule.date}</div>
-                        {schedule.time ? (
-                          <div style={scheduleTimeStyle}>{schedule.time}</div>
+                        <div style={scheduleDateStyle}>
+                          {scheduledDateText}
+                        </div>
+                        {deliveredLine ? (
+                          <div style={scheduleTimeStyle}>
+                            {deliveredLine}
+                          </div>
                         ) : null}
                       </td>
 
@@ -1488,11 +1557,11 @@ export default function DeliveryScheduling() {
                       <td style={tdStyle}>
                         <span
                           style={{
-                            ...getStatusStyle(delivery.status),
+                            ...getStatusStyle(displayStatus),
                             ...statusBadgeStyle,
                           }}
                         >
-                          {formatStatusLabel(delivery.status)}
+                          {formatStatusLabel(displayStatus)}
                         </span>
                       </td>
 

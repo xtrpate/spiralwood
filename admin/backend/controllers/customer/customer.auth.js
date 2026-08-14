@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 // const nodemailer = require("nodemailer");
 const db = require("../../config/db"); // Uses the unified db config
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const { verifyRecaptcha } = require("../../utils/verifyRecaptcha");
 require("dotenv").config();
 
@@ -717,6 +718,15 @@ exports.resetPassword = async (req, res) => {
       `,
       [hashedPassword, user.id],
     );
+
+    await writeAuditLogSafe({
+      userId: user.id,
+      action: "password_reset_completed",
+      tableName: "users",
+      recordId: user.id,
+      newValues: { password_reset: true, method: "email_otp" },
+      ipAddress: req.ip || null,
+    });
 
     return res.json({
       message: "Password reset successful. You can now log in.",

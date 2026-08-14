@@ -1,9 +1,44 @@
 // controllers/customer/customer.appointments.js
 const db = require("../../config/db");
+const { createNotificationSafe } = require("../../utils/notificationHelper");
+const { writeAuditLogSafe } = require("../../middleware/auditLog");
 
 const ALLOWED_PURPOSES = new Set(["consultation", "site_measurement"]);
 
 const normalizeText = (value) => String(value || "").trim();
+
+const APPOINTMENT_MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+const getAppointmentPurposeLabel = (purpose) => {
+  const normalized = normalizeText(purpose).toLowerCase();
+  if (normalized === "site_measurement") return "Site Measurement";
+  if (normalized === "installation") return "Installation";
+  return "Consultation";
+};
+
+const formatAppointmentSchedule = (value) => {
+  const raw = String(value || "").trim().replace("T", " ");
+  const match = /^(\d{4})-(\d{2})-(\d{2})[ ](\d{2}):(\d{2})/.exec(raw);
+  if (!match) return "the requested schedule";
+  const [, year, month, day, hour, minute] = match;
+  const hourNumber = Number(hour);
+  const displayHour = hourNumber % 12 || 12;
+  const period = hourNumber >= 12 ? "PM" : "AM";
+  return `${APPOINTMENT_MONTHS[Number(month) - 1]} ${Number(day)}, ${year} at ${displayHour}:${minute} ${period}`;
+};
 
 const buildScheduledDate = (preferredDate, preferredTime) =>
   `${preferredDate} ${preferredTime}:00`;
@@ -122,6 +157,41 @@ exports.createAppointment = async (req, res) => {
       [req.user.id, purpose, scheduled_date, preferred_schedule, fullNotes],
     );
 
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "request_appointment",
+      tableName: "appointments",
+      recordId: result.insertId,
+      newValues: {
+        purpose,
+        scheduled_date,
+        status: "pending",
+      },
+      ipAddress: req.ip || null,
+    });
+
+    try {
+      const [admins] = await db.query(
+        `SELECT id FROM users WHERE role = 'admin' AND is_active = 1`,
+      );
+      const purposeLabel = getAppointmentPurposeLabel(purpose);
+      const scheduleLabel = formatAppointmentSchedule(scheduled_date);
+      const customerName = req.user.name || "A customer";
+
+      for (const admin of admins) {
+        await createNotificationSafe(db, {
+          userId: admin.id,
+          type: "appointment_request",
+          title: "New Appointment Request",
+          message: `${customerName} requested a ${purposeLabel} appointment for ${scheduleLabel}. Review the requested schedule.`,
+          targetType: "appointment",
+          targetId: result.insertId,
+        });
+      }
+    } catch (notificationErr) {
+      console.error("[customer.appointments notification skipped]", notificationErr.message || notificationErr);
+    }
+
     return res.status(201).json({
       message: "Appointment request submitted successfully.",
       appointment_id: result.insertId,
@@ -177,7 +247,9 @@ exports.cancelAppointment = async (req, res) => {
     // ── FIXED: Switched to .query and added parseInt to req.params.id ──
     const [rows] = await db.query(
       `
-      SELECT id, customer_id, status
+      SELECT id, customer_id, status, assigned_staff_id, reviewed_by,
+             request_owner_id, purpose,
+             DATE_FORMAT(scheduled_date, '%Y-%m-%d %H:%i:%s') AS scheduled_date
       FROM appointments
       WHERE id = ?
       LIMIT 1
@@ -209,6 +281,45 @@ exports.cancelAppointment = async (req, res) => {
       `UPDATE appointments SET status = 'cancelled' WHERE id = ?`,
       [parseInt(req.params.id)],
     );
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "cancel_appointment",
+      tableName: "appointments",
+      recordId: appointment.id,
+      oldValues: { status: appointment.status },
+      newValues: {
+        status: "cancelled",
+        purpose: appointment.purpose,
+        scheduled_date: appointment.scheduled_date,
+      },
+      ipAddress: req.ip || null,
+    });
+
+    try {
+      const [admins] = await db.query(
+        `SELECT id FROM users WHERE role = 'admin' AND is_active = 1`,
+      );
+      const recipients = new Set(admins.map((row) => Number(row.id)));
+      if (appointment.assigned_staff_id) recipients.add(Number(appointment.assigned_staff_id));
+      const purposeLabel = getAppointmentPurposeLabel(appointment.purpose);
+      const scheduleLabel = formatAppointmentSchedule(appointment.scheduled_date);
+      const customerName = req.user.name || "The customer";
+
+      for (const userId of recipients) {
+        if (!userId) continue;
+        await createNotificationSafe(db, {
+          userId,
+          type: "appointment_cancelled",
+          title: "Appointment Cancelled by Customer",
+          message: `${customerName} cancelled the ${purposeLabel} appointment scheduled for ${scheduleLabel}.`,
+          targetType: "appointment",
+          targetId: appointment.id,
+        });
+      }
+    } catch (notificationErr) {
+      console.error("[customer.appointments cancel notification skipped]", notificationErr.message || notificationErr);
+    }
 
     return res.json({ message: "Appointment request cancelled." });
   } catch (err) {

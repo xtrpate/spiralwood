@@ -185,6 +185,9 @@ export default function CartPage() {
   const hasBlueprintSelected = selectedItems.some((item) =>
     isBlueprintItem(item),
   );
+  const selectedBlueprintCount = selectedItems.filter((item) =>
+    isBlueprintItem(item),
+  ).length;
   const hasStandardSelected = selectedItems.some(
     (item) => !isBlueprintItem(item),
   );
@@ -192,6 +195,9 @@ export default function CartPage() {
 
   const mixedSelectionMessage =
     "Your selection contains ready-made and custom items. Please check them out separately.";
+  // WISDOM_BLUEPRINT_MULTI_SELECTION_MESSAGE_V1_0_6
+  const multipleBlueprintMessage =
+    "Select one custom design to continue. Each custom design must be submitted as a separate request.";
 
   const checkoutButtonLabel = !customerUser
     ? "Sign in to Continue"
@@ -210,6 +216,11 @@ export default function CartPage() {
 
     if (isMixedSelection) {
       setCheckoutError(mixedSelectionMessage);
+      return;
+    }
+
+    if (selectedBlueprintCount > 1) {
+      setCheckoutError(multipleBlueprintMessage);
       return;
     }
 
@@ -248,7 +259,7 @@ export default function CartPage() {
   const summaryNote = isMixedSelection
     ? "You selected both ready-made and custom items. Please separate them before continuing."
     : hasBlueprintSelected
-      ? "Custom / blueprint items follow quotation-based checkout."
+      ? "Custom designs are quoted before checkout."
       : "Free delivery applies to ready-made products.";
 
   const toastNotification = (
@@ -555,21 +566,36 @@ export default function CartPage() {
                         onChange={() => toggleItem(item.key)}
                       />
 
-                      <div className="fm-cart-thumb">
+                      <div
+                        className={`fm-cart-thumb ${blueprint ? "is-blueprint-preview" : ""}`}
+                      >
+                        {/* WISDOM FULL CART REAL BLUEPRINT PREVIEW V1.0.9 */}
                         {blueprint && liveBlueprintPreview ? (
                           <CustomerBlueprintViewer
-                            blueprint={liveBlueprintPreview}
+                            blueprint={{
+                              ...liveBlueprintPreview,
+                              thumbnail_url: null,
+                            }}
                             readOnly
                             showHumanControls={false}
                             compact
-                            compactHeight={80}
+                            compactHeight={84}
                             defaultPreset="isometric"
                             defaultShowHuman={false}
                           />
-                        ) : !blueprint && imageSrc ? (
+                        ) : imageSrc ? (
                           <img
                             src={imageSrc}
-                            alt={item.product_name}
+                            alt={
+                              item.base_blueprint_title ||
+                              item.product_name ||
+                              (blueprint ? "Custom design" : "Cart item")
+                            }
+                            style={{
+                              objectFit: blueprint ? "contain" : "cover",
+                              boxSizing: "border-box",
+                              padding: 0,
+                            }}
                             onError={(e) => {
                               e.currentTarget.style.display = "none";
                               const fallback =
@@ -583,7 +609,12 @@ export default function CartPage() {
 
                         <div
                           className="fm-cart-thumb-fallback"
-                          style={{ display: imageSrc ? "none" : "flex" }}
+                          style={{
+                            display:
+                              (blueprint && liveBlueprintPreview) || imageSrc
+                                ? "none"
+                                : "flex",
+                          }}
                         >
                           {blueprint ? "Design" : "Item"}
                         </div>
@@ -597,7 +628,7 @@ export default function CartPage() {
                         {blueprint ? (
                           <div className="fm-cart-meta-line status">
                             <Scissors size={14} />
-                            <span>Custom / Blueprint Request</span>
+                            <span>Custom Design</span>
                           </div>
                         ) : null}
 

@@ -1018,3 +1018,48 @@
     flex-basis: 100% !important;
   }
 }
+
+/* WISDOM CONTRACTS DASHBOARD ALIGNMENT V1
+   Targeted only: Dashboard left alignment/typography and Supplier-style top action font. */
+.contracts-page {
+  width: min(100%, 1480px);
+  max-width: 1480px;
+  margin: 0 auto;
+}
+
+.contracts-page-header h1 {
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.contracts-page-header p {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+.contracts-summary-label {
+  font-weight: 600;
+}
+
+.contracts-summary-value {
+  font-weight: 700;
+}
+
+.contracts-table th {
+  font-weight: 600;
+}
+
+.contracts-contract-no,
+.contracts-customer-name,
+.contracts-amount {
+  font-weight: 600 !important;
+}
+
+.contracts-create-btn {
+  font-size: 11.5px;
+  font-weight: 600;
+}

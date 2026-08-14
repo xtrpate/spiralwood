@@ -16,18 +16,32 @@ export function CustomCartProvider({ children }) {
     customCart,
     customCartCount,
     addToCart,
+    updateQty,
     removeItem,
     removeMany,
   } = useCart();
 
   const addToCustomCart = (item) => {
-    if (!item) return;
+    if (!item) return { ok: false, reason: "INVALID_ITEM" };
+
+    const requestedQuantity = Number(item?.quantity);
+    const quantity =
+      Number.isSafeInteger(requestedQuantity) && requestedQuantity > 0
+        ? requestedQuantity
+        : 1;
 
     addToCart({
       ...item,
+      quantity,
       cart_type: "blueprint",
       item_type: "blueprint",
     });
+
+    return { ok: true };
+  };
+
+  const updateCustomQty = (key, delta) => {
+    updateQty(key, delta);
   };
 
   const removeFromCustomCart = (key) => {
@@ -68,11 +82,20 @@ export function CustomCartProvider({ children }) {
 
       const safeCustom = (
         Array.isArray(resolvedCustom) ? resolvedCustom : []
-      ).map((item) => ({
-        ...item,
-        cart_type: "blueprint",
-        item_type: "blueprint",
-      }));
+      ).map((item) => {
+        const requestedQuantity = Number(item?.quantity);
+        const quantity =
+          Number.isSafeInteger(requestedQuantity) && requestedQuantity > 0
+            ? requestedQuantity
+            : 1;
+
+        return {
+          ...item,
+          quantity,
+          cart_type: "blueprint",
+          item_type: "blueprint",
+        };
+      });
 
       return [...currentStandard, ...safeCustom];
     });
@@ -84,11 +107,12 @@ export function CustomCartProvider({ children }) {
       setCustomCart,
       customCartCount,
       addToCustomCart,
+      updateCustomQty,
       removeFromCustomCart,
       removeManyFromCustomCart,
       clearCustomCart,
     }),
-    [customCart, customCartCount],
+    [customCart, customCartCount, updateQty],
   );
 
   return (

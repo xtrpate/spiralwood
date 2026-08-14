@@ -195,6 +195,17 @@ export default function OversizedDeliveryEstimatorPanel({
   const assessment = payload?.assessment || null;
   const estimation = payload?.estimation || null;
   const order = payload?.order || null;
+  const assessmentItems = Array.isArray(assessment?.items)
+    ? assessment.items
+    : [];
+  const totalOrderedUnits = assessmentItems.reduce(
+    (sum, item) => sum + Math.max(1, Number(item?.quantity || 1)),
+    0,
+  );
+  const quantityCapacityItems = assessmentItems.filter(
+    (item) => Boolean(item?.quantity_exceeds_capacity),
+  );
+  const hasQuantityCapacityIssue = quantityCapacityItems.length > 0;
   const assessmentStatus = String(assessment?.status || "").toLowerCase();
   const estimationStatus = String(estimation?.status || "").toLowerCase();
   const readOnly = Boolean(estimation?.id && estimationStatus !== "draft");
@@ -398,8 +409,66 @@ export default function OversizedDeliveryEstimatorPanel({
     );
   }
 
-  if (!assessment || assessmentStatus === "standard") {
+  if (!assessment) {
     return null;
+  }
+
+  if (assessmentStatus === "standard") {
+    return (
+      <section style={panelCard}>
+        <div style={panelHeader}>
+          <div>
+            <div style={warningTitle}>Delivery Capacity</div>
+            <p style={warningText}>
+              {totalOrderedUnits > 1
+                ? "The ordered quantity fits within the estimated standard truck capacity. No additional delivery arrangement is required."
+                : "This design fits within the standard truck capacity. No additional delivery arrangement is required."}
+            </p>
+          </div>
+          <div style={savedBadge}>Standard fit</div>
+        </div>
+
+        <div style={panelBody}>
+          <div style={infoGrid}>
+            <div style={infoCard}>
+              <span style={infoLabel}>Order</span>
+              <strong>{order?.order_number || "Linked Blueprint order"}</strong>
+              <span style={infoValue}>{order?.delivery_address || "No delivery address recorded"}</span>
+            </div>
+            <div style={infoCard}>
+              <span style={infoLabel}>Standard Truck Capacity</span>
+              <strong>
+                W {mm(assessment?.standard_truck_limits_mm?.width_mm)} · H{" "}
+                {mm(assessment?.standard_truck_limits_mm?.height_mm)} · D{" "}
+                {mm(assessment?.standard_truck_limits_mm?.depth_mm)}
+              </strong>
+              <span style={infoValue}>Usable internal cargo dimensions</span>
+            </div>
+
+            {totalOrderedUnits > 1 &&
+            Number(assessmentItems[0]?.estimated_standard_truck_capacity_units) >
+              0 ? (
+              <div style={infoCard}>
+                <span style={infoLabel}>Order Quantity</span>
+                <strong>
+                  {totalOrderedUnits} unit{totalOrderedUnits !== 1 ? "s" : ""}
+                </strong>
+                <span style={infoValue}>
+                  Estimated standard capacity:{" "}
+                  {assessmentItems[0].estimated_standard_truck_capacity_units}{" "}
+                  unit
+                  {Number(
+                    assessmentItems[0].estimated_standard_truck_capacity_units,
+                  ) !== 1
+                    ? "s"
+                    : ""}
+                </span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </section>
+    );
   }
 
   if (
@@ -431,9 +500,11 @@ export default function OversizedDeliveryEstimatorPanel({
     <section style={panelCard}>
       <div style={panelHeader}>
         <div>
-          <div style={warningTitle}>Oversized Delivery Review</div>
+          <div style={warningTitle}>Delivery Capacity Review</div>
           <p style={warningText}>
-            The furniture exceeds the standard truck capacity. Review the delivery arrangement and confirm any additional fee before sending the quotation.
+            {hasQuantityCapacityIssue
+              ? "The ordered quantity exceeds the estimated standard truck capacity. Confirm the delivery arrangement and any additional fee before sending the quotation."
+              : "This design exceeds the standard truck capacity. Confirm the delivery arrangement and any additional fee before sending the quotation."}
           </p>
         </div>
 
@@ -499,7 +570,10 @@ export default function OversizedDeliveryEstimatorPanel({
                   key={item.order_item_id || item.product_name}
                   style={itemRow}
                 >
-                  <strong>{item.product_name || "Custom Furniture"}</strong>
+                  <strong>
+                    {item.product_name || "Custom Furniture"} · Qty{" "}
+                    {Math.max(1, Number(item.quantity || 1))}
+                  </strong>
                   <span>
                     W {mm(item?.dimensions_mm?.width_mm)} · H{" "}
                     {mm(item?.dimensions_mm?.height_mm)} · D{" "}
@@ -511,10 +585,43 @@ export default function OversizedDeliveryEstimatorPanel({
           </div>
         )}
 
+        {quantityCapacityItems.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={subHeading}>Quantity Capacity</div>
+            <div style={exceededGrid}>
+              {quantityCapacityItems.map((item) => (
+                <div
+                  key={`quantity-${item.order_item_id || item.product_name}`}
+                  style={exceededCard}
+                >
+                  <strong>{item.product_name || "Custom Furniture"}</strong>
+                  <span>
+                    Ordered: {Math.max(1, Number(item.quantity || 1))} units
+                  </span>
+                  <span>
+                    Estimated standard capacity:{" "}
+                    {Math.max(
+                      0,
+                      Number(
+                        item.estimated_standard_truck_capacity_units || 0,
+                      ),
+                    )}{" "}
+                    units
+                  </span>
+                  <span style={{ color: "#b45309", fontWeight: 700 }}>
+                    Over by{" "}
+                    {Math.max(0, Number(item.quantity_excess_units || 0))} units
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {Array.isArray(assessment?.exceeded_dimensions) &&
           assessment.exceeded_dimensions.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <div style={subHeading}>Capacity Exceeded</div>
+              <div style={subHeading}>Truck Limit Exceeded</div>
               <div style={exceededGrid}>
                 {assessment.exceeded_dimensions.map((entry, index) => (
                   <div
@@ -674,56 +781,58 @@ export default function OversizedDeliveryEstimatorPanel({
 }
 
 const panelCard = {
-  maxWidth: 1240,
-  margin: "0 auto 24px",
-  background: "#fff",
-  border: "1px solid #e4e4e7",
-  borderTop: "4px solid #d97706",
-  borderRadius: 16,
+  width: "100%",
+  maxWidth: "none",
+  margin: "0 0 20px",
+  background: "#ffffff",
+  border: "1px solid #d9d9dc",
+  borderRadius: 6,
   overflow: "hidden",
-  boxShadow: "0 10px 30px rgba(24,24,27,.05)",
+  boxShadow: "none",
+  fontFamily: "inherit",
 };
 
 const panelHeader = {
-  padding: "20px 24px",
+  padding: "18px 20px",
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  gap: 18,
+  gap: 16,
   flexWrap: "wrap",
-  background: "#fff",
-  borderBottom: "1px solid #e4e4e7",
+  background: "#ffffff",
+  borderBottom: "1px solid #e5e5e7",
 };
 
 const panelBody = {
-  padding: 24,
-  background: "#fafafa",
+  padding: 20,
+  background: "#ffffff",
 };
 
 const warningTitle = {
-  fontSize: 17,
-  fontWeight: 850,
+  fontSize: 16,
+  fontWeight: 700,
   color: "#18181b",
-  letterSpacing: "-0.01em",
+  letterSpacing: 0,
 };
 
 const warningText = {
-  margin: "6px 0 0",
-  fontSize: 13,
+  margin: "5px 0 0",
+  fontSize: 12.5,
+  fontWeight: 400,
   lineHeight: 1.55,
-  color: "#52525b",
+  color: "#66666b",
   maxWidth: 780,
 };
 
 const savedBadge = {
   flexShrink: 0,
-  padding: "7px 12px",
-  borderRadius: 999,
-  background: "#ecfdf3",
+  padding: "6px 10px",
+  borderRadius: 4,
+  background: "#f0fdf4",
   border: "1px solid #bbf7d0",
   color: "#166534",
   fontSize: 11,
-  fontWeight: 800,
+  fontWeight: 600,
 };
 
 const pendingBadge = {
@@ -747,37 +856,38 @@ const infoGrid = {
 };
 
 const infoCard = {
-  padding: "16px 18px",
-  border: "1px solid #e4e4e7",
-  borderRadius: 12,
-  background: "#fff",
+  padding: "15px 16px",
+  border: "1px solid #e1e1e4",
+  borderRadius: 4,
+  background: "#ffffff",
   display: "grid",
-  gap: 7,
-  minHeight: 88,
-  boxShadow: "0 1px 2px rgba(24,24,27,.03)",
+  gap: 6,
+  minHeight: 84,
+  boxShadow: "none",
 };
 
 const infoLabel = {
   fontSize: 10,
-  fontWeight: 800,
-  color: "#71717a",
+  fontWeight: 600,
+  color: "#73737a",
   textTransform: "uppercase",
-  letterSpacing: "0.1em",
+  letterSpacing: "0.07em",
 };
 
 const infoValue = {
   fontSize: 11,
+  fontWeight: 400,
   lineHeight: 1.45,
-  color: "#71717a",
+  color: "#73737a",
 };
 
 const subHeading = {
   fontSize: 11,
-  fontWeight: 850,
+  fontWeight: 650,
   color: "#52525b",
   textTransform: "uppercase",
-  letterSpacing: "0.1em",
-  marginBottom: 10,
+  letterSpacing: "0.07em",
+  marginBottom: 9,
 };
 
 const itemList = {
@@ -786,17 +896,18 @@ const itemList = {
 };
 
 const itemRow = {
-  padding: "11px 14px",
-  border: "1px solid #e4e4e7",
-  borderRadius: 10,
+  padding: "11px 13px",
+  border: "1px solid #e1e1e4",
+  borderRadius: 4,
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   flexWrap: "wrap",
   gap: 10,
   fontSize: 12,
+  fontWeight: 400,
   color: "#52525b",
-  background: "#fff",
+  background: "#ffffff",
 };
 
 const exceededGrid = {
@@ -806,9 +917,9 @@ const exceededGrid = {
 };
 
 const exceededCard = {
-  padding: "14px 16px",
-  border: "1px solid #fcd34d",
-  borderRadius: 10,
+  padding: "13px 14px",
+  border: "1px solid #f3d38a",
+  borderRadius: 4,
   background: "#fffbeb",
   display: "grid",
   gap: 5,
@@ -817,12 +928,12 @@ const exceededCard = {
 };
 
 const formSection = {
-  marginTop: 20,
-  padding: 20,
-  border: "1px solid #e4e4e7",
-  borderRadius: 14,
-  background: "#fff",
-  boxShadow: "0 1px 2px rgba(24,24,27,.03)",
+  marginTop: 18,
+  padding: 18,
+  border: "1px solid #e1e1e4",
+  borderRadius: 4,
+  background: "#ffffff",
+  boxShadow: "none",
 };
 
 const fieldGrid = {
@@ -833,9 +944,9 @@ const fieldGrid = {
 
 const label = {
   display: "block",
-  marginBottom: 7,
+  marginBottom: 6,
   fontSize: 12,
-  fontWeight: 800,
+  fontWeight: 600,
   color: "#27272a",
 };
 
@@ -843,12 +954,14 @@ const input = {
   width: "100%",
   minHeight: 42,
   padding: "10px 12px",
-  border: "1px solid #d4d4d8",
-  borderRadius: 9,
+  border: "1px solid #d2d2d6",
+  borderRadius: 4,
   boxSizing: "border-box",
+  fontFamily: "inherit",
   fontSize: 13,
+  fontWeight: 400,
   color: "#18181b",
-  background: "#fff",
+  background: "#ffffff",
   outline: "none",
 };
 
@@ -887,9 +1000,9 @@ const decisionFooter = {
 };
 
 const decisionSummaryCard = {
-  padding: "12px 14px",
-  border: "1px solid #fde68a",
-  borderRadius: 10,
+  padding: "12px 13px",
+  border: "1px solid #eed99d",
+  borderRadius: 4,
   background: "#fffbeb",
   display: "grid",
   gap: 4,
@@ -897,47 +1010,48 @@ const decisionSummaryCard = {
 
 const decisionSummaryLabel = {
   fontSize: 10,
-  fontWeight: 800,
+  fontWeight: 600,
   color: "#92400e",
   textTransform: "uppercase",
-  letterSpacing: "0.08em",
+  letterSpacing: "0.06em",
 };
 
 const decisionSummary = {
   fontSize: 14,
-  fontWeight: 850,
+  fontWeight: 700,
   color: "#78350f",
 };
 
 const saveTogetherNote = {
-  padding: "12px 14px",
-  border: "1px solid #dbeafe",
-  borderRadius: 10,
-  background: "#f8fbff",
-  color: "#334155",
+  padding: "12px 13px",
+  border: "1px solid #d9e2ee",
+  borderRadius: 4,
+  background: "#f8fafc",
+  color: "#475569",
   fontSize: 11,
-  fontWeight: 600,
+  fontWeight: 400,
   lineHeight: 1.5,
   display: "grid",
   gap: 3,
 };
 
 const saveTogetherTitle = {
-  color: "#1e3a8a",
+  color: "#334155",
   fontSize: 11,
-  fontWeight: 850,
+  fontWeight: 650,
 };
 
 const loadingCard = {
-  maxWidth: 1240,
-  margin: "0 auto 24px",
-  padding: "16px 18px",
-  borderRadius: 12,
-  border: "1px solid #e4e4e7",
-  background: "#fff",
-  color: "#71717a",
+  width: "100%",
+  maxWidth: "none",
+  margin: "0 0 20px",
+  padding: "15px 16px",
+  borderRadius: 6,
+  border: "1px solid #d9d9dc",
+  background: "#ffffff",
+  color: "#66666b",
   fontSize: 12,
-  fontWeight: 700,
+  fontWeight: 500,
 };
 
 const errorCard = {
@@ -960,28 +1074,27 @@ const smallText = {
 const retryButton = {
   padding: "8px 12px",
   border: "1px solid #991b1b",
-  borderRadius: 8,
-  background: "#fff",
+  borderRadius: 4,
+  background: "#ffffff",
   color: "#991b1b",
   fontSize: 11,
-  fontWeight: 800,
+  fontWeight: 600,
   cursor: "pointer",
 };
 
 const blockedCard = {
   ...panelCard,
-  padding: 20,
+  padding: 18,
   border: "1px solid #fecaca",
-  borderTop: "4px solid #dc2626",
-  background: "#fff",
+  background: "#ffffff",
 };
 
 const blockedStatus = {
   marginTop: 12,
   padding: "10px 12px",
-  borderRadius: 8,
+  borderRadius: 4,
   background: "#fef2f2",
   fontSize: 12,
-  fontWeight: 850,
+  fontWeight: 600,
   color: "#991b1b",
 };

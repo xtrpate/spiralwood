@@ -148,10 +148,56 @@ export default function ProfileSettings() {
   }, [emailCooldown, passCooldown]);
 
   /* ════ AVATAR ════ */
+  // WISDOM CUSTOMER AVATAR DESKTOP VALIDATION V1
   const handleAvatarChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    const allowedMimeTypes = new Set([
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ]);
+    const allowedExtensions = new Set([
+      ".jpg",
+      ".jpeg",
+      ".jfif",
+      ".png",
+      ".webp",
+    ]);
+    const maxBytes = 2 * 1024 * 1024;
+
+    const fileName = String(file.name || "").toLowerCase();
+    const extension = fileName.includes(".")
+      ? `.${fileName.split(".").pop()}`
+      : "";
+
+    if (
+      !allowedMimeTypes.has(String(file.type || "").toLowerCase()) ||
+      !allowedExtensions.has(extension)
+    ) {
+      setAvatarFile(null);
+      setAvatarMsg({
+        type: "error",
+        text: "Choose a JPG, JPEG, JFIF, PNG, or WEBP image.",
+      });
+      e.target.value = "";
+      return;
+    }
+
+    if (file.size > maxBytes) {
+      setAvatarFile(null);
+      setAvatarMsg({
+        type: "error",
+        text: "Profile picture must be 2MB or smaller.",
+      });
+      e.target.value = "";
+      return;
+    }
+
+    setAvatarMsg({ type: "", text: "" });
     setAvatarFile(file);
+
     const reader = new FileReader();
     reader.onload = (ev) => setAvatarPreview(ev.target.result);
     reader.readAsDataURL(file);
@@ -510,7 +556,7 @@ export default function ProfileSettings() {
                   <input
                     ref={fileRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp,.jfif"
                     style={{ display: "none" }}
                     onChange={handleAvatarChange}
                   />

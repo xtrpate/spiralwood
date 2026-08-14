@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
+import { Check, MapPin } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
+import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import "./customizepage.css";
 import "./customrequestdetailpage.css";
 
@@ -327,6 +329,28 @@ const formatDate = (value) => {
   });
 };
 
+const formatDeliveryScheduleDate = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "—";
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (!match) return formatDate(value);
+
+  const localDate = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+  );
+
+  if (Number.isNaN(localDate.getTime())) return raw;
+
+  return localDate.toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};
+
 const formatMm = (value) => {
   const n = Number(value);
   return Number.isFinite(n) && n > 0 ? `${Math.round(n)} mm` : "—";
@@ -489,52 +513,26 @@ const buildPreviewBlueprint = (item = {}) => {
     ? item.editor_snapshot.components
     : [];
 
+  if (!components.length) return null;
+
   const worldSize =
     item?.editor_snapshot?.worldSize &&
     typeof item.editor_snapshot.worldSize === "object"
       ? item.editor_snapshot.worldSize
-      : { w: 6400, h: 3200, d: 5200 };
+      : null;
 
-  const dims = getItemDisplayDims(item);
-
+  // WISDOM REQUEST PREVIEW SCENE PARITY V1.0.9
+  // Keep the preview payload identical in shape to the working Mini Cart:
+  // real submitted components + worldSize only. CustomerBlueprintViewer
+  // derives the real furniture bounds itself, avoiding a second scale pass.
   return {
     id: item.blueprint_id || item.product_id || item.id,
     title: getDisplayTitle(item),
-    thumbnail_url: item.image_url || item.preview_image_url || "",
-    preview_image_url: item.preview_image_url || item.image_url || "",
-    default_dimensions: {
-      width_mm: dims.width,
-      height_mm: dims.height,
-      depth_mm: dims.depth,
-    },
-    bounds: {
-      width: dims.width,
-      height: dims.height,
-      depth: dims.depth,
-    },
-    design_data: {
-      components,
-      worldSize,
-      bounds: {
-        width: dims.width,
-        height: dims.height,
-        depth: dims.depth,
-      },
-    },
+    thumbnail_url: null,
+    components,
     view_3d_data: {
       components,
       worldSize,
-      bounds: {
-        width: dims.width,
-        height: dims.height,
-        depth: dims.depth,
-      },
-    },
-    metadata: {
-      wood_type: item.wood_type || "",
-      finish_color: item.finish_color || item.color || "",
-      door_style: item.door_style || "",
-      hardware: item.hardware || "",
     },
   };
 };
@@ -836,6 +834,95 @@ export default function CustomRequestDetailPage() {
   )
     .trim()
     .toLowerCase();
+
+  const deliveryDetailsForCustomer = requestData?.delivery_details || null;
+  const customerOrderStatusForDelivery = String(requestData?.status || "")
+    .trim()
+    .toLowerCase();
+  const customerDeliveryStatusKey = String(
+    deliveryDetailsForCustomer?.status ||
+      deliveryStatusForRemainingMethod ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+
+  const customerDeliveryIsFinished =
+    ["delivered", "completed"].includes(customerDeliveryStatusKey) ||
+    ["delivered", "completed"].includes(customerOrderStatusForDelivery);
+
+  const customerDeliveryStatusLabel = customerDeliveryIsFinished
+    ? "Delivered"
+    : customerDeliveryStatusKey === "in_transit"
+      ? "In transit"
+      : customerDeliveryStatusKey === "scheduled"
+        ? "Scheduled"
+        : customerDeliveryStatusKey === "failed"
+          ? "Delivery failed"
+          : "Not scheduled yet";
+
+  const customerDeliveredDate =
+    deliveryDetailsForCustomer?.delivered_date || null;
+  const customerScheduledDate =
+    deliveryDetailsForCustomer?.scheduled_date || null;
+
+  const customerDeliveryDateLabel = customerDeliveredDate
+    ? "Delivered on"
+    : customerScheduledDate
+      ? "Scheduled date"
+      : customerDeliveryIsFinished
+        ? "Delivery date"
+        : "Scheduled date";
+
+  const customerDeliveryDateText = customerDeliveredDate
+    ? formatDate(customerDeliveredDate)
+    : customerScheduledDate
+      ? formatDeliveryScheduleDate(customerScheduledDate)
+      : customerDeliveryIsFinished
+        ? "Date not available"
+        : "Not scheduled yet";
+
+  const customerDeliveryAddress = String(
+    deliveryDetailsForCustomer?.address ||
+      requestData?.delivery_address ||
+      "",
+  ).trim();
+
+  const customerDeliveryLatitude = Number(
+    deliveryDetailsForCustomer?.latitude,
+  );
+  const customerDeliveryLongitude = Number(
+    deliveryDetailsForCustomer?.longitude,
+  );
+  const hasCustomerDeliveryCoordinates =
+    Number.isFinite(customerDeliveryLatitude) &&
+    Number.isFinite(customerDeliveryLongitude) &&
+    customerDeliveryLatitude >= -90 &&
+    customerDeliveryLatitude <= 90 &&
+    customerDeliveryLongitude >= -180 &&
+    customerDeliveryLongitude <= 180;
+
+  const customerDeliveryMapQuery = hasCustomerDeliveryCoordinates
+    ? `${customerDeliveryLatitude},${customerDeliveryLongitude}`
+    : customerDeliveryAddress;
+
+  const customerDeliveryMapHref = customerDeliveryMapQuery
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        customerDeliveryMapQuery,
+      )}`
+    : "";
+
+  const customerDeliveryRider = String(
+    deliveryDetailsForCustomer?.driver_name || "",
+  ).trim();
+
+  const customerDeliveryRiderFallback = customerDeliveryIsFinished
+    ? "Rider information not available"
+    : "Not assigned yet";
+
+  const customerDeliveryProofHref = deliveryDetailsForCustomer?.proof_url
+    ? resolveAttachmentUrl(deliveryDetailsForCustomer.proof_url)
+    : "";
   const canSelectRemainingPaymentMethod = Boolean(
     paymentSummary.can_select_remaining_payment_method,
   );
@@ -1267,7 +1354,7 @@ export default function CustomRequestDetailPage() {
       <div className="page-hero">
         <div>
           <h1>Request details</h1>
-          <p>Review your submitted request and current status.</p>
+          <p>Track your custom furniture project, payments, and delivery in one place.</p>
 
           {requestData ? (
             <div className="crd-request-meta-v12">
@@ -1278,7 +1365,7 @@ export default function CustomRequestDetailPage() {
                 </span>
               </span>
               <span className="crd-request-meta-separator-v12" aria-hidden="true">
-                /
+                •
               </span>
               <span>
                 <span className="crd-request-meta-label-v12">Submitted</span>
@@ -1337,6 +1424,32 @@ export default function CustomRequestDetailPage() {
                 <strong>{customerJourney.actionTitle}</strong>
                 <span>{customerJourney.actionText}</span>
               </div>
+
+              <div className="crd-journey-facts-v3">
+                <div>
+                  <span>Project total</span>
+                  <strong>
+                    {quotedTotal > 0 ? formatMoney(quotedTotal) : "Pending"}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Payment</span>
+                  <strong>
+                    {showPaymentInStatus ? payMeta.label : "Not required yet"}
+                  </strong>
+                </div>
+
+                <div>
+                  <span>Furniture</span>
+                  <strong>
+                    {Math.max(1, Number(requestData.total_units || 1))} unit
+                    {Math.max(1, Number(requestData.total_units || 1)) !== 1
+                      ? "s"
+                      : ""}
+                  </strong>
+                </div>
+              </div>
             </div>
 
             <div className="crd-journey-process-v2">
@@ -1351,7 +1464,16 @@ export default function CustomRequestDetailPage() {
                     aria-current={step.state === "current" ? "step" : undefined}
                   >
                     <div className="crd-journey-step-marker-v2">
-                      {step.state === "complete" ? "✓" : index + 1}
+                      {step.state === "complete" ? (
+                        <Check
+                          className="crd-journey-check-v5"
+                          size={18}
+                          strokeWidth={3}
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        index + 1
+                      )}
                     </div>
                     <div className="crd-journey-step-copy-v2">
                       <strong>{step.label}</strong>
@@ -1365,7 +1487,12 @@ export default function CustomRequestDetailPage() {
 
           <div className="checkout-layout crd-layout">
             <div
-              className="checkout-form-panel wisdom-request-details-main-v11 crd-customer-journey-v2"
+              className={`checkout-form-panel wisdom-request-details-main-v11 crd-customer-journey-v2 ${
+                String(requestData.status || "").trim().toLowerCase() ===
+                  "completed" && requestData.payment_status === "paid"
+                  ? "crd-completed-layout-v4"
+                  : ""
+              }`}
             >
               <div className="checkout-section wisdom-request-overview-v11">
                 <div className="checkout-section-header">
@@ -1449,7 +1576,19 @@ export default function CustomRequestDetailPage() {
                   </div>
 
                   <div className="checkout-section-body">
-                    <div className="crd-table">
+                    <details
+                      className="crd-quote-breakdown-v3"
+                      open={canDecideOnQuote || orderStatusKey === "completed"}
+                    >
+                      <summary>
+                        <span>Quotation breakdown</span>
+                        <span>
+                          {customerQuotationItemsV141.length} item
+                          {customerQuotationItemsV141.length !== 1 ? "s" : ""}
+                        </span>
+                      </summary>
+
+                      <div className="crd-table">
                       <div className="crd-table-head">
                         <div>Item</div>
                         <div>Qty</div>
@@ -1475,7 +1614,8 @@ export default function CustomRequestDetailPage() {
                           No quotation line items available yet.
                         </div>
                       )}
-                    </div>
+                      </div>
+                    </details>
 
                     <div
                       className={`crd-grid-split crd-quote-bottom-v141 ${
@@ -1621,7 +1761,11 @@ export default function CustomRequestDetailPage() {
                   </div>
 
                   <div className="checkout-section-body">
-                    <div className="crd-grid-split">
+                    <div
+                      className={`crd-grid-split crd-payment-layout-v4 ${
+                        requestData.payment_status === "paid" ? "is-paid" : ""
+                      }`}
+                    >
                       <div className="crd-panel crd-panel-soft wisdom-payment-summary-v16">
                         <h4>Payment summary</h4>
 
@@ -1677,40 +1821,68 @@ export default function CustomRequestDetailPage() {
                         </p>
 
                         {latestPayment ? (
-                          <div className="crd-info-box">
-                            <div className="crd-info-title">
-                              Latest Transaction
-                            </div>
+                          <div className="crd-info-box crd-latest-transaction-v4">
+                            <div className="crd-latest-transaction-main-v4">
+                              <div className="crd-info-title">
+                                Latest Transaction
+                              </div>
 
-                            <div>
-                              <strong>Status:</strong>{" "}
-                              {prettifyText(latestPayment.status)}
-                            </div>
+                              <div>
+                                <strong>Status:</strong>{" "}
+                                {prettifyText(latestPayment.status)}
+                              </div>
 
-                            <div>
-                              <strong>Amount Paid:</strong>{" "}
-                              {formatMoney(latestPayment.amount || 0)}
-                            </div>
+                              <div>
+                                <strong>Amount Paid:</strong>{" "}
+                                {formatMoney(latestPayment.amount || 0)}
+                              </div>
 
-                            <div>
-                              <strong>Payment Method:</strong>{" "}
-                              {latestPayment.payment_method
-                                ? PAYMENT_METHOD_LABELS[
-                                    String(latestPayment.payment_method)
+                              <div>
+                                <strong>Payment Method:</strong>{" "}
+                                {latestPayment.payment_method
+                                  ? String(latestPayment.payment_method)
+                                      .trim()
+                                      .toLowerCase() === "cash" &&
+                                    String(latestPayment.notes || "")
                                       .trim()
                                       .toLowerCase()
-                                  ] ||
-                                  prettifyText(
-                                    latestPayment.payment_method,
-                                    "Unknown",
-                                  )
-                                : "No payment recorded yet"}
+                                      .includes("collected on delivery")
+                                    ? "Cash on Delivery"
+                                    : PAYMENT_METHOD_LABELS[
+                                          String(latestPayment.payment_method)
+                                            .trim()
+                                            .toLowerCase()
+                                        ] ||
+                                      prettifyText(
+                                        latestPayment.payment_method,
+                                        "Unknown",
+                                      )
+                                  : "No payment recorded yet"}
+                              </div>
+
+                              <div>
+                                <strong>Paid On:</strong>{" "}
+                                {formatDate(latestPayment.created_at)}
+                              </div>
                             </div>
 
-                            <div>
-                              <strong>Paid On:</strong>{" "}
-                              {formatDate(latestPayment.created_at)}
-                            </div>
+                            {requestData.payment_status === "paid" ? (
+                              <div className="crd-latest-payment-method-v5">
+                                <h4>Payment Method</h4>
+                                <div
+                                  className="crd-info-box"
+                                  style={{ marginTop: 0 }}
+                                >
+                                  <div className="crd-info-title">
+                                    {displayPaymentMethod}
+                                  </div>
+                                  <p style={{ margin: "8px 0 0" }}>
+                                    The payment method for this order can no
+                                    longer be changed.
+                                  </p>
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>
@@ -1724,8 +1896,8 @@ export default function CustomRequestDetailPage() {
                         </div>
                       ) : null}
 
-                      {requestData.payment_status === "partial" ||
-                      requestData.payment_status === "paid" ? (
+                      {requestData.payment_status === "paid" ? null
+                      : requestData.payment_status === "partial" ? (
                         <div className="crd-panel">
                           <h4>Payment Method</h4>
                           <div
@@ -1761,7 +1933,7 @@ export default function CustomRequestDetailPage() {
                       ) : !normalizedOrderPaymentMethod ? (
                         canChooseMethod ? (
                           <div className="crd-panel wisdom-payment-method-choice-v16">
-                            <h4>Choose payment method</h4>
+                            <h4>Step 1: Select payment method</h4>
 
                             <div className="crd-grid-split">
                               <div className="crd-panel crd-panel-soft">
@@ -1783,7 +1955,7 @@ export default function CustomRequestDetailPage() {
                                     handleSelectPaymentMethod("cash")
                                   }
                                 >
-                                  Choose Cash at Store
+                                  Select Cash at Store
                                 </button>
                               </div>
 
@@ -1806,7 +1978,7 @@ export default function CustomRequestDetailPage() {
                                     handleSelectPaymentMethod("paymongo")
                                   }
                                 >
-                                  Choose Online Payment
+                                  Select Online Payment
                                 </button>
                               </div>
                             </div>
@@ -1872,7 +2044,7 @@ export default function CustomRequestDetailPage() {
                         </div>
                       ) : normalizedOrderPaymentMethod === "paymongo" ? (
                         <div className="crd-panel">
-                          <h4>Secure Online Payment</h4>
+                          <h4>Step 2: Pay Online</h4>
 
                           <div
                             className="crd-info-box"
@@ -1991,7 +2163,7 @@ export default function CustomRequestDetailPage() {
                                     handleSelectPaymentMethod("cash")
                                   }
                                 >
-                                  Choose Cash at Store
+                                  Select Cash at Store
                                 </button>
                               </div>
                               <div className="crd-panel crd-panel-soft">
@@ -2004,7 +2176,7 @@ export default function CustomRequestDetailPage() {
                                     handleSelectPaymentMethod("paymongo")
                                   }
                                 >
-                                  Choose Online Payment
+                                  Select Online Payment
                                 </button>
                               </div>
                             </div>
@@ -2268,13 +2440,13 @@ export default function CustomRequestDetailPage() {
               <div className="checkout-section wisdom-request-items-v11">
                 <div className="checkout-section-header">
                   <div className="checkout-section-num">04</div>
-                  <h3>Your furniture request</h3>
+                  <h3>Your furniture</h3>
 
                   <span className="crd-mini-meta">
-                    {requestData.total_items || 0} design
-                    {(requestData.total_items || 0) !== 1 ? "s" : ""} •{" "}
-                    {requestData.total_units || 0} unit
-                    {(requestData.total_units || 0) !== 1 ? "s" : ""}
+                    {Math.max(1, Number(requestData.total_units || 1))} unit
+                    {Math.max(1, Number(requestData.total_units || 1)) !== 1
+                      ? "s"
+                      : ""}
                   </span>
                 </div>
 
@@ -2282,6 +2454,9 @@ export default function CustomRequestDetailPage() {
                   {(requestData.items || []).map((item) => {
                     const dims = getItemDisplayDims(item);
                     const canPreview = hasEditorSnapshot(item);
+                    const submittedPreview = canPreview
+                      ? buildPreviewBlueprint(item)
+                      : null;
 
                     return (
                       <div key={item.id} className="checkout-item-row">
@@ -2318,39 +2493,44 @@ export default function CustomRequestDetailPage() {
                               : undefined
                           }
                         >
-                          {item.image_url || item.preview_image_url ? (
+                          {/* WISDOM REQUEST DETAILS ORDERS-STYLE SCENE V1.0.9 */}
+                          {submittedPreview ? (
+                            <CustomerBlueprintViewer
+                              blueprint={{
+                                ...submittedPreview,
+                                thumbnail_url: null,
+                                updated_at: `request-details-preview-v1.0.10-${item.id || item.blueprint_id || "design"}`,
+                              }}
+                              readOnly
+                              showHumanControls={false}
+                              compact
+                              compactHeight={96}
+                              defaultPreset="isometric"
+                              defaultShowHuman={false}
+                            />
+                          ) : item.image_url || item.preview_image_url ? (
                             <img
                               src={resolveImageSrc(
                                 item.image_url || item.preview_image_url,
                               )}
                               alt={getDisplayTitle(item)}
                               className="crd-thumb-img"
-                              onError={(e) => {
-                                e.target.style.display = "none";
-                                if (e.target.nextSibling) {
-                                  e.target.nextSibling.style.display = "flex";
-                                }
+                              style={{
+                                objectFit: "contain",
+                                boxSizing: "border-box",
+                                padding: 0,
                               }}
                             />
-                          ) : null}
+                          ) : (
+                            <div
+                              className="crd-thumb-fallback"
+                              style={{ display: "flex" }}
+                            >
+                              Design
+                            </div>
+                          )}
 
-                          <div
-                            className="crd-thumb-fallback"
-                            style={{
-                              display:
-                                item.image_url || item.preview_image_url
-                                  ? "none"
-                                  : "flex",
-                            }}
-                          >
-                            Item
-                          </div>
 
-                          {canPreview ? (
-                            <span className="crd-design-thumb-hint-v2">
-                              View design
-                            </span>
-                          ) : null}
                         </div>
 
                         <div className="checkout-item-details">
@@ -2363,13 +2543,54 @@ export default function CustomRequestDetailPage() {
                               width: "100%",
                             }}
                           >
-                            <div style={{ paddingRight: "16px" }}>
+                            <div className="crd-item-primary-copy-v5">
                               <div className="checkout-item-name">
                                 {getDisplayTitle(item)}
                               </div>
 
                               <div className="crd-item-subtitle">
                                 {formatTemplateLabel(item)} • Submitted draft
+                              </div>
+
+                              <div className="custom-cart-specs crd-tag-wrap crd-tag-wrap-inline-v5">
+                                <span className="custom-spec-tag">
+                                  Qty {Math.max(1, Number(item.quantity || 1))}
+                                </span>
+
+                                {item.wood_type && (
+                                  <span className="custom-spec-tag">
+                                    {prettifyText(item.wood_type, item.wood_type)}
+                                  </span>
+                                )}
+
+                                {(item.finish_color || item.color) && (
+                                  <span className="custom-spec-tag">
+                                    {prettifyText(
+                                      item.finish_color || item.color,
+                                      item.finish_color || item.color,
+                                    )}
+                                  </span>
+                                )}
+
+                                {item.door_style && (
+                                  <span className="custom-spec-tag">
+                                    {prettifyText(item.door_style, item.door_style)}
+                                  </span>
+                                )}
+
+                                {item.hardware && (
+                                  <span className="custom-spec-tag">
+                                    {prettifyText(item.hardware, item.hardware)}
+                                  </span>
+                                )}
+
+                                {(dims.width || dims.height || dims.depth) && (
+                                  <span className="custom-spec-tag">
+                                    W {formatMm(dims.width)} • H{" "}
+                                    {formatMm(dims.height)} • D{" "}
+                                    {formatMm(dims.depth)}
+                                  </span>
+                                )}
                               </div>
                             </div>
 
@@ -2416,42 +2637,7 @@ export default function CustomRequestDetailPage() {
                             ) : null}
                           </div>
 
-                          <div className="custom-cart-specs crd-tag-wrap">
-                            {item.wood_type && (
-                              <span className="custom-spec-tag">
-                                {prettifyText(item.wood_type, item.wood_type)}
-                              </span>
-                            )}
 
-                            {(item.finish_color || item.color) && (
-                              <span className="custom-spec-tag">
-                                {prettifyText(
-                                  item.finish_color || item.color,
-                                  item.finish_color || item.color,
-                                )}
-                              </span>
-                            )}
-
-                            {item.door_style && (
-                              <span className="custom-spec-tag">
-                                {prettifyText(item.door_style, item.door_style)}
-                              </span>
-                            )}
-
-                            {item.hardware && (
-                              <span className="custom-spec-tag">
-                                {prettifyText(item.hardware, item.hardware)}
-                              </span>
-                            )}
-
-                            {(dims.width || dims.height || dims.depth) && (
-                              <span className="custom-spec-tag">
-                                W {formatMm(dims.width)} • H{" "}
-                                {formatMm(dims.height)} • D{" "}
-                                {formatMm(dims.depth)}
-                              </span>
-                            )}
-                          </div>
 
                           {item.comments ? (
                             <div
@@ -2489,9 +2675,6 @@ export default function CustomRequestDetailPage() {
                           ) : null}
                         </div>
 
-                        <div className="checkout-item-qty">
-                          ×{item.quantity || 1}
-                        </div>
 
                         <div className="checkout-item-price crd-quote-note">
                           {submittedItemProgressLabel}
@@ -2505,29 +2688,93 @@ export default function CustomRequestDetailPage() {
               <div className="checkout-section wisdom-request-project-v11">
                 <div className="checkout-section-header">
                   <div className="checkout-section-num">05</div>
-                  <h3>Delivery details</h3>
+                  <h3>Delivery</h3>
                 </div>
 
                 <div className="checkout-section-body">
-                  <div className="crd-form-grid">
-                    <div>
-                      <label className="crd-field-label">
-                        Delivery address
-                      </label>
-                      <div className="crd-read-box">
-                        {requestData.delivery_address ||
-                          "No delivery address provided."}
+                  <div className="crd-delivery-layout-v5 crd-delivery-layout-v6">
+                    <div className="crd-delivery-column-v5">
+                      <div className="crd-delivery-column-title-v5">
+                        Delivery information
                       </div>
-                    </div>
 
-                    {String(requestData.notes || "").trim() ? (
-                      <div>
-                        <label className="crd-field-label">Customer notes</label>
-                        <div className="crd-read-box crd-read-box-copy">
-                          {requestData.notes}
+                      <div className="crd-delivery-pair-v5">
+                        <div className="crd-delivery-fact-v5">
+                          <span>Delivery status</span>
+                          <strong>{customerDeliveryStatusLabel}</strong>
+                        </div>
+
+                        <div className="crd-delivery-fact-v5">
+                          <span>{customerDeliveryDateLabel}</span>
+                          <strong>{customerDeliveryDateText}</strong>
                         </div>
                       </div>
-                    ) : null}
+
+                      <div className="crd-delivery-address-v5">
+                        <span>Delivery address</span>
+                        <strong>
+                          {customerDeliveryAddress ||
+                            "No delivery address provided."}
+                        </strong>
+
+                        {customerDeliveryMapHref ? (
+                          <a
+                            href={customerDeliveryMapHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="crd-delivery-location-btn-v6"
+                          >
+                            <MapPin size={15} strokeWidth={1.8} />
+                            <span>Delivery location</span>
+                          </a>
+                        ) : null}
+                      </div>
+
+                      {String(requestData.notes || "").trim() ? (
+                        <div className="crd-delivery-note-v5">
+                          <span>Customer notes</span>
+                          <p>{requestData.notes}</p>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="crd-delivery-column-v5 is-confirmation">
+                      <div className="crd-delivery-column-title-v5">
+                        Delivery confirmation
+                      </div>
+
+                      <div className="crd-delivery-confirmation-row-v5">
+                        <span>Rider</span>
+                        <strong>
+                          {customerDeliveryRider ||
+                            customerDeliveryRiderFallback}
+                        </strong>
+                        {customerDeliveryRider ? (
+                          <small>Delivery staff</small>
+                        ) : null}
+                      </div>
+
+                      <div className="crd-delivery-confirmation-row-v5">
+                        <span>Proof of delivery</span>
+
+                        {customerDeliveryProofHref ? (
+                          <a
+                            href={customerDeliveryProofHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="crd-delivery-proof-btn-v5"
+                          >
+                            View proof
+                          </a>
+                        ) : (
+                          <strong>
+                            {customerDeliveryIsFinished
+                              ? "Proof not available"
+                              : "Available after delivery"}
+                          </strong>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2536,8 +2783,8 @@ export default function CustomRequestDetailPage() {
                 <div className="checkout-section-header crd-messenger-section-head-v2">
                   <div className="checkout-section-num">06</div>
                   <div>
-                    <h3>Message our team</h3>
-                    <p>Ask about your quotation, payment, production, delivery, or request details.</p>
+                    <h3>Order Conversation</h3>
+                    <p>Ask a question or send an update about this order.</p>
                   </div>
                 </div>
 
@@ -2547,7 +2794,7 @@ export default function CustomRequestDetailPage() {
                       <div className="crd-chat-card-head crd-messenger-head-v2">
                         <div>
                           <strong>Spiral Wood Services</strong>
-                          <span>Project conversation</span>
+                          <span>About order {requestData.order_number || "this request"}</span>
                         </div>
                       </div>
 
@@ -2573,11 +2820,9 @@ export default function CustomRequestDetailPage() {
                                 <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
                               </svg>
                             </div>
-                            <strong>No conversation yet</strong>
+                            <strong>Start the conversation</strong>
                             <span>
-                              You can message us if you have a question, want
-                              to clarify your furniture request, or need to send
-                              an update.
+                              Ask about your order, payment, production, or delivery.
                             </span>
                           </div>
                         ) : (
@@ -2740,7 +2985,7 @@ export default function CustomRequestDetailPage() {
                           onKeyDown={handleDiscussionKeyDown}
                           placeholder="Type a message..."
                           className="crd-control crd-textarea crd-messenger-input-v2"
-                          aria-label="Message our team"
+                          aria-label="Order conversation message"
                         />
 
                         <button

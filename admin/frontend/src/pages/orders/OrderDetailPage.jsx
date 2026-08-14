@@ -39,14 +39,14 @@ const getGoogleMapsHref = (lat, lng) => {
 };
 
 const STATUS_STYLE = {
-  pending: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
-  confirmed: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
-  contract_released: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
-  production: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
-  shipping: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
-  delivered: { bg: "#18181b", color: "#ffffff", border: "#18181b" },
-  completed: { bg: "#0a0a0a", color: "#ffffff", border: "#0a0a0a" },
-  cancelled: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
+  pending: { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
+  confirmed: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+  contract_released: { bg: "#faf5ff", color: "#7e22ce", border: "#e9d5ff" },
+  production: { bg: "#faf5ff", color: "#7e22ce", border: "#e9d5ff" },
+  shipping: { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
+  delivered: { bg: "#ecfdf5", color: "#047857", border: "#a7f3d0" },
+  completed: { bg: "#ecfdf5", color: "#047857", border: "#a7f3d0" },
+  cancelled: { bg: "#fef2f2", color: "#b91c1c", border: "#fecaca" },
 };
 
 const STATUS_LABELS = {
@@ -101,7 +101,7 @@ const WALKIN_BLUEPRINT_TIMELINE = [
 const DETAIL_TABS = [
   { key: "overview", label: "Overview" },
   { key: "payment", label: "Payment" },
-  { key: "fulfillment", label: "Fulfillment" },
+  { key: "fulfillment", label: "Delivery" },
   { key: "blueprint", label: "Blueprint" },
   { key: "discussion", label: "Discussion" },
 ];
@@ -118,12 +118,12 @@ const STATUS_TRANSITIONS = {
 };
 
 const PAYMENT_STYLE = {
-  unpaid: { bg: "#fef2f2", color: "#991b1b", border: "#fecaca" },
-  paid: { bg: "#18181b", color: "#ffffff", border: "#18181b" },
-  partial: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
-  pending: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
-  verified: { bg: "#0a0a0a", color: "#ffffff", border: "#0a0a0a" },
-  rejected: { bg: "#fef2f2", color: "#dc2626", border: "#fecaca" },
+  unpaid: { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
+  paid: { bg: "#ecfdf5", color: "#047857", border: "#a7f3d0" },
+  partial: { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+  pending: { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
+  verified: { bg: "#ecfdf5", color: "#047857", border: "#a7f3d0" },
+  rejected: { bg: "#fef2f2", color: "#b91c1c", border: "#fecaca" },
 };
 
 const TASK_STYLE = {
@@ -175,7 +175,15 @@ const formatMoney = (value) =>
 const formatDateTime = (value) => {
   if (!value) return "—";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("en-PH");
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleString("en-PH", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
 };
 
 const formatDate = (value) => {
@@ -1210,22 +1218,22 @@ export default function OrderDetailPage() {
 
   const nextStepLabel =
     normalizedOrderStatus === "pending"
-      ? "Review & accept"
+      ? "Review order"
       : normalizedOrderStatus === "confirmed"
         ? isWalkInPickupOrder
           ? "Complete order"
           : isWalkInDeliveryOrder
-            ? "Schedule / dispatch delivery"
+            ? "Schedule delivery"
             : isOnlineStandardPickupOrder
               ? paymentBalance > 0
                 ? "Await payment before completion"
                 : "Complete order"
               : isOnlineStandardDeliveryOrder
                 ? normalizedPaymentMethod === "cod"
-                  ? "Prepare shipping or delivery"
+                  ? "Prepare delivery"
                   : paymentBalance > 0
                     ? "Await full payment before shipping"
-                    : "Prepare shipping or delivery"
+                    : "Prepare delivery"
                 : isBlueprintOrder
                   ? !hasEstimation
                     ? "Create estimate"
@@ -1234,7 +1242,7 @@ export default function OrderDetailPage() {
                       : estimationRejectedByCustomer
                         ? "Revise and resend estimate"
                         : !estimationApproved
-                          ? "Finalize / send estimate"
+                          ? "Send estimate"
                           : !order?.contract
                             ? "Generate contract"
                             : "Review order"
@@ -1244,13 +1252,13 @@ export default function OrderDetailPage() {
           : normalizedOrderStatus === "production"
             ? isWalkInOrder
               ? "Complete order when finished"
-              : "Prepare shipping or delivery"
+              : "Prepare delivery"
             : normalizedOrderStatus === "shipping"
-              ? "Mark delivered after handoff"
+              ? "Confirm delivery"
               : normalizedOrderStatus === "delivered"
                 ? requiresDeliveryReceiptForCompletion &&
                   !hasSignedDeliveryReceipt
-                  ? "Upload Proof of Delivery and complete"
+                  ? "Review proof and complete"
                   : "Complete order"
                 : normalizedOrderStatus === "completed"
                   ? "Order closed"
@@ -1285,7 +1293,7 @@ export default function OrderDetailPage() {
 
   const assignmentPhaseText =
     normalizedOrderStatus === "shipping"
-      ? "Ready for delivery / dispatched"
+      ? "Ready for delivery"
       : normalizedOrderStatus === "delivered"
         ? "Delivered, awaiting final completion"
         : normalizedOrderStatus === "completed"
@@ -1302,14 +1310,26 @@ export default function OrderDetailPage() {
                   : `Complete remaining: ${incompleteRequiredBlueprintTaskRoles
                       .map(getTaskRoleLabel)
                       .join(", ")}`
-                : "Waiting for contract release / production stage";
+                : "Waiting for production";
 
   const customRequestItems = Array.isArray(order?.custom_request_items)
     ? order.custom_request_items
     : [];
 
   const hasCustomRequestItems = customRequestItems.length > 0;
-
+  const orderItems = Array.isArray(order?.items) ? order.items : [];
+  const shouldShowOrderItems =
+    !hasCustomRequestItems ||
+    orderItems.some(
+      (item) =>
+        Number(item?.unit_price || 0) > 0 || Number(item?.subtotal || 0) > 0,
+    );
+  const customerAddressText = String(order?.customer_address || "").trim();
+  const deliveryAddressText = String(order?.delivery_address || "").trim();
+  const shouldShowCustomerAddress = Boolean(
+    customerAddressText &&
+      customerAddressText.toLowerCase() !== deliveryAddressText.toLowerCase(),
+  );
   const customRequestPreviewBlueprint = customRequestPreviewItem
     ? buildCustomRequestPreviewBlueprint(customRequestPreviewItem)
     : null;
@@ -1318,25 +1338,25 @@ export default function OrderDetailPage() {
     hasCustomRequestItems && normalizedOrderStatus === "pending";
   const summaryCards = [
     {
-      label: "Current Status",
-      value: getStatusLabel(order?.status),
-      tone: statusTone,
-    },
-    {
-      label: "Payment Status",
+      label: "Payment",
       value: titleCase(
         order?.payment_status_display || order?.payment_status || "unpaid",
       ),
       tone: orderPaymentTone,
     },
     {
-      label: "Total Amount",
+      label: "Total",
       value: formatMoney(totalAmount),
-      tone: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
+      tone: { bg: "#ffffff", color: "#18181b", border: "#d4d4d8" },
+    },
+    {
+      label: "Date Placed",
+      value: formatDate(order?.created_at),
+      tone: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
     },
     hasBlueprintFlow
       ? {
-          label: "Blueprint Tasks",
+          label: "Production Tasks",
           value: hasBlueprintTasks
             ? `${completedBlueprintTasks.length}/${blueprintTasks.length}`
             : "Ready",
@@ -1370,7 +1390,7 @@ export default function OrderDetailPage() {
       <div style={heroCard}>
         <div style={heroTop}>
           <div style={{ flex: 1, minWidth: 280 }}>
-            <div style={eyebrow}>Sales & Orders</div>
+            <div style={eyebrow}>Order details</div>
 
             <div style={heroTitleRow}>
               <button onClick={() => navigate("/admin/orders")} style={btnBack}>
@@ -1405,8 +1425,9 @@ export default function OrderDetailPage() {
             </div>
 
             <p style={pageSubtitle}>
-              Review payment progress, contract status, delivery details, and
-              blueprint task handoff for this order.
+              {isBlueprintOrder
+                ? "Review the customer request, payment, and production progress."
+                : "Review payment and delivery progress for this order."}
             </p>
           </div>
 
@@ -1548,7 +1569,7 @@ export default function OrderDetailPage() {
       </div>
       {activeTab === "overview" && (
         <>
-          <Section title="Order Progress">
+          <Section title="Progress">
             {normalizedOrderStatus === "cancelled" && (
               <div style={timelineCancelNotice}>
                 This order has been cancelled. Progress stopped before
@@ -1678,12 +1699,14 @@ export default function OrderDetailPage() {
           </Section>
 
           <div style={sectionGrid}>
-            <Section title="Customer Information">
+            <Section title="Customer">
               <InfoRow label="Name" value={order.customer_name || "—"} />
               <InfoRow label="Email" value={order.customer_email || "—"} />
               <InfoRow label="Phone" value={order.customer_phone || "—"} />
-              <InfoRow label="Address" value={order.customer_address || "—"} />
-              {String(order.delivery_address || "").trim() && (
+              {shouldShowCustomerAddress ? (
+                <InfoRow label="Address" value={customerAddressText} />
+              ) : null}
+              {deliveryAddressText && (
                 <InfoRow
                   label="Delivery Address"
                   value={
@@ -1729,10 +1752,10 @@ export default function OrderDetailPage() {
               )}
             </Section>
 
-            <Section title="Order Overview">
+            <Section title="Order Details">
               <InfoRow
-                label="Date Placed"
-                value={formatDateTime(order.created_at)}
+                label="Order Type"
+                value={isBlueprintOrder ? "Blueprint" : "Standard"}
               />
               <InfoRow
                 label="Payment Method"
@@ -1742,24 +1765,11 @@ export default function OrderDetailPage() {
                   "—"
                 }
               />
-              <InfoRow
-                label="Payment Status"
-                value={titleCase(
-                  order.payment_status_display ||
-                    order.payment_status ||
-                    "unpaid",
-                )}
-              />
               <InfoRow label="Channel" value={channelMeta.label} />
-              <InfoRow
-                label="Total Amount"
-                value={formatMoney(totalAmount)}
-                bold
-              />
             </Section>
           </div>
           {hasCustomRequestItems && (
-            <Section title="Custom Request Intake">
+            <Section title="Customization Request">
               <div
                 style={{
                   display: "flex",
@@ -1778,7 +1788,7 @@ export default function OrderDetailPage() {
                       marginBottom: 6,
                     }}
                   >
-                    Submitted customer customization request
+                    Customer submission
                   </div>
                   <div
                     style={{
@@ -1787,9 +1797,8 @@ export default function OrderDetailPage() {
                       lineHeight: 1.6,
                     }}
                   >
-                    Review the submitted dimensions, finish, hardware, and the
-                    exact edited draft before approving the request for
-                    estimation.
+                    Review the dimensions, finish, hardware, and saved design before
+                    approving the request for estimation.
                   </div>
                 </div>
 
@@ -1802,7 +1811,7 @@ export default function OrderDetailPage() {
                     >
                       {customRequestActionLoading === "approve"
                         ? "Approving..."
-                        : "Approve for Estimation"}
+                        : "Approve for estimate"}
                     </button>
 
                     <button
@@ -1817,7 +1826,7 @@ export default function OrderDetailPage() {
                   </div>
                 ) : (
                   <span style={mutedBadge}>
-                    Custom request intake already reviewed.
+                    Request already reviewed.
                   </span>
                 )}
               </div>
@@ -1862,7 +1871,7 @@ export default function OrderDetailPage() {
                           </div>
 
                           <div style={{ fontSize: 12, color: "#71717a" }}>
-                            Customer-submitted custom draft
+                            Submitted design
                           </div>
                         </div>
 
@@ -1871,7 +1880,7 @@ export default function OrderDetailPage() {
                             onClick={() => openCustomRequestPreview(item)}
                             style={btnView}
                           >
-                            View Submitted Design
+                            View design
                           </button>
                         ) : null}
                       </div>
@@ -1930,109 +1939,99 @@ export default function OrderDetailPage() {
             </Section>
           )}
           {isBlueprintOrder && (
-            <Section title="Estimate / Quotation">
-              <InfoRow
-                label="Estimation Status"
-                value={
-                  hasEstimation
-                    ? estimationSentToCustomer
-                      ? "Sent to customer"
-                      : estimationRejectedByCustomer
-                        ? "Revision requested"
-                        : titleCase(latestEstimation.status)
-                    : "No estimate yet"
-                }
-              />
-              <InfoRow
-                label="Version"
-                value={
-                  hasEstimation ? `v${latestEstimation.version || 1}` : "—"
-                }
-              />
-              <InfoRow
-                label="Last Updated"
-                value={
-                  hasEstimation
-                    ? formatDateTime(latestEstimation.updated_at)
-                    : "—"
-                }
-              />
-              <InfoRow
-                label="Quoted Total"
-                value={
-                  hasEstimation
-                    ? formatMoney(latestEstimation.grand_total)
-                    : "—"
-                }
-                bold
-              />
+            <Section title="Quotation">
+              {!hasEstimation ? (
+                <EmptyText>No quotation has been created yet.</EmptyText>
+              ) : (
+                <>
+                  <InfoRow
+                    label="Status"
+                    value={
+                      estimationSentToCustomer
+                        ? "Sent to customer"
+                        : estimationRejectedByCustomer
+                          ? "Revision requested"
+                          : titleCase(latestEstimation.status)
+                    }
+                  />
+                  <InfoRow
+                    label="Version"
+                    value={`v${latestEstimation.version || 1}`}
+                  />
+                  <InfoRow
+                    label="Updated"
+                    value={formatDateTime(latestEstimation.updated_at)}
+                  />
+                  <InfoRow
+                    label="Quoted Total"
+                    value={formatMoney(latestEstimation.grand_total)}
+                    bold
+                  />
 
-              {blueprintId &&
-                normalizedOrderStatus === "confirmed" &&
-                estimationSentToCustomer && (
-                  <div style={{ marginTop: 12 }}>
-                    <span style={mutedBadge}>
-                      Quotation already sent. Waiting for customer approval,
-                      revision request, or rejection.
-                    </span>
-                  </div>
-                )}
+                  {blueprintId &&
+                    normalizedOrderStatus === "confirmed" &&
+                    estimationSentToCustomer && (
+                      <div style={{ marginTop: 12 }}>
+                        <span style={mutedBadge}>
+                          Waiting for the customer to review the quotation.
+                        </span>
+                      </div>
+                    )}
+                </>
+              )}
             </Section>
           )}
-          <Section title="Order Items">
-            <TableShell>
-              <table style={table}>
-                <thead>
-                  <tr style={theadRow}>
-                    {[
-                      "Product",
-                      "Qty",
-                      "Unit Price",
-                      "Production Cost",
-                      "Subtotal",
-                    ].map((h) => (
-                      <th key={h} style={th}>
-                        {h}
-                      </th>
+          {shouldShowOrderItems && (
+            <Section title="Items">
+              <TableShell>
+                <table style={table}>
+                  <thead>
+                    <tr style={theadRow}>
+                      {["Product", "Quantity", "Unit Price", "Subtotal"].map(
+                        (h) => (
+                          <th key={h} style={th}>
+                            {h}
+                          </th>
+                        ),
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orderItems.map((item, i) => (
+                      <tr key={i} style={tbodyRow}>
+                        <td style={{ ...td, fontWeight: 600, color: "#18181b" }}>
+                          {item.product_name}
+                        </td>
+                        <td style={td}>{item.quantity}</td>
+                        <td style={td}>{formatMoney(item.unit_price)}</td>
+                        <td style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}>
+                          {formatMoney(item.subtotal)}
+                        </td>
+                      </tr>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(order.items || []).map((item, i) => (
-                    <tr key={i} style={tbodyRow}>
-                      <td style={td}>{item.product_name}</td>
-                      <td style={td}>{item.quantity}</td>
-                      <td style={td}>{formatMoney(item.unit_price)}</td>
-                      <td style={{ ...td, color: "#71717a" }}>
-                        {formatMoney(item.production_cost)}
+                  </tbody>
+                  <tfoot>
+                    <tr style={tfootRow}>
+                      <td
+                        colSpan={3}
+                        style={{
+                          ...td,
+                          textAlign: "right",
+                          fontWeight: 600,
+                          color: "#52525b",
+                        }}
+                      >
+                        Total
                       </td>
-                      <td style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}>
-                        {formatMoney(item.subtotal)}
+                      <td style={{ ...td, fontWeight: 800, color: "#0a0a0a" }}>
+                        {formatMoney(totalAmount)}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr style={tfootRow}>
-                    <td
-                      colSpan={4}
-                      style={{
-                        ...td,
-                        textAlign: "right",
-                        fontWeight: 800,
-                        color: "#0a0a0a",
-                      }}
-                    >
-                      Total
-                    </td>
-                    <td style={{ ...td, fontWeight: 800, color: "#0a0a0a" }}>
-                      {formatMoney(totalAmount)}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </TableShell>
-          </Section>
+                  </tfoot>
+                </table>
+              </TableShell>
+            </Section>
+          )}
         </>
       )}
 
@@ -2054,7 +2053,7 @@ export default function OrderDetailPage() {
               verifiedTotal > 0 && verifiedTotal < minimumRequiredTotal;
 
             return (
-              <Section title="Blueprint Payment Summary">
+              <Section title="Payment Requirements">
                 <InfoRow
                   label="Quoted total"
                   value={formatMoney(cashSummary.total || 0)}
@@ -2074,11 +2073,11 @@ export default function OrderDetailPage() {
                   />
                 ) : null}
                 <InfoRow
-                  label="Verified amount"
+                  label="Paid amount"
                   value={formatMoney(verifiedTotal)}
                 />
                 <InfoRow
-                  label="Remaining balance"
+                  label="Balance"
                   value={formatMoney(cashSummary.remaining_balance || 0)}
                 />
 
@@ -2177,7 +2176,7 @@ export default function OrderDetailPage() {
                   Paid via{" "}
                   {PAY_METHOD_LABELS[normalize(order?.payment_method)] ||
                     titleCase(order?.payment_method)}{" "}
-                  / no separate payment transaction record was recorded.
+                  No separate payment transaction was recorded.
                 </div>
               ) : isOnlineOrder && normalizedPaymentStatus === "paid" ? (
                 <div style={infoNotice}>
@@ -2185,7 +2184,7 @@ export default function OrderDetailPage() {
                   record is linked yet.
                 </div>
               ) : isOnlineOrder ? (
-                <EmptyText>No online payment transaction record yet.</EmptyText>
+                <EmptyText>No payment transactions yet.</EmptyText>
               ) : (
                 <EmptyText>No payment records yet.</EmptyText>
               )
@@ -2316,13 +2315,14 @@ export default function OrderDetailPage() {
               </TableShell>
             )}
           </Section>
-          <Section title="Payment Summary">
+          {!order?.blueprint_cash_payment && (
+            <Section title="Payment Summary">
             <InfoRow
-              label="Verified Paid Amount"
+              label="Paid Amount"
               value={formatMoney(verifiedPaymentTotal)}
             />
             <InfoRow
-              label="Remaining Balance"
+              label="Balance"
               value={formatMoney(paymentBalance)}
               bold
             />
@@ -2348,7 +2348,8 @@ export default function OrderDetailPage() {
                 </div>
               </div>
             )}
-          </Section>
+            </Section>
+          )}
         </>
       )}
 
@@ -2368,9 +2369,9 @@ export default function OrderDetailPage() {
           ) : (
             <div style={detailPairGrid}>
               {order.delivery ? (
-                <Section title="Delivery Information">
+                <Section title="Delivery">
                   <InfoRow
-                    label="Scheduled Date"
+                    label="Scheduled"
                     value={
                       order.delivery.scheduled_date
                         ? formatDateTime(order.delivery.scheduled_date)
@@ -2382,7 +2383,7 @@ export default function OrderDetailPage() {
                     value={titleCase(order.delivery.status)}
                   />
                   <InfoRow
-                    label="Delivered On"
+                    label="Delivered"
                     value={
                       order.delivery.delivered_date
                         ? formatDateTime(order.delivery.delivered_date)
@@ -2432,7 +2433,7 @@ export default function OrderDetailPage() {
                     }
                   />
                   <InfoRow
-                    label="Proof of Delivery"
+                    label="Delivery Proof"
                     value={
                       order.delivery.signed_receipt ? (
                         <div
@@ -2463,7 +2464,7 @@ export default function OrderDetailPage() {
                     ) && (
                       <div style={noticeBox}>
                         <div style={noticeTitle}>
-                          Awaiting Rider Proof of Delivery
+                          Waiting for delivery proof
                         </div>
                         <div
                           style={{
@@ -2472,16 +2473,14 @@ export default function OrderDetailPage() {
                             lineHeight: 1.6,
                           }}
                         >
-                          The assigned delivery rider should upload the signed
-                          receipt / proof of delivery from the rider delivery
-                          page. This admin order view is summary-only by
-                          default.
+                          The assigned rider should upload the signed delivery proof from
+                          the rider delivery page.
                         </div>
                       </div>
                     )}
                 </Section>
               ) : shouldShowMissingDeliverySection ? (
-                <Section title="Delivery Information">
+                <Section title="Delivery">
                   <div
                     style={{
                       background: "#fafafa",
@@ -2505,8 +2504,7 @@ export default function OrderDetailPage() {
                       lineHeight: 1.5,
                     }}
                   >
-                    Create or link a delivery record first before uploading a
-                    Proof of Delivery photo.
+                    Create or link a delivery record before adding delivery proof.
                   </div>
                 </Section>
               ) : null}
@@ -3151,28 +3149,28 @@ function TableShell({ children }) {
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
 const pageShell = {
-  maxWidth: 1480, // Widened to match the new Orders grid
+  maxWidth: 1260, // Compact centered Admin Order detail
   margin: "0 auto",
   display: "flex",
   flexDirection: "column",
-  gap: 16,
+  gap: 12,
   color: "#202124",
 };
 
 const heroCard = {
   background: "#ffffff",
   border: "1px solid #dfe2e5",
-  borderRadius: 4,
-  padding: "16px 20px",
+  borderRadius: 0,
+  padding: "14px 16px",
 };
 
 const heroTop = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
-  gap: 12,
+  gap: 10,
   flexWrap: "wrap",
-  marginBottom: 12,
+  marginBottom: 10,
 };
 
 const eyebrow = {
@@ -3217,17 +3215,17 @@ const heroActions = {
 
 const detailTabRow = {
   display: "flex",
-  gap: 8,
+  gap: 6,
   flexWrap: "wrap",
-  marginTop: 16,
-  paddingTop: 16,
+  marginTop: 12,
+  paddingTop: 12,
   borderTop: "1px solid #dfe2e5",
 };
 
 const detailTabButton = {
   padding: "0 14px",
   height: 36,
-  borderRadius: 4,
+  borderRadius: 0,
   border: "1px solid #dfe2e5",
   background: "#ffffff",
   color: "#25282c",
@@ -3240,15 +3238,15 @@ const detailTabButton = {
 const statsGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-  gap: 10,
+  gap: 8,
 };
 
 const statCard = {
   background: "#ffffff",
   border: "1px solid #dfe2e5",
-  borderRadius: 4,
-  padding: "14px 16px",
-  minHeight: 78,
+  borderRadius: 0,
+  padding: "12px 14px",
+  minHeight: 72,
   display: "flex",
   flexDirection: "column",
   justifyContent: "center",
@@ -3288,26 +3286,26 @@ const statValue = {
 const sectionGrid = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-  gap: 16,
+  gap: 12,
 };
 
 const detailPairGrid = {
   display: "grid",
-  gridTemplateColumns: "1.1fr 0.9fr",
-  gap: 16,
+  gridTemplateColumns: "1fr 1fr",
+  gap: 12,
   alignItems: "start",
 };
 
 const sectionCard = {
   background: "#ffffff",
   border: "1px solid #dfe2e5",
-  borderRadius: 4,
-  padding: "16px 20px",
+  borderRadius: 0,
+  padding: "14px 16px",
 };
 
 const sectionHeader = {
-  marginBottom: 14,
-  paddingBottom: 10,
+  marginBottom: 10,
+  paddingBottom: 8,
   borderBottom: "1px solid #eff0f1",
 };
 
@@ -3322,8 +3320,8 @@ const infoRow = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
-  gap: 14,
-  padding: "8px 0",
+  gap: 12,
+  padding: "6px 0",
   borderBottom: "1px solid #fafafa",
 };
 
@@ -3347,7 +3345,7 @@ const tableShell = {
   width: "100%",
   overflowX: "auto",
   border: "1px solid #dfe2e5",
-  borderRadius: 4,
+  borderRadius: 0,
 };
 
 const table = {
@@ -3363,7 +3361,7 @@ const tfootRow = { background: "#fafafa" };
 
 const th = {
   textAlign: "left",
-  padding: "10px 14px",
+  padding: "8px 12px",
   fontSize: 9.5,
   fontWeight: 600,
   color: "#60656d",
@@ -3373,7 +3371,7 @@ const th = {
 };
 
 const td = {
-  padding: "11px 14px",
+  padding: "9px 12px",
   color: "#34383d",
   fontSize: 11.5,
   borderBottom: "1px solid #eff0f1",

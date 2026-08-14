@@ -71,6 +71,10 @@ export default function OrderCompletePage() {
   const orderNumber = displayOrderNumber(confirmation?.order_number);
   const placedAt = formatDateTime(confirmation?.placed_at);
   const paymentMethod = formatPaymentMethod(confirmation?.payment_method);
+  const isPaidOnline =
+    String(confirmation?.payment_method || "").trim().toLowerCase() ===
+      "paymongo" &&
+    String(confirmation?.payment_status || "").trim().toLowerCase() === "paid";
 
   const leaveConfirmation = (path) => {
     try {
@@ -110,11 +114,20 @@ export default function OrderCompletePage() {
           <Check size={34} strokeWidth={2.2} />
         </div>
 
-        <h1>Thank you for your purchase</h1>
+        <h1>{isPaidOnline ? "Payment successful" : "Thank you for your purchase"}</h1>
 
         <p className="order-complete-lead">
-          Your order has been placed successfully. We&apos;ll notify you when
-          its status changes.
+          {isPaidOnline ? (
+            <>
+              Your payment has been received and your order has been placed
+              successfully. We&apos;ll notify you when its status changes.
+            </>
+          ) : (
+            <>
+              Your order has been placed successfully. We&apos;ll notify you when
+              its status changes.
+            </>
+          )}
         </p>
 
         {orderNumber ? (
@@ -155,6 +168,20 @@ export default function OrderCompletePage() {
                 <div className="order-complete-meta-row">
                   <span>Payment</span>
                   <strong>{paymentMethod}</strong>
+                </div>
+              ) : null}
+
+              {isPaidOnline ? (
+                <div className="order-complete-meta-row">
+                  <span>Payment Status</span>
+                  <strong>Paid</strong>
+                </div>
+              ) : null}
+
+              {isPaidOnline && confirmation?.receipt_number ? (
+                <div className="order-complete-meta-row">
+                  <span>Receipt</span>
+                  <strong>{confirmation.receipt_number}</strong>
                 </div>
               ) : null}
             </div>

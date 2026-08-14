@@ -524,13 +524,16 @@ export default function CustomerLayout() {
 
   const hasBlueprintItems = cart.some((item) => isBlueprintItem(item));
   const hasStandardItems = cart.some((item) => !isBlueprintItem(item));
+  const blueprintItemCount = cart.filter((item) => isBlueprintItem(item)).length;
   const isMixedCart = hasBlueprintItems && hasStandardItems;
 
   const miniCartCheckoutLabel = !customerUser
     ? "Sign in to Continue"
     : isMixedCart
       ? "Review in Cart"
-      : "Checkout";
+      : hasBlueprintItems && blueprintItemCount > 1
+        ? "Choose Design"
+        : "Checkout";
 
   const handleMiniCartCheckout = () => {
     if (!cart.length) return;
@@ -554,9 +557,14 @@ export default function CustomerLayout() {
     const keys = cart.map((item) => item.key);
 
     if (hasBlueprintItems) {
+      if (keys.length !== 1) {
+        navigate("/custom-cart");
+        return;
+      }
+
       sessionStorage.setItem(
         "cust_selected_custom_checkout",
-        JSON.stringify(keys),
+        JSON.stringify([keys[0]]),
       );
       navigate("/custom-checkout");
       return;
@@ -991,7 +999,7 @@ export default function CustomerLayout() {
                         onClick={openLogoutConfirm}
                       >
                         <LogOut size={16} />
-                        <span>Sign Out</span>
+                        <span>Logout</span>
                       </button>
                     </>
                   ) : (
@@ -1202,7 +1210,10 @@ export default function CustomerLayout() {
                   quantity >= Number(item.max_stock);
 
                 return (
-                  <div className="cust-mini-cart-item" key={item.key}>
+                  <div
+                    className={`cust-mini-cart-item ${blueprint ? "is-blueprint" : ""}`}
+                    key={item.key}
+                  >
                     <div className="cust-mini-cart-thumb">
                       {blueprint ? (
                         liveBlueprintPreview ? (
@@ -1211,9 +1222,14 @@ export default function CustomerLayout() {
                             readOnly
                             showHumanControls={false}
                             compact
-                            compactHeight={64}
+                            compactHeight={88}
                             defaultPreset="isometric"
                             defaultShowHuman={false}
+                          />
+                        ) : imageSrc ? (
+                          <img
+                            src={imageSrc}
+                            alt={item.base_blueprint_title || item.product_name || "Custom design"}
                           />
                         ) : (
                           <div className="cust-mini-cart-thumb-fallback">
@@ -1244,43 +1260,43 @@ export default function CustomerLayout() {
 
                       {blueprint ? (
                         <span className="cust-mini-cart-meta">
-                          Custom / Blueprint item
+                          Custom design
                         </span>
                       ) : null}
 
                       <div className="cust-mini-cart-item-actions">
-                        {blueprint ? (
-                          <span className="cust-mini-cart-blueprint-qty">
-                            Qty {quantity}
-                          </span>
-                        ) : (
-                          <div
-                            className="cust-mini-cart-qty"
-                            aria-label={`Quantity for ${item.product_name}`}
+                        <div
+                          className="cust-mini-cart-qty"
+                          aria-label={`Quantity for ${
+                            item.base_blueprint_title || item.product_name
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (quantity > 1) updateQty(item.key, -1);
+                            }}
+                            disabled={quantity <= 1}
+                            aria-label={`Decrease ${
+                              item.base_blueprint_title || item.product_name
+                            } quantity`}
                           >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (quantity > 1) updateQty(item.key, -1);
-                              }}
-                              disabled={quantity <= 1}
-                              aria-label={`Decrease ${item.product_name} quantity`}
-                            >
-                              {String.fromCharCode(8722)}
-                            </button>
+                            {String.fromCharCode(8722)}
+                          </button>
 
-                            <span>{quantity}</span>
+                          <span>{quantity}</span>
 
-                            <button
-                              type="button"
-                              onClick={() => updateQty(item.key, 1)}
-                              disabled={Boolean(atMaxStock)}
-                              aria-label={`Increase ${item.product_name} quantity`}
-                            >
-                              +
-                            </button>
-                          </div>
-                        )}
+                          <button
+                            type="button"
+                            onClick={() => updateQty(item.key, 1)}
+                            disabled={Boolean(atMaxStock)}
+                            aria-label={`Increase ${
+                              item.base_blueprint_title || item.product_name
+                            } quantity`}
+                          >
+                            +
+                          </button>
+                        </div>
 
                         <button
                           type="button"
@@ -1304,7 +1320,11 @@ export default function CustomerLayout() {
               <div className="cust-mini-cart-summary">
                 <div className="cust-mini-cart-summary-row">
                   <span>Subtotal</span>
-                  <strong>{formatPeso(cartTotal)}</strong>
+                  <strong>
+                    {hasBlueprintItems && !hasStandardItems
+                      ? "To be quoted"
+                      : formatPeso(cartTotal)}
+                  </strong>
                 </div>
 
                 <div className="cust-mini-cart-summary-row cust-mini-cart-summary-muted">
@@ -1322,7 +1342,11 @@ export default function CustomerLayout() {
 
                 <div className="cust-mini-cart-summary-row cust-mini-cart-summary-total">
                   <span>Estimated total</span>
-                  <strong>{formatPeso(cartTotal)}</strong>
+                  <strong>
+                    {hasBlueprintItems && !hasStandardItems
+                      ? "To be quoted"
+                      : formatPeso(cartTotal)}
+                  </strong>
                 </div>
               </div>
 
@@ -1340,7 +1364,11 @@ export default function CustomerLayout() {
                   className="cust-mini-cart-view"
                   onClick={() => {
                     closeMiniCart();
-                    navigate("/cart");
+                    navigate(
+                      hasBlueprintItems && !hasStandardItems
+                        ? "/custom-cart"
+                        : "/cart",
+                    );
                   }}
                 >
                   View cart
@@ -1383,7 +1411,7 @@ export default function CustomerLayout() {
               maxWidth: "390px",
               background: "#ffffff",
               border: "1px solid #d9d9dc",
-              borderRadius: 0,
+              borderRadius: 6,
               boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
               padding: "24px",
               pointerEvents: "auto",
@@ -1400,7 +1428,7 @@ export default function CustomerLayout() {
                 letterSpacing: "-0.015em",
               }}
             >
-              Sign out
+              Logout
             </h3>
 
             <p
@@ -1412,7 +1440,7 @@ export default function CustomerLayout() {
                 lineHeight: 1.5,
               }}
             >
-              Are you sure you want to sign out?
+              Are you sure you want to log out?
             </p>
 
             <div
@@ -1431,7 +1459,7 @@ export default function CustomerLayout() {
                   height: "40px",
                   padding: "0 14px",
                   border: "1px solid #bfc0c4",
-                  borderRadius: 0,
+                  borderRadius: 6,
                   background: "#ffffff",
                   color: "#111111",
                   cursor: "pointer",
@@ -1450,7 +1478,7 @@ export default function CustomerLayout() {
                   height: "40px",
                   padding: "0 14px",
                   border: "1px solid #111111",
-                  borderRadius: 0,
+                  borderRadius: 6,
                   background: "#111111",
                   color: "#ffffff",
                   cursor: "pointer",
@@ -1458,7 +1486,7 @@ export default function CustomerLayout() {
                   fontWeight: 650,
                 }}
               >
-                Sign out
+                Logout
               </button>
             </div>
           </div>

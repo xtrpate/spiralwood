@@ -416,3 +416,25 @@
   border-radius: 2px !important;
   font-weight: 600 !important;
 }
+
+/* WISDOM BLUEPRINT DASHBOARD ALIGNMENT V1
+   Targeted only: Dashboard left alignment + page title hierarchy. */
+.blueprints-admin-v2 {
+  width: min(100%, 1480px) !important;
+  max-width: 1480px !important;
+  margin: 0 auto !important;
+}
+
+.blueprints-admin-v2 > div:first-child h1 {
+  font-size: 24px !important;
+  line-height: 1.2 !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+}
+
+.blueprints-admin-v2 .blueprints-page-subtitle {
+  margin-top: 4px !important;
+  font-size: 12.5px !important;
+  line-height: 1.5 !important;
+  font-weight: 400 !important;
+}
