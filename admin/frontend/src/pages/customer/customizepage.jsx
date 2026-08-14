@@ -1174,6 +1174,7 @@ export default function CustomizePage() {
 
   const handleAdd = async (product, draft = {}) => {
     if (!requireCustomerLogin(product)) return;
+
     const profile = resolveSavedTemplateProfile(product || {});
     const bounds = draft?.bounds || {};
     const defaultDimensions = draft?.defaultDimensions || {};
@@ -1259,7 +1260,7 @@ export default function CustomizePage() {
       preview_image_url:
         product.preview_image_url || product.thumbnail_url || "",
       item_type: "custom",
-      quantity: Math.max(1, Number(draft?.quantity || 1)),
+      quantity: 1,
 
       // Custom blueprint pricing is finalized through estimation.
       unit_price: 0,
@@ -1302,7 +1303,7 @@ export default function CustomizePage() {
       },
     });
 
-    setToastMessage(`"${product.title}" successfully added to your cart!`);
+    setToastMessage(`"${product.title}" added to your custom cart.`);
     setIsHiding(false);
   };
 

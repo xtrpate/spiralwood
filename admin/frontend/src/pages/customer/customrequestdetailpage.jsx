@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api, { buildAssetUrl } from "../../services/api";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
+import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import "./customizepage.css";
 import "./customrequestdetailpage.css";
 
@@ -489,52 +490,26 @@ const buildPreviewBlueprint = (item = {}) => {
     ? item.editor_snapshot.components
     : [];
 
+  if (!components.length) return null;
+
   const worldSize =
     item?.editor_snapshot?.worldSize &&
     typeof item.editor_snapshot.worldSize === "object"
       ? item.editor_snapshot.worldSize
-      : { w: 6400, h: 3200, d: 5200 };
+      : null;
 
-  const dims = getItemDisplayDims(item);
-
+  // WISDOM REQUEST PREVIEW SCENE PARITY V1.0.9
+  // Keep the preview payload identical in shape to the working Mini Cart:
+  // real submitted components + worldSize only. CustomerBlueprintViewer
+  // derives the real furniture bounds itself, avoiding a second scale pass.
   return {
     id: item.blueprint_id || item.product_id || item.id,
     title: getDisplayTitle(item),
-    thumbnail_url: item.image_url || item.preview_image_url || "",
-    preview_image_url: item.preview_image_url || item.image_url || "",
-    default_dimensions: {
-      width_mm: dims.width,
-      height_mm: dims.height,
-      depth_mm: dims.depth,
-    },
-    bounds: {
-      width: dims.width,
-      height: dims.height,
-      depth: dims.depth,
-    },
-    design_data: {
-      components,
-      worldSize,
-      bounds: {
-        width: dims.width,
-        height: dims.height,
-        depth: dims.depth,
-      },
-    },
+    thumbnail_url: null,
+    components,
     view_3d_data: {
       components,
       worldSize,
-      bounds: {
-        width: dims.width,
-        height: dims.height,
-        depth: dims.depth,
-      },
-    },
-    metadata: {
-      wood_type: item.wood_type || "",
-      finish_color: item.finish_color || item.color || "",
-      door_style: item.door_style || "",
-      hardware: item.hardware || "",
     },
   };
 };
@@ -1278,7 +1253,7 @@ export default function CustomRequestDetailPage() {
                 </span>
               </span>
               <span className="crd-request-meta-separator-v12" aria-hidden="true">
-                /
+                •
               </span>
               <span>
                 <span className="crd-request-meta-label-v12">Submitted</span>
@@ -1761,7 +1736,7 @@ export default function CustomRequestDetailPage() {
                       ) : !normalizedOrderPaymentMethod ? (
                         canChooseMethod ? (
                           <div className="crd-panel wisdom-payment-method-choice-v16">
-                            <h4>Choose payment method</h4>
+                            <h4>Step 1: Select payment method</h4>
 
                             <div className="crd-grid-split">
                               <div className="crd-panel crd-panel-soft">
@@ -1783,7 +1758,7 @@ export default function CustomRequestDetailPage() {
                                     handleSelectPaymentMethod("cash")
                                   }
                                 >
-                                  Choose Cash at Store
+                                  Select Cash at Store
                                 </button>
                               </div>
 
@@ -1806,7 +1781,7 @@ export default function CustomRequestDetailPage() {
                                     handleSelectPaymentMethod("paymongo")
                                   }
                                 >
-                                  Choose Online Payment
+                                  Select Online Payment
                                 </button>
                               </div>
                             </div>
@@ -1872,7 +1847,7 @@ export default function CustomRequestDetailPage() {
                         </div>
                       ) : normalizedOrderPaymentMethod === "paymongo" ? (
                         <div className="crd-panel">
-                          <h4>Secure Online Payment</h4>
+                          <h4>Step 2: Pay Online</h4>
 
                           <div
                             className="crd-info-box"
@@ -1991,7 +1966,7 @@ export default function CustomRequestDetailPage() {
                                     handleSelectPaymentMethod("cash")
                                   }
                                 >
-                                  Choose Cash at Store
+                                  Select Cash at Store
                                 </button>
                               </div>
                               <div className="crd-panel crd-panel-soft">
@@ -2004,7 +1979,7 @@ export default function CustomRequestDetailPage() {
                                     handleSelectPaymentMethod("paymongo")
                                   }
                                 >
-                                  Choose Online Payment
+                                  Select Online Payment
                                 </button>
                               </div>
                             </div>
@@ -2271,10 +2246,8 @@ export default function CustomRequestDetailPage() {
                   <h3>Your furniture request</h3>
 
                   <span className="crd-mini-meta">
-                    {requestData.total_items || 0} design
-                    {(requestData.total_items || 0) !== 1 ? "s" : ""} •{" "}
-                    {requestData.total_units || 0} unit
-                    {(requestData.total_units || 0) !== 1 ? "s" : ""}
+                    {requestData.total_items || 0} custom design
+                    {(requestData.total_items || 0) !== 1 ? "s" : ""}
                   </span>
                 </div>
 
@@ -2282,6 +2255,9 @@ export default function CustomRequestDetailPage() {
                   {(requestData.items || []).map((item) => {
                     const dims = getItemDisplayDims(item);
                     const canPreview = hasEditorSnapshot(item);
+                    const submittedPreview = canPreview
+                      ? buildPreviewBlueprint(item)
+                      : null;
 
                     return (
                       <div key={item.id} className="checkout-item-row">
@@ -2318,39 +2294,44 @@ export default function CustomRequestDetailPage() {
                               : undefined
                           }
                         >
-                          {item.image_url || item.preview_image_url ? (
+                          {/* WISDOM REQUEST DETAILS ORDERS-STYLE SCENE V1.0.9 */}
+                          {submittedPreview ? (
+                            <CustomerBlueprintViewer
+                              blueprint={{
+                                ...submittedPreview,
+                                thumbnail_url: null,
+                                updated_at: `request-details-preview-v1.0.10-${item.id || item.blueprint_id || "design"}`,
+                              }}
+                              readOnly
+                              showHumanControls={false}
+                              compact
+                              compactHeight={96}
+                              defaultPreset="isometric"
+                              defaultShowHuman={false}
+                            />
+                          ) : item.image_url || item.preview_image_url ? (
                             <img
                               src={resolveImageSrc(
                                 item.image_url || item.preview_image_url,
                               )}
                               alt={getDisplayTitle(item)}
                               className="crd-thumb-img"
-                              onError={(e) => {
-                                e.target.style.display = "none";
-                                if (e.target.nextSibling) {
-                                  e.target.nextSibling.style.display = "flex";
-                                }
+                              style={{
+                                objectFit: "contain",
+                                boxSizing: "border-box",
+                                padding: 0,
                               }}
                             />
-                          ) : null}
+                          ) : (
+                            <div
+                              className="crd-thumb-fallback"
+                              style={{ display: "flex" }}
+                            >
+                              Design
+                            </div>
+                          )}
 
-                          <div
-                            className="crd-thumb-fallback"
-                            style={{
-                              display:
-                                item.image_url || item.preview_image_url
-                                  ? "none"
-                                  : "flex",
-                            }}
-                          >
-                            Item
-                          </div>
 
-                          {canPreview ? (
-                            <span className="crd-design-thumb-hint-v2">
-                              View design
-                            </span>
-                          ) : null}
                         </div>
 
                         <div className="checkout-item-details">
@@ -2489,9 +2470,6 @@ export default function CustomRequestDetailPage() {
                           ) : null}
                         </div>
 
-                        <div className="checkout-item-qty">
-                          ×{item.quantity || 1}
-                        </div>
 
                         <div className="checkout-item-price crd-quote-note">
                           {submittedItemProgressLabel}
@@ -2536,8 +2514,8 @@ export default function CustomRequestDetailPage() {
                 <div className="checkout-section-header crd-messenger-section-head-v2">
                   <div className="checkout-section-num">06</div>
                   <div>
-                    <h3>Message our team</h3>
-                    <p>Ask about your quotation, payment, production, delivery, or request details.</p>
+                    <h3>Order Conversation</h3>
+                    <p>Ask a question or send an update about this order.</p>
                   </div>
                 </div>
 
@@ -2547,7 +2525,7 @@ export default function CustomRequestDetailPage() {
                       <div className="crd-chat-card-head crd-messenger-head-v2">
                         <div>
                           <strong>Spiral Wood Services</strong>
-                          <span>Project conversation</span>
+                          <span>About order {requestData.order_number || "this request"}</span>
                         </div>
                       </div>
 
@@ -2573,11 +2551,9 @@ export default function CustomRequestDetailPage() {
                                 <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
                               </svg>
                             </div>
-                            <strong>No conversation yet</strong>
+                            <strong>Start the conversation</strong>
                             <span>
-                              You can message us if you have a question, want
-                              to clarify your furniture request, or need to send
-                              an update.
+                              Ask about your order, payment, production, or delivery.
                             </span>
                           </div>
                         ) : (
@@ -2740,7 +2716,7 @@ export default function CustomRequestDetailPage() {
                           onKeyDown={handleDiscussionKeyDown}
                           placeholder="Type a message..."
                           className="crd-control crd-textarea crd-messenger-input-v2"
-                          aria-label="Message our team"
+                          aria-label="Order conversation message"
                         />
 
                         <button

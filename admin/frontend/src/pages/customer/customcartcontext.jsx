@@ -21,13 +21,16 @@ export function CustomCartProvider({ children }) {
   } = useCart();
 
   const addToCustomCart = (item) => {
-    if (!item) return;
+    if (!item) return { ok: false, reason: "INVALID_ITEM" };
 
     addToCart({
       ...item,
+      quantity: 1,
       cart_type: "blueprint",
       item_type: "blueprint",
     });
+
+    return { ok: true };
   };
 
   const removeFromCustomCart = (key) => {
@@ -70,6 +73,7 @@ export function CustomCartProvider({ children }) {
         Array.isArray(resolvedCustom) ? resolvedCustom : []
       ).map((item) => ({
         ...item,
+        quantity: 1,
         cart_type: "blueprint",
         item_type: "blueprint",
       }));

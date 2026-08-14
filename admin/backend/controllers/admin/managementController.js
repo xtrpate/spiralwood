@@ -5,6 +5,7 @@ const bcrypt = require("bcryptjs");
 const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
+const { calcDownPaymentAmount } = require("../../utils/paymentAmounts");
 
 // ══ WARRANTY ══════════════════════════════════════════════════════════════════
 exports.getAll = async (req, res) => {
@@ -277,7 +278,7 @@ exports.generateContract = async (req, res) => {
     }
 
     // ── Gate E: verified payment — payment_transactions only ─────────
-    const requiredDownPayment = Number((estimationGrandTotal * 0.3).toFixed(2));
+    const requiredDownPayment = calcDownPaymentAmount(estimationGrandTotal);
     const verifiedPaymentTotal = Number(lifecycle.verified_payment_total || 0);
 
     if (verifiedPaymentTotal < requiredDownPayment - 0.01) {

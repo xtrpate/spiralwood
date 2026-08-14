@@ -3044,3 +3044,31 @@
 }
 
 /* WISDOM ORDER COMPLETE HEADING TYPOGRAPHY HOTFIX END */
+
+/* WISDOM FULL CART REAL BLUEPRINT PREVIEW V1.0.9
+   Preview-only sizing. Existing Shopping Cart layout stays unchanged. */
+.fm-cart-thumb.is-blueprint-preview {
+  background: #f7f2ea;
+}
+
+.fm-cart-thumb.is-blueprint-preview > *,
+.fm-cart-thumb.is-blueprint-preview .cust-viewer-card,
+.fm-cart-thumb.is-blueprint-preview .cust-viewer-stage,
+.fm-cart-thumb.is-blueprint-preview .cust-viewer-canvas,
+.fm-cart-thumb.is-blueprint-preview canvas,
+.fm-cart-thumb.is-blueprint-preview img {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 100% !important;
+  max-height: 84px !important;
+  margin: 0 !important;
+  object-fit: contain !important;
+  box-sizing: border-box !important;
+}
+
+.fm-cart-thumb.is-blueprint-preview .cust-viewer-card,
+.fm-cart-thumb.is-blueprint-preview .cust-viewer-stage {
+  overflow: hidden !important;
+}

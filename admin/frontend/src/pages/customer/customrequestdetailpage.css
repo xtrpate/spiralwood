@@ -3448,3 +3448,209 @@
     font-size: 12px;
   }
 }
+
+/* WISDOM ORDER CONVERSATION PROPORTION V1.0.1 */
+.wisdom-request-messages-v11 {
+  width: 100%;
+  max-width: 860px;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.wisdom-request-messages-v11 .crd-messenger-body-v2 {
+  padding: 16px !important;
+}
+
+.wisdom-request-chat-v13 {
+  width: 100%;
+  max-width: 820px;
+  min-height: 520px;
+  height: 520px;
+  max-height: 560px;
+  margin: 0 auto;
+}
+
+.wisdom-request-chat-v13 .crd-chat-thread {
+  min-height: 340px;
+  padding: 18px 16px;
+}
+
+.wisdom-request-chat-v13 .crd-chat-empty {
+  min-height: 0;
+  max-width: 360px;
+  padding: 16px;
+}
+
+.wisdom-request-items-v11 .checkout-item-row {
+  grid-template-columns: 112px minmax(0, 1fr) auto auto;
+  align-items: center;
+}
+
+.wisdom-request-items-v11 .checkout-item-thumb {
+  width: 112px;
+  height: 88px;
+  min-width: 112px;
+  overflow: hidden;
+}
+
+.wisdom-request-items-v11 .checkout-item-thumb > * {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 88px !important;
+}
+
+.wisdom-request-items-v11 .checkout-item-thumb canvas,
+.wisdom-request-items-v11 .checkout-item-thumb img {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+
+@media (max-width: 820px) {
+  .wisdom-request-messages-v11,
+  .wisdom-request-chat-v13 {
+    max-width: none;
+  }
+
+  .wisdom-request-chat-v13 {
+    min-height: 65vh;
+    height: 68vh;
+    max-height: 75vh;
+  }
+
+  .wisdom-request-items-v11 .checkout-item-row {
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .wisdom-request-items-v11 .checkout-item-thumb {
+    width: 88px;
+    height: 72px;
+    min-width: 88px;
+  }
+
+  .wisdom-request-items-v11 .checkout-item-thumb > * {
+    max-height: 72px !important;
+  }
+}
+
+/* WISDOM BLUEPRINT REQUEST PREVIEW CLARITY V1.0.4 */
+.wisdom-request-items-v11 .checkout-item-row {
+  grid-template-columns: 128px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.wisdom-request-items-v11 .checkout-item-thumb {
+  width: 128px;
+  height: 96px;
+  min-width: 128px;
+  background: #f7f2ea;
+}
+
+.wisdom-request-items-v11 .checkout-item-thumb > *,
+.wisdom-request-items-v11 .checkout-item-thumb canvas,
+.wisdom-request-items-v11 .checkout-item-thumb img {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: 96px !important;
+  object-fit: contain !important;
+}
+
+.crd-design-thumb-hint-v2 {
+  display: none !important;
+}
+
+@media (max-width: 820px) {
+  .wisdom-request-items-v11 .checkout-item-row {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+
+  .wisdom-request-items-v11 .checkout-item-thumb {
+    width: 96px;
+    height: 76px;
+    min-width: 96px;
+  }
+
+  .wisdom-request-items-v11 .checkout-item-thumb > *,
+  .wisdom-request-items-v11 .checkout-item-thumb canvas,
+  .wisdom-request-items-v11 .checkout-item-thumb img {
+    max-height: 76px !important;
+  }
+}
+
+/* WISDOM REQUEST PREVIEW CENTER V1.0.6 */
+.crd-design-thumb-v2 {
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+}
+
+.crd-design-thumb-v2 > *,
+.crd-design-thumb-v2 .cust-viewer-card,
+.crd-design-thumb-v2 .cust-viewer-stage,
+.crd-design-thumb-v2 .cust-viewer-canvas,
+.crd-design-thumb-v2 canvas,
+.crd-design-thumb-v2 img {
+  margin: auto !important;
+}
+
+.crd-design-thumb-v2 .cust-viewer-stage {
+  transform: translateY(-2px);
+}
+
+/* WISDOM REQUEST DETAILS PREVIEW FILL V1.0.10
+   Preview-only fix. Existing Request Details row/layout remains unchanged. */
+.wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 {
+  width: 128px !important;
+  height: 96px !important;
+  min-width: 128px !important;
+  min-height: 96px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  background: #f7f2ea !important;
+}
+
+.wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 > *,
+.wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 .cust-viewer-card,
+.wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 .cust-viewer-stage,
+.wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 .cust-viewer-canvas,
+.wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 .cust-viewer-runtime-snapshot,
+.wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 canvas,
+.wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 img {
+  width: 128px !important;
+  height: 96px !important;
+  min-width: 128px !important;
+  min-height: 96px !important;
+  max-width: 128px !important;
+  max-height: 96px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+  object-fit: contain !important;
+  box-sizing: border-box !important;
+}
+
+.wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 .cust-viewer-card,
+.wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 .cust-viewer-stage,
+.wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 .cust-viewer-canvas {
+  overflow: hidden !important;
+}
+
+@media (max-width: 820px) {
+  .wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2,
+  .wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 > *,
+  .wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 .cust-viewer-card,
+  .wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 .cust-viewer-stage,
+  .wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 .cust-viewer-canvas,
+  .wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 .cust-viewer-runtime-snapshot,
+  .wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 canvas,
+  .wisdom-request-items-v11 .checkout-item-thumb.crd-design-thumb-v2 img {
+    width: 96px !important;
+    height: 76px !important;
+    min-width: 96px !important;
+    min-height: 76px !important;
+    max-width: 96px !important;
+    max-height: 76px !important;
+  }
+}

@@ -2,8 +2,6 @@
 import React, {
   useState,
   useEffect,
-  useMemo,
-  useCallback,
   useRef,
 } from "react";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
@@ -13,7 +11,7 @@ import useAuthStore from "../../store/authStore";
 import toast from "react-hot-toast";
 import { useCart } from "../../pages/customer/cartcontext";
 import NotificationBell from "../NotificationBell";
-import OversizedDeliveryEstimatorPanel from "../OversizedDeliveryEstimatorPanel";
+
 import "./AdminLayout.css";
 import adminSystemIcon from "../../assets/admin-system-icon.png";
 
@@ -185,11 +183,6 @@ export default function AdminLayout() {
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [deliveryGate, setDeliveryGate] = useState({
-    active: false,
-    readyForQuote: true,
-    message: "",
-  });
 
   useEffect(() => {
     let active = true;
@@ -220,13 +213,6 @@ export default function AdminLayout() {
     };
   }, []);
 
-  const estimationBlueprintId = useMemo(() => {
-    const match = String(location.pathname || "").match(
-      /^\/admin\/blueprints\/([1-9][0-9]*)\/estimation\/?$/,
-    );
-
-    return match ? Number(match[1]) : null;
-  }, [location.pathname]);
 
   useEffect(() => {
     if (user && user.role === "customer") {
@@ -247,35 +233,6 @@ export default function AdminLayout() {
     };
   }, [mobileOpen]);
 
-  useEffect(() => {
-    setDeliveryGate({
-      active: Boolean(estimationBlueprintId),
-      readyForQuote: !estimationBlueprintId,
-      message: estimationBlueprintId
-        ? "Wait for the oversized-delivery assessment to finish loading."
-        : "",
-    });
-  }, [estimationBlueprintId]);
-
-  const updateDeliveryGate = useCallback((nextGate) => {
-    setDeliveryGate((current) => {
-      const normalized = {
-        active: Boolean(nextGate?.active),
-        readyForQuote: Boolean(nextGate?.readyForQuote),
-        message: String(nextGate?.message || ""),
-      };
-
-      if (
-        current.active === normalized.active &&
-        current.readyForQuote === normalized.readyForQuote &&
-        current.message === normalized.message
-      ) {
-        return current;
-      }
-
-      return normalized;
-    });
-  }, []);
 
   const handleLogout = () => {
     setShowLogoutModal(true);
@@ -286,31 +243,6 @@ export default function AdminLayout() {
     logout();
     clearCart(false);
     navigate("/login");
-  };
-
-  const handleMainClickCapture = (event) => {
-    if (!estimationBlueprintId || !deliveryGate.active) return;
-
-    const target = event.target instanceof Element ? event.target : null;
-
-    const button = target?.closest("button");
-    if (!button) return;
-
-    const label = String(button.textContent || "")
-      .replace(/\s+/g, " ")
-      .trim()
-      .toLowerCase();
-
-    if (!label.includes("send quote")) return;
-    if (deliveryGate.readyForQuote) return;
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    toast.error(
-      deliveryGate.message ||
-        "Complete the oversized-delivery assessment before sending the quotation.",
-    );
   };
 
   const visibleItems = NAV_ITEMS.filter(
@@ -687,16 +619,7 @@ export default function AdminLayout() {
             padding: 24,
             overflowY: "auto",
           }}
-          onClickCapture={handleMainClickCapture}
         >
-          {estimationBlueprintId && (
-            <OversizedDeliveryEstimatorPanel
-              key={estimationBlueprintId}
-              blueprintId={estimationBlueprintId}
-              onGateChange={updateDeliveryGate}
-            />
-          )}
-
           <Outlet />
         </main>
       </div>

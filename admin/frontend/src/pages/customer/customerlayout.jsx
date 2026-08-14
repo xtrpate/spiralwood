@@ -524,13 +524,16 @@ export default function CustomerLayout() {
 
   const hasBlueprintItems = cart.some((item) => isBlueprintItem(item));
   const hasStandardItems = cart.some((item) => !isBlueprintItem(item));
+  const blueprintItemCount = cart.filter((item) => isBlueprintItem(item)).length;
   const isMixedCart = hasBlueprintItems && hasStandardItems;
 
   const miniCartCheckoutLabel = !customerUser
     ? "Sign in to Continue"
     : isMixedCart
       ? "Review in Cart"
-      : "Checkout";
+      : hasBlueprintItems && blueprintItemCount > 1
+        ? "Choose Design"
+        : "Checkout";
 
   const handleMiniCartCheckout = () => {
     if (!cart.length) return;
@@ -554,9 +557,14 @@ export default function CustomerLayout() {
     const keys = cart.map((item) => item.key);
 
     if (hasBlueprintItems) {
+      if (keys.length !== 1) {
+        navigate("/custom-cart");
+        return;
+      }
+
       sessionStorage.setItem(
         "cust_selected_custom_checkout",
-        JSON.stringify(keys),
+        JSON.stringify([keys[0]]),
       );
       navigate("/custom-checkout");
       return;
@@ -1202,7 +1210,10 @@ export default function CustomerLayout() {
                   quantity >= Number(item.max_stock);
 
                 return (
-                  <div className="cust-mini-cart-item" key={item.key}>
+                  <div
+                    className={`cust-mini-cart-item ${blueprint ? "is-blueprint" : ""}`}
+                    key={item.key}
+                  >
                     <div className="cust-mini-cart-thumb">
                       {blueprint ? (
                         liveBlueprintPreview ? (
@@ -1211,9 +1222,14 @@ export default function CustomerLayout() {
                             readOnly
                             showHumanControls={false}
                             compact
-                            compactHeight={64}
+                            compactHeight={88}
                             defaultPreset="isometric"
                             defaultShowHuman={false}
+                          />
+                        ) : imageSrc ? (
+                          <img
+                            src={imageSrc}
+                            alt={item.base_blueprint_title || item.product_name || "Custom design"}
                           />
                         ) : (
                           <div className="cust-mini-cart-thumb-fallback">
@@ -1244,14 +1260,14 @@ export default function CustomerLayout() {
 
                       {blueprint ? (
                         <span className="cust-mini-cart-meta">
-                          Custom / Blueprint item
+                          Custom design
                         </span>
                       ) : null}
 
                       <div className="cust-mini-cart-item-actions">
                         {blueprint ? (
                           <span className="cust-mini-cart-blueprint-qty">
-                            Qty {quantity}
+                            1 design
                           </span>
                         ) : (
                           <div
@@ -1304,7 +1320,11 @@ export default function CustomerLayout() {
               <div className="cust-mini-cart-summary">
                 <div className="cust-mini-cart-summary-row">
                   <span>Subtotal</span>
-                  <strong>{formatPeso(cartTotal)}</strong>
+                  <strong>
+                    {hasBlueprintItems && !hasStandardItems
+                      ? "To be quoted"
+                      : formatPeso(cartTotal)}
+                  </strong>
                 </div>
 
                 <div className="cust-mini-cart-summary-row cust-mini-cart-summary-muted">
@@ -1322,7 +1342,11 @@ export default function CustomerLayout() {
 
                 <div className="cust-mini-cart-summary-row cust-mini-cart-summary-total">
                   <span>Estimated total</span>
-                  <strong>{formatPeso(cartTotal)}</strong>
+                  <strong>
+                    {hasBlueprintItems && !hasStandardItems
+                      ? "To be quoted"
+                      : formatPeso(cartTotal)}
+                  </strong>
                 </div>
               </div>
 
@@ -1340,7 +1364,11 @@ export default function CustomerLayout() {
                   className="cust-mini-cart-view"
                   onClick={() => {
                     closeMiniCart();
-                    navigate("/cart");
+                    navigate(
+                      hasBlueprintItems && !hasStandardItems
+                        ? "/custom-cart"
+                        : "/cart",
+                    );
                   }}
                 >
                   View cart

@@ -259,53 +259,41 @@ export default function CustomCheckoutPage() {
 
   useEffect(() => {
     try {
-      // 1. Grab the correct sessionStorage key used by your cart
       const raw =
         sessionStorage.getItem("cust_selected_custom_checkout") ||
         sessionStorage.getItem("cust_selected_keys");
       const parsed = raw ? JSON.parse(raw) : [];
 
-      if (!Array.isArray(parsed) || !parsed.length) {
-        navigate("/cart");
+      if (!Array.isArray(parsed) || parsed.length !== 1) {
+        navigate("/custom-cart", { replace: true });
         return;
       }
 
-      // 2. Safely extract the keys
-      const selectedKeys = parsed
-        .map((entry) =>
-          typeof entry === "string" ? entry : entry?.key || null,
-        )
-        .filter(Boolean);
+      const selectedKey =
+        typeof parsed[0] === "string" ? parsed[0] : parsed[0]?.key || null;
 
-      if (!selectedKeys.length) {
-        navigate("/cart");
+      if (!selectedKey) {
+        navigate("/custom-cart", { replace: true });
         return;
       }
 
-      // 3. Match against customCart OR fallback to the parsed payload itself
-      const keySet = new Set(selectedKeys);
-      let matchedItems = (customCart || []).filter((item) =>
-        keySet.has(item.key),
+      let matchedItem = (customCart || []).find(
+        (item) => item.key === selectedKey,
       );
 
-      // 4. Fallback: If customCart isn't loaded yet, use the parsed payload objects
-      if (
-        !matchedItems.length &&
-        parsed.length > 0 &&
-        typeof parsed[0] === "object"
-      ) {
-        matchedItems = parsed;
+      if (!matchedItem && typeof parsed[0] === "object") {
+        matchedItem = parsed[0];
       }
 
-      if (!matchedItems.length) {
-        navigate("/cart");
+      if (!matchedItem) {
+        navigate("/custom-cart", { replace: true });
         return;
       }
 
-      setCheckoutItems(matchedItems);
+      setCheckoutItems([{ ...matchedItem, quantity: 1 }]);
       setSelectionReady(true);
     } catch {
-      navigate("/cart");
+      navigate("/custom-cart", { replace: true });
     }
   }, [customCart, navigate]);
 
@@ -327,8 +315,8 @@ export default function CustomCheckoutPage() {
     if (e?.preventDefault) e.preventDefault();
     setError("");
 
-    if (!checkoutItems.length) {
-      setError("No selected custom items found for checkout.");
+    if (checkoutItems.length !== 1) {
+      setError("Select exactly one custom design for this request.");
       return;
     }
 
@@ -421,7 +409,7 @@ export default function CustomCheckoutPage() {
       formData.append(
         "payload",
         JSON.stringify({
-          items: checkoutItems,
+          items: checkoutItems.map((item) => ({ ...item, quantity: 1 })),
           name: form.name,
           phone: form.phone,
           delivery_address: String(form.delivery_address || "").trim(),
@@ -468,17 +456,17 @@ export default function CustomCheckoutPage() {
       <div>
         <div className="page-hero">
           <h1>Custom Request Checkout</h1>
-          <p>Loading selected custom items…</p>
+          <p>Loading your selected custom design…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div>
+    <div className="custom-request-checkout-v2">
       <div className="page-hero">
         <h1>Custom Request Checkout</h1>
-        <p>Review your custom items and submit them for admin quotation</p>
+        <p>Review this design and submit it for quotation.</p>
       </div>
 
       <div className="checkout-layout">
@@ -496,11 +484,9 @@ export default function CustomCheckoutPage() {
               >
                 ✂️
               </div>
-              <h3>Your Custom Items</h3>
-              <span style={{ marginLeft: "auto", fontSize: 12, color: "#aaa" }}>
-                {checkoutItems.length} design
-                {checkoutItems.length !== 1 ? "s" : ""} • {totalUnits} unit
-                {totalUnits !== 1 ? "s" : ""}
+              <h3>Your Custom Design</h3>
+              <span style={{ marginLeft: "auto", fontSize: 12, color: "#71717a" }}>
+                1 custom design
               </span>
             </div>
 
@@ -509,6 +495,9 @@ export default function CustomCheckoutPage() {
                 const dims = getItemDisplayDims(item);
                 const liveBlueprintPreview =
                   buildLiveCartBlueprintPreview(item);
+                const staticImageSrc = resolveCartImageSrc(
+                  item.image_url || item.preview_image_url,
+                );
 
                 return (
                   <div key={item.key} className="checkout-item-row">
@@ -523,6 +512,12 @@ export default function CustomCheckoutPage() {
                           defaultPreset="isometric"
                           defaultShowHuman={false}
                         />
+                      ) : staticImageSrc ? (
+                        <img
+                          src={staticImageSrc}
+                          alt={item.base_blueprint_title || item.product_name || "Custom design"}
+                          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                        />
                       ) : (
                         <div
                           style={{
@@ -536,7 +531,7 @@ export default function CustomCheckoutPage() {
                             background: "#f7f2ea",
                           }}
                         >
-                          Design
+                          Design preview unavailable
                         </div>
                       )}
                     </div>
@@ -604,15 +599,12 @@ export default function CustomCheckoutPage() {
                       ) : null}
                     </div>
 
-                    <div className="checkout-item-qty">
-                      ×{item.quantity || 1}
-                    </div>
 
                     <div
                       className="checkout-item-price"
                       style={{ fontSize: 12, color: "#aaa" }}
                     >
-                      Quote Needed
+                      Quotation required
                     </div>
                   </div>
                 );
@@ -810,7 +802,7 @@ export default function CustomCheckoutPage() {
                     {item.base_blueprint_title || item.product_name}
                   </div>
                   <div className="checkout-summary-item-qty">
-                    ×{item.quantity || 1}
+                    Custom design
                   </div>
                 </div>
 
@@ -818,7 +810,7 @@ export default function CustomCheckoutPage() {
                   className="checkout-summary-item-price"
                   style={{ color: "#aaa", fontSize: 11 }}
                 >
-                  Quote Needed
+                  Quotation pending
                 </div>
               </div>
             ))}
@@ -826,15 +818,14 @@ export default function CustomCheckoutPage() {
 
           <div className="checkout-summary-totals">
             <div className="summary-row">
-              <span>Total Price</span>
+              <span>Project price</span>
               <span style={{ color: "#D2691E", fontWeight: 700 }}>
-                To be quoted by admin
+                To be quoted by our team
               </span>
             </div>
 
             <p className="summary-note" style={{ marginTop: 10 }}>
-              This will be submitted as a custom request for review, not as a
-              final paid order.
+              Your design will be reviewed before the quotation and payment are confirmed.
             </p>
           </div>
 
@@ -851,7 +842,7 @@ export default function CustomCheckoutPage() {
                 lineHeight: "1.5",
               }}
             >
-              <strong>📌 Important Note:</strong>
+              <strong>Before you submit</strong>
               <br />
               <span style={{ whiteSpace: "pre-wrap" }}>{checkoutNote}</span>
             </div>
@@ -866,7 +857,7 @@ export default function CustomCheckoutPage() {
               "Submitting…"
             ) : (
               <>
-                <Scissors size={16} /> Submit Request for Quotation
+                <Scissors size={16} /> Submit for Quotation
               </>
             )}
           </button>

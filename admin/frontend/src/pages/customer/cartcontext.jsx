@@ -60,7 +60,7 @@ const normalizeCartItem = (item = {}) => {
     key,
     cart_type: cartType,
     item_type: cartType === "blueprint" ? "blueprint" : "standard",
-    quantity: toPositiveInt(item?.quantity, 1),
+    quantity: cartType === "blueprint" ? 1 : toPositiveInt(item?.quantity, 1),
     unit_price: toMoney(item?.unit_price, 0),
     production_cost: toMoney(item?.production_cost, 0),
     max_stock: maxStock,
@@ -92,7 +92,8 @@ const mergeLineItem = (existing, incoming) => {
   const currentQty = toPositiveInt(base.quantity, 1);
   const incomingQty = toPositiveInt(next.quantity, 1);
 
-  let mergedQty = currentQty + incomingQty;
+  let mergedQty =
+    mergedType === "blueprint" ? 1 : currentQty + incomingQty;
 
   if (mergedType === "standard" && mergedMaxStock) {
     mergedQty = Math.min(mergedQty, mergedMaxStock);
@@ -265,6 +266,10 @@ export function CartProvider({ children }) {
       prev
         .map((item) => {
           if (item.key !== cleanKey) return item;
+
+          if (item.cart_type === "blueprint") {
+            return { ...item, quantity: 1 };
+          }
 
           const nextQty = toPositiveInt(item.quantity, 1) + Number(delta || 0);
 

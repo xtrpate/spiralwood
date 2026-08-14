@@ -476,7 +476,21 @@ exports.createCustomOrder = async (req, res) => {
   } = parsedBody;
 
   if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ message: "No items in custom order." });
+    return res.status(400).json({ message: "No custom design was submitted." });
+  }
+
+  if (items.length !== 1) {
+    return res.status(400).json({
+      message:
+        "Only one custom design can be submitted per request. Submit each Blueprint design separately.",
+    });
+  }
+
+  const submittedBlueprintQuantity = Number(items[0]?.quantity ?? 1);
+  if (!Number.isInteger(submittedBlueprintQuantity) || submittedBlueprintQuantity !== 1) {
+    return res.status(400).json({
+      message: "A custom Blueprint request must contain exactly one design.",
+    });
   }
 
   if (!String(name || "").trim()) {
@@ -531,7 +545,7 @@ exports.createCustomOrder = async (req, res) => {
       product_name: String(
         item.product_name || item.base_blueprint_title || "Custom Blueprint",
       ).trim(),
-      quantity: toPositiveInt(item.quantity, 1),
+      quantity: 1,
 
       image_url: toTrimmedStringOrNull(item.image_url),
       preview_image_url: toTrimmedStringOrNull(
@@ -563,8 +577,10 @@ exports.createCustomOrder = async (req, res) => {
     }))
     .filter((item) => item.product_name);
 
-  if (cleanedItems.length === 0) {
-    return res.status(400).json({ message: "Custom order items are invalid." });
+  if (cleanedItems.length !== 1) {
+    return res.status(400).json({
+      message: "Submit exactly one valid custom design per request.",
+    });
   }
 
   const blueprintIds = [
@@ -575,9 +591,9 @@ exports.createCustomOrder = async (req, res) => {
     ),
   ];
 
-  if (!blueprintIds.length) {
+  if (blueprintIds.length !== 1) {
     return res.status(400).json({
-      message: "No valid blueprint/template was found in this custom request.",
+      message: "The custom request must be linked to exactly one Blueprint design.",
     });
   }
 
@@ -3175,12 +3191,68 @@ exports.createPayMongoCheckout = async (req, res) => {
     }
 
     if (hasCompleteSession) {
-      await conn.commit();
-      transactionActive = false;
-      return res.json({
-        payment_url: order.payment_url,
-        reused: true,
-      });
+      // Re-check the stored PayMongo session instead of blindly reusing an
+      // expired/failed checkout URL. A provider/network failure never clears
+      // local state; only a confirmed stale session is replaced.
+      let existingSession;
+      try {
+        existingSession = await retrieveCheckoutSession(
+          order.paymongo_session_id,
+        );
+      } catch (pmErr) {
+        await conn.rollback();
+        transactionActive = false;
+        console.error(
+          "[createPayMongoCheckout] PayMongo session check failed:",
+          pmErr.response?.data || pmErr.message || pmErr,
+        );
+        return res.status(502).json({
+          message:
+            "Unable to check the existing online payment session. Please try again.",
+        });
+      }
+
+      const payments = existingSession.attributes?.payments || [];
+      const paymentIntent = existingSession.attributes?.payment_intent;
+      const hasSuccessfulPayment =
+        payments.some((p) => p.attributes?.status === "paid") ||
+        (paymentIntent && paymentIntent.attributes?.status === "succeeded");
+      const sessionStatus = normalize(existingSession.attributes?.status);
+      const sessionStillActive = sessionStatus === "active";
+
+      if (hasSuccessfulPayment || sessionStillActive) {
+        await conn.commit();
+        transactionActive = false;
+        return res.json({
+          payment_url: order.payment_url,
+          reused: true,
+        });
+      }
+
+      // Expired/failed/unknown and not paid: clear only the exact session we
+      // just checked, then continue below to create a fresh checkout.
+      const [clearResult] = await conn.execute(
+        `UPDATE orders
+         SET payment_url = NULL,
+             paymongo_session_id = NULL
+         WHERE id = ?
+           AND customer_id = ?
+           AND order_type = 'blueprint'
+           AND status = 'confirmed'
+           AND payment_status = 'unpaid'
+           AND payment_method = 'paymongo'
+           AND paymongo_session_id = ?
+           AND payment_url = ?`,
+        [order.id, req.user.id, order.paymongo_session_id, order.payment_url],
+      );
+
+      if (clearResult.affectedRows !== 1) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({
+          message: "This order's payment state changed. Please refresh and try again.",
+        });
+      }
     }
 
     const [[customer]] = await conn.execute(
@@ -3395,12 +3467,65 @@ exports.selectPaymentMethod = async (req, res) => {
     }
 
     if (hasCompleteSession) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(400).json({
-        message:
-          "An online payment session is already in progress. Complete or wait for it to expire before changing your payment method.",
-      });
+      // Allow a method switch only after PayMongo confirms that the stored
+      // checkout is stale. Active or already-paid sessions remain locked.
+      let existingSession;
+      try {
+        existingSession = await retrieveCheckoutSession(
+          order.paymongo_session_id,
+        );
+      } catch (pmErr) {
+        await conn.rollback();
+        transactionActive = false;
+        console.error(
+          "[selectPaymentMethod] PayMongo session check failed:",
+          pmErr.response?.data || pmErr.message || pmErr,
+        );
+        return res.status(502).json({
+          message:
+            "Unable to check the existing online payment session. Please try again.",
+        });
+      }
+
+      const payments = existingSession.attributes?.payments || [];
+      const paymentIntent = existingSession.attributes?.payment_intent;
+      const hasSuccessfulPayment =
+        payments.some((p) => p.attributes?.status === "paid") ||
+        (paymentIntent && paymentIntent.attributes?.status === "succeeded");
+      const sessionStatus = normalize(existingSession.attributes?.status);
+      const sessionStillActive = sessionStatus === "active";
+
+      if (hasSuccessfulPayment || sessionStillActive) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(400).json({
+          message:
+            "An online payment session is still active or already paid. Complete its verification before changing your payment method.",
+        });
+      }
+
+      const [clearResult] = await conn.execute(
+        `UPDATE orders
+         SET payment_url = NULL,
+             paymongo_session_id = NULL
+         WHERE id = ?
+           AND customer_id = ?
+           AND order_type = 'blueprint'
+           AND status = 'confirmed'
+           AND payment_status = 'unpaid'
+           AND payment_method = 'paymongo'
+           AND paymongo_session_id = ?
+           AND payment_url = ?`,
+        [order.id, req.user.id, order.paymongo_session_id, order.payment_url],
+      );
+
+      if (clearResult.affectedRows !== 1) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({
+          message: "This order's payment state changed. Please refresh and try again.",
+        });
+      }
     }
 
     const [updateResult] = await conn.execute(

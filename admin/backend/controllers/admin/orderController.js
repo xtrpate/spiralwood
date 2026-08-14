@@ -10,6 +10,7 @@ const {
   resolveLifecycleByOrder,
 } = require("../../services/blueprintLifecycleService");
 const { parseStrictPositiveInt } = require("../../utils/validators");
+const { calcDownPaymentAmount } = require("../../utils/paymentAmounts");
 const {
   buildPaymentSummaryFromRows,
 } = require("../../services/blueprintCashPaymentService");
@@ -1263,7 +1264,7 @@ exports.updateStatus = async (req, res) => {
     const verifiedPaymentTotal = Number(paymentSummary?.verified_total || 0);
     const paymentBalance = Math.max(0, totalAmount - verifiedPaymentTotal);
 
-    const requiredBlueprintDownPayment = Number((totalAmount * 0.3).toFixed(2));
+    const requiredBlueprintDownPayment = calcDownPaymentAmount(totalAmount);
 
     // orders.payment_status is not trusted here — it can be stale or
     // inconsistent (that inconsistency is part of the original bug class

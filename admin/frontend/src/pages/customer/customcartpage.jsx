@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useCustomCart } from "./customcartcontext";
 import { buildAssetUrl } from "../../services/api";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
+import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import { getCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
 
 const resolveImage = (value) => {
@@ -33,23 +34,6 @@ const hasEditorSnapshot = (item) =>
   Array.isArray(item?.editor_snapshot?.components) &&
   item.editor_snapshot.components.length > 0;
 
-const getEditedPreviewColor = (item = {}) => {
-  const direct = String(item?.finish_color || item?.color || "").trim();
-  if (direct) return direct;
-
-  const components = Array.isArray(item?.editor_snapshot?.components)
-    ? item.editor_snapshot.components
-    : [];
-
-  const colored = components.find((comp) => {
-    const fill = String(comp?.fill || comp?.finish_color || comp?.color || "").trim();
-    return fill && fill !== "#d6c3ab";
-  });
-
-  return String(
-    colored?.fill || colored?.finish_color || colored?.color || "#d6c3ab",
-  ).trim();
-};
 const getItemDisplayDims = (item = {}) => {
   const components = Array.isArray(item?.editor_snapshot?.components)
     ? item.editor_snapshot.components
@@ -210,9 +194,10 @@ export default function CustomCartPage() {
 
     setSelectedKeys((prev) => {
       const kept = prev.filter((key) => validKeys.has(key));
-      if (kept.length) return kept;
+      if (kept.length) return [kept[0]];
 
-      return (customCart || []).map((item) => item.key);
+      const firstKey = (customCart || [])[0]?.key;
+      return firstKey ? [firstKey] : [];
     });
   }, [customCart]);
 
@@ -232,48 +217,27 @@ export default function CustomCartPage() {
 
   const selectedItems = useMemo(() => {
     const selectedSet = new Set(selectedKeys);
-    return (customCart || []).filter((item) => selectedSet.has(item.key));
+    return (customCart || [])
+      .filter((item) => selectedSet.has(item.key))
+      .slice(0, 1);
   }, [customCart, selectedKeys]);
 
-  const totalUnits = customCart.reduce(
-    (sum, item) => sum + Math.max(1, Number(item.quantity || 1)),
-    0,
-  );
-
-  const selectedUnits = selectedItems.reduce(
-    (sum, item) => sum + Math.max(1, Number(item.quantity || 1)),
-    0,
-  );
-
-  const allSelected =
-    customCart.length > 0 && selectedKeys.length === customCart.length;
+  const selectedItem = selectedItems[0] || null;
 
   const toggleSelected = (key) => {
-    setSelectedKeys((prev) =>
-      prev.includes(key)
-        ? prev.filter((itemKey) => itemKey !== key)
-        : [...prev, key],
-    );
-  };
-
-  const handleSelectAll = () => {
-    setSelectedKeys((customCart || []).map((item) => item.key));
-  };
-
-  const handleClearSelection = () => {
-    setSelectedKeys([]);
+    setSelectedKeys((prev) => (prev[0] === key ? [] : [key]));
   };
 
   const handleRemoveSelected = () => {
-    if (!selectedKeys.length) return;
-    removeManyFromCustomCart(selectedKeys);
+    if (!selectedItem?.key) return;
+    removeManyFromCustomCart([selectedItem.key]);
     setSelectedKeys([]);
   };
 
   const handleProceedSelectedCheckout = () => {
-    const selectedKeysArray = Array.from(selectedKeys || []);
+    const selectedKeysArray = Array.from(selectedKeys || []).slice(0, 1);
 
-    if (!selectedKeysArray.length) {
+    if (selectedKeysArray.length !== 1) {
       return;
     }
 
@@ -303,9 +267,9 @@ export default function CustomCartPage() {
         }}
       >
         <div>
-          <h1 style={{ margin: 0 }}>Custom Cart</h1>
+          <h1 style={{ margin: 0 }}>Custom Designs</h1>
           <p style={{ margin: "8px 0 0", color: "#666" }}>
-            Review your customized furniture requests before checkout.
+            Submit one design per request. Each design receives its own quotation, payment, and project workflow.
           </p>
         </div>
 
@@ -384,27 +348,12 @@ export default function CustomCartPage() {
             }}
           >
             <div style={{ color: "#334155", fontSize: "14px", fontWeight: 700 }}>
-              Selected: {selectedItems.length} design
-              {selectedItems.length !== 1 ? "s" : ""} • {selectedUnits} unit
-              {selectedUnits !== 1 ? "s" : ""}
+              {selectedItem
+                ? "Selected for this request: 1 design"
+                : "Choose one design to submit"}
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={allSelected ? handleClearSelection : handleSelectAll}
-                style={{
-                  padding: "10px 14px",
-                  borderRadius: "10px",
-                  border: "1px solid #d0d7de",
-                  background: "#fff",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                }}
-              >
-                {allSelected ? "Clear Selection" : "Select All"}
-              </button>
-
               <button
                 type="button"
                 onClick={handleRemoveSelected}
@@ -428,7 +377,7 @@ export default function CustomCartPage() {
             const imageSrc = resolveImage(item.image_url || item.preview_image_url);
             const dims = getItemDisplayDims(item);
             const isSelected = selectedKeys.includes(item.key);
-            const editedPreviewColor = getEditedPreviewColor(item);
+
             const showEditedCardPreview = hasEditorSnapshot(item);
 
             return (
@@ -446,7 +395,8 @@ export default function CustomCartPage() {
               >
                 <div style={{ paddingTop: 6 }}>
                   <input
-                    type="checkbox"
+                    type="radio"
+                    name="custom-design-selection"
                     checked={isSelected}
                     onChange={() => toggleSelected(item.key)}
                     style={{
@@ -471,88 +421,15 @@ export default function CustomCartPage() {
                   }}
                 >
                   {showEditedCardPreview ? (
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        background: "linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%)",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                        padding: "12px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 800,
-                            letterSpacing: 0.3,
-                            color: "#0f172a",
-                            background: "#ffffff",
-                            border: "1px solid #e2e8f0",
-                            borderRadius: 999,
-                            padding: "4px 8px",
-                          }}
-                        >
-                          Edited 3D Draft
-                        </span>
-
-                        <span
-                          title={editedPreviewColor}
-                          style={{
-                            width: 18,
-                            height: 18,
-                            borderRadius: "999px",
-                            background: editedPreviewColor || "#d6c3ab",
-                            border: "2px solid #ffffff",
-                            boxShadow: "0 0 0 1px #cbd5e1",
-                            flexShrink: 0,
-                          }}
-                        />
-                      </div>
-
-                      <div
-                        style={{
-                          flex: 1,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          color: "#64748b",
-                          fontWeight: 700,
-                          fontSize: 13,
-                          textAlign: "center",
-                          padding: "10px 6px",
-                        }}
-                      >
-                        Customized preview saved
-                      </div>
-
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr",
-                          gap: 4,
-                          fontSize: 11,
-                          color: "#334155",
-                        }}
-                      >
-                        <div>
-                          W {Math.round(dims.width || 0)} • H {Math.round(dims.height || 0)} • D{" "}
-                          {Math.round(dims.depth || 0)} mm
-                        </div>
-                        <div style={{ color: "#64748b" }}>
-                          {item.finish_color || item.color || "Custom finish applied"}
-                        </div>
-                      </div>
-                    </div>
+                    <CustomerBlueprintViewer
+                      blueprint={buildCartPreviewBlueprint(item)}
+                      readOnly
+                      showHumanControls={false}
+                      compact
+                      compactHeight={160}
+                      defaultPreset="isometric"
+                      defaultShowHuman={false}
+                    />
                   ) : imageSrc ? (
                     <img
                       src={imageSrc}
@@ -637,7 +514,7 @@ export default function CustomCartPage() {
                     }}
                   >
                     <div>
-                      <strong>Qty:</strong> {item.quantity || 1}
+                      <strong>Request:</strong> 1 design
                     </div>
                     <div>
                       <strong>Wood:</strong> {item.wood_type || "—"}
@@ -717,14 +594,14 @@ export default function CustomCartPage() {
             }}
           >
             <div style={{ color: "#475569", fontSize: "14px" }}>
-              {selectedItems.length} selected design
-              {selectedItems.length !== 1 ? "s" : ""} • {selectedUnits} selected
-              unit{selectedUnits !== 1 ? "s" : ""}
-              <span style={{ color: "#94a3b8", marginLeft: 8 }}>
-                (All cart: {customCart.length} design
-                {customCart.length !== 1 ? "s" : ""} • {totalUnits} unit
-                {totalUnits !== 1 ? "s" : ""})
-              </span>
+              {selectedItem
+                ? "This design will become one custom request."
+                : "Select one design to continue."}
+              {customCart.length > 1 ? (
+                <span style={{ color: "#94a3b8", marginLeft: 8 }}>
+                  Other saved designs can be submitted separately.
+                </span>
+              ) : null}
             </div>
 
             <button
@@ -742,7 +619,7 @@ export default function CustomCartPage() {
                 cursor: selectedItems.length ? "pointer" : "not-allowed",
               }}
             >
-              Proceed Selected to Custom Checkout
+              Continue with Selected Design
             </button>
           </div>
         </div>

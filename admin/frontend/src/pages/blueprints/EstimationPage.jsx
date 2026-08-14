@@ -4,6 +4,7 @@ import toast from "react-hot-toast";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import api, { buildAssetUrl } from "../../services/api";
+import OversizedDeliveryEstimatorPanel from "../../components/OversizedDeliveryEstimatorPanel";
 import { buildEstimateProductionSnapshot } from "./data/estimateProductionSummary";
 
 // WISDOM Project Estimate UI Friendly Polish Fix V1.0.1
@@ -1809,6 +1810,19 @@ export default function EstimationPage() {
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
   const [activeEstimateTab, setActiveEstimateTab] = useState("request");
+  const [deliveryGate, setDeliveryGate] = useState({
+    active: true,
+    readyForQuote: false,
+    message: "Wait for the delivery capacity review to finish loading.",
+  });
+
+  useEffect(() => {
+    setDeliveryGate({
+      active: true,
+      readyForQuote: false,
+      message: "Wait for the delivery capacity review to finish loading.",
+    });
+  }, [id]);
 
   const parsedDesign = useMemo(
     () => parseBlueprintDesignData(blueprint),
@@ -1999,14 +2013,6 @@ export default function EstimationPage() {
     [inventoryItems, rawMaterials],
   );
 
-  const deliveryAssessmentStatus = String(
-    oversizedDeliveryDraft?.assessment_status || "",
-  )
-    .trim()
-    .toLowerCase();
-  const isOversizedDeliveryPending =
-    deliveryAssessmentStatus === "oversized" &&
-    !oversizedDeliveryDraft?.complete;
 
   const quotationGateReasons = useMemo(() => {
     const reasons = [];
@@ -2021,23 +2027,26 @@ export default function EstimationPage() {
       });
     }
 
-    if (isOversizedDeliveryPending) {
+    if (deliveryGate.active && !deliveryGate.readyForQuote) {
       reasons.push({
         key: "delivery",
-        title: "Delivery assessment is required",
+        title: "Delivery review is required",
         message:
-          "This furniture exceeds the standard truck limit. Complete the larger truck and delivery fee assessment before sending the quotation.",
+          deliveryGate.message ||
+          "Complete the delivery capacity review before sending the quotation.",
       });
     }
 
     return reasons;
-  }, [quotationInventoryIssues, isOversizedDeliveryPending]);
+  }, [quotationInventoryIssues, deliveryGate]);
 
   const isSendQuotationBlocked = quotationGateReasons.length > 0;
   const visibleQuotationGateReasons =
     activeEstimateTab === "materials"
       ? quotationGateReasons.filter((reason) => reason.key !== "inventory")
-      : quotationGateReasons;
+      : activeEstimateTab === "delivery"
+        ? quotationGateReasons.filter((reason) => reason.key !== "delivery")
+        : quotationGateReasons;
 
   const inventoryPricingMode =
     estimation?.inventory_pricing_mode === "legacy_billable"
@@ -2381,10 +2390,12 @@ export default function EstimationPage() {
       return;
     }
 
-    if (isOversizedDeliveryPending) {
+    if (deliveryGate.active && !deliveryGate.readyForQuote) {
       toast.error(
-        "Complete the oversized-delivery assessment before sending the quotation.",
+        deliveryGate.message ||
+          "Complete the delivery capacity review before sending the quotation.",
       );
+      setActiveEstimateTab("delivery");
       return;
     }
 
@@ -2701,6 +2712,7 @@ export default function EstimationPage() {
           ["request", "Request"],
           ["components", "Components"],
           ["materials", "Materials"],
+          ["delivery", "Delivery"],
           ["quotation", "Quotation"],
         ].map(([key, label]) => {
           const active = activeEstimateTab === key;
@@ -2836,6 +2848,20 @@ export default function EstimationPage() {
         </div>
       </div>
       )}
+
+      <div
+        style={{
+          display: activeEstimateTab === "delivery" ? "block" : "none",
+          marginBottom: 20,
+        }}
+        aria-hidden={activeEstimateTab !== "delivery"}
+      >
+        <OversizedDeliveryEstimatorPanel
+          key={id}
+          blueprintId={id}
+          onGateChange={setDeliveryGate}
+        />
+      </div>
 
       {activeEstimateTab === "components" && (
         <>
