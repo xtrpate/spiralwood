@@ -283,6 +283,15 @@ export default function SupportPage() {
                     active={selectedTicket?.id === ticket.id}
                     onClick={async (selected) => {
                       await openTicket(selected.id);
+
+                      // Auto-scroll down to the chat box on mobile screens!
+                      if (window.innerWidth <= 900) {
+                        setTimeout(() => {
+                          document
+                            .getElementById("support-conversation-box")
+                            ?.scrollIntoView({ behavior: "smooth" });
+                        }, 100);
+                      }
                     }}
                   />
                 ))}
@@ -290,7 +299,10 @@ export default function SupportPage() {
             )}
           </aside>
 
-          <section className="support-conversation-section">
+          <section
+            id="support-conversation-box"
+            className="support-conversation-section"
+          >
             {loading ? (
               <div className="support-conversation-skeleton">
                 <div className="support-conversation-skeleton-header">
