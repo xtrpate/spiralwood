@@ -1,7 +1,15 @@
 // src/pages/website/FaqsPage.jsx – FAQ Management (Admin)
 import React, { useEffect, useState } from "react";
+import {
+  Eye,
+  EyeOff,
+  Pencil,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import api from "../../services/api";
 import toast from "react-hot-toast";
+import "./WebsiteContentPolish.css";
 
 const BLANK = { question: "", answer: "", sort_order: 0, is_visible: true };
 
@@ -9,9 +17,10 @@ export default function FaqsPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
+
   const [faqs, setFaqs] = useState([]);
   const [loading, setLoad] = useState(true);
-  const [modal, setModal] = useState(null); // null | 'add' | 'edit'
+  const [modal, setModal] = useState(null);
   const [form, setForm] = useState(BLANK);
   const [target, setTarget] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -83,382 +92,247 @@ export default function FaqsPage() {
     load();
   };
 
-  const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const setF = (key, value) => setForm((current) => ({
+    ...current,
+    [key]: value,
+  }));
 
-  const visible = faqs.filter((f) => f.is_visible).length;
-  const hidden = faqs.filter((f) => !f.is_visible).length;
+  const visible = faqs.filter((faq) => faq.is_visible).length;
+  const hidden = faqs.filter((faq) => !faq.is_visible).length;
 
   return (
-    <div>
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 20,
-          flexWrap: "wrap",
-          gap: 16,
-        }}
-      >
+    <div className="website-admin-page website-faq-page">
+      <header className="website-page-header">
         <div>
-          <h1 style={pageTitle}>FAQ Management</h1>
-          <p style={{ fontSize: 13, color: "#52525b", margin: "4px 0 0" }}>
+          <h1 className="website-page-title">FAQ Management</h1>
+          <p className="website-page-subtitle">
             Manage frequently asked questions displayed on the customer website.
           </p>
         </div>
-        <button
-          onClick={openAdd}
-          style={btnPrimary}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "#3f3f46")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "#18181b")}
-        >
-          + Add FAQ
-        </button>
-      </div>
 
-      {/* ── Summary ─────────────────────────────────────────────── */}
-      <div
-        style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}
+        <button
+          type="button"
+          onClick={openAdd}
+          className="website-btn website-btn-primary"
+        >
+          <Plus size={15} strokeWidth={2} />
+          Add FAQ
+        </button>
+      </header>
+
+      <section
+        className="website-summary-grid website-summary-grid-3"
+        aria-label="FAQ summary"
       >
         {[
-          { label: "Total FAQs", value: faqs.length, color: "#18181b" },
-          { label: "Visible", value: visible, color: "#18181b" },
-          { label: "Hidden", value: hidden, color: "#52525b" },
-        ].map((chip) => (
-          <div
-            key={chip.label}
-            style={{
-              background: "#fff",
-              borderRadius: 12,
-              padding: "16px 20px",
-              border: "1px solid #e4e4e7",
-              borderLeft: `4px solid ${chip.color}`,
-              boxShadow: "0 1px 2px rgba(0,0,0,.02)",
-              minWidth: 140,
-              flex: 1,
-            }}
-          >
-            <p
-              style={{
-                fontSize: 10,
-                color: "#71717a",
-                margin: 0,
-                textTransform: "uppercase",
-                letterSpacing: "1px",
-                fontWeight: 800,
-              }}
-            >
-              {chip.label}
-            </p>
-            <p
-              style={{
-                fontSize: 24,
-                fontWeight: 800,
-                color: "#0a0a0a",
-                margin: "6px 0 0",
-                letterSpacing: "-0.02em",
-              }}
-            >
-              {chip.value}
-            </p>
+          { label: "Total FAQs", value: faqs.length },
+          { label: "Visible", value: visible },
+          { label: "Hidden", value: hidden },
+        ].map((item) => (
+          <div className="website-summary-card" key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
           </div>
         ))}
-      </div>
+      </section>
 
-      {/* ── FAQ List ─────────────────────────────────────────────── */}
-      {loading ? (
-        <div style={center}>Loading FAQs...</div>
-      ) : faqs.length === 0 ? (
-        <div
-          style={{
-            ...card,
-            padding: 60,
-            textAlign: "center",
-            color: "#71717a",
-            fontSize: 14,
-            fontWeight: 600,
-          }}
-        >
-          No FAQs yet. Click <strong>+ Add FAQ</strong> to create one.
+      <section className="website-panel website-faq-panel">
+        <div className="website-panel-heading">
+          <div>
+            <h2>FAQ List</h2>
+            <p>Review questions, answers, visibility, and display order.</p>
+          </div>
+          {!loading && (
+            <span className="website-panel-count">
+              {faqs.length} {faqs.length === 1 ? "question" : "questions"}
+            </span>
+          )}
         </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {faqs.map((faq) => (
-            <div
-              key={faq.id}
-              style={{
-                ...card,
-                padding: "20px 24px",
-                border: faq.is_visible
-                  ? "1px solid #e4e4e7"
-                  : "1px dashed #d4d4d8",
-                background: faq.is_visible ? "#ffffff" : "#fafafa",
-                opacity: faq.is_visible ? 1 : 0.65,
-                transition: "all 0.2s ease",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  gap: 16,
-                }}
+
+        {loading ? (
+          <div className="website-empty-state">Loading FAQs...</div>
+        ) : faqs.length === 0 ? (
+          <div className="website-empty-state">
+            <strong>No FAQs yet</strong>
+            <span>Add a question to start building the customer FAQ page.</span>
+          </div>
+        ) : (
+          <div className="website-faq-list">
+            {faqs.map((faq) => (
+              <article
+                key={faq.id}
+                className={`website-faq-row ${
+                  faq.is_visible ? "" : "is-hidden"
+                }`}
               >
-                {/* Content */}
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      marginBottom: 8,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: "#71717a",
-                        width: 24,
-                      }}
-                    >
+                <div className="website-faq-content">
+                  <div className="website-faq-question-row">
+                    <span className="website-faq-order">
                       #{faq.sort_order}
                     </span>
-                    <span
-                      style={{
-                        fontSize: 15,
-                        fontWeight: 800,
-                        color: "#0a0a0a",
-                      }}
-                    >
-                      {faq.question}
-                    </span>
+                    <h3>{faq.question}</h3>
                     {!faq.is_visible && (
-                      <span
-                        style={{
-                          fontSize: 10,
-                          background: "#f4f4f5",
-                          border: "1px solid #e4e4e7",
-                          color: "#52525b",
-                          padding: "2px 8px",
-                          borderRadius: 12,
-                          fontWeight: 700,
-                        }}
-                      >
-                        Hidden
-                      </span>
+                      <span className="website-state-badge">Hidden</span>
                     )}
                   </div>
-                  <p
-                    style={{
-                      fontSize: 13,
-                      color: "#52525b",
-                      margin: 0,
-                      lineHeight: 1.6,
-                      paddingLeft: 34,
-                    }}
-                  >
-                    {faq.answer}
-                  </p>
+
+                  <p className="website-faq-answer">{faq.answer}</p>
                 </div>
 
-                {/* Actions */}
-                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+                <div className="website-row-actions">
                   <button
+                    type="button"
                     onClick={() => toggleVisibility(faq)}
                     title={
-                      faq.is_visible ? "Hide from website" : "Show on website"
+                      faq.is_visible
+                        ? "Hide from website"
+                        : "Show on website"
                     }
-                    style={{
-                      ...btnIcon,
-                      background: faq.is_visible ? "#f4f4f5" : "#18181b",
-                      color: faq.is_visible ? "#18181b" : "#ffffff",
-                      border: faq.is_visible
-                        ? "1px solid #e4e4e7"
-                        : "1px solid #18181b",
-                    }}
+                    className={`website-btn website-btn-compact website-visibility-btn ${
+                      faq.is_visible ? "is-visible" : "is-hidden"
+                    }`}
                   >
-                    {faq.is_visible ? "👁 Visible" : "🙈 Hidden"}
+                    {faq.is_visible ? (
+                      <Eye size={14} strokeWidth={1.9} />
+                    ) : (
+                      <EyeOff size={14} strokeWidth={1.9} />
+                    )}
+                    {faq.is_visible ? "Visible" : "Hidden"}
                   </button>
+
                   <button
+                    type="button"
                     onClick={() => openEdit(faq)}
-                    style={{
-                      ...btnIcon,
-                      background: "#f4f4f5",
-                      color: "#18181b",
-                      border: "1px solid #e4e4e7",
-                    }}
+                    className="website-btn website-btn-compact website-btn-secondary"
                   >
+                    <Pencil size={13} strokeWidth={1.9} />
                     Edit
                   </button>
+
                   <button
+                    type="button"
                     onClick={() => handleDelete(faq.id, faq.question)}
-                    style={{
-                      ...btnIcon,
-                      background: "#fef2f2",
-                      color: "#991b1b",
-                      border: "1px solid #fecaca",
-                    }}
+                    className="website-btn website-btn-compact website-btn-danger"
                   >
-                    Del
+                    <Trash2 size={13} strokeWidth={1.9} />
+                    Delete
                   </button>
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
 
-      {/* ── Add / Edit Modal ─────────────────────────────────────── */}
       {modal && (
-        <div style={overlay}>
-          <div style={modalBox}>
-            <h3
-              style={{
-                margin: "0 0 24px",
-                fontSize: 20,
-                fontWeight: 800,
-                color: "#0a0a0a",
-                letterSpacing: "-0.01em",
-              }}
-            >
-              {modal === "add" ? "Add New FAQ" : "Edit FAQ"}
-            </h3>
+        <div className="website-modal-overlay">
+          <div
+            className="website-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="faq-modal-title"
+          >
+            <div className="website-modal-heading">
+              <h2 id="faq-modal-title">
+                {modal === "add" ? "Add FAQ" : "Edit FAQ"}
+              </h2>
+              <p>
+                {modal === "add"
+                  ? "Create a clear question and customer-friendly answer."
+                  : "Update the question, answer, order, or visibility."}
+              </p>
+            </div>
+
             <form onSubmit={handleSave}>
-              {/* Question */}
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelSm}>Question *</label>
+              <div className="website-form-group">
+                <label className="website-form-label" htmlFor="faq-question">
+                  Question
+                </label>
                 <input
+                  id="faq-question"
                   required
                   value={form.question}
                   onChange={(e) => setF("question", e.target.value)}
-                  style={inputFull}
+                  className="website-input"
                   placeholder="e.g. How long does delivery take?"
                 />
               </div>
 
-              {/* Answer */}
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelSm}>Answer *</label>
+              <div className="website-form-group">
+                <label className="website-form-label" htmlFor="faq-answer">
+                  Answer
+                </label>
                 <textarea
+                  id="faq-answer"
                   required
                   value={form.answer}
                   onChange={(e) => setF("answer", e.target.value)}
                   rows={5}
-                  style={{
-                    ...inputFull,
-                    resize: "vertical",
-                    fontFamily: "inherit",
-                  }}
+                  className="website-input website-textarea"
                   placeholder="Provide a clear and helpful answer..."
                 />
               </div>
 
-              {/* Sort order + visibility */}
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 16,
-                  marginBottom: 16,
-                }}
-              >
-                <div>
-                  <label style={labelSm}>Display Order</label>
+              <div className="website-form-split">
+                <div className="website-form-group">
+                  <label className="website-form-label" htmlFor="faq-order">
+                    Display order
+                  </label>
                   <input
+                    id="faq-order"
                     type="number"
                     min="1"
                     value={form.sort_order}
                     onChange={(e) =>
-                      setF("sort_order", parseInt(e.target.value) || 1)
+                      setF("sort_order", parseInt(e.target.value, 10) || 1)
                     }
-                    style={inputFull}
+                    className="website-input"
                   />
-                  <p
-                    style={{
-                      fontSize: 11,
-                      color: "#71717a",
-                      margin: "6px 0 0",
-                      fontWeight: 500,
-                    }}
-                  >
-                    Lower number = shown first
-                  </p>
+                  <span className="website-form-help">
+                    Lower numbers appear first.
+                  </span>
                 </div>
-                <div>
-                  <label style={labelSm}>Visibility</label>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      cursor: "pointer",
-                      marginTop: 10,
-                    }}
+
+                <div className="website-form-group">
+                  <span className="website-form-label">Visibility</span>
+                  <button
+                    type="button"
+                    onClick={() => setF("is_visible", !form.is_visible)}
+                    className="website-switch-row"
                   >
-                    <div
-                      onClick={() => setF("is_visible", !form.is_visible)}
-                      style={{
-                        width: 44,
-                        height: 24,
-                        borderRadius: 12,
-                        cursor: "pointer",
-                        background: form.is_visible ? "#18181b" : "#d4d4d8",
-                        position: "relative",
-                        transition: "background .2s",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: 18,
-                          height: 18,
-                          borderRadius: "50%",
-                          background: "#fff",
-                          position: "absolute",
-                          top: 3,
-                          left: form.is_visible ? 23 : 3,
-                          transition: "left .2s",
-                          boxShadow: "0 1px 3px rgba(0,0,0,.2)",
-                        }}
-                      />
-                    </div>
                     <span
-                      style={{
-                        fontSize: 13,
-                        color: form.is_visible ? "#18181b" : "#71717a",
-                        fontWeight: 600,
-                      }}
+                      className={`website-switch ${
+                        form.is_visible ? "is-on" : ""
+                      }`}
+                      aria-hidden="true"
                     >
+                      <span />
+                    </span>
+                    <span>
                       {form.is_visible ? "Visible on website" : "Hidden"}
                     </span>
-                  </label>
+                  </button>
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: "flex",
-                  gap: 10,
-                  justifyContent: "flex-end",
-                  marginTop: 28,
-                }}
-              >
+              <div className="website-modal-actions">
                 <button
                   type="button"
                   onClick={() => setModal(null)}
-                  style={btnGhost}
+                  className="website-btn website-btn-secondary"
                 >
                   Cancel
                 </button>
-                <button type="submit" disabled={saving} style={btnPrimary}>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="website-btn website-btn-primary"
+                >
                   {saving
                     ? "Saving..."
                     : modal === "add"
                       ? "Add FAQ"
-                      : "Save Changes"}
+                      : "Save changes"}
                 </button>
               </div>
             </form>
@@ -468,95 +342,3 @@ export default function FaqsPage() {
     </div>
   );
 }
-
-// ── Styles ────────────────────────────────────────────────────────────────────
-const pageTitle = {
-  fontSize: 24,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  margin: 0,
-  letterSpacing: "-0.02em",
-};
-const card = {
-  background: "#fff",
-  borderRadius: 16,
-  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
-};
-const center = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  height: 200,
-  color: "#71717a",
-  fontWeight: 600,
-  fontSize: 14,
-};
-const labelSm = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#18181b",
-  display: "block",
-  marginBottom: 8,
-};
-const inputFull = {
-  width: "100%",
-  padding: "10px 14px",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  fontSize: 13,
-  color: "#18181b",
-  boxSizing: "border-box",
-  outline: "none",
-};
-const overlay = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,.6)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  zIndex: 1000,
-  padding: 20,
-};
-const modalBox = {
-  background: "#fff",
-  borderRadius: 16,
-  padding: 32,
-  width: 560,
-  maxWidth: "100%",
-  maxHeight: "90vh",
-  overflowY: "auto",
-  border: "1px solid #e4e4e7",
-  boxShadow: "0 25px 60px rgba(0,0,0,.15)",
-};
-const btnPrimary = {
-  padding: "10px 20px",
-  background: "#18181b",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
-  transition: "background 0.2s",
-};
-const btnGhost = {
-  padding: "10px 16px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
-  transition: "background 0.2s",
-};
-const btnIcon = {
-  padding: "6px 14px",
-  border: "none",
-  borderRadius: 6,
-  cursor: "pointer",
-  fontSize: 12,
-  fontWeight: 700,
-  transition: "background 0.2s",
-};

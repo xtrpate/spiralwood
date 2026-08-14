@@ -1,7 +1,9 @@
 // src/pages/website/StaticPagesPage.jsx – Static Page Content (About Us, Contact, FAQ)
 import React, { useEffect, useState } from "react";
+import { CircleAlert } from "lucide-react";
 import api from "../../services/api";
 import toast from "react-hot-toast";
+import "./WebsiteContentPolish.css";
 
 const PAGE_META = {
   about_us: {
@@ -28,7 +30,8 @@ export default function StaticPagesPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
-  const [pages, setPages] = useState({}); // slug → page object
+
+  const [pages, setPages] = useState({});
   const [active, setActive] = useState("about_us");
   const [form, setForm] = useState({
     title: "",
@@ -47,9 +50,11 @@ export default function StaticPagesPage() {
     try {
       const { data } = await api.get("/website/pages");
       const map = {};
-      (Array.isArray(data) ? data : []).forEach((p) => {
-        map[p.slug] = p;
+
+      (Array.isArray(data) ? data : []).forEach((page) => {
+        map[page.slug] = page;
       });
+
       setPages(map);
 
       const first = map.about_us;
@@ -76,23 +81,30 @@ export default function StaticPagesPage() {
     load();
   }, []);
 
-  // Switch tabs – warn about unsaved changes
   const switchTab = (slug) => {
-    if (dirty && !window.confirm("You have unsaved changes. Discard them?"))
+    if (dirty && !window.confirm("You have unsaved changes. Discard them?")) {
       return;
+    }
+
     setActive(slug);
-    const p = pages[slug];
+    const page = pages[slug];
+
     setForm(
-      p
-        ? { title: p.title, content: p.content, is_visible: !!p.is_visible }
+      page
+        ? {
+            title: page.title,
+            content: page.content,
+            is_visible: !!page.is_visible,
+          }
         : { title: "", content: "", is_visible: true },
     );
+
     setDirty(false);
     setShowPrev(false);
   };
 
-  const setF = (k, v) => {
-    setForm((f) => ({ ...f, [k]: v }));
+  const setF = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }));
     setDirty(true);
   };
 
@@ -101,9 +113,13 @@ export default function StaticPagesPage() {
     try {
       await api.put(`/website/pages/${active}`, form);
       toast.success(`${PAGE_META[active]?.label} page saved.`);
-      setPages((p) => ({
-        ...p,
-        [active]: { ...p[active], slug: active, ...form },
+      setPages((current) => ({
+        ...current,
+        [active]: {
+          ...current[active],
+          slug: active,
+          ...form,
+        },
       }));
       setDirty(false);
     } catch (error) {
@@ -117,13 +133,19 @@ export default function StaticPagesPage() {
 
   const meta = PAGE_META[active];
 
-  if (loading) return <div style={center}>Loading pages...</div>;
+  if (loading) {
+    return <div className="website-empty-state website-page-loader">Loading pages...</div>;
+  }
 
   if (loadError) {
     return (
-      <div style={{ ...center, flexDirection: "column", gap: 12 }}>
-        <div style={{ color: "#991b1b" }}>{loadError}</div>
-        <button onClick={load} style={btnPrimary}>
+      <div className="website-empty-state website-page-loader">
+        <strong>{loadError}</strong>
+        <button
+          type="button"
+          onClick={load}
+          className="website-btn website-btn-primary"
+        >
           Retry
         </button>
       </div>
@@ -131,399 +153,188 @@ export default function StaticPagesPage() {
   }
 
   return (
-    <div>
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 20,
-          flexWrap: "wrap",
-          gap: 16,
-        }}
-      >
+    <div className="website-admin-page website-static-page">
+      <header className="website-page-header">
         <div>
-          <h1 style={pageTitle}>Page Content</h1>
-          <p style={{ fontSize: 13, color: "#52525b", margin: "4px 0 0" }}>
+          <h1 className="website-page-title">Page Content</h1>
+          <p className="website-page-subtitle">
             Edit the content of static pages shown on the customer website.
           </p>
         </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+
+        <div className="website-header-actions">
           <button
-            onClick={() => setShowPrev((p) => !p)}
-            style={{
-              ...btnGhost,
-              background: showPrev ? "#18181b" : "#f4f4f5",
-              color: showPrev ? "#ffffff" : "#18181b",
-              border: `1px solid ${showPrev ? "#18181b" : "#e4e4e7"}`,
-            }}
+            type="button"
+            onClick={() => setShowPrev((current) => !current)}
+            className={`website-btn website-btn-secondary ${
+              showPrev ? "is-active" : ""
+            }`}
           >
-            {showPrev ? "📝 Edit Mode" : "👁 Preview"}
+            {showPrev ? "Edit mode" : "Preview"}
           </button>
+
           <button
+            type="button"
             onClick={handleSave}
             disabled={saving || !dirty}
-            style={{
-              ...btnPrimary,
-              opacity: !dirty ? 0.5 : 1,
-              cursor: !dirty ? "not-allowed" : "pointer",
-            }}
+            className={`website-btn ${
+              dirty ? "website-btn-primary" : "website-btn-saved"
+            }`}
           >
-            {saving ? "Saving..." : dirty ? "💾 Save Page" : "✓ Saved"}
+            {saving ? "Saving..." : dirty ? "Save page" : "Saved"}
           </button>
         </div>
-      </div>
+      </header>
 
       {dirty && (
-        <div
-          style={{
-            background: "#fefce8",
-            border: "1px solid #fde047",
-            borderRadius: 12,
-            padding: "12px 16px",
-            marginBottom: 20,
-            fontSize: 13,
-            fontWeight: 600,
-            color: "#a16207",
-          }}
-        >
-          ⚠️ You have unsaved changes on the <strong>{meta?.label}</strong>{" "}
-          page.
+        <div className="website-unsaved-banner">
+          <CircleAlert size={15} strokeWidth={1.9} />
+          <span>
+            You have unsaved changes on the{" "}
+            <strong>{meta?.label}</strong> page.
+          </span>
         </div>
       )}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(220px, 1fr) 3.5fr",
-          gap: 20,
-        }}
-      >
-        {/* ── Page Selector ──────────────────────────────────────── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {Object.entries(PAGE_META).map(([slug, m]) => {
+      <div className="website-content-layout">
+        <nav className="website-page-selector-list" aria-label="Website pages">
+          {Object.entries(PAGE_META).map(([slug, item]) => {
             const page = pages[slug];
             const isActive = slug === active;
+
             return (
               <button
+                type="button"
                 key={slug}
                 onClick={() => switchTab(slug)}
-                style={{
-                  padding: "16px",
-                  border: "1px solid",
-                  borderColor: isActive ? "#18181b" : "#e4e4e7",
-                  borderRadius: 12,
-                  cursor: "pointer",
-                  textAlign: "left",
-                  background: isActive ? "#fafafa" : "#ffffff",
-                  color: isActive ? "#0a0a0a" : "#52525b",
-                  boxShadow: isActive ? "none" : "0 1px 2px rgba(0,0,0,.02)",
-                  borderLeft: isActive
-                    ? "4px solid #18181b"
-                    : "4px solid transparent",
-                  transition: "all 0.2s",
-                }}
+                className={`website-page-selector ${
+                  isActive ? "is-active" : ""
+                }`}
               >
-                <div style={{ fontSize: 24, marginBottom: 6 }}>{m.icon}</div>
-                <div
-                  style={{
-                    fontWeight: 800,
-                    fontSize: 13,
-                    letterSpacing: "0.01em",
-                  }}
-                >
-                  {m.label}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    marginTop: 4,
-                    fontWeight: 600,
-                    color: "#71717a",
-                  }}
-                >
-                  {page?.is_visible ? "👁 Visible" : "🙈 Hidden"}
-                </div>
+                <span className="website-page-selector-icon" aria-hidden="true">
+                  {item.icon}
+                </span>
+
+                <span className="website-page-selector-copy">
+                  <strong>{item.label}</strong>
+                  <small>
+                    <span
+                      className={`website-visibility-dot ${
+                        page?.is_visible ? "is-visible" : "is-hidden"
+                      }`}
+                    />
+                    {page?.is_visible ? "Visible on site" : "Hidden from site"}
+                  </small>
+                </span>
               </button>
             );
           })}
-        </div>
+        </nav>
 
-        {/* ── Editor / Preview ───────────────────────────────────── */}
-        <div style={card}>
-          {/* Card header */}
-          <div
-            style={{
-              padding: "20px 24px",
-              borderBottom: "1px solid #e4e4e7",
-              background: "#fafafa",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: 16,
-            }}
-          >
-            <div>
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: 16,
-                  fontWeight: 800,
-                  color: "#0a0a0a",
-                  letterSpacing: "-0.01em",
-                }}
-              >
-                {meta?.icon} {meta?.label}
-              </h3>
-              <p
-                style={{
-                  margin: "4px 0 0",
-                  fontSize: 12,
-                  color: "#71717a",
-                  fontWeight: 500,
-                }}
-              >
-                {meta?.preview}
-              </p>
-            </div>
-            {/* Visibility toggle */}
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                cursor: "pointer",
-              }}
-            >
-              <span style={{ fontSize: 12, color: "#52525b", fontWeight: 700 }}>
-                Visible on site
+        <section className="website-panel website-editor-panel">
+          <div className="website-editor-heading">
+            <div className="website-editor-title-group">
+              <span className="website-editor-icon" aria-hidden="true">
+                {meta?.icon}
               </span>
-              <div
-                onClick={() => setF("is_visible", !form.is_visible)}
-                style={{
-                  width: 44,
-                  height: 24,
-                  borderRadius: 12,
-                  cursor: "pointer",
-                  background: form.is_visible ? "#18181b" : "#d4d4d8",
-                  position: "relative",
-                  transition: "background .2s",
-                  flexShrink: 0,
-                }}
-              >
-                <div
-                  style={{
-                    width: 18,
-                    height: 18,
-                    borderRadius: "50%",
-                    background: "#fff",
-                    position: "absolute",
-                    top: 3,
-                    left: form.is_visible ? 23 : 3,
-                    transition: "left .2s",
-                    boxShadow: "0 1px 3px rgba(0,0,0,.2)",
-                  }}
-                />
+
+              <div>
+                <h2>{meta?.label}</h2>
+                <p>{meta?.preview}</p>
               </div>
-            </label>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setF("is_visible", !form.is_visible)}
+              className="website-editor-visibility"
+            >
+              <span>Visible on site</span>
+              <span
+                className={`website-switch ${
+                  form.is_visible ? "is-on" : ""
+                }`}
+                aria-hidden="true"
+              >
+                <span />
+              </span>
+            </button>
           </div>
 
-          <div style={{ padding: 24 }}>
+          <div className="website-editor-body">
             {!showPrev ? (
-              /* ── Edit mode ────────────────────────────────────── */
               <>
-                <div style={{ marginBottom: 20 }}>
-                  <label style={labelSm}>Page Title</label>
+                <div className="website-editor-note">
+                  {meta?.hint}
+                </div>
+
+                <div className="website-form-group">
+                  <label className="website-form-label" htmlFor="page-title">
+                    Page title
+                  </label>
                   <input
+                    id="page-title"
                     value={form.title || ""}
                     onChange={(e) => setF("title", e.target.value)}
-                    style={inputFull}
+                    className="website-input"
                     placeholder={`${meta?.label} page title`}
                   />
                 </div>
-                <div>
-                  <label style={labelSm}>
-                    Page Content
-                    <span
-                      style={{
-                        fontWeight: 500,
-                        color: "#71717a",
-                        marginLeft: 8,
-                        fontSize: 11,
-                      }}
+
+                <div className="website-form-group">
+                  <div className="website-form-label-row">
+                    <label
+                      className="website-form-label"
+                      htmlFor="page-content"
                     >
-                      Supports plain text. Use double line breaks for
-                      paragraphs.
-                    </span>
-                  </label>
+                      Page content
+                    </label>
+                    <span>Plain text · Use a blank line between paragraphs</span>
+                  </div>
+
                   <textarea
+                    id="page-content"
                     value={form.content || ""}
                     onChange={(e) => setF("content", e.target.value)}
-                    rows={20}
-                    style={{
-                      ...inputFull,
-                      resize: "vertical",
-                      lineHeight: 1.6,
-                      fontFamily: "inherit",
-                    }}
+                    rows={15}
+                    className="website-input website-textarea website-page-content-textarea"
                     placeholder={`Write the content for the ${meta?.label} page here...`}
                   />
-                  <p
-                    style={{
-                      fontSize: 11,
-                      color: "#a1a1aa",
-                      marginTop: 8,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {(form.content || "").length} characters &nbsp;·&nbsp;{" "}
-                    {(form.content || "").split("\n").filter(Boolean).length}{" "}
-                    lines
-                  </p>
+
+                  <div className="website-content-count">
+                    {(form.content || "").length} characters
+                    <span>·</span>
+                    {(form.content || "").split("\n").filter(Boolean).length} lines
+                  </div>
                 </div>
               </>
             ) : (
-              /* ── Preview mode ─────────────────────────────────── */
-              <div
-                style={{
-                  background: "#fafafa",
-                  borderRadius: 12,
-                  border: "1px solid #e4e4e7",
-                  padding: 32,
-                  minHeight: 400,
-                }}
-              >
-                <div
-                  style={{
-                    marginBottom: 12,
-                    fontSize: 10,
-                    color: "#71717a",
-                    textTransform: "uppercase",
-                    letterSpacing: "1px",
-                    fontWeight: 800,
-                  }}
-                >
-                  Preview — {meta?.label} Page
-                </div>
-                <h2
-                  style={{
-                    fontSize: 24,
-                    fontWeight: 800,
-                    color: "#0a0a0a",
-                    margin: "0 0 20px",
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  {form.title || meta?.label}
-                </h2>
-                <div
-                  style={{
-                    fontSize: 14,
-                    color: "#18181b",
-                    lineHeight: 1.7,
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
+              <div className="website-preview-surface">
+                <span className="website-preview-label">
+                  {meta?.label} page preview
+                </span>
+
+                <h2>{form.title || meta?.label}</h2>
+
+                <div className="website-preview-copy">
                   {form.content || (
-                    <span
-                      style={{
-                        color: "#a1a1aa",
-                        fontStyle: "italic",
-                        fontWeight: 500,
-                      }}
-                    >
+                    <span className="website-preview-empty">
                       No content yet.
                     </span>
                   )}
                 </div>
+
                 {!form.is_visible && (
-                  <div
-                    style={{
-                      marginTop: 32,
-                      padding: "12px 16px",
-                      background: "#fef2f2",
-                      border: "1px solid #fecaca",
-                      borderRadius: 10,
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: "#991b1b",
-                    }}
-                  >
-                    ⚠️ This page is currently <strong>hidden</strong> from the
-                    website.
+                  <div className="website-preview-hidden">
+                    <CircleAlert size={15} strokeWidth={1.9} />
+                    This page is currently hidden from the website.
                   </div>
                 )}
               </div>
             )}
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );
 }
-
-// ── Styles ────────────────────────────────────────────────────────────────────
-const pageTitle = {
-  fontSize: 24,
-  fontWeight: 800,
-  color: "#0a0a0a",
-  margin: 0,
-  letterSpacing: "-0.02em",
-};
-const card = {
-  background: "#fff",
-  borderRadius: 16,
-  border: "1px solid #e4e4e7",
-  boxShadow: "0 1px 2px rgba(0,0,0,.02)",
-  overflow: "hidden",
-};
-const center = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  height: 300,
-  color: "#71717a",
-  fontWeight: 600,
-  fontSize: 14,
-};
-const labelSm = {
-  fontSize: 12,
-  fontWeight: 800,
-  color: "#18181b",
-  display: "block",
-  marginBottom: 8,
-};
-const inputFull = {
-  width: "100%",
-  padding: "12px 14px",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  fontSize: 13,
-  color: "#18181b",
-  boxSizing: "border-box",
-  outline: "none",
-};
-const btnPrimary = {
-  padding: "10px 20px",
-  background: "#18181b",
-  color: "#fff",
-  border: "1px solid #18181b",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
-  transition: "background 0.2s",
-};
-const btnGhost = {
-  padding: "10px 20px",
-  background: "#f4f4f5",
-  color: "#18181b",
-  border: "1px solid #e4e4e7",
-  borderRadius: 8,
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: 700,
-  transition: "all 0.2s",
-};
