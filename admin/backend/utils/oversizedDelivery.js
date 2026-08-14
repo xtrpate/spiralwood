@@ -30,6 +30,48 @@ const normalizeDimensions = (source = {}) => ({
   depth_mm: toPositiveMm(source.depth_mm ?? source.depth ?? source.d),
 });
 
+const toPositiveQuantity = (value) => {
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number > 0 ? number : 1;
+};
+
+// WISDOM SAME-DESIGN DELIVERY CAPACITY V1.0.0
+// Conservative estimate: identical furniture stays upright and is not stacked.
+// We check both width/depth orientations against the truck floor.
+const estimateUprightFloorCapacity = (dimensions = {}, limits = {}) => {
+  const item = normalizeDimensions(dimensions);
+
+  if (
+    !limits?.configured ||
+    !item.width_mm ||
+    !item.height_mm ||
+    !item.depth_mm ||
+    !limits.width_mm ||
+    !limits.height_mm ||
+    !limits.depth_mm
+  ) {
+    return null;
+  }
+
+  if (
+    item.width_mm > limits.width_mm ||
+    item.height_mm > limits.height_mm ||
+    item.depth_mm > limits.depth_mm
+  ) {
+    return 0;
+  }
+
+  const normalOrientation =
+    Math.floor(limits.width_mm / item.width_mm) *
+    Math.floor(limits.depth_mm / item.depth_mm);
+
+  const rotatedOrientation =
+    Math.floor(limits.width_mm / item.depth_mm) *
+    Math.floor(limits.depth_mm / item.width_mm);
+
+  return Math.max(1, normalOrientation, rotatedOrientation);
+};
+
 const computeBoundsFromComponents = (items = []) => {
   if (!Array.isArray(items) || items.length === 0) {
     return null;
@@ -259,8 +301,45 @@ function assessDimensions(dimensions = {}, limits = {}) {
 
 function assessCustomOrderItem(item = {}, limits = {}) {
   const dimensions = resolveItemDimensions(item);
+  const quantity = toPositiveQuantity(item.quantity);
+  const baseAssessment = assessDimensions(dimensions, limits);
 
-  return assessDimensions(dimensions, limits);
+  const estimatedCapacity =
+    baseAssessment.status === "standard"
+      ? estimateUprightFloorCapacity(dimensions, limits)
+      : null;
+
+  const quantityExceedsCapacity =
+    baseAssessment.status === "standard" &&
+    Number.isInteger(estimatedCapacity) &&
+    estimatedCapacity > 0 &&
+    quantity > estimatedCapacity;
+
+  if (!quantityExceedsCapacity) {
+    return {
+      ...baseAssessment,
+      quantity,
+      estimated_standard_truck_capacity_units: estimatedCapacity,
+      quantity_exceeds_capacity: false,
+      quantity_excess_units: 0,
+      capacity_method:
+        estimatedCapacity === null ? null : "upright_floor_fit",
+    };
+  }
+
+  return {
+    ...baseAssessment,
+    status: "oversized",
+    oversized: true,
+    requires_large_truck: true,
+    requires_admin_decision: true,
+    quantity,
+    estimated_standard_truck_capacity_units: estimatedCapacity,
+    quantity_exceeds_capacity: true,
+    quantity_excess_units: quantity - estimatedCapacity,
+    capacity_method: "upright_floor_fit",
+    additional_delivery_fee_status: "pending_admin_assessment",
+  };
 }
 
 async function assessOrderDelivery(
@@ -275,6 +354,7 @@ async function assessOrderDelivery(
     `SELECT
        id,
        product_name,
+       quantity,
        customization_json
      FROM order_items
      WHERE order_id = ?
@@ -287,7 +367,10 @@ async function assessOrderDelivery(
       parseJsonSafe(row.customization_json, {}) || {};
 
     const assessment = assessCustomOrderItem(
-      customization,
+      {
+        ...customization,
+        quantity: row.quantity,
+      },
       limits,
     );
 

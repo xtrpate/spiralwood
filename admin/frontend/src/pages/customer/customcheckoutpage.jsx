@@ -290,7 +290,13 @@ export default function CustomCheckoutPage() {
         return;
       }
 
-      setCheckoutItems([{ ...matchedItem, quantity: 1 }]);
+      const matchedQuantity = Number(matchedItem?.quantity);
+      const safeQuantity =
+        Number.isSafeInteger(matchedQuantity) && matchedQuantity > 0
+          ? matchedQuantity
+          : 1;
+
+      setCheckoutItems([{ ...matchedItem, quantity: safeQuantity }]);
       setSelectionReady(true);
     } catch {
       navigate("/custom-cart", { replace: true });
@@ -409,7 +415,10 @@ export default function CustomCheckoutPage() {
       formData.append(
         "payload",
         JSON.stringify({
-          items: checkoutItems.map((item) => ({ ...item, quantity: 1 })),
+          items: checkoutItems.map((item) => ({
+            ...item,
+            quantity: Math.max(1, Number(item.quantity || 1)),
+          })),
           name: form.name,
           phone: form.phone,
           delivery_address: String(form.delivery_address || "").trim(),
@@ -486,7 +495,7 @@ export default function CustomCheckoutPage() {
               </div>
               <h3>Your Custom Design</h3>
               <span style={{ marginLeft: "auto", fontSize: 12, color: "#71717a" }}>
-                1 custom design
+                Qty {totalUnits}
               </span>
             </div>
 
@@ -802,7 +811,7 @@ export default function CustomCheckoutPage() {
                     {item.base_blueprint_title || item.product_name}
                   </div>
                   <div className="checkout-summary-item-qty">
-                    Custom design
+                    Custom design • Qty {Math.max(1, Number(item.quantity || 1))}
                   </div>
                 </div>
 

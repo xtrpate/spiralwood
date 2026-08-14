@@ -195,6 +195,17 @@ export default function OversizedDeliveryEstimatorPanel({
   const assessment = payload?.assessment || null;
   const estimation = payload?.estimation || null;
   const order = payload?.order || null;
+  const assessmentItems = Array.isArray(assessment?.items)
+    ? assessment.items
+    : [];
+  const totalOrderedUnits = assessmentItems.reduce(
+    (sum, item) => sum + Math.max(1, Number(item?.quantity || 1)),
+    0,
+  );
+  const quantityCapacityItems = assessmentItems.filter(
+    (item) => Boolean(item?.quantity_exceeds_capacity),
+  );
+  const hasQuantityCapacityIssue = quantityCapacityItems.length > 0;
   const assessmentStatus = String(assessment?.status || "").toLowerCase();
   const estimationStatus = String(estimation?.status || "").toLowerCase();
   const readOnly = Boolean(estimation?.id && estimationStatus !== "draft");
@@ -409,7 +420,9 @@ export default function OversizedDeliveryEstimatorPanel({
           <div>
             <div style={warningTitle}>Delivery Capacity</div>
             <p style={warningText}>
-              This design fits within the standard truck capacity. No additional delivery arrangement is required.
+              {totalOrderedUnits > 1
+                ? "The ordered quantity fits within the estimated standard truck capacity. No additional delivery arrangement is required."
+                : "This design fits within the standard truck capacity. No additional delivery arrangement is required."}
             </p>
           </div>
           <div style={savedBadge}>Standard fit</div>
@@ -431,6 +444,27 @@ export default function OversizedDeliveryEstimatorPanel({
               </strong>
               <span style={infoValue}>Usable internal cargo dimensions</span>
             </div>
+
+            {totalOrderedUnits > 1 &&
+            Number(assessmentItems[0]?.estimated_standard_truck_capacity_units) >
+              0 ? (
+              <div style={infoCard}>
+                <span style={infoLabel}>Order Quantity</span>
+                <strong>
+                  {totalOrderedUnits} unit{totalOrderedUnits !== 1 ? "s" : ""}
+                </strong>
+                <span style={infoValue}>
+                  Estimated standard capacity:{" "}
+                  {assessmentItems[0].estimated_standard_truck_capacity_units}{" "}
+                  unit
+                  {Number(
+                    assessmentItems[0].estimated_standard_truck_capacity_units,
+                  ) !== 1
+                    ? "s"
+                    : ""}
+                </span>
+              </div>
+            ) : null}
           </div>
         </div>
       </section>
@@ -468,7 +502,9 @@ export default function OversizedDeliveryEstimatorPanel({
         <div>
           <div style={warningTitle}>Delivery Capacity Review</div>
           <p style={warningText}>
-            This design exceeds the standard truck capacity. Confirm the delivery arrangement and any additional fee before sending the quotation.
+            {hasQuantityCapacityIssue
+              ? "The ordered quantity exceeds the estimated standard truck capacity. Confirm the delivery arrangement and any additional fee before sending the quotation."
+              : "This design exceeds the standard truck capacity. Confirm the delivery arrangement and any additional fee before sending the quotation."}
           </p>
         </div>
 
@@ -534,11 +570,47 @@ export default function OversizedDeliveryEstimatorPanel({
                   key={item.order_item_id || item.product_name}
                   style={itemRow}
                 >
-                  <strong>{item.product_name || "Custom Furniture"}</strong>
+                  <strong>
+                    {item.product_name || "Custom Furniture"} · Qty{" "}
+                    {Math.max(1, Number(item.quantity || 1))}
+                  </strong>
                   <span>
                     W {mm(item?.dimensions_mm?.width_mm)} · H{" "}
                     {mm(item?.dimensions_mm?.height_mm)} · D{" "}
                     {mm(item?.dimensions_mm?.depth_mm)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {quantityCapacityItems.length > 0 && (
+          <div style={{ marginTop: 16 }}>
+            <div style={subHeading}>Quantity Capacity</div>
+            <div style={exceededGrid}>
+              {quantityCapacityItems.map((item) => (
+                <div
+                  key={`quantity-${item.order_item_id || item.product_name}`}
+                  style={exceededCard}
+                >
+                  <strong>{item.product_name || "Custom Furniture"}</strong>
+                  <span>
+                    Ordered: {Math.max(1, Number(item.quantity || 1))} units
+                  </span>
+                  <span>
+                    Estimated standard capacity:{" "}
+                    {Math.max(
+                      0,
+                      Number(
+                        item.estimated_standard_truck_capacity_units || 0,
+                      ),
+                    )}{" "}
+                    units
+                  </span>
+                  <span style={{ color: "#b45309", fontWeight: 700 }}>
+                    Over by{" "}
+                    {Math.max(0, Number(item.quantity_excess_units || 0))} units
                   </span>
                 </div>
               ))}

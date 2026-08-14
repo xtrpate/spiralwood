@@ -138,6 +138,7 @@ export default function CustomCartPage() {
 
   const {
     customCart,
+    updateCustomQty,
     removeFromCustomCart,
     removeManyFromCustomCart,
     clearCustomCart,
@@ -349,7 +350,10 @@ export default function CustomCartPage() {
           >
             <div style={{ color: "#334155", fontSize: "14px", fontWeight: 700 }}>
               {selectedItem
-                ? "Selected for this request: 1 design"
+                ? `Selected for this request • Qty ${Math.max(
+                    1,
+                    Number(selectedItem.quantity || 1),
+                  )}`
                 : "Choose one design to submit"}
             </div>
 
@@ -514,7 +518,64 @@ export default function CustomCartPage() {
                     }}
                   >
                     <div>
-                      <strong>Request:</strong> 1 design
+                      <strong>Quantity:</strong>{" "}
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                          marginLeft: 6,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            Number(item.quantity || 1) > 1 &&
+                            updateCustomQty(item.key, -1)
+                          }
+                          disabled={Number(item.quantity || 1) <= 1}
+                          aria-label={`Decrease ${
+                            item.base_blueprint_title ||
+                            item.product_name ||
+                            "custom design"
+                          } quantity`}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            border: "1px solid #d4d4d8",
+                            borderRadius: 4,
+                            background: "#fff",
+                            cursor:
+                              Number(item.quantity || 1) > 1
+                                ? "pointer"
+                                : "not-allowed",
+                          }}
+                        >
+                          −
+                        </button>
+                        <span style={{ minWidth: 20, textAlign: "center" }}>
+                          {Math.max(1, Number(item.quantity || 1))}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => updateCustomQty(item.key, 1)}
+                          aria-label={`Increase ${
+                            item.base_blueprint_title ||
+                            item.product_name ||
+                            "custom design"
+                          } quantity`}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            border: "1px solid #d4d4d8",
+                            borderRadius: 4,
+                            background: "#fff",
+                            cursor: "pointer",
+                          }}
+                        >
+                          +
+                        </button>
+                      </span>
                     </div>
                     <div>
                       <strong>Wood:</strong> {item.wood_type || "—"}
@@ -595,7 +656,14 @@ export default function CustomCartPage() {
           >
             <div style={{ color: "#475569", fontSize: "14px" }}>
               {selectedItem
-                ? "This design will become one custom request."
+                ? `This design will become one custom request for ${Math.max(
+                    1,
+                    Number(selectedItem.quantity || 1),
+                  )} unit${
+                    Math.max(1, Number(selectedItem.quantity || 1)) !== 1
+                      ? "s"
+                      : ""
+                  }.`
                 : "Select one design to continue."}
               {customCart.length > 1 ? (
                 <span style={{ color: "#94a3b8", marginLeft: 8 }}>

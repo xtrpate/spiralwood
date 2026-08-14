@@ -1251,6 +1251,12 @@ export default function CustomizePage() {
       return;
     }
 
+    const requestedQuantity = Number(draft?.quantity);
+    const customQuantity =
+      Number.isSafeInteger(requestedQuantity) && requestedQuantity > 0
+        ? requestedQuantity
+        : 1;
+
     addToCustomCart({
       key: stableCustomKey,
       blueprint_id: product.id,
@@ -1260,7 +1266,7 @@ export default function CustomizePage() {
       preview_image_url:
         product.preview_image_url || product.thumbnail_url || "",
       item_type: "custom",
-      quantity: 1,
+      quantity: customQuantity,
 
       // Custom blueprint pricing is finalized through estimation.
       unit_price: 0,

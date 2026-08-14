@@ -1265,38 +1265,38 @@ export default function CustomerLayout() {
                       ) : null}
 
                       <div className="cust-mini-cart-item-actions">
-                        {blueprint ? (
-                          <span className="cust-mini-cart-blueprint-qty">
-                            1 design
-                          </span>
-                        ) : (
-                          <div
-                            className="cust-mini-cart-qty"
-                            aria-label={`Quantity for ${item.product_name}`}
+                        <div
+                          className="cust-mini-cart-qty"
+                          aria-label={`Quantity for ${
+                            item.base_blueprint_title || item.product_name
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (quantity > 1) updateQty(item.key, -1);
+                            }}
+                            disabled={quantity <= 1}
+                            aria-label={`Decrease ${
+                              item.base_blueprint_title || item.product_name
+                            } quantity`}
                           >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (quantity > 1) updateQty(item.key, -1);
-                              }}
-                              disabled={quantity <= 1}
-                              aria-label={`Decrease ${item.product_name} quantity`}
-                            >
-                              {String.fromCharCode(8722)}
-                            </button>
+                            {String.fromCharCode(8722)}
+                          </button>
 
-                            <span>{quantity}</span>
+                          <span>{quantity}</span>
 
-                            <button
-                              type="button"
-                              onClick={() => updateQty(item.key, 1)}
-                              disabled={Boolean(atMaxStock)}
-                              aria-label={`Increase ${item.product_name} quantity`}
-                            >
-                              +
-                            </button>
-                          </div>
-                        )}
+                          <button
+                            type="button"
+                            onClick={() => updateQty(item.key, 1)}
+                            disabled={Boolean(atMaxStock)}
+                            aria-label={`Increase ${
+                              item.base_blueprint_title || item.product_name
+                            } quantity`}
+                          >
+                            +
+                          </button>
+                        </div>
 
                         <button
                           type="button"

@@ -966,13 +966,15 @@ export default function OrdersPage() {
                           className="wisdom-order-item"
                         >
                           <div className="wisdom-order-item-image">
-                            {order.blueprint_id &&
-                            index === 0 &&
-                            order.blueprint_preview ? (
+                            {(item.blueprint_preview ||
+                              (order.blueprint_id &&
+                                index === 0 &&
+                                order.blueprint_preview)) ? (
                               <div className="wisdom-order-blueprint-live">
                                 <CustomerBlueprintViewer
                                   blueprint={{
-                                    ...order.blueprint_preview,
+                                    ...(item.blueprint_preview ||
+                                      order.blueprint_preview),
                                     thumbnail_url: null,
                                   }}
                                   readOnly
@@ -1034,11 +1036,15 @@ export default function OrdersPage() {
 
                           <div className="wisdom-order-item-copy">
                             <div className="wisdom-order-item-name">
-                              {order.blueprint_id
-                                ? order.blueprint_preview?.title
-                                  ? `Custom Blueprint – ${order.blueprint_preview.title}`
-                                  : "Custom Blueprint Order"
-                                : item.product_name || "Order item"}
+                              {item.is_custom_blueprint
+                                ? item.blueprint_title
+                                  ? `Custom Blueprint – ${item.blueprint_title}`
+                                  : item.product_name || "Custom Blueprint Order"
+                                : order.blueprint_id
+                                  ? order.blueprint_preview?.title
+                                    ? `Custom Blueprint – ${order.blueprint_preview.title}`
+                                    : "Custom Blueprint Order"
+                                  : item.product_name || "Order item"}
                             </div>
                           </div>
 

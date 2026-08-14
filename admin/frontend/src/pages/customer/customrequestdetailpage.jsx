@@ -1670,15 +1670,23 @@ export default function CustomRequestDetailPage() {
                             <div>
                               <strong>Payment Method:</strong>{" "}
                               {latestPayment.payment_method
-                                ? PAYMENT_METHOD_LABELS[
-                                    String(latestPayment.payment_method)
-                                      .trim()
-                                      .toLowerCase()
-                                  ] ||
-                                  prettifyText(
-                                    latestPayment.payment_method,
-                                    "Unknown",
-                                  )
+                                ? String(latestPayment.payment_method)
+                                    .trim()
+                                    .toLowerCase() === "cash" &&
+                                  String(latestPayment.notes || "")
+                                    .trim()
+                                    .toLowerCase()
+                                    .includes("collected on delivery")
+                                  ? "Cash on Delivery"
+                                  : PAYMENT_METHOD_LABELS[
+                                        String(latestPayment.payment_method)
+                                          .trim()
+                                          .toLowerCase()
+                                      ] ||
+                                    prettifyText(
+                                      latestPayment.payment_method,
+                                      "Unknown",
+                                    )
                                 : "No payment recorded yet"}
                             </div>
 
@@ -2246,8 +2254,10 @@ export default function CustomRequestDetailPage() {
                   <h3>Your furniture request</h3>
 
                   <span className="crd-mini-meta">
-                    {requestData.total_items || 0} custom design
-                    {(requestData.total_items || 0) !== 1 ? "s" : ""}
+                    {Math.max(1, Number(requestData.total_units || 1))} unit
+                    {Math.max(1, Number(requestData.total_units || 1)) !== 1
+                      ? "s"
+                      : ""}
                   </span>
                 </div>
 
@@ -2398,6 +2408,10 @@ export default function CustomRequestDetailPage() {
                           </div>
 
                           <div className="custom-cart-specs crd-tag-wrap">
+                            <span className="custom-spec-tag">
+                              Qty {Math.max(1, Number(item.quantity || 1))}
+                            </span>
+
                             {item.wood_type && (
                               <span className="custom-spec-tag">
                                 {prettifyText(item.wood_type, item.wood_type)}

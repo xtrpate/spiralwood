@@ -60,7 +60,9 @@ const normalizeCartItem = (item = {}) => {
     key,
     cart_type: cartType,
     item_type: cartType === "blueprint" ? "blueprint" : "standard",
-    quantity: cartType === "blueprint" ? 1 : toPositiveInt(item?.quantity, 1),
+    // Same custom design may contain multiple units.
+    // Distinct-design separation is enforced at checkout, not by forcing qty=1.
+    quantity: toPositiveInt(item?.quantity, 1),
     unit_price: toMoney(item?.unit_price, 0),
     production_cost: toMoney(item?.production_cost, 0),
     max_stock: maxStock,
@@ -92,8 +94,7 @@ const mergeLineItem = (existing, incoming) => {
   const currentQty = toPositiveInt(base.quantity, 1);
   const incomingQty = toPositiveInt(next.quantity, 1);
 
-  let mergedQty =
-    mergedType === "blueprint" ? 1 : currentQty + incomingQty;
+  let mergedQty = currentQty + incomingQty;
 
   if (mergedType === "standard" && mergedMaxStock) {
     mergedQty = Math.min(mergedQty, mergedMaxStock);
@@ -267,11 +268,13 @@ export function CartProvider({ children }) {
         .map((item) => {
           if (item.key !== cleanKey) return item;
 
-          if (item.cart_type === "blueprint") {
-            return { ...item, quantity: 1 };
-          }
-
           const nextQty = toPositiveInt(item.quantity, 1) + Number(delta || 0);
+
+          // A custom design stays in the cart at quantity 1 until the
+          // customer explicitly removes it with the trash action.
+          if (item.cart_type === "blueprint" && nextQty <= 0) {
+            return item;
+          }
 
           if (nextQty <= 0) return null;
 

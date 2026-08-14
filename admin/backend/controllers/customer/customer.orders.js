@@ -547,10 +547,12 @@ exports.getOrders = async (req, res) => {
     const orderPlaceholders = orderIds.map(() => "?").join(",");
     const [itemRows] = await db.query(
       `SELECT
+          oi.id,
           oi.order_id,
           oi.product_name,
           oi.quantity,
           oi.unit_price,
+          oi.customization_json,
           p.image_url
        FROM order_items oi
        LEFT JOIN products p ON p.id = oi.product_id
@@ -558,6 +560,28 @@ exports.getOrders = async (req, res) => {
        ORDER BY oi.order_id ASC, oi.id ASC`,
       orderIds,
     );
+
+    const orderTypeById = new Map(
+      orders.map((order) => [
+        Number(order.id),
+        String(order.order_type || "").trim().toLowerCase(),
+      ]),
+    );
+
+    // WISDOM MY ORDERS PER-ITEM BLUEPRINT SCENE V1.0.0
+    const parseCustomizationJson = (value) => {
+      if (!value) return {};
+      if (typeof value === "object" && !Array.isArray(value)) return value;
+
+      try {
+        const parsed = JSON.parse(value);
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+          ? parsed
+          : {};
+      } catch {
+        return {};
+      }
+    };
 
     const itemsByOrderId = new Map();
 
@@ -567,11 +591,57 @@ exports.getOrders = async (req, res) => {
         itemsByOrderId.set(orderId, []);
       }
 
+      const isBlueprintOrder = orderTypeById.get(orderId) === "blueprint";
+      const customization = parseCustomizationJson(row.customization_json);
+      const editorSnapshot =
+        customization?.editor_snapshot &&
+        typeof customization.editor_snapshot === "object" &&
+        !Array.isArray(customization.editor_snapshot)
+          ? customization.editor_snapshot
+          : {};
+
+      const components = Array.isArray(editorSnapshot.components)
+        ? editorSnapshot.components
+        : [];
+      const worldSize =
+        editorSnapshot?.worldSize &&
+        typeof editorSnapshot.worldSize === "object"
+          ? editorSnapshot.worldSize
+          : null;
+
+      const blueprintTitle = String(
+        customization?.base_blueprint_title ||
+          row.product_name ||
+          "Custom Furniture",
+      ).trim();
+
+      const submittedBlueprintPreview =
+        isBlueprintOrder && components.length > 0
+          ? {
+              id: `order-item-${row.id}`,
+              updated_at: `submitted-order-item-${row.id}`,
+              title: blueprintTitle,
+              thumbnail_url: null,
+              components,
+              view_3d_data: {
+                components,
+                worldSize,
+              },
+            }
+          : null;
+
+      const customImageUrl = String(
+        customization?.preview_image_url || customization?.image_url || "",
+      ).trim();
+
       itemsByOrderId.get(orderId).push({
         product_name: row.product_name,
         quantity: row.quantity,
         unit_price: row.unit_price,
-        image_url: row.image_url,
+        image_url: customImageUrl || row.image_url,
+        is_custom_blueprint: isBlueprintOrder,
+        blueprint_title: isBlueprintOrder ? blueprintTitle : null,
+        blueprint_preview: submittedBlueprintPreview,
       });
     }
 

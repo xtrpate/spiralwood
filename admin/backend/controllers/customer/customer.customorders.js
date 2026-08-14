@@ -486,10 +486,14 @@ exports.createCustomOrder = async (req, res) => {
     });
   }
 
-  const submittedBlueprintQuantity = Number(items[0]?.quantity ?? 1);
-  if (!Number.isInteger(submittedBlueprintQuantity) || submittedBlueprintQuantity !== 1) {
+  const submittedBlueprintQuantity = parseStrictPositiveInt(
+    items[0]?.quantity,
+  );
+
+  if (!submittedBlueprintQuantity) {
     return res.status(400).json({
-      message: "A custom Blueprint request must contain exactly one design.",
+      message:
+        "Quantity must be a whole number greater than zero for this custom design.",
     });
   }
 
@@ -545,7 +549,7 @@ exports.createCustomOrder = async (req, res) => {
       product_name: String(
         item.product_name || item.base_blueprint_title || "Custom Blueprint",
       ).trim(),
-      quantity: 1,
+      quantity: submittedBlueprintQuantity,
 
       image_url: toTrimmedStringOrNull(item.image_url),
       preview_image_url: toTrimmedStringOrNull(
