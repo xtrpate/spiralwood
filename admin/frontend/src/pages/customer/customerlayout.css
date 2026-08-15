@@ -2791,3 +2791,520 @@ a {
     max-height: 68px !important;
   }
 }
+
+
+/* ==========================================================================
+   WISDOM CUSTOMER FOOTER RESTRUCTURE V1.0.0
+   Professional monochrome footer + restrained typography hierarchy
+   ========================================================================== */
+
+.cust-footer-v2 {
+  background: #0d0d0d;
+  color: #ffffff;
+}
+
+.cust-footer-v2 .cust-footer-inner {
+  width: min(100% - 48px, 1480px);
+  margin: 0 auto;
+  padding: 42px 0 18px;
+}
+
+.cust-footer-v2 .cust-footer-grid-v2 {
+  display: grid;
+  grid-template-columns: 1.05fr 1.15fr 0.9fr 0.9fr;
+  gap: clamp(28px, 4vw, 64px);
+  align-items: start;
+}
+
+.cust-footer-v2 .cust-footer-section {
+  min-width: 0;
+}
+
+.cust-footer-v2 .cust-footer-section h4 {
+  margin: 0 0 18px;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.cust-footer-v2 .cust-footer-copy,
+.cust-footer-v2 .cust-footer-contact-value,
+.cust-footer-v2 .cust-footer-nav-link,
+.cust-footer-v2 .cust-footer-primary-link {
+  font-size: 13px;
+  line-height: 1.7;
+  font-weight: 400;
+}
+
+.cust-footer-v2 .cust-footer-copy {
+  margin: 0 0 10px;
+  color: rgba(255, 255, 255, 0.72);
+  max-width: 300px;
+}
+
+.cust-footer-v2 .cust-footer-primary-link {
+  display: inline-flex;
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 500;
+}
+
+.cust-footer-v2 .cust-footer-primary-link:hover,
+.cust-footer-v2 .cust-footer-nav-link:hover,
+.cust-footer-v2 .cust-footer-contact-value[href]:hover {
+  color: #ffffff;
+}
+
+.cust-footer-v2 .cust-footer-contact-group {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 12px;
+}
+
+.cust-footer-v2 .cust-footer-label {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cust-footer-v2 .cust-footer-contact-value {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.cust-footer-v2 a.cust-footer-contact-value {
+  font-weight: 500;
+}
+
+.cust-footer-v2 .cust-footer-hours {
+  white-space: pre-wrap;
+}
+
+.cust-footer-v2 .cust-footer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cust-footer-v2 .cust-footer-nav-list {
+  display: grid;
+  gap: 8px;
+}
+
+.cust-footer-v2 .cust-footer-nav-list li {
+  margin: 0;
+  padding: 0;
+}
+
+.cust-footer-v2 .cust-footer-nav-list li::before {
+  display: none;
+}
+
+.cust-footer-v2 .cust-footer-nav-link {
+  display: inline-flex;
+  color: rgba(255, 255, 255, 0.76);
+  font-weight: 400;
+  transition:
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.cust-footer-v2 .cust-footer-nav-link:hover {
+  transform: translateX(2px);
+}
+
+.cust-footer-v2 .cust-footer-social-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.cust-footer-v2 .cust-footer-socials {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cust-footer-v2 .cust-footer-social-link {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.86);
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.cust-footer-v2 .cust-footer-social-link svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+}
+
+.cust-footer-v2 .cust-footer-social-link:hover {
+  background: #ffffff;
+  border-color: #ffffff;
+  color: #111111;
+}
+
+.cust-footer-v2 .cust-footer-bottom-v2 {
+  margin-top: 34px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.cust-footer-v2 .cust-footer-bottom-v2 p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+.cust-footer-v2 .footer-brand .cust-brand-name {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.cust-footer-v2 .footer-brand .cust-brand-sub {
+  color: rgba(255, 255, 255, 0.58);
+  font-weight: 400;
+}
+
+.cust-footer-v2 .footer-brand .cust-brand-badge.footer {
+  border-radius: 0;
+  border-color: rgba(255, 255, 255, 0.2);
+  background: transparent;
+}
+
+@media (max-width: 1050px) {
+  .cust-footer-v2 .cust-footer-grid-v2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 34px 54px;
+  }
+}
+
+@media (max-width: 640px) {
+  .cust-footer-v2 .cust-footer-inner {
+    width: min(100% - 32px, 1480px);
+    padding-top: 32px;
+  }
+
+  .cust-footer-v2 .cust-footer-grid-v2 {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .cust-footer-v2 .cust-footer-section h4 {
+    margin-bottom: 12px;
+  }
+
+  .cust-footer-v2 .cust-footer-bottom-v2 {
+    margin-top: 28px;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+
+/* ==========================================================================
+   WISDOM CUSTOMER FOOTER ICONS + LOGO FIX V1.0.1
+   Adds restrained monochrome icons and restores the original rounded logo.
+   ========================================================================== */
+
+.cust-footer-v2 .cust-footer-section h4 {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.cust-footer-v2 .cust-footer-copy,
+.cust-footer-v2 .cust-footer-contact-value,
+.cust-footer-v2 .cust-footer-nav-link,
+.cust-footer-v2 .cust-footer-primary-link {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.cust-footer-v2 .cust-footer-copy,
+.cust-footer-v2 .cust-footer-hours {
+  font-weight: 400;
+}
+
+.cust-footer-v2 .cust-footer-label {
+  font-weight: 500;
+}
+
+.cust-footer-v2 .cust-footer-detail-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.cust-footer-v2 .cust-footer-location-row {
+  margin-bottom: 10px;
+}
+
+.cust-footer-v2 .cust-footer-location-row .cust-footer-copy {
+  margin: 0;
+}
+
+.cust-footer-v2 .cust-footer-detail-icon {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.cust-footer-v2 .cust-footer-detail-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cust-footer-v2 .cust-footer-contact-group {
+  margin-bottom: 13px;
+}
+
+.cust-footer-v2 .cust-footer-icon-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.cust-footer-v2 .cust-footer-icon-link > svg {
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.cust-footer-v2 .cust-footer-nav-link:hover > svg,
+.cust-footer-v2 .cust-footer-primary-link:hover > svg {
+  color: #ffffff;
+}
+
+.cust-footer-v2 .cust-footer-nav-list {
+  gap: 9px;
+}
+
+/* Restore the footer logo treatment that existed before V1.0.0. */
+.cust-footer-v2 .footer-brand .cust-brand-badge.footer {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #111111;
+  overflow: hidden;
+}
+
+.cust-footer-v2 .footer-brand .cust-brand-badge.footer .cust-brand-logo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.cust-footer-v2 .footer-brand .cust-brand-name {
+  font-weight: 700;
+}
+
+.cust-footer-v2 .footer-brand .cust-brand-sub {
+  font-weight: 400;
+}
+
+.cust-footer-v2 .cust-footer-bottom-v2 p {
+  font-weight: 400;
+}
+
+
+/* ==========================================================================
+   WISDOM CUSTOMER FOOTER BALANCE POLISH V1.0.2
+   Balanced information density + more refined social controls
+   ========================================================================== */
+
+.cust-footer-v2 .cust-footer-grid-v2 {
+  grid-template-columns: 1.08fr 1fr 1fr 1fr;
+  gap: clamp(34px, 3.6vw, 58px);
+}
+
+/* WISDOM CUSTOMER FOOTER REMOVE HOURS DIVIDER V1.0.3 */
+.cust-footer-v2 .cust-footer-location-hours {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: none;
+  max-width: 300px;
+}
+
+.cust-footer-v2 .cust-footer-social-block {
+  margin-top: 16px;
+  gap: 7px;
+}
+
+.cust-footer-v2 .cust-footer-socials {
+  gap: 7px;
+}
+
+.cust-footer-v2 .cust-footer-social-link {
+  width: 31px;
+  height: 31px;
+}
+
+.cust-footer-v2 .cust-footer-social-link svg {
+  width: 15px;
+  height: 15px;
+}
+
+.cust-footer-v2 .cust-footer-nav-list {
+  gap: 8px;
+}
+
+.cust-footer-v2 .cust-footer-bottom-v2 {
+  margin-top: 30px;
+}
+
+@media (max-width: 1050px) {
+  .cust-footer-v2 .cust-footer-grid-v2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px 48px;
+  }
+}
+
+@media (max-width: 640px) {
+  .cust-footer-v2 .cust-footer-grid-v2 {
+    grid-template-columns: 1fr;
+    gap: 26px;
+  }
+
+  .cust-footer-v2 .cust-footer-location-hours {
+    max-width: none;
+  }
+}
+
+
+/* ==========================================================================
+   WISDOM CUSTOMER FOOTER FINAL POLISH V1.0.4
+   Final compactness + typography + social-control refinement
+   ========================================================================== */
+
+.cust-footer-v2 .cust-footer-inner {
+  padding-top: 34px;
+  padding-bottom: 14px;
+}
+
+.cust-footer-v2 .cust-footer-grid-v2 {
+  gap: clamp(32px, 3.4vw, 54px);
+}
+
+.cust-footer-v2 .cust-footer-section h4 {
+  margin-bottom: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.cust-footer-v2 .cust-footer-copy,
+.cust-footer-v2 .cust-footer-contact-value,
+.cust-footer-v2 .cust-footer-nav-link,
+.cust-footer-v2 .cust-footer-primary-link {
+  line-height: 1.6;
+}
+
+.cust-footer-v2 .cust-footer-copy,
+.cust-footer-v2 .cust-footer-hours {
+  font-weight: 400;
+}
+
+.cust-footer-v2 .cust-footer-nav-link,
+.cust-footer-v2 .cust-footer-primary-link,
+.cust-footer-v2 a.cust-footer-contact-value {
+  font-weight: 500;
+}
+
+.cust-footer-v2 .cust-footer-label {
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.cust-footer-v2 .cust-footer-contact-group {
+  margin-bottom: 11px;
+}
+
+.cust-footer-v2 .cust-footer-location-hours {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: none;
+}
+
+.cust-footer-v2 .cust-footer-nav-list {
+  gap: 7px;
+}
+
+.cust-footer-v2 .cust-footer-social-block {
+  margin-top: 13px;
+  gap: 6px;
+}
+
+.cust-footer-v2 .cust-footer-socials {
+  gap: 6px;
+}
+
+.cust-footer-v2 .cust-footer-social-link {
+  width: 29px;
+  height: 29px;
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.cust-footer-v2 .cust-footer-social-link svg {
+  width: 14px;
+  height: 14px;
+}
+
+.cust-footer-v2 .cust-footer-bottom-v2 {
+  margin-top: 24px;
+  padding-top: 14px;
+}
+
+.cust-footer-v2 .cust-footer-bottom-v2 p {
+  font-weight: 400;
+}
+
+@media (max-width: 1050px) {
+  .cust-footer-v2 .cust-footer-inner {
+    padding-top: 32px;
+  }
+
+  .cust-footer-v2 .cust-footer-grid-v2 {
+    gap: 30px 46px;
+  }
+}
+
+@media (max-width: 640px) {
+  .cust-footer-v2 .cust-footer-inner {
+    padding-top: 28px;
+    padding-bottom: 16px;
+  }
+
+  .cust-footer-v2 .cust-footer-grid-v2 {
+    gap: 24px;
+  }
+
+  .cust-footer-v2 .cust-footer-bottom-v2 {
+    margin-top: 22px;
+  }
+}

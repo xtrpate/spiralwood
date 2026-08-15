@@ -11,9 +11,13 @@ import {
   Package,
   Shield,
   Headphones,
+  MapPin,
+  Phone,
+  Mail,
+  Clock,
   Info,
   CircleHelp,
-  Mail,
+  ExternalLink,
   LogOut,
   Menu,
   X,
@@ -44,6 +48,59 @@ const navItems = [
   { to: "/warranty", icon: Shield, label: "Warranty" },
   { to: "/support", icon: Headphones, label: "Support" },
 ];
+
+/* WISDOM CUSTOMER FOOTER RESTRUCTURE V1.0.0 */
+const FooterSocialIcon = ({ type }) => {
+  if (type === "facebook") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path
+          fill="currentColor"
+          d="M13.7 21v-8h2.8l.4-3h-3.2V8.1c0-.9.3-1.6 1.6-1.6H17V3.8c-.5-.1-1.4-.2-2.5-.2-2.5 0-4.2 1.5-4.2 4.3V10H7.5v3h2.8v8h3.4Z"
+        />
+      </svg>
+    );
+  }
+
+  if (type === "instagram") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <rect
+          x="3.5"
+          y="3.5"
+          width="17"
+          height="17"
+          rx="4.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+        />
+        <circle
+          cx="12"
+          cy="12"
+          r="4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+        />
+        <circle cx="17.4" cy="6.8" r="1.1" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M21 4 10.4 14.6M21 4l-6.7 16-3.9-5.4L4 11.7 21 4Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+};
 
 export default function CustomerLayout() {
   const { user, logout } = useAuthStore();
@@ -380,10 +437,34 @@ export default function CustomerLayout() {
             dynamicAddress,
           )}`,
     email: siteSettings?.display?.business_email || "spiralwood@gmail.com",
-    facebookName: dynamicName,
-    facebookUrl:
-      siteSettings?.display?.social_facebook || "https://www.facebook.com/",
+    facebookUrl: String(
+      siteSettings?.display?.social_facebook || "",
+    ).trim(),
+    instagramUrl: String(
+      siteSettings?.display?.social_instagram || "",
+    ).trim(),
+    telegramUrl: String(
+      siteSettings?.display?.social_telegram || "",
+    ).trim(),
   };
+
+  const footerSocialLinks = [
+    {
+      key: "facebook",
+      label: "Facebook",
+      url: footerInfo.facebookUrl,
+    },
+    {
+      key: "instagram",
+      label: "Instagram",
+      url: footerInfo.instagramUrl,
+    },
+    {
+      key: "telegram",
+      label: "Telegram",
+      url: footerInfo.telegramUrl,
+    },
+  ].filter((item) => item.url);
 
   const handleLogout = () => {
     setAccountOpen(false);
@@ -1110,42 +1191,6 @@ export default function CustomerLayout() {
             </NavLink>
           ))}
         </nav>
-        <div className="cust-side-footer-links">
-          <div className="cust-side-footer-title">Company & Help</div>
-
-          {isTrue(siteSettings?.display?.show_about_section) && (
-            <NavLink
-              to="/about"
-              className="cust-side-footer-link"
-              onClick={() => setMenuOpen(false)}
-            >
-              <Info size={16} />
-              <span>About Us</span>
-            </NavLink>
-          )}
-
-          {isTrue(siteSettings?.display?.show_faq_section) && (
-            <NavLink
-              to="/faq"
-              className="cust-side-footer-link"
-              onClick={() => setMenuOpen(false)}
-            >
-              <CircleHelp size={16} />
-              <span>FAQs</span>
-            </NavLink>
-          )}
-
-          {isTrue(siteSettings?.display?.show_contact_section) && (
-            <NavLink
-              to="/contact"
-              className="cust-side-footer-link"
-              onClick={() => setMenuOpen(false)}
-            >
-              <Mail size={16} />
-              <span>Contact Us</span>
-            </NavLink>
-          )}
-        </div>
       </aside>
 
       <aside
@@ -1608,114 +1653,243 @@ export default function CustomerLayout() {
         )}
       </main>
 
-      <footer className="cust-footer">
+      {/* WISDOM CUSTOMER FOOTER ICONS + LOGO FIX V1.0.1 */}
+      {/* WISDOM CUSTOMER FOOTER BALANCE POLISH V1.0.2 */}
+      <footer className="cust-footer cust-footer-v2">
         <div className="cust-footer-inner">
-          <div className="cust-footer-grid">
-            <div className="cust-footer-col">
-              {/* WISDOM FOOTER LOCATION WORDING V1 */}
-              <h4>LOCATION</h4>
-              <p>{footerInfo.address}</p>
+          <div className="cust-footer-grid cust-footer-grid-v2">
+            <section className="cust-footer-col cust-footer-section">
+              <h4>Location</h4>
+
+              <div className="cust-footer-detail-row cust-footer-location-row">
+                <MapPin
+                  className="cust-footer-detail-icon"
+                  size={16}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />
+                <p className="cust-footer-copy">{footerInfo.address}</p>
+              </div>
+
               <a
                 href={footerInfo.mapUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="cust-footer-link"
+                className="cust-footer-link cust-footer-primary-link cust-footer-icon-link"
               >
-                View on Google Maps
+                <ExternalLink size={14} strokeWidth={1.8} aria-hidden="true" />
+                <span>View on Google Maps</span>
               </a>
-            </div>
 
-            <div className="cust-footer-col">
-              <h4>BUSINESS HOURS</h4>
-              {siteSettings?.display?.operating_hours ? (
-                <p style={{ whiteSpace: "pre-wrap" }}>
-                  {siteSettings.display.operating_hours}
-                </p>
-              ) : (
-                <>
-                  <p>MONDAY - FRIDAY</p>
-                  <strong>8:00 AM - 5:00 PM</strong>
+              <div className="cust-footer-location-hours">
+                <div className="cust-footer-contact-group cust-footer-detail-row">
+                  <Clock
+                    className="cust-footer-detail-icon"
+                    size={16}
+                    strokeWidth={1.8}
+                    aria-hidden="true"
+                  />
+                  <div className="cust-footer-detail-copy">
+                    <span className="cust-footer-label">Business hours</span>
+                    <p className="cust-footer-contact-value cust-footer-hours">
+                      {siteSettings?.display?.operating_hours ||
+                        "8:00 AM - 5:00 PM"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
 
-                  <div className="cust-footer-spacer" />
+            <section className="cust-footer-col cust-footer-section">
+              <h4>Contact</h4>
 
-                  <p>WEEKEND PRODUCTION</p>
-                  <strong>By schedule / ongoing production</strong>
-                </>
-              )}
-
-              <div className="cust-footer-spacer" />
-
-              <p>CONTACT NUMBER</p>
-              <strong>{footerInfo.phone}</strong>
-            </div>
-
-            <div className="cust-footer-col">
-              <h4>MY ACCOUNT</h4>
-              <ul className="cust-footer-list">
-                <li>
-                  <button type="button" onClick={() => navigate("/cart")}>
-                    My Shopping Cart
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/profilesettings")}
-                  >
-                    Account Settings
-                  </button>
-                </li>
-                <li>
-                  <button type="button" onClick={() => navigate("/orders")}>
-                    Track my Order
-                  </button>
-                </li>
-                <li>
-                  <button type="button" onClick={() => navigate("/warranty")}>
-                    Warranty
-                  </button>
-                </li>
-                <li>
-                  <button type="button" onClick={() => navigate("/support")}>
-                    Customer Support
-                  </button>
-                </li>
-              </ul>
-            </div>
-
-            <div className="cust-footer-col">
-              <h4>CUSTOMER CARE</h4>
-              <ul className="cust-footer-list">
-                <li>
-                  <a href={`tel:${footerInfo.phone}`}>{footerInfo.phone}</a>
-                </li>
-                <li>
-                  <a href={`mailto:${footerInfo.email}`}>{footerInfo.email}</a>
-                </li>
-                <li>
+              <div className="cust-footer-contact-group cust-footer-detail-row">
+                <Phone
+                  className="cust-footer-detail-icon"
+                  size={16}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />
+                <div className="cust-footer-detail-copy">
+                  <span className="cust-footer-label">Phone</span>
                   <a
-                    href={footerInfo.facebookUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                    href={`tel:${footerInfo.phone}`}
+                    className="cust-footer-contact-value"
                   >
-                    Facebook: {footerInfo.facebookName}
+                    {footerInfo.phone}
                   </a>
+                </div>
+              </div>
+
+              <div className="cust-footer-contact-group cust-footer-detail-row">
+                <Mail
+                  className="cust-footer-detail-icon"
+                  size={16}
+                  strokeWidth={1.8}
+                  aria-hidden="true"
+                />
+                <div className="cust-footer-detail-copy">
+                  <span className="cust-footer-label">Email</span>
+                  <a
+                    href={`mailto:${footerInfo.email}`}
+                    className="cust-footer-contact-value"
+                  >
+                    {footerInfo.email}
+                  </a>
+                </div>
+              </div>
+
+              {footerSocialLinks.length > 0 && (
+                <div className="cust-footer-social-block">
+                  <span className="cust-footer-label">Follow us</span>
+                  <div
+                    className="cust-footer-socials"
+                    aria-label="Spiral Wood Services social media"
+                  >
+                    {footerSocialLinks.map((social) => (
+                      <a
+                        key={social.key}
+                        href={social.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="cust-footer-social-link"
+                        aria-label={social.label}
+                        title={social.label}
+                      >
+                        <FooterSocialIcon type={social.key} />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className="cust-footer-col cust-footer-section">
+              <h4>Company &amp; Help</h4>
+              <ul className="cust-footer-list cust-footer-nav-list">
+                {isTrue(siteSettings?.display?.show_about_section) && (
+                  <li>
+                    <NavLink
+                      to="/about"
+                      className="cust-footer-nav-link cust-footer-icon-link"
+                    >
+                      <Info size={15} strokeWidth={1.8} aria-hidden="true" />
+                      <span>About Us</span>
+                    </NavLink>
+                  </li>
+                )}
+                {isTrue(siteSettings?.display?.show_faq_section) && (
+                  <li>
+                    <NavLink
+                      to="/faq"
+                      className="cust-footer-nav-link cust-footer-icon-link"
+                    >
+                      <CircleHelp
+                        size={15}
+                        strokeWidth={1.8}
+                        aria-hidden="true"
+                      />
+                      <span>FAQs</span>
+                    </NavLink>
+                  </li>
+                )}
+                {isTrue(siteSettings?.display?.show_contact_section) && (
+                  <li>
+                    <NavLink
+                      to="/contact"
+                      className="cust-footer-nav-link cust-footer-icon-link"
+                    >
+                      <Mail size={15} strokeWidth={1.8} aria-hidden="true" />
+                      <span>Contact Us</span>
+                    </NavLink>
+                  </li>
+                )}
+                <li>
+                  <NavLink
+                    to="/support"
+                    className="cust-footer-nav-link cust-footer-icon-link"
+                  >
+                    <Headphones
+                      size={15}
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                    />
+                    <span>Customer Support</span>
+                  </NavLink>
                 </li>
                 <li>
-                  <button type="button" onClick={() => navigate("/catalog")}>
-                    Browse Products
-                  </button>
-                </li>
-                <li>
-                  <button type="button" onClick={() => navigate("/customize")}>
-                    Customize Furniture
-                  </button>
+                  <NavLink
+                    to="/warranty"
+                    className="cust-footer-nav-link cust-footer-icon-link"
+                  >
+                    <Shield size={15} strokeWidth={1.8} aria-hidden="true" />
+                    <span>Warranty</span>
+                  </NavLink>
                 </li>
               </ul>
-            </div>
+            </section>
+
+            <section className="cust-footer-col cust-footer-section">
+              <h4>My Account</h4>
+              <ul className="cust-footer-list cust-footer-nav-list">
+                <li>
+                  <NavLink
+                    to="/cart"
+                    className="cust-footer-nav-link cust-footer-icon-link"
+                  >
+                    <ShoppingCart
+                      size={15}
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                    />
+                    <span>Shopping Cart</span>
+                  </NavLink>
+                </li>
+                <li>
+                  <NavLink
+                    to={customerUser ? "/profilesettings" : "/login"}
+                    className="cust-footer-nav-link cust-footer-icon-link"
+                  >
+                    <Settings size={15} strokeWidth={1.8} aria-hidden="true" />
+                    <span>Account Settings</span>
+                  </NavLink>
+                </li>
+                <li>
+                  <NavLink
+                    to={customerUser ? "/orders" : "/login"}
+                    className="cust-footer-nav-link cust-footer-icon-link"
+                  >
+                    <Package size={15} strokeWidth={1.8} aria-hidden="true" />
+                    <span>Track My Order</span>
+                  </NavLink>
+                </li>
+                <li>
+                  <NavLink
+                    to="/catalog"
+                    className="cust-footer-nav-link cust-footer-icon-link"
+                  >
+                    <ShoppingBag
+                      size={15}
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                    />
+                    <span>Browse Products</span>
+                  </NavLink>
+                </li>
+                <li>
+                  <NavLink
+                    to="/customize"
+                    className="cust-footer-nav-link cust-footer-icon-link"
+                  >
+                    <Scissors size={15} strokeWidth={1.8} aria-hidden="true" />
+                    <span>Customize Furniture</span>
+                  </NavLink>
+                </li>
+              </ul>
+            </section>
           </div>
 
-          <div className="cust-footer-bottom">
+          <div className="cust-footer-bottom cust-footer-bottom-v2">
             <div className="footer-brand">
               <BrandBlock compact footer />
             </div>

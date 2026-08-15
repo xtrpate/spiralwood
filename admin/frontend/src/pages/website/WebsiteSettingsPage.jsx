@@ -117,6 +117,18 @@ const KEY_META = {
     hint: "Link to the official Facebook page.",
     width: "wide",
   },
+  social_instagram: {
+    label: "Instagram Profile URL",
+    type: "text",
+    hint: "Optional link to the official Instagram profile.",
+    width: "wide",
+  },
+  social_telegram: {
+    label: "Telegram URL",
+    type: "text",
+    hint: "Optional link to the official Telegram account or channel.",
+    width: "wide",
+  },
   operating_hours: {
     label: "Operating Hours",
     type: "textarea",
@@ -266,6 +278,8 @@ const TAB_KEYS = {
     "business_phone",
     "business_email",
     "social_facebook",
+    "social_instagram",
+    "social_telegram",
     "operating_hours",
   ],
   payment: [
