@@ -9,11 +9,60 @@ import { useCart } from "./cartcontext";
 import cabinetImg from "../assets/cabinet.png";
 
 let cachedProducts = null;
+let cachedCatalogCategories = null;
+
+const normalizeCategoryText = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const HOME_CATEGORY_SIGNALS = [
+  "kitchen",
+  "bathroom",
+  "office",
+  "living",
+  "dining",
+  "closet",
+  "wardrobe",
+  "tv",
+  "console",
+  "bedroom",
+];
+
+const resolveHomeCategory = (card, categories = []) => {
+  const requestedName = normalizeCategoryText(card?.category);
+  const requestedText = normalizeCategoryText(
+    `${card?.label || ""} ${card?.category || ""}`,
+  );
+
+  const exact = categories.find(
+    (category) => normalizeCategoryText(category?.name) === requestedName,
+  );
+  if (exact) return exact;
+
+  for (const signal of HOME_CATEGORY_SIGNALS) {
+    if (!requestedText.includes(signal)) continue;
+
+    const semanticMatch = categories.find((category) =>
+      normalizeCategoryText(category?.name).includes(signal),
+    );
+    if (semanticMatch) return semanticMatch;
+  }
+
+  return null;
+};
 
 export default function LandingPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const [products, setProducts] = useState(cachedProducts || []);
+  const [catalogCategories, setCatalogCategories] = useState(
+    cachedCatalogCategories || [],
+  );
   const [loading, setLoading] = useState(!cachedProducts);
   const { addToCart } = useCart();
 
@@ -61,6 +110,19 @@ export default function LandingPage() {
   const getAvailabilityText = (product) =>
     isOutOfStock(product) ? "Out of Stock" : "In Stock";
 
+  const handleHomeCategoryClick = (card) => {
+    const matchedCategory = resolveHomeCategory(card, catalogCategories);
+    const params = new URLSearchParams();
+
+    params.set("category", matchedCategory?.name || card?.category || "");
+
+    if (matchedCategory?.id != null) {
+      params.set("category_id", String(matchedCategory.id));
+    }
+
+    navigate(`/catalog?${params.toString()}`);
+  };
+
   const handleLatestView = (e, product) => {
     e.stopPropagation();
     navigate(`/catalog?q=${encodeURIComponent(product?.name || "")}`);
@@ -89,7 +151,7 @@ export default function LandingPage() {
   };
 
   useEffect(() => {
-    if (cachedProducts) return;
+    if (cachedProducts && cachedCatalogCategories) return;
 
     const fetchProducts = async () => {
       try {
@@ -99,9 +161,14 @@ export default function LandingPage() {
           : Array.isArray(res.data?.products)
             ? res.data.products
             : [];
+        const categoryList = Array.isArray(res.data?.categories)
+          ? res.data.categories
+          : [];
 
         cachedProducts = list;
+        cachedCatalogCategories = categoryList;
         setProducts(list);
+        setCatalogCategories(categoryList);
       } catch (err) {
         console.error("Failed to load products", err);
         setProducts([]);
@@ -299,11 +366,7 @@ export default function LandingPage() {
           {topCategoryCards.map((cat, i) => (
             <div
               key={`top-${i}`}
-              onClick={() =>
-                navigate(
-                  `/catalog?category=${encodeURIComponent(cat.category)}`,
-                )
-              }
+              onClick={() => handleHomeCategoryClick(cat)}
               style={{
                 cursor: "pointer",
                 borderRadius: "0",
@@ -362,11 +425,7 @@ export default function LandingPage() {
           {bottomCategoryCards.map((cat, i) => (
             <div
               key={`bottom-${i}`}
-              onClick={() =>
-                navigate(
-                  `/catalog?category=${encodeURIComponent(cat.category)}`,
-                )
-              }
+              onClick={() => handleHomeCategoryClick(cat)}
               style={{
                 cursor: "pointer",
                 borderRadius: "0",

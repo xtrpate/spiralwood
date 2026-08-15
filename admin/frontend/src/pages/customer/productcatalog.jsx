@@ -28,6 +28,8 @@ const formatTypeLabel = (type) => {
   return raw.replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
+const UNMATCHED_CATEGORY_FILTER = "__unmatched_home_category__";
+
 const ProductImage = ({ src, alt, className, style, imgStyle }) => {
   const [errored, setErrored] = useState(false);
   const resolvedSrc = buildAssetUrl(src);
@@ -115,7 +117,15 @@ export default function ProductCatalog() {
   const { addToCart } = useCart();
 
   const [search, setSearch] = useState("");
-  const [catFilter, setCatFilter] = useState("all");
+  const [catFilter, setCatFilter] = useState(() => {
+    const requestedCategoryId = new URLSearchParams(location.search).get(
+      "category_id",
+    );
+
+    return requestedCategoryId && /^\d+$/.test(requestedCategoryId)
+      ? requestedCategoryId
+      : "all";
+  });
   const [stockFilter, setStockFilter] = useState("all");
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
@@ -164,7 +174,10 @@ export default function ProductCatalog() {
       };
 
       if (search) params.q = search;
-      if (catFilter !== "all") params.category_id = catFilter;
+      if (catFilter !== "all") {
+        params.category_id =
+          catFilter === UNMATCHED_CATEGORY_FILTER ? -1 : catFilter;
+      }
       if (stockFilter !== "all") params.stock_status = stockFilter;
       if (priceMin !== "") params.price_min = priceMin;
       if (priceMax !== "") params.price_max = priceMax;
@@ -233,10 +246,13 @@ export default function ProductCatalog() {
     const params = new URLSearchParams(location.search);
     const q = params.get("q") || "";
     const categoryName = params.get("category");
+    const requestedCategoryId = params.get("category_id");
 
     setSearch(q);
 
-    if (!categoryName) {
+    if (requestedCategoryId && /^\d+$/.test(requestedCategoryId)) {
+      setCatFilter(requestedCategoryId);
+    } else if (!categoryName) {
       setCatFilter("all");
     }
 
@@ -248,15 +264,32 @@ export default function ProductCatalog() {
 
     const params = new URLSearchParams(location.search);
     const categoryName = params.get("category");
+    const requestedCategoryId = params.get("category_id");
+
+    if (requestedCategoryId && /^\d+$/.test(requestedCategoryId)) {
+      const idMatch = categories.find(
+        (cat) => String(cat.id) === requestedCategoryId,
+      );
+
+      setCatFilter(
+        idMatch ? String(idMatch.id) : UNMATCHED_CATEGORY_FILTER,
+      );
+      setUrlMapped(true);
+      return;
+    }
 
     if (categoryName) {
       const match = categories.find(
         (cat) =>
-          String(cat.name || "").toLowerCase() === categoryName.toLowerCase(),
+          String(cat.name || "").trim().toLowerCase() ===
+          categoryName.trim().toLowerCase(),
       );
-      if (match) {
-        setCatFilter(String(match.id));
-      }
+
+      setCatFilter(
+        match ? String(match.id) : UNMATCHED_CATEGORY_FILTER,
+      );
+    } else {
+      setCatFilter("all");
     }
 
     setUrlMapped(true);

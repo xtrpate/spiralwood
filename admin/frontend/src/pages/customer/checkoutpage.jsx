@@ -54,6 +54,41 @@ const formatPeso = (value) =>
     maximumFractionDigits: 2,
   })}`;
 
+const toValidDeliveryPin = (lat, lng) => {
+  const latMissing =
+    lat === undefined ||
+    lat === null ||
+    String(lat).trim() === "";
+  const lngMissing =
+    lng === undefined ||
+    lng === null ||
+    String(lng).trim() === "";
+
+  if (latMissing || lngMissing) {
+    return null;
+  }
+
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+
+  if (
+    !Number.isFinite(latNum) ||
+    !Number.isFinite(lngNum) ||
+    latNum < -90 ||
+    latNum > 90 ||
+    lngNum < -180 ||
+    lngNum > 180 ||
+    (latNum === 0 && lngNum === 0)
+  ) {
+    return null;
+  }
+
+  return { lat: latNum, lng: lngNum };
+};
+
+const isValidDeliveryPin = (pin) =>
+  Boolean(toValidDeliveryPin(pin?.lat, pin?.lng));
+
 export default function CheckoutPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
@@ -104,12 +139,13 @@ export default function CheckoutPage() {
   //   clear, or current-location). Once true, incoming profile updates
   //   stop silently overwriting the customer's in-progress choice.
   const [useDefaultAddress, setUseDefaultAddress] = useState(() =>
-    Boolean(String(user?.address || "").trim()),
+    Boolean(
+      String(user?.address || "").trim() &&
+        toValidDeliveryPin(user?.address_lat, user?.address_lng),
+    ),
   );
   const [deliveryPin, setDeliveryPin] = useState(() =>
-    user?.address_lat != null && user?.address_lng != null
-      ? { lat: Number(user.address_lat), lng: Number(user.address_lng) }
-      : null,
+    toValidDeliveryPin(user?.address_lat, user?.address_lng),
   );
   const userToggledRef = useRef(false);
 
@@ -125,13 +161,15 @@ export default function CheckoutPage() {
 
     if (userToggledRef.current) return;
 
-    const hasDefault = Boolean(String(user?.address || "").trim());
-    setUseDefaultAddress(hasDefault);
-    setDeliveryPin(
-      hasDefault && user?.address_lat != null && user?.address_lng != null
-        ? { lat: Number(user.address_lat), lng: Number(user.address_lng) }
-        : null,
+    const defaultPin = toValidDeliveryPin(
+      user?.address_lat,
+      user?.address_lng,
     );
+    const hasDefault = Boolean(
+      String(user?.address || "").trim() && defaultPin,
+    );
+    setUseDefaultAddress(hasDefault);
+    setDeliveryPin(hasDefault ? defaultPin : null);
   }, [user]);
 
   // Re-checking "Use my default delivery address" always pulls the
@@ -139,15 +177,29 @@ export default function CheckoutPage() {
   // to a custom address/pin earlier in this session.
   const handleToggleDefaultAddress = (checked) => {
     userToggledRef.current = true;
-    setUseDefaultAddress(checked);
-    if (checked) {
-      setField("delivery_address", user?.address || "");
-      setDeliveryPin(
-        user?.address_lat != null && user?.address_lng != null
-          ? { lat: Number(user.address_lat), lng: Number(user.address_lng) }
-          : null,
-      );
+
+    if (!checked) {
+      setUseDefaultAddress(false);
+      return;
     }
+
+    const defaultPin = toValidDeliveryPin(
+      user?.address_lat,
+      user?.address_lng,
+    );
+
+    if (!String(user?.address || "").trim() || !defaultPin) {
+      setUseDefaultAddress(false);
+      setDeliveryPin(null);
+      toast.error(
+        "Your saved address has no map pin yet. Please pin the delivery location below.",
+      );
+      return;
+    }
+
+    setUseDefaultAddress(true);
+    setField("delivery_address", user.address);
+    setDeliveryPin(defaultPin);
   };
 
   // Any manual address text edit is a custom-address override for this
@@ -238,9 +290,16 @@ export default function CheckoutPage() {
 
   const total = subtotal;
 
-  const hasDefaultAddress = Boolean(String(user?.address || "").trim());
+  const savedDefaultPin = toValidDeliveryPin(
+    user?.address_lat,
+    user?.address_lng,
+  );
+  const hasDefaultAddress = Boolean(
+    String(user?.address || "").trim() && savedDefaultPin,
+  );
   // COP (Cash on Pick-up) needs no delivery address or map at all.
   const showAddressSection = form.payment_method !== "cop";
+  const hasDeliveryPin = isValidDeliveryPin(deliveryPin);
 
   const handleSubmit = async (e) => {
     if (e?.preventDefault) e.preventDefault();
@@ -274,6 +333,13 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (form.payment_method !== "cop" && !hasDeliveryPin) {
+      toast.error(
+        "Please pin your delivery location on the map before placing your order.",
+      );
+      return;
+    }
+
     const payloadItems = checkoutItems.map((item) => ({
       key: item.key,
       product_id: item.product_id,
@@ -299,11 +365,7 @@ export default function CheckoutPage() {
 
     // Only ever send a complete pair — never a single lat or lng — and
     // never for pickup orders, which have no delivery destination.
-    if (
-      !isPickup &&
-      Number.isFinite(deliveryPin?.lat) &&
-      Number.isFinite(deliveryPin?.lng)
-    ) {
+    if (!isPickup && hasDeliveryPin) {
       formData.append("delivery_lat", String(deliveryPin.lat));
       formData.append("delivery_lng", String(deliveryPin.lng));
     }
@@ -781,6 +843,25 @@ export default function CheckoutPage() {
                             value={deliveryPin}
                             onChange={handlePinChange}
                           />
+
+                          {!hasDeliveryPin && (
+                            <div
+                              role="alert"
+                              style={{
+                                marginTop: 10,
+                                padding: "10px 12px",
+                                border: "1px solid #d6b85c",
+                                background: "#fffdf4",
+                                color: "#5f4a12",
+                                fontSize: 12.5,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              <strong>Delivery pin required.</strong> Search for
+                              your address or click the map to mark the exact
+                              delivery location before placing your order.
+                            </div>
+                          )}
                         </div>
                       )}
                     </>
@@ -930,7 +1011,11 @@ export default function CheckoutPage() {
             <button
               className="place-order-btn"
               onClick={handleSubmit}
-              disabled={loading || !checkoutItems.length}
+              disabled={
+                loading ||
+                !checkoutItems.length ||
+                (showAddressSection && !hasDeliveryPin)
+              }
             >
               {loading ? (
                 <>

@@ -163,9 +163,8 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    // The map pin is optional for now (not required even for COD/PayMongo)
-    // — only validate lat/lng when the customer actually provided a value.
-    // If provided, both must be present together (no half-a-pin).
+    // Delivery orders require a complete map pin as well as the address
+    // text. COP is pickup and remains exempt from the map requirement.
     const hasDeliveryLat =
       delivery_lat !== undefined &&
       delivery_lat !== null &&
@@ -174,6 +173,16 @@ exports.createOrder = async (req, res) => {
       delivery_lng !== undefined &&
       delivery_lng !== null &&
       delivery_lng !== "";
+    const requiresDeliveryPin =
+      DELIVERY_REQUIRED_METHODS.includes(normalizedPaymentMethod);
+
+    if (requiresDeliveryPin && (!hasDeliveryLat || !hasDeliveryLng)) {
+      await conn.rollback();
+      return res.status(400).json({
+        message:
+          "Please pin the delivery location on the map before placing the order.",
+      });
+    }
 
     let cleanDeliveryLat = null;
     let cleanDeliveryLng = null;
@@ -190,12 +199,13 @@ exports.createOrder = async (req, res) => {
         latNum < -90 ||
         latNum > 90 ||
         lngNum < -180 ||
-        lngNum > 180
+        lngNum > 180 ||
+        (latNum === 0 && lngNum === 0)
       ) {
         await conn.rollback();
         return res.status(400).json({
           message:
-            "Invalid map location. Latitude must be between -90 and 90, and longitude between -180 and 180.",
+            "Invalid delivery pin. Please select the actual delivery location on the map.",
         });
       }
 

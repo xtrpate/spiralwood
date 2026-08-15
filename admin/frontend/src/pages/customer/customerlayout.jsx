@@ -913,7 +913,7 @@ export default function CustomerLayout() {
                 aria-label="Open cart"
               >
                 <span className="cust-cart-summary-total">
-                  {formatPeso(cartTotal)}
+                  {cartCount > 0 ? formatPeso(cartTotal) : "₱0"}
                 </span>
 
                 <span className="cust-cart-summary-icon-wrap">
