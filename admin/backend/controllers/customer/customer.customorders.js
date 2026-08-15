@@ -473,6 +473,7 @@ exports.createCustomOrder = async (req, res) => {
     delivery_lat,
     delivery_lng,
     notes,
+    design_review_confirmed,
   } = parsedBody;
 
   if (!Array.isArray(items) || items.length === 0) {
@@ -483,6 +484,14 @@ exports.createCustomOrder = async (req, res) => {
     return res.status(400).json({
       message:
         "Only one custom design can be submitted per request. Submit each Blueprint design separately.",
+    });
+  }
+
+  // WISDOM CUSTOM DESIGN REVIEW EDIT BEFORE SUBMIT V1.0.0
+  if (design_review_confirmed !== true) {
+    return res.status(400).json({
+      message:
+        "Please review and confirm the exact custom design before submitting the request.",
     });
   }
 

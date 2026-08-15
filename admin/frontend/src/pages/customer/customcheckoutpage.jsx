@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Scissors } from "lucide-react";
+import { CheckCircle2, Pencil, Scissors } from "lucide-react";
 import { useCustomCart } from "./customcartcontext";
 import { buildAssetUrl } from "../../services/api";
 import api from "../../services/api";
@@ -58,6 +58,21 @@ const formatTemplateLabel = (item = {}) => {
   }
 
   return "Admin Blueprint";
+};
+
+/* WISDOM CUSTOM DESIGN EDIT ROUTE + REVIEW CLEANUP V1.0.2 */
+const hasMeaningfulCustomerSpec = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return false;
+
+  return ![
+    "not specified",
+    "not applicable",
+    "n/a",
+    "none",
+    "null",
+    "undefined",
+  ].includes(normalized);
 };
 
 const resolveCartImageSrc = (src) => {
@@ -173,6 +188,7 @@ export default function CustomCheckoutPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [reviewConfirmed, setReviewConfirmed] = useState(false);
 
   const [checkoutNote, setCheckoutNote] = useState("");
 
@@ -297,6 +313,7 @@ export default function CustomCheckoutPage() {
           : 1;
 
       setCheckoutItems([{ ...matchedItem, quantity: safeQuantity }]);
+      setReviewConfirmed(false);
       setSelectionReady(true);
     } catch {
       navigate("/custom-cart", { replace: true });
@@ -323,6 +340,13 @@ export default function CustomCheckoutPage() {
 
     if (checkoutItems.length !== 1) {
       setError("Select exactly one custom design for this request.");
+      return;
+    }
+
+    if (!reviewConfirmed) {
+      setError(
+        "Please review and confirm the exact design, specifications, and quantity before submitting.",
+      );
       return;
     }
 
@@ -425,6 +449,7 @@ export default function CustomCheckoutPage() {
           delivery_lat: validDeliveryPin.lat,
           delivery_lng: validDeliveryPin.lng,
           notes: form.notes,
+          design_review_confirmed: true,
         }),
       );
       formData.append(
@@ -482,138 +507,154 @@ export default function CustomCheckoutPage() {
         <div className="checkout-form-panel">
           {error && <div className="alert alert-error">{error}</div>}
 
-          <div className="checkout-section">
-            <div className="checkout-section-header">
-              <div
-                className="checkout-section-num"
-                style={{
-                  background: "linear-gradient(135deg,#2d6a4f,#52b788)",
-                  fontSize: 13,
-                }}
-              >
-                ✂️
+          {/* WISDOM CUSTOM DESIGN REVIEW EDIT BEFORE SUBMIT V1.0.0 */}
+          <div className="checkout-section custom-final-review-section">
+            <div className="checkout-section-header custom-final-review-header">
+              <div className="checkout-section-num custom-final-review-icon">
+                <CheckCircle2 size={17} />
               </div>
-              <h3>Your Custom Design</h3>
-              <span style={{ marginLeft: "auto", fontSize: 12, color: "#71717a" }}>
-                Qty {totalUnits}
-              </span>
+              <div>
+                <h3>Review Your Design</h3>
+                <p>
+                  Check the exact edited design, specifications, and quantity
+                  before sending this request to our team.
+                </p>
+              </div>
+              <span className="custom-final-review-qty">Qty {totalUnits}</span>
             </div>
 
-            <div className="checkout-items-preview">
+            <div className="checkout-section-body">
               {checkoutItems.map((item) => {
                 const dims = getItemDisplayDims(item);
-                const liveBlueprintPreview =
-                  buildLiveCartBlueprintPreview(item);
+                const liveBlueprintPreview = buildLiveCartBlueprintPreview(item);
                 const staticImageSrc = resolveCartImageSrc(
                   item.image_url || item.preview_image_url,
                 );
+                const referenceCount = Array.isArray(item.reference_photos)
+                  ? item.reference_photos.length
+                  : Number(
+                      item?.customization_snapshot?.reference_photo_count || 0,
+                    );
 
                 return (
-                  <div key={item.key} className="checkout-item-row">
-                    <div className="checkout-item-thumb">
+                  <div key={item.key} className="custom-final-review-grid">
+                    <div className="custom-final-review-visual">
                       {liveBlueprintPreview ? (
                         <CustomerBlueprintViewer
                           blueprint={liveBlueprintPreview}
                           readOnly
                           showHumanControls={false}
                           compact
-                          compactHeight={88}
+                          compactHeight={270}
                           defaultPreset="isometric"
                           defaultShowHuman={false}
                         />
                       ) : staticImageSrc ? (
                         <img
                           src={staticImageSrc}
-                          alt={item.base_blueprint_title || item.product_name || "Custom design"}
-                          style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                          alt={
+                            item.base_blueprint_title ||
+                            item.product_name ||
+                            "Custom design"
+                          }
                         />
                       ) : (
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: "100%",
-                            height: "100%",
-                            fontSize: 11,
-                            color: "#71717a",
-                            background: "#f7f2ea",
-                          }}
-                        >
+                        <div className="custom-final-review-unavailable">
                           Design preview unavailable
                         </div>
                       )}
                     </div>
 
-                    <div className="checkout-item-details">
-                      <div className="checkout-item-name">
-                        {item.base_blueprint_title || item.product_name}
+                    <div className="custom-final-review-details">
+                      <div className="custom-final-review-title-row">
+                        <div>
+                          <div className="custom-final-review-eyebrow">
+                            {formatTemplateLabel(item)}
+                          </div>
+                          <h4>
+                            {item.base_blueprint_title ||
+                              item.product_name ||
+                              "Custom Furniture"}
+                          </h4>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="custom-final-review-edit-btn"
+                          onClick={() =>
+                            navigate(
+                              `/custom-cart?edit=${encodeURIComponent(item.key)}`,
+                            )
+                          }
+                        >
+                          <Pencil size={15} />
+                          Edit Design
+                        </button>
                       </div>
 
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#64748b",
-                          marginTop: 4,
-                          fontWeight: 500,
-                        }}
-                      >
-                        {formatTemplateLabel(item)} • Customer-edited draft
-                      </div>
-
-                      <div
-                        className="custom-cart-specs"
-                        style={{ marginTop: 4 }}
-                      >
-                        {item.wood_type && (
-                          <span className="custom-spec-tag">
-                            🪵 {item.wood_type}
-                          </span>
-                        )}
-
-                        {(item.finish_color || item.color) && (
-                          <span className="custom-spec-tag">
-                            🎨 {item.finish_color || item.color}
-                          </span>
-                        )}
-
-                        {item.door_style && (
-                          <span className="custom-spec-tag">
-                            🚪 {item.door_style}
-                          </span>
-                        )}
-
-                        {item.hardware && (
-                          <span className="custom-spec-tag">
-                            🔩 {item.hardware}
-                          </span>
-                        )}
-
-                        {(dims.width || dims.height || dims.depth) && (
-                          <span className="custom-spec-tag">
-                            📐 W{formatItemValue(dims.width)} H
-                            {formatItemValue(dims.height)} D
+                      <div className="custom-final-review-specs">
+                        <div>
+                          <span>Quantity</span>
+                          <strong>{Math.max(1, Number(item.quantity || 1))}</strong>
+                        </div>
+                        <div>
+                          <span>Dimensions</span>
+                          <strong>
+                            W{formatItemValue(dims.width)} × H
+                            {formatItemValue(dims.height)} × D
                             {formatItemValue(dims.depth)} {item.unit || "mm"}
-                          </span>
-                        )}
+                          </strong>
+                        </div>
+                        {hasMeaningfulCustomerSpec(item.wood_type) ? (
+                          <div>
+                            <span>Wood</span>
+                            <strong>{item.wood_type}</strong>
+                          </div>
+                        ) : null}
+
+                        {hasMeaningfulCustomerSpec(
+                          item.finish_color || item.color,
+                        ) ? (
+                          <div>
+                            <span>Finish</span>
+                            <strong>{item.finish_color || item.color}</strong>
+                          </div>
+                        ) : null}
+
+                        {hasMeaningfulCustomerSpec(item.door_style) ? (
+                          <div>
+                            <span>Door style</span>
+                            <strong>{item.door_style}</strong>
+                          </div>
+                        ) : null}
+
+                        {hasMeaningfulCustomerSpec(item.hardware) ? (
+                          <div>
+                            <span>Hardware</span>
+                            <strong>{item.hardware}</strong>
+                          </div>
+                        ) : null}
                       </div>
 
                       {item.comments ? (
-                        <div
-                          className="checkout-item-sub"
-                          style={{ marginTop: 4 }}
-                        >
-                          💬 {item.comments}
+                        <div className="custom-final-review-note">
+                          <span>Project notes</span>
+                          <p>{item.comments}</p>
                         </div>
                       ) : null}
-                    </div>
 
+                      {referenceCount > 0 ? (
+                        <div className="custom-final-review-files">
+                          {referenceCount} reference file
+                          {referenceCount !== 1 ? "s" : ""} attached
+                        </div>
+                      ) : null}
 
-                    <div
-                      className="checkout-item-price"
-                      style={{ fontSize: 12, color: "#aaa" }}
-                    >
-                      Quotation required
+                      <div className="custom-final-review-rule">
+                        <strong>One design per request.</strong> The quantity above
+                        applies to this same design. Different designs are
+                        submitted as separate custom requests.
+                      </div>
                     </div>
                   </div>
                 );
@@ -793,9 +834,9 @@ export default function CustomCheckoutPage() {
           <button
             type="button"
             className="wisdom-custom-request-back-nav-v15"
-            onClick={() => navigate("/cart")}
+            onClick={() => navigate("/custom-cart")}
           >
-            {"\u2190"} Back to Cart
+            {"\u2190"} Back to Custom Designs
           </button>
 
           <div className="checkout-summary">
@@ -838,6 +879,28 @@ export default function CustomCheckoutPage() {
             </p>
           </div>
 
+          <div
+            className={`custom-final-review-confirm ${
+              reviewConfirmed ? "is-confirmed" : ""
+            }`}
+          >
+            <label>
+              <input
+                type="checkbox"
+                checked={reviewConfirmed}
+                onChange={(event) => {
+                  setReviewConfirmed(event.target.checked);
+                  if (event.target.checked) setError("");
+                }}
+              />
+              <span>
+                <strong>I reviewed this design.</strong> The design,
+                specifications, and quantity shown above are correct for this
+                custom request.
+              </span>
+            </label>
+          </div>
+
           {checkoutNote && (
             <div
               style={{
@@ -860,7 +923,9 @@ export default function CustomCheckoutPage() {
           <button
             className="place-order-btn"
             onClick={handleSubmit}
-            disabled={loading || !checkoutItems.length}
+            disabled={
+              loading || !checkoutItems.length || !reviewConfirmed
+            }
           >
             {loading ? (
               "Submitting…"

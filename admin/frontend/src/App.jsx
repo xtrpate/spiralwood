@@ -7,6 +7,7 @@ import {
   Route,
   Navigate,
   Outlet,
+  useSearchParams,
 } from "react-router-dom";
 import "leaflet/dist/leaflet.css";
 import { Toaster } from "react-hot-toast";
@@ -51,6 +52,7 @@ import RegisterPage from "./pages/customer/registerpage";
 import ForgotPasswordPage from "./pages/customer/forgotpasswordpage";
 import ProductCatalog from "./pages/customer/productcatalog";
 import CartPage from "./pages/customer/cartpage";
+import CustomCartPage from "./pages/customer/customcartpage";
 import CheckoutPage from "./pages/customer/checkoutpage";
 import OrderCompletePage from "./pages/customer/OrderCompletePage.jsx";
 import CustomizePage from "./pages/customer/customizepage";
@@ -203,6 +205,22 @@ function BlockNonCustomerPortal({ children }) {
   return children;
 }
 
+/* WISDOM CUSTOM DESIGN EDIT ROUTE + REVIEW CLEANUP V1.0.2 */
+function CustomCartEditRoute() {
+  const [searchParams] = useSearchParams();
+  const editKey = String(searchParams.get("edit") || "").trim();
+
+  if (!editKey) {
+    return <Navigate to="/cart" replace />;
+  }
+
+  return (
+    <RequireAuth roles={["customer"]}>
+      <CustomCartPage />
+    </RequireAuth>
+  );
+}
+
 export default function App() {
   useEffect(() => {
     api
@@ -312,7 +330,7 @@ export default function App() {
 
                   <Route
                     path="custom-cart"
-                    element={<Navigate to="/cart" replace />}
+                    element={<CustomCartEditRoute />}
                   />
 
                   <Route

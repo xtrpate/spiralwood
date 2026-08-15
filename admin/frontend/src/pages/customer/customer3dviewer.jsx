@@ -255,6 +255,8 @@ export default function Customer3DViewer({
   applyLabel = "Add to Custom Cart",
   commentsLabel = "Additional Comments",
   commentsPlaceholder = "Optional notes for this custom draft...",
+  initialQuantity = 1,
+  initialComments = "",
   referencePhotos = [],
   uploadError = "",
   onPickReferencePhotos,
@@ -289,8 +291,13 @@ export default function Customer3DViewer({
   const [activeView, setActiveView] = useState("3D");
   const [customHex, setCustomHex] = useState("#1e293b");
 
-  const [quantity, setQuantity] = useState(1);
-  const [comments, setComments] = useState("");
+  const [quantity, setQuantity] = useState(() => {
+    const parsed = Number(initialQuantity);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1;
+  });
+  const [comments, setComments] = useState(() =>
+    String(initialComments || ""),
+  );
   const [standardTruckLimits, setStandardTruckLimits] = useState(null);
 
   const [overallDrafts, setOverallDrafts] = useState({

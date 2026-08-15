@@ -77,8 +77,13 @@ export default function CustomerTemplateWorkbench({
   onConfirm,
   onViewCustomize,
   confirmLabel = "Add to Cart",
+  initialQuantity = 1,
+  initialComments = "",
+  initialReferencePhotos = [],
 }) {
-  const [referencePhotos, setReferencePhotos] = useState([]);
+  const [referencePhotos, setReferencePhotos] = useState(() =>
+    Array.isArray(initialReferencePhotos) ? initialReferencePhotos : [],
+  );
   const [uploadError, setUploadError] = useState("");
 
   const sceneData = useMemo(
@@ -346,6 +351,8 @@ export default function CustomerTemplateWorkbench({
       applyLabel={confirmLabel}
       commentsLabel="Project Notes"
       commentsPlaceholder="Tell us about your preferred look, space, or special requests (optional)."
+      initialQuantity={initialQuantity}
+      initialComments={initialComments}
       referencePhotos={referencePhotos}
       uploadError={uploadError}
       onPickReferencePhotos={handleReferencePhotosChange}

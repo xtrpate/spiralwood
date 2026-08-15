@@ -1,10 +1,14 @@
-import { Link, useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCustomCart } from "./customcartcontext";
-import { buildAssetUrl } from "../../services/api";
+import api, { buildAssetUrl } from "../../services/api";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
-import { getCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
+import {
+  getCustomReferencePhotos,
+  saveCustomReferencePhotos,
+} from "../../utils/customReferencePhotoStore";
+import "./customizepage.css";
 
 const resolveImage = (value) => {
   const raw = String(value || "").trim();
@@ -133,11 +137,130 @@ const buildCartPreviewBlueprint = (item) => {
   };
 };
 
+/* WISDOM CUSTOM DESIGN REVIEW EDIT BEFORE SUBMIT V1.0.0 */
+const parseSafeObject = (value) => {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+};
+
+const normalizeEditorWorldSize = (value, fallback = null) => {
+  const source =
+    value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const fallbackSource =
+    fallback && typeof fallback === "object" && !Array.isArray(fallback)
+      ? fallback
+      : {};
+
+  const pick = (primary, secondary, defaultValue) => {
+    const first = Number(primary);
+    if (Number.isFinite(first) && first > 0) return first;
+    const second = Number(secondary);
+    if (Number.isFinite(second) && second > 0) return second;
+    return defaultValue;
+  };
+
+  return {
+    w: pick(
+      source.w ?? source.width_mm ?? source.width,
+      fallbackSource.w ?? fallbackSource.width_mm ?? fallbackSource.width,
+      6400,
+    ),
+    h: pick(
+      source.h ?? source.height_mm ?? source.height,
+      fallbackSource.h ?? fallbackSource.height_mm ?? fallbackSource.height,
+      3200,
+    ),
+    d: pick(
+      source.d ?? source.depth_mm ?? source.depth,
+      fallbackSource.d ?? fallbackSource.depth_mm ?? fallbackSource.depth,
+      5200,
+    ),
+  };
+};
+
+const buildEditableCartBlueprint = (baseBlueprint = {}, item = {}) => {
+  const editorSnapshot = parseSafeObject(item?.editor_snapshot);
+  const savedComponents = Array.isArray(editorSnapshot?.components)
+    ? editorSnapshot.components
+    : [];
+
+  const baseDesignData = parseSafeObject(baseBlueprint?.design_data);
+  const baseView3dData = parseSafeObject(baseBlueprint?.view_3d_data);
+  const dims = getItemDisplayDims(item);
+
+  const worldSize = normalizeEditorWorldSize(
+    editorSnapshot?.worldSize,
+    baseDesignData?.worldSize || baseView3dData?.worldSize,
+  );
+
+  const designData = savedComponents.length
+    ? {
+        ...baseDesignData,
+        components: savedComponents,
+        worldSize,
+      }
+    : baseDesignData;
+
+  const view3dData = savedComponents.length
+    ? {
+        ...baseView3dData,
+        components: savedComponents,
+        worldSize,
+      }
+    : baseView3dData;
+
+  return {
+    ...baseBlueprint,
+    id: item?.blueprint_id || baseBlueprint?.id,
+    title:
+      item?.base_blueprint_title ||
+      item?.product_name ||
+      baseBlueprint?.title ||
+      "Custom Furniture",
+    primary_material:
+      item?.wood_type ||
+      baseBlueprint?.primary_material ||
+      baseBlueprint?.wood_type ||
+      "",
+    wood_type:
+      item?.wood_type ||
+      baseBlueprint?.wood_type ||
+      baseBlueprint?.primary_material ||
+      "",
+    finish_color:
+      item?.finish_color || item?.color || baseBlueprint?.finish_color || "",
+    color:
+      item?.color || item?.finish_color || baseBlueprint?.color || "",
+    door_style: item?.door_style || baseBlueprint?.door_style || "",
+    hardware: item?.hardware || baseBlueprint?.hardware || "",
+    default_dimensions: {
+      ...parseSafeObject(baseBlueprint?.default_dimensions),
+      width_mm: dims.width,
+      height_mm: dims.height,
+      depth_mm: dims.depth,
+    },
+    design_data: designData,
+    view_3d_data: view3dData,
+    ...(savedComponents.length ? { components: savedComponents } : {}),
+  };
+};
+
 export default function CustomCartPage() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const {
     customCart,
+    setCustomCart,
     updateCustomQty,
     removeFromCustomCart,
     removeManyFromCustomCart,
@@ -147,6 +270,14 @@ export default function CustomCartPage() {
   const [previewItem, setPreviewItem] = useState(null);
   const [selectedKeys, setSelectedKeys] = useState([]);
   const [referencePhotoPreviews, setReferencePhotoPreviews] = useState({});
+
+  const [editItem, setEditItem] = useState(null);
+  const [editBlueprint, setEditBlueprint] = useState(null);
+  const [editReferencePhotos, setEditReferencePhotos] = useState([]);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const editObjectUrlsRef = useRef([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -215,6 +346,227 @@ export default function CustomCartPage() {
     () => (previewItem ? buildCartPreviewBlueprint(previewItem) : null),
     [previewItem],
   );
+
+  const releaseEditObjectUrls = useCallback(() => {
+    editObjectUrlsRef.current.forEach((url) => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore object URL cleanup errors
+      }
+    });
+    editObjectUrlsRef.current = [];
+  }, []);
+
+  const closeEditDesign = useCallback(() => {
+    releaseEditObjectUrls();
+    setEditItem(null);
+    setEditBlueprint(null);
+    setEditReferencePhotos([]);
+    setEditLoading(false);
+    setEditError("");
+    setEditSaving(false);
+
+    const params = new URLSearchParams(location.search);
+    if (params.has("edit")) {
+      params.delete("edit");
+      const nextSearch = params.toString();
+      const nextUrl =
+        location.pathname + (nextSearch ? "?" + nextSearch : "");
+      navigate(nextUrl, { replace: true });
+    }
+  }, [location.pathname, location.search, navigate, releaseEditObjectUrls]);
+
+  const openEditDesign = useCallback(
+    async (item) => {
+      if (!item?.key) return;
+
+      releaseEditObjectUrls();
+      setPreviewItem(null);
+      setEditItem(item);
+      setEditBlueprint(null);
+      setEditReferencePhotos([]);
+      setEditError("");
+      setEditLoading(true);
+
+      try {
+        if (!item?.blueprint_id) {
+          throw new Error(
+            "This saved design is missing its Blueprint reference and cannot be safely edited.",
+          );
+        }
+
+        const response = await api.get(
+          "/customer/blueprints/" + item.blueprint_id,
+        );
+
+        let storedPhotos = [];
+        try {
+          storedPhotos = await getCustomReferencePhotos(item.key);
+        } catch (photoError) {
+          console.error("Failed to load saved reference photos:", photoError);
+        }
+
+        const preparedPhotos = storedPhotos.map((photo) => {
+          if (!(photo?.blob instanceof Blob)) return photo;
+          const dataUrl = URL.createObjectURL(photo.blob);
+          editObjectUrlsRef.current.push(dataUrl);
+          return { ...photo, data_url: dataUrl };
+        });
+
+        setEditReferencePhotos(preparedPhotos);
+        setEditBlueprint(buildEditableCartBlueprint(response.data || {}, item));
+      } catch (error) {
+        console.error("Failed to open saved design for editing:", error);
+        setEditError(
+          error.response?.data?.message ||
+            error.message ||
+            "Failed to load this saved design for editing.",
+        );
+      } finally {
+        setEditLoading(false);
+      }
+    },
+    [releaseEditObjectUrls],
+  );
+
+  useEffect(() => () => releaseEditObjectUrls(), [releaseEditObjectUrls]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const editKey = String(params.get("edit") || "").trim();
+
+    if (!editKey || editItem || !customCart.length) return;
+
+    const matched = customCart.find((item) => item?.key === editKey);
+    if (matched) {
+      openEditDesign(matched);
+    }
+  }, [customCart, editItem, location.search, openEditDesign]);
+
+  const handleSaveEditedDesign = async (draft = {}) => {
+    if (!editItem?.key || !editBlueprint || editSaving) return;
+
+    setEditSaving(true);
+    setEditError("");
+
+    try {
+      const nextReferencePhotos = await saveCustomReferencePhotos(
+        editItem.key,
+        Array.isArray(draft?.reference_photos)
+          ? draft.reference_photos
+          : editReferencePhotos,
+      );
+
+      const nextComponents = Array.isArray(draft?.editor_snapshot?.components)
+        ? draft.editor_snapshot.components
+        : Array.isArray(draft?.components)
+          ? draft.components
+          : Array.isArray(editItem?.editor_snapshot?.components)
+            ? editItem.editor_snapshot.components
+            : [];
+
+      const nextWorldSize = normalizeEditorWorldSize(
+        draft?.editor_snapshot?.worldSize || draft?.worldSize,
+        editItem?.editor_snapshot?.worldSize,
+      );
+
+      const toPositiveDimension = (value, fallback) => {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+        const fallbackParsed = Number(fallback);
+        return Number.isFinite(fallbackParsed) && fallbackParsed > 0
+          ? Math.round(fallbackParsed)
+          : 0;
+      };
+
+      const width = toPositiveDimension(
+        draft?.width ?? draft?.defaultDimensions?.width_mm,
+        editItem.width,
+      );
+      const height = toPositiveDimension(
+        draft?.height ?? draft?.defaultDimensions?.height_mm,
+        editItem.height,
+      );
+      const depth = toPositiveDimension(
+        draft?.depth ?? draft?.defaultDimensions?.depth_mm,
+        editItem.depth,
+      );
+
+      const requestedQuantity = Number(draft?.quantity);
+      const quantity =
+        Number.isSafeInteger(requestedQuantity) && requestedQuantity > 0
+          ? requestedQuantity
+          : Math.max(1, Number(editItem.quantity || 1));
+
+      const comments = String(
+        draft?.initial_message ?? draft?.comments ?? editItem.comments ?? "",
+      ).trim();
+
+      const woodType = draft?.wood_type || editItem.wood_type || "";
+      const finishColor =
+        draft?.finish_color ||
+        draft?.color ||
+        editItem.finish_color ||
+        editItem.color ||
+        "";
+      const doorStyle = draft?.door_style || editItem.door_style || "";
+      const hardware = draft?.hardware || editItem.hardware || "";
+
+      const updatedItem = {
+        ...editItem,
+        quantity,
+        width,
+        height,
+        depth,
+        wood_type: woodType,
+        finish_color: finishColor,
+        color: finishColor,
+        door_style: doorStyle,
+        hardware,
+        comments,
+        initial_message: comments,
+        reference_photos: nextReferencePhotos,
+        customization_snapshot: {
+          ...parseSafeObject(editItem?.customization_snapshot),
+          ...parseSafeObject(draft?.customization_snapshot),
+          width,
+          height,
+          depth,
+          width_mm: width,
+          height_mm: height,
+          depth_mm: depth,
+          wood_type: woodType,
+          finish_color: finishColor,
+          color: finishColor,
+          door_style: doorStyle,
+          hardware,
+          comments,
+          initial_message: comments,
+          reference_photo_count: nextReferencePhotos.length,
+          template_profile: editItem.template_profile || null,
+        },
+        editor_snapshot: {
+          worldSize: nextWorldSize,
+          components: nextComponents,
+        },
+      };
+
+      setCustomCart((current) =>
+        (Array.isArray(current) ? current : []).map((item) =>
+          item?.key === editItem.key ? updatedItem : item,
+        ),
+      );
+
+      closeEditDesign();
+    } catch (error) {
+      console.error("Failed to save edited custom design:", error);
+      setEditError(
+        error.message || "Failed to save your design changes. Please try again.",
+      );
+      setEditSaving(false);
+    }
+  };
 
   const selectedItems = useMemo(() => {
     const selectedSet = new Set(selectedKeys);
@@ -494,6 +846,14 @@ export default function CustomCartPage() {
 
                       <button
                         type="button"
+                        onClick={() => openEditDesign(item)}
+                        className="custom-review-edit-btn"
+                      >
+                        Edit Design
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={() => removeFromCustomCart(item.key)}
                         style={{
                           padding: "8px 12px",
@@ -692,6 +1052,60 @@ export default function CustomCartPage() {
           </div>
         </div>
       )}
+
+      {editItem ? (
+        <div
+          className="custom-review-edit-backdrop"
+          onClick={closeEditDesign}
+        >
+          <div
+            className="custom-review-edit-shell"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="custom-review-edit-header">
+              <div>
+                <h2>Edit Saved Design</h2>
+                <p>
+                  Continue from the exact design you saved. Saving here updates
+                  this same custom design instead of creating a second request.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="custom-review-edit-close"
+                onClick={closeEditDesign}
+                aria-label="Close edit design"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="custom-review-edit-body">
+              {editLoading ? (
+                <div className="custom-review-edit-state">
+                  Loading your saved design…
+                </div>
+              ) : editError ? (
+                <div className="custom-review-edit-error">{editError}</div>
+              ) : editBlueprint ? (
+                <CustomerTemplateWorkbench
+                  key={`edit_${editItem.key}`}
+                  blueprint={editBlueprint}
+                  readOnly={false}
+                  confirmLabel={editSaving ? "Saving…" : "Save Design Changes"}
+                  initialQuantity={Math.max(1, Number(editItem.quantity || 1))}
+                  initialComments={
+                    editItem.comments || editItem.initial_message || ""
+                  }
+                  initialReferencePhotos={editReferencePhotos}
+                  onConfirm={handleSaveEditedDesign}
+                />
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {previewItem && previewBlueprint ? (
         <div
