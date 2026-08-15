@@ -539,10 +539,19 @@ export default function CustomerLayout() {
     return <span className="cust-count-badge">{count}</span>;
   };
 
-  const formatPeso = (value) =>
-    `₱${Number(value || 0).toLocaleString("en-PH", {
+  /* WISDOM CUSTOMER ZERO TOTAL DISPLAY FIX V1.0.0 */
+  const formatPeso = (value) => {
+    const amount = Number(value || 0);
+
+    if (!Number.isFinite(amount) || amount === 0) {
+      return "₱0";
+    }
+
+    return `₱${amount.toLocaleString("en-PH", {
       minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     })}`;
+  };
 
   const resolveCartImage = (value) => {
     const raw = String(value || "").trim();

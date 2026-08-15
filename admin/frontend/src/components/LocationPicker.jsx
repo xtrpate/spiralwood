@@ -89,6 +89,7 @@ function ScrollZoomGate() {
 // Imperatively recenters the map when a pin is set from search or
 // "use my current location" (react-leaflet ignores center/zoom prop
 // changes after mount, so a plain prop update would not move the map).
+/* WISDOM CUSTOM CHECKOUT LOCATION REVERT SMOOTHNESS KEEP RADIUS V1.0.1 */
 function FlyToController({ target }) {
   const map = useMap();
   useEffect(() => {
@@ -406,7 +407,7 @@ export default function LocationPicker({
                 flex: "1 1 auto",
                 padding: "8px 12px",
                 border: "1px solid #d4d4d4",
-                borderRadius: 8,
+                borderRadius: 0,
                 background: "#fff",
                 fontSize: 13,
                 fontWeight: 600,
