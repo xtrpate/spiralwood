@@ -11,7 +11,9 @@
   border: 1px solid transparent;
   cursor: pointer;
   padding: 4px 6px;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .nav-user-btn:hover {
@@ -209,9 +211,31 @@
   padding: 20px 22px 22px;
 }
 
-/* top hero spacing support */
-.page-hero + .profile-layout {
-  padding-top: 18px;
+/* ─── TITLE ALIGNMENT & SPACING ─── */
+.profile-page-hero {
+  display: block;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid #e8e8e8;
+  padding: 24px 36px 18px;
+}
+
+.profile-page-hero h1 {
+  margin: 0 0 8px;
+  font-size: 2.2rem;
+  font-weight: 800;
+  line-height: 1.05;
+  color: #111111;
+}
+
+.profile-page-hero p {
+  margin: 0;
+  max-width: 760px;
+  font-size: 0.98rem;
+  line-height: 1.7;
+  color: #4f4f4f;
 }
 
 /* Edit toggle */
@@ -228,7 +252,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .edit-toggle:hover {
@@ -533,7 +559,9 @@
   font-weight: 800;
   cursor: pointer;
   font-family: inherit;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .avatar-upload-btn:hover {
@@ -624,7 +652,6 @@
   }
 }
 
-
 .profile-layout .btn.btn-primary {
   background: #111111 !important;
   color: #ffffff !important;
@@ -688,4 +715,68 @@
 .profile-layout .strength-bar.filled-good,
 .profile-layout .strength-bar.filled-strong {
   background: #111111 !important;
+}
+
+/* ==========================================================
+   PROFILE SKELETON LOADING STATE
+   ========================================================== */
+.profile-skeleton-pulse {
+  background: #f0f1f2;
+  background: linear-gradient(90deg, #f0f1f2 25%, #e6e8eb 50%, #f0f1f2 75%);
+  background-size: 200% 100%;
+  animation: profileSkeletonShimmer 1.5s infinite linear;
+}
+
+@keyframes profileSkeletonShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ==========================================================
+   PASSWORD STRENGTH METER COLORS (5-LEVEL)
+   ========================================================== */
+.password-strength .strength-bar {
+  border-radius: 4px; /* Makes the bars look slightly softer/more modern */
+}
+
+/* Force standard colors for all 5 levels, overriding the global black theme */
+.profile-layout .strength-bar.filled-very-weak {
+  background: #ef4444 !important;
+} /* Red */
+.profile-layout .strength-bar.filled-weak {
+  background: #f97316 !important;
+} /* Orange-Red */
+.profile-layout .strength-bar.filled-fair {
+  background: #f59e0b !important;
+} /* Orange */
+.profile-layout .strength-bar.filled-good {
+  background: #84cc16 !important;
+} /* Yellow-Green */
+.profile-layout .strength-bar.filled-strong {
+  background: #22c55e !important;
+} /* Solid Green */
+
+/* Match the label text color to the active bar */
+.profile-layout .strength-label {
+  min-width: 65px; /* Ensures enough space for "Very Weak" so layout doesn't jump */
+}
+.profile-layout .strength-label.color-very-weak {
+  color: #ef4444 !important;
+}
+.profile-layout .strength-label.color-weak {
+  color: #f97316 !important;
+}
+.profile-layout .strength-label.color-fair {
+  color: #f59e0b !important;
+}
+.profile-layout .strength-label.color-good {
+  color: #84cc16 !important;
+}
+.profile-layout .strength-label.color-strong {
+  color: #22c55e !important;
+  font-weight: 800;
 }

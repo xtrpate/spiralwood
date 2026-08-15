@@ -24,18 +24,20 @@ const getStrength = (pw) => {
   let score = 0;
   if (pw.length >= 8) score++;
   if (/[A-Z]/.test(pw)) score++;
+  if (/[a-z]/.test(pw)) score++;
   if (/[0-9]/.test(pw)) score++;
   if (/[^A-Za-z0-9]/.test(pw)) score++;
-  const labels = ["", "Weak", "Fair", "Good", "Strong"];
+
+  const labels = ["", "Very Weak", "Weak", "Fair", "Good", "Strong"];
   return { score, label: labels[score] };
 };
 
 const StrengthBar = ({ password }) => {
   const { score, label } = getStrength(password);
-  const colors = ["", "weak", "fair", "good", "strong"];
+  const colors = ["", "weak", "weak", "fair", "good", "strong"];
   return (
     <div className="password-strength">
-      {[1, 2, 3, 4].map((i) => (
+      {[1, 2, 3, 4, 5].map((i) => (
         <div
           key={i}
           className={`strength-bar ${score >= i ? `filled-${colors[score]}` : ""}`}
@@ -75,6 +77,146 @@ const getAvatarUrl = (value) => {
   return buildAssetUrl(withPrefix);
 };
 
+// Intelligently splits the database name for the two textboxes
+const parseName = (fullName) => {
+  if (!fullName) return { firstName: "", lastName: "" };
+
+  if (fullName.includes(",")) {
+    const [last, ...firsts] = fullName.split(",");
+    return { lastName: last.trim(), firstName: firsts.join(",").trim() };
+  }
+
+  const parts = fullName.trim().split(" ");
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+
+  const last = parts.pop();
+  const first = parts.join(" ");
+  return { firstName: first, lastName: last };
+};
+
+// ─── THE NEW SKELETON COMPONENT ───
+function ProfileSkeleton() {
+  return (
+    <div className="profile-layout">
+      <div className="profile-content">
+        {/* Avatar Skeleton */}
+        <div className="profile-section">
+          <div className="profile-section-header">
+            <div
+              className="profile-skeleton-pulse"
+              style={{ height: "20px", width: "160px", borderRadius: "4px" }}
+            />
+          </div>
+          <div className="profile-section-body">
+            <div className="avatar-upload-area">
+              <div
+                className="profile-skeleton-pulse"
+                style={{
+                  width: "96px",
+                  height: "96px",
+                  borderRadius: "50%",
+                  flexShrink: 0,
+                }}
+              />
+              <div
+                className="avatar-upload-info"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                }}
+              >
+                <div
+                  className="profile-skeleton-pulse"
+                  style={{
+                    height: "14px",
+                    width: "100%",
+                    maxWidth: "320px",
+                    borderRadius: "4px",
+                  }}
+                />
+                <div
+                  className="profile-skeleton-pulse"
+                  style={{
+                    height: "40px",
+                    width: "135px",
+                    borderRadius: "0",
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 5 Generic Section Skeletons (Basic Info, Address, Email, Phone, Password) */}
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div className="profile-section" key={i}>
+            <div
+              className="profile-section-header"
+              style={{ justifyContent: "space-between" }}
+            >
+              <div
+                className="profile-skeleton-pulse"
+                style={{
+                  height: "20px",
+                  width: "180px",
+                  borderRadius: "4px",
+                }}
+              />
+              <div
+                className="profile-skeleton-pulse"
+                style={{ height: "34px", width: "75px", borderRadius: "0" }}
+              />
+            </div>
+            <div className="profile-section-body">
+              <div className="field-display">
+                <div className="field-row">
+                  <div
+                    className="profile-skeleton-pulse"
+                    style={{
+                      height: "11px",
+                      width: "80px",
+                      borderRadius: "4px",
+                      marginBottom: "8px",
+                    }}
+                  />
+                  <div
+                    className="profile-skeleton-pulse"
+                    style={{
+                      height: "18px",
+                      width: "160px",
+                      borderRadius: "4px",
+                    }}
+                  />
+                </div>
+                <div className="field-row">
+                  <div
+                    className="profile-skeleton-pulse"
+                    style={{
+                      height: "11px",
+                      width: "80px",
+                      borderRadius: "4px",
+                      marginBottom: "8px",
+                    }}
+                  />
+                  <div
+                    className="profile-skeleton-pulse"
+                    style={{
+                      height: "18px",
+                      width: "160px",
+                      borderRadius: "4px",
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ProfileSettings() {
   const { user, setUser } = useAuthStore();
   const fileRef = useRef(null);
@@ -89,7 +231,7 @@ export default function ProfileSettings() {
 
   /* Basic info — Name (independent of address) */
   const [editName, setEditName] = useState(false);
-  const [nameForm, setNameForm] = useState({ name: user?.name || "" });
+  const [nameForm, setNameForm] = useState(parseName(user?.name));
   const [nameMsg, setNameMsg] = useState({ type: "", text: "" });
   const [nameLoading, setNameLoading] = useState(false);
 
@@ -105,8 +247,9 @@ export default function ProfileSettings() {
 
   /* Email change */
   const [editEmail, setEditEmail] = useState(false);
+  const [currentEmailOtp, setCurrentEmailOtp] = useState("");
   const [newEmail, setNewEmail] = useState("");
-  const [emailOtp, setEmailOtp] = useState("");
+  const [newEmailOtp, setNewEmailOtp] = useState("");
   const [emailStep, setEmailStep] = useState(1);
   const [emailMsg, setEmailMsg] = useState({ type: "", text: "" });
   const [emailLoading, setEmailLoading] = useState(false);
@@ -147,17 +290,36 @@ export default function ProfileSettings() {
     return () => timers.forEach(clearTimeout);
   }, [emailCooldown, passCooldown]);
 
+  /* ── Page Loading State ── */
+  const [pageLoading, setPageLoading] = useState(true);
+
+  useEffect(() => {
+    // Show the skeleton for a fraction of a second to ensure smooth visual transition
+    const timer = setTimeout(() => {
+      setPageLoading(false);
+    }, 700);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (pageLoading || !user) {
+    return (
+      <div>
+        <div className="page-hero profile-page-hero">
+          <h1>Profile Settings</h1>
+          <p>Manage your account information and security</p>
+        </div>
+        <ProfileSkeleton />
+      </div>
+    );
+  }
+
   /* ════ AVATAR ════ */
   // WISDOM CUSTOMER AVATAR DESKTOP VALIDATION V1
   const handleAvatarChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    const allowedMimeTypes = new Set([
-      "image/jpeg",
-      "image/png",
-      "image/webp",
-    ]);
+    const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
     const allowedExtensions = new Set([
       ".jpg",
       ".jpeg",
@@ -239,22 +401,30 @@ export default function ProfileSettings() {
 
   /* ════ NAME ════ */
   const saveName = async () => {
-    const trimmedName = (nameForm.name || "").trim();
-    if (!trimmedName) {
-      setNameMsg({ type: "error", text: "Name is required." });
+    const trimmedFirst = (nameForm.firstName || "").trim();
+    const trimmedLast = (nameForm.lastName || "").trim();
+
+    if (!trimmedFirst || !trimmedLast) {
+      setNameMsg({
+        type: "error",
+        text: "Both First Name and Last Name are required.",
+      });
       return;
     }
+
+    // Merges into the exact format from your screenshot: "Last Name, First Name"
+    const combinedName = `${trimmedLast}, ${trimmedFirst}`;
 
     setNameLoading(true);
     setNameMsg({ type: "", text: "" });
     try {
       await api.put("/customer/profile/basic", {
-        name: trimmedName,
+        name: combinedName,
         address: user?.address || "",
         address_lat: user?.address_lat ?? null,
         address_lng: user?.address_lng ?? null,
       });
-      setUser((prev) => ({ ...prev, name: trimmedName }));
+      setUser((prev) => ({ ...prev, name: combinedName }));
       setNameMsg({ type: "success", text: "Profile updated successfully!" });
       setEditName(false);
     } catch (err) {
@@ -345,18 +515,20 @@ export default function ProfileSettings() {
   };
 
   /* ════ EMAIL CHANGE ════ */
-  const sendEmailOtp = async () => {
-    if (!newEmail.trim())
-      return setEmailMsg({ type: "error", text: "Enter a new email address." });
+
+  // STEP 1: Request OTP to Current Email
+  const requestCurrentEmailOtp = async () => {
     setEmailLoading(true);
     setEmailMsg({ type: "", text: "" });
     try {
-      await api.post("/customer/profile/request-email-change", {
-        new_email: newEmail,
-      });
+      // Ensure backend handles sending an OTP to the current logged-in user
+      await api.post("/customer/profile/request-current-email-otp");
       setEmailStep(2);
       setEmailCooldown(60);
-      setEmailMsg({ type: "success", text: `OTP sent to ${newEmail}` });
+      setEmailMsg({
+        type: "success",
+        text: `Verification OTP sent to ${user?.email}`,
+      });
     } catch (err) {
       setEmailMsg({
         type: "error",
@@ -367,20 +539,73 @@ export default function ProfileSettings() {
     }
   };
 
-  const verifyEmailOtp = async () => {
-    if (!emailOtp.trim())
+  // STEP 2: Verify Current Email OTP
+  const verifyCurrentEmailOtp = async () => {
+    if (!currentEmailOtp.trim())
+      return setEmailMsg({ type: "error", text: "Enter the OTP." });
+    setEmailLoading(true);
+    try {
+      // Ensure backend handles verifying the current email OTP
+      await api.post("/customer/profile/verify-current-email-otp", {
+        otp: currentEmailOtp,
+      });
+      setEmailMsg({
+        type: "success",
+        text: "Current email verified. Enter your new email address.",
+      });
+      setEmailStep(3);
+      setCurrentEmailOtp("");
+    } catch (err) {
+      setEmailMsg({
+        type: "error",
+        text: err.response?.data?.message || "Invalid OTP.",
+      });
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  // STEP 3: Request OTP to New Email
+  const requestNewEmailOtp = async () => {
+    if (!newEmail.trim())
+      return setEmailMsg({ type: "error", text: "Enter a new email address." });
+    setEmailLoading(true);
+    setEmailMsg({ type: "", text: "" });
+    try {
+      await api.post("/customer/profile/request-email-change", {
+        new_email: newEmail,
+      });
+      setEmailStep(4);
+      setEmailCooldown(60);
+      setEmailMsg({
+        type: "success",
+        text: `Verification OTP sent to ${newEmail}`,
+      });
+    } catch (err) {
+      setEmailMsg({
+        type: "error",
+        text: err.response?.data?.message || "Failed to send OTP.",
+      });
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  // STEP 4: Verify New Email OTP & Save
+  const verifyNewEmailOtp = async () => {
+    if (!newEmailOtp.trim())
       return setEmailMsg({ type: "error", text: "Enter the OTP." });
     setEmailLoading(true);
     try {
       await api.post("/customer/profile/verify-email-change", {
-        otp: emailOtp,
+        otp: newEmailOtp,
       });
       setUser((prev) => ({ ...prev, email: newEmail }));
       setEmailMsg({ type: "success", text: "Email updated successfully!" });
       setEditEmail(false);
       setEmailStep(1);
       setNewEmail("");
-      setEmailOtp("");
+      setNewEmailOtp("");
     } catch (err) {
       setEmailMsg({
         type: "error",
@@ -397,10 +622,16 @@ export default function ProfileSettings() {
       return setPhoneMsg({ type: "error", text: "Enter a phone number." });
 
     if (newPhone.length !== 11) {
-      return setPhoneMsg({ type: "error", text: "Phone number must be exactly 11 digits." });
+      return setPhoneMsg({
+        type: "error",
+        text: "Phone number must be exactly 11 digits.",
+      });
     }
     if (!newPhone.startsWith("09")) {
-      return setPhoneMsg({ type: "error", text: "Phone number must start with '09'." });
+      return setPhoneMsg({
+        type: "error",
+        text: "Phone number must start with '09'.",
+      });
     }
 
     setPhoneLoading(true);
@@ -410,7 +641,7 @@ export default function ProfileSettings() {
       setUser((prev) => ({ ...prev, phone: newPhone }));
       setPhoneMsg({ type: "success", text: "Phone number updated!" });
       setEditPhone(false);
-      setShowPhone(false); 
+      setShowPhone(false);
     } catch (err) {
       setPhoneMsg({
         type: "error",
@@ -453,18 +684,18 @@ export default function ProfileSettings() {
   };
 
   const verifyPassOtp = async () => {
-    // STEP 2: Check everything else before sending to backend
-    if (!passOtp.trim())
-      return setPassMsg({
-        type: "error",
-        text: "Enter the OTP from your email.",
-      });
+    // Check everything else before sending to backend
     if (!passForm.newPass)
       return setPassMsg({ type: "error", text: "Enter a new password." });
     if (passForm.newPass !== passForm.confirm)
       return setPassMsg({ type: "error", text: "New passwords do not match." });
-    if (getStrength(passForm.newPass).score < 2)
-      return setPassMsg({ type: "error", text: "Password is too weak." });
+
+    if (getStrength(passForm.newPass).score < 5) {
+      return setPassMsg({
+        type: "error",
+        text: "Password must be at least 8 characters and include uppercase, lowercase, a number, and a special character.",
+      });
+    }
 
     setPassLoading(true);
     try {
@@ -493,7 +724,8 @@ export default function ProfileSettings() {
       setEditEmail(false);
       setEmailStep(1);
       setNewEmail("");
-      setEmailOtp("");
+      setCurrentEmailOtp("");
+      setNewEmailOtp("");
       setEmailMsg({ type: "", text: "" });
     }
     if (section === "phone") {
@@ -512,9 +744,24 @@ export default function ProfileSettings() {
 
   const initials = user?.name?.charAt(0).toUpperCase() || "?";
 
+  // Check if Name has changed
+  const initialName = parseName(user?.name);
+  const isNameChanged =
+    nameForm.firstName !== initialName.firstName ||
+    nameForm.lastName !== initialName.lastName;
+
+  // Check if Address has changed
+  const isAddressChanged =
+    addressForm.address !== (user?.address || "") ||
+    addressForm.address_lat !== (user?.address_lat ?? null) ||
+    addressForm.address_lng !== (user?.address_lng ?? null);
+
+  // Check if Phone has changed
+  const isPhoneChanged = newPhone !== (user?.phone || "");
+
   return (
     <div>
-      <div className="page-hero">
+      <div className="page-hero profile-page-hero">
         <h1>Profile Settings</h1>
         <p>Manage your account information and security</p>
       </div>
@@ -606,14 +853,31 @@ export default function ProfileSettings() {
                 <div className="profile-form">
                   <div className="form-row">
                     <div className="form-field">
-                      <label>Full Name</label>
+                      <label>First Name</label>
                       <input
                         type="text"
-                        value={nameForm.name}
+                        value={nameForm.firstName}
                         onChange={(e) =>
-                          setNameForm({ name: e.target.value })
+                          setNameForm((p) => ({
+                            ...p,
+                            firstName: e.target.value,
+                          }))
                         }
-                        placeholder="Your full name"
+                        placeholder="First Name"
+                      />
+                    </div>
+                    <div className="form-field">
+                      <label>Last Name</label>
+                      <input
+                        type="text"
+                        value={nameForm.lastName}
+                        onChange={(e) =>
+                          setNameForm((p) => ({
+                            ...p,
+                            lastName: e.target.value,
+                          }))
+                        }
+                        placeholder="Last Name"
                       />
                     </div>
                   </div>
@@ -621,7 +885,7 @@ export default function ProfileSettings() {
                     <button
                       className="btn btn-primary"
                       onClick={saveName}
-                      disabled={nameLoading}
+                      disabled={nameLoading || !isNameChanged}
                     >
                       {nameLoading ? (
                         "Saving…"
@@ -635,7 +899,7 @@ export default function ProfileSettings() {
                       className="btn btn-secondary"
                       onClick={() => {
                         setEditName(false);
-                        setNameForm({ name: user?.name || "" });
+                        setNameForm(parseName(user?.name));
                         setNameMsg({ type: "", text: "" });
                       }}
                     >
@@ -646,11 +910,27 @@ export default function ProfileSettings() {
               ) : (
                 <div className="field-display">
                   <div className="field-row">
-                    <label>Full Name</label>
-                    <span className="field-val">
-                      {user?.name || (
-                        <span className="field-empty">Not set</span>
-                      )}
+                    <label>First Name</label>
+                    <span
+                      className={
+                        parseName(user?.name).firstName
+                          ? "field-val"
+                          : "field-empty"
+                      }
+                    >
+                      {parseName(user?.name).firstName || "Not set"}
+                    </span>
+                  </div>
+                  <div className="field-row">
+                    <label>Last Name</label>
+                    <span
+                      className={
+                        parseName(user?.name).lastName
+                          ? "field-val"
+                          : "field-empty"
+                      }
+                    >
+                      {parseName(user?.name).lastName || "Not set"}
                     </span>
                   </div>
                 </div>
@@ -716,7 +996,7 @@ export default function ProfileSettings() {
                     <button
                       className="btn btn-primary"
                       onClick={saveDefaultAddress}
-                      disabled={addressLoading}
+                      disabled={addressLoading || !isAddressChanged}
                     >
                       {addressLoading ? (
                         "Saving…"
@@ -797,23 +1077,24 @@ export default function ProfileSettings() {
                 </div>
               ) : emailStep === 1 ? (
                 <div className="profile-form">
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#52525b",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    For security purposes, please verify your current email
+                    address first.
+                  </p>
                   <div className="form-field">
                     <label>Current Email</label>
                     <input type="email" value={user?.email} disabled />
                   </div>
-                  <div className="form-field">
-                    <label>New Email Address</label>
-                    <input
-                      type="email"
-                      value={newEmail}
-                      onChange={(e) => setNewEmail(e.target.value)}
-                      placeholder="newemail@example.com"
-                    />
-                  </div>
                   <div className="profile-form-actions">
                     <button
                       className="btn btn-primary"
-                      onClick={sendEmailOtp}
+                      onClick={requestCurrentEmailOtp}
                       disabled={emailLoading}
                     >
                       {emailLoading ? "Sending…" : "Send Verification OTP"}
@@ -826,28 +1107,31 @@ export default function ProfileSettings() {
                     </button>
                   </div>
                 </div>
-              ) : (
+              ) : emailStep === 2 ? (
                 <div className="verify-step">
-                  <h4>📧 Verify your new email</h4>
+                  <h4>📧 Verify Current Email</h4>
                   <p>
-                    We sent a 6-digit OTP to <strong>{newEmail}</strong>. Enter
-                    it below to confirm.
+                    We sent a 6-digit OTP to <strong>{user?.email}</strong>.
+                    Enter it below to proceed.
                   </p>
-                  <div className="otp-input-row">
+                  <div
+                    className="otp-input-row"
+                    style={{ marginBottom: "20px" }}
+                  >
                     <input
                       type="text"
                       maxLength={6}
                       placeholder="000000"
-                      value={emailOtp}
+                      value={currentEmailOtp}
                       onChange={(e) =>
-                        setEmailOtp(e.target.value.replace(/\D/g, ""))
+                        setCurrentEmailOtp(e.target.value.replace(/\D/g, ""))
                       }
                     />
                     <button
                       className="resend-btn"
                       onClick={() => {
                         setEmailCooldown(60);
-                        sendEmailOtp();
+                        requestCurrentEmailOtp();
                       }}
                       disabled={emailCooldown > 0}
                     >
@@ -862,7 +1146,86 @@ export default function ProfileSettings() {
                   >
                     <button
                       className="btn btn-primary"
-                      onClick={verifyEmailOtp}
+                      onClick={verifyCurrentEmailOtp}
+                      disabled={emailLoading}
+                    >
+                      {emailLoading ? "Verifying…" : "Next"}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => cancelSection("email")}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : emailStep === 3 ? (
+                <div className="profile-form">
+                  <div className="form-field">
+                    <label>New Email Address</label>
+                    <input
+                      type="email"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      placeholder="newemail@example.com"
+                    />
+                  </div>
+                  <div className="profile-form-actions">
+                    <button
+                      className="btn btn-primary"
+                      onClick={requestNewEmailOtp}
+                      disabled={emailLoading}
+                    >
+                      {emailLoading ? "Sending…" : "Send Verification OTP"}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => cancelSection("email")}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="verify-step">
+                  <h4>📧 Verify New Email</h4>
+                  <p>
+                    We sent a 6-digit OTP to <strong>{newEmail}</strong>. Enter
+                    it below to confirm and save.
+                  </p>
+                  <div
+                    className="otp-input-row"
+                    style={{ marginBottom: "20px" }}
+                  >
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={newEmailOtp}
+                      onChange={(e) =>
+                        setNewEmailOtp(e.target.value.replace(/\D/g, ""))
+                      }
+                    />
+                    <button
+                      className="resend-btn"
+                      onClick={() => {
+                        setEmailCooldown(60);
+                        requestNewEmailOtp();
+                      }}
+                      disabled={emailCooldown > 0}
+                    >
+                      {emailCooldown > 0
+                        ? `Resend (${emailCooldown}s)`
+                        : "Resend"}
+                    </button>
+                  </div>
+                  <div
+                    className="profile-form-actions"
+                    style={{ marginTop: 14 }}
+                  >
+                    <button
+                      className="btn btn-primary"
+                      onClick={verifyNewEmailOtp}
                       disabled={emailLoading}
                     >
                       {emailLoading ? (
@@ -875,9 +1238,12 @@ export default function ProfileSettings() {
                     </button>
                     <button
                       className="btn btn-secondary"
-                      onClick={() => cancelSection("email")}
+                      onClick={() => {
+                        setEmailStep(3);
+                        setEmailMsg({ type: "", text: "" });
+                      }}
                     >
-                      Cancel
+                      Back
                     </button>
                   </div>
                 </div>
@@ -907,8 +1273,8 @@ export default function ProfileSettings() {
                   <div className="field-row">
                     <label>Current Phone</label>
                     <span className={user?.phone ? "field-val" : "field-empty"}>
-                      {user?.phone 
-                        ? `*********${user.phone.slice(-2)}` 
+                      {user?.phone
+                        ? `*********${user.phone.slice(-2)}`
                         : "Not set"}
                     </span>
                   </div>
@@ -921,30 +1287,34 @@ export default function ProfileSettings() {
                       <input
                         type="text"
                         value={
-                          showPhone 
-                            ? newPhone 
-                            : (newPhone.length > 2 ? "•".repeat(newPhone.length - 2) + newPhone.slice(-2) : newPhone)
+                          showPhone
+                            ? newPhone
+                            : newPhone.length > 2
+                              ? "•".repeat(newPhone.length - 2) +
+                                newPhone.slice(-2)
+                              : newPhone
                         }
                         placeholder="09XXXXXXXXX"
-                        style={{ 
-                          width: "100%", 
+                        style={{
+                          width: "100%",
                           paddingRight: 50,
-                          letterSpacing: showPhone ? "normal" : "2px" 
+                          letterSpacing: showPhone ? "normal" : "2px",
                         }}
                         onChange={(e) => {
                           if (!showPhone) {
                             setShowPhone(true);
-                            return; 
+                            return;
                           }
 
                           let val = e.target.value.replace(/\D/g, "");
                           if (val.length > 0 && val[0] !== "0") val = "0" + val;
-                          if (val.length > 1 && val[1] !== "9") val = "09" + val.slice(2);
+                          if (val.length > 1 && val[1] !== "9")
+                            val = "09" + val.slice(2);
                           if (val.length > 11) val = val.slice(0, 11);
                           setNewPhone(val);
                         }}
                       />
-                      
+
                       <button
                         type="button"
                         onClick={() => setShowPhone(!showPhone)}
@@ -958,19 +1328,26 @@ export default function ProfileSettings() {
                           cursor: "pointer",
                           color: "#aaa",
                           display: "flex",
-                          alignItems: "center"
+                          alignItems: "center",
                         }}
                       >
                         {showPhone ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
                   </div>
-                  
+
                   <div className="profile-form-actions">
-                    <button className="btn btn-primary" onClick={savePhone} disabled={phoneLoading}>
+                    <button
+                      className="btn btn-primary"
+                      onClick={savePhone}
+                      disabled={phoneLoading || !isPhoneChanged}
+                    >
                       {phoneLoading ? "Saving…" : "Save Changes"}
                     </button>
-                    <button className="btn btn-secondary" onClick={() => cancelSection("phone")}>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => cancelSection("phone")}
+                    >
                       Cancel
                     </button>
                   </div>
@@ -1058,7 +1435,7 @@ export default function ProfileSettings() {
                     <button
                       className="btn btn-primary"
                       onClick={requestPassOtp}
-                      disabled={passLoading}
+                      disabled={passLoading || !passForm.current.trim()}
                     >
                       {passLoading ? "Sending…" : "Send Verification OTP"}
                     </button>
@@ -1070,12 +1447,12 @@ export default function ProfileSettings() {
                     </button>
                   </div>
                 </div>
-              ) : (
+              ) : passStep === 2 ? (
                 <div className="verify-step">
-                  <h4>📧 Verify & Create New Password</h4>
+                  <h4>📧 Verify Email OTP</h4>
                   <p>
                     We sent a 6-digit OTP to <strong>{user?.email}</strong>.
-                    Enter it below along with your new password.
+                    Enter it below to proceed.
                   </p>
 
                   <div
@@ -1105,7 +1482,41 @@ export default function ProfileSettings() {
                     </button>
                   </div>
 
-                  <div className="profile-form">
+                  <div
+                    className="profile-form-actions"
+                    style={{ marginTop: 14 }}
+                  >
+                    <button
+                      className="btn btn-primary"
+                      disabled={passLoading || !passOtp.trim()}
+                      onClick={() => {
+                        if (!passOtp.trim() || passOtp.length < 6) {
+                          setPassMsg({
+                            type: "error",
+                            text: "Please enter the full 6-digit OTP.",
+                          });
+                          return;
+                        }
+                        setPassMsg({ type: "", text: "" });
+                        setPassStep(3); // Moves to the New Password window!
+                      }}
+                    >
+                      Next
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => cancelSection("pass")}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="verify-step">
+                  <h4>🔒 Create New Password</h4>
+                  <p>Enter and confirm your new password below.</p>
+
+                  <div className="profile-form" style={{ marginTop: "16px" }}>
                     {[
                       {
                         key: "newPass",
@@ -1170,7 +1581,9 @@ export default function ProfileSettings() {
                     <button
                       className="btn btn-primary"
                       onClick={verifyPassOtp}
-                      disabled={passLoading}
+                      disabled={
+                        passLoading || !passForm.newPass || !passForm.confirm
+                      }
                     >
                       {passLoading ? (
                         "Saving…"
@@ -1182,9 +1595,12 @@ export default function ProfileSettings() {
                     </button>
                     <button
                       className="btn btn-secondary"
-                      onClick={() => cancelSection("pass")}
+                      onClick={() => {
+                        setPassStep(2); // Allows them to go back to fix the OTP
+                        setPassMsg({ type: "", text: "" });
+                      }}
                     >
-                      Cancel
+                      Back
                     </button>
                   </div>
                 </div>
