@@ -149,6 +149,7 @@ export default function LocationPicker({
   label = "Address",
   height = 380,
   showCurrentLocation = true,
+  reverseGeocodeOnPin = false,
 }) {
   const hasPin = Boolean(
     value && Number.isFinite(value.lat) && Number.isFinite(value.lng),
@@ -314,21 +315,52 @@ export default function LocationPicker({
     );
   };
 
+  const reverseGeocodePin = useCallback(
+    async (latlng) => {
+      if (!reverseGeocodeOnPin) return;
+
+      try {
+        const url =
+          "https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=" +
+          encodeURIComponent(latlng.lat) +
+          "&lon=" +
+          encodeURIComponent(latlng.lng);
+
+        const res = await fetch(url);
+        if (!res.ok) return;
+
+        const data = await res.json();
+        const displayName = String(data?.display_name || "").trim();
+
+        if (displayName) {
+          onAddressChange(displayName);
+        }
+      } catch {
+        // Keep the selected pin even if reverse geocoding is unavailable.
+        // The cashier can still type the delivery address manually.
+      }
+    },
+    [onAddressChange, reverseGeocodeOnPin],
+  );
+
   const handleMarkerDragEnd = useCallback(
     (e) => {
       const pos = e.target.getLatLng();
+      const next = { lat: pos.lat, lng: pos.lng };
       setLocAccuracy(null);
-      onChange({ lat: pos.lat, lng: pos.lng });
+      onChange(next);
+      void reverseGeocodePin(next);
     },
-    [onChange],
+    [onChange, reverseGeocodePin],
   );
 
   const handleMapClick = useCallback(
     (latlng) => {
       setLocAccuracy(null);
       onChange(latlng);
+      void reverseGeocodePin(latlng);
     },
-    [onChange],
+    [onChange, reverseGeocodePin],
   );
 
   return (

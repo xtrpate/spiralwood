@@ -1354,7 +1354,8 @@ export default function ProcessOrder() {
                         value={deliveryPin}
                         onChange={handleDeliveryPinChange}
                         height={220}
-                        showCurrentLocation={true}
+                        showCurrentLocation={false}
+                        reverseGeocodeOnPin={true}
                       />
                     </div>
 
