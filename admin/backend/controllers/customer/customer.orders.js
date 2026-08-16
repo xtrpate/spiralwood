@@ -11,7 +11,9 @@ const {
 } = require("../../utils/emailHelper");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
-const { createStandardOnlineReceipt } = require("../../services/receiptService");
+const {
+  createStandardOnlineReceipt,
+} = require("../../services/receiptService");
 
 /* ── Standard checkout constants ── */
 const ALLOWED_PAYMENT_METHODS = ["cod", "cop", "paymongo"];
@@ -21,7 +23,9 @@ const roundMoney = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
 const getPaymentMethodLabel = (method) => {
-  const normalized = String(method || "").trim().toLowerCase();
+  const normalized = String(method || "")
+    .trim()
+    .toLowerCase();
   if (normalized === "cod") return "Cash on Delivery";
   if (normalized === "cop") return "Cash on Pickup";
   if (normalized === "paymongo") return "Online Payment";
@@ -43,7 +47,11 @@ const getVerifiedStandardPaymongoPayment = async (conn, orderId) => {
   return payment || null;
 };
 
-const ensureStandardPaymongoReceipt = async (conn, order, paymentTransactionId) => {
+const ensureStandardPaymongoReceipt = async (
+  conn,
+  order,
+  paymentTransactionId,
+) => {
   const [[existing]] = await conn.query(
     `SELECT id, receipt_number
      FROM receipts
@@ -73,8 +81,7 @@ const ensureStandardPaymongoReceipt = async (conn, order, paymentTransactionId) 
     orderId: order.id,
     paymentTransactionId,
     receiptNumber,
-    issuedTo:
-      order.customer_name || order.walkin_customer_name || "Customer",
+    issuedTo: order.customer_name || order.walkin_customer_name || "Customer",
     issuedBy: order.customer_id,
     totalAmount: Number(order.total || 0),
     providerReference: order.paymongo_session_id || null,
@@ -173,8 +180,9 @@ exports.createOrder = async (req, res) => {
       delivery_lng !== undefined &&
       delivery_lng !== null &&
       delivery_lng !== "";
-    const requiresDeliveryPin =
-      DELIVERY_REQUIRED_METHODS.includes(normalizedPaymentMethod);
+    const requiresDeliveryPin = DELIVERY_REQUIRED_METHODS.includes(
+      normalizedPaymentMethod,
+    );
 
     if (requiresDeliveryPin && (!hasDeliveryLat || !hasDeliveryLng)) {
       await conn.rollback();
@@ -574,7 +582,9 @@ exports.getOrders = async (req, res) => {
     const orderTypeById = new Map(
       orders.map((order) => [
         Number(order.id),
-        String(order.order_type || "").trim().toLowerCase(),
+        String(order.order_type || "")
+          .trim()
+          .toLowerCase(),
       ]),
     );
 
@@ -675,7 +685,6 @@ exports.getOrders = async (req, res) => {
          WHERE id IN (${blueprintPlaceholders})`,
         blueprintIds,
       );
-
 
       // WISDOM CUSTOMER ORDER COMPONENT PREVIEW FALLBACK V1
       const [blueprintComponentRows] = await db.query(
@@ -845,12 +854,14 @@ exports.confirmOrder = async (req, res) => {
       });
     }
 
+    const parsedOrderId = parseInt(req.params.id);
+
     // ── FIXED: Switched to .query and parsed ID ──
     const [result] = await db.query(
       `UPDATE orders
        SET status = 'completed'
        WHERE id = ? AND customer_id = ? AND status = 'delivered' AND payment_status = 'paid'`,
-      [parseInt(req.params.id), req.user.id],
+      [parsedOrderId, req.user.id],
     );
 
     if (result.affectedRows === 0) {
@@ -858,6 +869,14 @@ exports.confirmOrder = async (req, res) => {
         message: "Order could not be confirmed.",
       });
     }
+
+    // 👉 NEW: Also update the rider's delivery record to 'completed'
+    await db.query(
+      `UPDATE deliveries 
+       SET status = 'completed', updated_at = NOW() 
+       WHERE order_id = ? AND status = 'delivered'`,
+      [parsedOrderId],
+    );
 
     req.auditRecord = {
       id: order.id,

@@ -1198,15 +1198,22 @@ export default function OrderDetailPage() {
     : selectableNextStatuses;
   const hasVerifiedCustomerPayment = verifiedPaymentTotal > 0;
 
+  // For standard orders, the delivery phase begins immediately after it is confirmed.
+  // For blueprint orders, it begins later at the shipping phase.
+  const isDeliveryPhase = isBlueprintOrder
+    ? ["shipping", "delivered", "completed"].includes(normalizedOrderStatus)
+    : ["confirmed", "shipping", "delivered", "completed"].includes(
+        normalizedOrderStatus,
+      );
+
   const shouldShowMissingDeliverySection =
-    requiresDeliveryReceiptForCompletion &&
-    !order?.delivery &&
-    ["shipping", "delivered", "completed"].includes(normalizedOrderStatus);
+    requiresDeliveryReceiptForCompletion && !order?.delivery && isDeliveryPhase;
 
   const shouldShowStatusButton =
     currentOrderStatus !== "pending" &&
     selectableNextStatuses.length > 0 &&
     !needsContractFirst;
+
   const shouldShowFulfillmentTab = Boolean(
     order?.delivery ||
     order?.contract ||
@@ -1328,7 +1335,7 @@ export default function OrderDetailPage() {
   const deliveryAddressText = String(order?.delivery_address || "").trim();
   const shouldShowCustomerAddress = Boolean(
     customerAddressText &&
-      customerAddressText.toLowerCase() !== deliveryAddressText.toLowerCase(),
+    customerAddressText.toLowerCase() !== deliveryAddressText.toLowerCase(),
   );
   const customRequestPreviewBlueprint = customRequestPreviewItem
     ? buildCustomRequestPreviewBlueprint(customRequestPreviewItem)
@@ -1797,8 +1804,8 @@ export default function OrderDetailPage() {
                       lineHeight: 1.6,
                     }}
                   >
-                    Review the dimensions, finish, hardware, and saved design before
-                    approving the request for estimation.
+                    Review the dimensions, finish, hardware, and saved design
+                    before approving the request for estimation.
                   </div>
                 </div>
 
@@ -1825,9 +1832,7 @@ export default function OrderDetailPage() {
                     </button>
                   </div>
                 ) : (
-                  <span style={mutedBadge}>
-                    Request already reviewed.
-                  </span>
+                  <span style={mutedBadge}>Request already reviewed.</span>
                 )}
               </div>
 
@@ -1999,12 +2004,16 @@ export default function OrderDetailPage() {
                   <tbody>
                     {orderItems.map((item, i) => (
                       <tr key={i} style={tbodyRow}>
-                        <td style={{ ...td, fontWeight: 600, color: "#18181b" }}>
+                        <td
+                          style={{ ...td, fontWeight: 600, color: "#18181b" }}
+                        >
                           {item.product_name}
                         </td>
                         <td style={td}>{item.quantity}</td>
                         <td style={td}>{formatMoney(item.unit_price)}</td>
-                        <td style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}>
+                        <td
+                          style={{ ...td, fontWeight: 700, color: "#0a0a0a" }}
+                        >
                           {formatMoney(item.subtotal)}
                         </td>
                       </tr>
@@ -2317,37 +2326,37 @@ export default function OrderDetailPage() {
           </Section>
           {!order?.blueprint_cash_payment && (
             <Section title="Payment Summary">
-            <InfoRow
-              label="Paid Amount"
-              value={formatMoney(verifiedPaymentTotal)}
-            />
-            <InfoRow
-              label="Balance"
-              value={formatMoney(paymentBalance)}
-              bold
-            />
+              <InfoRow
+                label="Paid Amount"
+                value={formatMoney(verifiedPaymentTotal)}
+              />
+              <InfoRow
+                label="Balance"
+                value={formatMoney(paymentBalance)}
+                bold
+              />
 
-            {normalizedOrderStatus === "delivered" &&
-              paymentBalance > 0 &&
-              !hasPendingPaymentActions && (
+              {normalizedOrderStatus === "delivered" &&
+                paymentBalance > 0 &&
+                !hasPendingPaymentActions && (
+                  <div style={{ marginTop: 14 }}>
+                    <div style={{ ...alertWarning, marginBottom: 12 }}>
+                      This order still has an unpaid remaining balance. The
+                      assigned rider should record the on-site collection from
+                      the delivery page first, then admin can verify the pending
+                      payment here before marking the order as completed.
+                    </div>
+                  </div>
+                )}
+
+              {hasPendingPaymentActions && (
                 <div style={{ marginTop: 14 }}>
-                  <div style={{ ...alertWarning, marginBottom: 12 }}>
-                    This order still has an unpaid remaining balance. The
-                    assigned rider should record the on-site collection from the
-                    delivery page first, then admin can verify the pending
-                    payment here before marking the order as completed.
+                  <div style={infoNotice}>
+                    A payment proof is waiting for admin verification in the
+                    payment transactions table above.
                   </div>
                 </div>
               )}
-
-            {hasPendingPaymentActions && (
-              <div style={{ marginTop: 14 }}>
-                <div style={infoNotice}>
-                  A payment proof is waiting for admin verification in the
-                  payment transactions table above.
-                </div>
-              </div>
-            )}
             </Section>
           )}
         </>
@@ -2447,7 +2456,7 @@ export default function OrderDetailPage() {
                                 onClick={() => openDeliveryReceiptPreview(url)}
                                 style={previewLinkButton}
                               >
-                                View Receipt {arr.length > 1 ? idx + 1 : ""}
+                                View Proof {arr.length > 1 ? idx + 1 : ""}
                               </button>
                             ),
                           )}
@@ -2473,8 +2482,8 @@ export default function OrderDetailPage() {
                             lineHeight: 1.6,
                           }}
                         >
-                          The assigned rider should upload the signed delivery proof from
-                          the rider delivery page.
+                          The assigned rider should upload the signed delivery
+                          proof from the rider delivery page.
                         </div>
                       </div>
                     )}
@@ -2502,10 +2511,24 @@ export default function OrderDetailPage() {
                       fontSize: 12,
                       color: "#52525b",
                       lineHeight: 1.5,
+                      marginBottom: 16, // Added spacing for the button
                     }}
                   >
-                    Create or link a delivery record before adding delivery proof.
+                    Create or link a delivery record before adding delivery
+                    proof.
                   </div>
+
+                  <button
+                    onClick={() => {
+                      const params = new URLSearchParams({
+                        schedule_order_id: String(order?.id || id),
+                      });
+                      navigate(`/admin/delivery?${params.toString()}`);
+                    }}
+                    style={btnPrimary}
+                  >
+                    Assign Delivery
+                  </button>
                 </Section>
               ) : null}
 
@@ -2934,7 +2957,6 @@ export default function OrderDetailPage() {
                   (!hasRequiredBlueprintTaskPacket ||
                     !allBlueprintTasksCompleted);
 
-                // 👉 NEW: Disable logic for the dropdown options
                 const blockedByUnverifiedPayment =
                   !isBlueprintOrder &&
                   normalizedStatus === "shipping" &&
@@ -2960,61 +2982,100 @@ export default function OrderDetailPage() {
                   normalizedStatus === "production" &&
                   !hasRequiredBlueprintDownPayment;
 
+                // 👉 NEW: Block manual shipping/delivered for ALL managed deliveries
+                const blockedByManagedDelivery =
+                  hasDeliveryRequirement &&
+                  ["shipping", "delivered"].includes(normalizedStatus);
+
+                const isBlocked =
+                  blockedByIncompleteTasks ||
+                  blockedByUnverifiedPayment ||
+                  blockedByNoRiderAssigned ||
+                  blockedByRiderNotFinished ||
+                  blockedByUnsettledPayment ||
+                  blockedByBlueprintDownPayment ||
+                  blockedByManagedDelivery;
+
                 return (
-                  <option
-                    key={status}
-                    value={status}
-                    disabled={
-                      blockedByIncompleteTasks ||
-                      blockedByUnverifiedPayment ||
-                      blockedByNoRiderAssigned ||
-                      blockedByRiderNotFinished ||
-                      blockedByUnsettledPayment ||
-                      blockedByBlueprintDownPayment
-                    }
-                  >
+                  <option key={status} disabled={isBlocked}>
                     {getStatusLabel(status)}
                     {blockedByIncompleteTasks
                       ? " — complete blueprint tasks first"
                       : blockedByUnverifiedPayment
                         ? " — the payment need to be verified first"
-                        : blockedByNoRiderAssigned
-                          ? " — you need to assign a delivery rider first"
-                          : blockedByRiderNotFinished
-                            ? " — rider must finish delivery first"
-                            : blockedByBlueprintDownPayment
-                              ? " — 30% verified down payment required first"
-                              : blockedByUnsettledPayment
-                                ? " — full payment required first"
-                                : ""}
+                        : blockedByManagedDelivery
+                          ? " — rider will update this automatically"
+                          : blockedByNoRiderAssigned
+                            ? " — you need to assign a delivery rider first"
+                            : blockedByRiderNotFinished
+                              ? " — rider must finish delivery first"
+                              : blockedByBlueprintDownPayment
+                                ? " — 30% verified down payment required first"
+                                : blockedByUnsettledPayment
+                                  ? " — full payment required first"
+                                  : ""}
                   </option>
                 );
               })}
             </select>
 
-            <div style={modalActions}>
-              <button
-                onClick={() => {
-                  setStatusModal(false);
-                  setStatusModalMode("general");
-                }}
-                style={btnGhost}
-                disabled={updatingStatus}
-              >
-                {isCancelOnlyModal ? "Keep Order" : "Cancel"}
-              </button>
-              <button
-                onClick={handleStatusUpdate}
-                style={isCancelOnlyModal ? btnDecline : btnPrimary}
-                disabled={!statusModalStatuses.length || updatingStatus}
-              >
-                {updatingStatus
-                  ? "Updating…"
-                  : isCancelOnlyModal
-                    ? "Confirm Cancellation"
-                    : "Update Status"}
-              </button>
-            </div>
+            {(() => {
+              const normalizedNewStatus = normalize(newStatus);
+              const newStatusBlocked =
+                (isBlueprintOrder &&
+                  ["shipping", "delivered", "completed"].includes(
+                    normalizedNewStatus,
+                  ) &&
+                  (!hasRequiredBlueprintTaskPacket ||
+                    !allBlueprintTasksCompleted)) ||
+                (!isBlueprintOrder &&
+                  normalizedNewStatus === "shipping" &&
+                  normalizedPaymentMethod !== "cod" &&
+                  paymentBalance > 0) ||
+                (hasDeliveryRequirement &&
+                  ["delivered", "completed"].includes(normalizedNewStatus) &&
+                  !order?.delivery) ||
+                (hasDeliveryRequirement &&
+                  ["delivered", "completed"].includes(normalizedNewStatus) &&
+                  order?.delivery &&
+                  !hasSignedDeliveryReceipt) ||
+                (normalizedNewStatus === "completed" && paymentBalance > 0) ||
+                (isBlueprintOrder &&
+                  normalizedNewStatus === "production" &&
+                  !hasRequiredBlueprintDownPayment) ||
+                (hasDeliveryRequirement &&
+                  ["shipping", "delivered"].includes(normalizedNewStatus));
+
+              return (
+                <div style={modalActions}>
+                  <button
+                    onClick={() => {
+                      setStatusModal(false);
+                      setStatusModalMode("general");
+                    }}
+                    style={btnGhost}
+                    disabled={updatingStatus}
+                  >
+                    {isCancelOnlyModal ? "Keep Order" : "Cancel"}
+                  </button>
+                  <button
+                    onClick={handleStatusUpdate}
+                    style={isCancelOnlyModal ? btnDecline : btnPrimary}
+                    disabled={
+                      !statusModalStatuses.length ||
+                      updatingStatus ||
+                      newStatusBlocked
+                    }
+                  >
+                    {updatingStatus
+                      ? "Updating…"
+                      : isCancelOnlyModal
+                        ? "Confirm Cancellation"
+                        : "Update Status"}
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

@@ -56,13 +56,9 @@ const formatPeso = (value) =>
 
 const toValidDeliveryPin = (lat, lng) => {
   const latMissing =
-    lat === undefined ||
-    lat === null ||
-    String(lat).trim() === "";
+    lat === undefined || lat === null || String(lat).trim() === "";
   const lngMissing =
-    lng === undefined ||
-    lng === null ||
-    String(lng).trim() === "";
+    lng === undefined || lng === null || String(lng).trim() === "";
 
   if (latMissing || lngMissing) {
     return null;
@@ -141,7 +137,7 @@ export default function CheckoutPage() {
   const [useDefaultAddress, setUseDefaultAddress] = useState(() =>
     Boolean(
       String(user?.address || "").trim() &&
-        toValidDeliveryPin(user?.address_lat, user?.address_lng),
+      toValidDeliveryPin(user?.address_lat, user?.address_lng),
     ),
   );
   const [deliveryPin, setDeliveryPin] = useState(() =>
@@ -161,10 +157,7 @@ export default function CheckoutPage() {
 
     if (userToggledRef.current) return;
 
-    const defaultPin = toValidDeliveryPin(
-      user?.address_lat,
-      user?.address_lng,
-    );
+    const defaultPin = toValidDeliveryPin(user?.address_lat, user?.address_lng);
     const hasDefault = Boolean(
       String(user?.address || "").trim() && defaultPin,
     );
@@ -183,10 +176,7 @@ export default function CheckoutPage() {
       return;
     }
 
-    const defaultPin = toValidDeliveryPin(
-      user?.address_lat,
-      user?.address_lng,
-    );
+    const defaultPin = toValidDeliveryPin(user?.address_lat, user?.address_lng);
 
     if (!String(user?.address || "").trim() || !defaultPin) {
       setUseDefaultAddress(false);
@@ -688,9 +678,7 @@ export default function CheckoutPage() {
                           marginTop: 4,
                           fontWeight: 500,
                         }}
-                      >
-
-                      </div>
+                      ></div>
 
                       {item.stock_status ? (
                         <div
@@ -702,7 +690,9 @@ export default function CheckoutPage() {
                       ) : null}
                     </div>
 
-                    <div className="checkout-item-qty">Qty {item.quantity || 1}</div>
+                    <div className="checkout-item-qty">
+                      Qty {item.quantity || 1}
+                    </div>
 
                     <div className="checkout-item-price">
                       {formatPeso(
@@ -922,7 +912,10 @@ export default function CheckoutPage() {
 
             <div className="checkout-section">
               <div className="checkout-section-header">
-                <h3>Additional Notes <span className="checkout-optional-label">(Optional)</span></h3>
+                <h3>
+                  Additional Notes{" "}
+                  <span className="checkout-optional-label">(Optional)</span>
+                </h3>
               </div>
 
               <div className="checkout-section-body">
@@ -951,7 +944,9 @@ export default function CheckoutPage() {
                     <div className="checkout-summary-item-name">
                       {item.product_name}
                     </div>
-                    <div className="checkout-summary-item-qty">Qty {item.quantity || 1}</div>
+                    <div className="checkout-summary-item-qty">
+                      Qty {item.quantity || 1}
+                    </div>
                   </div>
 
                   <div className="checkout-summary-item-price">
@@ -972,9 +967,7 @@ export default function CheckoutPage() {
 
               <div className="summary-row">
                 <span>Shipping</span>
-                <span style={{ color: "#111111", fontWeight: 700 }}>
-                  Free
-                </span>
+                <span style={{ color: "#111111", fontWeight: 700 }}>Free</span>
               </div>
 
               <div className="summary-row">
@@ -994,17 +987,24 @@ export default function CheckoutPage() {
                 style={{
                   background: "#fefce8",
                   border: "1px solid #fde047",
-                  padding: "12px",
+                  padding: "16px 18px",
+                  margin: "0 20px 20px",
                   borderRadius: "8px",
-                  marginBottom: "16px",
                   fontSize: "13px",
                   color: "#a16207",
                   lineHeight: "1.5",
                 }}
               >
-                <strong>📌 Important Note:</strong>
-                <br />
-                <span style={{ whiteSpace: "pre-wrap" }}>{checkoutNote}</span>
+                <strong style={{ display: "block", marginBottom: "6px" }}>
+                  {form.payment_method === "cop"
+                    ? "🏬 Pick-up Note:"
+                    : "🚚 Delivery Note:"}
+                </strong>
+                <span style={{ whiteSpace: "pre-wrap" }}>
+                  {form.payment_method === "cop"
+                    ? "Our team will contact you as soon as your order is ready for pick-up at our store."
+                    : "Delivery dates may vary depending on your location and our daily routing schedule. Our team will contact you to confirm the exact delivery date."}
+                </span>
               </div>
             )}
 

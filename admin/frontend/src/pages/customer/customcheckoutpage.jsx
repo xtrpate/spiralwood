@@ -62,7 +62,9 @@ const formatTemplateLabel = (item = {}) => {
 
 /* WISDOM CUSTOM DESIGN EDIT ROUTE + REVIEW CLEANUP V1.0.2 */
 const hasMeaningfulCustomerSpec = (value) => {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   if (!normalized) return false;
 
   return ![
@@ -115,9 +117,7 @@ const buildLiveCartBlueprintPreview = (item = {}) => {
   return {
     id: item?.blueprint_id || item?.key || null,
     title:
-      item?.base_blueprint_title ||
-      item?.product_name ||
-      "Custom Furniture",
+      item?.base_blueprint_title || item?.product_name || "Custom Furniture",
     thumbnail_url: null,
     components,
     view_3d_data: {
@@ -526,7 +526,8 @@ export default function CustomCheckoutPage() {
             <div className="checkout-section-body">
               {checkoutItems.map((item) => {
                 const dims = getItemDisplayDims(item);
-                const liveBlueprintPreview = buildLiveCartBlueprintPreview(item);
+                const liveBlueprintPreview =
+                  buildLiveCartBlueprintPreview(item);
                 const staticImageSrc = resolveCartImageSrc(
                   item.image_url || item.preview_image_url,
                 );
@@ -595,7 +596,9 @@ export default function CustomCheckoutPage() {
                       <div className="custom-final-review-specs">
                         <div>
                           <span>Quantity</span>
-                          <strong>{Math.max(1, Number(item.quantity || 1))}</strong>
+                          <strong>
+                            {Math.max(1, Number(item.quantity || 1))}
+                          </strong>
                         </div>
                         <div>
                           <span>Dimensions</span>
@@ -651,8 +654,8 @@ export default function CustomCheckoutPage() {
                       ) : null}
 
                       <div className="custom-final-review-rule">
-                        <strong>One design per request.</strong> The quantity above
-                        applies to this same design. Different designs are
+                        <strong>One design per request.</strong> The quantity
+                        above applies to this same design. Different designs are
                         submitted as separate custom requests.
                       </div>
                     </div>
@@ -844,97 +847,99 @@ export default function CustomCheckoutPage() {
               <h3>Custom Request Summary</h3>
             </div>
 
-          <div className="checkout-summary-items">
-            {checkoutItems.map((item) => (
-              <div key={item.key} className="checkout-summary-item">
-                <div>
-                  <div className="checkout-summary-item-name">
-                    {item.base_blueprint_title || item.product_name}
+            <div className="checkout-summary-items">
+              {checkoutItems.map((item) => (
+                <div key={item.key} className="checkout-summary-item">
+                  <div>
+                    <div className="checkout-summary-item-name">
+                      {item.base_blueprint_title || item.product_name}
+                    </div>
+                    <div className="checkout-summary-item-qty">
+                      Custom design • Qty{" "}
+                      {Math.max(1, Number(item.quantity || 1))}
+                    </div>
                   </div>
-                  <div className="checkout-summary-item-qty">
-                    Custom design • Qty {Math.max(1, Number(item.quantity || 1))}
-                  </div>
-                </div>
 
-                <div
-                  className="checkout-summary-item-price"
-                  style={{ color: "#aaa", fontSize: 11 }}
-                >
-                  Quotation pending
+                  <div
+                    className="checkout-summary-item-price"
+                    style={{ color: "#aaa", fontSize: 11 }}
+                  >
+                    Quotation pending
+                  </div>
                 </div>
+              ))}
+            </div>
+
+            <div className="checkout-summary-totals">
+              <div className="summary-row">
+                <span>Project price</span>
+                <span style={{ color: "#D2691E", fontWeight: 700 }}>
+                  To be quoted by our team
+                </span>
               </div>
-            ))}
-          </div>
 
-          <div className="checkout-summary-totals">
-            <div className="summary-row">
-              <span>Project price</span>
-              <span style={{ color: "#D2691E", fontWeight: 700 }}>
-                To be quoted by our team
-              </span>
+              <p className="summary-note" style={{ marginTop: 10 }}>
+                Your design will be reviewed before the quotation and payment
+                are confirmed.
+              </p>
             </div>
 
-            <p className="summary-note" style={{ marginTop: 10 }}>
-              Your design will be reviewed before the quotation and payment are confirmed.
-            </p>
-          </div>
-
-          <div
-            className={`custom-final-review-confirm ${
-              reviewConfirmed ? "is-confirmed" : ""
-            }`}
-          >
-            <label>
-              <input
-                type="checkbox"
-                checked={reviewConfirmed}
-                onChange={(event) => {
-                  setReviewConfirmed(event.target.checked);
-                  if (event.target.checked) setError("");
-                }}
-              />
-              <span>
-                <strong>I reviewed this design.</strong> The design,
-                specifications, and quantity shown above are correct for this
-                custom request.
-              </span>
-            </label>
-          </div>
-
-          {checkoutNote && (
             <div
-              style={{
-                background: "#fefce8",
-                border: "1px solid #fde047",
-                padding: "12px",
-                borderRadius: "8px",
-                marginBottom: "16px",
-                fontSize: "13px",
-                color: "#a16207",
-                lineHeight: "1.5",
-              }}
+              className={`custom-final-review-confirm ${
+                reviewConfirmed ? "is-confirmed" : ""
+              }`}
             >
-              <strong>Before you submit</strong>
-              <br />
-              <span style={{ whiteSpace: "pre-wrap" }}>{checkoutNote}</span>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={reviewConfirmed}
+                  onChange={(event) => {
+                    setReviewConfirmed(event.target.checked);
+                    if (event.target.checked) setError("");
+                  }}
+                />
+                <span>
+                  <strong>I reviewed this design.</strong>
+                  <p>
+                    The design,specifications, and quantity shown above are
+                    correct for this custom request.
+                  </p>
+                </span>
+              </label>
             </div>
-          )}
 
-          <button
-            className="place-order-btn"
-            onClick={handleSubmit}
-            disabled={
-              loading || !checkoutItems.length || !reviewConfirmed
-            }
-          >
-            {loading ? (
-              "Submitting…"
-            ) : (
-              <>
-                <Scissors size={16} /> Submit for Quotation
-              </>
+            {checkoutNote && (
+              <div
+                style={{
+                  background: "#fefce8",
+                  border: "1px solid #fde047",
+                  padding: "16px 18px",
+                  borderRadius: "8px",
+                  margin: "0 20px 20px",
+                  fontSize: "13px",
+                  color: "#a16207",
+                  lineHeight: "1.5",
+                }}
+              >
+                <strong>📌 Important Note:</strong>
+                <br />
+                <span style={{ whiteSpace: "pre-wrap" }}>{checkoutNote}</span>
+              </div>
             )}
-          </button>
+
+            <button
+              className="place-order-btn"
+              onClick={handleSubmit}
+              disabled={loading || !checkoutItems.length || !reviewConfirmed}
+            >
+              {loading ? (
+                "Submitting…"
+              ) : (
+                <>
+                  <Scissors size={16} /> Submit for Quotation
+                </>
+              )}
+            </button>
           </div>
         </div>
       </div>

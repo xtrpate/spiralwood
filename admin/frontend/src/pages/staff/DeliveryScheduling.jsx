@@ -1,7 +1,15 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import api from "../../services/api";
-import { Plus, Search, CalendarDays, Truck, CheckCircle2, CircleX, RotateCcw } from "lucide-react";
+import {
+  Plus,
+  Search,
+  CalendarDays,
+  Truck,
+  CheckCircle2,
+  CircleX,
+  RotateCcw,
+} from "lucide-react";
 
 // WISDOM DELIVERY SCHEDULING PROFESSIONAL UI POLISH V1.0.1
 // WISDOM DELIVERY SCHEDULING RESCHEDULE UI FIX V1.0.2
@@ -353,13 +361,7 @@ export default function DeliveryScheduling() {
         return matchesSearch && matchesStatus && matchesRider && matchesDate;
       })
       .sort(sortDeliveries);
-  }, [
-    deliveries,
-    deliverySearch,
-    statusFilter,
-    riderFilter,
-    dateFilter,
-  ]);
+  }, [deliveries, deliverySearch, statusFilter, riderFilter, dateFilter]);
 
   const hasDeliveryFilters =
     Boolean(deliverySearch.trim()) ||
@@ -389,7 +391,6 @@ export default function DeliveryScheduling() {
           "Confirmed delivery schedule cannot be in the past.";
       }
     }
-
 
     setFieldErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
@@ -442,6 +443,39 @@ export default function DeliveryScheduling() {
     fetchEligibleOrders();
     fetchRiders();
   }, [fetchDeliveries, fetchEligibleOrders, fetchRiders]);
+
+  // 👉 NEW: Auto-open modal from Assign Delivery button shortcut
+  useEffect(() => {
+    const preselectOrderId = searchParams.get("schedule_order_id");
+
+    if (preselectOrderId && eligibleOrders.length > 0) {
+      const selectedOrder = eligibleOrders.find(
+        (order) => String(order.id) === String(preselectOrderId),
+      );
+
+      if (selectedOrder) {
+        const requestedDate = normalizeDateTimeInput(
+          getRequestedScheduleFromOrder(selectedOrder),
+        );
+        const requestedDateOnly = requestedDate
+          ? requestedDate.slice(0, 10)
+          : "";
+
+        setForm((prev) => ({
+          ...prev,
+          order_id: String(preselectOrderId),
+          address: selectedOrder.delivery_address || prev.address,
+          scheduled_date: requestedDateOnly || prev.scheduled_date,
+        }));
+
+        setShowForm(true);
+
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete("schedule_order_id");
+        setSearchParams(nextParams, { replace: true });
+      }
+    }
+  }, [searchParams, eligibleOrders, setSearchParams]);
 
   // Notification double-click focus support. Clear presentation
   // filters first so the requested delivery is guaranteed to be visible,
@@ -686,8 +720,8 @@ export default function DeliveryScheduling() {
           marginBottom: 20,
           flexWrap: "wrap",
           gap: 14,
-              }}
-            >
+        }}
+      >
         <div>
           <h1
             style={{
@@ -786,7 +820,8 @@ export default function DeliveryScheduling() {
                   Schedule delivery
                 </h2>
                 <p style={deliveryModalSubtitleStyle}>
-                  Select an order, assign a rider, and confirm the delivery date.
+                  Select an order, assign a rider, and confirm the delivery
+                  date.
                 </p>
               </div>
 
@@ -801,317 +836,316 @@ export default function DeliveryScheduling() {
               </button>
             </div>
 
-            {error ? (
-              <div style={deliveryModalErrorStyle}>{error}</div>
-            ) : null}
+            {error ? <div style={deliveryModalErrorStyle}>{error}</div> : null}
 
-          <form onSubmit={handleSubmit}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: 12,
-              }}
-            >
+            <form onSubmit={handleSubmit}>
               <div
                 style={{
-                  gridColumn: "1 / -1",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "flex-end",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                  gap: 12,
                 }}
               >
-                <label style={labelStyle}>
-                  Order <span style={{ color: "#dc2626" }}>*</span>
-                </label>
-                <select
-                  value={form.order_id}
-                  title={
-                    form.order_id
-                      ? (() => {
-                          const selectedOrder = eligibleOrders.find(
-                            (order) =>
-                              String(order.id) === String(form.order_id),
-                          );
-                          return selectedOrder
-                            ? `${selectedOrder.order_number} - ${selectedOrder.customer_name || ""}`
-                            : "";
-                        })()
-                      : ""
-                  }
-                  onChange={(e) => {
-                    const nextOrderId = e.target.value;
-                    const selectedOrder = eligibleOrders.find(
-                      (order) => String(order.id) === String(nextOrderId),
-                    );
+                <div
+                  style={{
+                    gridColumn: "1 / -1",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <label style={labelStyle}>
+                    Order <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <select
+                    value={form.order_id}
+                    title={
+                      form.order_id
+                        ? (() => {
+                            const selectedOrder = eligibleOrders.find(
+                              (order) =>
+                                String(order.id) === String(form.order_id),
+                            );
+                            return selectedOrder
+                              ? `${selectedOrder.order_number} - ${selectedOrder.customer_name || ""}`
+                              : "";
+                          })()
+                        : ""
+                    }
+                    onChange={(e) => {
+                      const nextOrderId = e.target.value;
+                      const selectedOrder = eligibleOrders.find(
+                        (order) => String(order.id) === String(nextOrderId),
+                      );
 
-                    const requestedDate = normalizeDateTimeInput(
-                      getRequestedScheduleFromOrder(selectedOrder),
-                    );
-                    const requestedDateOnly = requestedDate
-                      ? requestedDate.slice(0, 10)
-                      : "";
+                      const requestedDate = normalizeDateTimeInput(
+                        getRequestedScheduleFromOrder(selectedOrder),
+                      );
+                      const requestedDateOnly = requestedDate
+                        ? requestedDate.slice(0, 10)
+                        : "";
 
-                    setForm((prev) => ({
-                      ...prev,
-                      order_id: nextOrderId,
-                      address: selectedOrder?.delivery_address || prev.address,
-                      scheduled_date: requestedDateOnly || prev.scheduled_date,
-                    }));
+                      setForm((prev) => ({
+                        ...prev,
+                        order_id: nextOrderId,
+                        address:
+                          selectedOrder?.delivery_address || prev.address,
+                        scheduled_date:
+                          requestedDateOnly || prev.scheduled_date,
+                      }));
 
-                    setFieldErrors((prev) => ({
-                      ...prev,
+                      setFieldErrors((prev) => ({
+                        ...prev,
+                        order_id: "",
+                        address: "",
+                        scheduled_date: "",
+                      }));
+                    }}
+                    required
+                    style={{
+                      ...inputStyle,
+                      borderColor: fieldErrors.order_id ? "#dc2626" : "#e4e4e7",
+                    }}
+                  >
+                    <option value="">Select an order</option>
+                    {eligibleOrders.map((order) => (
+                      <option key={order.id} value={order.id}>
+                        {order.order_number} - {order.customer_name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {fieldErrors.order_id && (
+                    <p
+                      style={{
+                        color: "#dc2626",
+                        fontSize: 12,
+                        marginTop: 6,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {fieldErrors.order_id}
+                    </p>
+                  )}
+
+                  {eligibleOrders.length === 0 && (
+                    <p
+                      style={{
+                        color: "#71717a",
+                        fontSize: 12,
+                        marginTop: 8,
+                        fontWeight: 500,
+                      }}
+                    >
+                      No eligible orders available for delivery scheduling.
+                    </p>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <label style={labelStyle}>
+                    Rider <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <select
+                    value={form.driver_id}
+                    onChange={(e) => {
+                      setForm((prev) => ({
+                        ...prev,
+                        driver_id: e.target.value,
+                      }));
+                      setFieldErrors((prev) => ({ ...prev, driver_id: "" }));
+                    }}
+                    required
+                    style={{
+                      ...inputStyle,
+                      borderColor: fieldErrors.driver_id
+                        ? "#dc2626"
+                        : "#e4e4e7",
+                    }}
+                  >
+                    <option value="">Select a rider</option>
+                    {riders.map((rider) => (
+                      <option key={rider.id} value={rider.id}>
+                        {rider.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {fieldErrors.driver_id && (
+                    <p
+                      style={{
+                        color: "#dc2626",
+                        fontSize: 12,
+                        marginTop: 6,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {fieldErrors.driver_id}
+                    </p>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <label style={labelStyle}>
+                    Delivery date <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={form.scheduled_date}
+                    onChange={(e) => {
+                      setForm((prev) => ({
+                        ...prev,
+                        scheduled_date: e.target.value,
+                      }));
+                      setFieldErrors((prev) => ({
+                        ...prev,
+                        scheduled_date: "",
+                      }));
+                    }}
+                    required
+                    min={todayLocal}
+                    style={{
+                      ...inputStyle,
+                      borderColor: fieldErrors.scheduled_date
+                        ? "#dc2626"
+                        : "#e4e4e7",
+                    }}
+                  />
+
+                  {fieldErrors.scheduled_date && (
+                    <p
+                      style={{
+                        color: "#dc2626",
+                        fontSize: 12,
+                        marginTop: 6,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {fieldErrors.scheduled_date}
+                    </p>
+                  )}
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={labelStyle}>
+                    Delivery address <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.address}
+                    onChange={(e) => {
+                      setForm((prev) => ({
+                        ...prev,
+                        address: e.target.value,
+                      }));
+                      setFieldErrors((prev) => ({ ...prev, address: "" }));
+                    }}
+                    placeholder="Delivery address"
+                    required
+                    style={{
+                      ...inputStyle,
+                      borderColor: fieldErrors.address ? "#dc2626" : "#e4e4e7",
+                    }}
+                  />
+                  {fieldErrors.address && (
+                    <p
+                      style={{
+                        color: "#dc2626",
+                        fontSize: 12,
+                        marginTop: 6,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {fieldErrors.address}
+                    </p>
+                  )}
+                </div>
+
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <label style={labelStyle}>Notes</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Add delivery instructions (optional)"
+                    value={form.notes}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        notes: e.target.value,
+                      }))
+                    }
+                    style={{
+                      ...inputStyle,
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  marginTop: 4,
+                  paddingTop: 16,
+                  borderTop: "1px solid #ececef",
+                  justifyContent: "flex-end",
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setForm({
                       order_id: "",
+                      driver_id: "",
                       address: "",
                       scheduled_date: "",
-                    }));
+                      notes: "",
+                    });
+                    setError("");
+                    setSuccess("");
+                    setShowForm(false);
                   }}
-                  required
-                  style={{
-                    ...inputStyle,
-                    borderColor: fieldErrors.order_id ? "#dc2626" : "#e4e4e7",
-                  }}
+                  style={btnGhost}
                 >
-                  <option value="">Select an order</option>
-                  {eligibleOrders.map((order) => (
-                    <option key={order.id} value={order.id}>
-                      {order.order_number} - {order.customer_name}
-                    </option>
-                  ))}
-                </select>
+                  Cancel
+                </button>
 
-                {fieldErrors.order_id && (
-                  <p
-                    style={{
-                      color: "#dc2626",
-                      fontSize: 12,
-                      marginTop: 6,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {fieldErrors.order_id}
-                  </p>
-                )}
-
-                {eligibleOrders.length === 0 && (
-                  <p
-                    style={{
-                      color: "#71717a",
-                      fontSize: 12,
-                      marginTop: 8,
-                      fontWeight: 500,
-                    }}
-                  >
-                    No eligible orders available for delivery scheduling.
-                  </p>
-                )}
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "flex-end",
-                }}
-              >
-                <label style={labelStyle}>
-                  Rider{" "}
-                  <span style={{ color: "#dc2626" }}>*</span>
-                </label>
-                <select
-                  value={form.driver_id}
-                  onChange={(e) => {
-                    setForm((prev) => ({
-                      ...prev,
-                      driver_id: e.target.value,
-                    }));
-                    setFieldErrors((prev) => ({ ...prev, driver_id: "" }));
-                  }}
-                  required
-                  style={{
-                    ...inputStyle,
-                    borderColor: fieldErrors.driver_id ? "#dc2626" : "#e4e4e7",
-                  }}
-                >
-                  <option value="">Select a rider</option>
-                  {riders.map((rider) => (
-                    <option key={rider.id} value={rider.id}>
-                      {rider.name}
-                    </option>
-                  ))}
-                </select>
-
-                {fieldErrors.driver_id && (
-                  <p
-                    style={{
-                      color: "#dc2626",
-                      fontSize: 12,
-                      marginTop: 6,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {fieldErrors.driver_id}
-                  </p>
-                )}
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "flex-end",
-                }}
-              >
-                <label style={labelStyle}>
-                  Delivery date{" "}
-                  <span style={{ color: "#dc2626" }}>*</span>
-                </label>
-                <input
-                  type="date"
-                  value={form.scheduled_date}
-                  onChange={(e) => {
-                    setForm((prev) => ({
-                      ...prev,
-                      scheduled_date: e.target.value,
-                    }));
-                    setFieldErrors((prev) => ({
-                      ...prev,
-                      scheduled_date: "",
-                    }));
-                  }}
-                  required
-                  min={todayLocal}
-                  style={{
-                    ...inputStyle,
-                    borderColor: fieldErrors.scheduled_date
-                      ? "#dc2626"
-                      : "#e4e4e7",
-                  }}
-                />
-
-                {fieldErrors.scheduled_date && (
-                  <p
-                    style={{
-                      color: "#dc2626",
-                      fontSize: 12,
-                      marginTop: 6,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {fieldErrors.scheduled_date}
-                  </p>
-                )}
-              </div>
-
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label style={labelStyle}>
-                  Delivery address <span style={{ color: "#dc2626" }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  value={form.address}
-                  onChange={(e) => {
-                    setForm((prev) => ({
-                      ...prev,
-                      address: e.target.value,
-                    }));
-                    setFieldErrors((prev) => ({ ...prev, address: "" }));
-                  }}
-                  placeholder="Delivery address"
-                  required
-                  style={{
-                    ...inputStyle,
-                    borderColor: fieldErrors.address ? "#dc2626" : "#e4e4e7",
-                  }}
-                />
-                {fieldErrors.address && (
-                  <p
-                    style={{
-                      color: "#dc2626",
-                      fontSize: 12,
-                      marginTop: 6,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {fieldErrors.address}
-                  </p>
-                )}
-              </div>
-
-
-              <div style={{ gridColumn: "1 / -1" }}>
-                <label style={labelStyle}>Notes</label>
-                <textarea
-                  rows={2}
-                  placeholder="Add delivery instructions (optional)"
-                  value={form.notes}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      notes: e.target.value,
-                    }))
+                <button
+                  type="submit"
+                  disabled={
+                    loading ||
+                    !form.order_id ||
+                    !form.driver_id ||
+                    eligibleOrders.length === 0
                   }
-                  style={{
-                    ...inputStyle,
-                    resize: "vertical",
-                    fontFamily: "inherit",
-                  }}
-                />
+                  style={
+                    loading ||
+                    !form.order_id ||
+                    !form.driver_id ||
+                    eligibleOrders.length === 0
+                      ? { ...btnPrimary, opacity: 0.6, cursor: "not-allowed" }
+                      : btnPrimary
+                  }
+                >
+                  {loading ? "Scheduling..." : "Schedule delivery"}
+                </button>
               </div>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                marginTop: 4,
-                paddingTop: 16,
-                borderTop: "1px solid #ececef",
-                justifyContent: "flex-end",
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setForm({
-                    order_id: "",
-                    driver_id: "",
-                    address: "",
-                    scheduled_date: "",
-                    notes: "",
-                  });
-                  setError("");
-                  setSuccess("");
-                  setShowForm(false);
-                }}
-                style={btnGhost}
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                disabled={
-                  loading ||
-                  !form.order_id ||
-                  !form.driver_id ||
-                  eligibleOrders.length === 0
-                }
-                style={
-                  loading ||
-                  !form.order_id ||
-                  !form.driver_id ||
-                  eligibleOrders.length === 0
-                    ? { ...btnPrimary, opacity: 0.6, cursor: "not-allowed" }
-                    : btnPrimary
-                }
-              >
-                {loading ? "Scheduling..." : "Schedule delivery"}
-              </button>
-            </div>
-          </form>
-        </div>
+            </form>
+          </div>
         </div>
       )}
 
@@ -1141,7 +1175,8 @@ export default function DeliveryScheduling() {
                   Reschedule delivery
                 </h2>
                 <p style={deliveryModalSubtitleStyle}>
-                  Create a new delivery attempt after the latest failed delivery.
+                  Create a new delivery attempt after the latest failed
+                  delivery.
                 </p>
               </div>
 
@@ -1192,7 +1227,8 @@ export default function DeliveryScheduling() {
 
                 <div>
                   <label style={labelStyle}>
-                    New delivery date <span style={{ color: "#dc2626" }}>*</span>
+                    New delivery date{" "}
+                    <span style={{ color: "#dc2626" }}>*</span>
                   </label>
                   <input
                     type="date"
@@ -1216,7 +1252,13 @@ export default function DeliveryScheduling() {
                     }}
                   />
                   {rescheduleFieldErrors.scheduled_date ? (
-                    <p style={{ color: "#dc2626", fontSize: 11, margin: "6px 0 0" }}>
+                    <p
+                      style={{
+                        color: "#dc2626",
+                        fontSize: 11,
+                        margin: "6px 0 0",
+                      }}
+                    >
                       {rescheduleFieldErrors.scheduled_date}
                     </p>
                   ) : null}
@@ -1253,7 +1295,13 @@ export default function DeliveryScheduling() {
                     ))}
                   </select>
                   {rescheduleFieldErrors.driver_id ? (
-                    <p style={{ color: "#dc2626", fontSize: 11, margin: "6px 0 0" }}>
+                    <p
+                      style={{
+                        color: "#dc2626",
+                        fontSize: 11,
+                        margin: "6px 0 0",
+                      }}
+                    >
                       {rescheduleFieldErrors.driver_id}
                     </p>
                   ) : null}
@@ -1261,7 +1309,8 @@ export default function DeliveryScheduling() {
 
                 <div style={{ gridColumn: "1 / -1" }}>
                   <label style={labelStyle}>
-                    Reschedule reason <span style={{ color: "#dc2626" }}>*</span>
+                    Reschedule reason{" "}
+                    <span style={{ color: "#dc2626" }}>*</span>
                   </label>
                   <textarea
                     rows={2}
@@ -1288,7 +1337,13 @@ export default function DeliveryScheduling() {
                     }}
                   />
                   {rescheduleFieldErrors.reason ? (
-                    <p style={{ color: "#dc2626", fontSize: 11, margin: "6px 0 0" }}>
+                    <p
+                      style={{
+                        color: "#dc2626",
+                        fontSize: 11,
+                        margin: "6px 0 0",
+                      }}
+                    >
                       {rescheduleFieldErrors.reason}
                     </p>
                   ) : null}
@@ -1343,7 +1398,9 @@ export default function DeliveryScheduling() {
                       : btnPrimary
                   }
                 >
-                  {rescheduleLoading ? "Rescheduling..." : "Reschedule delivery"}
+                  {rescheduleLoading
+                    ? "Rescheduling..."
+                    : "Reschedule delivery"}
                 </button>
               </div>
             </form>
@@ -1502,8 +1559,9 @@ export default function DeliveryScheduling() {
                       : "";
                   const canReschedule =
                     normalizeStatus(delivery.status) === "failed" &&
-                    Number(latestDeliveryIdByOrder.get(String(delivery.order_id))) ===
-                      Number(delivery.id);
+                    Number(
+                      latestDeliveryIdByOrder.get(String(delivery.order_id)),
+                    ) === Number(delivery.id);
 
                   return (
                     <tr
@@ -1538,13 +1596,9 @@ export default function DeliveryScheduling() {
                       </td>
 
                       <td style={tdStyle}>
-                        <div style={scheduleDateStyle}>
-                          {scheduledDateText}
-                        </div>
+                        <div style={scheduleDateStyle}>{scheduledDateText}</div>
                         {deliveredLine ? (
-                          <div style={scheduleTimeStyle}>
-                            {deliveredLine}
-                          </div>
+                          <div style={scheduleTimeStyle}>{deliveredLine}</div>
                         ) : null}
                       </td>
 
@@ -1578,7 +1632,11 @@ export default function DeliveryScheduling() {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            <RotateCcw size={13} strokeWidth={1.8} aria-hidden="true" />
+                            <RotateCcw
+                              size={13}
+                              strokeWidth={1.8}
+                              aria-hidden="true"
+                            />
                             Reschedule
                           </button>
                         ) : (
@@ -1746,7 +1804,8 @@ const toolbarStyle = {
 
 const filterGridStyle = {
   display: "grid",
-  gridTemplateColumns: "minmax(300px, 1.8fr) minmax(135px, 0.7fr) minmax(155px, 0.8fr) minmax(150px, 0.75fr) auto",
+  gridTemplateColumns:
+    "minmax(300px, 1.8fr) minmax(135px, 0.7fr) minmax(155px, 0.8fr) minmax(150px, 0.75fr) auto",
   gap: 10,
   alignItems: "end",
 };
@@ -1898,7 +1957,6 @@ const statusBadgeStyle = {
   fontWeight: 500,
   whiteSpace: "nowrap",
 };
-
 
 // WISDOM DELIVERY SCHEDULING MODAL FORM UI FIX V1.0.1 STYLES
 

@@ -506,7 +506,6 @@ export default function DeliveryManagement() {
     { value: "completed", label: "Completed" },
   ];
 
-
   const filteredDeliveries = useMemo(() => {
     const keyword = search.trim().toLowerCase();
 
@@ -764,18 +763,17 @@ export default function DeliveryManagement() {
                     value={
                       <div>
                         <div>{formatDateTime(delivery.scheduled_date)}</div>
-                        {isDeliveryRider &&
-                        isRiderOverdueDelivery(delivery) ? (
+                        {isDeliveryRider && isRiderOverdueDelivery(delivery) ? (
                           <span style={overdueScheduleText}>Overdue</span>
                         ) : null}
                       </div>
                     }
                   />
                   {!isDeliveryRider ? (
-                  <InfoCard
-                    label="Driver"
-                    value={delivery.driver_name || "Unassigned"}
-                  />
+                    <InfoCard
+                      label="Driver"
+                      value={delivery.driver_name || "Unassigned"}
+                    />
                   ) : null}
                   <InfoCard
                     label="Proof Status"
@@ -861,527 +859,545 @@ export default function DeliveryManagement() {
                 </div>
                 {!canStartTransit && expandedDeliveryId === delivery.id ? (
                   <div className="rider-delivery-expanded">
-                {delivery.notes ? (
-                  <div style={notesBox}>
-                    <div style={notesLabel}>Notes</div>
-                    <div style={notesText}>{delivery.notes}</div>
-                  </div>
-                ) : null}
-
-
-                {canCompleteDelivery && (
-                  <div style={actionSection}>
-                    {isBlueprintDelivery ? (
-                      <div style={{ marginBottom: "16px" }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: "12px",
-                          }}
-                        >
-                          <div style={sectionTitle}>
-                            Remaining Balance
-                          </div>
-                          {blueprintMethodRequired ||
-                          blueprintAwaitingOnline ? (
-                            <span
-                              style={{
-                                fontSize: 11,
-                                color: "#71717a",
-                                fontStyle: "italic",
-                              }}
-                            >
-                              Checking payment status automatically...
-                            </span>
-                          ) : null}
-                        </div>
-
-                        {blueprintMethodRequired ? (
-                          <div style={helperText}>
-                            The customer has not yet chosen how to pay the
-                            remaining balance. Delivery cannot be completed yet.
-                          </div>
-                        ) : remainingPaymentMethod === "paymongo" ? (
-                          <>
-                            <div style={helperText}>
-                              {blueprintAwaitingOnline
-                                ? "Awaiting Online Payment Confirmation"
-                                : "Online Payment Confirmed"}
-                            </div>
-                            <div
-                              style={{
-                                marginTop: "12px",
-                                display: "grid",
-                                gridTemplateColumns:
-                                  "repeat(auto-fit, minmax(180px, 1fr))",
-                                gap: "12px",
-                              }}
-                            >
-                              <div>
-                                <label style={infoLabel}>Cash to Collect</label>
-                                <input
-                                  type="text"
-                                  value="₱0.00"
-                                  readOnly
-                                  style={{
-                                    ...searchInput,
-                                    background: "#fafafa",
-                                    color: "#18181b",
-                                    fontWeight: 700,
-                                    cursor: "not-allowed",
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          </>
-                        ) : blueprintHasPendingCollection ? (
-                          <div style={helperText}>
-                            Cash collection is awaiting admin verification.
-                          </div>
-                        ) : blueprintReadyForCashConfirm ? (
-                          <>
-                            <div style={helperText}>
-                              Payment Method: Cash on Delivery. Collect the exact
-                              remaining balance below from the customer, then
-                              complete the delivery.
-                            </div>
-                            <div
-                              style={{
-                                marginTop: "12px",
-                                display: "grid",
-                                gridTemplateColumns:
-                                  "repeat(auto-fit, minmax(180px, 1fr))",
-                                gap: "12px",
-                              }}
-                            >
-                              <div>
-                                <label style={infoLabel}>
-                                  Amount to Collect
-                                </label>
-                                <input
-                                  type="text"
-                                  value={`₱${paymentBalance.toLocaleString(
-                                    "en-PH",
-                                    { minimumFractionDigits: 2 },
-                                  )}`}
-                                  readOnly
-                                  style={{
-                                    ...searchInput,
-                                    background: "#fafafa",
-                                    color: "#18181b",
-                                    fontWeight: 700,
-                                    cursor: "not-allowed",
-                                  }}
-                                />
-                              </div>
-                              <div>
-                                <label style={infoLabel}>Payment Method</label>
-                                <input
-                                  type="text"
-                                  value="Cash"
-                                  readOnly
-                                  style={{
-                                    ...searchInput,
-                                    background: "#fafafa",
-                                    color: "#18181b",
-                                    fontWeight: 700,
-                                    cursor: "not-allowed",
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          </>
-                        ) : (
-                          <div style={helperText}>
-                            This order has no outstanding balance.
-                          </div>
-                        )}
+                    {delivery.notes ? (
+                      <div style={notesBox}>
+                        <div style={notesLabel}>Notes</div>
+                        <div style={notesText}>{delivery.notes}</div>
                       </div>
-                    ) : (
-                      hasOutstandingBalance && (
-                        <div style={{ marginBottom: "16px" }}>
-                          <div style={sectionTitle}>
-                            Remaining Balance Collection
-                          </div>
-                          <div style={helperText}>
-                            {standardCodHasPendingPayment
-                              ? "A payment is already awaiting admin review. Complete Delivery is locked until it is verified or rejected."
-                              : isStandardCodDelivery
-                                ? "Collect the exact remaining balance from the customer. Admin will verify the cash collection before the order can be completed."
-                                : "Record the amount collected from the customer during delivery. Admin will verify this payment before the order can be completed."}
-                          </div>
+                    ) : null}
 
-                          <div
-                            style={{
-                              marginTop: "12px",
-                              display: "grid",
-                              gridTemplateColumns:
-                                "repeat(auto-fit, minmax(180px, 1fr))",
-                              gap: "12px",
-                            }}
-                          >
-                            <div>
-                              <label style={infoLabel}>
-                                {isStandardCodDelivery
-                                  ? "Amount to Collect"
-                                  : "Collected Amount"}
-                              </label>
-                              {isStandardCodDelivery ? (
-                                <input
-                                  type="text"
-                                  value={`₱${paymentBalance.toLocaleString(
-                                    "en-PH",
-                                    { minimumFractionDigits: 2 },
-                                  )}`}
-                                  readOnly
+                    {canCompleteDelivery && (
+                      <div style={actionSection}>
+                        {isBlueprintDelivery ? (
+                          <div style={{ marginBottom: "16px" }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: "12px",
+                              }}
+                            >
+                              <div style={sectionTitle}>Remaining Balance</div>
+                              {blueprintMethodRequired ||
+                              blueprintAwaitingOnline ? (
+                                <span
                                   style={{
-                                    ...searchInput,
-                                    background: "#fafafa",
-                                    color: "#18181b",
-                                    fontWeight: 700,
-                                    cursor: "not-allowed",
-                                  }}
-                                />
-                              ) : (
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max={paymentBalance.toFixed(2)}
-                                  step="0.01"
-                                  value={collectionForm.amount}
-                                  onChange={(e) =>
-                                    updateCollectionForm(
-                                      delivery.id,
-                                      "amount",
-                                      e.target.value,
-                                    )
-                                  }
-                                  style={searchInput}
-                                  placeholder={`Max ${paymentBalance.toFixed(2)}`}
-                                />
-                              )}
-                              {(!isStandardCodDelivery &&
-                                (!hasCollectedAmountValue ||
-                                  collectedAmountInvalid ||
-                                  collectedAmountExceedsBalance)) && (
-                                <div
-                                  style={{
-                                    marginTop: 6,
-                                    fontSize: "12px",
-                                    color: "#b91c1c",
-                                    fontWeight: 600,
+                                    fontSize: 11,
+                                    color: "#71717a",
+                                    fontStyle: "italic",
                                   }}
                                 >
-                                  {!hasCollectedAmountValue
-                                    ? "Collected amount is required before completing delivery."
-                                    : collectedAmountInvalid
-                                      ? "Collected amount must be greater than zero."
-                                      : `Collected amount cannot exceed ₱${paymentBalance.toLocaleString(
-                                          "en-PH",
-                                          { minimumFractionDigits: 2 },
-                                        )}.`}
+                                  Checking payment status automatically...
+                                </span>
+                              ) : null}
+                            </div>
+
+                            {blueprintMethodRequired ? (
+                              <div style={helperText}>
+                                The customer has not yet chosen how to pay the
+                                remaining balance. Delivery cannot be completed
+                                yet.
+                              </div>
+                            ) : remainingPaymentMethod === "paymongo" ? (
+                              <>
+                                <div style={helperText}>
+                                  {blueprintAwaitingOnline
+                                    ? "Awaiting Online Payment Confirmation"
+                                    : "Online Payment Confirmed"}
                                 </div>
-                              )}
-                            </div>
-
-                            <div>
-                              <label style={infoLabel}>Payment Method</label>
-                              <input
-                                type="text"
-                                value="Cash"
-                                readOnly
-                                style={{
-                                  ...searchInput,
-                                  background: "#fafafa",
-                                  color: "#18181b",
-                                  fontWeight: 700,
-                                  cursor: "not-allowed",
-                                }}
-                              />
-                            </div>
-
-                            <div style={{ gridColumn: "1 / -1" }}>
-                              <label style={infoLabel}>Collection Note</label>
-                              <textarea
-                                rows={2}
-                                value={collectionForm.collection_notes}
-                                onChange={(e) =>
-                                  updateCollectionForm(
-                                    delivery.id,
-                                    "collection_notes",
-                                    e.target.value,
-                                  )
-                                }
-                                style={{
-                                  ...searchInput,
-                                  minHeight: 88,
-                                  resize: "vertical",
-                                  fontFamily: "inherit",
-                                }}
-                                placeholder="Example: Full remaining balance collected during turnover."
-                              />
-                            </div>
+                                <div
+                                  style={{
+                                    marginTop: "12px",
+                                    display: "grid",
+                                    gridTemplateColumns:
+                                      "repeat(auto-fit, minmax(180px, 1fr))",
+                                    gap: "12px",
+                                  }}
+                                >
+                                  <div>
+                                    <label style={infoLabel}>
+                                      Cash to Collect
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value="₱0.00"
+                                      readOnly
+                                      style={{
+                                        ...searchInput,
+                                        background: "#fafafa",
+                                        color: "#18181b",
+                                        fontWeight: 700,
+                                        cursor: "not-allowed",
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </>
+                            ) : blueprintHasPendingCollection ? (
+                              <div style={helperText}>
+                                Cash collection is awaiting admin verification.
+                              </div>
+                            ) : blueprintReadyForCashConfirm ? (
+                              <>
+                                <div style={helperText}>
+                                  Payment Method: Cash on Delivery. Collect the
+                                  exact remaining balance below from the
+                                  customer, then complete the delivery.
+                                </div>
+                                <div
+                                  style={{
+                                    marginTop: "12px",
+                                    display: "grid",
+                                    gridTemplateColumns:
+                                      "repeat(auto-fit, minmax(180px, 1fr))",
+                                    gap: "12px",
+                                  }}
+                                >
+                                  <div>
+                                    <label style={infoLabel}>
+                                      Amount to Collect
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={`₱${paymentBalance.toLocaleString(
+                                        "en-PH",
+                                        { minimumFractionDigits: 2 },
+                                      )}`}
+                                      readOnly
+                                      style={{
+                                        ...searchInput,
+                                        background: "#fafafa",
+                                        color: "#18181b",
+                                        fontWeight: 700,
+                                        cursor: "not-allowed",
+                                      }}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label style={infoLabel}>
+                                      Payment Method
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value="Cash"
+                                      readOnly
+                                      style={{
+                                        ...searchInput,
+                                        background: "#fafafa",
+                                        color: "#18181b",
+                                        fontWeight: 700,
+                                        cursor: "not-allowed",
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <div style={helperText}>
+                                This order has no outstanding balance.
+                              </div>
+                            )}
                           </div>
+                        ) : (
+                          hasOutstandingBalance && (
+                            <div style={{ marginBottom: "16px" }}>
+                              <div style={sectionTitle}>
+                                Remaining Balance Collection
+                              </div>
+                              <div style={helperText}>
+                                {standardCodHasPendingPayment
+                                  ? "A payment is already awaiting admin review. Complete Delivery is locked until it is verified or rejected."
+                                  : isStandardCodDelivery
+                                    ? "Collect the exact remaining balance from the customer. Admin will verify the cash collection before the order can be completed."
+                                    : "Record the amount collected from the customer during delivery. Admin will verify this payment before the order can be completed."}
+                              </div>
+
+                              <div
+                                style={{
+                                  marginTop: "12px",
+                                  display: "grid",
+                                  gridTemplateColumns:
+                                    "repeat(auto-fit, minmax(180px, 1fr))",
+                                  gap: "12px",
+                                }}
+                              >
+                                <div>
+                                  <label style={infoLabel}>
+                                    {isStandardCodDelivery
+                                      ? "Amount to Collect"
+                                      : "Collected Amount"}
+                                  </label>
+                                  {isStandardCodDelivery ? (
+                                    <input
+                                      type="text"
+                                      value={`₱${paymentBalance.toLocaleString(
+                                        "en-PH",
+                                        { minimumFractionDigits: 2 },
+                                      )}`}
+                                      readOnly
+                                      style={{
+                                        ...searchInput,
+                                        background: "#fafafa",
+                                        color: "#18181b",
+                                        fontWeight: 700,
+                                        cursor: "not-allowed",
+                                      }}
+                                    />
+                                  ) : (
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max={paymentBalance.toFixed(2)}
+                                      step="0.01"
+                                      value={collectionForm.amount}
+                                      onChange={(e) =>
+                                        updateCollectionForm(
+                                          delivery.id,
+                                          "amount",
+                                          e.target.value,
+                                        )
+                                      }
+                                      style={searchInput}
+                                      placeholder={`Max ${paymentBalance.toFixed(2)}`}
+                                    />
+                                  )}
+                                  {!isStandardCodDelivery &&
+                                    (!hasCollectedAmountValue ||
+                                      collectedAmountInvalid ||
+                                      collectedAmountExceedsBalance) && (
+                                      <div
+                                        style={{
+                                          marginTop: 6,
+                                          fontSize: "12px",
+                                          color: "#b91c1c",
+                                          fontWeight: 600,
+                                        }}
+                                      >
+                                        {!hasCollectedAmountValue
+                                          ? "Collected amount is required before completing delivery."
+                                          : collectedAmountInvalid
+                                            ? "Collected amount must be greater than zero."
+                                            : `Collected amount cannot exceed ₱${paymentBalance.toLocaleString(
+                                                "en-PH",
+                                                { minimumFractionDigits: 2 },
+                                              )}.`}
+                                      </div>
+                                    )}
+                                </div>
+
+                                <div>
+                                  <label style={infoLabel}>
+                                    Payment Method
+                                  </label>
+                                  <input
+                                    type="text"
+                                    value="Cash"
+                                    readOnly
+                                    style={{
+                                      ...searchInput,
+                                      background: "#fafafa",
+                                      color: "#18181b",
+                                      fontWeight: 700,
+                                      cursor: "not-allowed",
+                                    }}
+                                  />
+                                </div>
+
+                                <div style={{ gridColumn: "1 / -1" }}>
+                                  <label style={infoLabel}>
+                                    Collection Note
+                                  </label>
+                                  <textarea
+                                    rows={2}
+                                    value={collectionForm.collection_notes}
+                                    onChange={(e) =>
+                                      updateCollectionForm(
+                                        delivery.id,
+                                        "collection_notes",
+                                        e.target.value,
+                                      )
+                                    }
+                                    style={{
+                                      ...searchInput,
+                                      minHeight: 88,
+                                      resize: "vertical",
+                                      fontFamily: "inherit",
+                                    }}
+                                    placeholder="Example: Full remaining balance collected during turnover."
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        )}
+
+                        <div style={sectionTitle}>
+                          {isBlueprintDelivery
+                            ? "Upload Proof of Delivery Photo"
+                            : "Proof of Delivery"}
                         </div>
-                      )
+                        <div style={helperText}>
+                          {isBlueprintDelivery
+                            ? "A fresh photo is required every time to complete this delivery."
+                            : "Upload the Proof of Delivery photo first, then complete the delivery."}
+                        </div>
+
+                        <div style={proofPanel}>
+                          <div style={proofStatusRow}>
+                            <span style={proofStatusLabel}>
+                              {isBlueprintDelivery
+                                ? selectedFile
+                                  ? "Fresh photo selected."
+                                  : "Upload a fresh Proof of Delivery photo to continue."
+                                : hasReceipt
+                                  ? "Proof already uploaded. Choose another file to replace it."
+                                  : "No proof uploaded yet"}
+                            </span>
+
+                            {hasReceipt && delivery.signed_receipt ? (
+                              <a
+                                href={buildAssetUrl(delivery.signed_receipt)}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={viewLink}
+                              >
+                                View Current Proof
+                              </a>
+                            ) : null}
+                          </div>
+
+                          <ProofUploadField
+                            inputId={`delivery-proof-${delivery.id}`}
+                            disabled={
+                              savingId === delivery.id || !canUploadProof
+                            }
+                            selectedFile={selectedFile}
+                            onSelect={(file) =>
+                              handleReceiptChange(delivery.id, file)
+                            }
+                            title={
+                              selectedFile
+                                ? "Proof selected"
+                                : "Upload delivery proof"
+                            }
+                            helper="JPG, PNG, or PDF up to 5 MB"
+                          />
+
+                          {!canUploadProof && (
+                            <div
+                              style={{
+                                marginTop: "8px",
+                                fontSize: "12px",
+                                color: "#b91c1c",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Enter a valid collected amount first before
+                              uploading proof of delivery.
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rider-button-row">
+                          <button
+                            onClick={() =>
+                              saveDeliveryUpdate({
+                                delivery,
+                                nextStatus: "delivered",
+                                requireReceipt: true,
+                                successMessage:
+                                  "Delivery completed successfully with proof of delivery.",
+                              })
+                            }
+                            disabled={completeDeliveryDisabled}
+                            className={`rider-btn ${completeDeliveryDisabled ? "rider-btn-disabled" : "rider-btn-primary"}`}
+                          >
+                            {savingId === delivery.id
+                              ? "Saving..."
+                              : "Complete Delivery"}
+                          </button>
+                        </div>
+                      </div>
                     )}
 
-                    <div style={sectionTitle}>
-                      {isBlueprintDelivery
-                        ? "Upload Proof of Delivery Photo"
-                        : "Proof of Delivery"}
-                    </div>
-                    <div style={helperText}>
-                      {isBlueprintDelivery
-                        ? "A fresh photo is required every time to complete this delivery."
-                        : "Upload the Proof of Delivery photo first, then complete the delivery."}
-                    </div>
-
-                    <div style={proofPanel}>
-                      <div style={proofStatusRow}>
-                        <span style={proofStatusLabel}>
-                          {isBlueprintDelivery
-                            ? selectedFile
-                              ? "Fresh photo selected."
-                              : "Upload a fresh Proof of Delivery photo to continue."
-                            : hasReceipt
-                              ? "Proof already uploaded. Choose another file to replace it."
-                              : "No proof uploaded yet"}
-                        </span>
-
-                        {hasReceipt && delivery.signed_receipt ? (
-                          <a
-                            href={buildAssetUrl(delivery.signed_receipt)}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={viewLink}
-                          >
-                            View Current Proof
-                          </a>
-                        ) : null}
-                      </div>
-
-                      <ProofUploadField
-                        inputId={`delivery-proof-${delivery.id}`}
-                        disabled={
-                          savingId === delivery.id || !canUploadProof
-                        }
-                        selectedFile={selectedFile}
-                        onSelect={(file) =>
-                          handleReceiptChange(delivery.id, file)
-                        }
-                        title={
-                          selectedFile
-                            ? "Proof selected"
-                            : "Upload delivery proof"
-                        }
-                        helper="JPG, PNG, or PDF up to 5 MB"
-                      />
-
-                      {!canUploadProof && (
-                        <div
-                          style={{
-                            marginTop: "8px",
-                            fontSize: "12px",
-                            color: "#b91c1c",
-                            fontWeight: 600,
-                          }}
-                        >
-                          Enter a valid collected amount first before uploading
-                          proof of delivery.
-                        </div>
-                      )}
-
-
-                    </div>
-
-                    <div className="rider-button-row">
-                      <button
-                        onClick={() =>
-                          saveDeliveryUpdate({
-                            delivery,
-                            nextStatus: "delivered",
-                            requireReceipt: true,
-                            successMessage:
-                              "Delivery completed successfully with proof of delivery.",
-                          })
-                        }
-                        disabled={completeDeliveryDisabled}
-                        className={`rider-btn ${completeDeliveryDisabled ? "rider-btn-disabled" : "rider-btn-primary"}`}
-                      >
-                        {savingId === delivery.id
-                          ? "Saving..."
-                          : "Complete Delivery"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {canCompleteDelivery && (
-                  <div style={{ ...actionSection, marginTop: "8px" }}>
-                    <div className="rider-button-row">
-                      <button
-                        onClick={() => {
-                          setFailureModal(delivery);
-                          setFailureReasonInput("");
-                        }}
-                        disabled={savingId === delivery.id}
-                        className="rider-btn rider-btn-undo"
-                      >
-                        {savingId === delivery.id
-                          ? "Saving..."
-                          : "Mark as Failed"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* 👉 NEW: showSummary covers both Delivered and Completed statuses */}
-                {showSummary && (
-                  <div style={actionSection}>
-                    <div style={sectionTitle}>Delivery Summary</div>
-                    <div style={helperText}>
-                      {isCompleted
-                        ? "This order has been officially verified and completed by the admin."
-                        : "This delivery has been dropped off. Waiting for admin verification."}
-                    </div>
-
-                    <div style={summaryRow}>
-                      <div style={summaryItem}>
-                        <span style={summaryLabel}>Delivered On</span>
-                        <span style={summaryValue}>
-                          {formatDateTime(delivery.delivered_date)}
-                        </span>
-                      </div>
-
-                    </div>
-
-                    <div style={{ marginTop: 12 }}>
-                      {hasReceipt && delivery.signed_receipt ? (
-                        <a
-                          href={buildAssetUrl(delivery.signed_receipt)}
-                          target="_blank"
-                          rel="noreferrer"
-                          style={viewLink}
-                        >
-                          View Proof of Delivery
-                        </a>
-                      ) : (
-                        <div style={helperText}>
-                          This older record has no uploaded proof yet.
-                        </div>
-                      )}
-
-                      {/* 👉 NEW: The entire upload and Undo section is strictly hidden if Completed */}
-                      {isDelivered && (
-                        <>
-                          <div style={{ ...proofPanel, marginTop: 12 }}>
-                            <div style={proofStatusRow}>
-                              <span style={proofStatusLabel}>
-                                {hasReceipt
-                                  ? "Need to replace the uploaded proof?"
-                                  : "Upload proof for this delivered record"}
-                              </span>
-                            </div>
-
-                            <ProofUploadField
-                              inputId={`delivery-proof-replace-${delivery.id}`}
-                              disabled={savingId === delivery.id}
-                              selectedFile={selectedFile}
-                              onSelect={(file) =>
-                                handleReceiptChange(delivery.id, file)
-                              }
-                              title={
-                                hasReceipt
-                                  ? "Replace delivery proof"
-                                  : "Upload delivery proof"
-                              }
-                              helper="JPG, PNG, or PDF up to 5 MB"
-                            />
-
-
-
-                            <div className="rider-button-row">
-                              <button
-                                onClick={() =>
-                                  saveDeliveryUpdate({
-                                    delivery,
-                                    nextStatus: "delivered",
-                                    allowReceiptOnly: true,
-                                    successMessage: hasReceipt
-                                      ? "Proof of delivery replaced successfully."
-                                      : "Proof of delivery uploaded successfully.",
-                                  })
-                                }
-                                disabled={
-                                  savingId === delivery.id || !selectedFile
-                                }
-                                className={`rider-btn ${savingId === delivery.id || !selectedFile ? "rider-btn-disabled" : "rider-btn-secondary"}`}
-                              >
-                                {savingId === delivery.id
-                                  ? "Saving..."
-                                  : hasReceipt
-                                    ? "Replace Proof"
-                                    : "Upload Proof"}
-                              </button>
-                            </div>
-                          </div>
-
-                          <div
-                            style={{
-                              marginTop: "24px",
-                              paddingTop: "16px",
-                              borderTop: "1px dashed #e4e4e7",
+                    {canCompleteDelivery && (
+                      <div style={{ ...actionSection, marginTop: "8px" }}>
+                        <div className="rider-button-row">
+                          <button
+                            onClick={() => {
+                              setFailureModal(delivery);
+                              setFailureReasonInput("");
                             }}
+                            disabled={savingId === delivery.id}
+                            className="rider-btn rider-btn-undo"
                           >
-                            <div style={sectionTitle}>Need Corrections?</div>
+                            {savingId === delivery.id
+                              ? "Saving..."
+                              : "Mark as Failed"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 👉 NEW: showSummary covers both Delivered and Completed statuses */}
+                    {showSummary && (
+                      <div style={actionSection}>
+                        <div style={sectionTitle}>Delivery Summary</div>
+                        <div style={helperText}>
+                          {isCompleted
+                            ? "This order has been successfully completed. You may close this card."
+                            : "This delivery has been dropped off. Waiting for admin verification."}
+                        </div>
+
+                        <div style={summaryRow}>
+                          <div style={summaryItem}>
+                            <span style={summaryLabel}>Delivered On</span>
+                            <span style={summaryValue}>
+                              {formatDateTime(delivery.delivered_date)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{ marginTop: 12 }}>
+                          {hasReceipt && delivery.signed_receipt ? (
+                            <a
+                              href={buildAssetUrl(delivery.signed_receipt)}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={viewLink}
+                            >
+                              View Proof of Delivery
+                            </a>
+                          ) : (
                             <div style={helperText}>
-                              If you accidentally marked this as delivered, you
-                              can undo it to correct the collection amount or
-                              proof of delivery.
+                              This older record has no uploaded proof yet.
                             </div>
-                            <div className="rider-button-row">
-                              <button
-                                onClick={() => {
-                                  if (
-                                    window.confirm(
-                                      "Are you sure you want to undo this delivery? It will be moved back to 'In Transit'.",
-                                    )
-                                  ) {
-                                    saveDeliveryUpdate({
-                                      delivery,
-                                      nextStatus: "in_transit",
-                                      successMessage:
-                                        "Delivery reverted to In Transit successfully.",
-                                    });
+                          )}
+
+                          {/* 👉 NEW: The entire upload and Undo section is strictly hidden if Completed */}
+                          {isDelivered && (
+                            <>
+                              <div style={{ ...proofPanel, marginTop: 12 }}>
+                                <div style={proofStatusRow}>
+                                  <span style={proofStatusLabel}>
+                                    {hasReceipt
+                                      ? "Need to replace the uploaded proof?"
+                                      : "Upload proof for this delivered record"}
+                                  </span>
+                                </div>
+
+                                <ProofUploadField
+                                  inputId={`delivery-proof-replace-${delivery.id}`}
+                                  disabled={savingId === delivery.id}
+                                  selectedFile={selectedFile}
+                                  onSelect={(file) =>
+                                    handleReceiptChange(delivery.id, file)
                                   }
+                                  title={
+                                    hasReceipt
+                                      ? "Replace delivery proof"
+                                      : "Upload delivery proof"
+                                  }
+                                  helper="JPG, PNG, or PDF up to 5 MB"
+                                />
+
+                                <div className="rider-button-row">
+                                  <button
+                                    onClick={() =>
+                                      saveDeliveryUpdate({
+                                        delivery,
+                                        nextStatus: "delivered",
+                                        allowReceiptOnly: true,
+                                        successMessage: hasReceipt
+                                          ? "Proof of delivery replaced successfully."
+                                          : "Proof of delivery uploaded successfully.",
+                                      })
+                                    }
+                                    disabled={
+                                      savingId === delivery.id || !selectedFile
+                                    }
+                                    className={`rider-btn ${savingId === delivery.id || !selectedFile ? "rider-btn-disabled" : "rider-btn-secondary"}`}
+                                  >
+                                    {savingId === delivery.id
+                                      ? "Saving..."
+                                      : hasReceipt
+                                        ? "Replace Proof"
+                                        : "Upload Proof"}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div
+                                style={{
+                                  marginTop: "24px",
+                                  paddingTop: "16px",
+                                  borderTop: "1px dashed #e4e4e7",
                                 }}
-                                disabled={savingId === delivery.id}
-                                className={`rider-btn ${savingId === delivery.id ? "rider-btn-disabled" : "rider-btn-undo"}`}
                               >
-                                {savingId === delivery.id
-                                  ? "Undoing..."
-                                  : "Undo Delivery"}
+                                <div style={sectionTitle}>
+                                  Need Corrections?
+                                </div>
+                                <div style={helperText}>
+                                  If you accidentally marked this as delivered,
+                                  you can undo it to correct the collection
+                                  amount or proof of delivery.
+                                </div>
+                                <div className="rider-button-row">
+                                  <button
+                                    onClick={() => {
+                                      if (
+                                        window.confirm(
+                                          "Are you sure you want to undo this delivery? It will be moved back to 'In Transit'.",
+                                        )
+                                      ) {
+                                        saveDeliveryUpdate({
+                                          delivery,
+                                          nextStatus: "in_transit",
+                                          successMessage:
+                                            "Delivery reverted to In Transit successfully.",
+                                        });
+                                      }
+                                    }}
+                                    disabled={savingId === delivery.id}
+                                    className={`rider-btn ${savingId === delivery.id ? "rider-btn-disabled" : "rider-btn-undo"}`}
+                                  >
+                                    {savingId === delivery.id
+                                      ? "Undoing..."
+                                      : "Undo Delivery"}
+                                  </button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+
+                          {/* 👉 NEW: Give the rider a way to dismiss the card once completed */}
+                          {isCompleted && (
+                            <div
+                              className="rider-button-row"
+                              style={{ marginTop: 24 }}
+                            >
+                              <button
+                                onClick={() => setExpandedDeliveryId(null)}
+                                className="rider-btn rider-btn-secondary"
+                              >
+                                Dismiss
                               </button>
                             </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
+                          )}
+                        </div>
+                      </div>
+                    )}
 
-                {isFailed && (
-                  <div style={actionSection}>
-                    <div style={sectionTitle}>Delivery Failed</div>
-                    <div style={helperText}>
-                      This delivery was marked as failed. Contact the admin for
-                      reassignment or rescheduling.
-                    </div>
-                  </div>
-                )}
+                    {isFailed && (
+                      <div style={actionSection}>
+                        <div style={sectionTitle}>Delivery Failed</div>
+                        <div style={helperText}>
+                          This delivery was marked as failed. Contact the admin
+                          for reassignment or rescheduling.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -1551,9 +1567,7 @@ function ProofUploadField({
         type="file"
         accept="image/*,.pdf"
         disabled={disabled}
-        onChange={(event) =>
-          onSelect(event.target.files?.[0] || null)
-        }
+        onChange={(event) => onSelect(event.target.files?.[0] || null)}
       />
 
       <div className="rider-proof-upload-icon">

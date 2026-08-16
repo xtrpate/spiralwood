@@ -517,9 +517,7 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
                         style={{ marginBottom: 12 }}
                       >
                         <span>Receipt</span>
-                        <strong>
-                          {order.receipt.receipt_number}
-                        </strong>
+                        <strong>{order.receipt.receipt_number}</strong>
                       </div>
 
                       <button
@@ -706,15 +704,18 @@ export default function OrdersPage() {
     }
   }, []);
 
-  const confirmOrderById = async (orderId) => {
-    const ok = window.confirm(
-      "Are you sure you want to confirm that you have received this order?",
-    );
-    if (!ok) return;
+  const [orderToConfirm, setOrderToConfirm] = useState(null);
 
+  const confirmOrderById = (orderId) => {
+    setOrderToConfirm(orderId);
+  };
+
+  const executeConfirmOrder = async () => {
+    if (!orderToConfirm) return;
     try {
-      await api.put(`/customer/orders/${orderId}/confirm`);
+      await api.put(`/customer/orders/${orderToConfirm}/confirm`);
       setSelectedId(null);
+      setOrderToConfirm(null);
       fetchOrders();
     } catch {
       alert("Failed to confirm the order. Please try again.");
@@ -966,10 +967,10 @@ export default function OrdersPage() {
                           className="wisdom-order-item"
                         >
                           <div className="wisdom-order-item-image">
-                            {(item.blueprint_preview ||
-                              (order.blueprint_id &&
-                                index === 0 &&
-                                order.blueprint_preview)) ? (
+                            {item.blueprint_preview ||
+                            (order.blueprint_id &&
+                              index === 0 &&
+                              order.blueprint_preview) ? (
                               <div className="wisdom-order-blueprint-live">
                                 <CustomerBlueprintViewer
                                   blueprint={{
@@ -1039,7 +1040,8 @@ export default function OrdersPage() {
                               {item.is_custom_blueprint
                                 ? item.blueprint_title
                                   ? `Custom Blueprint – ${item.blueprint_title}`
-                                  : item.product_name || "Custom Blueprint Order"
+                                  : item.product_name ||
+                                    "Custom Blueprint Order"
                                 : order.blueprint_id
                                   ? order.blueprint_preview?.title
                                     ? `Custom Blueprint – ${order.blueprint_preview.title}`
@@ -1158,6 +1160,112 @@ export default function OrdersPage() {
           onConfirmOrder={confirmOrderById}
           onCancelOrder={cancelOrderById}
         />
+      )}
+
+      {/* WISDOM CUSTOM CONFIRM RECEIVED MODAL */}
+      {orderToConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10050,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            background: "rgba(15, 23, 42, 0.35)",
+            pointerEvents: "auto",
+          }}
+          onClick={() => setOrderToConfirm(null)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "390px",
+              background: "#ffffff",
+              border: "1px solid #d9d9dc",
+              borderRadius: 6,
+              boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
+              padding: "24px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              style={{
+                margin: 0,
+                color: "#111111",
+                fontSize: "22px",
+                fontWeight: 750,
+                lineHeight: 1.2,
+                letterSpacing: "-0.015em",
+              }}
+            >
+              Confirm Received
+            </h3>
+
+            <p
+              style={{
+                margin: "8px 0 0",
+                color: "#66666b",
+                fontSize: "14px",
+                fontWeight: 400,
+                lineHeight: 1.5,
+              }}
+            >
+              Are you sure you want to confirm that you have received this
+              order?
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "8px",
+                marginTop: "22px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setOrderToConfirm(null)}
+                style={{
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #bfc0c4",
+                  borderRadius: 6,
+                  background: "#ffffff",
+                  color: "#111111",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: 650,
+                }}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={executeConfirmOrder}
+                style={{
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #111111",
+                  borderRadius: 6,
+                  background: "#111111",
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                  fontWeight: 650,
+                }}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -696,7 +696,6 @@ exports.getAll = async (req, res) => {
       [...params, parseInt(limit), parseInt(offset)],
     );
 
-
     // WISDOM ADMIN ORDER SAVED COMPONENT PREVIEW FALLBACK V1
     const orderBlueprintIds = [
       ...new Set(
@@ -1218,10 +1217,9 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
-    const usesManagedBlueprintDeliveryFlow =
-      isBlueprintOrder && hasDeliveryRequirement;
+    const usesManagedDeliveryFlow = hasDeliveryRequirement;
 
-    if (usesManagedBlueprintDeliveryFlow && nextStatus === "shipping") {
+    if (usesManagedDeliveryFlow && nextStatus === "shipping") {
       await conn.rollback();
       return res.status(409).json({
         message:
@@ -1229,7 +1227,7 @@ exports.updateStatus = async (req, res) => {
       });
     }
 
-    if (usesManagedBlueprintDeliveryFlow && nextStatus === "delivered") {
+    if (usesManagedDeliveryFlow && nextStatus === "delivered") {
       await conn.rollback();
       return res.status(409).json({
         message:
@@ -1238,14 +1236,14 @@ exports.updateStatus = async (req, res) => {
     }
 
     if (
-      usesManagedBlueprintDeliveryFlow &&
+      usesManagedDeliveryFlow &&
       nextStatus === "completed" &&
       currentStatus !== "delivered"
     ) {
       await conn.rollback();
       return res.status(409).json({
         message:
-          "Complete the actual delivery first. A Blueprint delivery order can only be completed after Delivered.",
+          "Complete the actual delivery first. A delivery order can only be completed after Delivered.",
       });
     }
     const totalAmount = Number(order.total_amount || order.total || 0);
@@ -1722,7 +1720,10 @@ exports.accept = async (req, res) => {
           });
         }
       } catch (notificationErr) {
-        console.error("[orderController.accept notification skipped]", notificationErr.message || notificationErr);
+        console.error(
+          "[orderController.accept notification skipped]",
+          notificationErr.message || notificationErr,
+        );
       }
     }
 
@@ -1774,7 +1775,10 @@ exports.decline = async (req, res) => {
           });
         }
       } catch (notificationErr) {
-        console.error("[orderController.decline notification skipped]", notificationErr.message || notificationErr);
+        console.error(
+          "[orderController.decline notification skipped]",
+          notificationErr.message || notificationErr,
+        );
       }
 
       req.auditRecord = {
@@ -2184,21 +2188,21 @@ exports.verifyPayment = async (req, res) => {
       // WISDOM STANDARD COD / READY-TO-SHIP RECEIPT V1
       // Rider collection remains pending. Only a successful admin
       // verification reaches this branch and creates the receipt.
-      receiptResult = await ensureStandardVerifiedPaymentReceipt(
-        conn,
-        {
-          orderId: order.id,
-          paymentTransactionId: writtenPaymentTransactionId,
-          issuedByUserId: req.user.id,
-        },
-      );
+      receiptResult = await ensureStandardVerifiedPaymentReceipt(conn, {
+        orderId: order.id,
+        paymentTransactionId: writtenPaymentTransactionId,
+        issuedByUserId: req.user.id,
+      });
     }
 
     if (order.customer_id) {
-      const paymentAmountLabel = Number(targetAmount || 0).toLocaleString("en-PH", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
+      const paymentAmountLabel = Number(targetAmount || 0).toLocaleString(
+        "en-PH",
+        {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        },
+      );
       const remainingBalance = Math.max(0, totalAmount - verifiedTotal);
       const remainingBalanceLabel = remainingBalance.toLocaleString("en-PH", {
         minimumFractionDigits: 2,

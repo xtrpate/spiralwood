@@ -295,9 +295,7 @@ export default function Customer3DViewer({
     const parsed = Number(initialQuantity);
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1;
   });
-  const [comments, setComments] = useState(() =>
-    String(initialComments || ""),
-  );
+  const [comments, setComments] = useState(() => String(initialComments || ""));
   const [standardTruckLimits, setStandardTruckLimits] = useState(null);
 
   const [overallDrafts, setOverallDrafts] = useState({
@@ -2214,8 +2212,8 @@ const styles = {
   },
 
   customizeViewerShell: {
-    gridTemplateColumns: "minmax(0, 1fr) 400px",
-    height: "min(735px, calc(100vh - 128px))",
+    gridTemplateColumns: "minmax(0, 1fr) 350px",
+    height: "min(735px, calc(100vh - 178px))",
     minHeight: 0,
   },
 
