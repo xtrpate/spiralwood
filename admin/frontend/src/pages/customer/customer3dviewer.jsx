@@ -23,8 +23,8 @@ const MAX_HISTORY = 60;
 const SELECTION_COLOR = 0x38bdf8;
 const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
-/* WISDOM CUSTOMIZE GUIDED EXPERIENCE V1.0.14.10 */
-const CUSTOMIZE_GUIDE_STORAGE_KEY = "wisdom_customize_guide_seen_v1";
+/* WISDOM CUSTOMIZE GUIDED EXPERIENCE V1.0.14.11 */
+
 const CUSTOMIZE_GUIDE_STEPS = [
   {
     label: "Choose Design",
@@ -54,7 +54,7 @@ const CUSTOMIZE_GUIDE_STEPS = [
     label: "Review Design",
     title: "Review your design",
     instruction:
-      "Check the size, finish, quantity, notes, and uploaded photos before you go to the next step.",
+      "Review the size and finish of your design. Change the quantity if you want more than one piece. Notes and reference photos are optional. Use them only to show extra details or design ideas.",
   },
   {
     label: "Submit Request",
@@ -320,6 +320,7 @@ export default function Customer3DViewer({
   const labelDRef = useRef(null);
   const historyRef = useRef({ past: [], future: [] });
   const customizeFeedbackTimerRef = useRef(null);
+  const finishMenuRef = useRef(null);
 
   const [components, setComponents] = useState(() =>
     normalizeViewerComponents(initialComponents),
@@ -332,21 +333,16 @@ export default function Customer3DViewer({
   const [selectionMode, setSelectionMode] = useState(false);
   const [activeView, setActiveView] = useState("3D");
   const [customHex, setCustomHex] = useState("#1e293b");
+  const [finishMenuOpen, setFinishMenuOpen] = useState(false);
 
   const [customizeProgressStep, setCustomizeProgressStep] = useState(
     readOnly ? 1 : 2,
   );
-  const [customizeGuideStep, setCustomizeGuideStep] = useState(0);
+  const [customizeGuideStep, setCustomizeGuideStep] = useState(() =>
+    readOnly ? 0 : 1,
+  );
   const [customizeFeedback, setCustomizeFeedback] = useState("");
-  const [showCustomizeGuide, setShowCustomizeGuide] = useState(() => {
-    if (readOnly || typeof window === "undefined") return false;
-
-    try {
-      return window.localStorage.getItem(CUSTOMIZE_GUIDE_STORAGE_KEY) !== "1";
-    } catch {
-      return true;
-    }
-  });
+  const [showCustomizeGuide, setShowCustomizeGuide] = useState(() => !readOnly);
 
   const [quantity, setQuantity] = useState(() => {
     const parsed = Number(initialQuantity);
@@ -367,14 +363,8 @@ export default function Customer3DViewer({
   });
 
   const rememberCustomizeGuide = useCallback(() => {
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.setItem(CUSTOMIZE_GUIDE_STORAGE_KEY, "1");
-      } catch {
-        // Keep the guide usable even when browser storage is unavailable.
-      }
-    }
-
+    // Skip only this current customize session. Opening Customize again
+    // starts with the guide visible so first-time users are never stranded.
     setShowCustomizeGuide(false);
   }, []);
 
@@ -398,6 +388,19 @@ export default function Customer3DViewer({
       return current + 1;
     });
   }, [rememberCustomizeGuide]);
+
+  // Keep the open tutorial aligned with real completed customization steps.
+  // Manual Back/Next still lets the customer review the instructions freely.
+  useEffect(() => {
+    if (readOnly || !showCustomizeGuide) return;
+
+    const progressGuideIndex = Math.max(
+      0,
+      Math.min(CUSTOMIZE_GUIDE_STEPS.length - 1, customizeProgressStep - 1),
+    );
+
+    setCustomizeGuideStep((current) => Math.max(current, progressGuideIndex));
+  }, [customizeProgressStep, readOnly, showCustomizeGuide]);
 
   const showCustomizeFeedback = useCallback((message) => {
     if (customizeFeedbackTimerRef.current) {
@@ -602,6 +605,16 @@ export default function Customer3DViewer({
   }, [components, selectedCompIds]);
 
   const sampleSelectedPart = selectedGroup[0] || null;
+  const activeFinishId = String(
+    (sampleSelectedPart || components[0])?.finish_id ||
+      (sampleSelectedPart || components[0])?.woodFinish ||
+      (sampleSelectedPart || components[0])?.finish ||
+      "",
+  ).trim();
+
+  const activeWoodFinish = Array.isArray(WOOD_FINISHES)
+    ? WOOD_FINISHES.find((finish) => finish.id === activeFinishId) || null
+    : null;
 
   useEffect(() => {
     setOverallDrafts({
@@ -619,6 +632,24 @@ export default function Customer3DViewer({
     }
   }, [overallBounds, sampleSelectedPart, unit, convertMmToUnit]);
 
+  useEffect(() => {
+    if (!finishMenuOpen || typeof document === "undefined") return undefined;
+
+    const handleOutsideFinishMenu = (event) => {
+      if (
+        finishMenuRef.current &&
+        !finishMenuRef.current.contains(event.target)
+      ) {
+        setFinishMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideFinishMenu);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideFinishMenu);
+    };
+  }, [finishMenuOpen]);
   // THREE.JS INIT
   useEffect(() => {
     const mount = mountRef.current;
@@ -1452,8 +1483,8 @@ export default function Customer3DViewer({
       }),
     );
 
-    setCustomizeProgressStep((current) => Math.max(current, 3));
-    showCustomizeFeedback("Part size updated.");
+    setCustomizeProgressStep((current) => Math.max(current, 4));
+    showCustomizeFeedback("Part size updated. Choose a finish when ready.");
   };
 
   const handleFinishChange = (finishId) => {
@@ -1548,13 +1579,7 @@ export default function Customer3DViewer({
 
   const undoDisabled = !historyRef.current.past.length;
   const redoDisabled = !historyRef.current.future.length;
-  const activeCustomizeStep =
-    CUSTOMIZE_GUIDE_STEPS[
-      Math.max(
-        0,
-        Math.min(CUSTOMIZE_GUIDE_STEPS.length - 1, customizeProgressStep - 1),
-      )
-    ];
+
 
   return (
     <div style={styles.root}>
@@ -1977,51 +2002,6 @@ export default function Customer3DViewer({
             }}
           >
             <div style={styles.sidebarScroll}>
-              <section
-                style={{
-                  ...styles.sidebarSection,
-                  ...styles.customizeIntroSection,
-                }}
-              >
-                <div style={styles.sidebarSectionHeader}>
-                  <div style={styles.sidebarSectionTitle}>
-                    Customize Your Design
-                  </div>
-                </div>
-
-                <p style={styles.sidebarSectionNote}>
-                  Follow the highlighted section for your current step.
-                </p>
-
-                <div style={styles.customizeCurrentStepCard}>
-                  <div style={styles.customizeCurrentStepMeta}>
-                    CURRENT STEP · {customizeProgressStep} OF{" "}
-                    {CUSTOMIZE_GUIDE_STEPS.length}
-                  </div>
-                  <div style={styles.customizeCurrentStepTitle}>
-                    {activeCustomizeStep?.title}
-                  </div>
-                  <div style={styles.customizeCurrentStepInstruction}>
-                    {activeCustomizeStep?.instruction}
-                  </div>
-
-                  {customizeFeedback ? (
-                    <div
-                      style={styles.customizeFeedback}
-                      role="status"
-                      aria-live="polite"
-                    >
-                      <span style={styles.customizeFeedbackIcon}>✓</span>
-                      <span>{customizeFeedback}</span>
-                    </div>
-                  ) : null}
-                </div>
-
-                <OversizedDeliveryWarning
-                  assessment={deliveryAssessment}
-                  compact
-                />
-              </section>
 
               <div style={styles.customizeOptionalToolsHeading}>
                 <span style={styles.customizeOptionalToolsTitle}>
@@ -2036,8 +2016,7 @@ export default function Customer3DViewer({
                 style={{
                   ...styles.sidebarSection,
                   ...styles.customizeOptionalSection,
-                  ...(selectionMode ? styles.sidebarSectionActive : {}),
-                  ...(customizeProgressStep === 3
+                  ...(showCustomizeGuide && customizeGuideStep + 1 === 3
                     ? styles.customizeActiveSection
                     : {}),
                 }}
@@ -2129,7 +2108,7 @@ export default function Customer3DViewer({
                 <section
                   style={{
                     ...styles.sidebarSection,
-                    ...(customizeProgressStep === 3
+                    ...(showCustomizeGuide && customizeGuideStep + 1 === 3
                       ? styles.customizeActiveSection
                       : {}),
                   }}
@@ -2230,7 +2209,7 @@ export default function Customer3DViewer({
                   style={{
                     ...styles.sidebarSection,
                     ...styles.customizeSizeSection,
-                    ...(customizeProgressStep === 2
+                    ...(showCustomizeGuide && customizeGuideStep + 1 === 2
                       ? styles.customizeActiveSection
                       : {}),
                   }}
@@ -2305,7 +2284,7 @@ export default function Customer3DViewer({
                   ...(readOnly || !editable.finish_color
                     ? styles.sidebarSectionDisabled
                     : {}),
-                  ...(customizeProgressStep === 4
+                  ...(showCustomizeGuide && customizeGuideStep + 1 === 4
                     ? styles.customizeActiveSection
                     : {}),
                 }}
@@ -2319,18 +2298,108 @@ export default function Customer3DViewer({
 
                 <div style={styles.inputGroup}>
                   <span style={styles.dimLabel}>Wood Finish</span>
-                  <select
-                    onChange={(e) => handleFinishChange(e.target.value)}
-                    style={styles.input}
-                    disabled={readOnly || !editable.finish_color}
-                  >
-                    <option value="">Original / Custom</option>
-                    {WOOD_FINISHES?.map((finish) => (
-                      <option key={finish.id} value={finish.id}>
-                        {finish.label}
-                      </option>
-                    ))}
-                  </select>
+                  <div ref={finishMenuRef} style={styles.finishDropdown}>
+                    <button
+                      type="button"
+                      disabled={readOnly || !editable.finish_color}
+                      aria-haspopup="listbox"
+                      aria-expanded={finishMenuOpen}
+                      onClick={() => setFinishMenuOpen((open) => !open)}
+                      style={{
+                        ...styles.finishSelectButton,
+                        ...(readOnly || !editable.finish_color
+                          ? styles.finishSelectButtonDisabled
+                          : {}),
+                      }}
+                    >
+                      <span style={styles.finishOptionContent}>
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            ...styles.finishSwatch,
+                            background:
+                              activeWoodFinish?.front ||
+                              activeWoodFinish?.carcass ||
+                              "#ffffff",
+                          }}
+                        />
+                        <span style={styles.finishOptionLabel}>
+                          {activeWoodFinish?.label || "Original / Custom"}
+                        </span>
+                      </span>
+
+                      <span style={styles.finishSelectChevron}>v</span>
+                    </button>
+
+                    {finishMenuOpen ? (
+                      <div style={styles.finishMenu} role="listbox">
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={!activeFinishId}
+                          onClick={() => {
+                            handleFinishChange("");
+                            setFinishMenuOpen(false);
+                          }}
+                          style={{
+                            ...styles.finishMenuItem,
+                            ...(!activeFinishId
+                              ? styles.finishMenuItemActive
+                              : {}),
+                          }}
+                        >
+                          <span style={styles.finishOptionContent}>
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                ...styles.finishSwatch,
+                                ...styles.finishSwatchOriginal,
+                              }}
+                            />
+                            <span style={styles.finishOptionLabel}>
+                              Original / Custom
+                            </span>
+                          </span>
+                        </button>
+
+                        {WOOD_FINISHES?.map((finish) => (
+                          <button
+                            key={finish.id}
+                            type="button"
+                            role="option"
+                            aria-selected={activeFinishId === finish.id}
+                            onClick={() => {
+                              handleFinishChange(finish.id);
+                              setFinishMenuOpen(false);
+                            }}
+                            style={{
+                              ...styles.finishMenuItem,
+                              ...(activeFinishId === finish.id
+                                ? styles.finishMenuItemActive
+                                : {}),
+                            }}
+                          >
+                            <span style={styles.finishOptionContent}>
+                              <span
+                                aria-hidden="true"
+                                style={{
+                                  ...styles.finishSwatch,
+                                  background:
+                                    finish.front ||
+                                    finish.carcass ||
+                                    finish.inside ||
+                                    "#dddddd",
+                                }}
+                              />
+                              <span style={styles.finishOptionLabel}>
+                                {finish.label}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div style={styles.colorPickerRow}>
@@ -2397,7 +2466,8 @@ export default function Customer3DViewer({
               <div
                 style={{
                   ...styles.sidebarFooter,
-                  ...(customizeProgressStep === 5
+                  ...(showCustomizeGuide &&
+                  (customizeGuideStep + 1 === 5 || customizeGuideStep + 1 === 6)
                     ? styles.customizeActiveFooter
                     : {}),
                 }}
@@ -3046,12 +3116,12 @@ const styles = {
   sidebarScroll: {
     minHeight: 0,
     overflow: "visible",
-    padding: "6px 7px 5px",
+    padding: "7px 8px 6px",
     display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gridTemplateColumns: "minmax(0, 1fr)",
     gridAutoRows: "max-content",
     alignContent: "start",
-    gap: 5,
+    gap: 6,
   },
 
   uniformControlWidth: {
@@ -3283,9 +3353,9 @@ const styles = {
   },
 
   customizeActiveSection: {
-    borderColor: "#111111",
-    background: "#f7f7f7",
-    boxShadow: "inset 3px 0 0 #111111",
+    border: "2px solid #111111",
+    background: "#ffffff",
+    boxShadow: "none",
   },
 
   sidebarSectionDisabled: {
@@ -3505,6 +3575,112 @@ const styles = {
     color: "#111111",
   },
 
+  finishDropdown: {
+    position: "relative",
+    width: "100%",
+    minWidth: 0,
+    zIndex: 25,
+  },
+
+  finishSelectButton: {
+    width: "100%",
+    height: 34,
+    minHeight: 34,
+    padding: "0 8px",
+    border: "1px solid #111111",
+    borderRadius: 0,
+    background: "#ffffff",
+    color: "#111111",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    fontSize: 11.5,
+    fontWeight: 500,
+    fontFamily: "inherit",
+    cursor: "pointer",
+    boxSizing: "border-box",
+  },
+
+  finishSelectButtonDisabled: {
+    opacity: 0.55,
+    cursor: "not-allowed",
+  },
+
+  finishOptionContent: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  finishSwatch: {
+    width: 18,
+    height: 18,
+    minWidth: 18,
+    flex: "0 0 18px",
+    border: "1px solid #9ca3af",
+    boxSizing: "border-box",
+    background: "#ffffff",
+  },
+
+  finishSwatchOriginal: {
+    background:
+      "linear-gradient(135deg, #ffffff 0%, #ffffff 48%, #d1d5db 49%, #d1d5db 51%, #ffffff 52%, #ffffff 100%)",
+  },
+
+  finishOptionLabel: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    textAlign: "left",
+  },
+
+  finishSelectChevron: {
+    flex: "0 0 auto",
+    fontSize: 10,
+    fontWeight: 700,
+    lineHeight: 1,
+  },
+
+  finishMenu: {
+    position: "absolute",
+    top: "calc(100% + 2px)",
+    left: 0,
+    right: 0,
+    zIndex: 80,
+    maxHeight: 260,
+    overflowY: "auto",
+    border: "1px solid #111111",
+    background: "#ffffff",
+    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.12)",
+    padding: 0,
+  },
+
+  finishMenuItem: {
+    width: "100%",
+    minHeight: 34,
+    padding: "6px 8px",
+    border: "none",
+    borderBottom: "1px solid #eeeeee",
+    borderRadius: 0,
+    background: "#ffffff",
+    color: "#111111",
+    display: "flex",
+    alignItems: "center",
+    fontSize: 11.5,
+    fontWeight: 500,
+    fontFamily: "inherit",
+    cursor: "pointer",
+    textAlign: "left",
+    boxSizing: "border-box",
+  },
+
+  finishMenuItemActive: {
+    background: "#f3f4f6",
+    fontWeight: 700,
+  },
   colorPickerRow: {
     display: "grid",
     gridTemplateColumns: "36px minmax(0, 1fr)",
@@ -3539,8 +3715,9 @@ const styles = {
   },
 
   customizeActiveFooter: {
-    background: "#f7f7f7",
-    boxShadow: "inset 3px 0 0 #111111",
+    border: "2px solid #111111",
+    background: "#ffffff",
+    boxShadow: "none",
   },
 
   orderDetailsStackedUniform: {
