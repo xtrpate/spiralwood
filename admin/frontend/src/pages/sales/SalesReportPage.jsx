@@ -28,6 +28,31 @@ const money = (value) =>
 const quantity = (value) =>
   Number(value || 0).toLocaleString("en-PH", { maximumFractionDigits: 4 });
 
+const count = (value) =>
+  Number(value || 0).toLocaleString("en-PH", {
+    maximumFractionDigits: 0,
+  });
+
+const pdfMoney = (value) =>
+  `PHP ${Number(value || 0).toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+const percentage = (value, total) => {
+  const numerator = Number(value || 0);
+  const denominator = Number(total || 0);
+
+  if (denominator <= 0) return "0.0%";
+
+  return `${((numerator / denominator) * 100).toFixed(1)}%`;
+};
+
+const pdfText = (value) =>
+  String(value ?? "-")
+    .replace(/[–—]/g, "-")
+    .replace(/₱/g, "PHP ");
+
 const humanize = (value) =>
   String(value || "—")
     .replace(/_/g, " ")
@@ -41,6 +66,13 @@ const paymentMethodLabel = (value) => {
   if (method === "cod") return "Cash on Delivery";
   if (method === "cop") return "Cash on Pickup";
   return humanize(method);
+};
+
+const salesChannelLabel = (value) => {
+  const channel = String(value || "").trim().toLowerCase();
+  if (channel === "online") return "Online";
+  if (channel === "walkin") return "Walk-in";
+  return humanize(value);
 };
 
 const dateTime = (value) => {
@@ -175,35 +207,6 @@ export default function SalesReportPage() {
   const products = data?.products || [];
 
   const salesByChannel = data?.sales_by_channel || [];
-  const printProducts = data?.print_products || [];
-
-  const productPerformance = useMemo(() => {
-    const productMap = new Map();
-
-    printProducts.forEach((row) => {
-      const key = String(row.product_name || "—");
-
-      const existing = productMap.get(key) || {
-        product_name: key,
-        unit_price: Number(row.unit_price || 0),
-        units_sold: 0,
-        sales_amount: 0,
-      };
-
-      existing.units_sold += Number(row.units_sold || 0);
-      existing.sales_amount += Number(row.sales_amount || 0);
-
-      if (Number(row.unit_price || 0) > 0) {
-        existing.unit_price = Number(row.unit_price);
-      }
-
-      productMap.set(key, existing);
-    });
-
-    return Array.from(productMap.values()).sort(
-      (a, b) => b.sales_amount - a.sales_amount,
-    );
-  }, [printProducts]);
 
   const visibleProducts = useMemo(
     () =>
@@ -212,6 +215,29 @@ export default function SalesReportPage() {
         .slice(0, 10),
     [products],
   );
+
+  const outstandingOrders = useMemo(
+    () =>
+      orders
+        .filter((row) => Number(row?.remaining_balance || 0) > 0)
+        .sort(
+          (a, b) =>
+            Number(b?.remaining_balance || 0) -
+            Number(a?.remaining_balance || 0),
+        ),
+    [orders],
+  );
+
+  const channelOrderValueTotal = useMemo(
+    () =>
+      salesByChannel.reduce(
+        (sum, row) => sum + Number(row?.sales_revenue || 0),
+        0,
+      ),
+    [salesByChannel],
+  );
+
+  const collectionTotal = Number(summary.actual_collected || 0);
 
   const reportDateRangeLabel = useMemo(() => {
     if (period === "custom") {
@@ -265,271 +291,274 @@ export default function SalesReportPage() {
     });
 
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 14;
+    const footerY = pageHeight - 7;
+
+    doc.setProperties({
+      title: `Spiral Wood Services Sales Report - ${reportDateRangeLabel}`,
+      subject: "Sales performance and collection report",
+      author: "Spiral Wood Services",
+      creator: "WISDOM",
+    });
+
+    const tableBase = {
+      theme: "striped",
+      margin: { left: marginX, right: marginX, bottom: 15 },
+      styles: {
+        font: "helvetica",
+        fontSize: 7.6,
+        cellPadding: 2.7,
+        textColor: [45, 49, 55],
+        lineColor: [225, 228, 232],
+        lineWidth: 0.1,
+        valign: "middle",
+      },
+      headStyles: {
+        fillColor: [24, 24, 27],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        lineColor: [24, 24, 27],
+      },
+      alternateRowStyles: {
+        fillColor: [248, 248, 249],
+      },
+    };
 
     const addPageFooter = () => {
       const pageCount = doc.internal.getNumberOfPages();
+      const generatedLabel = pdfText(
+        new Date().toLocaleString("en-PH", {
+          year: "numeric",
+          month: "short",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      );
 
       for (let page = 1; page <= pageCount; page += 1) {
         doc.setPage(page);
+        doc.setDrawColor(225, 228, 232);
+        doc.line(marginX, footerY - 4, pageWidth - marginX, footerY - 4);
 
         doc.setFont("helvetica", "normal");
-        doc.setFontSize(7);
+        doc.setFontSize(6.8);
         doc.setTextColor(120, 120, 120);
-
-        doc.text(`Generated: ${new Date().toLocaleString("en-PH")}`, 14, 202);
-
-        doc.text(`Page ${page} of ${pageCount}`, pageWidth - 14, 202, {
+        doc.text(
+          `Internal Sales Report | Generated ${generatedLabel}`,
+          marginX,
+          footerY,
+        );
+        doc.text(`Page ${page} of ${pageCount}`, pageWidth - marginX, footerY, {
           align: "right",
         });
       }
     };
 
-    // -------------------------------------------------------
-    // HEADER
-    // -------------------------------------------------------
+    const addSectionTitle = (number, title, y) => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9.5);
+      doc.setTextColor(24, 24, 27);
+      doc.text(`${number}. ${title.toUpperCase()}`, marginX, y);
+      return y + 4;
+    };
+
+    const ensureSpace = (currentY, minimumHeight = 34) => {
+      if (currentY + minimumHeight <= pageHeight - 17) return currentY;
+      doc.addPage();
+      return 17;
+    };
 
     doc.setTextColor(17, 17, 17);
-
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(17);
-    doc.text("SPIRAL WOOD SERVICES", pageWidth / 2, 15, {
-      align: "center",
-    });
+    doc.setFontSize(16);
+    doc.text("SPIRAL WOOD SERVICES", marginX, 16);
 
-    doc.setFontSize(12);
-    doc.text("SALES REPORT", pageWidth / 2, 22, {
-      align: "center",
-    });
+    doc.setFontSize(11);
+    doc.text("SALES PERFORMANCE REPORT", marginX, 23);
 
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
+    doc.setFontSize(8);
+    doc.setTextColor(82, 82, 91);
+    doc.text(`Channel: ${pdfText(channelLabel)}`, marginX, 31);
+    doc.text(`Period: ${pdfText(reportDateRangeLabel)}`, marginX + 72, 31);
 
-    doc.text(`Sales Channel: ${channelLabel}`, 14, 31);
+    doc.setFontSize(7.2);
+    doc.setTextColor(113, 113, 122);
+    doc.text(
+      "Scope: priced non-cancelled orders created in the selected period; collections are verified payments recorded in the selected period.",
+      marginX,
+      37,
+    );
 
-    doc.text(`Period: ${reportDateRangeLabel}`, 14, 36);
+    doc.setDrawColor(24, 24, 27);
+    doc.setLineWidth(0.4);
+    doc.line(marginX, 41, pageWidth - marginX, 41);
 
-    // -------------------------------------------------------
-    // 1. SALES SUMMARY
-    // -------------------------------------------------------
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("1. SALES SUMMARY", 14, 47);
-
-    autoTable(doc, {
-      startY: 51,
-      head: [["Channel", "Orders", "Sales Revenue"]],
-      body: [
-        ...salesByChannel.map((row) => [
-          humanize(row.channel),
-          quantity(row.order_count),
-          money(row.sales_revenue),
-        ]),
-        [
-          "COMBINED",
-          quantity(summary.total_orders),
-          money(summary.gross_order_value),
-        ],
-      ],
-      styles: {
-        fontSize: 8,
-        cellPadding: 3,
-      },
-      headStyles: {
-        fillColor: [24, 24, 27],
-        textColor: 255,
-        fontStyle: "bold",
-      },
-      didParseCell: (hookData) => {
-        if (
-          hookData.section === "body" &&
-          hookData.row.index === salesByChannel.length
-        ) {
-          hookData.cell.styles.fontStyle = "bold";
-        }
-      },
-    });
-
-    // -------------------------------------------------------
-    // KEY FINANCIAL FIGURES
-    // -------------------------------------------------------
-
-    let currentY = doc.lastAutoTable.finalY + 8;
+    let currentY = addSectionTitle(1, "Financial Overview", 49);
 
     autoTable(doc, {
+      ...tableBase,
       startY: currentY,
       head: [
         [
-          "Total Sales",
-          "Collected Payments",
-          "Outstanding Balance",
-          "Orders",
-          "Average Order Value",
+          "Order Value",
+          "Verified Collections",
+          "Balance Due",
+          "Sales Orders",
+          "Avg. Order Value",
         ],
       ],
       body: [
         [
-          money(summary.gross_order_value),
-          money(summary.actual_collected),
-          money(summary.outstanding_balance),
-          quantity(summary.total_orders),
-          money(summary.avg_order_value),
+          pdfMoney(summary.gross_order_value),
+          pdfMoney(summary.actual_collected),
+          pdfMoney(summary.outstanding_balance),
+          count(summary.total_orders),
+          pdfMoney(summary.avg_order_value),
         ],
       ],
       styles: {
-        fontSize: 8,
-        cellPadding: 3,
+        ...tableBase.styles,
         halign: "center",
+        fontSize: 8,
+        cellPadding: 3.3,
       },
-      headStyles: {
-        fillColor: [39, 39, 42],
-        textColor: 255,
+      bodyStyles: {
         fontStyle: "bold",
+        textColor: [24, 24, 27],
       },
     });
 
-    // -------------------------------------------------------
-    // 2. PRODUCT SALES
-    // -------------------------------------------------------
-
-    currentY = doc.lastAutoTable.finalY + 10;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("2. PRODUCT SALES", 14, currentY);
+    currentY = doc.lastAutoTable.finalY + 9;
+    currentY = ensureSpace(currentY, 38);
+    currentY = addSectionTitle(2, "Sales by Channel", currentY);
 
     autoTable(doc, {
-      startY: currentY + 4,
-      head: [["Product", "Channel", "Unit Price", "Qty", "Sales Amount"]],
+      ...tableBase,
+      startY: currentY,
+      head: [["Channel", "Sales Orders", "Order Value", "Share of Order Value"]],
+      body: salesByChannel.map((row) => [
+        salesChannelLabel(row.channel),
+        count(row.order_count),
+        pdfMoney(row.sales_revenue),
+        percentage(row.sales_revenue, channelOrderValueTotal),
+      ]),
+      columnStyles: {
+        1: { halign: "right" },
+        2: { halign: "right" },
+        3: { halign: "right" },
+      },
+    });
+
+    currentY = doc.lastAutoTable.finalY + 9;
+    currentY = ensureSpace(currentY, 55);
+    currentY = addSectionTitle(3, "Top Products by Order Value", currentY);
+
+    autoTable(doc, {
+      ...tableBase,
+      startY: currentY,
+      head: [["Product", "Units Ordered", "Order Value", "Share of Order Value"]],
       body:
-        printProducts.length > 0
-          ? printProducts.map((row) => [
-              row.product_name || "—",
-              humanize(row.channel),
-              money(row.unit_price),
+        visibleProducts.length > 0
+          ? visibleProducts.map((row) => [
+              pdfText(row.product_name || "-"),
               quantity(row.units_sold),
-              money(row.sales_amount),
+              pdfMoney(row.gross_order_value),
+              percentage(row.gross_order_value, summary.gross_order_value),
             ])
-          : [["No product sales for this period.", "", "", "", ""]],
-      styles: {
-        fontSize: 7.5,
-        cellPadding: 3,
-      },
-      headStyles: {
-        fillColor: [39, 39, 42],
-        textColor: 255,
-        fontStyle: "bold",
+          : [["No priced product sales for this period.", "", "", ""]],
+      columnStyles: {
+        1: { halign: "right" },
+        2: { halign: "right" },
+        3: { halign: "right" },
       },
     });
 
-    // -------------------------------------------------------
-    // 3. PRODUCT PERFORMANCE
-    // -------------------------------------------------------
-
-    currentY = doc.lastAutoTable.finalY + 10;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("3. PRODUCT PERFORMANCE", 14, currentY);
+    currentY = doc.lastAutoTable.finalY + 9;
+    currentY = ensureSpace(currentY, 42);
+    currentY = addSectionTitle(4, "Payment Collections", currentY);
 
     autoTable(doc, {
-      startY: currentY + 4,
-      head: [["Product", "Unit Price", "Total Qty", "Total Sales"]],
-      body:
-        productPerformance.length > 0
-          ? productPerformance.map((row) => [
-              row.product_name,
-              money(row.unit_price),
-              quantity(row.units_sold),
-              money(row.sales_amount),
-            ])
-          : [["No product sales for this period.", "", "", ""]],
-      styles: {
-        fontSize: 7.5,
-        cellPadding: 3,
-      },
-      headStyles: {
-        fillColor: [39, 39, 42],
-        textColor: 255,
-        fontStyle: "bold",
-      },
-    });
-
-    // -------------------------------------------------------
-    // 4. PAYMENT SUMMARY
-    // -------------------------------------------------------
-
-    currentY = doc.lastAutoTable.finalY + 10;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("4. PAYMENT SUMMARY", 14, currentY);
-
-    autoTable(doc, {
-      startY: currentY + 4,
-      head: [["Payment Method", "Transactions", "Collected Amount"]],
+      ...tableBase,
+      startY: currentY,
+      head: [
+        [
+          "Payment Method",
+          "Verified Payments",
+          "Collected Amount",
+          "Share of Collections",
+        ],
+      ],
       body:
         paymentMethods.length > 0
           ? paymentMethods.map((row) => [
-              paymentMethodLabel(row.payment_method),
-              quantity(row.transaction_count),
-              money(row.total_amount),
+              pdfText(paymentMethodLabel(row.payment_method)),
+              count(row.transaction_count),
+              pdfMoney(row.total_amount),
+              percentage(row.total_amount, collectionTotal),
             ])
-          : [["No verified payments", "", ""]],
-      styles: {
-        fontSize: 7.5,
-        cellPadding: 3,
-      },
-      headStyles: {
-        fillColor: [39, 39, 42],
-        textColor: 255,
-        fontStyle: "bold",
+          : [["No verified payments for this period.", "", "", ""]],
+      columnStyles: {
+        1: { halign: "right" },
+        2: { halign: "right" },
+        3: { halign: "right" },
       },
     });
 
-    // -------------------------------------------------------
-    // 5. ORDER BALANCES
-    // -------------------------------------------------------
-
-    currentY = doc.lastAutoTable.finalY + 10;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("5. ORDER BALANCES", 14, currentY);
+    currentY = doc.lastAutoTable.finalY + 9;
+    currentY = ensureSpace(currentY, 48);
+    currentY = addSectionTitle(5, "Outstanding Balances", currentY);
 
     autoTable(doc, {
-      startY: currentY + 4,
+      ...tableBase,
+      startY: currentY,
       head: [
         [
-          "Order ID",
+          "Order Number",
           "Customer",
           "Channel",
+          "Order Type",
           "Order Value",
-          "Collected",
-          "Balance",
+          "Paid to Date",
+          "Balance Due",
           "Payment Status",
         ],
       ],
       body:
-        orders.length > 0
-          ? orders.map((row) => [
-              row.order_number || `#${row.id}`,
-              row.customer_name || "—",
-              humanize(row.channel),
-              money(row.total_amount),
-              money(row.collected_this_period),
-              money(row.remaining_balance),
+        outstandingOrders.length > 0
+          ? outstandingOrders.map((row) => [
+              pdfText(row.order_number || `#${row.id}`),
+              pdfText(row.customer_name || "-"),
+              salesChannelLabel(row.channel),
+              humanize(row.order_type),
+              pdfMoney(row.total_amount),
+              pdfMoney(row.lifetime_collected),
+              pdfMoney(row.remaining_balance),
               humanize(row.payment_status),
             ])
-          : [["No matching orders.", "", "", "", "", "", ""]],
+          : [
+              [
+                "No outstanding balances for the selected report scope.",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+              ],
+            ],
       styles: {
-        fontSize: 7,
-        cellPadding: 2.5,
+        ...tableBase.styles,
+        fontSize: 6.9,
+        cellPadding: 2.3,
       },
-      headStyles: {
-        fillColor: [39, 39, 42],
-        textColor: 255,
-        fontStyle: "bold",
+      columnStyles: {
+        4: { halign: "right" },
+        5: { halign: "right" },
+        6: { halign: "right" },
       },
     });
 
@@ -547,8 +576,8 @@ export default function SalesReportPage() {
         <div>
           <h1>Sales Report</h1>
           <p>
-            Review order value, collected payments, balances, and sales
-            performance.
+            Review priced sales orders, verified collections, outstanding
+            balances, and product performance.
           </p>
         </div>
 
@@ -643,38 +672,38 @@ export default function SalesReportPage() {
             <SummaryCard
               label="Order Value"
               value={money(summary.gross_order_value)}
-              note="Non-cancelled orders in this period"
+              note="Priced, non-cancelled orders in this period"
             />
             <SummaryCard
-              label="Collected Payments"
+              label="Verified Collections"
               value={money(summary.actual_collected)}
-              note={`${summary.collection_count || 0} verified payment${
+              note={`${count(summary.collection_count)} verified payment${
                 Number(summary.collection_count || 0) === 1 ? "" : "s"
-              }`}
+              } in this period`}
             />
             <SummaryCard
-              label="Outstanding Balance"
+              label="Balance Due"
               value={money(summary.outstanding_balance)}
-              note="Remaining unpaid amount"
+              note="Current unpaid balance on included sales orders"
             />
             <SummaryCard
-              label="Orders"
-              value={summary.total_orders || 0}
-              note="Non-cancelled orders"
+              label="Sales Orders"
+              value={count(summary.total_orders)}
+              note="Priced, non-cancelled orders"
             />
             <SummaryCard
-              label="Average Order Value"
+              label="Avg. Order Value"
               value={money(summary.avg_order_value)}
-              note="Average value per order"
+              note="Average value of included sales orders"
             />
           </div>
 
           <section className="sales-card sales-table-card">
             <SectionHeader
-              title="Recent Payments"
-              subtitle={`${collections.length} verified payment${
+              title="Verified Payments"
+              subtitle={`${count(collections.length)} verified payment${
                 collections.length === 1 ? "" : "s"
-              } in the selected period`}
+              } recorded in the selected period`}
             />
 
             <div className="sales-table-scroll sales-table-scroll-payments">
@@ -682,8 +711,8 @@ export default function SalesReportPage() {
                 <thead>
                   <tr>
                     <th>Payment Date</th>
-                    <th>Receipt</th>
-                    <th>Order ID</th>
+                    <th>Receipt Number</th>
+                    <th>Order Number</th>
                     <th>Customer</th>
                     <th>Payment Method</th>
                     <th className="sales-align-right">Amount</th>
@@ -728,20 +757,21 @@ export default function SalesReportPage() {
 
           <section className="sales-card sales-table-card">
             <SectionHeader
-              title="Orders and Balances"
-              subtitle="Order values, payments collected in this report period, and current remaining balances"
+              title="Order Financial Status"
+              subtitle="Order value, total verified payments to date, current balance, and status"
             />
 
             <div className="sales-table-scroll sales-table-scroll-orders">
               <table className="sales-table sales-orders-table">
                 <thead>
                   <tr>
-                    <th>Order ID</th>
+                    <th>Order Number</th>
                     <th>Customer</th>
-                    <th>Sales Type</th>
+                    <th>Channel</th>
+                    <th>Order Type</th>
                     <th className="sales-align-right">Order Value</th>
-                    <th className="sales-align-right">Collected</th>
-                    <th className="sales-align-right">Balance</th>
+                    <th className="sales-align-right">Paid to Date</th>
+                    <th className="sales-align-right">Balance Due</th>
                     <th>Payment Status</th>
                     <th>Order Status</th>
                   </tr>
@@ -749,8 +779,8 @@ export default function SalesReportPage() {
                 <tbody>
                   {orders.length === 0 ? (
                     <EmptyRow
-                      colSpan={8}
-                      text="No matching orders for this period."
+                      colSpan={9}
+                      text="No matching priced sales orders for this period."
                     />
                   ) : (
                     orders.map((row) => (
@@ -763,14 +793,13 @@ export default function SalesReportPage() {
                           {row.order_number || `#${row.id}`}
                         </td>
                         <td>{row.customer_name || "—"}</td>
-                        <td>
-                          {humanize(row.channel)} · {humanize(row.order_type)}
-                        </td>
+                        <td>{salesChannelLabel(row.channel)}</td>
+                        <td>{humanize(row.order_type)}</td>
                         <td className="sales-align-right">
                           {money(row.total_amount)}
                         </td>
                         <td className="sales-align-right sales-key-amount">
-                          {money(row.collected_this_period)}
+                          {money(row.lifetime_collected)}
                         </td>
                         <td className="sales-align-right">
                           {money(row.remaining_balance)}
@@ -790,10 +819,36 @@ export default function SalesReportPage() {
           </section>
 
           <div className="sales-bottom-grid">
+            <section className="sales-card sales-channel-card">
+              <SectionHeader
+                title="Sales by Channel"
+                subtitle="Priced sales orders by sales channel"
+              />
+
+              <div className="sales-channel-list">
+                {salesByChannel.map((row) => (
+                  <div key={row.channel} className="sales-channel-row">
+                    <div>
+                      <div className="sales-channel-name">
+                        {salesChannelLabel(row.channel)}
+                      </div>
+                      <div className="sales-channel-meta">
+                        {count(row.order_count)} sales order
+                        {Number(row.order_count || 0) === 1 ? "" : "s"}
+                      </div>
+                    </div>
+                    <div className="sales-channel-amount">
+                      {money(row.sales_revenue)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
             <section className="sales-card sales-payment-method-card">
               <SectionHeader
-                title="Payments by Method"
-                subtitle="Verified payments in the selected period"
+                title="Collection Breakdown"
+                subtitle="Verified collections by payment method"
               />
 
               <div className="sales-payment-method-list">
@@ -812,7 +867,7 @@ export default function SalesReportPage() {
                           {paymentMethodLabel(row.payment_method)}
                         </div>
                         <div className="sales-payment-method-meta">
-                          {row.transaction_count} payment
+                          {count(row.transaction_count)} verified payment
                           {Number(row.transaction_count || 0) === 1 ? "" : "s"}
                         </div>
                       </div>
@@ -827,8 +882,8 @@ export default function SalesReportPage() {
 
             <section className="sales-card sales-top-products-card">
               <SectionHeader
-                title="Top Products"
-                subtitle="Highest order value in the selected period"
+                title="Top Products by Order Value"
+                subtitle="Highest-value products from priced sales orders"
               />
 
               <div className="sales-table-scroll sales-table-scroll-products">
@@ -836,7 +891,7 @@ export default function SalesReportPage() {
                   <thead>
                     <tr>
                       <th>Product</th>
-                      <th className="sales-align-right">Units</th>
+                      <th className="sales-align-right">Units Ordered</th>
                       <th className="sales-align-right">Order Value</th>
                     </tr>
                   </thead>
@@ -844,7 +899,7 @@ export default function SalesReportPage() {
                     {visibleProducts.length === 0 ? (
                       <EmptyRow
                         colSpan={3}
-                        text="No product order value for this period."
+                        text="No priced product sales for this period."
                       />
                     ) : (
                       visibleProducts.map((row, index) => (
@@ -855,7 +910,7 @@ export default function SalesReportPage() {
                           <td className="sales-align-right">
                             {quantity(row.units_sold)}
                           </td>
-                          <td className="sales-align-right">
+                          <td className="sales-align-right sales-key-amount">
                             {money(row.gross_order_value)}
                           </td>
                         </tr>
@@ -873,73 +928,44 @@ export default function SalesReportPage() {
       <div className="sales-print-report">
         <div className="sales-print-header">
           <h1>SPIRAL WOOD SERVICES</h1>
-          <h2>SALES REPORT</h2>
+          <h2>SALES PERFORMANCE REPORT</h2>
 
           <div className="sales-print-meta">
             <span>
-              <strong>Sales Channel:</strong> {channelLabel}
+              <strong>Channel:</strong> {channelLabel}
             </span>
-
             <span>
               <strong>Period:</strong> {reportDateRangeLabel}
             </span>
-
             <span>
               <strong>Generated:</strong> {new Date().toLocaleString("en-PH")}
             </span>
           </div>
+
+          <p className="sales-print-scope">
+            Priced non-cancelled orders created in the selected period.
+            Collections are verified payments recorded in the selected period.
+          </p>
         </div>
 
         <section className="sales-print-section">
-          <h3>1. Sales Summary</h3>
-
+          <h3>1. Financial Overview</h3>
           <table>
             <thead>
               <tr>
-                <th>Channel</th>
-                <th>Orders</th>
-                <th>Sales Revenue</th>
+                <th>Order Value</th>
+                <th>Verified Collections</th>
+                <th>Balance Due</th>
+                <th>Sales Orders</th>
+                <th>Avg. Order Value</th>
               </tr>
             </thead>
-
-            <tbody>
-              {salesByChannel.map((row) => (
-                <tr key={row.channel}>
-                  <td>{humanize(row.channel)}</td>
-                  <td>{quantity(row.order_count)}</td>
-                  <td>{money(row.sales_revenue)}</td>
-                </tr>
-              ))}
-
-              <tr className="sales-print-total-row">
-                <td>Combined</td>
-                <td>{quantity(summary.total_orders)}</td>
-                <td>{money(summary.gross_order_value)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-
-        <section className="sales-print-section">
-          <h3>Financial Summary</h3>
-
-          <table>
-            <thead>
-              <tr>
-                <th>Total Sales</th>
-                <th>Collected Payments</th>
-                <th>Outstanding Balance</th>
-                <th>Orders</th>
-                <th>Average Order Value</th>
-              </tr>
-            </thead>
-
             <tbody>
               <tr>
                 <td>{money(summary.gross_order_value)}</td>
                 <td>{money(summary.actual_collected)}</td>
                 <td>{money(summary.outstanding_balance)}</td>
-                <td>{quantity(summary.total_orders)}</td>
+                <td>{count(summary.total_orders)}</td>
                 <td>{money(summary.avg_order_value)}</td>
               </tr>
             </tbody>
@@ -947,66 +973,59 @@ export default function SalesReportPage() {
         </section>
 
         <section className="sales-print-section">
-          <h3>2. Product Sales</h3>
-
+          <h3>2. Sales by Channel</h3>
           <table>
             <thead>
               <tr>
-                <th>Product</th>
                 <th>Channel</th>
-                <th>Unit Price</th>
-                <th>Qty</th>
-                <th>Sales Amount</th>
+                <th>Sales Orders</th>
+                <th>Order Value</th>
+                <th>Share of Order Value</th>
               </tr>
             </thead>
-
             <tbody>
-              {printProducts.length === 0 ? (
-                <tr>
-                  <td colSpan="5">No product sales for this period.</td>
+              {salesByChannel.map((row) => (
+                <tr key={row.channel}>
+                  <td>{salesChannelLabel(row.channel)}</td>
+                  <td>{count(row.order_count)}</td>
+                  <td>{money(row.sales_revenue)}</td>
+                  <td>
+                    {percentage(row.sales_revenue, channelOrderValueTotal)}
+                  </td>
                 </tr>
-              ) : (
-                printProducts.map((row, index) => (
-                  <tr
-                    key={`${row.product_name}-${row.channel}-${row.unit_price}-${index}`}
-                  >
-                    <td>{row.product_name || "—"}</td>
-                    <td>{humanize(row.channel)}</td>
-                    <td>{money(row.unit_price)}</td>
-                    <td>{quantity(row.units_sold)}</td>
-                    <td>{money(row.sales_amount)}</td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
         </section>
 
         <section className="sales-print-section">
-          <h3>3. Product Performance</h3>
-
+          <h3>3. Top Products by Order Value</h3>
           <table>
             <thead>
               <tr>
                 <th>Product</th>
-                <th>Unit Price</th>
-                <th>Total Qty</th>
-                <th>Total Sales</th>
+                <th>Units Ordered</th>
+                <th>Order Value</th>
+                <th>Share of Order Value</th>
               </tr>
             </thead>
-
             <tbody>
-              {productPerformance.length === 0 ? (
+              {visibleProducts.length === 0 ? (
                 <tr>
-                  <td colSpan="4">No product sales for this period.</td>
+                  <td colSpan="4">No priced product sales for this period.</td>
                 </tr>
               ) : (
-                productPerformance.map((row) => (
-                  <tr key={row.product_name}>
-                    <td>{row.product_name}</td>
-                    <td>{money(row.unit_price)}</td>
+                visibleProducts.map((row, index) => (
+                  <tr key={`${row.product_name}-${index}`}>
+                    <td>{row.product_name || "—"}</td>
                     <td>{quantity(row.units_sold)}</td>
-                    <td>{money(row.sales_amount)}</td>
+                    <td>{money(row.gross_order_value)}</td>
+                    <td>
+                      {percentage(
+                        row.gross_order_value,
+                        summary.gross_order_value,
+                      )}
+                    </td>
                   </tr>
                 ))
               )}
@@ -1015,28 +1034,28 @@ export default function SalesReportPage() {
         </section>
 
         <section className="sales-print-section">
-          <h3>4. Payment Summary</h3>
-
+          <h3>4. Payment Collections</h3>
           <table>
             <thead>
               <tr>
                 <th>Payment Method</th>
-                <th>Transactions</th>
+                <th>Verified Payments</th>
                 <th>Collected Amount</th>
+                <th>Share of Collections</th>
               </tr>
             </thead>
-
             <tbody>
               {paymentMethods.length === 0 ? (
                 <tr>
-                  <td colSpan="3">No verified payments for this period.</td>
+                  <td colSpan="4">No verified payments for this period.</td>
                 </tr>
               ) : (
                 paymentMethods.map((row) => (
                   <tr key={row.payment_method}>
                     <td>{paymentMethodLabel(row.payment_method)}</td>
-                    <td>{quantity(row.transaction_count)}</td>
+                    <td>{count(row.transaction_count)}</td>
                     <td>{money(row.total_amount)}</td>
+                    <td>{percentage(row.total_amount, collectionTotal)}</td>
                   </tr>
                 ))
               )}
@@ -1045,34 +1064,36 @@ export default function SalesReportPage() {
         </section>
 
         <section className="sales-print-section">
-          <h3>5. Order Balances</h3>
-
+          <h3>5. Outstanding Balances</h3>
           <table>
             <thead>
               <tr>
-                <th>Order ID</th>
+                <th>Order Number</th>
                 <th>Customer</th>
                 <th>Channel</th>
+                <th>Order Type</th>
                 <th>Order Value</th>
-                <th>Collected</th>
-                <th>Balance</th>
+                <th>Paid to Date</th>
+                <th>Balance Due</th>
                 <th>Payment Status</th>
               </tr>
             </thead>
-
             <tbody>
-              {orders.length === 0 ? (
+              {outstandingOrders.length === 0 ? (
                 <tr>
-                  <td colSpan="7">No matching orders for this period.</td>
+                  <td colSpan="8">
+                    No outstanding balances for the selected report scope.
+                  </td>
                 </tr>
               ) : (
-                orders.map((row) => (
+                outstandingOrders.map((row) => (
                   <tr key={row.id}>
                     <td>{row.order_number || `#${row.id}`}</td>
                     <td>{row.customer_name || "—"}</td>
-                    <td>{humanize(row.channel)}</td>
+                    <td>{salesChannelLabel(row.channel)}</td>
+                    <td>{humanize(row.order_type)}</td>
                     <td>{money(row.total_amount)}</td>
-                    <td>{money(row.collected_this_period)}</td>
+                    <td>{money(row.lifetime_collected)}</td>
                     <td>{money(row.remaining_balance)}</td>
                     <td>{humanize(row.payment_status)}</td>
                   </tr>
@@ -1083,11 +1104,11 @@ export default function SalesReportPage() {
         </section>
 
         <div className="sales-print-footer">
-          Prepared by Sales Reporting System
+          Internal sales report · Spiral Wood Services
         </div>
       </div>
     </div>
   );
 }
 
-// WISDOM SALES REPORT PROFESSIONAL UI V1
+// WISDOM SALES REPORT PROFESSIONAL MANAGEMENT REPORT V2
