@@ -5,14 +5,16 @@
 
 const blueprintStyles = {
   toolBtn: {
-    padding: "5px 12px",
+    minHeight: 32,
+    padding: "0 11px",
     background: "#2d4a6e",
     color: "#fff",
     border: "none",
-    borderRadius: 7,
+    borderRadius: 2,
     cursor: "pointer",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 500,
+    lineHeight: 1,
     whiteSpace: "nowrap",
     userSelect: "none",
     WebkitUserSelect: "none",
@@ -144,7 +146,7 @@ const blueprintStyles = {
 
   floatingTitle: {
     fontSize: 12,
-    fontWeight: 800,
+    fontWeight: 700,
     color: "#e5efff",
     textTransform: "uppercase",
     letterSpacing: 1.2,
@@ -154,7 +156,7 @@ const blueprintStyles = {
   },
   floatingSectionLabel: {
     fontSize: 10,
-    fontWeight: 700,
+    fontWeight: 600,
     color: "#64748b",
     textTransform: "uppercase",
     letterSpacing: 1,
@@ -170,9 +172,10 @@ const blueprintStyles = {
     border: "1px solid rgba(55,78,112,.55)",
     background:
       "linear-gradient(180deg, rgba(10,19,36,.98) 0%, rgba(8,15,29,.98) 100%)",
-    borderRadius: 10,
+    borderRadius: 2,
     cursor: "pointer",
     fontSize: 11,
+    fontWeight: 500,
     color: "#dbe7ff",
     display: "flex",
     alignItems: "center",
@@ -188,11 +191,11 @@ const blueprintStyles = {
     padding: "9px 10px",
     border: "1px solid rgba(96,165,250,.55)",
     background: "linear-gradient(180deg, #2f6df6 0%, #1d4ed8 100%)",
-    borderRadius: 10,
+    borderRadius: 2,
     cursor: "pointer",
     fontSize: 11,
     color: "#ffffff",
-    fontWeight: 700,
+    fontWeight: 600,
     display: "flex",
     alignItems: "center",
     gap: 8,
@@ -216,6 +219,7 @@ const blueprintStyles = {
   floatingLabel: {
     display: "block",
     fontSize: 10,
+    fontWeight: 500,
     color: "#94a3b8",
     marginBottom: 3,
     userSelect: "none",
@@ -258,16 +262,16 @@ const blueprintStyles = {
     WebkitUserSelect: "none",
   },
   unityToolBtn: {
-    width: 44,
-    height: 40,
+    width: 42,
+    height: 38,
     padding: 0,
     border: "1px solid #4a5d76",
     background: "#111c2c",
     color: "#f8fbff",
     borderRadius: 0,
     cursor: "pointer",
-    fontSize: 20,
-    fontWeight: 800,
+    fontSize: 18,
+    fontWeight: 600,
     lineHeight: 1,
     display: "flex",
     alignItems: "center",
@@ -303,7 +307,7 @@ const blueprintStyles = {
 
   smartActionsTitle: {
     fontSize: 11,
-    fontWeight: 800,
+    fontWeight: 700,
     color: "#e5efff",
     textTransform: "uppercase",
     letterSpacing: 1.1,
@@ -317,7 +321,7 @@ const blueprintStyles = {
   },
   smartActionsSectionLabel: {
     fontSize: 10,
-    fontWeight: 700,
+    fontWeight: 600,
     color: "#64748b",
     textTransform: "uppercase",
     letterSpacing: 1,
@@ -360,13 +364,13 @@ const blueprintStyles = {
   smartActionBtn: {
     minHeight: 32,
     padding: "0 8px",
-    borderRadius: 8,
+    borderRadius: 2,
     border: "1px solid rgba(71,85,105,.72)",
     background:
       "linear-gradient(180deg, rgba(30,41,59,.96) 0%, rgba(15,23,42,.96) 100%)",
     color: "#e2e8f0",
     fontSize: 10,
-    fontWeight: 700,
+    fontWeight: 600,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -374,7 +378,7 @@ const blueprintStyles = {
   smartActionBtnWarn: {
     minHeight: 32,
     padding: "0 8px",
-    borderRadius: 8,
+    borderRadius: 2,
     border: "1px solid rgba(245,158,11,.45)",
     background:
       "linear-gradient(180deg, rgba(120,53,15,.96) 0%, rgba(69,26,3,.96) 100%)",
@@ -424,9 +428,9 @@ const blueprintStyles = {
     position: "absolute",
     top: 16,
     left: 18,
-    height: 40,
-    padding: "0 14px",
-    borderRadius: 12,
+    height: 36,
+    padding: "0 12px",
+    borderRadius: 2,
     border: "1px solid rgba(96,165,250,.2)",
     background: "rgba(20,29,46,.95)",
     color: "#eef4ff",
@@ -436,8 +440,8 @@ const blueprintStyles = {
     cursor: "pointer",
     boxShadow: "0 10px 24px rgba(0,0,0,.26)",
     backdropFilter: "blur(8px)",
-    fontSize: 12,
-    fontWeight: 700,
+    fontSize: 11,
+    fontWeight: 600,
     zIndex: 6,
     userSelect: "none",
     WebkitUserSelect: "none",
@@ -500,7 +504,7 @@ const blueprintStyles = {
     border: "1px solid rgba(51,65,85,.76)",
     background:
       "linear-gradient(180deg, rgba(7,14,26,.96) 0%, rgba(5,11,21,.96) 100%)",
-    borderRadius: 12,
+    borderRadius: 2,
     padding: 6,
     boxSizing: "border-box",
   },
@@ -520,7 +524,7 @@ const blueprintStyles = {
 
   librarySectionToggleTitle: {
     fontSize: 10,
-    fontWeight: 800,
+    fontWeight: 600,
     color: "#94a3b8",
     textTransform: "uppercase",
     letterSpacing: 1.1,
@@ -596,9 +600,9 @@ const blueprintStyles = {
   },
 
   libraryCloseBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 2,
     border: "1px solid rgba(148,163,184,.14)",
     background: "rgba(15,23,42,.9)",
     color: "#d7e3f7",
@@ -613,7 +617,7 @@ const blueprintStyles = {
     height: 34,
     padding: "0 10px",
     border: "1px solid rgba(71,85,105,.72)",
-    borderRadius: 10,
+    borderRadius: 2,
     fontSize: 12,
     background: "rgba(8,17,32,.96)",
     color: "#e2e8f0",
@@ -631,13 +635,13 @@ const blueprintStyles = {
   libraryTabBtn: {
     height: 32,
     padding: "0 8px",
-    borderRadius: 9,
+    borderRadius: 2,
     border: "1px solid rgba(71,85,105,.72)",
     background: "rgba(11,20,36,.9)",
     color: "#b7c5da",
     cursor: "pointer",
     fontSize: 10,
-    fontWeight: 700,
+    fontWeight: 500,
   },
 
   libraryTabBtnActive: {
@@ -645,6 +649,7 @@ const blueprintStyles = {
     background:
       "linear-gradient(180deg, rgba(37,99,235,.28) 0%, rgba(29,78,216,.2) 100%)",
     color: "#eef4ff",
+    fontWeight: 700,
     boxShadow: "inset 0 0 0 1px rgba(147,197,253,.08)",
   },
 

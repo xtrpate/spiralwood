@@ -27,7 +27,13 @@ export function BlueprintEditorHeader({
 }) {
   const headerToolBtn = {
     ...S.toolBtn,
-    borderRadius: 0,
+    minHeight: 32,
+    padding: "0 11px",
+    borderRadius: 2,
+    fontSize: 11,
+    fontWeight: 500,
+    lineHeight: 1,
+    boxShadow: "none",
   };
 
   return (
@@ -67,7 +73,7 @@ export function BlueprintEditorHeader({
         <div style={{ minWidth: 180 }}>
           <div
             style={{
-              fontWeight: 800,
+              fontWeight: 700,
               fontSize: 16,
               color: "#0a0a0a",
               letterSpacing: "-0.01em",
@@ -80,8 +86,8 @@ export function BlueprintEditorHeader({
             style={{
               marginTop: 2,
               fontSize: 10,
-              fontWeight: 800,
-              letterSpacing: "0.12em",
+              fontWeight: 600,
+              letterSpacing: "0.1em",
               textTransform: "uppercase",
               color: "#71717a",
             }}
@@ -111,7 +117,7 @@ export function BlueprintEditorHeader({
                 ...headerToolBtn,
                 background: view === v.key ? "#111827" : "transparent",
                 color: view === v.key ? "#ffffff" : "#52525b",
-                fontWeight: view === v.key ? 800 : 600,
+                fontWeight: view === v.key ? 700 : 500,
                 padding: "7px 13px",
                 border: "none",
                 boxShadow:
@@ -142,9 +148,9 @@ export function BlueprintEditorHeader({
               background: "#f7f8fa",
               color: "#18181b",
               fontSize: 11,
-              fontWeight: 800,
-              letterSpacing: "0.08em",
-              borderRadius: 0,
+              fontWeight: 700,
+              letterSpacing: "0.06em",
+              borderRadius: 2,
             }}
           >
             MM
@@ -197,8 +203,8 @@ export function BlueprintEditorHeader({
             <span
               style={{
                 fontSize: 9,
-                fontWeight: 800,
-                letterSpacing: "0.12em",
+                fontWeight: 600,
+                letterSpacing: "0.1em",
                 color: "#8a9099",
               }}
             >
@@ -227,7 +233,7 @@ export function BlueprintEditorHeader({
                     background:
                       editorMode === mode ? "#111827" : "transparent",
                     color: editorMode === mode ? "#ffffff" : "#52525b",
-                    fontWeight: editorMode === mode ? 800 : 600,
+                    fontWeight: editorMode === mode ? 700 : 500,
                     padding: "7px 12px",
                     border: "none",
                   }}
@@ -250,8 +256,8 @@ export function BlueprintEditorHeader({
             <span
               style={{
                 fontSize: 9,
-                fontWeight: 800,
-                letterSpacing: "0.12em",
+                fontWeight: 600,
+                letterSpacing: "0.1em",
                 color: "#8a9099",
               }}
             >
@@ -326,8 +332,8 @@ export function BlueprintEditorHeader({
             <span
               style={{
                 fontSize: 9,
-                fontWeight: 800,
-                letterSpacing: "0.12em",
+                fontWeight: 600,
+                letterSpacing: "0.1em",
                 color: "#8a9099",
               }}
             >
@@ -370,8 +376,8 @@ export function BlueprintEditorHeader({
             <span
               style={{
                 fontSize: 9,
-                fontWeight: 800,
-                letterSpacing: "0.12em",
+                fontWeight: 600,
+                letterSpacing: "0.1em",
                 color: "#8a9099",
               }}
             >
@@ -388,7 +394,7 @@ export function BlueprintEditorHeader({
                 background: "#ffffff",
                 color: "#111827",
                 border: "1px solid #111827",
-                fontWeight: 800,
+                fontWeight: 600,
               }}
             >
               Project Estimate
@@ -403,7 +409,8 @@ export function BlueprintEditorHeader({
                 background: "#111827",
                 color: "#ffffff",
                 border: "1px solid #111827",
-                boxShadow: "0 2px 6px rgba(15,23,42,.16)",
+                boxShadow: "0 2px 6px rgba(15,23,42,.14)",
+                fontWeight: 700,
               }}
             >
               {saving ? "Saving…" : "Save"}

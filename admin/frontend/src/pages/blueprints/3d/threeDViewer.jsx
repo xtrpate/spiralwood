@@ -26,6 +26,7 @@ import { FurnitureLibraryPanel } from "./components/FurnitureLibraryPanel";
 import { PropertiesPanel } from "./components/PropertiesPanel";
 import { FurnitureToolsPanel } from "./components/FurnitureToolsPanel";
 import { TransformToolbar } from "./components/TransformToolbar";
+import { QuickControlsBar } from "./components/QuickControlsBar";
 import {
   createBlueprintSceneFoundation,
   disposeObject3DResources,
@@ -3020,6 +3021,8 @@ function ThreeDViewer({
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
 
+      <QuickControlsBar />
+
       {/* --- NEW: Visual Box for Selection --- */}
       {selectionRect && (
         <div
@@ -3066,7 +3069,7 @@ function ThreeDViewer({
           <div
             style={{
               fontSize: 9,
-              fontWeight: 800,
+              fontWeight: 600,
               letterSpacing: ".08em",
               textTransform: "uppercase",
               color: "#93a8c4",
@@ -3091,7 +3094,7 @@ function ThreeDViewer({
                   : "rgba(15,23,42,.74)",
                 color: !isExploded3D ? "#dbeafe" : "#94a3b8",
                 fontSize: 9,
-                fontWeight: 800,
+                fontWeight: 600,
                 cursor: "pointer",
               }}
             >
@@ -3122,7 +3125,7 @@ function ThreeDViewer({
                   : "rgba(15,23,42,.74)",
                 color: isExploded3D ? "#ccfbf1" : "#94a3b8",
                 fontSize: 9,
-                fontWeight: 800,
+                fontWeight: 600,
                 cursor: "pointer",
               }}
             >
@@ -3157,7 +3160,7 @@ function ThreeDViewer({
                 style={{
                   color: "#9fb1c9",
                   fontSize: 9,
-                  fontWeight: 700,
+                  fontWeight: 500,
                 }}
               >
                 Explosion
@@ -3321,7 +3324,7 @@ function ThreeDViewer({
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
               fontSize: 9,
-              fontWeight: 800,
+              fontWeight: 600,
               letterSpacing: ".04em",
               color: "#93a8c4",
             }}
@@ -3351,7 +3354,7 @@ function ThreeDViewer({
                   : "rgba(37,99,235,.3)",
               color: "#f8fafc",
               fontSize: 9,
-              fontWeight: 800,
+              fontWeight: 600,
               cursor: "pointer",
             }}
           >

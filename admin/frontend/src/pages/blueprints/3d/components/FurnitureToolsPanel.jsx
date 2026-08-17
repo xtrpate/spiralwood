@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import S from "../../styles/blueprintStyles";
 import { VIEWER_UI } from "../viewerUi";
+import { ToolsGuide } from "./ToolsGuide";
 
 export function FurnitureToolsPanel({
   canUseSmartActions,
@@ -499,7 +500,18 @@ export function FurnitureToolsPanel({
       onMouseDown={handlePanelPointerDown}
       onPointerDown={handlePanelPointerDown}
     >
-      <div style={S.smartActionsTitle}>Tools</div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          marginBottom: 2,
+        }}
+      >
+        <div style={{ ...S.smartActionsTitle, marginBottom: 0 }}>Tools</div>
+        <ToolsGuide />
+      </div>
       <div style={S.smartActionsSubtle}>{statusText}</div>
 
       <div style={toolTabsRowStyle}>
