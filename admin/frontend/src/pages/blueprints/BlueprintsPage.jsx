@@ -16,7 +16,12 @@ const STAGE_COLORS = {
   archived: ["#f4f4f5", "#71717a", "#e4e4e7"],
 };
 
-const TABS = ["my", "archive"];
+const BLUEPRINT_PAGE_SIZE = 20;
+const TABS = [
+  { key: "admin", label: "Admin Designs" },
+  { key: "customer", label: "Customer Requests" },
+  { key: "archive", label: "Archive" },
+];
 const ALLOWED_IMPORT_EXTENSIONS = ["pdf", "png", "jpg", "jpeg", "svg"];
 const MAX_IMPORT_FILE_SIZE_MB = 15;
 
@@ -76,11 +81,51 @@ function getBlueprintIcon(fileType) {
   return "🗺️";
 }
 
-function getDesignActionLabel(stage = "") {
+function isCustomerRequestBlueprint(bp = {}) {
+  return Boolean(String(bp.client_name || "").trim());
+}
+
+function getBlueprintDisplayMeta(bp = {}) {
+  const rawTitle = String(bp.title || "").trim();
+  const customerRequest = isCustomerRequestBlueprint(bp);
+  const linkedOrderMatch = customerRequest
+    ? rawTitle.match(/^(.*?)\s+[\u2014-]\s+(SWS-\d{8}-\d+)\s*$/i)
+    : null;
+
+  const displayTitle =
+    linkedOrderMatch?.[1]?.trim() || rawTitle || "Untitled Blueprint";
+  const orderNumber = linkedOrderMatch?.[2] || null;
+
+  return {
+    customerRequest,
+    displayTitle,
+    orderNumber,
+  };
+}
+
+function hasActiveLinkedOrder(bp = {}) {
+  if (Number(bp.has_active_linked_order) === 1) {
+    return true;
+  }
+
+  const status = String(bp.linked_order_status || "")
+    .trim()
+    .toLowerCase();
+
+  if (!status) return false;
+
+  return !["completed", "cancelled"].includes(status);
+}
+
+function getDesignActionLabel(stage = "", customerRequest = false) {
   const normalizedStage = String(stage || "").toLowerCase();
   const isViewOnlyStage = ["production", "delivery", "completed"].includes(
     normalizedStage,
   );
+
+  if (customerRequest) {
+    return isViewOnlyStage ? "View Working Design" : "Open Working Design";
+  }
 
   return isViewOnlyStage ? "View Design" : "Open Design";
 }
@@ -105,10 +150,16 @@ export default function BlueprintsPage() {
   }, []);
   const navigate = useNavigate();
 
-  const [tab, setTab] = useState("my");
+  const [tab, setTab] = useState("admin");
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState({
+    admin: 0,
+    customer: 0,
+    archive: 0,
+  });
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [importModal, setImportModal] = useState(false);
   const [importForm, setImportForm] = useState({ title: "", file: null });
@@ -142,23 +193,49 @@ export default function BlueprintsPage() {
     setLoading(true);
     try {
       const { data } = await api.get("/blueprints", {
-        params: { tab, search, limit: 20 },
+        params: {
+          tab,
+          search,
+          page,
+          limit: BLUEPRINT_PAGE_SIZE,
+        },
       });
 
       setItems(Array.isArray(data?.rows) ? data.rows : []);
       setTotal(Number(data?.total) || 0);
+      setCounts({
+        admin: Number(data?.counts?.admin) || 0,
+        customer: Number(data?.counts?.customer) || 0,
+        archive: Number(data?.counts?.archive) || 0,
+      });
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to load blueprints.");
     } finally {
       setLoading(false);
     }
-  }, [tab, search]);
+  }, [tab, search, page]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   const openArchiveConfirm = (bp) => {
+    if (hasActiveLinkedOrder(bp)) {
+      const orderNumber =
+        bp.linked_order_number || getBlueprintDisplayMeta(bp).orderNumber;
+      const status = String(bp.linked_order_status || "active")
+        .replace(/_/g, " ")
+        .trim()
+        .toLowerCase();
+
+      toast.error(
+        `Cannot archive this working design while order ${
+          orderNumber || ""
+        } is ${status}. Complete or cancel the order first.`,
+      );
+      return;
+    }
+
     setArchiveTarget(bp);
     setArchiveConfirmModal(true);
   };
@@ -174,15 +251,24 @@ export default function BlueprintsPage() {
 
     try {
       setArchivingId(archiveTarget.id);
-      await api.delete(`/blueprints/${archiveTarget.id}`);
+      await api.delete(`/blueprints/${archiveTarget.id}`, {
+        params:
+          Number(archiveTarget.is_customer_visible) === 1
+            ? { confirm_customer_visibility: 1 }
+            : undefined,
+      });
       toast.success("Blueprint archived.");
       setArchiveConfirmModal(false);
       setArchiveTarget(null);
       load();
     } catch (err) {
-      toast.error(
-        err?.response?.data?.message || "Failed to archive blueprint.",
-      );
+      // Shared api.js already toasts response errors such as 400/409/500.
+      // It intentionally does not toast 404, so handle only that locally.
+      if (err?.response?.status === 404) {
+        toast.error(
+          err?.response?.data?.message || "Failed to archive blueprint.",
+        );
+      }
     } finally {
       setArchivingId(null);
     }
@@ -214,6 +300,13 @@ export default function BlueprintsPage() {
   };
 
   const openDeleteConfirm = (bp) => {
+    if (Number(bp.has_linked_order) === 1) {
+      toast.error(
+        "This blueprint is linked to an order and must be retained for order records.",
+      );
+      return;
+    }
+
     setDeleteTarget(bp);
     setDeleteConfirmModal(true);
   };
@@ -402,6 +495,12 @@ export default function BlueprintsPage() {
     window.open(buildAssetUrl(fileUrl), "_blank", "noopener,noreferrer");
   };
 
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(total / BLUEPRINT_PAGE_SIZE),
+  );
+
   return (
     <div className="blueprints-admin-v2">
       <div
@@ -420,9 +519,11 @@ export default function BlueprintsPage() {
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => setCreateModal(true)} style={btnPrimary}>
-            Create Blueprint
-          </button>
+          {tab === "admin" && (
+            <button onClick={() => setCreateModal(true)} style={btnPrimary}>
+              Create Blueprint
+            </button>
+          )}
         </div>
       </div>
 
@@ -433,30 +534,47 @@ export default function BlueprintsPage() {
           marginBottom: 20,
           borderBottom: "2px solid #e4e4e7",
           overflowX: "auto",
+          overflowY: "hidden",
         }}
       >
-        {TABS.map((t) => (
+        {TABS.map((item) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
+            key={item.key}
+            onClick={() => {
+              setTab(item.key);
+              setPage(1);
+            }}
             style={{
-              padding: "10px 20px",
+              padding: "10px 16px",
               border: "none",
               background: "none",
               cursor: "pointer",
               fontWeight: 800,
               fontSize: 13,
-              letterSpacing: "0.02em",
-              color: tab === t ? "#18181b" : "#71717a",
+              letterSpacing: "0.01em",
+              color: tab === item.key ? "#18181b" : "#71717a",
               borderBottom:
-                tab === t ? "2px solid #18181b" : "2px solid transparent",
+                tab === item.key
+                  ? "2px solid #18181b"
+                  : "2px solid transparent",
               marginBottom: -2,
-              textTransform: "capitalize",
               whiteSpace: "nowrap",
               transition: "all 0.2s ease",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
             }}
           >
-            {t === "my" ? "Active Blueprints" : "Archive"}
+            <span>{item.label}</span>
+            <span
+              className={
+                tab === item.key
+                  ? "blueprint-tab-count blueprint-tab-count-active"
+                  : "blueprint-tab-count"
+              }
+            >
+              {counts[item.key] || 0}
+            </span>
           </button>
         ))}
 
@@ -469,15 +587,29 @@ export default function BlueprintsPage() {
             alignSelf: "center",
           }}
         >
-          {total} blueprints
+          {total}{" "}
+          {tab === "customer"
+            ? "customer requests"
+            : tab === "archive"
+              ? "archived blueprints"
+              : "admin designs"}
         </span>
       </div>
 
       <input
         className="blueprints-search"
-        placeholder="Search by title or customer"
+        placeholder={
+          tab === "customer"
+            ? "Search customer requests"
+            : tab === "archive"
+              ? "Search archived blueprints"
+              : "Search admin designs"
+        }
         value={search}
-        onChange={(e) => setSearch(e.target.value)}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setPage(1);
+        }}
         style={{ ...inputSm, marginBottom: 20, minWidth: 300 }}
       />
 
@@ -618,6 +750,16 @@ export default function BlueprintsPage() {
             const isRestoring = restoringId === bp.id;
             const isArchiving = archivingId === bp.id;
             const isBusy = isDeleting || isRestoring || isArchiving;
+            const {
+              customerRequest: isCustomerRequest,
+              displayTitle,
+              orderNumber: titleOrderNumber,
+            } = getBlueprintDisplayMeta(bp);
+            const linkedOrderNumber =
+              bp.linked_order_number || titleOrderNumber || null;
+            const hasLinkedOrder = Number(bp.has_linked_order) === 1;
+            const linkedOrderIsActive = hasActiveLinkedOrder(bp);
+            const isCustomerVisible = Number(bp.is_customer_visible) === 1;
 
             const cardBorderColor = isCompleted ? "#18181b" : "#e4e4e7";
 
@@ -730,6 +872,16 @@ export default function BlueprintsPage() {
                     {getStageLabel(displayStage)}
                   </span>
 
+                  <span
+                    className={`blueprint-source-badge ${
+                      isCustomerRequest
+                        ? "blueprint-source-badge-customer"
+                        : "blueprint-source-badge-admin"
+                    }`}
+                  >
+                    {isCustomerRequest ? "CUSTOM REQUEST" : "ADMIN DESIGN"}
+                  </span>
+
                   {isTemplate && (
                     <span
                       style={{
@@ -749,7 +901,7 @@ export default function BlueprintsPage() {
                       TEMPLATE
                     </span>
                   )}
-                  {Number(bp.is_gallery) === 1 && (
+                  {tab === "admin" && isCustomerVisible && (
                     <span
                       style={{
                         position: "absolute",
@@ -765,7 +917,7 @@ export default function BlueprintsPage() {
                         letterSpacing: "1px",
                       }}
                     >
-                      CUSTOMER GALLERY
+                      PUBLISHED TO CUSTOMERS
                     </span>
                   )}
                   {isImported && (
@@ -816,10 +968,16 @@ export default function BlueprintsPage() {
                       letterSpacing: "-0.01em",
                     }}
                   >
-                    {bp.title || "Untitled Blueprint"}
+                    {displayTitle}
                   </h3>
 
                   <div style={{ minHeight: 36 }}>
+                    {isCustomerRequest && linkedOrderNumber && (
+                      <p className="blueprint-linked-order">
+                        Order {linkedOrderNumber}
+                      </p>
+                    )}
+
                     {!!bp.client_name && (
                       <p
                         style={{
@@ -915,7 +1073,7 @@ export default function BlueprintsPage() {
                           }
                           disabled={isBusy}
                         >
-                          {getDesignActionLabel(displayStage)}
+                          {getDesignActionLabel(displayStage, isCustomerRequest)}
                         </button>
 
                         {isImported && !!bp.file_url && (
@@ -933,10 +1091,19 @@ export default function BlueprintsPage() {
                           onClick={() => openArchiveConfirm(bp)}
                           style={{
                             ...btnGhost,
-                            opacity: isArchiving ? 0.7 : 1,
-                            cursor: isArchiving ? "not-allowed" : "pointer",
+                            opacity:
+                              isArchiving || linkedOrderIsActive ? 0.58 : 1,
+                            cursor:
+                              isArchiving || linkedOrderIsActive
+                                ? "not-allowed"
+                                : "pointer",
                           }}
-                          disabled={isBusy}
+                          disabled={isBusy || linkedOrderIsActive}
+                          title={
+                            linkedOrderIsActive
+                              ? "Complete or cancel the linked order before archiving this working design."
+                              : undefined
+                          }
                         >
                           {isArchiving ? "Archiving..." : "Archive"}
                         </button>
@@ -959,12 +1126,24 @@ export default function BlueprintsPage() {
                           onClick={() => openDeleteConfirm(bp)}
                           style={{
                             ...btnDanger,
-                            opacity: isDeleting ? 0.7 : 1,
-                            cursor: isDeleting ? "not-allowed" : "pointer",
+                            opacity: isDeleting || hasLinkedOrder ? 0.58 : 1,
+                            cursor:
+                              isDeleting || hasLinkedOrder
+                                ? "not-allowed"
+                                : "pointer",
                           }}
-                          disabled={isBusy}
+                          disabled={isBusy || hasLinkedOrder}
+                          title={
+                            hasLinkedOrder
+                              ? "This blueprint is linked to an order and must be retained for order records."
+                              : undefined
+                          }
                         >
-                          {isDeleting ? "Deleting..." : "Delete Permanently"}
+                          {isDeleting
+                            ? "Deleting..."
+                            : hasLinkedOrder
+                              ? "Retained for Order"
+                              : "Delete Permanently"}
                         </button>
                       </>
                     )}
@@ -973,6 +1152,34 @@ export default function BlueprintsPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {!loading && items.length > 0 && totalPages > 1 && (
+        <div className="blueprints-pagination">
+          <button
+            type="button"
+            className="blueprints-page-button"
+            disabled={page <= 1}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+          >
+            Previous
+          </button>
+
+          <span className="blueprints-page-status">
+            Page {page} of {totalPages}
+          </span>
+
+          <button
+            type="button"
+            className="blueprints-page-button"
+            disabled={page >= totalPages}
+            onClick={() =>
+              setPage((current) => Math.min(totalPages, current + 1))
+            }
+          >
+            Next
+          </button>
         </div>
       )}
 
@@ -1299,9 +1506,16 @@ export default function BlueprintsPage() {
               }}
             >
               Are you sure you want to move{" "}
-              <strong style={{ fontWeight: 600 }}>"{archiveTarget.title || "Untitled Blueprint"}"</strong>{" "}
-              to the archive? Archived blueprints will be permanently deleted
-              after 30 days.
+              <strong style={{ fontWeight: 600 }}>
+                "{archiveTarget.title || "Untitled Blueprint"}"
+              </strong>{" "}
+              to the archive?{" "}
+              {Number(archiveTarget.has_linked_order) === 1
+                ? "This blueprint is linked to an order and will be retained for order records."
+                : "Archived blueprints will be permanently deleted after 30 days."}
+              {Number(archiveTarget.is_customer_visible) === 1
+                ? " It is currently available to customers and will be removed from the customer catalog."
+                : ""}
             </p>
 
             <div

@@ -47,9 +47,17 @@ exports.getAll = async (req, res) => {
     const where = [];
     const params = [];
 
-    if (tab === "my") {
+    if (["my", "admin", "customer"].includes(tab)) {
       where.push("b.creator_id = ? AND b.is_deleted = 0");
       params.push(parseInt(req.user.id));
+
+      if (tab === "admin") {
+        where.push("b.client_id IS NULL");
+      }
+
+      if (tab === "customer") {
+        where.push("b.client_id IS NOT NULL");
+      }
     }
 
     if (tab === "imports") {
@@ -94,13 +102,60 @@ exports.getAll = async (req, res) => {
               b.created_at, b.updated_at,
               u.name AS creator_name,
               c.name AS client_name,
+              EXISTS (
+                SELECT 1
+                FROM orders linked_order
+                WHERE linked_order.blueprint_id = b.id
+              ) AS has_linked_order,
+              EXISTS (
+                SELECT 1
+                FROM orders active_order
+                WHERE active_order.blueprint_id = b.id
+                  AND LOWER(COALESCE(active_order.status, '')) NOT IN ('completed', 'cancelled')
+              ) AS has_active_linked_order,
+              (
+                SELECT linked_order.order_number
+                FROM orders linked_order
+                WHERE linked_order.blueprint_id = b.id
+                ORDER BY linked_order.id DESC
+                LIMIT 1
+              ) AS linked_order_number,
+              (
+                SELECT linked_order.status
+                FROM orders linked_order
+                WHERE linked_order.blueprint_id = b.id
+                ORDER BY linked_order.id DESC
+                LIMIT 1
+              ) AS linked_order_status,
+              CASE
+                WHEN b.is_deleted = 0
+                  AND (b.is_template = 1 OR b.is_gallery = 1)
+                  AND EXISTS (
+                    SELECT 1
+                    FROM products published_product
+                    WHERE published_product.blueprint_id = b.id
+                      AND published_product.is_published = 1
+                  )
+                  THEN 1
+                ELSE 0
+              END AS is_customer_visible,
               CASE
                 WHEN b.is_deleted = 1
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM orders retained_order
+                    WHERE retained_order.blueprint_id = b.id
+                  )
                   THEN GREATEST(0, 30 - DATEDIFF(CURDATE(), DATE(COALESCE(b.archived_at, b.updated_at, b.created_at))))
                 ELSE NULL
               END AS archive_days_left,
               CASE
                 WHEN b.is_deleted = 1
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM orders retained_order
+                    WHERE retained_order.blueprint_id = b.id
+                  )
                   THEN DATE_ADD(DATE(COALESCE(b.archived_at, b.updated_at, b.created_at)), INTERVAL 30 DAY)
                 ELSE NULL
               END AS archive_expires_at
@@ -168,7 +223,34 @@ exports.getAll = async (req, res) => {
       params,
     );
 
-    res.json({ rows, total });
+    const currentUserId = parseInt(req.user.id);
+    const [[tabCounts]] = await pool.query(
+      `SELECT
+         SUM(CASE
+               WHEN creator_id = ? AND is_deleted = 0 AND client_id IS NULL
+               THEN 1 ELSE 0
+             END) AS admin,
+         SUM(CASE
+               WHEN creator_id = ? AND is_deleted = 0 AND client_id IS NOT NULL
+               THEN 1 ELSE 0
+             END) AS customer,
+         SUM(CASE
+               WHEN is_deleted = 1
+               THEN 1 ELSE 0
+             END) AS archive
+       FROM blueprints`,
+      [currentUserId, currentUserId],
+    );
+
+    res.json({
+      rows,
+      total,
+      counts: {
+        admin: Number(tabCounts?.admin) || 0,
+        customer: Number(tabCounts?.customer) || 0,
+        archive: Number(tabCounts?.archive) || 0,
+      },
+    });
   } catch (err) {
     console.error("getAll blueprints error:", err);
     res.status(err.statusCode || 500).json({ message: err.message });
@@ -180,13 +262,46 @@ exports.getOne = async (req, res) => {
   try {
     const [[bp]] = await pool.query(
       `SELECT b.*, u.name AS creator_name, c.name AS client_name,
+              EXISTS (
+                SELECT 1
+                FROM orders linked_order
+                WHERE linked_order.blueprint_id = b.id
+              ) AS has_linked_order,
+              EXISTS (
+                SELECT 1
+                FROM orders active_order
+                WHERE active_order.blueprint_id = b.id
+                  AND LOWER(COALESCE(active_order.status, '')) NOT IN ('completed', 'cancelled')
+              ) AS has_active_linked_order,
+              CASE
+                WHEN b.is_deleted = 0
+                  AND (b.is_template = 1 OR b.is_gallery = 1)
+                  AND EXISTS (
+                    SELECT 1
+                    FROM products published_product
+                    WHERE published_product.blueprint_id = b.id
+                      AND published_product.is_published = 1
+                  )
+                  THEN 1
+                ELSE 0
+              END AS is_customer_visible,
               CASE
                 WHEN b.is_deleted = 1
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM orders retained_order
+                    WHERE retained_order.blueprint_id = b.id
+                  )
                   THEN GREATEST(0, 30 - DATEDIFF(CURDATE(), DATE(COALESCE(b.archived_at, b.updated_at, b.created_at))))
                 ELSE NULL
               END AS archive_days_left,
               CASE
                 WHEN b.is_deleted = 1
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM orders retained_order
+                    WHERE retained_order.blueprint_id = b.id
+                  )
                   THEN DATE_ADD(DATE(COALESCE(b.archived_at, b.updated_at, b.created_at)), INTERVAL 30 DAY)
                 ELSE NULL
               END AS archive_expires_at
@@ -576,16 +691,76 @@ exports.update = async (req, res) => {
 // ── DELETE /api/blueprints/:id (soft delete → archive) ───────────────────────
 exports.archive = async (req, res) => {
   try {
+    const blueprintId = parseInt(req.params.id);
+
     const [[bp]] = await pool.query(
-      `SELECT id, stage, is_deleted
+      `SELECT id, stage, is_deleted, is_template, is_gallery
        FROM blueprints
        WHERE id = ?
        LIMIT 1`,
-      [parseInt(req.params.id)],
+      [blueprintId],
     );
 
     if (!bp) {
       return res.status(404).json({ message: "Blueprint not found." });
+    }
+
+    if (Number(bp.is_deleted) === 1) {
+      return res.status(400).json({ message: "Blueprint is already archived." });
+    }
+
+    const [[activeLinkedOrder]] = await pool.query(
+      `SELECT id, order_number, status
+       FROM orders
+       WHERE blueprint_id = ?
+         AND LOWER(COALESCE(status, '')) NOT IN ('completed', 'cancelled')
+       ORDER BY id DESC
+       LIMIT 1`,
+      [blueprintId],
+    );
+
+    if (activeLinkedOrder) {
+      const statusLabel = String(activeLinkedOrder.status || "active")
+        .replace(/_/g, " ")
+        .trim();
+
+      return res.status(409).json({
+        code: "BLUEPRINT_LINKED_TO_ACTIVE_ORDER",
+        message: `Cannot archive this working design while order ${
+          activeLinkedOrder.order_number || activeLinkedOrder.id
+        } is ${statusLabel}. Complete or cancel the order first.`,
+        order_number: activeLinkedOrder.order_number || null,
+        order_status: activeLinkedOrder.status || null,
+      });
+    }
+
+    const [[publishedProduct]] = await pool.query(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM products p
+         WHERE p.blueprint_id = ?
+           AND p.is_published = 1
+       ) AS has_published_product`,
+      [blueprintId],
+    );
+
+    const isCustomerVisible =
+      (Number(bp.is_template) === 1 || Number(bp.is_gallery) === 1) &&
+      Number(publishedProduct?.has_published_product) === 1;
+
+    const customerVisibilityConfirmed = ["1", "true", "yes"].includes(
+      String(req.query?.confirm_customer_visibility || "")
+        .trim()
+        .toLowerCase(),
+    );
+
+    if (isCustomerVisible && !customerVisibilityConfirmed) {
+      return res.status(409).json({
+        code: "BLUEPRINT_VISIBLE_TO_CUSTOMERS",
+        requires_confirmation: true,
+        message:
+          "This design is currently available to customers. Confirm archiving to remove it from the customer catalog.",
+      });
     }
 
     const [updateResult] = await pool.query(
@@ -594,14 +769,18 @@ exports.archive = async (req, res) => {
            stage = 'archived',
            archived_at = NOW()
        WHERE id = ?`,
-      [parseInt(req.params.id)],
+      [blueprintId],
     );
 
     if (updateResult.affectedRows > 0) {
       req.auditRecord = {
-        id: parseInt(req.params.id),
+        id: blueprintId,
         old: { stage: bp.stage, archived: Boolean(Number(bp.is_deleted)) },
-        new: { stage: "archived", archived: true },
+        new: {
+          stage: "archived",
+          archived: true,
+          removed_from_customer_catalog: isCustomerVisible,
+        },
       };
     }
 
