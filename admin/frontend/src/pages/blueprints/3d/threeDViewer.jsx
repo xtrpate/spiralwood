@@ -60,6 +60,146 @@ const MIN_COMPONENT_DIMENSION_MM = 1;
 const FLOOR_OFFSET = 40;
 const MM_PER_INCH = 25.4;
 
+// WISDOM ADMIN DOOR PREVIEW NO REBUILD ON CLICK V2.0.5
+// Normal-mode selection changes must not create a fresh offset-map identity.
+const EMPTY_EXPLODED_DISPLAY_OFFSETS = new Map();
+
+const DOOR_PREVIEW_OPEN_DEGREES = 82;
+const DOOR_PREVIEW_DURATION_MS = 320;
+
+// WISDOM ADMIN DOOR PREVIEW MANUAL CLOSE V2.0.2
+// Door state is independent from normal camera and canvas selection interaction.
+
+const isDoorPreviewComponent = (component = {}) => {
+  const text = [
+    component?.type,
+    component?.label,
+    component?.partCode,
+    component?.category,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+    .toLowerCase();
+
+  return (
+    component?.type === "wr_door" ||
+    /(^|[\s_-])door([\s_-]|$)/.test(text)
+  );
+};
+
+const resolveDoorPreviewHingeSide = (
+  component = {},
+  allComponents = [],
+) => {
+  const explicit = String(
+    component?.hingeSide ??
+      component?.hinge_side ??
+      component?.doorHinge ??
+      component?.door_hinge ??
+      "",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (explicit.startsWith("r")) return "right";
+  if (explicit.startsWith("l")) return "left";
+
+  const labelText = `${component?.label || ""} ${component?.partCode || ""}`
+    .trim()
+    .toLowerCase();
+
+  if (/\bright\b/.test(labelText)) return "right";
+  if (/\bleft\b/.test(labelText)) return "left";
+
+  const siblings = (allComponents || []).filter((item) => {
+    if (
+      !item ||
+      item.id === component.id ||
+      !isDoorPreviewComponent(item)
+    ) {
+      return false;
+    }
+
+    if (
+      component?.groupId &&
+      item?.groupId !== component.groupId
+    ) {
+      return false;
+    }
+
+    const yTolerance = Math.max(
+      80,
+      Number(component?.height || 0) * 0.15,
+    );
+
+    const zTolerance = Math.max(
+      120,
+      Number(component?.depth || 0) * 4,
+    );
+
+    return (
+      Math.abs(
+        Number(item?.y || 0) -
+          Number(component?.y || 0),
+      ) <= yTolerance &&
+      Math.abs(
+        Number(item?.z || 0) -
+          Number(component?.z || 0),
+      ) <= zTolerance
+    );
+  });
+
+  const ordered = [component, ...siblings].sort(
+    (a, b) =>
+      Number(a?.x || 0) - Number(b?.x || 0),
+  );
+
+  if (ordered.length > 1) {
+    const index = ordered.findIndex(
+      (item) => item.id === component.id,
+    );
+
+    return index >= Math.ceil(ordered.length / 2)
+      ? "right"
+      : "left";
+  }
+
+  return "left";
+};
+
+const easeOutCubic = (value) => {
+  const t = Math.max(
+    0,
+    Math.min(1, Number(value) || 0),
+  );
+
+  return 1 - Math.pow(1 - t, 3);
+};
+
+// WISDOM ADMIN DOOR PREVIEW CLICK PERSISTENCE V2.0.3
+// Use real door data, not the components array reference, to decide whether
+// an open preview became stale.
+const getDoorPreviewComponentSignature = (component = null) => {
+  if (!component?.id) return "";
+
+  return [
+    component.id,
+    component.type || "",
+    Number(component.x || 0),
+    Number(component.y || 0),
+    Number(component.z || 0),
+    Number(component.width || 0),
+    Number(component.height || 0),
+    Number(component.depth || 0),
+    Number(component.rotationX || 0),
+    Number(component.rotationY || 0),
+    Number(component.rotationZ || 0),
+    component.label || "",
+    component.partCode || "",
+  ].join("|");
+};
+
 function ThreeDViewer({
   onPushHistory,
   components,
@@ -144,6 +284,10 @@ function ThreeDViewer({
   const [isLibraryDragPlacing, setIsLibraryDragPlacing] = useState(false);
   const [isExploded3D, setIsExploded3D] = useState(false);
   const [explodeStrength, setExplodeStrength] = useState(55);
+  const [doorPreviewOpenId, setDoorPreviewOpenId] =
+    useState(null);
+  const doorPreviewRef = useRef(null);
+  const doorPreviewAnimationRef = useRef(0);
 
   useEffect(() => {
     if (!showLibraryPanel && activeLeftPanel === "library") {
@@ -1231,9 +1375,410 @@ function ThreeDViewer({
     if (ids.length) return ids;
     return selectedId ? [selectedId] : [];
   }, [selectedId, selectedIds]);
+  const selectedDoorPreviewComp = useMemo(() => {
+    if (activeSelectionIds3D.length !== 1) return null;
+
+    const activeId = activeSelectionIds3D[0];
+    const component =
+      (components || []).find(
+        (item) => item.id === activeId,
+      ) || null;
+
+    return isDoorPreviewComponent(component)
+      ? component
+      : null;
+  }, [activeSelectionIds3D, components]);
+
+  const doorPreviewControlComp = useMemo(() => {
+    if (doorPreviewOpenId) {
+      const openComponent =
+        (components || []).find(
+          (item) => item.id === doorPreviewOpenId,
+        ) || null;
+
+      if (openComponent) return openComponent;
+    }
+
+    return selectedDoorPreviewComp;
+  }, [
+    doorPreviewOpenId,
+    components,
+    selectedDoorPreviewComp,
+  ]);
+
+  const clearDoorPreview = useCallback(
+    ({ updateState = true } = {}) => {
+      if (doorPreviewAnimationRef.current) {
+        cancelAnimationFrame(
+          doorPreviewAnimationRef.current,
+        );
+        doorPreviewAnimationRef.current = 0;
+      }
+
+      const preview = doorPreviewRef.current;
+
+      if (preview?.original) {
+        preview.original.visible = true;
+      }
+
+      if (preview?.pivot?.parent) {
+        preview.pivot.parent.remove(preview.pivot);
+      }
+
+      if (
+        preview?.transform &&
+        typeof preview.transformVisible === "boolean"
+      ) {
+        preview.transform.visible =
+          preview.transformVisible;
+      }
+
+      if (
+        preview?.outlineGroup &&
+        typeof preview.outlineVisible === "boolean"
+      ) {
+        preview.outlineGroup.visible =
+          preview.outlineVisible;
+      }
+
+      doorPreviewRef.current = null;
+
+      if (updateState) {
+        setDoorPreviewOpenId(null);
+      }
+    },
+    [],
+  );
+
+  const animateDoorPreviewTo = useCallback(
+    (targetAngle, onDone = null) => {
+      const preview = doorPreviewRef.current;
+      if (!preview?.pivot) return;
+
+      if (doorPreviewAnimationRef.current) {
+        cancelAnimationFrame(
+          doorPreviewAnimationRef.current,
+        );
+      }
+
+      const startAngle = Number(
+        preview.currentAngle || 0,
+      );
+
+      const destination = Number(
+        targetAngle || 0,
+      );
+
+      const startedAt = performance.now();
+
+      const step = (now) => {
+        const current = doorPreviewRef.current;
+
+        if (
+          !current ||
+          current !== preview ||
+          !current.pivot
+        ) {
+          doorPreviewAnimationRef.current = 0;
+          return;
+        }
+
+        const progress = Math.min(
+          1,
+          Math.max(
+            0,
+            (now - startedAt) /
+              DOOR_PREVIEW_DURATION_MS,
+          ),
+        );
+
+        const eased = easeOutCubic(progress);
+
+        current.currentAngle =
+          startAngle +
+          (destination - startAngle) * eased;
+
+        const localTurn =
+          new THREE.Quaternion().setFromAxisAngle(
+            new THREE.Vector3(0, 1, 0),
+            current.direction *
+              current.currentAngle,
+          );
+
+        current.pivot.quaternion
+          .copy(current.basePivotQuaternion)
+          .multiply(localTurn);
+
+        current.pivot.updateMatrixWorld(true);
+
+        if (progress < 1) {
+          doorPreviewAnimationRef.current =
+            requestAnimationFrame(step);
+          return;
+        }
+
+        current.currentAngle = destination;
+        doorPreviewAnimationRef.current = 0;
+        onDone?.();
+      };
+
+      doorPreviewAnimationRef.current =
+        requestAnimationFrame(step);
+    },
+    [],
+  );
+
+  const createDoorPreview = useCallback(
+    (component) => {
+      if (!component?.id) return false;
+
+      clearDoorPreview();
+
+      const entry = entryMapRef.current.get(
+        component.id,
+      );
+
+      const original = entry?.obj;
+      const parent = original?.parent;
+
+      if (!original || !parent) return false;
+
+      const clone = original.clone(true);
+      clone.name =
+        `door-preview-clone-${component.id}`;
+
+      clone.traverse((child) => {
+        child.userData = {
+          ...(child.userData || {}),
+          isDoorPreviewClone: true,
+        };
+      });
+
+      clone.position.copy(original.position);
+      clone.quaternion.copy(original.quaternion);
+      clone.scale.copy(original.scale);
+
+      const hingeSide =
+        resolveDoorPreviewHingeSide(
+          component,
+          componentsRef.current || [],
+        );
+
+      const width = Math.max(
+        1,
+        Number(component?.width || 1),
+      );
+
+      const localHingeOffset =
+        new THREE.Vector3(
+          hingeSide === "right"
+            ? width / 2
+            : -width / 2,
+          0,
+          0,
+        );
+
+      const hingePosition = original.position
+        .clone()
+        .add(
+          localHingeOffset
+            .clone()
+            .applyQuaternion(
+              original.quaternion,
+            ),
+        );
+
+      const pivot = new THREE.Group();
+      pivot.name =
+        `door-preview-pivot-${component.id}`;
+      pivot.position.copy(hingePosition);
+      pivot.quaternion.copy(
+        original.quaternion,
+      );
+
+      parent.add(pivot);
+      parent.add(clone);
+
+      parent.updateMatrixWorld(true);
+      pivot.updateMatrixWorld(true);
+      clone.updateMatrixWorld(true);
+
+      // Only the temporary clone is attached to the hinge pivot.
+      // The real editable door object keeps its original transform.
+      pivot.attach(clone);
+      pivot.updateMatrixWorld(true);
+
+      const transform = transformRef.current;
+      const outlineGroup =
+        selectionOutlineGroupRef.current;
+
+      const transformVisible =
+        typeof transform?.visible === "boolean"
+          ? transform.visible
+          : true;
+
+      const outlineVisible =
+        typeof outlineGroup?.visible === "boolean"
+          ? outlineGroup.visible
+          : true;
+
+      // Hide only editor visuals while previewing.
+      // Do not detach TransformControls.
+      // Do not modify OrbitControls or camera state.
+      if (transform) transform.visible = false;
+      if (outlineGroup) {
+        outlineGroup.visible = false;
+      }
+
+      original.visible = false;
+
+      doorPreviewRef.current = {
+        id: component.id,
+        original,
+        pivot,
+        basePivotQuaternion:
+          original.quaternion.clone(),
+        direction:
+          hingeSide === "right" ? 1 : -1,
+        currentAngle: 0,
+        componentSignature:
+          getDoorPreviewComponentSignature(component),
+        transform,
+        transformVisible,
+        outlineGroup,
+        outlineVisible,
+      };
+
+      setDoorPreviewOpenId(component.id);
+
+      animateDoorPreviewTo(
+        THREE.MathUtils.degToRad(
+          DOOR_PREVIEW_OPEN_DEGREES,
+        ),
+      );
+
+      return true;
+    },
+    [animateDoorPreviewTo, clearDoorPreview],
+  );
+
+  const toggleSelectedDoorPreview = useCallback(
+    () => {
+      // Manual close must work even after normal canvas clicks or a
+      // selection change. Camera interaction never decides door state.
+      const activePreview = doorPreviewRef.current;
+
+      if (
+        activePreview?.id &&
+        doorPreviewOpenId === activePreview.id
+      ) {
+        animateDoorPreviewTo(0, () => {
+          clearDoorPreview();
+        });
+        return;
+      }
+
+      const component = selectedDoorPreviewComp;
+
+      if (!component?.id || isExploded3D) {
+        return;
+      }
+
+      createDoorPreview(component);
+    },
+    [
+      selectedDoorPreviewComp,
+      isExploded3D,
+      doorPreviewOpenId,
+      animateDoorPreviewTo,
+      clearDoorPreview,
+      createDoorPreview,
+    ],
+  );
+
+  useEffect(() => {
+    if (!doorPreviewRef.current) return;
+
+    // Normal mouse/camera/selection interaction keeps the door open.
+    // Exploded mode is a different visualization, so it closes preview.
+    if (isExploded3D) {
+      clearDoorPreview();
+    }
+  }, [isExploded3D, clearDoorPreview]);
+
+  useEffect(() => {
+    const preview = doorPreviewRef.current;
+    if (!preview) return;
+
+    const previewDoorIsSelected =
+      activeSelectionIds3D.length === 1 &&
+      activeSelectionIds3D[0] === preview.id;
+
+    // When another object is selected while the door stays open,
+    // restore normal editor visuals for that new selection.
+    if (preview.transform) {
+      preview.transform.visible =
+        previewDoorIsSelected
+          ? false
+          : preview.transformVisible;
+    }
+
+    if (preview.outlineGroup) {
+      preview.outlineGroup.visible =
+        previewDoorIsSelected
+          ? false
+          : preview.outlineVisible;
+    }
+  }, [
+    activeSelectionIds3D,
+    doorPreviewOpenId,
+  ]);
+
+  const openDoorPreviewComponentSignature = useMemo(() => {
+    if (!doorPreviewOpenId) return "";
+
+    const openComponent =
+      (components || []).find(
+        (item) => item.id === doorPreviewOpenId,
+      ) || null;
+
+    return getDoorPreviewComponentSignature(
+      openComponent,
+    );
+  }, [doorPreviewOpenId, components]);
+
+  useEffect(() => {
+    const preview = doorPreviewRef.current;
+    if (!preview?.id) return;
+
+    // React may provide a new components array after a normal mouse click or
+    // selection change. That must not close the door. Close only if the actual
+    // open-door component was removed or its real transform/geometry changed.
+    if (
+      !openDoorPreviewComponentSignature ||
+      openDoorPreviewComponentSignature !==
+        preview.componentSignature
+    ) {
+      clearDoorPreview();
+    }
+  }, [
+    openDoorPreviewComponentSignature,
+    clearDoorPreview,
+  ]);
+
+  useEffect(
+    () => () => {
+      clearDoorPreview({
+        updateState: false,
+      });
+    },
+    [clearDoorPreview],
+  );
 
   const explodedDisplayOffsets = useMemo(() => {
-    if (!isExploded3D) return new Map();
+    if (!isExploded3D) {
+      return EMPTY_EXPLODED_DISPLAY_OFFSETS;
+    }
 
     return buildExplodedAssemblyOffsets({
       components,
@@ -2742,6 +3287,91 @@ function ThreeDViewer({
         }
       />
 
+      {doorPreviewControlComp && !isExploded3D ? (
+        <div
+          onMouseDown={(event) =>
+            event.stopPropagation()
+          }
+          onPointerDown={(event) =>
+            event.stopPropagation()
+          }
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: 18,
+            transform: "translateX(-50%)",
+            zIndex: 1300,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "7px 8px",
+            border:
+              "1px solid rgba(100,116,139,.65)",
+            borderRadius: 2,
+            background: "rgba(7,14,26,.96)",
+            boxShadow:
+              "0 8px 20px rgba(0,0,0,.24)",
+            color: "#dbeafe",
+          }}
+        >
+          <span
+            style={{
+              maxWidth: 170,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontSize: 9,
+              fontWeight: 800,
+              letterSpacing: ".04em",
+              color: "#93a8c4",
+            }}
+          >
+            Door Preview -{" "}
+            {doorPreviewControlComp.label ||
+              doorPreviewControlComp.partCode ||
+              "Selected Door"}
+          </span>
+
+          <button
+            type="button"
+            onClick={toggleSelectedDoorPreview}
+            style={{
+              minHeight: 30,
+              padding: "5px 12px",
+              border:
+                doorPreviewOpenId ===
+                doorPreviewControlComp.id
+                  ? "1px solid rgba(148,163,184,.8)"
+                  : "1px solid rgba(96,165,250,.92)",
+              borderRadius: 0,
+              background:
+                doorPreviewOpenId ===
+                doorPreviewControlComp.id
+                  ? "rgba(30,41,59,.9)"
+                  : "rgba(37,99,235,.3)",
+              color: "#f8fafc",
+              fontSize: 9,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            {doorPreviewOpenId ===
+            doorPreviewControlComp.id
+              ? "Close Door"
+              : "Open Door"}
+          </button>
+
+          <span
+            style={{
+              fontSize: 8,
+              color: "#64748b",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Visual only
+          </span>
+        </div>
+      ) : null}
       <TransformToolbar
         transformMode={transformMode}
         setTransformMode={setTransformMode}

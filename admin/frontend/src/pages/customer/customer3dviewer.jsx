@@ -666,33 +666,55 @@ export default function Customer3DViewer({
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    renderer.toneMappingExposure = 1.08;
     mount.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#f8fafc");
+    scene.background = new THREE.Color("#f7f5f1");
     sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(40, w / h, 0.5, 12000);
     camera.position.set(1500, 700, 1500);
     cameraRef.current = camera;
 
-    scene.add(new THREE.AmbientLight(0xffffff, 1.8));
+    // WISDOM CUSTOMER 3D FURNITURE REALISM V1.0.3
+    // Reduce flat ambient wash while preserving the existing material system.
+    scene.add(new THREE.AmbientLight(0xffffff, 1.08));
 
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.0);
-    keyLight.position.set(1000, 2000, 1000);
+    const hemisphereLight = new THREE.HemisphereLight(
+      0xfffdf8,
+      0xd8c5aa,
+      0.82,
+    );
+    scene.add(hemisphereLight);
+
+    const keyLight = new THREE.DirectionalLight(0xfffbf5, 2.15);
+    keyLight.position.set(1300, 2250, 1400);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.set(2048, 2048);
+    keyLight.shadow.camera.left = -3400;
+    keyLight.shadow.camera.right = 3400;
+    keyLight.shadow.camera.top = 3400;
+    keyLight.shadow.camera.bottom = -3400;
+    keyLight.shadow.camera.near = 100;
+    keyLight.shadow.camera.far = 8000;
+    keyLight.shadow.bias = -0.00012;
+    keyLight.shadow.normalBias = 0.7;
+    keyLight.shadow.radius = 3;
     scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight(0xe2e8f0, 1.1);
-    fillLight.position.set(-1500, 600, -1500);
+    const fillLight = new THREE.DirectionalLight(0xffeee2, 0.64);
+    fillLight.position.set(-1450, 850, 1100);
     scene.add(fillLight);
+
+    const rimLight = new THREE.DirectionalLight(0xffffff, 0.26);
+    rimLight.position.set(-1000, 1400, -1650);
+    scene.add(rimLight);
 
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(8000, 8000),
-      new THREE.ShadowMaterial({ opacity: 0.14 }),
+      new THREE.ShadowMaterial({ opacity: 0.18 }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -(WORLD_H / 2) + FLOOR_OFFSET - 2;
