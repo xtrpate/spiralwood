@@ -23,6 +23,47 @@ const MAX_HISTORY = 60;
 const SELECTION_COLOR = 0x38bdf8;
 const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
+/* WISDOM CUSTOMIZE GUIDED EXPERIENCE V1.0.14.10 */
+const CUSTOMIZE_GUIDE_STORAGE_KEY = "wisdom_customize_guide_seen_v1";
+const CUSTOMIZE_GUIDE_STEPS = [
+  {
+    label: "Choose Design",
+    title: "Choose a design",
+    instruction:
+      "Pick the furniture design you want to customize. Check the 3D preview before you continue.",
+  },
+  {
+    label: "Set Size",
+    title: "Set the size",
+    instruction:
+      "Enter the width, height, and depth that fit your room or available space.",
+  },
+  {
+    label: "Edit Parts",
+    title: "Edit parts",
+    instruction:
+      "Click Edit Design, then click a part of the furniture if you want to change only that part.",
+  },
+  {
+    label: "Choose Finish",
+    title: "Choose a finish",
+    instruction:
+      "Choose the wood finish or color you want. You can apply it to the full design or only the selected part.",
+  },
+  {
+    label: "Review Design",
+    title: "Review your design",
+    instruction:
+      "Check the size, finish, quantity, notes, and uploaded photos before you go to the next step.",
+  },
+  {
+    label: "Submit Request",
+    title: "Submit your request",
+    instruction:
+      "Add the design to your cart. You can review it again before you place your custom request.",
+  },
+];
+
 const isHexColor = (value) => HEX_COLOR_RE.test(String(value || "").trim());
 
 const getSolidColorHex = (component = {}) => {
@@ -278,6 +319,7 @@ export default function Customer3DViewer({
   const labelHRef = useRef(null);
   const labelDRef = useRef(null);
   const historyRef = useRef({ past: [], future: [] });
+  const customizeFeedbackTimerRef = useRef(null);
 
   const [components, setComponents] = useState(() =>
     normalizeViewerComponents(initialComponents),
@@ -290,6 +332,21 @@ export default function Customer3DViewer({
   const [selectionMode, setSelectionMode] = useState(false);
   const [activeView, setActiveView] = useState("3D");
   const [customHex, setCustomHex] = useState("#1e293b");
+
+  const [customizeProgressStep, setCustomizeProgressStep] = useState(
+    readOnly ? 1 : 2,
+  );
+  const [customizeGuideStep, setCustomizeGuideStep] = useState(0);
+  const [customizeFeedback, setCustomizeFeedback] = useState("");
+  const [showCustomizeGuide, setShowCustomizeGuide] = useState(() => {
+    if (readOnly || typeof window === "undefined") return false;
+
+    try {
+      return window.localStorage.getItem(CUSTOMIZE_GUIDE_STORAGE_KEY) !== "1";
+    } catch {
+      return true;
+    }
+  });
 
   const [quantity, setQuantity] = useState(() => {
     const parsed = Number(initialQuantity);
@@ -308,6 +365,61 @@ export default function Customer3DViewer({
     height: "",
     depth: "",
   });
+
+  const rememberCustomizeGuide = useCallback(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(CUSTOMIZE_GUIDE_STORAGE_KEY, "1");
+      } catch {
+        // Keep the guide usable even when browser storage is unavailable.
+      }
+    }
+
+    setShowCustomizeGuide(false);
+  }, []);
+
+  const openCustomizeGuide = useCallback(() => {
+    setCustomizeGuideStep(
+      Math.max(
+        0,
+        Math.min(CUSTOMIZE_GUIDE_STEPS.length - 1, customizeProgressStep - 1),
+      ),
+    );
+    setShowCustomizeGuide(true);
+  }, [customizeProgressStep]);
+
+  const goToNextCustomizeGuideStep = useCallback(() => {
+    setCustomizeGuideStep((current) => {
+      if (current >= CUSTOMIZE_GUIDE_STEPS.length - 1) {
+        rememberCustomizeGuide();
+        return current;
+      }
+
+      return current + 1;
+    });
+  }, [rememberCustomizeGuide]);
+
+  const showCustomizeFeedback = useCallback((message) => {
+    if (customizeFeedbackTimerRef.current) {
+      clearTimeout(customizeFeedbackTimerRef.current);
+    }
+
+    setCustomizeFeedback(String(message || ""));
+
+    customizeFeedbackTimerRef.current = setTimeout(() => {
+      setCustomizeFeedback("");
+      customizeFeedbackTimerRef.current = null;
+    }, 1800);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (customizeFeedbackTimerRef.current) {
+        clearTimeout(customizeFeedbackTimerRef.current);
+      }
+    },
+    [],
+  );
 
   // 👉 AUTO-GROUPING FOR SHORTCUT BUTTONS
   const partGroups = useMemo(() => {
@@ -1301,6 +1413,9 @@ export default function Customer3DViewer({
         };
       }),
     );
+
+    setCustomizeProgressStep((current) => Math.max(current, 3));
+    showCustomizeFeedback("Size updated.");
   };
 
   const commitPartDimension = (axis, rawUnitValue) => {
@@ -1336,10 +1451,19 @@ export default function Customer3DViewer({
         };
       }),
     );
+
+    setCustomizeProgressStep((current) => Math.max(current, 3));
+    showCustomizeFeedback("Part size updated.");
   };
 
   const handleFinishChange = (finishId) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
+    setCustomizeProgressStep((current) => Math.max(current, 5));
+    showCustomizeFeedback(
+      finishId
+        ? "Finish applied. Review your design."
+        : "Finish reset. Review your design.",
+    );
     const targetIds = selectedCompIds.length
       ? selectedCompIds
       : components.map((c) => c.id);
@@ -1370,6 +1494,12 @@ export default function Customer3DViewer({
 
   const handleColorChange = (hex) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
+    if (isHexColor(hex)) {
+      setCustomizeProgressStep((current) => Math.max(current, 5));
+      showCustomizeFeedback("Color applied. Review your design.");
+    } else {
+      setCustomizeProgressStep((current) => Math.max(current, 4));
+    }
     setCustomHex(hex);
 
     const targetIds = selectedCompIds.length
@@ -1395,6 +1525,7 @@ export default function Customer3DViewer({
 
   const handleApply = () => {
     if (typeof onApply !== "function") return;
+    setCustomizeProgressStep(6);
     onApply({
       quantity: Math.max(1, Number(quantity || 1)),
       comments: String(comments || "").trim(),
@@ -1417,6 +1548,13 @@ export default function Customer3DViewer({
 
   const undoDisabled = !historyRef.current.past.length;
   const redoDisabled = !historyRef.current.future.length;
+  const activeCustomizeStep =
+    CUSTOMIZE_GUIDE_STEPS[
+      Math.max(
+        0,
+        Math.min(CUSTOMIZE_GUIDE_STEPS.length - 1, customizeProgressStep - 1),
+      )
+    ];
 
   return (
     <div style={styles.root}>
@@ -1478,6 +1616,7 @@ export default function Customer3DViewer({
             ))}
           </div>
         </div>
+
       </div>
 
       <div
@@ -1491,49 +1630,265 @@ export default function Customer3DViewer({
       >
         <div
           className="customer-3d-viewer-canvas-wrap"
-          style={styles.canvasWrap}
+          style={{
+            ...styles.canvasWrap,
+            ...(!readOnly ? styles.customizeCanvasWrap : {}),
+          }}
         >
-          <div style={styles.cameraToolbar}>
-            {["3D", "Front", "Back", "Side", "Top", "Bottom"].map((view) => (
-              <button
-                key={view}
-                type="button"
-                onClick={() => changeCameraView(view)}
-                style={{
-                  ...styles.cameraBtn,
-                  ...(activeView === view ? styles.cameraBtnActive : {}),
-                }}
+          {!readOnly ? (
+            <>
+              <div style={styles.customizeViewerControls}>
+                <div style={styles.customizeViewerControlRow}>
+                  <div
+                    style={{
+                      ...styles.cameraToolbar,
+                      ...styles.cameraToolbarInline,
+                    }}
+                  >
+                    {["3D", "Front", "Back", "Side", "Top", "Bottom"].map(
+                      (view) => (
+                        <button
+                          key={view}
+                          type="button"
+                          onClick={() => changeCameraView(view)}
+                          style={{
+                            ...styles.cameraBtn,
+                            ...(view === "Bottom"
+                              ? styles.cameraBtnLast
+                              : {}),
+                            ...(activeView === view
+                              ? styles.cameraBtnActive
+                              : {}),
+                          }}
+                        >
+                          {view}
+                        </button>
+                      ),
+                    )}
+                  </div>
+
+                  <div style={styles.customizeProgressArea}>
+                    <div style={styles.customizeProgressHeader}>
+                      <div>
+                        <div style={styles.customizeProgressEyebrow}>
+                          Customization Progress
+                        </div>
+                        <div style={styles.customizeProgressSummary}>
+                          Step {customizeProgressStep} of{" "}
+                          {CUSTOMIZE_GUIDE_STEPS.length}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={styles.customizeStepsScroll}>
+                      <div style={styles.customizeSteps}>
+                        {CUSTOMIZE_GUIDE_STEPS.map((step, index) => {
+                          const stepNumber = index + 1;
+                          const isComplete =
+                            stepNumber < customizeProgressStep;
+                          const isActive =
+                            stepNumber === customizeProgressStep;
+
+                          return (
+                            <div key={step.label} style={styles.customizeStep}>
+                              <div style={styles.customizeStepRail}>
+                                <span
+                                  style={{
+                                    ...styles.customizeStepBadge,
+                                    ...(isComplete
+                                      ? styles.customizeStepBadgeComplete
+                                      : {}),
+                                    ...(isActive
+                                      ? styles.customizeStepBadgeActive
+                                      : {}),
+                                  }}
+                                >
+                                  {isComplete ? "✓" : stepNumber}
+                                </span>
+
+                                {index <
+                                CUSTOMIZE_GUIDE_STEPS.length - 1 ? (
+                                  <span
+                                    style={{
+                                      ...styles.customizeStepLine,
+                                      ...(isComplete
+                                        ? styles.customizeStepLineComplete
+                                        : {}),
+                                    }}
+                                  />
+                                ) : null}
+                              </div>
+
+                              <span
+                                style={{
+                                  ...styles.customizeStepLabel,
+                                  ...(isActive || isComplete
+                                    ? styles.customizeStepLabelReached
+                                    : {}),
+                                }}
+                              >
+                                {step.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={styles.customizeGuideDock}>
+                  <button
+                    type="button"
+                    onClick={openCustomizeGuide}
+                    style={styles.customizeGuideHelpBtn}
+                  >
+                    How to Customize?
+                  </button>
+
+                  {showCustomizeGuide ? (
+                    <div style={styles.customizeGuideCard}>
+                      <div style={styles.customizeGuideCardTop}>
+                        <div>
+                          <div style={styles.customizeGuideStepMeta}>
+                            GUIDE {customizeGuideStep + 1} OF{" "}
+                            {CUSTOMIZE_GUIDE_STEPS.length}
+                          </div>
+                          <div style={styles.customizeGuideTitle}>
+                            {
+                              CUSTOMIZE_GUIDE_STEPS[customizeGuideStep]
+                                .title
+                            }
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={rememberCustomizeGuide}
+                          style={styles.customizeGuideSkipBtn}
+                        >
+                          Skip guide
+                        </button>
+                      </div>
+
+                      <div style={styles.customizeGuideInstruction}>
+                        {
+                          CUSTOMIZE_GUIDE_STEPS[customizeGuideStep]
+                            .instruction
+                        }
+                      </div>
+
+                      <div style={styles.customizeGuideActions}>
+                        {customizeGuideStep > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCustomizeGuideStep((current) =>
+                                Math.max(0, current - 1),
+                              )
+                            }
+                            style={styles.customizeGuideSecondaryBtn}
+                          >
+                            Back
+                          </button>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          onClick={goToNextCustomizeGuideStep}
+                          style={styles.customizeGuidePrimaryBtn}
+                        >
+                          {customizeGuideStep ===
+                          CUSTOMIZE_GUIDE_STEPS.length - 1
+                            ? "Got it"
+                            : "Next"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div style={styles.customizeCanvasStage}>
+                <div ref={mountRef} style={styles.canvasContainer} />
+
+                <div
+                  ref={labelWRef}
+                  className="customer-3d-floating-label"
+                  style={styles.floatingLabel}
+                >
+                  {formatUnitLabel(overallBounds.width_mm)}
+                </div>
+
+                <div
+                  ref={labelHRef}
+                  className="customer-3d-floating-label"
+                  style={styles.floatingLabel}
+                >
+                  {formatUnitLabel(overallBounds.height_mm)}
+                </div>
+
+                <div
+                  ref={labelDRef}
+                  className="customer-3d-floating-label"
+                  style={styles.floatingLabel}
+                >
+                  {formatUnitLabel(overallBounds.depth_mm)}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={styles.cameraToolbar}>
+                {["3D", "Front", "Back", "Side", "Top", "Bottom"].map(
+                  (view) => (
+                    <button
+                      key={view}
+                      type="button"
+                      onClick={() => changeCameraView(view)}
+                      style={{
+                        ...styles.cameraBtn,
+                        ...(view === "Bottom"
+                          ? styles.cameraBtnLast
+                          : {}),
+                        ...(activeView === view
+                          ? styles.cameraBtnActive
+                          : {}),
+                      }}
+                    >
+                      {view}
+                    </button>
+                  ),
+                )}
+              </div>
+
+              <div ref={mountRef} style={styles.canvasContainer} />
+
+              <div
+                ref={labelWRef}
+                className="customer-3d-floating-label"
+                style={styles.floatingLabel}
               >
-                {view}
-              </button>
-            ))}
-          </div>
+                {formatUnitLabel(overallBounds.width_mm)}
+              </div>
 
-          <div ref={mountRef} style={styles.canvasContainer} />
+              <div
+                ref={labelHRef}
+                className="customer-3d-floating-label"
+                style={styles.floatingLabel}
+              >
+                {formatUnitLabel(overallBounds.height_mm)}
+              </div>
 
-          <div
-            ref={labelWRef}
-            className="customer-3d-floating-label"
-            style={styles.floatingLabel}
-          >
-            {formatUnitLabel(overallBounds.width_mm)}
-          </div>
-
-          <div
-            ref={labelHRef}
-            className="customer-3d-floating-label"
-            style={styles.floatingLabel}
-          >
-            {formatUnitLabel(overallBounds.height_mm)}
-          </div>
-
-          <div
-            ref={labelDRef}
-            className="customer-3d-floating-label"
-            style={styles.floatingLabel}
-          >
-            {formatUnitLabel(overallBounds.depth_mm)}
-          </div>
+              <div
+                ref={labelDRef}
+                className="customer-3d-floating-label"
+                style={styles.floatingLabel}
+              >
+                {formatUnitLabel(overallBounds.depth_mm)}
+              </div>
+            </>
+          )}
         </div>
 
         {readOnly ? (
@@ -1629,12 +1984,38 @@ export default function Customer3DViewer({
                 }}
               >
                 <div style={styles.sidebarSectionHeader}>
-                  <div style={styles.sidebarSectionTitle}>Design Options</div>
+                  <div style={styles.sidebarSectionTitle}>
+                    Customize Your Design
+                  </div>
                 </div>
 
                 <p style={styles.sidebarSectionNote}>
-                  Set the size and finish. Optional tools are below.
+                  Follow the highlighted section for your current step.
                 </p>
+
+                <div style={styles.customizeCurrentStepCard}>
+                  <div style={styles.customizeCurrentStepMeta}>
+                    CURRENT STEP · {customizeProgressStep} OF{" "}
+                    {CUSTOMIZE_GUIDE_STEPS.length}
+                  </div>
+                  <div style={styles.customizeCurrentStepTitle}>
+                    {activeCustomizeStep?.title}
+                  </div>
+                  <div style={styles.customizeCurrentStepInstruction}>
+                    {activeCustomizeStep?.instruction}
+                  </div>
+
+                  {customizeFeedback ? (
+                    <div
+                      style={styles.customizeFeedback}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <span style={styles.customizeFeedbackIcon}>✓</span>
+                      <span>{customizeFeedback}</span>
+                    </div>
+                  ) : null}
+                </div>
 
                 <OversizedDeliveryWarning
                   assessment={deliveryAssessment}
@@ -1656,33 +2037,47 @@ export default function Customer3DViewer({
                   ...styles.sidebarSection,
                   ...styles.customizeOptionalSection,
                   ...(selectionMode ? styles.sidebarSectionActive : {}),
+                  ...(customizeProgressStep === 3
+                    ? styles.customizeActiveSection
+                    : {}),
                 }}
               >
                 <div style={styles.sectionRow}>
                   <label style={styles.label}>Edit Individual Parts</label>
 
-                  <label style={styles.inlineCheck}>
-                    <input
-                      type="checkbox"
-                      checked={selectionMode}
-                      onChange={(e) => {
-                        setSelectionMode(e.target.checked);
-                        if (!e.target.checked) setSelectedCompIds([]);
-                      }}
-                    />
-                    <span
-                      style={selectionMode ? styles.inlineCheckActive : null}
-                    >
-                      Enable
-                    </span>
-                  </label>
+                  <button
+                    type="button"
+                    aria-pressed={selectionMode}
+                    onClick={() => {
+                      const nextEnabled = !selectionMode;
+                      setSelectionMode(nextEnabled);
+
+                      if (nextEnabled) {
+                        setCustomizeProgressStep((current) =>
+                          Math.max(current, 3),
+                        );
+                        showCustomizeFeedback(
+                          "Edit mode is on. Select a furniture part.",
+                        );
+                      } else {
+                        setSelectedCompIds([]);
+                        showCustomizeFeedback("Edit mode is off.");
+                      }
+                    }}
+                    style={{
+                      ...styles.editDesignBtn,
+                      ...(selectionMode ? styles.editDesignBtnActive : {}),
+                    }}
+                  >
+                    {selectionMode ? "EDITING ON" : "EDIT DESIGN"}
+                  </button>
                 </div>
 
                 {selectionMode ? (
                   <>
                     <div style={styles.helperText}>
-                      Select a part in the 3D preview, or choose one from the
-                      options below.
+                      Editing mode is on. Select a part in the 3D preview, or
+                      choose one from the list below.
                     </div>
 
                     <select
@@ -1706,6 +2101,9 @@ export default function Customer3DViewer({
 
                         const group = partGroups[index];
                         setSelectedCompIds(group?.ids || []);
+                        if (group?.ids?.length) {
+                          showCustomizeFeedback("Furniture part selected.");
+                        }
                       }}
                       style={styles.partGroupSelect}
                     >
@@ -1719,8 +2117,8 @@ export default function Customer3DViewer({
                   </>
                 ) : (
                   <div style={styles.helperTextMuted}>
-                    Turn this on to select and edit repeated parts such as legs,
-                    shelves, or panels.
+                    Need to change a leg, shelf, or panel? Choose Edit Design,
+                    then select the part you want to adjust.
                   </div>
                 )}
               </section>
@@ -1728,7 +2126,14 @@ export default function Customer3DViewer({
               {selectionMode &&
               selectedGroup.length > 0 &&
               sampleSelectedPart ? (
-                <section style={styles.sidebarSection}>
+                <section
+                  style={{
+                    ...styles.sidebarSection,
+                    ...(customizeProgressStep === 3
+                      ? styles.customizeActiveSection
+                      : {}),
+                  }}
+                >
                   <div style={styles.sectionRow}>
                     <label style={styles.label}>
                       Selected Parts: {selectedGroup.length}
@@ -1825,6 +2230,9 @@ export default function Customer3DViewer({
                   style={{
                     ...styles.sidebarSection,
                     ...styles.customizeSizeSection,
+                    ...(customizeProgressStep === 2
+                      ? styles.customizeActiveSection
+                      : {}),
                   }}
                 >
                   <div style={styles.sectionRow}>
@@ -1896,6 +2304,9 @@ export default function Customer3DViewer({
                   ...styles.customizeFinishSection,
                   ...(readOnly || !editable.finish_color
                     ? styles.sidebarSectionDisabled
+                    : {}),
+                  ...(customizeProgressStep === 4
+                    ? styles.customizeActiveSection
                     : {}),
                 }}
               >
@@ -1983,7 +2394,14 @@ export default function Customer3DViewer({
             </div>
 
             {!readOnly ? (
-              <div style={styles.sidebarFooter}>
+              <div
+                style={{
+                  ...styles.sidebarFooter,
+                  ...(customizeProgressStep === 5
+                    ? styles.customizeActiveFooter
+                    : {}),
+                }}
+              >
                 <div style={styles.footerHeader}>
                   <div>
                     <div style={styles.footerTitle}>Order Details</div>
@@ -1996,9 +2414,13 @@ export default function Customer3DViewer({
                     <button
                       type="button"
                       disabled={!editable.quantity}
-                      onClick={() =>
-                        setQuantity((prev) => Math.max(1, prev - 1))
-                      }
+                      onClick={() => {
+                        setCustomizeProgressStep((current) =>
+                          Math.max(current, 5),
+                        );
+                        setQuantity((prev) => Math.max(1, prev - 1));
+                        showCustomizeFeedback("Quantity updated.");
+                      }}
                       style={styles.qtyBtn}
                     >
                       −
@@ -2009,9 +2431,13 @@ export default function Customer3DViewer({
                     <button
                       type="button"
                       disabled={!editable.quantity}
-                      onClick={() =>
-                        setQuantity((prev) => Math.max(1, prev + 1))
-                      }
+                      onClick={() => {
+                        setCustomizeProgressStep((current) =>
+                          Math.max(current, 5),
+                        );
+                        setQuantity((prev) => Math.max(1, prev + 1));
+                        showCustomizeFeedback("Quantity updated.");
+                      }}
                       style={styles.qtyBtn}
                     >
                       +
@@ -2034,7 +2460,15 @@ export default function Customer3DViewer({
                       accept="image/jpeg,image/jpg,image/png,image/webp"
                       multiple
                       hidden
-                      onChange={onPickReferencePhotos}
+                      onChange={(event) => {
+                        setCustomizeProgressStep((current) =>
+                          Math.max(current, 5),
+                        );
+                        onPickReferencePhotos?.(event);
+                        if (event.target.files?.length) {
+                          showCustomizeFeedback("Photo selected.");
+                        }
+                      }}
                     />
                   </label>
 
@@ -2084,7 +2518,14 @@ export default function Customer3DViewer({
                     maxLength={500}
                     value={comments}
                     disabled={!editable.comments}
-                    onChange={(e) => setComments(e.target.value)}
+                    onChange={(e) => {
+                      setComments(e.target.value);
+                      if (String(e.target.value || "").trim()) {
+                        setCustomizeProgressStep((current) =>
+                          Math.max(current, 5),
+                        );
+                      }
+                    }}
                     placeholder={commentsPlaceholder}
                     style={styles.textarea}
                   />
@@ -2149,6 +2590,134 @@ const styles = {
     alignItems: "center",
     gap: 8,
     flexWrap: "wrap",
+  },
+
+  customizeProgressArea: {
+    minWidth: 0,
+    display: "grid",
+    gap: 3,
+    padding: 0,
+    border: "none",
+    alignSelf: "center",
+  },
+
+  customizeProgressHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 8,
+  },
+
+  customizeProgressEyebrow: {
+    fontSize: 9,
+    lineHeight: 1.15,
+    fontWeight: 700,
+    letterSpacing: "0.055em",
+    textTransform: "uppercase",
+    color: "#6b7280",
+  },
+
+  customizeProgressSummary: {
+    marginTop: 1,
+    fontSize: 11,
+    lineHeight: 1.25,
+    fontWeight: 700,
+    color: "#111111",
+  },
+
+  customizeGuideHelpBtn: {
+    minHeight: 30,
+    padding: "0 12px",
+    border: "1px solid #111111",
+    borderRadius: 0,
+    background: "#111111",
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: 700,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+  },
+
+  customizeStepsScroll: {
+    minWidth: 0,
+    overflowX: "auto",
+    overflowY: "hidden",
+    paddingBottom: 1,
+  },
+
+  customizeSteps: {
+    display: "grid",
+    gridTemplateColumns: "repeat(6, minmax(86px, 1fr))",
+    minWidth: 580,
+    gap: 0,
+  },
+
+  customizeStep: {
+    minWidth: 0,
+    display: "grid",
+    gap: 5,
+    alignContent: "start",
+  },
+
+  customizeStepRail: {
+    display: "flex",
+    alignItems: "center",
+    minWidth: 0,
+  },
+
+  customizeStepBadge: {
+    width: 28,
+    height: 28,
+    flex: "0 0 28px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "1px solid #cfd3d8",
+    borderRadius: 0,
+    background: "#ffffff",
+    color: "#8a9098",
+    fontSize: 11,
+    lineHeight: 1,
+    fontWeight: 700,
+    boxSizing: "border-box",
+  },
+
+  customizeStepBadgeComplete: {
+    borderColor: "#111111",
+    background: "#111111",
+    color: "#ffffff",
+  },
+
+  customizeStepBadgeActive: {
+    border: "1px solid #111111",
+    background: "#111111",
+    color: "#ffffff",
+  },
+
+  customizeStepLine: {
+    height: 1,
+    flex: 1,
+    minWidth: 18,
+    background: "#d9dde2",
+  },
+
+  customizeStepLineComplete: {
+    background: "#111111",
+  },
+
+  customizeStepLabel: {
+    paddingRight: 8,
+    fontSize: 10,
+    lineHeight: 1.25,
+    fontWeight: 500,
+    color: "#969ca4",
+    whiteSpace: "nowrap",
+  },
+
+  customizeStepLabelReached: {
+    color: "#111111",
+    fontWeight: 700,
   },
 
   compactGroup: {
@@ -2238,6 +2807,49 @@ const styles = {
     background: "#f7f7f7",
   },
 
+  customizeCanvasWrap: {
+    display: "grid",
+    gridTemplateRows: "auto minmax(0, 1fr)",
+    overflow: "visible",
+  },
+
+  customizeViewerControls: {
+    minWidth: 0,
+    position: "relative",
+    zIndex: 20,
+    display: "grid",
+    gap: 8,
+    padding: "8px 12px 9px",
+    borderBottom: "none",
+    background: "#f7f7f7",
+    boxSizing: "border-box",
+  },
+
+  customizeViewerControlRow: {
+    minWidth: 0,
+    display: "grid",
+    gridTemplateColumns: "max-content minmax(0, 1fr)",
+    alignItems: "start",
+    gap: 14,
+  },
+
+  customizeGuideDock: {
+    minWidth: 0,
+    position: "relative",
+    display: "grid",
+    justifyItems: "start",
+    gap: 8,
+    paddingTop: 1,
+  },
+
+  customizeCanvasStage: {
+    minWidth: 0,
+    minHeight: 0,
+    position: "relative",
+    overflow: "hidden",
+    background: "#f7f7f7",
+  },
+
   canvasContainer: {
     width: "100%",
     height: "100%",
@@ -2254,17 +2866,25 @@ const styles = {
     gridTemplateColumns: "repeat(6, auto)",
     gap: 0,
     width: "max-content",
-    border: "1px solid #cfcfcf",
-    background: "#ffffff",
+    border: "none",
+    background: "transparent",
     boxSizing: "border-box",
+  },
+
+  cameraToolbarInline: {
+    position: "static",
+    top: "auto",
+    left: "auto",
+    zIndex: 1,
+    alignSelf: "center",
   },
 
   cameraBtn: {
     minWidth: 48,
     height: 34,
     padding: "0 12px",
-    border: "none",
-    borderRight: "1px solid #cfcfcf",
+    border: "1px solid #cfcfcf",
+    borderRight: "none",
     background: "#ffffff",
     color: "#111111",
     fontSize: 12,
@@ -2277,6 +2897,10 @@ const styles = {
     background: "#111111",
     color: "#ffffff",
     fontWeight: 700,
+  },
+
+  cameraBtnLast: {
+    borderRight: "1px solid #cfcfcf",
   },
 
   floatingLabel: {
@@ -2447,6 +3071,152 @@ const styles = {
     padding: "0 1px 2px",
   },
 
+  customizeCurrentStepCard: {
+    display: "grid",
+    gap: 4,
+    marginTop: 3,
+    padding: "7px 8px",
+    border: "none",
+    background: "#f5f5f5",
+    boxShadow: "inset 3px 0 0 #111111",
+  },
+
+  customizeCurrentStepMeta: {
+    fontSize: 8.75,
+    lineHeight: 1.2,
+    fontWeight: 700,
+    letterSpacing: "0.055em",
+    color: "#6b7280",
+  },
+
+  customizeCurrentStepTitle: {
+    fontSize: 12,
+    lineHeight: 1.25,
+    fontWeight: 700,
+    color: "#111111",
+  },
+
+  customizeCurrentStepInstruction: {
+    fontSize: 10.25,
+    lineHeight: 1.45,
+    fontWeight: 400,
+    color: "#4b5563",
+  },
+
+  customizeFeedback: {
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 2,
+    fontSize: 9.75,
+    lineHeight: 1.3,
+    fontWeight: 600,
+    color: "#111111",
+  },
+
+  customizeFeedbackIcon: {
+    width: 15,
+    height: 15,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flex: "0 0 15px",
+    background: "#111111",
+    color: "#ffffff",
+    fontSize: 8,
+    fontWeight: 700,
+  },
+
+  customizeGuideCard: {
+    position: "absolute",
+    top: "calc(100% + 8px)",
+    left: 0,
+    zIndex: 40,
+    width: "min(430px, calc(100vw - 80px))",
+    display: "grid",
+    gap: 8,
+    marginTop: 0,
+    padding: "10px 12px",
+    border: "1px solid #111111",
+    background: "#ffffff",
+    boxSizing: "border-box",
+  },
+
+  customizeGuideCardTop: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+
+  customizeGuideStepMeta: {
+    fontSize: 9,
+    lineHeight: 1.2,
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    color: "#6b7280",
+  },
+
+  customizeGuideTitle: {
+    marginTop: 3,
+    fontSize: 14,
+    lineHeight: 1.3,
+    fontWeight: 700,
+    color: "#111111",
+  },
+
+  customizeGuideInstruction: {
+    fontSize: 12,
+    lineHeight: 1.55,
+    fontWeight: 400,
+    color: "#374151",
+  },
+
+  customizeGuideSkipBtn: {
+    padding: 0,
+    border: "none",
+    background: "transparent",
+    color: "#6b7280",
+    fontSize: 10,
+    fontWeight: 600,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+  },
+
+  customizeGuideActions: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 6,
+  },
+
+  customizeGuideSecondaryBtn: {
+    minHeight: 29,
+    padding: "0 10px",
+    border: "1px solid #111111",
+    borderRadius: 0,
+    background: "#ffffff",
+    color: "#111111",
+    fontSize: 10,
+    fontWeight: 700,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+
+  customizeGuidePrimaryBtn: {
+    minHeight: 29,
+    padding: "0 12px",
+    border: "1px solid #111111",
+    borderRadius: 0,
+    background: "#111111",
+    color: "#ffffff",
+    fontSize: 10,
+    fontWeight: 700,
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+
   customizeSizeSection: {
     gridColumn: "1 / -1",
     order: 2,
@@ -2510,6 +3280,12 @@ const styles = {
 
   sidebarSectionActive: {
     borderColor: "#111111",
+  },
+
+  customizeActiveSection: {
+    borderColor: "#111111",
+    background: "#f7f7f7",
+    boxShadow: "inset 3px 0 0 #111111",
   },
 
   sidebarSectionDisabled: {
@@ -2597,6 +3373,27 @@ const styles = {
   inlineCheckActive: {
     color: "#111111",
     fontWeight: 700,
+  },
+
+  editDesignBtn: {
+    minHeight: 28,
+    padding: "0 9px",
+    border: "1px solid #111111",
+    borderRadius: 0,
+    background: "#ffffff",
+    color: "#111111",
+    fontSize: 9.5,
+    lineHeight: 1,
+    fontWeight: 700,
+    letterSpacing: "0.02em",
+    cursor: "pointer",
+    fontFamily: "inherit",
+    whiteSpace: "nowrap",
+  },
+
+  editDesignBtnActive: {
+    background: "#111111",
+    color: "#ffffff",
   },
 
   helperText: {
@@ -2739,6 +3536,11 @@ const styles = {
     gridTemplateRows: "auto auto auto auto",
     rowGap: 8,
     alignItems: "start",
+  },
+
+  customizeActiveFooter: {
+    background: "#f7f7f7",
+    boxShadow: "inset 3px 0 0 #111111",
   },
 
   orderDetailsStackedUniform: {
