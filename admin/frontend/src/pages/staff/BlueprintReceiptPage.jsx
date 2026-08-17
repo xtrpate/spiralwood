@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import api, { buildAssetUrl } from "../../services/api";
+import api from "../../services/api";
 import { useParams, useNavigate } from "react-router-dom";
 import { Printer, ArrowLeft } from "lucide-react";
 import "./ReceiptPage.css";
+import receiptBrandLogoV172 from "../customer/spiral-wood-receipt-logo-v172.png";
 
 const PAYMENT_METHOD_LABELS = {
   cash: "Cash",
@@ -18,19 +19,6 @@ const PAYMENT_LABEL_TEXT = {
   full_payment: "Full Payment",
 };
 
-const RECEIPT_LOGO_FALLBACK = `${process.env.PUBLIC_URL || ""}/logo192.png`;
-
-const handleReceiptLogoError = (event) => {
-  const image = event.currentTarget;
-
-  if (image.dataset.receiptFallbackApplied === "true") {
-    image.style.display = "none";
-    return;
-  }
-
-  image.dataset.receiptFallbackApplied = "true";
-  image.src = RECEIPT_LOGO_FALLBACK;
-};
 
 const formatMoney = (value) =>
   `₱${Number(value || 0).toLocaleString("en-PH", {
@@ -90,7 +78,7 @@ export default function BlueprintReceiptPage() {
   const receiptDate = receipt.created_at || receipt.printed_at;
 
   return (
-    <div style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="staff-receipt-page-v190 staff-blueprint-receipt-v190">
       <div
         className="page-header"
         style={{
@@ -150,63 +138,60 @@ export default function BlueprintReceiptPage() {
           {/* Header */}
           <div className="receipt-header">
             <img
-              src={
-                buildAssetUrl(receipt.business?.site_logo) ||
-                RECEIPT_LOGO_FALLBACK
-              }
-              alt="Spiral Wood Services logo"
-              className="receipt-logo"
-              onError={handleReceiptLogoError}
+              src={receiptBrandLogoV172}
+              alt="Spiral Wood Services"
+              className="receipt-logo staff-receipt-logo-v192"
             />
-            <h2 className="biz-name">
-              {receipt.business?.business_name || "Spiral Wood Services"}
-            </h2>
             <p className="biz-info">{receipt.business?.business_address || ""}</p>
             <p className="biz-info">{receipt.business?.business_phone || ""}</p>
             <div className="receipt-divider" />
-            <p className="receipt-title">BLUEPRINT PAYMENT RECEIPT</p>
+            <div className="staff-receipt-document-v190">
+              <p className="receipt-title">BLUEPRINT PAYMENT RECEIPT</p>
+              <p className="staff-receipt-copy-v190">STORE COPY</p>
+            </div>
           </div>
 
           {/* Meta */}
+          <div className="staff-receipt-section-title-v190">PAYMENT DETAILS</div>
           <div className="receipt-meta">
             <div className="meta-row">
-              <span>Receipt #:</span>
+              <span>Receipt number</span>
               <span>{receipt.receipt_number}</span>
             </div>
             <div className="meta-row">
-              <span>Order #:</span>
+              <span>Order number</span>
               <span>{receipt.order_number}</span>
             </div>
             {receipt.blueprint_title && (
               <div className="meta-row">
-                <span>Project:</span>
+                <span>Project</span>
                 <span>{receipt.blueprint_title}</span>
               </div>
             )}
             <div className="meta-row">
-              <span>Customer:</span>
+              <span>Customer</span>
               <span>{receipt.issued_to}</span>
             </div>
             <div className="meta-row">
-              <span>Date:</span>
+              <span>Date and time</span>
               <span>
                 {receiptDate ? new Date(receiptDate).toLocaleString("en-PH") : "—"}
               </span>
             </div>
             <div className="meta-row">
-              <span>Payment Method:</span>
+              <span>Payment method</span>
               <span>{paymentMethodLabel}</span>
             </div>
             <div className="meta-row">
-              <span>Payment Type:</span>
+              <span>Payment type</span>
               <span>{paymentLabelText}</span>
             </div>
             <div className="meta-row">
-              <span>Processed By:</span>
+              <span>Processed by</span>
               <span>{receipt.processor_display}</span>
             </div>
             <div className="meta-row">
-              <span>Status:</span>
+              <span>Payment status</span>
               <span style={{ color: isFullyPaid ? "#059669" : "#b45309" }}>
                 {receipt.payment_status}
               </span>
@@ -216,31 +201,35 @@ export default function BlueprintReceiptPage() {
           <div className="receipt-divider" />
 
           {/* Payment progress */}
-          <div className="receipt-totals">
+          <div className="staff-receipt-section-title-v190">PAYMENT SUMMARY</div>
+          <div className="receipt-totals staff-receipt-summary-v190">
             <div className="total-row">
-              <span>Project Total</span>
+              <span>Project total</span>
               <span>{formatMoney(receipt.total_amount)}</span>
             </div>
             <div className="total-row">
-              <span>Previous Verified Payments</span>
+              <span>Previous verified payments</span>
               <span>{formatMoney(receipt.previous_paid_amount)}</span>
             </div>
-            <div className="total-row" style={{ fontWeight: "bold" }}>
-              <span>Payment Received (this receipt)</span>
+            <div className="total-row staff-payment-received-v190">
+              <span>Payment received</span>
               <span>{formatMoney(receipt.amount_paid)}</span>
             </div>
             <div className="total-row">
-              <span>Total Paid After This Payment</span>
+              <span>Total paid</span>
               <span>{formatMoney(receipt.total_paid_after)}</span>
             </div>
-            <div className="total-row grand">
-              <span>Remaining Balance</span>
+            <div className="total-row grand staff-remaining-balance-v190">
+              <span>Remaining balance</span>
               <span>{formatMoney(receipt.remaining_balance_after)}</span>
             </div>
 
             {receipt.provider_reference && (
-              <div className="meta-row" style={{ marginTop: 12 }}>
-                <span>Reference #:</span>
+              <div
+                className="meta-row staff-payment-reference-v192"
+                style={{ marginTop: 12 }}
+              >
+                <span>Payment reference</span>
                 <span>{receipt.provider_reference}</span>
               </div>
             )}
@@ -249,7 +238,7 @@ export default function BlueprintReceiptPage() {
           <div className="receipt-divider" />
 
           {/* Footer */}
-          <div className="receipt-footer">
+          <div className="receipt-footer staff-receipt-footer-v190">
             <p style={{ fontWeight: 800, color: "#18181b" }}>
               {receipt.business?.thank_you_message?.trim() ||
                 "Thank you for your payment!"}
@@ -261,7 +250,7 @@ export default function BlueprintReceiptPage() {
                 marginTop: 8,
               }}
             >
-              System-generated blueprint payment receipt.
+              Generated by WISDOM POS.
             </p>
           </div>
         </div>
@@ -278,10 +267,10 @@ const btnPrimary = {
   background: "#18181b",
   color: "#fff",
   border: "1px solid #18181b",
-  borderRadius: 8,
+  borderRadius: 0,
   cursor: "pointer",
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 600,
   transition: "background 0.2s",
 };
 
@@ -293,9 +282,9 @@ const btnGhost = {
   background: "#f4f4f5",
   color: "#18181b",
   border: "1px solid #e4e4e7",
-  borderRadius: 8,
+  borderRadius: 0,
   cursor: "pointer",
   fontSize: 13,
-  fontWeight: 700,
+  fontWeight: 600,
   transition: "background 0.2s",
 };

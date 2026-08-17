@@ -4,6 +4,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Printer, ArrowLeft } from "lucide-react";
 import "./ReceiptPage.css";
 import { formatPHDateTime } from "../../utils/dateTime";
+import receiptBrandLogoV172 from "../customer/spiral-wood-receipt-logo-v172.png";
 
 const OFFICIAL_BUSINESS_ADDRESS =
   "8 Laot Street, Near Gavino, Prenza I, Marilao, 3019 Bulacan";
@@ -114,7 +115,7 @@ export default function ReceiptPage() {
   const receiptDate = receipt.created_at || receipt.printed_at;
 
   return (
-    <div style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="staff-receipt-page-v190">
       <div
         className="page-header"
         style={{
@@ -146,7 +147,7 @@ export default function ReceiptPage() {
               lineHeight: 1.5,
             }}
           >
-            Receipt {receipt.receipt_number}
+            Receipt number {receipt.receipt_number}
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -173,28 +174,24 @@ export default function ReceiptPage() {
         <div className="receipt" id="receipt-print">
           {/* Header */}
           <div className="receipt-header">
-            {receipt.business?.site_logo && (
-              <img
-                src={buildAssetUrl(receipt.business.site_logo)}
-                alt="Spiral Wood Services"
-                className="receipt-logo"
-                onError={(e) => {
-                  e.currentTarget.style.display = "none";
-                }}
-              />
-            )}
-            <h2 className="biz-name">
-              {receipt.business?.business_name || "Spiral Wood Services"}
-            </h2>
+            <img
+              src={receiptBrandLogoV172}
+              alt="Spiral Wood Services"
+              className="receipt-logo staff-receipt-logo-v192"
+            />
             <p className="biz-info">
               {OFFICIAL_BUSINESS_ADDRESS}
             </p>
             <p className="biz-info">{receipt.business?.business_phone || ""}</p>
             <div className="receipt-divider" />
-            <p className="receipt-title">SALES RECEIPT</p>
+            <div className="staff-receipt-document-v190">
+              <p className="receipt-title">SALES RECEIPT</p>
+              <p className="staff-receipt-copy-v190">STORE COPY</p>
+            </div>
           </div>
 
           {/* Meta */}
+          <div className="staff-receipt-section-title-v190">SALE DETAILS</div>
           <div className="receipt-meta">
             <div className="meta-row">
               <span>Receipt Number</span>
@@ -205,7 +202,7 @@ export default function ReceiptPage() {
               <span>{receipt.order_number}</span>
             </div>
             <div className="meta-row">
-              <span>Date:</span>
+              <span>Date and time</span>
               <span>
                 {receiptDate
                   ? formatPHDateTime(receiptDate, {
@@ -220,27 +217,27 @@ export default function ReceiptPage() {
               </span>
             </div>
             <div className="meta-row">
-              <span>Customer:</span>
+              <span>Customer</span>
               <span>{receipt.walkin_customer_name || "Walk-in Customer"}</span>
             </div>
             <div className="meta-row">
-              <span>Payment:</span>
+              <span>Payment method</span>
               <span style={{ textTransform: "capitalize" }}>
                 {paymentMethodLabel || "N/A"}
               </span>
             </div>
             <div className="meta-row">
-              <span>Status:</span>
+              <span>Payment status</span>
               <span style={{ color: "#059669" }}>PAID</span>
             </div>
             {maskedPhone && (
               <div className="meta-row">
-                <span>Phone:</span>
+                <span>Phone</span>
                 <span>{maskedPhone}</span>
               </div>
             )}
             <div className="meta-row">
-              <span>Cashier:</span>
+              <span>Cashier</span>
               <span>{receipt.staff_name}</span>
             </div>
           </div>
@@ -248,7 +245,8 @@ export default function ReceiptPage() {
           <div className="receipt-divider" />
 
           {/* Items */}
-          <table className="receipt-items">
+          <div className="staff-receipt-section-title-v190">ITEMS</div>
+          <table className="receipt-items staff-receipt-items-v190">
             <thead>
               <tr>
                 <th>Item</th>
@@ -300,7 +298,8 @@ export default function ReceiptPage() {
           <div className="receipt-divider" />
 
           {/* Totals */}
-          <div className="receipt-totals">
+          <div className="staff-receipt-section-title-v190">PAYMENT SUMMARY</div>
+          <div className="receipt-totals staff-receipt-summary-v190">
             <div className="total-row">
               <span>Subtotal</span>
               <span>
@@ -342,7 +341,7 @@ export default function ReceiptPage() {
               </div>
             )}
 
-            <div className="total-row grand">
+            <div className="total-row grand staff-total-v190">
               <span>Total</span>
               <span>
                 ₱{total.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
@@ -350,7 +349,7 @@ export default function ReceiptPage() {
             </div>
 
             {paymentMethod === "cash" && (
-              <div className="total-row">
+              <div className="total-row staff-cash-received-v190">
                 <span>Cash Received</span>
                 <span>
                   {cashReceived !== null
@@ -361,7 +360,7 @@ export default function ReceiptPage() {
             )}
 
             {paymentMethod === "cash" && (
-              <div className="total-row" style={{ fontWeight: "bold" }}>
+              <div className="total-row staff-change-v190">
                 {/* 👉 RULE 8: Explicitly labeled Sukli */}
                 <span>Change</span>
                 <span>
@@ -374,7 +373,7 @@ export default function ReceiptPage() {
             {receipt.payment_method === "gcash" &&
               receipt.business?.gcash_number && (
                 <div className="meta-row" style={{ marginTop: 12 }}>
-                  <span>GCash #:</span>
+                  <span>GCash number</span>
                   <span>{receipt.business.gcash_number}</span>
                 </div>
               )}
@@ -383,7 +382,7 @@ export default function ReceiptPage() {
           <div className="receipt-divider" />
 
           {/* Footer */}
-          <div className="receipt-footer">
+          <div className="receipt-footer staff-receipt-footer-v190">
             {receipt.signature_url && (
               <div className="signature-block">
                 <img

@@ -304,3 +304,324 @@
     margin: 9px 0 !important;
   }
 }
+/* WISDOM ALL RECEIPTS PROFESSIONAL UI V1.9.0 */
+
+.staff-receipt-page-v190 {
+  color: #111111;
+  font-family: inherit;
+}
+
+.staff-receipt-page-v190 .page-header button {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-weight: 600 !important;
+}
+
+.staff-receipt-page-v190 .receipt {
+  width: min(440px, calc(100vw - 32px));
+  max-width: 440px;
+  padding: 26px 24px 24px;
+  border: 1px solid #d7d7d7;
+  border-radius: 0;
+  background: #ffffff;
+  box-shadow: none;
+  color: #111111;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.staff-receipt-page-v190 .receipt * {
+  font-family: inherit;
+}
+
+.staff-receipt-page-v190 .receipt-header {
+  margin-bottom: 0;
+}
+
+.staff-receipt-page-v190 .receipt-logo {
+  width: auto;
+  max-width: 180px;
+  max-height: 64px;
+  margin: 0 auto 10px;
+  filter: none;
+}
+
+.staff-receipt-page-v190 .biz-name {
+  margin-bottom: 5px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.staff-receipt-page-v190 .biz-info {
+  max-width: 350px;
+  margin: 1px auto;
+  color: #555b63;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.staff-receipt-page-v190 .receipt-divider {
+  margin: 12px 0;
+  border-top: 1px dashed #bfc3c8;
+}
+
+.staff-receipt-document-v190 {
+  text-align: center;
+}
+
+.staff-receipt-page-v190 .receipt-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.08em;
+}
+
+.staff-receipt-copy-v190 {
+  margin: 4px 0 0;
+  color: #70757c;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+}
+
+.staff-receipt-section-title-v190 {
+  margin-bottom: 7px;
+  color: #555b63;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.staff-receipt-page-v190 .receipt-meta {
+  margin-bottom: 0;
+}
+
+.staff-receipt-page-v190 .meta-row {
+  gap: 16px;
+  margin-bottom: 0;
+  padding: 2.5px 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.staff-receipt-page-v190 .meta-row > span:first-child {
+  flex: 0 0 39%;
+  color: #646a72;
+  font-weight: 400;
+}
+
+.staff-receipt-page-v190 .meta-row > span:last-child {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: #111111;
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.staff-receipt-items-v190 {
+  table-layout: fixed;
+  font-size: 10.5px;
+}
+
+.staff-receipt-items-v190 th {
+  padding: 5px 3px;
+  color: #676c73;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.staff-receipt-items-v190 td {
+  padding: 7px 3px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  vertical-align: top;
+}
+
+.staff-receipt-summary-v190 {
+  margin-top: 0;
+}
+
+.staff-receipt-page-v190 .total-row {
+  gap: 16px;
+  margin-bottom: 0;
+  padding: 3px 0;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.staff-receipt-page-v190 .total-row > span:first-child {
+  color: #646a72;
+  font-weight: 400;
+}
+
+.staff-receipt-page-v190 .total-row > span:last-child {
+  color: #111111;
+  font-weight: 600;
+  text-align: right;
+}
+
+.staff-receipt-page-v190 .staff-total-v190,
+.staff-receipt-page-v190 .staff-remaining-balance-v190 {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #cfd2d6;
+  color: #111111;
+}
+
+.staff-receipt-page-v190 .staff-total-v190 {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.staff-receipt-page-v190 .staff-total-v190 > span:first-child,
+.staff-receipt-page-v190 .staff-total-v190 > span:last-child {
+  color: #111111;
+  font-weight: 700;
+}
+
+.staff-receipt-page-v190 .staff-cash-received-v190 {
+  margin-top: 5px;
+  padding-top: 7px;
+}
+
+.staff-receipt-page-v190 .staff-change-v190 > span:first-child,
+.staff-receipt-page-v190 .staff-change-v190 > span:last-child,
+.staff-receipt-page-v190 .staff-payment-received-v190 > span:last-child {
+  color: #111111;
+  font-weight: 700;
+}
+
+.staff-receipt-page-v190 .staff-remaining-balance-v190 {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.staff-receipt-page-v190 .staff-remaining-balance-v190 > span:first-child,
+.staff-receipt-page-v190 .staff-remaining-balance-v190 > span:last-child {
+  color: #111111;
+  font-weight: 700;
+}
+
+.staff-receipt-footer-v190 {
+  margin-top: 0;
+  color: #666d75;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.staff-receipt-footer-v190 > p:first-of-type {
+  color: #111111 !important;
+  font-size: 11.5px;
+  font-weight: 600 !important;
+}
+
+@media (max-width: 520px) {
+  .staff-receipt-page-v190 .receipt {
+    width: calc(100vw - 24px);
+    padding: 22px 18px;
+  }
+}
+
+@media print {
+  .staff-receipt-page-v190 .receipt-logo {
+    width: auto !important;
+    max-width: 48mm !important;
+    max-height: 18mm !important;
+  }
+
+  .staff-receipt-copy-v190,
+  .staff-receipt-section-title-v190 {
+    color: #555555 !important;
+  }
+}
+/* WISDOM ALL RECEIPTS FINAL BRANDING + READABILITY FIX V1.9.2 */
+
+.staff-receipt-page-v190 .staff-receipt-logo-v192 {
+  display: block !important;
+  width: 205px !important;
+  max-width: 205px !important;
+  max-height: none !important;
+  height: auto !important;
+  margin: 0 auto 11px !important;
+  object-fit: contain !important;
+  filter: none !important;
+}
+
+.staff-receipt-page-v190 .biz-info {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.staff-receipt-page-v190 .receipt-title {
+  font-size: 12.75px;
+}
+
+.staff-receipt-page-v190 .staff-receipt-copy-v190 {
+  font-size: 10px;
+}
+
+.staff-receipt-page-v190 .staff-receipt-section-title-v190 {
+  font-size: 9.75px;
+}
+
+.staff-receipt-page-v190 .meta-row {
+  font-size: 12.25px;
+  line-height: 1.45;
+}
+
+.staff-receipt-page-v190 .total-row {
+  font-size: 12.25px;
+  line-height: 1.45;
+}
+
+.staff-receipt-page-v190 .staff-receipt-items-v190 {
+  font-size: 11.25px;
+}
+
+.staff-receipt-page-v190 .staff-receipt-items-v190 th {
+  font-size: 9.25px;
+}
+
+.staff-receipt-page-v190 .staff-receipt-items-v190 td {
+  font-size: 11.25px;
+  line-height: 1.4;
+}
+
+.staff-receipt-page-v190 .staff-receipt-footer-v190 {
+  font-size: 11px;
+}
+
+.staff-receipt-page-v190 .staff-receipt-footer-v190 > p:first-of-type {
+  font-size: 12px;
+}
+
+.staff-receipt-page-v190 .staff-payment-reference-v192 > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media print {
+  .staff-receipt-page-v190 .staff-receipt-logo-v192 {
+    width: 52mm !important;
+    max-width: 52mm !important;
+    max-height: none !important;
+  }
+
+  .staff-receipt-page-v190 .meta-row,
+  .staff-receipt-page-v190 .total-row {
+    font-size: 8.75pt !important;
+  }
+
+  .staff-receipt-page-v190 .staff-receipt-items-v190 td {
+    font-size: 8.25pt !important;
+  }
+
+  .staff-receipt-page-v190 .staff-receipt-items-v190 th {
+    font-size: 7.25pt !important;
+  }
+}

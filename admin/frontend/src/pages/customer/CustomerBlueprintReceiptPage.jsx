@@ -23,7 +23,24 @@ const PAYMENT_LABEL_TEXT = {
 const formatMoney = (value) =>
   `₱${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   })}`;
+
+const formatReceiptDate = (value) => {
+  if (!value) return "—";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
 
 export default function CustomerBlueprintReceiptPage() {
   const { id, receiptId } = useParams();
@@ -34,12 +51,15 @@ export default function CustomerBlueprintReceiptPage() {
 
   useEffect(() => {
     let isMounted = true;
+
     const fetchReceipt = async () => {
       setLoading(true);
+
       try {
         const { data } = await api.get(
           `/customer/custom-orders/${id}/receipts/${receiptId}`,
         );
+
         if (isMounted) {
           setReceipt(data);
           setError("");
@@ -47,44 +67,62 @@ export default function CustomerBlueprintReceiptPage() {
       } catch (err) {
         if (isMounted) {
           setReceipt(null);
-          setError(err.response?.data?.message || "Failed to load receipt.");
+          setError(
+            err.response?.data?.message ||
+              "Failed to load receipt.",
+          );
         }
       } finally {
         if (isMounted) setLoading(false);
       }
     };
+
     fetchReceipt();
+
     return () => {
       isMounted = false;
     };
   }, [id, receiptId]);
 
-  if (loading) return <div className="loading-screen">Loading receipt...</div>;
-  if (!receipt)
+  if (loading) {
+    return <div className="loading-screen">Loading receipt...</div>;
+  }
+
+  if (!receipt) {
     return (
       <div className="page-header" style={{ marginTop: 96 }}>
         <p>{error || "Receipt not found."}</p>
-        <button style={btnGhost} onClick={() => navigate(`/custom-requests/${id}`)}>
+        <button
+          style={btnGhost}
+          onClick={() => navigate(`/custom-requests/${id}`)}
+        >
           <ArrowLeft size={16} /> Back to order
         </button>
       </div>
     );
+  }
 
-  const paymentMethod = String(receipt.payment_method_snapshot || "")
+  const paymentMethod = String(
+    receipt.payment_method_snapshot || "",
+  )
     .trim()
     .toLowerCase();
+
   const paymentMethodLabel =
     PAYMENT_METHOD_LABELS[paymentMethod] ||
-    (paymentMethod ? paymentMethod.replace("_", " ") : "N/A");
+    (paymentMethod
+      ? paymentMethod.replace(/_/g, " ")
+      : "N/A");
 
   const paymentLabelText =
-    PAYMENT_LABEL_TEXT[receipt.payment_label] || receipt.payment_label || "Payment";
+    PAYMENT_LABEL_TEXT[receipt.payment_label] ||
+    receipt.payment_label ||
+    "Payment";
 
-  const isFullyPaid = receipt.payment_status === "Fully Paid";
   const receiptDate = receipt.created_at || receipt.printed_at;
 
   return (
-    <div className="customer-receipt-page-v172">
+    <div className="customer-receipt-page-v172 customer-receipt-v180">
       <div
         className="page-header"
         style={{
@@ -92,7 +130,7 @@ export default function CustomerBlueprintReceiptPage() {
           justifyContent: "space-between",
           alignItems: "flex-end",
           flexWrap: "wrap",
-          gap: "16px",
+          gap: 16,
           marginTop: 96,
           marginBottom: 32,
         }}
@@ -109,6 +147,7 @@ export default function CustomerBlueprintReceiptPage() {
           >
             Payment Receipt
           </h1>
+
           <p
             style={{
               margin: "6px 0 0",
@@ -120,20 +159,18 @@ export default function CustomerBlueprintReceiptPage() {
             Receipt number {receipt.receipt_number}
           </p>
         </div>
+
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
             style={btnGhost}
             onClick={() => navigate(`/custom-requests/${id}`)}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#e4e4e7")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "#f4f4f5")}
           >
             <ArrowLeft size={16} /> Back to order
           </button>
+
           <button
             style={btnPrimary}
             onClick={() => window.print()}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#3f3f46")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "#18181b")}
           >
             <Printer size={16} /> Print receipt
           </button>
@@ -142,49 +179,73 @@ export default function CustomerBlueprintReceiptPage() {
 
       <div className="receipt-wrapper">
         <div className="receipt" id="receipt-print">
-          {/* Header */}
           <div className="receipt-header">
             <img
               src={receiptBrandLogoV172}
               alt="Spiral Wood Services"
               className="receipt-logo receipt-logo-customer-v172"
             />
-            <p className="biz-info">{receipt.business?.business_address || ""}</p>
-            <p className="biz-info">{receipt.business?.business_phone || ""}</p>
+
+            <p className="biz-info">
+              {receipt.business?.business_address || ""}
+            </p>
+            {receipt.business?.business_phone ? (
+              <p className="biz-info">
+                {receipt.business.business_phone}
+              </p>
+            ) : null}
+
             <div className="receipt-divider" />
-            <p className="receipt-title">PAYMENT RECEIPT</p>
+
+            <div className="customer-receipt-document-v180">
+              <p className="receipt-title">PAYMENT RECEIPT</p>
+              <p className="customer-receipt-copy-v180">
+                CUSTOMER COPY
+              </p>
+            </div>
           </div>
 
-          {/* Meta */}
-          <div className="receipt-meta">
+          <section className="customer-receipt-section-v180">
             <div className="meta-row">
               <span>Receipt number</span>
               <span>{receipt.receipt_number}</span>
             </div>
+
             <div className="meta-row">
               <span>Order number</span>
               <span>{receipt.order_number}</span>
             </div>
+
+            <div className="meta-row">
+              <span>Date and time</span>
+              <span>{formatReceiptDate(receiptDate)}</span>
+            </div>
+
+            <div className="meta-row">
+              <span>Customer</span>
+              <span>{receipt.issued_to || "—"}</span>
+            </div>
+
             {receipt.blueprint_title && (
               <div className="meta-row">
-                <span>Project:</span>
+                <span>Project</span>
                 <span>{receipt.blueprint_title}</span>
               </div>
             )}
-            <div className="meta-row">
-              <span>Customer:</span>
-              <span>{receipt.issued_to}</span>
+          </section>
+
+          <div className="receipt-divider" />
+
+          <section className="customer-receipt-section-v180">
+            <div className="customer-receipt-section-title-v180">
+              PAYMENT DETAILS
             </div>
-            <div className="meta-row">
-              <span>Payment date</span>
-              <span>
-                {receiptDate ? new Date(receiptDate).toLocaleString("en-PH") : "—"}
-              </span>
-            </div>
+
             <div className="meta-row">
               <span>Payment method</span>
               <span>{paymentMethodLabel}</span>
             </div>
+
             <div className="meta-row">
               <span>Payment for</span>
               <span>{paymentLabelText}</span>
@@ -192,48 +253,54 @@ export default function CustomerBlueprintReceiptPage() {
 
             <div className="meta-row">
               <span>Payment status</span>
-              <span style={{ color: isFullyPaid ? "#059669" : "#b45309" }}>
-                {receipt.payment_status}
-              </span>
+              <span>{receipt.payment_status || "—"}</span>
             </div>
-          </div>
+
+            {receipt.provider_reference && (
+              <div className="meta-row">
+                <span>Payment reference</span>
+                <span>{receipt.provider_reference}</span>
+              </div>
+            )}
+          </section>
 
           <div className="receipt-divider" />
 
-          {/* Payment progress */}
-          <div className="receipt-totals">
+          <section className="receipt-totals customer-receipt-summary-v180">
+            <div className="customer-receipt-section-title-v180">
+              PAYMENT SUMMARY
+            </div>
+
             <div className="total-row">
               <span>Project total</span>
               <span>{formatMoney(receipt.total_amount)}</span>
             </div>
 
-            <div className="total-row customer-payment-received-v172">
+            <div className="total-row customer-payment-received-v172 customer-payment-received-v180">
               <span>Payment received</span>
               <span>{formatMoney(receipt.amount_paid)}</span>
             </div>
+
             <div className="total-row">
               <span>Total paid</span>
               <span>{formatMoney(receipt.total_paid_after)}</span>
             </div>
-            <div className="total-row grand customer-remaining-balance-v172">
+
+            <div className="total-row grand customer-remaining-balance-v172 customer-remaining-balance-v180">
               <span>Remaining balance</span>
               <span>{formatMoney(receipt.remaining_balance_after)}</span>
             </div>
-
-            {receipt.provider_reference && (
-              <div className="meta-row" style={{ marginTop: 12 }}>
-                <span>Payment reference</span>
-                <span>{receipt.provider_reference}</span>
-              </div>
-            )}
-          </div>
+          </section>
 
           <div className="receipt-divider" />
 
-          {/* Footer */}
-          <div className="receipt-footer">
+          <div className="receipt-footer customer-receipt-footer-v180">
             <p className="customer-receipt-thanks-v172">
-              Thank you for your payment.
+              {receipt.business?.thank_you_message ||
+                "Thank you for your payment."}
+            </p>
+            <p className="customer-receipt-keep-v180">
+              Please keep this receipt for your records.
             </p>
           </div>
         </div>
@@ -254,7 +321,6 @@ const btnPrimary = {
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 600,
-  transition: "background 0.2s",
 };
 
 const btnGhost = {
@@ -269,5 +335,4 @@ const btnGhost = {
   cursor: "pointer",
   fontSize: 13,
   fontWeight: 600,
-  transition: "background 0.2s",
 };
