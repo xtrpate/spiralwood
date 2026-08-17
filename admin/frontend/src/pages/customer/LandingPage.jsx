@@ -18,7 +18,7 @@ import tutorialSubmitRequest from "../assets/home-tutorial/home-tutorial-step-6-
 const HERO_SHOWCASE_SLIDES = [
   {
     src: tutorialChooseDesign,
-    step: "01",
+    step: "1",
     label: "Choose Design",
     title: "Choose a design",
     description: "Browse the available furniture designs and compare their preview, dimensions, and basic details.",
@@ -27,7 +27,7 @@ const HERO_SHOWCASE_SLIDES = [
   },
   {
     src: tutorialSetSize,
-    step: "02",
+    step: "2",
     label: "Set Size",
     title: "Set size",
     description: "Set the overall Width, Height, and Depth to match your available space while the dimension guides update on the furniture.",
@@ -36,7 +36,7 @@ const HERO_SHOWCASE_SLIDES = [
   },
   {
     src: tutorialEditParts,
-    step: "03",
+    step: "3",
     label: "Edit Parts",
     title: "Edit parts",
     description: "Turn on Edit Individual Parts, then choose a component from the 3D preview or from the available parts list.",
@@ -45,7 +45,7 @@ const HERO_SHOWCASE_SLIDES = [
   },
   {
     src: tutorialChooseFinish,
-    step: "04",
+    step: "4",
     label: "Choose Finish",
     title: "Choose finish",
     description: "Select the wood finish or color that best fits the furniture and the look you want for the final design.",
@@ -54,7 +54,7 @@ const HERO_SHOWCASE_SLIDES = [
   },
   {
     src: tutorialReviewDesign,
-    step: "05",
+    step: "5",
     label: "Review Design",
     title: "Review design",
     description: "Review the customized furniture using the available 3D, Front, Side, Top, or other supported views.",
@@ -63,7 +63,7 @@ const HERO_SHOWCASE_SLIDES = [
   },
   {
     src: tutorialSubmitRequest,
-    step: "06",
+    step: "6",
     label: "Submit Request",
     title: "Submit request",
     description: "Check the final design summary, quantity, project notes, reference files, and contact information before submitting.",
@@ -315,7 +315,7 @@ export default function LandingPage() {
 
   const formatPrice = (value) => {
     const num = Number(value || 0);
-    return `₱${num.toLocaleString("en-PH", {
+    return `â‚±${num.toLocaleString("en-PH", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
@@ -609,9 +609,23 @@ export default function LandingPage() {
                     <span>BUILT-IN SOLUTIONS</span>
                   </h1>
 
+                  <div className="wisdom-home-tutorial__value">
+                    <div className="wisdom-home-tutorial__value-title">
+                      MADE TO ORDER. BUILT FOR YOUR SPACE.
+                    </div>
+                    <p className="wisdom-home-tutorial__value-copy">
+                      Customize furniture to match your space, style, and needs.
+                    </p>
+
+
+                    </div>
+
+                  <p className="wisdom-home-tutorial__invitation">
+                    Start customizing your furniture in 6 simple steps.
+                  </p>
                   <div className="wisdom-home-tutorial__active-step" key={`copy-${slide.step}`}>
                     <p className="wisdom-home-tutorial__eyebrow">
-                      STEP {slide.step} OF {HERO_SHOWCASE_SLIDES.length.toString().padStart(2, "0")}
+                      STEP {Number(slide.step)} OF {HERO_SHOWCASE_SLIDES.length}
                     </p>
                     <h2 className="wisdom-home-tutorial__step-title">{slide.title}</h2>
                     <p className="wisdom-home-tutorial__description">{slide.description}</p>
@@ -633,7 +647,7 @@ export default function LandingPage() {
                     className="wisdom-home-tutorial__catalog-link"
                     onClick={handleBrowseFurnitureClick}
                   >
-                    BROWSE FURNITURE
+                    SHOP READY-MADE FURNITURE
                   </button>
                 </div>
 
@@ -869,14 +883,14 @@ export default function LandingPage() {
             flex-direction: column;
             align-items: flex-start;
             justify-content: flex-start;
-            padding: clamp(24px, 3vh, 34px) 0 0;
+            padding: clamp(6px, 1.2vh, 14px) 0 0;
           }
 
           .wisdom-home-tutorial__headline {
             margin: 0;
             color: #111111;
             font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
-            font-size: clamp(2.55rem, 3vw, 3.45rem);
+            font-size: clamp(2.75rem, 3.25vw, 3.75rem);
             font-weight: 700;
             line-height: 1.04;
             letter-spacing: -0.045em;
@@ -887,11 +901,31 @@ export default function LandingPage() {
             white-space: nowrap;
           }
 
+          .wisdom-home-tutorial__value {
+            width: min(100%, 455px);
+            margin-top: 16px;
+          }
+
+          .wisdom-home-tutorial__value-title {
+            color: #111111;
+            font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+            font-size: 0.78rem;
+            font-weight: 700;
+            line-height: 1.3;
+            letter-spacing: 0.075em;
+          }
+
+          .wisdom-home-tutorial__value-copy {
+            margin: 5px 0 0;
+            color: #656565;
+            font-size: 0.93rem;
+            line-height: 1.45;
+          }
           .wisdom-home-tutorial__active-step {
             width: min(100%, 455px);
             height: 248px;
             box-sizing: border-box;
-            margin-top: clamp(24px, 2.6vh, 30px);
+            margin-top: clamp(15px, 1.8vh, 20px);
           }
 
           .wisdom-home-tutorial__eyebrow {
@@ -1307,7 +1341,7 @@ export default function LandingPage() {
             }
 
             .wisdom-home-tutorial__headline {
-              font-size: clamp(2.3rem, 2.9vw, 3rem);
+              font-size: clamp(2.45rem, 3vw, 3.2rem);
             }
 
             .wisdom-home-tutorial__main-card,
@@ -1366,11 +1400,23 @@ export default function LandingPage() {
             }
 
             .wisdom-home-tutorial__headline {
-              font-size: clamp(2rem, 10vw, 2.7rem);
+              font-size: clamp(2.1rem, 10.5vw, 2.85rem);
+            }
+
+            .wisdom-home-tutorial__value {
+              margin-top: 14px;
+            }
+
+            .wisdom-home-tutorial__value-title {
+              font-size: 0.72rem;
+            }
+
+            .wisdom-home-tutorial__value-copy {
+              font-size: 0.88rem;
             }
 
             .wisdom-home-tutorial__active-step {
-              margin-top: 24px;
+              margin-top: 18px;
               min-height: 236px;
             }
 
@@ -1435,7 +1481,417 @@ export default function LandingPage() {
           }
         }
       `}</style>
-      {/* SHOP BY CATEGORY */}
+      {/* WISDOM HOME HERO FINAL VALUE + CTA POSITION V1.0.6.3 */}
+      <style>{`
+        .wisdom-home-tutorial__value-title {
+          color: #111111 !important;
+          font-size: 1.02rem !important;
+          font-weight: 800 !important;
+          line-height: 1.28 !important;
+          letter-spacing: 0.02em !important;
+        }
+
+        .wisdom-home-tutorial__value-copy {
+          color: #333333 !important;
+          font-size: 1rem !important;
+          font-weight: 500 !important;
+          line-height: 1.42 !important;
+        }
+
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__value {
+            margin-top: 12px !important;
+          }
+
+          .wisdom-home-tutorial__active-step {
+            height: 210px !important;
+            margin-top: 14px !important;
+          }
+
+          .wisdom-home-tutorial__cta {
+            margin-top: 8px !important;
+          }
+        }
+
+        @media (max-width: 1050px) {
+          .wisdom-home-tutorial__value-title {
+            font-size: 0.94rem !important;
+          }
+
+          .wisdom-home-tutorial__value-copy {
+            font-size: 0.94rem !important;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO CENTER TAGLINE V1.0.6.4 */}
+      <style>{`
+        .wisdom-home-tutorial__headline,
+        .wisdom-home-tutorial__value {
+          width: min(100%, 620px);
+          box-sizing: border-box;
+        }
+
+        .wisdom-home-tutorial__value {
+          text-align: center !important;
+        }
+
+        @media (max-width: 1050px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            width: 100%;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO LIFT HEADLINE + TAGLINE V1.0.6.5 */}
+      <style>{`
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            transform: translateY(-26px);
+          }
+        }
+
+        @media (min-width: 721px) and (max-width: 1050px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            transform: translateY(-14px);
+          }
+        }
+
+        @media (max-width: 720px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            transform: none;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO LIFT MORE V1.0.6.6 */}
+      <style>{`
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            transform: translateY(-38px) !important;
+          }
+        }
+
+        @media (min-width: 721px) and (max-width: 1050px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            transform: translateY(-20px) !important;
+          }
+        }
+
+        @media (max-width: 720px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            transform: none !important;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO TYPOGRAPHY CLEANUP V1.0.6.8.1 */}
+      <style>{`
+        .wisdom-home-tutorial {
+          font-family: "Montserrat", sans-serif !important;
+        }
+
+        .wisdom-home-tutorial__headline {
+          font-family: "Montserrat", sans-serif !important;
+          font-weight: 800 !important;
+          line-height: 1.06 !important;
+          letter-spacing: -0.032em !important;
+        }
+
+        .wisdom-home-tutorial__headline span + span {
+          margin-top: 0.04em !important;
+        }
+
+        .wisdom-home-tutorial__value-title {
+          font-family: "Montserrat", sans-serif !important;
+          font-weight: 700 !important;
+          line-height: 1.3 !important;
+          letter-spacing: 0.015em !important;
+        }
+
+        .wisdom-home-tutorial__value-copy {
+          font-family: "Montserrat", sans-serif !important;
+          font-weight: 400 !important;
+          line-height: 1.45 !important;
+          letter-spacing: -0.01em !important;
+        }
+
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__headline {
+            font-size: clamp(2.8rem, 3.22vw, 3.72rem) !important;
+          }
+
+          .wisdom-home-tutorial__value-title {
+            font-size: 0.98rem !important;
+          }
+
+          .wisdom-home-tutorial__value-copy {
+            font-size: 0.96rem !important;
+          }
+        }
+
+        @media (max-width: 1050px) {
+          .wisdom-home-tutorial__headline {
+            font-weight: 800 !important;
+          }
+
+          .wisdom-home-tutorial__value-title {
+            font-weight: 700 !important;
+          }
+
+          .wisdom-home-tutorial__value-copy {
+            font-weight: 400 !important;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO OPTION A MARKETING V1.0.6.9 */}
+      <style>{`
+        .wisdom-home-tutorial,
+        .wisdom-home-tutorial__headline,
+        .wisdom-home-tutorial__value-title,
+        .wisdom-home-tutorial__value-copy,
+        .wisdom-home-tutorial__invitation,
+        .wisdom-home-tutorial__eyebrow,
+        .wisdom-home-tutorial__step-title,
+        .wisdom-home-tutorial__description,
+        .wisdom-home-tutorial__detail,
+        .wisdom-home-tutorial__cta,
+        .wisdom-home-tutorial__catalog-link,
+        .wisdom-home-tutorial__progress-heading,
+        .wisdom-home-tutorial__progress-number,
+        .wisdom-home-tutorial__progress-label {
+          font-family: "Montserrat", sans-serif !important;
+        }
+
+        .wisdom-home-tutorial__headline {
+          font-weight: 800 !important;
+        }
+
+        .wisdom-home-tutorial__value-title {
+          font-weight: 700 !important;
+        }
+
+        .wisdom-home-tutorial__value-copy {
+          font-weight: 400 !important;
+        }
+
+        .wisdom-home-tutorial__invitation {
+          width: min(100%, 620px);
+          margin: 13px 0 0;
+          color: #111111;
+          font-size: 0.9rem;
+          font-weight: 600;
+          line-height: 1.4;
+          letter-spacing: -0.008em;
+          text-align: center;
+        }
+
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            position: relative;
+            left: -26px;
+          }
+
+          .wisdom-home-tutorial__invitation {
+            position: relative;
+            left: -26px;
+          }
+        }
+
+        @media (min-width: 721px) and (max-width: 1050px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value,
+          .wisdom-home-tutorial__invitation {
+            left: 0;
+          }
+        }
+
+        @media (max-width: 720px) {
+          .wisdom-home-tutorial__invitation {
+            width: 100%;
+            margin-top: 11px;
+            font-size: 0.86rem;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO INVITATION ALIGN V1.0.6.10 */}
+      <style>{`
+        .wisdom-home-tutorial__invitation {
+          position: static !important;
+          left: auto !important;
+          width: min(100%, 455px) !important;
+          margin: 4px 0 8px !important;
+          color: #111111 !important;
+          font-family: "Montserrat", sans-serif !important;
+          font-size: 1.04rem !important;
+          font-weight: 650 !important;
+          line-height: 1.4 !important;
+          letter-spacing: -0.012em !important;
+          text-align: left !important;
+          align-self: flex-start !important;
+        }
+
+        .wisdom-home-tutorial__active-step {
+          margin-top: 0 !important;
+        }
+
+        @media (max-width: 1050px) {
+          .wisdom-home-tutorial__invitation {
+            width: 100% !important;
+            font-size: 0.98rem !important;
+          }
+        }
+
+        @media (max-width: 720px) {
+          .wisdom-home-tutorial__invitation {
+            margin: 6px 0 9px !important;
+            font-size: 0.94rem !important;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO INVITATION HIGHLIGHT V1.0.6.11 + WISDOM HOME HERO INVITATION FONT BUMP V1.0.6.12 */}
+      <style>{`
+        .wisdom-home-tutorial__invitation {
+          width: min(100%, 640px) !important;
+          max-width: 640px !important;
+          margin: 4px 0 10px !important;
+          color: #111111 !important;
+          font-family: "Montserrat", sans-serif !important;
+          font-size: 1.42rem !important;
+          font-weight: 700 !important;
+          line-height: 1.38 !important;
+          letter-spacing: -0.018em !important;
+          text-align: left !important;
+          text-wrap: balance !important;
+          align-self: flex-start !important;
+        }
+
+        @media (max-width: 1200px) {
+          .wisdom-home-tutorial__invitation {
+            width: min(100%, 580px) !important;
+            max-width: 580px !important;
+            font-size: 1.30rem !important;
+          }
+        }
+
+        @media (max-width: 900px) {
+          .wisdom-home-tutorial__invitation {
+            width: 100% !important;
+            max-width: none !important;
+            font-size: 1.18rem !important;
+            line-height: 1.4 !important;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO INVITATION ONE LINE V1.0.6.13 */}
+      <style>{`
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__invitation {
+            width: max-content !important;
+            max-width: none !important;
+            margin: 4px 0 10px !important;
+            color: #111111 !important;
+            font-family: "Montserrat", sans-serif !important;
+            font-size: 1.52rem !important;
+            font-weight: 700 !important;
+            line-height: 1.22 !important;
+            letter-spacing: -0.022em !important;
+            text-align: left !important;
+            white-space: nowrap !important;
+            text-wrap: nowrap !important;
+            overflow: visible !important;
+            align-self: flex-start !important;
+          }
+        }
+
+        @media (min-width: 901px) and (max-width: 1050px) {
+          .wisdom-home-tutorial__invitation {
+            width: max-content !important;
+            max-width: none !important;
+            font-size: 1.34rem !important;
+            font-weight: 700 !important;
+            line-height: 1.25 !important;
+            white-space: nowrap !important;
+            text-wrap: nowrap !important;
+          }
+        }
+
+        @media (max-width: 900px) {
+          .wisdom-home-tutorial__invitation {
+            width: 100% !important;
+            max-width: 100% !important;
+            font-size: 1.18rem !important;
+            line-height: 1.35 !important;
+            white-space: normal !important;
+            text-wrap: balance !important;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO INVITATION HIERARCHY V1.0.6.14 */}
+      <style>{`
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__invitation {
+            position: relative !important;
+            left: -26px !important;
+            width: max-content !important;
+            max-width: none !important;
+            margin: 4px 0 10px !important;
+            color: #111111 !important;
+            font-family: "Montserrat", sans-serif !important;
+            font-size: 1.58rem !important;
+            font-weight: 700 !important;
+            line-height: 1.22 !important;
+            letter-spacing: -0.022em !important;
+            text-align: left !important;
+            white-space: nowrap !important;
+            text-wrap: nowrap !important;
+          }
+
+          .wisdom-home-tutorial__step-title {
+            font-size: 1.34rem !important;
+            font-weight: 700 !important;
+            line-height: 1.18 !important;
+            letter-spacing: -0.02em !important;
+          }
+        }
+
+        @media (min-width: 901px) and (max-width: 1050px) {
+          .wisdom-home-tutorial__invitation {
+            position: static !important;
+            left: auto !important;
+            width: max-content !important;
+            max-width: none !important;
+            font-size: 1.42rem !important;
+            white-space: nowrap !important;
+            text-wrap: nowrap !important;
+          }
+
+          .wisdom-home-tutorial__step-title {
+            font-size: 1.28rem !important;
+          }
+        }
+
+        @media (max-width: 900px) {
+          .wisdom-home-tutorial__invitation {
+            width: 100% !important;
+            max-width: 100% !important;
+            font-size: 1.28rem !important;
+            line-height: 1.32 !important;
+            white-space: normal !important;
+            text-wrap: balance !important;
+          }
+
+          .wisdom-home-tutorial__step-title {
+            font-size: 1.18rem !important;
+            line-height: 1.22 !important;
+          }
+        }
+      `}</style>
+            {/* SHOP BY CATEGORY */}
       <section id="shop-by-category"
         style={{
           padding: "26px 14px 8px",
