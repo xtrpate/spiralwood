@@ -12,7 +12,11 @@ const posSupportService = {
   },
 
   async reply(ticketId, payload) {
-    const { data } = await api.post(`/pos/support/${ticketId}/reply`, payload);
+    const isFormData = payload instanceof FormData;
+
+    const { data } = await api.post(`/pos/support/${ticketId}/reply`, payload, {
+      headers: isFormData ? { "Content-Type": "multipart/form-data" } : {},
+    });
 
     return data;
   },

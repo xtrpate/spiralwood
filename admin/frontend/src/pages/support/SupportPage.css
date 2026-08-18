@@ -1179,11 +1179,13 @@
   display: grid;
   grid-template-columns: minmax(340px, 400px) minmax(0, 1fr);
   gap: 16px;
-  align-items: start;
+  height: 750px;
 }
 
 .staff-support-queue {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1191,6 +1193,10 @@
 
 .staff-support-detail {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 /* Queue filters live with the queue, not across the whole workspace. */
@@ -1257,9 +1263,10 @@
 
 /* Ticket queue uses flat rows rather than floating cards. */
 .staff-support-page .support-ticket-list {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   height: auto;
-  max-height: calc(100vh - 350px);
-  min-height: 360px;
   padding: 12px;
   overflow-y: auto;
   border: 1px solid #dcdce0;
@@ -1396,7 +1403,10 @@
 /* Ticket detail pane */
 .staff-support-page .support-ticket-details,
 .staff-support-page .support-conversation-card {
+  flex: 1;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   padding: 20px;
   border: 1px solid #dcdce0;
   border-radius: 0;
@@ -1541,6 +1551,7 @@
 
   .staff-support-workspace {
     grid-template-columns: 1fr;
+    height: auto;
   }
 
   .staff-support-page .support-ticket-list {
@@ -1790,13 +1801,12 @@
 .admin-support-content {
   grid-template-columns: minmax(330px, 380px) minmax(0, 1fr);
   gap: 0;
-  height: auto;
-  min-height: 620px;
+  height: 750px;
   margin-top: 0;
 }
 
 .admin-support-ticket-list {
-  height: 620px;
+  height: 750px;
   padding: 14px;
   border: 0;
   border-right: 1px solid var(--support-border);
@@ -1905,18 +1915,23 @@
 
 .admin-support-right-panel {
   min-width: 0;
-  min-height: 620px;
+  height: 750px;
   background: #ffffff;
+  display: flex;
+  flex-direction: column;
 }
 
 .admin-support-ticket-details,
 .admin-support-conversation-card {
-  min-height: 620px;
+  height: 100%;
+  min-height: 0;
   padding: 17px 18px;
   border: 0;
   border-radius: 0;
   background: #ffffff;
   box-shadow: none;
+  display: flex;
+  flex-direction: column;
 }
 
 .admin-support-ticket-details.is-empty,
@@ -2289,13 +2304,16 @@
 }
 
 .admin-support-page .conversation-bubble {
-  max-width: 76%;
-  padding: 10px 12px;
+  max-width: 50%;
+  padding: 12px 14px;
   border: 1px solid #e1e4e8;
   border-radius: 4px;
   box-shadow: none;
-  font-size: 11.5px;
-  line-height: 1.55;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 
 .admin-support-page .conversation-row.customer .conversation-bubble {
@@ -2788,6 +2806,8 @@
 }
 
 .admin-support-page .admin-support-conversation-card .conversation-card-body {
+  flex: 1;
+  min-height: 0;
   margin-top: 14px;
   padding: 16px;
   border: 1px solid #e2e7ec;
@@ -2962,9 +2982,7 @@
 .admin-support-page .ticket-meta-grid,
 .admin-support-page .admin-assign-dropdown,
 .admin-support-page .admin-ticket-management,
-.admin-support-page
-  .admin-support-conversation-card
-  .conversation-card-body {
+.admin-support-page .admin-support-conversation-card .conversation-card-body {
   border-color: #e1e4e7 !important;
   background: #f8f9fa !important;
 }
@@ -3008,7 +3026,6 @@
 .admin-support-page .reply-send-btn:hover:not(:disabled) {
   background: #303034 !important;
 }
-
 
 /* WISDOM ADMIN SUPPORT ICON CLEANUP V1 */
 .admin-support-page .support-summary-card {
@@ -3114,35 +3131,45 @@
   color: #475569 !important;
   border-color: #cbd5e1 !important;
 }
-.staff-support-page .support-status-open i { background: #64748b !important; }
+.staff-support-page .support-status-open i {
+  background: #64748b !important;
+}
 
 .staff-support-page .support-status-assigned {
   background: #eff6ff !important;
   color: #1d4ed8 !important;
   border-color: #bfdbfe !important;
 }
-.staff-support-page .support-status-assigned i { background: #2563eb !important; }
+.staff-support-page .support-status-assigned i {
+  background: #2563eb !important;
+}
 
 .staff-support-page .support-status-in_progress {
   background: #fff7ed !important;
   color: #9a3412 !important;
   border-color: #fed7aa !important;
 }
-.staff-support-page .support-status-in_progress i { background: #ea580c !important; }
+.staff-support-page .support-status-in_progress i {
+  background: #ea580c !important;
+}
 
 .staff-support-page .support-status-awaiting_customer {
   background: #fffbeb !important;
   color: #92400e !important;
   border-color: #fde68a !important;
 }
-.staff-support-page .support-status-awaiting_customer i { background: #d97706 !important; }
+.staff-support-page .support-status-awaiting_customer i {
+  background: #d97706 !important;
+}
 
 .staff-support-page .support-status-resolved {
   background: #ecfdf5 !important;
   color: #166534 !important;
   border-color: #bbf7d0 !important;
 }
-.staff-support-page .support-status-resolved i { background: #16a34a !important; }
+.staff-support-page .support-status-resolved i {
+  background: #16a34a !important;
+}
 
 .staff-support-page .support-status-closed {
   background: #e9e9ec !important;
@@ -3150,7 +3177,9 @@
   border-color: #aeb0b5 !important;
   font-weight: 600 !important;
 }
-.staff-support-page .support-status-closed i { background: #52525b !important; }
+.staff-support-page .support-status-closed i {
+  background: #52525b !important;
+}
 
 .staff-support-page .priority {
   display: inline-flex !important;
@@ -3172,18 +3201,402 @@
   border-color: #cbd5e1 !important;
 }
 .staff-support-page .priority.low::before,
-.staff-support-page .priority.normal::before { background: #64748b !important; }
+.staff-support-page .priority.normal::before {
+  background: #64748b !important;
+}
 
 .staff-support-page .priority.high {
   background: #fff7ed !important;
   color: #9a3412 !important;
   border-color: #fed7aa !important;
 }
-.staff-support-page .priority.high::before { background: #c2410c !important; }
+.staff-support-page .priority.high::before {
+  background: #c2410c !important;
+}
 
 .staff-support-page .priority.urgent {
   background: #fef2f2 !important;
   color: #b91c1c !important;
   border-color: #fecaca !important;
 }
-.staff-support-page .priority.urgent::before { background: #dc2626 !important; }
+.staff-support-page .priority.urgent::before {
+  background: #dc2626 !important;
+}
+
+/* ==========================================================
+   SUPPORT MESSAGE ATTACHMENTS (Admin/Staff)
+   ========================================================== */
+
+/* Composer inner row */
+.admin-support-page .support-reply-input-row,
+.staff-support-page .support-reply-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.admin-support-page .support-reply-box.has-attachment,
+.staff-support-page .support-reply-box.has-attachment {
+  min-height: 56px;
+}
+
+.admin-support-page .support-reply-attach-btn,
+.staff-support-page .support-reply-attach-btn {
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px; /* Matches the send button height */
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #555c63;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-bottom: 2px;
+}
+
+.admin-support-page .support-reply-attach-btn:hover:not(:disabled),
+.staff-support-page .support-reply-attach-btn:hover:not(:disabled) {
+  background: #e4e7ea;
+  color: #111111;
+}
+
+.admin-support-page .support-reply-attach-btn:disabled,
+.staff-support-page .support-reply-attach-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── THE HORIZONTAL CHIP LAYOUT ─── */
+.admin-support-page .support-reply-attachment-list,
+.staff-support-page .support-reply-attachment-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 8px 6px 0; /* Top padding prevents the floating X from getting cut off */
+}
+
+.admin-support-page .support-reply-attachment,
+.staff-support-page .support-reply-attachment {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  background: #f4f4f5;
+  border: 1px solid #e4e4e7;
+  border-radius: 6px;
+  max-width: 210px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.admin-support-page .support-reply-attachment-preview,
+.staff-support-page .support-reply-attachment-preview {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid #e4e4e7;
+  flex: 0 0 36px;
+}
+
+.admin-support-page .support-reply-attachment-file-icon,
+.staff-support-page .support-reply-attachment-file-icon {
+  width: 36px;
+  height: 36px;
+  background: #e4e4e7;
+  color: #52525b;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 36px;
+}
+
+.admin-support-page .support-reply-attachment-info,
+.staff-support-page .support-reply-attachment-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding-right: 6px;
+}
+
+.admin-support-page .support-reply-attachment-name,
+.staff-support-page .support-reply-attachment-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #18181b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-support-page .support-reply-attachment-size,
+.staff-support-page .support-reply-attachment-size {
+  font-size: 9.5px;
+  color: #71717a;
+  margin-top: 2px;
+}
+
+/* Floating 'X' Button on Top Right */
+.admin-support-page .support-reply-attachment-remove,
+.staff-support-page .support-reply-attachment-remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  background: #3f3f46;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  transition: background 0.2s;
+}
+
+.admin-support-page .support-reply-attachment-remove:hover:not(:disabled),
+.staff-support-page .support-reply-attachment-remove:hover:not(:disabled) {
+  background: #ef4444;
+}
+
+.admin-support-page .support-reply-attachment-remove svg,
+.staff-support-page .support-reply-attachment-remove svg {
+  width: 10px !important;
+  height: 10px !important;
+}
+
+/* ─── Standalone Message Attachments ─── */
+
+/* Master Container for all attachments below a message */
+.admin-support-page .support-message-attachments-container,
+.staff-support-page .support-message-attachments-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  max-width: 380px;
+}
+
+.conversation-row.admin .support-message-attachments-container {
+  align-items: flex-end;
+}
+
+.conversation-row.customer .support-message-attachments-container {
+  align-items: flex-start;
+}
+
+/* 1. Single Image (Restores the normal, comfortable size) */
+.admin-support-page .support-message-image-link.single-image,
+.staff-support-page .support-message-image-link.single-image {
+  display: block;
+  width: auto;
+  max-width: 260px; /* Standard size */
+}
+
+.admin-support-page
+  .support-message-image-link.single-image
+  .support-message-image,
+.staff-support-page
+  .support-message-image-link.single-image
+  .support-message-image {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 220px;
+  min-height: unset; /* Removes the grid stretch */
+}
+
+/* 2. Image Grid (For 2+ pictures side-by-side) */
+.admin-support-page .support-message-image-grid,
+.staff-support-page .support-message-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 6px;
+  width: 100%;
+  max-width: 380px;
+}
+
+.admin-support-page .support-message-image-grid .support-message-image-link,
+.staff-support-page .support-message-image-grid .support-message-image-link {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.admin-support-page .support-message-image,
+.staff-support-page .support-message-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  max-height: 320px;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* 3. File Stack (PDFs stack cleanly below images) */
+.admin-support-page .support-message-file-list,
+.staff-support-page .support-message-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.conversation-row.admin .support-message-file-list {
+  align-items: flex-end;
+}
+
+.conversation-row.customer .support-message-file-list {
+  align-items: flex-start;
+}
+
+.admin-support-page .support-message-file,
+.staff-support-page .support-message-file {
+  display: inline-flex;
+  gap: 12px;
+  width: auto;
+  max-width: 280px;
+  padding: 10px 14px;
+  border: 1px solid #e1e4e8;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #18181b;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Ensures long PDF names get "..." */
+.admin-support-page .support-message-file span,
+.staff-support-page .support-message-file span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-support-page .support-message-file:hover,
+.staff-support-page .support-message-file:hover {
+  border-color: #111111;
+  background: #f8fafc;
+}
+
+/* Mobile Adjustments */
+@media (max-width: 720px) {
+  .admin-support-page .support-message-image,
+  .admin-support-page .support-message-image-link,
+  .staff-support-page .support-message-image,
+  .staff-support-page .support-message-image-link {
+    max-width: 220px;
+  }
+
+  .admin-support-page .support-reply-attachment-name,
+  .staff-support-page .support-reply-attachment-name {
+    max-width: 140px;
+  }
+}
+
+/* ─── Reply Box & Textarea Alignment ─── */
+.admin-support-page .support-reply-box,
+.staff-support-page .support-reply-box {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid #cfd4da;
+  border-radius: 4px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.025);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.admin-support-page .support-reply-box:focus-within,
+.staff-support-page .support-reply-box:focus-within {
+  border-color: #6b7280;
+  box-shadow: 0 0 0 2px rgba(24, 24, 27, 0.06);
+}
+
+.admin-support-page .support-reply-input-row textarea,
+.staff-support-page .support-reply-input-row textarea {
+  flex: 1 1 auto;
+  width: 100%;
+
+  height: 38px;
+  min-height: 38px;
+  max-height: 140px;
+
+  border: none;
+  outline: none;
+  resize: none;
+
+  background: transparent;
+  color: inherit;
+  font: inherit;
+
+  line-height: 24px;
+  padding: 7px 0;
+  margin: 0;
+
+  align-self: center;
+  box-sizing: border-box;
+}
+
+.admin-support-page .support-reply-send-btn,
+.staff-support-page .support-reply-send-btn {
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 4px;
+  background: #18181b;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.admin-support-page .support-reply-send-btn:hover:not(:disabled),
+.staff-support-page .support-reply-send-btn:hover:not(:disabled) {
+  background: #2f2f33;
+}
+
+.admin-support-page .support-reply-send-btn:disabled,
+.staff-support-page .support-reply-send-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-support-page .support-reply-footer,
+.staff-support-page .support-reply-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: #71717a;
+}

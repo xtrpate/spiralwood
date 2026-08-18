@@ -1,7 +1,9 @@
 const pool = require("../../config/db");
-
 const { createNotificationSafe } = require("../../utils/notificationHelper");
-
+const {
+  storeUploadBuffer,
+  cleanupStoredUpload,
+} = require("../../utils/adaptiveUpload");
 // =====================================================
 // Get All Support Tickets
 // =====================================================
@@ -128,28 +130,46 @@ exports.getTicket = async (req, res) => {
     const [messages] = await pool.query(
       `
       SELECT
-  stm.id,
-  stm.ticket_id,
-  stm.sender_id,
-  stm.sender_type,
-  stm.message,
-  stm.attachment_url,
-
-  stm.created_at,
-
-  u.name AS sender_name
-
+        stm.id,
+        stm.ticket_id,
+        stm.sender_id,
+        stm.sender_type,
+        stm.message,
+        stm.attachment_url,
+        stm.created_at,
+        u.name AS sender_name
       FROM support_ticket_messages stm
-
       INNER JOIN users u
         ON stm.sender_id = u.id
-
       WHERE stm.ticket_id = ?
-
       ORDER BY stm.created_at ASC
       `,
       [ticketId],
     );
+
+    for (const msg of messages) {
+      const [attachments] = await pool.query(
+        `
+        SELECT id, file_url, file_name, mime_type, file_size, created_at
+        FROM support_ticket_message_attachments
+        WHERE message_id = ?
+        ORDER BY id ASC
+        `,
+        [msg.id],
+      );
+
+      msg.attachments = attachments;
+      if (msg.attachment_url && msg.attachments.length === 0) {
+        msg.attachments.push({
+          id: `legacy-${msg.id}`,
+          file_url: msg.attachment_url,
+          file_name: "Attachment",
+          mime_type: null,
+          file_size: null,
+          created_at: msg.created_at,
+        });
+      }
+    }
 
     return res.json({
       ticket: ticketRows[0],
@@ -454,61 +474,79 @@ WHERE id = ?
 // =====================================================
 
 exports.replyToTicket = async (req, res) => {
-  const conn = await pool.getConnection();
+  const ticketId = parseInt(req.params.id);
+  const message = String(req.body?.message || "").trim();
+  const files = Array.isArray(req.files) ? req.files : [];
+
+  if (!ticketId) {
+    return res.status(400).json({ message: "Invalid ticket ID." });
+  }
+
+  if (!message && files.length === 0) {
+    return res
+      .status(400)
+      .json({ message: "Write a message or attach a file." });
+  }
+
+  let conn;
+  let transactionActive = false;
+  let committed = false;
+  const storedAssets = [];
 
   try {
-    const ticketId = parseInt(req.params.id);
-
-    const { message, attachment_url = null } = req.body;
-
-    if (!ticketId) {
-      return res.status(400).json({
-        message: "Invalid ticket ID.",
-      });
-    }
-
-    if (!message?.trim()) {
-      return res.status(400).json({
-        message: "Message is required.",
-      });
-    }
-
+    conn = await pool.getConnection();
     await conn.beginTransaction();
+    transactionActive = true;
 
     const [ticketRows] = await conn.query(
-      `
-  SELECT
-    id,
-    customer_id,
-    subject
-  FROM support_tickets
-  WHERE id = ?
-  `,
+      `SELECT id, customer_id, subject FROM support_tickets WHERE id = ?`,
       [ticketId],
     );
 
     if (ticketRows.length === 0) {
       await conn.rollback();
-
-      return res.status(404).json({
-        message: "Support ticket not found.",
-      });
+      transactionActive = false;
+      return res.status(404).json({ message: "Support ticket not found." });
     }
 
-    await conn.query(
+    // 1. Upload the files to Cloudinary
+    for (const file of files) {
+      const stored = await storeUploadBuffer({
+        file,
+        folder: "support-attachments", // Standardized folder for support files
+      });
+      storedAssets.push(stored);
+    }
+
+    // 2. Insert the main message
+    const [messageResult] = await conn.query(
       `
       INSERT INTO support_ticket_messages
-      (
-        ticket_id,
-        sender_id,
-        sender_type,
-        message,
-        attachment_url
-      )
-      VALUES (?, ?, 'admin', ?, ?)
+      (ticket_id, sender_id, sender_type, message)
+      VALUES (?, ?, 'admin', ?)
       `,
-      [ticketId, req.user.id, message, attachment_url],
+      [ticketId, req.user.id, message || null],
     );
+
+    const messageId = messageResult.insertId;
+
+    // 3. Save the uploaded file links to the attachments table
+    for (const asset of storedAssets) {
+      await conn.query(
+        `
+        INSERT INTO support_ticket_message_attachments
+        (message_id, file_url, file_name, mime_type, file_size)
+        VALUES (?, ?, ?, ?, ?)
+        `,
+        [
+          messageId,
+          asset.file_url,
+          asset.file_name,
+          asset.mime_type,
+          asset.file_size,
+        ],
+      );
+    }
 
     await createNotificationSafe(conn, {
       userId: ticketRows[0].customer_id,
@@ -519,14 +557,12 @@ exports.replyToTicket = async (req, res) => {
       targetId: ticketId,
     });
 
-    // Automatically shift to "in progress" when staff actively replies
     await conn.query(
       `
       UPDATE support_tickets
       SET
         status = CASE
-          WHEN status IN ('open', 'assigned', 'awaiting_customer')
-          THEN 'in_progress'
+          WHEN status IN ('open', 'assigned', 'awaiting_customer') THEN 'in_progress'
           ELSE status
         END,
         updated_at = CURRENT_TIMESTAMP
@@ -537,33 +573,61 @@ exports.replyToTicket = async (req, res) => {
 
     const [messages] = await conn.query(
       `
-      SELECT
-        stm.*,
-        u.name AS sender_name
+      SELECT stm.*, u.name AS sender_name
       FROM support_ticket_messages stm
-      INNER JOIN users u
-        ON stm.sender_id = u.id
+      INNER JOIN users u ON stm.sender_id = u.id
       WHERE stm.ticket_id = ?
       ORDER BY stm.created_at ASC
       `,
       [ticketId],
     );
 
+    // Fetch attachments to return in the immediate response
+    for (const msg of messages) {
+      const [attachments] = await conn.query(
+        `SELECT id, file_url, file_name, mime_type, file_size, created_at
+         FROM support_ticket_message_attachments WHERE message_id = ? ORDER BY id ASC`,
+        [msg.id],
+      );
+      msg.attachments = attachments;
+      if (msg.attachment_url && msg.attachments.length === 0) {
+        msg.attachments.push({
+          id: `legacy-${msg.id}`,
+          file_url: msg.attachment_url,
+          file_name: "Attachment",
+          mime_type: null,
+          file_size: null,
+          created_at: msg.created_at,
+        });
+      }
+    }
+
     await conn.commit();
+    transactionActive = false;
+    committed = true;
 
     return res.json({
-      message: "Reply sent successfully.",
+      message: files.length
+        ? "Reply and attachment sent successfully."
+        : "Reply sent successfully.",
       messages,
     });
   } catch (err) {
-    await conn.rollback();
-
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+        transactionActive = false;
+      } catch (rollbackErr) {}
+    }
     console.error("[supportController.replyToTicket]", err);
-
-    return res.status(500).json({
-      message: "Failed to send reply.",
-    });
+    return res.status(500).json({ message: "Failed to send reply." });
   } finally {
-    conn.release();
+    // If the database transaction failed, delete the orphaned images from Cloudinary!
+    if (!committed && storedAssets.length) {
+      await Promise.allSettled(
+        storedAssets.map((asset) => cleanupStoredUpload(asset)),
+      );
+    }
+    if (conn) conn.release();
   }
 };

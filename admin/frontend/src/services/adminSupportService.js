@@ -38,10 +38,17 @@ const adminSupportService = {
     return data;
   },
 
+  // 👉 NEW: Support FormData to handle file attachments!
   async reply(ticketId, payload) {
+    // If the payload is already FormData (which our updated ReplyBox sends), use it directly!
+    const isFormData = payload instanceof FormData;
+
     const { data } = await api.post(
       `/support/tickets/${ticketId}/messages`,
       payload,
+      {
+        headers: isFormData ? { "Content-Type": "multipart/form-data" } : {},
+      },
     );
 
     return data;

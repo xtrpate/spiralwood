@@ -85,10 +85,9 @@ function formatDateTime(value) {
 function parseDashboardDate(value) {
   if (!value) return null;
 
-  const date =
-    /^\d{4}-\d{2}-\d{2}$/.test(String(value))
-      ? new Date(`${value}T00:00:00`)
-      : new Date(value);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(value))
+    ? new Date(`${value}T00:00:00`)
+    : new Date(value);
 
   return Number.isNaN(date.getTime()) ? null : date;
 }
@@ -126,13 +125,7 @@ function getPercent(value, total) {
   return Math.min(100, Math.max(0, (Number(value || 0) / Number(total)) * 100));
 }
 
-function MetricCard({
-  title,
-  value,
-  meta,
-  tone = "neutral",
-  onClick,
-}) {
+function MetricCard({ title, value, meta, tone = "neutral", onClick }) {
   const className = [
     "metric-card",
     `metric-card--${tone}`,
@@ -659,7 +652,9 @@ export default function DashboardPage() {
           callbacks: {
             title: (items) => {
               const index = items?.[0]?.dataIndex;
-              return topProducts[index]?.product_name || items?.[0]?.label || "";
+              return (
+                topProducts[index]?.product_name || items?.[0]?.label || ""
+              );
             },
             label: (ctx) => ` ${num.format(ctx.parsed.x || 0)} units`,
           },
@@ -802,7 +797,9 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {rangeError ? <div className="dash-inline-error">{rangeError}</div> : null}
+      {rangeError ? (
+        <div className="dash-inline-error">{rangeError}</div>
+      ) : null}
 
       {fetchError ? (
         <div className="dash-inline-alert">
@@ -836,7 +833,9 @@ export default function DashboardPage() {
           title="Payment reviews"
           value={num.format(pendingReviews)}
           meta={`${num.format(deliveredUnpaid)} delivered unpaid`}
-          tone={pendingReviews > 0 || deliveredUnpaid > 0 ? "warning" : "neutral"}
+          tone={
+            pendingReviews > 0 || deliveredUnpaid > 0 ? "warning" : "neutral"
+          }
           onClick={() => navigate("/admin/orders")}
         />
 
@@ -850,7 +849,14 @@ export default function DashboardPage() {
               <span>{num.format(outOfStockTotal)} out of stock</span>
             </>
           }
-          tone={outOfStockTotal > 0 ? "danger" : lowStockTotal > 0 ? "warning" : "neutral"}
+          tone={
+            outOfStockTotal > 0
+              ? "danger"
+              : lowStockTotal > 0
+                ? "warning"
+                : "neutral"
+          }
+          onClick={() => navigate("/admin/inventory/build")}
         />
       </section>
 
@@ -906,13 +912,48 @@ export default function DashboardPage() {
           </div>
 
           <div className="progress-list progress-list--orders">
-            <ProgressRow label="Pending" value={currentPending} total={currentTotalOrders} color="#d97706" />
-            <ProgressRow label="Confirmed" value={currentConfirmed} total={currentTotalOrders} color="#2563eb" />
-            <ProgressRow label="In production" value={currentProduction} total={currentTotalOrders} color="#7c3aed" />
-            <ProgressRow label="Shipping" value={currentShipping} total={currentTotalOrders} color="#ea580c" />
-            <ProgressRow label="Delivered" value={currentDelivered} total={currentTotalOrders} color="#16a34a" />
-            <ProgressRow label="Completed" value={currentCompleted} total={currentTotalOrders} color="#15803d" />
-            <ProgressRow label="Cancelled" value={currentCancelled} total={currentTotalOrders} color="#dc2626" />
+            <ProgressRow
+              label="Pending"
+              value={currentPending}
+              total={currentTotalOrders}
+              color="#d97706"
+            />
+            <ProgressRow
+              label="Confirmed"
+              value={currentConfirmed}
+              total={currentTotalOrders}
+              color="#2563eb"
+            />
+            <ProgressRow
+              label="In production"
+              value={currentProduction}
+              total={currentTotalOrders}
+              color="#7c3aed"
+            />
+            <ProgressRow
+              label="Shipping"
+              value={currentShipping}
+              total={currentTotalOrders}
+              color="#ea580c"
+            />
+            <ProgressRow
+              label="Delivered"
+              value={currentDelivered}
+              total={currentTotalOrders}
+              color="#16a34a"
+            />
+            <ProgressRow
+              label="Completed"
+              value={currentCompleted}
+              total={currentTotalOrders}
+              color="#15803d"
+            />
+            <ProgressRow
+              label="Cancelled"
+              value={currentCancelled}
+              total={currentTotalOrders}
+              color="#dc2626"
+            />
           </div>
         </div>
       </section>
@@ -999,7 +1040,9 @@ export default function DashboardPage() {
           <div className="compact-summary">
             <div>
               <span>Total orders</span>
-              <strong>{num.format(Number(blueprint.total_blueprint_orders || 0))}</strong>
+              <strong>
+                {num.format(Number(blueprint.total_blueprint_orders || 0))}
+              </strong>
             </div>
             <div>
               <span>Active jobs</span>

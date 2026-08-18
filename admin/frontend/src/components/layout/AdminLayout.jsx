@@ -1,9 +1,5 @@
 // src/components/layout/AdminLayout.jsx – Sidebar + topbar shell
-import React, {
-  useState,
-  useEffect,
-  useRef,
-} from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import { LogOut } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
@@ -213,7 +209,6 @@ export default function AdminLayout() {
     };
   }, []);
 
-
   useEffect(() => {
     if (user && user.role === "customer") {
       toast.error("Access restricted. Redirecting to storefront.");
@@ -232,7 +227,6 @@ export default function AdminLayout() {
       document.body.style.overflow = "";
     };
   }, [mobileOpen]);
-
 
   const handleLogout = () => {
     setShowLogoutModal(true);
@@ -254,7 +248,8 @@ export default function AdminLayout() {
       className="wisdom-admin-shell"
       style={{
         display: "flex",
-        minHeight: "100vh",
+        height: "100vh",
+        overflow: "hidden",
         fontFamily: "Inter, sans-serif",
       }}
     >
@@ -265,7 +260,6 @@ export default function AdminLayout() {
           aria-hidden="true"
         />
       )}
-
       <aside
         className={`wisdom-sidebar ${mobileOpen ? "mobile-open" : ""}`}
         style={{
@@ -474,7 +468,6 @@ export default function AdminLayout() {
           {open ? "◀" : "▶"}
         </button>
       </aside>
-
       <div
         className="wisdom-admin-main"
         style={{
@@ -623,7 +616,6 @@ export default function AdminLayout() {
           <Outlet />
         </main>
       </div>
-
       {showLogoutModal && (
         <div
           role="dialog"
@@ -731,6 +723,7 @@ export default function AdminLayout() {
             </div>
           </div>
         </div>
-      )}    </div>
+      )}{" "}
+    </div>
   );
 }

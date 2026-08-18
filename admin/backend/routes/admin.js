@@ -73,7 +73,9 @@ const customDiscussionUploadRaw = multer({
   limits: { fileSize: 8 * 1024 * 1024, files: 5 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || "").toLowerCase();
-    const mime = String(file.mimetype || "").trim().toLowerCase();
+    const mime = String(file.mimetype || "")
+      .trim()
+      .toLowerCase();
 
     if (
       CUSTOM_DISCUSSION_EXTENSIONS.has(ext) &&
@@ -117,20 +119,18 @@ const customDiscussionUpload = (req, res, next) => {
 
     for (const file of req.files || []) {
       const ext = path.extname(file.originalname || "").toLowerCase();
-      const mime = String(file.mimetype || "").trim().toLowerCase();
+      const mime = String(file.mimetype || "")
+        .trim()
+        .toLowerCase();
       const extensionMatchesMime =
         ([".jpg", ".jpeg", ".jfif"].includes(ext) && mime === "image/jpeg") ||
         (ext === ".png" && mime === "image/png") ||
         (ext === ".webp" && mime === "image/webp") ||
         (ext === ".pdf" && mime === "application/pdf");
 
-      if (
-        !extensionMatchesMime ||
-        !verifyBufferSignature(file.buffer, ext)
-      ) {
+      if (!extensionMatchesMime || !verifyBufferSignature(file.buffer, ext)) {
         return res.status(400).json({
-          message:
-            "One of the attachments does not match its real file type.",
+          message: "One of the attachments does not match its real file type.",
         });
       }
     }
@@ -446,6 +446,7 @@ router.patch(
 router.post(
   "/support/tickets/:id/messages",
   adminStaff,
+  customDiscussionUpload,
   logAction("reply_support_ticket", "support_tickets"),
   supportController.replyToTicket,
 );

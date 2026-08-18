@@ -123,3 +123,51 @@
     max-width: 320px;
   }
 }
+
+/* ==========================================================================
+   WISDOM CUSTOM FLOATING SCROLLBARS
+   ========================================================================== */
+.wisdom-admin-shell * {
+  scrollbar-width: 50px;
+  scrollbar-color: rgba(0, 0, 0, 0) transparent;
+}
+
+.wisdom-admin-shell *::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+
+.wisdom-admin-shell *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.wisdom-admin-shell *::-webkit-scrollbar-thumb {
+  background-color: rgba(81, 81, 83, 0.4);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.wisdom-admin-shell *::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(49, 49, 49, 0.678);
+}
+
+.wisdom-admin-shell * :hover {
+  scrollbar-color: rgba(160, 158, 158, 0.678) transparent;
+}
+
+/* ==========================================================================
+   SIDEBAR AUTO-HIDE SCROLLBAR
+   ========================================================================== */
+
+.wisdom-sidebar *::-webkit-scrollbar-thumb {
+  background-color: transparent !important;
+}
+
+.wisdom-sidebar:hover *::-webkit-scrollbar-thumb {
+  background-color: rgba(81, 81, 83, 0.4) !important;
+}
+
+.wisdom-sidebar:hover *::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(130, 130, 135, 0.6) !important;
+}
