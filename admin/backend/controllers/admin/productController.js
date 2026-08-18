@@ -6,6 +6,25 @@ const {
   isNonEmptyString,
 } = require("../../utils/validators");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
+const MAX_HOMEPAGE_NEW_PRODUCTS = 4;
+const NEW_PRODUCT_LIMIT_MESSAGE =
+  "You can show up to 4 new products on the homepage. Unmark one product first.";
+
+async function getHomepageNewProductCount(conn, excludeProductId = null) {
+  let sql =
+    "SELECT id FROM products WHERE type = 'standard' AND is_featured = 1";
+  const params = [];
+
+  if (Number.isInteger(excludeProductId)) {
+    sql += " AND id <> ?";
+    params.push(excludeProductId);
+  }
+
+  sql += " FOR UPDATE";
+
+  const [rows] = await conn.query(sql, params);
+  return rows.length;
+}
 
 // Shared helper: rolls back the transaction, releases the connection,
 // and sends a clear 400 error. Used by both create and update below.
@@ -142,7 +161,6 @@ exports.create = async (req, res) => {
       description,
       category_id,
       type = "standard",
-      wood_type,
       online_price,
       walkin_price,
       production_cost,
@@ -215,10 +233,9 @@ exports.create = async (req, res) => {
     const numProdCost = production_cost ? parseFloat(production_cost) : 0;
     const numStock = stock ? parseInt(stock) : 0;
     const numReorder = reorder_point ? parseInt(reorder_point) : 0;
-    const boolFeatured =
-      is_featured === "true" || is_featured === 1 || is_featured === true
-        ? 1
-        : 0;
+    const wantsFeatured =
+      is_featured === "true" || is_featured === 1 || is_featured === true;
+    const boolFeatured = type === "standard" && wantsFeatured ? 1 : 0;
     const catId =
       category_id && !isNaN(parseInt(category_id))
         ? parseInt(category_id)
@@ -227,19 +244,26 @@ exports.create = async (req, res) => {
       blueprint_id && !isNaN(parseInt(blueprint_id))
         ? parseInt(blueprint_id)
         : null;
+    if (boolFeatured) {
+      const featuredCount = await getHomepageNewProductCount(conn);
+
+      if (featuredCount >= MAX_HOMEPAGE_NEW_PRODUCTS) {
+        await conn.rollback();
+        return res.status(400).json({ message: NEW_PRODUCT_LIMIT_MESSAGE });
+      }
+    }
 
     const [result] = await conn.query(
       `INSERT INTO products
-   (barcode, name, description, category_id, type, wood_type, image_url, is_featured, is_published, blueprint_id,
+   (barcode, name, description, category_id, type, image_url, is_featured, is_published, blueprint_id,
     online_price, walkin_price, production_cost, stock, reorder_point)
- VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         barcode || null,
         name,
         description || null,
         catId,
         type,
-        wood_type || null,
         image_url,
         boolFeatured,
         is_published,
@@ -329,7 +353,6 @@ exports.update = async (req, res) => {
       "description",
       "category_id",
       "type",
-      "wood_type",
       "is_featured",
       "online_price",
       "walkin_price",
@@ -424,6 +447,31 @@ exports.update = async (req, res) => {
       }
     });
 
+    const targetType = updateData.type || old.type;
+
+    if (targetType !== "standard") {
+      updateData.is_featured = 0;
+    }
+
+    const willBeFeatured =
+      targetType === "standard" &&
+      Number(
+        updateData.is_featured !== undefined
+          ? updateData.is_featured
+          : old.is_featured,
+      ) === 1;
+
+    const wasFeaturedReadyMade =
+      old.type === "standard" && Number(old.is_featured || 0) === 1;
+
+    if (willBeFeatured && !wasFeaturedReadyMade) {
+      const featuredCount = await getHomepageNewProductCount(conn, productId);
+
+      if (featuredCount >= MAX_HOMEPAGE_NEW_PRODUCTS) {
+        await conn.rollback();
+        return res.status(400).json({ message: NEW_PRODUCT_LIMIT_MESSAGE });
+      }
+    }
     if (req.file) {
       updateData.image_url = req.file.path;
     }
@@ -529,38 +577,76 @@ exports.remove = async (req, res) => {
 
 // ── PATCH /api/products/:id/featured ─────────────────────────────────────────
 exports.toggleFeatured = async (req, res) => {
-  try {
-    const productId = parseInt(req.params.id);
-    await pool.query(
-      "UPDATE products SET is_featured = NOT is_featured WHERE id = ?",
-      [productId],
-    );
-    const [[product]] = await pool.query(
-      "SELECT name, is_featured FROM products WHERE id = ?",
-      [productId],
-    );
-    const is_featured = Boolean(product?.is_featured);
+  const conn = await pool.getConnection();
 
-    if (product) {
-      await writeAuditLogSafe({
-        userId: req.user?.id || null,
-        action: is_featured ? "feature_product" : "unfeature_product",
-        tableName: "products",
-        recordId: productId,
-        newValues: {
-          name: product.name,
-          is_featured,
-        },
-        ipAddress: req.ip || null,
+  try {
+    await conn.beginTransaction();
+
+    const productId = parseInt(req.params.id);
+    const [[product]] = await conn.query(
+      "SELECT id, name, type, is_featured FROM products WHERE id = ? FOR UPDATE",
+      [productId],
+    );
+
+    if (!product) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Product not found." });
+    }
+
+    if (product.type !== "standard") {
+      await conn.rollback();
+      return res.status(400).json({
+        message:
+          "Only ready-made products can be shown as new products on the homepage.",
       });
     }
 
-    res.json({ is_featured });
+    const nextFeatured = !Boolean(product.is_featured);
+
+    if (nextFeatured) {
+      const featuredCount = await getHomepageNewProductCount(conn, productId);
+
+      if (featuredCount >= MAX_HOMEPAGE_NEW_PRODUCTS) {
+        await conn.rollback();
+        return res.status(400).json({ message: NEW_PRODUCT_LIMIT_MESSAGE });
+      }
+    }
+
+    await conn.query(
+      "UPDATE products SET is_featured = ? WHERE id = ?",
+      [nextFeatured ? 1 : 0, productId],
+    );
+
+    await conn.commit();
+
+    await writeAuditLogSafe({
+      userId: req.user?.id || null,
+      action: nextFeatured ? "feature_product" : "unfeature_product",
+      tableName: "products",
+      recordId: productId,
+      newValues: {
+        name: product.name,
+        is_featured: nextFeatured,
+      },
+      ipAddress: req.ip || null,
+    });
+
+    res.json({
+      is_featured: nextFeatured,
+      featured_limit: MAX_HOMEPAGE_NEW_PRODUCTS,
+    });
   } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {
+      // Keep the original error.
+    }
+
     res.status(500).json({ message: err.message });
+  } finally {
+    conn.release();
   }
 };
-
 // ── GET /api/products/report ──────────────────────────────────────────────────
 exports.getReport = async (req, res) => {
   try {

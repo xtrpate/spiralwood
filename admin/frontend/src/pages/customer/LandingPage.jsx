@@ -297,6 +297,7 @@ export default function LandingPage() {
   };
 
   const latestProducts = [...products]
+    .filter((product) => Number(product?.is_featured || 0) === 1)
     .sort((a, b) => {
       const dateA = new Date(a?.created_at || 0).getTime();
       const dateB = new Date(b?.created_at || 0).getTime();
@@ -307,8 +308,10 @@ export default function LandingPage() {
     .slice(0, 4);
 
   const formatPrice = (value) => {
-    const num = Number(value || 0);
-    return `\u20B1${num.toLocaleString("en-PH", {
+    const amount = Number(value || 0);
+    const safeAmount = Number.isFinite(amount) ? amount : 0;
+
+    return `\u20B1 ${safeAmount.toLocaleString("en-PH", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
@@ -423,7 +426,7 @@ export default function LandingPage() {
 
     const fetchProducts = async () => {
       try {
-        const res = await api.get("/customer/products");
+        const res = await api.get("/customer/products?type=standard&sort=newest&limit=60");
         const list = Array.isArray(res.data)
           ? res.data
           : Array.isArray(res.data?.products)
@@ -2933,17 +2936,18 @@ export default function LandingPage() {
             lineHeight: "1.2",
           }}
         >
-          Latest Products
+          New Products
         </h2>
 
         {latestProducts.length > 0 ? (
           <>
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                display: "flex",
+                flexWrap: "wrap",
+                justifyContent: "center",
                 gap: "22px",
-                alignItems: "start",
+                alignItems: "stretch",
               }}
             >
               {latestProducts.map((product) => {
@@ -2965,6 +2969,10 @@ export default function LandingPage() {
                       display: "flex",
                       flexDirection: "column",
                       height: "100%",
+                      width: "clamp(260px, calc((100% - 66px) / 4), 438px)",
+                      maxWidth: "clamp(260px, calc((100% - 66px) / 4), 438px)",
+                      flex: "0 1 clamp(260px, calc((100% - 66px) / 4), 438px)",
+                      boxSizing: "border-box",
                     }}
                     onMouseEnter={(e) =>
                       (e.currentTarget.style.transform = "translateY(-2px)")
@@ -3123,7 +3131,7 @@ export default function LandingPage() {
               padding: "20px 0",
             }}
           >
-            No products available yet.
+            No new products available yet.
           </div>
         )}
       </section>

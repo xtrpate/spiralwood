@@ -86,15 +86,12 @@ const buildLiveCartBlueprintPreview = (item = {}) => {
   };
 };
 
-/* WISDOM CUSTOMER ZERO TOTAL DISPLAY FIX V1.0.0 */
+/* WISDOM CUSTOMER MONEY FORMAT CONSISTENCY V1.0.0 */
 const formatPeso = (value) => {
   const amount = Number(value || 0);
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
 
-  if (!Number.isFinite(amount) || amount === 0) {
-    return "₱0";
-  }
-
-  return `₱${amount.toLocaleString("en-PH", {
+  return `\u20B1 ${safeAmount.toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;

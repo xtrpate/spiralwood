@@ -14,12 +14,15 @@ const clampNumber = (value, min, max) => {
   return num;
 };
 
-const formatPeso = (value) =>
-  `₱${Number(value || 0).toLocaleString("en-PH", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })}`;
+const formatPeso = (value) => {
+  const amount = Number(value || 0);
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
 
+  return `\u20B1 ${safeAmount.toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
 const formatTypeLabel = (type) => {
   const raw = String(type || "standard")
     .replace(/_/g, " ")
@@ -639,13 +642,7 @@ export default function ProductCatalog() {
                           </div>
 
                           <div className="catalog-search-item-price">
-                            ₱
-                            {parseFloat(product.online_price).toLocaleString(
-                              "en-PH",
-                              {
-                                minimumFractionDigits: 2,
-                              },
-                            )}
+                            {formatPeso(product.online_price)}
                           </div>
                         </button>
                       ))}
@@ -734,13 +731,7 @@ export default function ProductCatalog() {
                     <div className="product-card-name">{product.name}</div>
 
                     <div className="product-card-price">
-                      ₱
-                      {parseFloat(product.online_price).toLocaleString(
-                        "en-PH",
-                        {
-                          minimumFractionDigits: 2,
-                        },
-                      )}
+                      {formatPeso(product.online_price)}
                     </div>
 
                     <div className="product-card-stock-wrap">
@@ -1000,10 +991,7 @@ export default function ProductCatalog() {
               <h2 className="detail-name">{selected.name}</h2>
 
               <div className="detail-price">
-                ₱
-                {parseFloat(selected.online_price).toLocaleString("en-PH", {
-                  minimumFractionDigits: 2,
-                })}
+                {formatPeso(selected.online_price)}
               </div>
 
               {selected.description ? (

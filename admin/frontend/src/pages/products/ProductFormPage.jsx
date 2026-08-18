@@ -15,7 +15,7 @@ const DEFAULT = {
   description: "",
   category_id: "",
   type: "standard",
-  wood_type: "",
+
   online_price: "",
   walkin_price: "",
   production_cost: "",
@@ -93,7 +93,7 @@ export default function ProductFormPage() {
         "description",
         "category_id",
         "type",
-        "wood_type",
+
         "online_price",
         "walkin_price",
         "production_cost",
@@ -110,6 +110,7 @@ export default function ProductFormPage() {
             production_cost: 0,
             stock: 0,
             reorder_point: 0,
+            is_featured: false,
           }
         : {
             ...form,
@@ -231,21 +232,6 @@ export default function ProductFormPage() {
 
           {!isBlueprint && (
             <Row>
-              <Field label="Wood type">
-                <select
-                  value={form.wood_type || ""}
-                  onChange={(event) => set("wood_type", event.target.value)}
-                  style={input}
-                >
-                  <option value="">Select wood type</option>
-                  <option value="Mahogany">Mahogany</option>
-                  <option value="Oak">Oak</option>
-                  <option value="Narra">Narra</option>
-                  <option value="Plywood">Plywood</option>
-                  <option value="Marine Plywood">Marine Plywood</option>
-                  <option value="MDF">MDF</option>
-                </select>
-              </Field>
 
               <Field label="Featured">
                 <label style={featuredControl}>
@@ -257,27 +243,12 @@ export default function ProductFormPage() {
                     }
                     style={checkbox}
                   />
-                  <span>Show on homepage as featured</span>
+                  <span>Show as new product on homepage (maximum 4)</span>
                 </label>
               </Field>
             </Row>
           )}
 
-          {isBlueprint && (
-            <Field label="Featured">
-              <label style={featuredControl}>
-                <input
-                  type="checkbox"
-                  checked={Boolean(form.is_featured)}
-                  onChange={(event) =>
-                    set("is_featured", event.target.checked)
-                  }
-                  style={checkbox}
-                />
-                <span>Show on homepage as featured</span>
-              </label>
-            </Field>
-          )}
 
           <Field label="Description">
             <textarea

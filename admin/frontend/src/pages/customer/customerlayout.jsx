@@ -324,12 +324,7 @@ export default function CustomerLayout() {
           subtitle: item.category || "Ready-Made Product",
           badge: "Ready-Made",
           imageUrl: item.image_url || "",
-          priceText: `₱${parseFloat(item.online_price || 0).toLocaleString(
-            "en-PH",
-            {
-              minimumFractionDigits: 2,
-            },
-          )}`,
+          priceText: formatPeso(item.online_price),
           searchValue: item.name,
         }));
 
@@ -539,15 +534,12 @@ export default function CustomerLayout() {
     return <span className="cust-count-badge">{count}</span>;
   };
 
-  /* WISDOM CUSTOMER ZERO TOTAL DISPLAY FIX V1.0.0 */
+  /* WISDOM CUSTOMER MONEY FORMAT CONSISTENCY V1.0.0 */
   const formatPeso = (value) => {
     const amount = Number(value || 0);
+    const safeAmount = Number.isFinite(amount) ? amount : 0;
 
-    if (!Number.isFinite(amount) || amount === 0) {
-      return "₱0";
-    }
-
-    return `₱${amount.toLocaleString("en-PH", {
+    return `\u20B1 ${safeAmount.toLocaleString("en-PH", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
@@ -1003,7 +995,7 @@ export default function CustomerLayout() {
                 aria-label="Open cart"
               >
                 <span className="cust-cart-summary-total">
-                  {cartCount > 0 ? formatPeso(cartTotal) : "₱0"}
+                  {formatPeso(cartTotal)}
                 </span>
 
                 <span className="cust-cart-summary-icon-wrap">

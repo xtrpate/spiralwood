@@ -10,6 +10,9 @@ import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
 // WISDOM BLUEPRINT CATALOG FINAL POLISH V1
 // WISDOM PRODUCT COST LABEL AND SUMMARY NUMBER FIX V1
 // WISDOM BLUEPRINT PREVIEW PRICE SUMMARY FIX V1
+const MAX_HOMEPAGE_NEW_PRODUCTS = 4;
+const NEW_PRODUCT_LIMIT_MESSAGE =
+  "You can show up to 4 new products on the homepage. Unmark one product first.";
 const STOCK_BADGE = {
   in_stock: {
     background: "#f0fdf4",
@@ -295,15 +298,55 @@ export default function ProductsPage() {
     };
   }, [allProducts]);
 
+  const newProductsCount = useMemo(
+    () =>
+      allProducts.filter(
+        (product) =>
+          product.type === "standard" && Number(product.is_featured) === 1,
+      ).length,
+    [allProducts],
+  );
+
   const toggleFeatured = async (id) => {
+    const targetProduct =
+      allProducts.find((product) => Number(product.id) === Number(id)) ||
+      products.find((product) => Number(product.id) === Number(id));
+
+    if (!targetProduct) {
+      toast.error("Product not found.");
+      return;
+    }
+
+    if (targetProduct.type === "blueprint") {
+      toast.error(
+        "Only ready-made products can be shown as new products on the homepage.",
+      );
+      return;
+    }
+
+    const isCurrentlyFeatured =
+      Number(targetProduct.is_featured || 0) === 1;
+
+    if (
+      !isCurrentlyFeatured &&
+      newProductsCount >= MAX_HOMEPAGE_NEW_PRODUCTS
+    ) {
+      toast.error(NEW_PRODUCT_LIMIT_MESSAGE);
+      return;
+    }
+
     try {
       const { data } = await api.patch(`/products/${id}/featured`);
       toast.success(
-        data.is_featured ? "Marked as featured." : "Removed from featured.",
+        data.is_featured
+          ? "Added to homepage New Products."
+          : "Removed from homepage New Products.",
       );
       await Promise.all([load(), loadSummary()]);
-    } catch {
-      toast.error("Failed to update featured status.");
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Failed to update new product status.",
+      );
     }
   };
 
@@ -408,6 +451,19 @@ export default function ProductsPage() {
         </div>
 
         <div style={headerActions}>
+          <span
+            style={{
+              color:
+                newProductsCount >= MAX_HOMEPAGE_NEW_PRODUCTS
+                  ? "#92400e"
+                  : "#52525b",
+              fontSize: 11.5,
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+            }}
+          >
+            New products: {newProductsCount} / {MAX_HOMEPAGE_NEW_PRODUCTS}
+          </span>
           <button
             type="button"
             onClick={() =>
@@ -727,32 +783,52 @@ export default function ProductsPage() {
                     </td>
 
                     <td style={{ ...td, textAlign: "center" }}>
-                      <button
-                        type="button"
-                        onClick={() => toggleFeatured(product.id)}
-                        style={featuredButton}
-                        title={
-                          Number(product.is_featured) === 1
-                            ? "Remove from featured products"
-                            : "Show as featured product"
-                        }
-                        aria-label={
-                          Number(product.is_featured) === 1
-                            ? `Remove ${product.name} from featured products`
-                            : `Feature ${product.name}`
-                        }
-                      >
+                      {isBlueprint ? (
                         <span
+                          title="New Products is only available for ready-made products"
+                          aria-label="New Products is not available for blueprint products"
                           style={{
-                            color:
-                              Number(product.is_featured) === 1
-                                ? "#c58a00"
-                                : "#a1a1aa",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: 28,
+                            height: 28,
+                            color: "#a1a1aa",
+                            fontSize: 14,
                           }}
                         >
-                          {Number(product.is_featured) === 1 ? "★" : "☆"}
+                          {"\u2014"}
                         </span>
-                      </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => toggleFeatured(product.id)}
+                          style={featuredButton}
+                          title={
+                            Number(product.is_featured) === 1
+                              ? "Remove from homepage New Products"
+                              : "Show as new product on homepage"
+                          }
+                          aria-label={
+                            Number(product.is_featured) === 1
+                              ? `Remove ${product.name} from homepage New Products`
+                              : `Show ${product.name} as a new product on homepage`
+                          }
+                        >
+                          <span
+                            style={{
+                              color:
+                                Number(product.is_featured) === 1
+                                  ? "#c58a00"
+                                  : "#a1a1aa",
+                            }}
+                          >
+                            {Number(product.is_featured) === 1
+                              ? "\u2605"
+                              : "\u2606"}
+                          </span>
+                        </button>
+                      )}
                     </td>
 
                     <td style={td}>
