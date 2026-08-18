@@ -1005,10 +1005,6 @@ function ProductCard({ product, onView, onCustomize }) {
             "Custom furniture design available for customization."}
         </p>
 
-        <div className="cust-tag-row">
-          <span className="custom-spec-tag">Made to Order</span>
-        </div>
-
         <div className="cust-dim-summary">
           {formatMm(dimensions.width_mm)} × {formatMm(dimensions.height_mm)} ×{" "}
           {formatMm(dimensions.depth_mm)}
