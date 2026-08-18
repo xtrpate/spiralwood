@@ -1885,7 +1885,7 @@ export default function OrderDetailPage() {
                             onClick={() => openCustomRequestPreview(item)}
                             style={btnView}
                           >
-                            View design
+                            View Submitted Design
                           </button>
                         ) : null}
                       </div>

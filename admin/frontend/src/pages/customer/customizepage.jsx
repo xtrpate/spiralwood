@@ -983,7 +983,7 @@ function ProductCard({ product, onView, onCustomize }) {
               readOnly
               showHumanControls={false}
               compact
-              defaultPreset="front"
+              defaultPreset="iso"
               defaultShowHuman={false}
             />
           </div>

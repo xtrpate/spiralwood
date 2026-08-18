@@ -97,7 +97,7 @@ export function TransformToolbar({
           ...S.unityToolBtn,
           opacity: hasSelection ? 1 : 0.45,
           color: isSelectionLocked ? "#ef4444" : "inherit",
-          marginTop: 8,
+          marginTop: 4,
         }}
       >
         {isSelectionLocked ? "🔒" : "🔓"}

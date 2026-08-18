@@ -81,13 +81,13 @@ export const VIEWER_UI = {
   inspectorTabBtn: {
     height: 34,
     padding: "0 10px",
-    borderRadius: 0,
+    borderRadius: 2,
     border: "1px solid rgba(71,85,105,.72)",
     background: "#0b1424",
     color: "#aebdd1",
     cursor: "pointer",
     fontSize: 11,
-    fontWeight: 750,
+    fontWeight: 500,
     minWidth: 0,
     boxSizing: "border-box",
   },
@@ -96,6 +96,7 @@ export const VIEWER_UI = {
     border: "1px solid rgba(96,165,250,.72)",
     background: "#172844",
     color: "#f1f6ff",
+    fontWeight: 700,
     boxShadow: "none",
   },
 

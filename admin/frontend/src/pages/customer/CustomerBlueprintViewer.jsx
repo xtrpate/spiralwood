@@ -149,7 +149,7 @@ const makeSoftContactShadow = () => {
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
-    opacity: 0.95,
+    opacity: 0.78,
     depthWrite: false,
     toneMapped: false,
   });
@@ -228,7 +228,7 @@ const hasExactAdmin3DSource = (blueprint = {}) => {
 };
 
 // WISDOM PERSISTENT GENERATED PREVIEW CACHE V1.0.6
-const COMPACT_PREVIEW_CACHE_PREFIX = "wisdom:generated-blueprint-preview:v1:";
+const COMPACT_PREVIEW_CACHE_PREFIX = "wisdom:generated-blueprint-preview:v3:";
 
 const compactPreviewHash = (value = "") => {
   const text = String(value || "");
@@ -570,10 +570,19 @@ export default function CustomerBlueprintViewer({
     });
 
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, compact ? 1.2 : 1.75));
+    renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio || 1, compact ? 1.3 : 1.8),
+    );
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.shadowMap.enabled = false;
-    renderer.setClearColor(0xf4f1eb, 1);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = compact ? 1.06 : 1.1;
+    renderer.setClearColor(0xf6f2ec, 1);
+
+    // WISDOM CUSTOMER 3D FURNITURE REALISM V1.0.3
+    // Compact cards still render once and are cached as images.
+    // Only visual rendering is improved.
 
     mount.innerHTML = "";
     mount.appendChild(renderer.domElement);
@@ -597,7 +606,7 @@ export default function CustomerBlueprintViewer({
     );
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf4f1eb);
+    scene.background = new THREE.Color(0xf6f2ec);
 
     const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 20000);
     camera.position.set(1800, 1100, 1800);
@@ -612,19 +621,50 @@ export default function CustomerBlueprintViewer({
     controls.maxDistance = 12000;
     controls.maxPolarAngle = Math.PI / 2.02;
 
-    const ambient = new THREE.AmbientLight(0xffffff, 1.0);
+    const ambient = new THREE.AmbientLight(
+      0xffffff,
+      compact ? 0.76 : 0.82,
+    );
     scene.add(ambient);
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0xe7dfd1, 1.0);
+    const hemi = new THREE.HemisphereLight(
+      0xfffdf8,
+      0xd6c2a6,
+      0.92,
+    );
     scene.add(hemi);
 
-    const key = new THREE.DirectionalLight(0xffffff, 1.15);
-    key.position.set(1800, 2400, 1200);
+    const key = new THREE.DirectionalLight(
+      0xfffbf5,
+      compact ? 1.72 : 1.62,
+    );
+    key.position.set(1750, 2450, 1550);
+    key.castShadow = true;
+    key.shadow.mapSize.set(
+      compact ? 1024 : 2048,
+      compact ? 1024 : 2048,
+    );
+    key.shadow.camera.left = -3200;
+    key.shadow.camera.right = 3200;
+    key.shadow.camera.top = 3200;
+    key.shadow.camera.bottom = -3200;
+    key.shadow.camera.near = 100;
+    key.shadow.camera.far = 8000;
+    key.shadow.bias = -0.00012;
+    key.shadow.normalBias = 0.7;
+    key.shadow.radius = 3;
     scene.add(key);
 
-    const fill = new THREE.DirectionalLight(0xfffaf2, 0.65);
-    fill.position.set(-1200, 1200, 1000);
+    const fill = new THREE.DirectionalLight(
+      0xffeee0,
+      compact ? 0.44 : 0.5,
+    );
+    fill.position.set(-1300, 1050, 1150);
     scene.add(fill);
+
+    const rim = new THREE.DirectionalLight(0xffffff, 0.24);
+    rim.position.set(-900, 1450, -1600);
+    scene.add(rim);
 
     const showroomBase = new THREE.Mesh(
       new THREE.CircleGeometry(4300, 96),

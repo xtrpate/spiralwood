@@ -6,7 +6,71 @@ import useAuthStore from "../../store/authStore";
 import api, { buildAssetUrl } from "../../services/api";
 import { useCart } from "./cartcontext";
 
-import cabinetImg from "../assets/cabinet.png";
+import tutorialChooseDesign from "../assets/home-tutorial/home-tutorial-step-1-choose-design.png";
+import tutorialSetSize from "../assets/home-tutorial/home-tutorial-step-2-set-size.png";
+import tutorialEditParts from "../assets/home-tutorial/home-tutorial-step-3-edit-parts.png";
+import tutorialChooseFinish from "../assets/home-tutorial/home-tutorial-step-4-choose-finish.png";
+import tutorialReviewDesign from "../assets/home-tutorial/home-tutorial-step-5-review-design.png";
+import tutorialSubmitRequest from "../assets/home-tutorial/home-tutorial-step-6-submit-request.png";
+
+
+
+const HERO_SHOWCASE_SLIDES = [
+  {
+    src: tutorialChooseDesign,
+    step: "1",
+    label: "Choose Design",
+    title: "Choose a design",
+    description: "Browse the available furniture designs and compare their preview, dimensions, and basic details.",
+    detail: "Use View to inspect a design first, or choose Customize to open that design directly in the editor.",
+    alt: "Choose a furniture design from the WISDOM customer customization gallery",
+  },
+  {
+    src: tutorialSetSize,
+    step: "2",
+    label: "Set Size",
+    title: "Set size",
+    description: "Set the overall Width, Height, and Depth to match your available space while the dimension guides update on the furniture.",
+    detail: "You can change measurement units and use the human-size reference to check the furniture scale before continuing.",
+    alt: "Set width height and depth in the WISDOM 3D furniture customizer",
+  },
+  {
+    src: tutorialEditParts,
+    step: "3",
+    label: "Edit Parts",
+    title: "Edit parts",
+    description: "Turn on Edit Individual Parts, then choose a component from the 3D preview or from the available parts list.",
+    detail: "Adjust only the selected part's dimensions so unrelated furniture components remain unchanged.",
+    alt: "Edit individual furniture parts in the WISDOM 3D customizer",
+  },
+  {
+    src: tutorialChooseFinish,
+    step: "4",
+    label: "Choose Finish",
+    title: "Choose finish",
+    description: "Select the wood finish or color that best fits the furniture and the look you want for the final design.",
+    detail: "You can also upload reference photos and add project notes when a special request is easier to explain visually.",
+    alt: "Choose wood finish color and add reference photos or notes in the WISDOM customizer",
+  },
+  {
+    src: tutorialReviewDesign,
+    step: "5",
+    label: "Review Design",
+    title: "Review design",
+    description: "Review the customized furniture using the available 3D, Front, Side, Top, or other supported views.",
+    detail: "Confirm the final dimensions and chosen finish before adding the completed design to your custom request.",
+    alt: "Review the final customized furniture dimensions finish and 3D views",
+  },
+  {
+    src: tutorialSubmitRequest,
+    step: "6",
+    label: "Submit Request",
+    title: "Submit request",
+    description: "Check the final design summary, quantity, project notes, reference files, and contact information before submitting.",
+    detail: "When everything is correct, submit the custom request for quotation so the Spiral Wood team can review your design.",
+    alt: "Review a custom furniture request and submit it for quotation",
+  },
+];
 
 let cachedProducts = null;
 let cachedCatalogCategories = null;
@@ -32,6 +96,21 @@ const HOME_CATEGORY_SIGNALS = [
   "console",
   "bedroom",
 ];
+
+/* WISDOM HOME HERO CUSTOMIZE CTA V1.0.0 */
+const FurnitureEditIcon = () => (
+  <svg
+    className="wisdom-hero-customize-icon"
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path d="M3.5 4.5h12v14h-12z" />
+    <path d="M9.5 4.5v14M3.5 11.5h12" />
+    <path d="m14.8 16.9 4.9-4.9 2.3 2.3-4.9 4.9-3.1.8.8-3.1Z" />
+    <path d="m18.7 13 2.3 2.3" />
+  </svg>
+);
 
 const resolveHomeCategory = (card, categories = []) => {
   const requestedName = normalizeCategoryText(card?.category);
@@ -66,6 +145,164 @@ export default function LandingPage() {
   const [loading, setLoading] = useState(!cachedProducts);
   const { addToCart } = useCart();
 
+  const [heroSlideIndex, setHeroSlideIndex] = useState(0);
+  const [heroDragStartX, setHeroDragStartX] = useState(null);
+  const [heroDragOffset, setHeroDragOffset] = useState(0);
+  const [heroDragTravel, setHeroDragTravel] = useState(1);
+  const [heroActivePointerId, setHeroActivePointerId] = useState(null);
+  const [heroIsDragging, setHeroIsDragging] = useState(false);
+  const [heroIsSettling, setHeroIsSettling] = useState(false);
+  const [heroIsRebasing, setHeroIsRebasing] = useState(false);
+
+  const goToHeroSlide = (nextIndex) => {
+    const totalSlides = HERO_SHOWCASE_SLIDES.length;
+    if (totalSlides <= 0 || heroIsDragging || heroIsSettling || heroIsRebasing) return;
+    const boundedIndex = Math.max(0, Math.min(totalSlides - 1, nextIndex));
+    setHeroSlideIndex(boundedIndex);
+    setHeroDragOffset(0);
+  };
+
+  const getHeroDragDirection = (offset) => {
+    if (offset < 0) return 1;
+    if (offset > 0) return -1;
+    return 0;
+  };
+
+  const clampHeroDragOffset = (rawOffset) => {
+    const atFirstStep = heroSlideIndex === 0;
+    const atLastStep = heroSlideIndex === HERO_SHOWCASE_SLIDES.length - 1;
+
+    if ((atFirstStep && rawOffset > 0) || (atLastStep && rawOffset < 0)) {
+      return Math.max(-28, Math.min(28, rawOffset * 0.12));
+    }
+
+    const limit = Math.max(1, heroDragTravel);
+    return Math.max(-limit, Math.min(limit, rawOffset));
+  };
+
+  const clearHeroPointerState = () => {
+    setHeroDragStartX(null);
+    setHeroActivePointerId(null);
+    setHeroIsDragging(false);
+  };
+
+  const finishHeroRebase = () => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        setHeroIsRebasing(false);
+        setHeroIsSettling(false);
+        clearHeroPointerState();
+      });
+    });
+  };
+
+  const settleHeroBack = () => {
+    setHeroIsDragging(false);
+    setHeroIsSettling(true);
+    setHeroDragOffset(0);
+    window.setTimeout(() => {
+      setHeroIsSettling(false);
+      clearHeroPointerState();
+    }, 270);
+  };
+
+  const settleHeroToStep = (direction) => {
+    const targetIndex = heroSlideIndex + direction;
+    const isValidTarget = targetIndex >= 0 && targetIndex < HERO_SHOWCASE_SLIDES.length;
+    if (!isValidTarget) {
+      settleHeroBack();
+      return;
+    }
+
+    setHeroIsDragging(false);
+    setHeroIsSettling(true);
+
+    // Move the rail to the exact measured neighbor position. This avoids the tiny offset mismatch
+    // that previously caused the side card to twitch when the pointer was released.
+    setHeroDragOffset(direction > 0 ? -heroDragTravel : heroDragTravel);
+
+    window.setTimeout(() => {
+      // Disable transform animation for the single rebase frame. The neighbor is already exactly
+      // where the active card belongs, so swapping the index should be visually seamless.
+      setHeroIsRebasing(true);
+      setHeroSlideIndex(targetIndex);
+      setHeroDragOffset(0);
+      finishHeroRebase();
+    }, 280);
+  };
+
+  const handleHeroPointerDown = (event) => {
+    if (heroIsSettling || heroIsRebasing || !event.isPrimary) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+
+    event.preventDefault();
+
+    const stage = event.currentTarget;
+    const stageRect = stage.getBoundingClientRect();
+    const mainCard = stage.querySelector(".wisdom-home-tutorial__main-card");
+    const nextCard = stage.querySelector(".wisdom-home-tutorial__neighbor--next");
+    const previousCard = stage.querySelector(".wisdom-home-tutorial__neighbor--previous");
+
+    // Use actual rendered card coordinates instead of estimating from viewport width.
+    // This keeps JS travel perfectly aligned with CSS peek + gap at every screen size.
+    let travel = 0;
+    if (mainCard && nextCard) {
+      travel = Math.abs(nextCard.offsetLeft - mainCard.offsetLeft);
+    } else if (mainCard && previousCard) {
+      travel = Math.abs(previousCard.offsetLeft - mainCard.offsetLeft);
+    }
+
+    if (!Number.isFinite(travel) || travel < 1) {
+      const visiblePeek = Math.max(88, Math.min(128, stageRect.width * 0.1));
+      travel = Math.max(260, stageRect.width - visiblePeek + 18);
+    }
+
+    if (stage.setPointerCapture) {
+      stage.setPointerCapture(event.pointerId);
+    }
+
+    setHeroDragTravel(travel);
+    setHeroDragStartX(event.clientX);
+    setHeroActivePointerId(event.pointerId);
+    setHeroDragOffset(0);
+    setHeroIsDragging(true);
+  };
+
+  const handleHeroPointerMove = (event) => {
+    if (!heroIsDragging || heroIsSettling || heroIsRebasing) return;
+    if (heroActivePointerId !== event.pointerId || heroDragStartX == null) return;
+
+    const rawOffset = event.clientX - heroDragStartX;
+    setHeroDragOffset(clampHeroDragOffset(rawOffset));
+  };
+
+  const handleHeroPointerUp = (event) => {
+    if (!heroIsDragging || heroIsSettling || heroIsRebasing) return;
+    if (heroActivePointerId !== event.pointerId || heroDragStartX == null) return;
+
+    if (event.currentTarget.releasePointerCapture && event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    const finalOffset = clampHeroDragOffset(event.clientX - heroDragStartX);
+    const direction = getHeroDragDirection(finalOffset);
+    const progress = Math.min(1, Math.abs(finalOffset) / Math.max(1, heroDragTravel));
+    const canMoveNext = direction === 1 && heroSlideIndex < HERO_SHOWCASE_SLIDES.length - 1;
+    const canMovePrevious = direction === -1 && heroSlideIndex > 0;
+
+    if (progress >= 0.68 && (canMoveNext || canMovePrevious)) {
+      settleHeroToStep(direction);
+      return;
+    }
+
+    settleHeroBack();
+  };
+
+  const handleHeroPointerCancel = (event) => {
+    if (heroActivePointerId !== event.pointerId) return;
+    settleHeroBack();
+  };
+
   const latestProducts = [...products]
     .sort((a, b) => {
       const dateA = new Date(a?.created_at || 0).getTime();
@@ -78,7 +315,7 @@ export default function LandingPage() {
 
   const formatPrice = (value) => {
     const num = Number(value || 0);
-    return `₱${num.toLocaleString("en-PH", {
+    return `â‚±${num.toLocaleString("en-PH", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
@@ -123,6 +360,44 @@ export default function LandingPage() {
     navigate(`/catalog?${params.toString()}`);
   };
 
+  const handleBrowseFurnitureClick = () => {
+    const target = document.getElementById("shop-by-category");
+    if (!target) return;
+
+    const headerOffset = 92;
+    const startY = window.scrollY;
+    const targetY = Math.max(
+      0,
+      startY + target.getBoundingClientRect().top - headerOffset,
+    );
+    const distance = targetY - startY;
+
+    if (Math.abs(distance) < 2) return;
+
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
+      window.scrollTo(0, targetY);
+      return;
+    }
+
+    const duration = 520;
+    const startTime = performance.now();
+    const easeInOutCubic = (t) =>
+      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+    const animateScroll = (now) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = easeInOutCubic(progress);
+
+      window.scrollTo(0, startY + distance * eased);
+
+      if (progress < 1) {
+        window.requestAnimationFrame(animateScroll);
+      }
+    };
+
+    window.requestAnimationFrame(animateScroll);
+  };
   const handleLatestView = (e, product) => {
     e.stopPropagation();
     navigate(`/catalog?q=${encodeURIComponent(product?.name || "")}`);
@@ -309,31 +584,1318 @@ export default function LandingPage() {
       }}
     >
       {/* HERO */}
-      <section
-        style={{
-          width: "100%",
-          padding: 0,
-          margin: 0,
-          backgroundColor: "#fdfbf9",
-          lineHeight: 0,
-          overflow: "hidden",
-        }}
-      >
-        <img
-          src={cabinetImg}
-          alt="Custom furniture and built-in solutions"
-          style={{
-            width: "100%",
-            height: "auto",
-            display: "block",
-          }}
-        />
-      </section>
+      {/* WISDOM HOME TUTORIAL TRUE MANUAL GRAB DRAG V1.0.13.7 */}
+      {/* WISDOM HOME TUTORIAL SMOOTH RELEASE SETTLE V1.0.13.8 */}
+      <section className="wisdom-home-tutorial" aria-label="How to customize furniture with WISDOM">
+        <div className="wisdom-home-tutorial__frame">
+          {(() => {
+            const slide = HERO_SHOWCASE_SLIDES[heroSlideIndex];
+            const hasPreviousSlide = heroSlideIndex > 0;
+            const hasNextSlide = heroSlideIndex < HERO_SHOWCASE_SLIDES.length - 1;
+            const previousSlide = hasPreviousSlide ? HERO_SHOWCASE_SLIDES[heroSlideIndex - 1] : null;
+            const nextSlide = hasNextSlide ? HERO_SHOWCASE_SLIDES[heroSlideIndex + 1] : null;
+            const previousPreviousSlide =
+              heroSlideIndex > 1 ? HERO_SHOWCASE_SLIDES[heroSlideIndex - 2] : null;
+            const nextNextSlide =
+              heroSlideIndex < HERO_SHOWCASE_SLIDES.length - 2
+                ? HERO_SHOWCASE_SLIDES[heroSlideIndex + 2]
+                : null;
 
-      {/* SHOP BY CATEGORY */}
-      <section
+            return (
+              <>
+                <div className="wisdom-home-tutorial__copy">
+                  <h1 className="wisdom-home-tutorial__headline">
+                    <span>CUSTOM FURNITURE</span>
+                    <span>BUILT-IN SOLUTIONS</span>
+                  </h1>
+
+                  <div className="wisdom-home-tutorial__value">
+                    <div className="wisdom-home-tutorial__value-title">
+                      MADE TO ORDER. BUILT FOR YOUR SPACE.
+                    </div>
+                    <p className="wisdom-home-tutorial__value-copy">
+                      Customize furniture to match your space, style, and needs.
+                    </p>
+
+
+                    </div>
+
+                  <p className="wisdom-home-tutorial__invitation">
+                    Start customizing your furniture in 6 simple steps.
+                  </p>
+                  <div className="wisdom-home-tutorial__active-step" key={`copy-${slide.step}`}>
+                    <p className="wisdom-home-tutorial__eyebrow">
+                      STEP {Number(slide.step)} OF {HERO_SHOWCASE_SLIDES.length}
+                    </p>
+                    <h2 className="wisdom-home-tutorial__step-title">{slide.title}</h2>
+                    <p className="wisdom-home-tutorial__description">{slide.description}</p>
+                    <p className="wisdom-home-tutorial__detail">{slide.detail}</p>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="wisdom-home-tutorial__cta"
+                    onClick={() => navigate("/customize")}
+                  >
+                    START CUSTOMIZING
+                  </button>
+
+                  {/* WISDOM HOME DUAL CUSTOMER PATH V1.0.13.10 */}
+                  {/* WISDOM HOME BROWSE FURNITURE BUTTON + CATEGORY SCROLL V1.0.13.11 */}
+                  <button
+                    type="button"
+                    className="wisdom-home-tutorial__catalog-link"
+                    onClick={handleBrowseFurnitureClick}
+                  >
+                    SHOP READY-MADE FURNITURE
+                  </button>
+                </div>
+
+                <div className="wisdom-home-tutorial__visual">
+                  <div
+                    className={`wisdom-home-tutorial__stage${heroIsDragging ? " is-dragging" : ""}${heroIsSettling ? " is-settling" : ""}${heroIsRebasing ? " is-rebasing" : ""}${heroDragOffset < 0 ? " is-moving-next" : ""}${heroDragOffset > 0 ? " is-moving-previous" : ""}`}
+                    style={{
+                      "--wisdom-drag-x": `${heroDragOffset}px`,
+                      "--wisdom-drag-progress": Math.min(
+                        1,
+                        Math.abs(heroDragOffset) / Math.max(1, heroDragTravel),
+                      ),
+                    }}
+                    onPointerDown={handleHeroPointerDown}
+                    onPointerMove={handleHeroPointerMove}
+                    onPointerUp={handleHeroPointerUp}
+                    onPointerCancel={handleHeroPointerCancel}
+                    aria-label="Hold the tutorial image and drag it manually left or right"
+                  >
+                    {previousPreviousSlide ? (
+                      <article className="wisdom-home-tutorial__neighbor wisdom-home-tutorial__neighbor--before-previous" aria-hidden="true">
+                        <div className="wisdom-home-tutorial__media">
+                          <img src={previousPreviousSlide.src} alt="" draggable="false" />
+                        </div>
+                      </article>
+                    ) : null}
+
+                    {previousSlide ? (
+                      <article className="wisdom-home-tutorial__neighbor wisdom-home-tutorial__neighbor--previous" aria-hidden="true">
+                        <div className="wisdom-home-tutorial__media">
+                          <img src={previousSlide.src} alt="" draggable="false" />
+                        </div>
+                      </article>
+                    ) : null}
+
+                    <article className="wisdom-home-tutorial__main-card" key={`main-${slide.step}`}>
+                      <div className="wisdom-home-tutorial__media">
+                        <img
+                          className={`wisdom-home-tutorial__image wisdom-home-tutorial__image--step-${heroSlideIndex + 1}`}
+                          src={slide.src}
+                          alt={slide.alt}
+                          draggable="false"
+                        />
+                      </div>
+                    </article>
+
+                    {nextSlide ? (
+                      <article className="wisdom-home-tutorial__neighbor wisdom-home-tutorial__neighbor--next" aria-hidden="true">
+                        <div className="wisdom-home-tutorial__media">
+                          <img src={nextSlide.src} alt="" draggable="false" />
+                        </div>
+                      </article>
+                    ) : null}
+
+                    {nextNextSlide ? (
+                      <article className="wisdom-home-tutorial__neighbor wisdom-home-tutorial__neighbor--after-next" aria-hidden="true">
+                        <div className="wisdom-home-tutorial__media">
+                          <img src={nextNextSlide.src} alt="" draggable="false" />
+                        </div>
+                      </article>
+                    ) : null}
+                  </div>
+
+                  <div className="wisdom-home-tutorial__card-nav" aria-label="Tutorial slide position">
+                    <div className="wisdom-home-tutorial__card-dots">
+                      {HERO_SHOWCASE_SLIDES.map((dotSlide, dotIndex) => (
+                        <button
+                          key={dotSlide.step}
+                          type="button"
+                          className={`wisdom-home-tutorial__card-dot${dotIndex === heroSlideIndex ? " is-active" : ""}`}
+                          onClick={() => goToHeroSlide(dotIndex)}
+                          aria-label={`Go to tutorial step ${dotIndex + 1}: ${dotSlide.label}`}
+                          aria-current={dotIndex === heroSlideIndex ? "step" : undefined}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+
+          <div className="wisdom-home-tutorial__progress-wrap">
+                          {/* WISDOM HOME TUTORIAL CENTERED DOTS + HOW IT WORKS FIX V1.0.13.9.2 */}
+              <style>{`
+                /* WISDOM HOME TUTORIAL HOW IT WORKS LEFT SHIFT V1.0.13.9.3 */
+                /* Center the six dots under the active/main picture only.
+                   The narrow neighboring-card preview is excluded. */
+                @media (min-width: 1051px) {
+                  .wisdom-home-tutorial__card-nav {
+                    left: 0 !important;
+                    right: auto !important;
+                    width: calc(100% - clamp(88px, 8vw, 128px)) !important;
+                    box-sizing: border-box !important;
+                    justify-content: center !important;
+                  }
+
+                  .wisdom-home-tutorial__progress-wrap {
+                    grid-template-columns: 220px minmax(0, 1fr) !important;
+                    align-items: start !important;
+                    column-gap: 24px !important;
+                  }
+
+                  .wisdom-home-tutorial__progress-heading {
+                    margin: 8px 0 0 !important;
+                    padding-left: 8px !important;
+                    color: #111111 !important;
+                    font-size: 1rem !important;
+                    font-weight: 700 !important;
+                    line-height: 1.15 !important;
+                    letter-spacing: 0.075em !important;
+                    white-space: nowrap !important;
+                  }
+                }
+
+                @media (min-width: 721px) and (max-width: 1050px) {
+                  .wisdom-home-tutorial__card-nav {
+                    left: 0 !important;
+                    right: auto !important;
+                    width: calc(100% - 74px) !important;
+                    box-sizing: border-box !important;
+                    justify-content: center !important;
+                  }
+
+                  .wisdom-home-tutorial__progress-heading {
+                    margin: 4px 0 0 !important;
+                    padding-left: 0 !important;
+                    font-size: 0.96rem !important;
+                    font-weight: 700 !important;
+                    line-height: 1.15 !important;
+                  }
+                }
+
+                @media (max-width: 720px) {
+                  .wisdom-home-tutorial__card-nav {
+                    left: 0 !important;
+                    right: auto !important;
+                    width: calc(100% - 52px) !important;
+                    box-sizing: border-box !important;
+                    justify-content: center !important;
+                  }
+
+                  .wisdom-home-tutorial__progress-heading {
+                    margin: 0 !important;
+                    padding-left: 0 !important;
+                    font-size: 0.92rem !important;
+                    font-weight: 700 !important;
+                    line-height: 1.15 !important;
+                  }
+                }
+              `}</style>
+                            {/* WISDOM HOME TUTORIAL HOW IT WORKS DIRECT RIGHT OFFSET V1.0.13.9.7 */}
+              <style>{`
+                @media (min-width: 1051px) {
+                  .wisdom-home-tutorial__progress-heading {
+                    transform: translateX(130px) !important;
+                  }
+                }
+
+                @media (min-width: 721px) and (max-width: 1050px) {
+                  .wisdom-home-tutorial__progress-heading {
+                    transform: translateX(54px) !important;
+                  }
+                }
+
+                @media (max-width: 720px) {
+                  .wisdom-home-tutorial__progress-heading {
+                    transform: none !important;
+                  }
+                }
+              `}</style>
+              <p className="wisdom-home-tutorial__progress-heading">HOW IT WORKS</p>
+            <nav className="wisdom-home-tutorial__progress" aria-label="Customization tutorial steps">
+              <span className="wisdom-home-tutorial__progress-rail" aria-hidden="true">
+                <span
+                  className="wisdom-home-tutorial__progress-fill"
+                  style={{
+                    width: `${HERO_SHOWCASE_SLIDES.length > 1 ? (heroSlideIndex / (HERO_SHOWCASE_SLIDES.length - 1)) * 100 : 0}%`,
+                  }}
+                />
+              </span>
+
+              {HERO_SHOWCASE_SLIDES.map((progressSlide, index) => (
+                <button
+                  key={progressSlide.step}
+                  type="button"
+                  className={`wisdom-home-tutorial__progress-step${index <= heroSlideIndex ? " is-reached" : ""}${index === heroSlideIndex ? " is-active" : ""}`}
+                  onClick={() => goToHeroSlide(index)}
+                  aria-current={index === heroSlideIndex ? "step" : undefined}
+                  aria-label={`Step ${index + 1}: ${progressSlide.label}`}
+                >
+                  <span className="wisdom-home-tutorial__progress-number">{index + 1}</span>
+                  <span className="wisdom-home-tutorial__progress-label">{progressSlide.label}</span>
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+
+        <style>{`
+          .wisdom-home-tutorial {
+            width: 100%;
+            min-height: calc(100vh - 92px);
+            box-sizing: border-box;
+            margin: 0;
+            padding: clamp(24px, 3vh, 34px) clamp(28px, 4vw, 70px) 22px;
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+            background: #ffffff;
+            color: #111111;
+            font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+          }
+
+          .wisdom-home-tutorial__frame {
+            width: min(100%, 1680px);
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: minmax(470px, 0.72fr) minmax(0, 1.28fr);
+            grid-template-areas:
+              "copy visual"
+              "progress progress";
+            align-items: start;
+            column-gap: clamp(42px, 4vw, 70px);
+            row-gap: clamp(18px, 2.1vh, 24px);
+          }
+
+          .wisdom-home-tutorial__copy {
+            grid-area: copy;
+            min-width: 0;
+            align-self: start;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            justify-content: flex-start;
+            padding: clamp(6px, 1.2vh, 14px) 0 0;
+          }
+
+          .wisdom-home-tutorial__headline {
+            margin: 0;
+            color: #111111;
+            font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+            font-size: clamp(2.75rem, 3.25vw, 3.75rem);
+            font-weight: 700;
+            line-height: 1.04;
+            letter-spacing: -0.045em;
+          }
+
+          .wisdom-home-tutorial__headline span {
+            display: block;
+            white-space: nowrap;
+          }
+
+          .wisdom-home-tutorial__value {
+            width: min(100%, 455px);
+            margin-top: 16px;
+          }
+
+          .wisdom-home-tutorial__value-title {
+            color: #111111;
+            font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+            font-size: 0.78rem;
+            font-weight: 700;
+            line-height: 1.3;
+            letter-spacing: 0.075em;
+          }
+
+          .wisdom-home-tutorial__value-copy {
+            margin: 5px 0 0;
+            color: #656565;
+            font-size: 0.93rem;
+            line-height: 1.45;
+          }
+          .wisdom-home-tutorial__active-step {
+            width: min(100%, 455px);
+            height: 248px;
+            box-sizing: border-box;
+            margin-top: clamp(15px, 1.8vh, 20px);
+          }
+
+          .wisdom-home-tutorial__eyebrow {
+            margin: 0 0 10px;
+            color: #555555;
+            font-size: 0.72rem;
+            font-weight: 500;
+            line-height: 1.2;
+            letter-spacing: 0.12em;
+          }
+
+          .wisdom-home-tutorial__step-title {
+            margin: 0;
+            color: #111111;
+            font-size: clamp(1.42rem, 1.45vw, 1.72rem);
+            font-weight: 700;
+            line-height: 1.16;
+            letter-spacing: -0.025em;
+          }
+
+          .wisdom-home-tutorial__description,
+          .wisdom-home-tutorial__detail {
+            max-width: 48ch;
+            margin: 0;
+            color: #333333;
+            font-size: clamp(0.94rem, 0.93vw, 1.02rem);
+            font-weight: 400;
+            line-height: 1.55;
+            letter-spacing: -0.006em;
+          }
+
+          .wisdom-home-tutorial__description {
+            margin-top: 14px;
+          }
+
+          .wisdom-home-tutorial__detail {
+            margin-top: 9px;
+            color: #656565;
+          }
+
+          .wisdom-home-tutorial__cta {
+            width: min(100%, 310px);
+            min-height: 56px;
+            align-self: center;
+            margin-top: 8px;
+            padding: 14px 26px;
+            border: 1px solid #111111;
+            border-radius: 4px;
+            background: #111111;
+            color: #ffffff;
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0.075em;
+            cursor: pointer;
+          }
+
+          .wisdom-home-tutorial__cta:hover {
+            background: #ffffff;
+            color: #111111;
+          }
+
+          .wisdom-home-tutorial__catalog-link {
+            width: min(100%, 310px);
+            min-height: 50px;
+            align-self: center;
+            margin-top: 10px;
+            padding: 12px 24px;
+            border: 1px solid #111111;
+            border-radius: 4px;
+            background: #ffffff;
+            color: #111111;
+            font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+            font-size: 0.78rem;
+            font-weight: 700;
+            line-height: 1.25;
+            letter-spacing: 0.075em;
+            cursor: pointer;
+            transition:
+              background 0.18s ease,
+              color 0.18s ease;
+          }
+
+          .wisdom-home-tutorial__catalog-link:hover {
+            background: #111111;
+            color: #ffffff;
+          }
+
+          .wisdom-home-tutorial__catalog-link:focus-visible {
+            outline: 2px solid #111111;
+            outline-offset: 4px;
+          }
+
+          .wisdom-home-tutorial__visual {
+            grid-area: visual;
+            min-width: 0;
+            align-self: start;
+            position: relative;
+            overflow: hidden;
+            padding-bottom: 54px;
+          }
+
+          .wisdom-home-tutorial__stage {
+            --wisdom-card-peek: clamp(88px, 8vw, 128px);
+            --wisdom-card-gap: clamp(14px, 1.35vw, 20px);
+            position: relative;
+            width: 100%;
+            height: clamp(500px, 56vh, 590px);
+            overflow: hidden;
+            cursor: grab;
+            touch-action: pan-y;
+            user-select: none;
+          }
+
+          .wisdom-home-tutorial__stage.is-dragging {
+            cursor: grabbing;
+          }
+
+          .wisdom-home-tutorial__main-card,
+          .wisdom-home-tutorial__neighbor {
+            position: absolute;
+            top: 0;
+            width: calc(100% - var(--wisdom-card-peek));
+            height: 100%;
+            overflow: hidden;
+            border: 1px solid #e4e4e4;
+            border-radius: 7px;
+            background: #ffffff;
+            box-shadow: 0 7px 20px rgba(0, 0, 0, 0.04);
+            transform: translate3d(var(--wisdom-drag-x, 0px), 0, 0);
+            transition: transform 280ms cubic-bezier(0.22, 0.78, 0.2, 1);
+            will-change: transform;
+          }
+
+          .wisdom-home-tutorial__stage.is-dragging .wisdom-home-tutorial__main-card,
+          .wisdom-home-tutorial__stage.is-dragging .wisdom-home-tutorial__neighbor,
+          .wisdom-home-tutorial__stage.is-rebasing .wisdom-home-tutorial__main-card,
+          .wisdom-home-tutorial__stage.is-rebasing .wisdom-home-tutorial__neighbor {
+            transition: none !important;
+          }
+
+          .wisdom-home-tutorial__main-card {
+            left: 0;
+            z-index: 2;
+          }
+
+          .wisdom-home-tutorial__neighbor {
+            z-index: 1;
+            opacity: 0.96;
+          }
+
+          .wisdom-home-tutorial__neighbor--next {
+            left: calc(100% - var(--wisdom-card-peek) + var(--wisdom-card-gap));
+          }
+
+          .wisdom-home-tutorial__neighbor--previous {
+            left: calc(-1 * (100% - var(--wisdom-card-peek) + var(--wisdom-card-gap)));
+          }
+
+          /* WISDOM HOME TUTORIAL GROWING PREVIEW TRANSITION V1.0.13.13 */
+          .wisdom-home-tutorial__neighbor--next {
+            transform-origin: left center;
+            transform:
+              translate3d(var(--wisdom-drag-x, 0px), 0, 0)
+              scale(0.78);
+          }
+
+          .wisdom-home-tutorial__neighbor--previous {
+            transform-origin: right center;
+            transform:
+              translate3d(var(--wisdom-drag-x, 0px), 0, 0)
+              scale(0.78);
+          }
+
+          .wisdom-home-tutorial__stage.is-moving-next
+            .wisdom-home-tutorial__neighbor--next {
+            transform:
+              translate3d(var(--wisdom-drag-x, 0px), 0, 0)
+              scale(calc(0.78 + (var(--wisdom-drag-progress, 0) * 0.22)));
+          }
+
+          .wisdom-home-tutorial__stage.is-moving-previous
+            .wisdom-home-tutorial__neighbor--previous {
+            transform:
+              translate3d(var(--wisdom-drag-x, 0px), 0, 0)
+              scale(calc(0.78 + (var(--wisdom-drag-progress, 0) * 0.22)));
+          }
+
+          /* WISDOM HOME TUTORIAL SYMMETRIC GROW + SHRINK TRANSITION V1.0.13.14 */
+          .wisdom-home-tutorial__stage.is-moving-next
+            .wisdom-home-tutorial__main-card {
+            transform-origin: right center;
+            transform:
+              translate3d(var(--wisdom-drag-x, 0px), 0, 0)
+              scale(calc(1 - (var(--wisdom-drag-progress, 0) * 0.22)));
+          }
+
+          .wisdom-home-tutorial__stage.is-moving-previous
+            .wisdom-home-tutorial__main-card {
+            transform-origin: left center;
+            transform:
+              translate3d(var(--wisdom-drag-x, 0px), 0, 0)
+              scale(calc(1 - (var(--wisdom-drag-progress, 0) * 0.22)));
+          }
+
+          /* WISDOM HOME TUTORIAL CONTINUOUS NEXT PEEK V1.0.13.15 */
+          .wisdom-home-tutorial__neighbor--after-next {
+            left: calc(
+              200%
+              - var(--wisdom-card-peek)
+              - var(--wisdom-card-peek)
+              + var(--wisdom-card-gap)
+              + var(--wisdom-card-gap)
+            );
+            transform-origin: left center;
+            transform:
+              translate3d(var(--wisdom-drag-x, 0px), 0, 0)
+              scale(0.78);
+          }
+
+          .wisdom-home-tutorial__neighbor--before-previous {
+            left: calc(
+              -200%
+              + var(--wisdom-card-peek)
+              + var(--wisdom-card-peek)
+              - var(--wisdom-card-gap)
+              - var(--wisdom-card-gap)
+            );
+            transform-origin: right center;
+            transform:
+              translate3d(var(--wisdom-drag-x, 0px), 0, 0)
+              scale(0.78);
+          }
+
+          .wisdom-home-tutorial__media {
+            width: 100%;
+            height: 100%;
+            min-width: 0;
+            min-height: 0;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #fafafa;
+          }
+
+          .wisdom-home-tutorial__image,
+          .wisdom-home-tutorial__neighbor img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+            object-position: center;
+            background: #fafafa;
+            pointer-events: none;
+            user-select: none;
+            -webkit-user-drag: none;
+          }
+
+          .wisdom-home-tutorial__image--step-1,
+          .wisdom-home-tutorial__image--step-6 {
+            object-position: center top;
+          }
+
+          .wisdom-home-tutorial__card-nav {
+            position: absolute;
+            left: 0;
+            right: var(--wisdom-card-peek);
+            bottom: 0;
+            height: 48px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ffffff;
+          }
+
+          .wisdom-home-tutorial__card-dots {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+          }
+
+          .wisdom-home-tutorial__card-dot {
+            width: 8px;
+            height: 8px;
+            flex: 0 0 8px;
+            padding: 0;
+            border: 0;
+            border-radius: 50%;
+            background: #d0d0d0;
+            cursor: pointer;
+            transition: background 150ms ease, transform 150ms ease;
+          }
+
+          .wisdom-home-tutorial__card-dot.is-active {
+            background: #111111;
+            transform: scale(1.08);
+          }
+
+          .wisdom-home-tutorial__progress-wrap {
+            grid-area: progress;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 190px minmax(0, 1fr);
+            align-items: center;
+            column-gap: 30px;
+          }
+
+          .wisdom-home-tutorial__progress-heading {
+            margin: 0;
+            color: #171717;
+            font-size: 0.82rem;
+            font-weight: 700;
+            letter-spacing: 0.09em;
+            white-space: nowrap;
+          }
+
+          .wisdom-home-tutorial__progress {
+            position: relative;
+            width: 100%;
+            margin: 0;
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            align-items: start;
+            gap: 0;
+          }
+
+          .wisdom-home-tutorial__progress-rail {
+            position: absolute;
+            z-index: 0;
+            top: 19px;
+            left: calc(100% / 12);
+            right: calc(100% / 12);
+            height: 1px;
+            overflow: hidden;
+            background: #cccccc;
+            pointer-events: none;
+          }
+
+          .wisdom-home-tutorial__progress-fill {
+            display: block;
+            height: 100%;
+            background: #111111;
+            transition: width 220ms ease;
+          }
+
+          .wisdom-home-tutorial__progress-step {
+            position: relative;
+            z-index: 1;
+            min-width: 0;
+            padding: 0 8px;
+            border: 0;
+            background: transparent;
+            color: #111111;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+          }
+
+          .wisdom-home-tutorial__progress-number {
+            width: 40px;
+            height: 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #c8c8c8;
+            border-radius: 3px;
+            background: #ffffff;
+            color: #111111;
+            font-size: 0.82rem;
+            font-weight: 600;
+            line-height: 1;
+            transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+          }
+
+          .wisdom-home-tutorial__progress-step.is-reached .wisdom-home-tutorial__progress-number {
+            border-color: #111111;
+            background: #111111;
+            color: #ffffff;
+          }
+
+          .wisdom-home-tutorial__progress-label {
+            color: #585858;
+            font-size: 0.82rem;
+            font-weight: 400;
+            line-height: 1.25;
+            text-align: center;
+            white-space: nowrap;
+          }
+
+          .wisdom-home-tutorial__progress-step.is-reached .wisdom-home-tutorial__progress-label {
+            color: #232323;
+          }
+
+          .wisdom-home-tutorial__progress-step.is-active .wisdom-home-tutorial__progress-label {
+            color: #111111;
+            font-weight: 700;
+          }
+
+          .wisdom-home-tutorial__progress-step:focus-visible .wisdom-home-tutorial__progress-number,
+          .wisdom-home-tutorial__card-dot:focus-visible,
+          .wisdom-home-tutorial__cta:focus-visible {
+            outline: 2px solid #111111;
+            outline-offset: 3px;
+          }
+
+          @media (max-width: 1320px) {
+            .wisdom-home-tutorial__frame {
+              grid-template-columns: minmax(420px, 0.72fr) minmax(0, 1.28fr);
+              column-gap: 34px;
+            }
+
+            .wisdom-home-tutorial__headline {
+              font-size: clamp(2.45rem, 3vw, 3.2rem);
+            }
+
+            .wisdom-home-tutorial__main-card,
+            .wisdom-home-tutorial__neighbor,
+            .wisdom-home-tutorial__stage {
+              height: 490px;
+            }
+          }
+
+          @media (max-width: 1050px) {
+            .wisdom-home-tutorial {
+              min-height: auto;
+              padding: 34px 24px 42px;
+            }
+
+            .wisdom-home-tutorial__frame {
+              grid-template-columns: 1fr;
+              grid-template-areas:
+                "copy"
+                "visual"
+                "progress";
+              row-gap: 28px;
+            }
+
+            .wisdom-home-tutorial__copy {
+              padding-top: 0;
+            }
+
+            .wisdom-home-tutorial__headline span {
+              white-space: normal;
+            }
+
+            .wisdom-home-tutorial__active-step {
+              height: auto;
+              min-height: 220px;
+            }
+
+            .wisdom-home-tutorial__visual {
+              width: 100%;
+            }
+
+            .wisdom-home-tutorial__stage {
+              --wisdom-card-peek: 74px;
+              height: 480px;
+            }
+
+            .wisdom-home-tutorial__progress-wrap {
+              grid-template-columns: 1fr;
+              row-gap: 18px;
+            }
+          }
+
+          @media (max-width: 720px) {
+            .wisdom-home-tutorial {
+              padding: 26px 16px 36px;
+            }
+
+            .wisdom-home-tutorial__headline {
+              font-size: clamp(2.1rem, 10.5vw, 2.85rem);
+            }
+
+            .wisdom-home-tutorial__value {
+              margin-top: 14px;
+            }
+
+            .wisdom-home-tutorial__value-title {
+              font-size: 0.72rem;
+            }
+
+            .wisdom-home-tutorial__value-copy {
+              font-size: 0.88rem;
+            }
+
+            .wisdom-home-tutorial__active-step {
+              margin-top: 18px;
+              min-height: 236px;
+            }
+
+            .wisdom-home-tutorial__cta {
+              width: 100%;
+              align-self: center;
+              margin-top: 18px;
+            }
+
+            .wisdom-home-tutorial__stage {
+              --wisdom-card-peek: 52px;
+              --wisdom-card-gap: 10px;
+              height: 430px;
+            }
+
+            .wisdom-home-tutorial__main-card,
+            .wisdom-home-tutorial__neighbor {
+              border-radius: 6px;
+            }
+
+            .wisdom-home-tutorial__progress-heading {
+              font-size: 0.78rem;
+            }
+
+            .wisdom-home-tutorial__progress-number {
+              width: 34px;
+              height: 34px;
+            }
+
+            .wisdom-home-tutorial__progress-rail {
+              top: 16px;
+            }
+
+            .wisdom-home-tutorial__progress-label {
+              font-size: 0.68rem;
+              white-space: normal;
+            }
+          }
+        `}</style>
+      </section>
+      {/* WISDOM HOME SMOOTH BROWSE + HEADLINE READABILITY + CARD BORDER V1.0.13.12 */}
+      <style>{`
+        .wisdom-home-tutorial__headline {
+          line-height: 1.12 !important;
+          letter-spacing: -0.025em !important;
+        }
+
+        .wisdom-home-tutorial__headline span + span {
+          margin-top: 0.035em;
+        }
+
+        .wisdom-home-tutorial__main-card,
+        .wisdom-home-tutorial__neighbor {
+          border: 1px solid #111111 !important;
+          border-radius: 4px !important;
+        }
+
+        @media (max-width: 760px) {
+          .wisdom-home-tutorial__headline {
+            line-height: 1.1 !important;
+            letter-spacing: -0.018em !important;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO FINAL VALUE + CTA POSITION V1.0.6.3 */}
+      <style>{`
+        .wisdom-home-tutorial__value-title {
+          color: #111111 !important;
+          font-size: 1.02rem !important;
+          font-weight: 800 !important;
+          line-height: 1.28 !important;
+          letter-spacing: 0.02em !important;
+        }
+
+        .wisdom-home-tutorial__value-copy {
+          color: #333333 !important;
+          font-size: 1rem !important;
+          font-weight: 500 !important;
+          line-height: 1.42 !important;
+        }
+
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__value {
+            margin-top: 12px !important;
+          }
+
+          .wisdom-home-tutorial__active-step {
+            height: 210px !important;
+            margin-top: 14px !important;
+          }
+
+          .wisdom-home-tutorial__cta {
+            margin-top: 8px !important;
+          }
+        }
+
+        @media (max-width: 1050px) {
+          .wisdom-home-tutorial__value-title {
+            font-size: 0.94rem !important;
+          }
+
+          .wisdom-home-tutorial__value-copy {
+            font-size: 0.94rem !important;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO CENTER TAGLINE V1.0.6.4 */}
+      <style>{`
+        .wisdom-home-tutorial__headline,
+        .wisdom-home-tutorial__value {
+          width: min(100%, 620px);
+          box-sizing: border-box;
+        }
+
+        .wisdom-home-tutorial__value {
+          text-align: center !important;
+        }
+
+        @media (max-width: 1050px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            width: 100%;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO LIFT HEADLINE + TAGLINE V1.0.6.5 */}
+      <style>{`
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            transform: translateY(-26px);
+          }
+        }
+
+        @media (min-width: 721px) and (max-width: 1050px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            transform: translateY(-14px);
+          }
+        }
+
+        @media (max-width: 720px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            transform: none;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO LIFT MORE V1.0.6.6 */}
+      <style>{`
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            transform: translateY(-38px) !important;
+          }
+        }
+
+        @media (min-width: 721px) and (max-width: 1050px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            transform: translateY(-20px) !important;
+          }
+        }
+
+        @media (max-width: 720px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            transform: none !important;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO TYPOGRAPHY CLEANUP V1.0.6.8.1 */}
+      <style>{`
+        .wisdom-home-tutorial {
+          font-family: "Montserrat", sans-serif !important;
+        }
+
+        .wisdom-home-tutorial__headline {
+          font-family: "Montserrat", sans-serif !important;
+          font-weight: 800 !important;
+          line-height: 1.06 !important;
+          letter-spacing: -0.032em !important;
+        }
+
+        .wisdom-home-tutorial__headline span + span {
+          margin-top: 0.04em !important;
+        }
+
+        .wisdom-home-tutorial__value-title {
+          font-family: "Montserrat", sans-serif !important;
+          font-weight: 700 !important;
+          line-height: 1.3 !important;
+          letter-spacing: 0.015em !important;
+        }
+
+        .wisdom-home-tutorial__value-copy {
+          font-family: "Montserrat", sans-serif !important;
+          font-weight: 400 !important;
+          line-height: 1.45 !important;
+          letter-spacing: -0.01em !important;
+        }
+
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__headline {
+            font-size: clamp(2.8rem, 3.22vw, 3.72rem) !important;
+          }
+
+          .wisdom-home-tutorial__value-title {
+            font-size: 0.98rem !important;
+          }
+
+          .wisdom-home-tutorial__value-copy {
+            font-size: 0.96rem !important;
+          }
+        }
+
+        @media (max-width: 1050px) {
+          .wisdom-home-tutorial__headline {
+            font-weight: 800 !important;
+          }
+
+          .wisdom-home-tutorial__value-title {
+            font-weight: 700 !important;
+          }
+
+          .wisdom-home-tutorial__value-copy {
+            font-weight: 400 !important;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO OPTION A MARKETING V1.0.6.9 */}
+      <style>{`
+        .wisdom-home-tutorial,
+        .wisdom-home-tutorial__headline,
+        .wisdom-home-tutorial__value-title,
+        .wisdom-home-tutorial__value-copy,
+        .wisdom-home-tutorial__invitation,
+        .wisdom-home-tutorial__eyebrow,
+        .wisdom-home-tutorial__step-title,
+        .wisdom-home-tutorial__description,
+        .wisdom-home-tutorial__detail,
+        .wisdom-home-tutorial__cta,
+        .wisdom-home-tutorial__catalog-link,
+        .wisdom-home-tutorial__progress-heading,
+        .wisdom-home-tutorial__progress-number,
+        .wisdom-home-tutorial__progress-label {
+          font-family: "Montserrat", sans-serif !important;
+        }
+
+        .wisdom-home-tutorial__headline {
+          font-weight: 800 !important;
+        }
+
+        .wisdom-home-tutorial__value-title {
+          font-weight: 700 !important;
+        }
+
+        .wisdom-home-tutorial__value-copy {
+          font-weight: 400 !important;
+        }
+
+        .wisdom-home-tutorial__invitation {
+          width: min(100%, 620px);
+          margin: 13px 0 0;
+          color: #111111;
+          font-size: 0.9rem;
+          font-weight: 600;
+          line-height: 1.4;
+          letter-spacing: -0.008em;
+          text-align: center;
+        }
+
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value {
+            position: relative;
+            left: -26px;
+          }
+
+          .wisdom-home-tutorial__invitation {
+            position: relative;
+            left: -26px;
+          }
+        }
+
+        @media (min-width: 721px) and (max-width: 1050px) {
+          .wisdom-home-tutorial__headline,
+          .wisdom-home-tutorial__value,
+          .wisdom-home-tutorial__invitation {
+            left: 0;
+          }
+        }
+
+        @media (max-width: 720px) {
+          .wisdom-home-tutorial__invitation {
+            width: 100%;
+            margin-top: 11px;
+            font-size: 0.86rem;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO INVITATION ALIGN V1.0.6.10 */}
+      <style>{`
+        .wisdom-home-tutorial__invitation {
+          position: static !important;
+          left: auto !important;
+          width: min(100%, 455px) !important;
+          margin: 4px 0 8px !important;
+          color: #111111 !important;
+          font-family: "Montserrat", sans-serif !important;
+          font-size: 1.04rem !important;
+          font-weight: 650 !important;
+          line-height: 1.4 !important;
+          letter-spacing: -0.012em !important;
+          text-align: left !important;
+          align-self: flex-start !important;
+        }
+
+        .wisdom-home-tutorial__active-step {
+          margin-top: 0 !important;
+        }
+
+        @media (max-width: 1050px) {
+          .wisdom-home-tutorial__invitation {
+            width: 100% !important;
+            font-size: 0.98rem !important;
+          }
+        }
+
+        @media (max-width: 720px) {
+          .wisdom-home-tutorial__invitation {
+            margin: 6px 0 9px !important;
+            font-size: 0.94rem !important;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO INVITATION HIGHLIGHT V1.0.6.11 + WISDOM HOME HERO INVITATION FONT BUMP V1.0.6.12 */}
+      <style>{`
+        .wisdom-home-tutorial__invitation {
+          width: min(100%, 640px) !important;
+          max-width: 640px !important;
+          margin: 4px 0 10px !important;
+          color: #111111 !important;
+          font-family: "Montserrat", sans-serif !important;
+          font-size: 1.42rem !important;
+          font-weight: 700 !important;
+          line-height: 1.38 !important;
+          letter-spacing: -0.018em !important;
+          text-align: left !important;
+          text-wrap: balance !important;
+          align-self: flex-start !important;
+        }
+
+        @media (max-width: 1200px) {
+          .wisdom-home-tutorial__invitation {
+            width: min(100%, 580px) !important;
+            max-width: 580px !important;
+            font-size: 1.30rem !important;
+          }
+        }
+
+        @media (max-width: 900px) {
+          .wisdom-home-tutorial__invitation {
+            width: 100% !important;
+            max-width: none !important;
+            font-size: 1.18rem !important;
+            line-height: 1.4 !important;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO INVITATION ONE LINE V1.0.6.13 */}
+      <style>{`
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__invitation {
+            width: max-content !important;
+            max-width: none !important;
+            margin: 4px 0 10px !important;
+            color: #111111 !important;
+            font-family: "Montserrat", sans-serif !important;
+            font-size: 1.52rem !important;
+            font-weight: 700 !important;
+            line-height: 1.22 !important;
+            letter-spacing: -0.022em !important;
+            text-align: left !important;
+            white-space: nowrap !important;
+            text-wrap: nowrap !important;
+            overflow: visible !important;
+            align-self: flex-start !important;
+          }
+        }
+
+        @media (min-width: 901px) and (max-width: 1050px) {
+          .wisdom-home-tutorial__invitation {
+            width: max-content !important;
+            max-width: none !important;
+            font-size: 1.34rem !important;
+            font-weight: 700 !important;
+            line-height: 1.25 !important;
+            white-space: nowrap !important;
+            text-wrap: nowrap !important;
+          }
+        }
+
+        @media (max-width: 900px) {
+          .wisdom-home-tutorial__invitation {
+            width: 100% !important;
+            max-width: 100% !important;
+            font-size: 1.18rem !important;
+            line-height: 1.35 !important;
+            white-space: normal !important;
+            text-wrap: balance !important;
+          }
+        }
+      `}</style>
+      {/* WISDOM HOME HERO INVITATION HIERARCHY V1.0.6.14 */}
+      <style>{`
+        @media (min-width: 1051px) {
+          .wisdom-home-tutorial__invitation {
+            position: relative !important;
+            left: -26px !important;
+            width: max-content !important;
+            max-width: none !important;
+            margin: 4px 0 10px !important;
+            color: #111111 !important;
+            font-family: "Montserrat", sans-serif !important;
+            font-size: 1.58rem !important;
+            font-weight: 700 !important;
+            line-height: 1.22 !important;
+            letter-spacing: -0.022em !important;
+            text-align: left !important;
+            white-space: nowrap !important;
+            text-wrap: nowrap !important;
+          }
+
+          .wisdom-home-tutorial__step-title {
+            font-size: 1.34rem !important;
+            font-weight: 700 !important;
+            line-height: 1.18 !important;
+            letter-spacing: -0.02em !important;
+          }
+        }
+
+        @media (min-width: 901px) and (max-width: 1050px) {
+          .wisdom-home-tutorial__invitation {
+            position: static !important;
+            left: auto !important;
+            width: max-content !important;
+            max-width: none !important;
+            font-size: 1.42rem !important;
+            white-space: nowrap !important;
+            text-wrap: nowrap !important;
+          }
+
+          .wisdom-home-tutorial__step-title {
+            font-size: 1.28rem !important;
+          }
+        }
+
+        @media (max-width: 900px) {
+          .wisdom-home-tutorial__invitation {
+            width: 100% !important;
+            max-width: 100% !important;
+            font-size: 1.28rem !important;
+            line-height: 1.32 !important;
+            white-space: normal !important;
+            text-wrap: balance !important;
+          }
+
+          .wisdom-home-tutorial__step-title {
+            font-size: 1.18rem !important;
+            line-height: 1.22 !important;
+          }
+        }
+      `}</style>
+            {/* SHOP BY CATEGORY */}
+      <section id="shop-by-category"
         style={{
           padding: "26px 14px 8px",
+          scrollMarginTop: "92px",
           maxWidth: "1820px",
           margin: "0 auto",
           width: "100%",

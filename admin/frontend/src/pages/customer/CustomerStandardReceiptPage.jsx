@@ -25,6 +25,22 @@ const formatMoney = (value) =>
     maximumFractionDigits: 2,
   })}`;
 
+const formatReceiptDate = (value) => {
+  if (!value) return "—";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
 export default function CustomerStandardReceiptPage() {
   const { id, receiptId } = useParams();
   const navigate = useNavigate();
@@ -109,7 +125,7 @@ export default function CustomerStandardReceiptPage() {
     : [];
 
   return (
-    <div className="customer-receipt-page-v172">
+    <div className="customer-receipt-page-v172 customer-receipt-v180">
       <div
         className="page-header"
         style={{
@@ -174,17 +190,27 @@ export default function CustomerStandardReceiptPage() {
               alt="Spiral Wood Services"
               className="receipt-logo receipt-logo-customer-v172"
             />
+
             <p className="biz-info">
               {receipt.business?.business_address || ""}
             </p>
-            <p className="biz-info">
-              {receipt.business?.business_phone || ""}
-            </p>
+            {receipt.business?.business_phone ? (
+              <p className="biz-info">
+                {receipt.business.business_phone}
+              </p>
+            ) : null}
+
             <div className="receipt-divider" />
-            <p className="receipt-title">PAYMENT RECEIPT</p>
+
+            <div className="customer-receipt-document-v180">
+              <p className="receipt-title">PAYMENT RECEIPT</p>
+              <p className="customer-receipt-copy-v180">
+                CUSTOMER COPY
+              </p>
+            </div>
           </div>
 
-          <div className="receipt-meta">
+          <section className="customer-receipt-section-v180">
             <div className="meta-row">
               <span>Receipt number</span>
               <span>{receipt.receipt_number}</span>
@@ -196,17 +222,21 @@ export default function CustomerStandardReceiptPage() {
             </div>
 
             <div className="meta-row">
-              <span>Customer</span>
-              <span>{receipt.issued_to}</span>
+              <span>Date and time</span>
+              <span>{formatReceiptDate(receiptDate)}</span>
             </div>
 
             <div className="meta-row">
-              <span>Payment date</span>
-              <span>
-                {receiptDate
-                  ? new Date(receiptDate).toLocaleString("en-PH")
-                  : "—"}
-              </span>
+              <span>Customer</span>
+              <span>{receipt.issued_to || "—"}</span>
+            </div>
+          </section>
+
+          <div className="receipt-divider" />
+
+          <section className="customer-receipt-section-v180">
+            <div className="customer-receipt-section-title-v180">
+              PAYMENT DETAILS
             </div>
 
             <div className="meta-row">
@@ -221,114 +251,101 @@ export default function CustomerStandardReceiptPage() {
 
             <div className="meta-row">
               <span>Payment status</span>
-              <span>{receipt.payment_status}</span>
+              <span>{receipt.payment_status || "—"}</span>
             </div>
-          </div>
+
+            {receipt.provider_reference && (
+              <div className="meta-row">
+                <span>Payment reference</span>
+                <span>{receipt.provider_reference}</span>
+              </div>
+            )}
+          </section>
 
           {items.length > 0 && (
             <>
               <div className="receipt-divider" />
 
-              <table className="receipt-items">
-                <thead>
-                  <tr>
-                    <th>Item</th>
-                    <th style={{ textAlign: "center" }}>Qty</th>
-                    <th style={{ textAlign: "right" }}>
-                      Price
-                    </th>
-                    <th style={{ textAlign: "right" }}>
-                      Subtotal
-                    </th>
-                  </tr>
-                </thead>
+              <section className="customer-receipt-section-v180">
+                <div className="customer-receipt-section-title-v180">
+                  ORDER ITEMS
+                </div>
 
-                <tbody>
-                  {items.map((item, index) => {
-                    const quantity = Number(
-                      item.quantity || 0,
-                    );
-                    const unitPrice = Number(
-                      item.unit_price || 0,
-                    );
+                <table className="receipt-items customer-receipt-items-v180">
+                  <thead>
+                    <tr>
+                      <th>Item</th>
+                      <th>Qty x Price</th>
+                      <th>Amount</th>
+                    </tr>
+                  </thead>
 
-                    return (
-                      <tr key={index}>
-                        <td>{item.product_name || "Item"}</td>
-                        <td style={{ textAlign: "center" }}>
-                          {quantity}
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          {formatMoney(unitPrice)}
-                        </td>
-                        <td
-                          style={{
-                            textAlign: "right",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {formatMoney(
-                            unitPrice * quantity,
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                  <tbody>
+                    {items.map((item, index) => {
+                      const quantity = Number(
+                        item.quantity || 0,
+                      );
+                      const unitPrice = Number(
+                        item.unit_price || 0,
+                      );
+
+                      return (
+                        <tr key={index}>
+                          <td>{item.product_name || "Item"}</td>
+                          <td>
+                            {quantity} x {formatMoney(unitPrice)}
+                          </td>
+                          <td>
+                            {formatMoney(unitPrice * quantity)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </section>
             </>
           )}
 
           <div className="receipt-divider" />
 
-          <div className="receipt-totals">
-            <div className="total-row">
-              <span>Order total</span>
-              <span>
-                {formatMoney(receipt.total_amount)}
-              </span>
+          <section className="receipt-totals customer-receipt-summary-v180">
+            <div className="customer-receipt-section-title-v180">
+              PAYMENT SUMMARY
             </div>
 
-            <div className="total-row customer-payment-received-v172">
+            <div className="total-row">
+              <span>Order total</span>
+              <span>{formatMoney(receipt.total_amount)}</span>
+            </div>
+
+            <div className="total-row customer-payment-received-v172 customer-payment-received-v180">
               <span>Payment received</span>
-              <span>
-                {formatMoney(receipt.amount_paid)}
-              </span>
+              <span>{formatMoney(receipt.amount_paid)}</span>
             </div>
 
             <div className="total-row">
               <span>Total paid</span>
-              <span>
-                {formatMoney(receipt.total_paid_after)}
-              </span>
+              <span>{formatMoney(receipt.total_paid_after)}</span>
             </div>
 
-            <div className="total-row grand customer-remaining-balance-v172">
+            <div className="total-row grand customer-remaining-balance-v172 customer-remaining-balance-v180">
               <span>Remaining balance</span>
               <span>
-                {formatMoney(
-                  receipt.remaining_balance_after,
-                )}
+                {formatMoney(receipt.remaining_balance_after)}
               </span>
             </div>
-
-            {receipt.provider_reference && (
-              <div
-                className="meta-row"
-                style={{ marginTop: 12 }}
-              >
-                <span>Payment reference</span>
-                <span>{receipt.provider_reference}</span>
-              </div>
-            )}
-          </div>
+          </section>
 
           <div className="receipt-divider" />
 
-          <div className="receipt-footer">
+          <div className="receipt-footer customer-receipt-footer-v180">
             <p className="customer-receipt-thanks-v172">
               {receipt.business?.thank_you_message ||
                 "Thank you for your payment."}
+            </p>
+            <p className="customer-receipt-keep-v180">
+              Please keep this receipt for your records.
             </p>
           </div>
         </div>

@@ -86,7 +86,7 @@ const CUSTOMER_JOURNEY_STEPS = [
   },
   {
     key: "approval-payment",
-    label: "Approval & payment",
+    label: "Approval and payment",
     description: "You approve the quotation and complete the required payment.",
   },
   {
@@ -1868,7 +1868,7 @@ export default function CustomRequestDetailPage() {
 
                             {requestData.payment_status === "paid" ? (
                               <div className="crd-latest-payment-method-v5">
-                                <h4>Payment Method</h4>
+                                <h4>Initial Payment Method</h4>
                                 <div
                                   className="crd-info-box"
                                   style={{ marginTop: 0 }}
@@ -1877,8 +1877,8 @@ export default function CustomRequestDetailPage() {
                                     {displayPaymentMethod}
                                   </div>
                                   <p style={{ margin: "8px 0 0" }}>
-                                    The payment method for this order can no
-                                    longer be changed.
+                                    This was the payment method used when
+                                    payment started for this order.
                                   </p>
                                 </div>
                               </div>
@@ -1899,7 +1899,7 @@ export default function CustomRequestDetailPage() {
                       {requestData.payment_status === "paid" ? null
                       : requestData.payment_status === "partial" ? (
                         <div className="crd-panel">
-                          <h4>Payment Method</h4>
+                          <h4>Initial Payment Method</h4>
                           <div
                             className="crd-info-box"
                             style={{ marginTop: 0 }}
@@ -1908,8 +1908,8 @@ export default function CustomRequestDetailPage() {
                               {displayPaymentMethod}
                             </div>
                             <p style={{ margin: "8px 0 0" }}>
-                              The payment method for this order can no
-                              longer be changed.
+                              This was the payment method used when payment
+                              started for this order.
                             </p>
                           </div>
                         </div>
@@ -2070,7 +2070,7 @@ export default function CustomRequestDetailPage() {
                               <li>GCash</li>
                               <li>Maya</li>
                               <li>Online Banking</li>
-                              <li>Credit / Debit Card</li>
+                              <li>Credit or Debit Card</li>
                             </ul>
                           </div>
 

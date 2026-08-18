@@ -218,3 +218,299 @@
     max-width: 55mm !important;
   }
 }
+
+/* WISDOM CUSTOMER PROFESSIONAL PAYMENT RECEIPT V1.8.0 */
+
+.customer-receipt-page-v172.customer-receipt-v180 .receipt {
+  width: min(440px, calc(100vw - 32px));
+  max-width: 440px;
+  padding: 26px 24px 24px;
+  font-variant-numeric: tabular-nums;
+}
+
+.customer-receipt-v180 .receipt-header {
+  margin-bottom: 0;
+}
+
+.customer-receipt-v180 .receipt-logo-customer-v172 {
+  width: 205px !important;
+  max-width: 205px !important;
+  margin-bottom: 11px !important;
+}
+
+.customer-receipt-v180 .biz-info {
+  max-width: 350px !important;
+  margin: 1px auto !important;
+  color: #555b63 !important;
+  font-size: 10.5px !important;
+  line-height: 1.4 !important;
+}
+
+.customer-receipt-v180 .receipt-divider {
+  margin: 12px 0 !important;
+  border-top: 1px dashed #bfc3c8 !important;
+}
+
+.customer-receipt-document-v180 {
+  text-align: center;
+}
+
+.customer-receipt-v180 .receipt-title {
+  margin: 0 !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0.08em !important;
+}
+
+.customer-receipt-copy-v180 {
+  margin: 4px 0 0;
+  color: #70757c;
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+}
+
+.customer-receipt-section-v180 {
+  margin: 0;
+}
+
+.customer-receipt-section-title-v180 {
+  margin-bottom: 7px;
+  color: #555b63;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.customer-receipt-v180 .meta-row {
+  margin-bottom: 0;
+  padding: 2.5px 0;
+  gap: 16px;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.customer-receipt-v180 .meta-row > span:first-child {
+  flex: 0 0 39%;
+  color: #646a72 !important;
+  font-weight: 400 !important;
+}
+
+.customer-receipt-v180 .meta-row > span:last-child {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: #111111 !important;
+  font-weight: 600 !important;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.customer-receipt-items-v180 {
+  table-layout: fixed;
+  font-size: 10.5px !important;
+}
+
+.customer-receipt-items-v180 th {
+  padding: 5px 3px !important;
+  color: #676c73 !important;
+  font-size: 8.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase;
+}
+
+.customer-receipt-items-v180 td {
+  padding: 7px 3px !important;
+  font-size: 10.5px !important;
+  line-height: 1.35;
+  vertical-align: top;
+}
+
+.customer-receipt-items-v180 th:nth-child(1),
+.customer-receipt-items-v180 td:nth-child(1) {
+  width: 42%;
+  text-align: left;
+}
+
+.customer-receipt-items-v180 th:nth-child(2),
+.customer-receipt-items-v180 td:nth-child(2) {
+  width: 32%;
+  text-align: right;
+  white-space: normal;
+}
+
+.customer-receipt-items-v180 th:nth-child(3),
+.customer-receipt-items-v180 td:nth-child(3) {
+  width: 26%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.customer-receipt-summary-v180 {
+  margin-top: 0 !important;
+}
+
+.customer-receipt-v180 .total-row {
+  margin-bottom: 0;
+  padding: 3px 0;
+  gap: 16px;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.customer-receipt-v180 .total-row > span:first-child {
+  color: #646a72 !important;
+  font-weight: 400 !important;
+}
+
+.customer-receipt-v180 .total-row > span:last-child {
+  color: #111111 !important;
+  font-weight: 600 !important;
+  text-align: right;
+}
+
+.customer-receipt-v180 .customer-payment-received-v180 {
+  margin-top: 5px;
+  padding-top: 7px;
+  border-top: 1px dotted #c8ccd1;
+}
+
+.customer-receipt-v180
+  .customer-payment-received-v180
+  > span:first-child {
+  color: #111111 !important;
+  font-weight: 600 !important;
+}
+
+.customer-receipt-v180
+  .customer-payment-received-v180
+  > span:last-child {
+  font-size: 13px;
+  font-weight: 700 !important;
+}
+
+.customer-receipt-v180 .customer-remaining-balance-v180 {
+  margin-top: 7px !important;
+  padding-top: 9px !important;
+  border-top: 1px solid #bfc3c8 !important;
+}
+
+.customer-receipt-v180
+  .customer-remaining-balance-v180
+  > span:first-child {
+  color: #111111 !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+}
+
+.customer-receipt-v180
+  .customer-remaining-balance-v180
+  > span:last-child {
+  font-size: 17px !important;
+  font-weight: 700 !important;
+}
+
+.customer-receipt-footer-v180 {
+  margin-top: 0 !important;
+}
+
+.customer-receipt-v180 .customer-receipt-thanks-v172 {
+  margin: 0 !important;
+  color: #111111 !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  line-height: 1.4;
+}
+
+.customer-receipt-keep-v180 {
+  margin: 5px 0 0;
+  color: #747980;
+  font-size: 9.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: center;
+}
+
+@media print {
+  .customer-receipt-page-v172.customer-receipt-v180 .receipt {
+    width: 80mm !important;
+    max-width: 80mm !important;
+    min-width: 80mm !important;
+    padding: 7mm 5mm !important;
+    border: 0 !important;
+  }
+
+  .customer-receipt-v180 .receipt-logo-customer-v172 {
+    width: 52mm !important;
+    max-width: 52mm !important;
+    margin-bottom: 3mm !important;
+  }
+
+  .customer-receipt-v180 .receipt-divider {
+    margin: 2.5mm 0 !important;
+  }
+
+  .customer-receipt-v180 .biz-info {
+    font-size: 8.5pt !important;
+  }
+
+  .customer-receipt-v180 .receipt-title {
+    font-size: 10pt !important;
+  }
+
+  .customer-receipt-copy-v180,
+  .customer-receipt-section-title-v180 {
+    font-size: 7.5pt !important;
+  }
+
+  .customer-receipt-v180 .meta-row,
+  .customer-receipt-v180 .total-row {
+    font-size: 8.5pt !important;
+  }
+
+  .customer-receipt-items-v180 {
+    font-size: 8pt !important;
+  }
+
+  .customer-receipt-items-v180 th {
+    font-size: 7pt !important;
+  }
+
+  .customer-receipt-items-v180 td {
+    font-size: 8pt !important;
+  }
+
+  .customer-receipt-v180
+    .customer-payment-received-v180
+    > span:last-child {
+    font-size: 9.5pt !important;
+  }
+
+  .customer-receipt-v180
+    .customer-remaining-balance-v180
+    > span:last-child {
+    font-size: 12pt !important;
+  }
+
+  .customer-receipt-v180 .customer-receipt-thanks-v172 {
+    font-size: 8.5pt !important;
+  }
+
+  .customer-receipt-keep-v180 {
+    font-size: 7.5pt !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .customer-receipt-page-v172.customer-receipt-v180 .receipt {
+    width: calc(100vw - 24px);
+    padding: 22px 17px 20px;
+  }
+
+  .customer-receipt-v180 .meta-row,
+  .customer-receipt-v180 .total-row {
+    gap: 10px;
+  }
+}

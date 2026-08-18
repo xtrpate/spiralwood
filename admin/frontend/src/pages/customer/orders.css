@@ -2509,3 +2509,16 @@
     align-items: flex-start;
   }
 }
+/* WISDOM CUSTOMER ORDER DELIVERED STATUS NOTE UI FIX V1.0.0
+   The compact desktop status card is a 3-column grid. Status notes are
+   a second-row message and must span the full card instead of falling
+   into the narrow 76px first column. */
+.om-status-card > .om-inline-note {
+  grid-column: 1 / -1 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+}

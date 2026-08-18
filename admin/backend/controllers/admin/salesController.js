@@ -97,6 +97,7 @@ exports.getReport = async (req, res) => {
 
     const orderWhereSql = [
       "o.status <> 'cancelled'",
+      "COALESCE(o.total, 0) > 0",
       channel.sql,
       orderDate.sql,
     ].join(" AND ");
@@ -197,6 +198,7 @@ exports.getReport = async (req, res) => {
        FROM orders o
        LEFT JOIN users u ON u.id = o.customer_id
        WHERE ${channel.sql}
+         AND COALESCE(o.total, 0) > 0
          AND (
            (o.status <> 'cancelled' AND ${orderDate.sql})
            OR EXISTS (
@@ -289,6 +291,7 @@ exports.getReport = async (req, res) => {
        INNER JOIN orders o ON o.id = oi.order_id
        WHERE ${orderWhereSql}
        GROUP BY oi.product_name
+       HAVING gross_order_value > 0
        ORDER BY gross_order_value DESC, units_sold DESC`,
       orderParams,
     );
@@ -353,6 +356,7 @@ exports.getReport = async (req, res) => {
     oi.product_name,
     o.type,
     oi.unit_price
+  HAVING sales_amount > 0
   ORDER BY
     sales_amount DESC,
     units_sold DESC,

@@ -2648,6 +2648,245 @@ function WoodworkingOperationsCard({
     </div>
   );
 }
+function getWoodFinishSwatchColor(finish = null, fallback = "#d9c2a5") {
+  return (
+    finish?.front ||
+    finish?.carcass ||
+    finish?.inside ||
+    finish?.edge ||
+    fallback
+  );
+}
+
+function WoodFinishPicker({
+  value = "",
+  customColor = "#d9c2a5",
+  disabled = false,
+  onChange,
+}) {
+  const menuRef = useRef(null);
+  const [open, setOpen] = useState(false);
+
+  const activeFinish =
+    WOOD_FINISHES.find((finish) => finish.id === value) || null;
+
+  const activeLabel = activeFinish?.label || "Custom Color";
+  const activeColor = getWoodFinishSwatchColor(
+    activeFinish,
+    customColor || "#d9c2a5",
+  );
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return undefined;
+
+    const handleOutsideClick = (event) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target)
+      ) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
+  const chooseFinish = (nextValue) => {
+    if (disabled) return;
+    setOpen(false);
+    onChange?.(nextValue);
+  };
+
+  const optionButtonStyle = {
+    width: "100%",
+    minHeight: 34,
+    padding: "6px 8px",
+    border: "none",
+    borderBottom: "1px solid rgba(71,85,105,.5)",
+    borderRadius: 0,
+    background: "rgba(15,23,42,.98)",
+    color: "#dbeafe",
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontSize: 9,
+    fontWeight: 650,
+    textAlign: "left",
+    cursor: "pointer",
+    boxSizing: "border-box",
+  };
+
+  const swatchStyle = {
+    width: 18,
+    height: 18,
+    minWidth: 18,
+    flex: "0 0 18px",
+    border: "1px solid rgba(148,163,184,.72)",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div
+      ref={menuRef}
+      style={{
+        position: "relative",
+        width: "100%",
+        minWidth: 0,
+        zIndex: open ? 80 : "auto",
+      }}
+    >
+      <button
+        type="button"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        style={{
+          width: "100%",
+          minHeight: 34,
+          padding: "5px 8px",
+          border: "1px solid rgba(71,85,105,.78)",
+          borderRadius: 0,
+          background: "#0f172a",
+          color: "#dbeafe",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          fontSize: 9,
+          fontWeight: 650,
+          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: disabled ? 0.5 : 1,
+          boxSizing: "border-box",
+        }}
+      >
+        <span
+          style={{
+            minWidth: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              ...swatchStyle,
+              background: activeColor,
+            }}
+          />
+          <span
+            style={{
+              minWidth: 0,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {activeLabel}
+          </span>
+        </span>
+
+        <span
+          aria-hidden="true"
+          style={{
+            flex: "0 0 auto",
+            color: "#93a8c4",
+            fontSize: 9,
+            lineHeight: 1,
+          }}
+        >
+          {open ? "^" : "v"}
+        </span>
+      </button>
+
+      {open && !disabled ? (
+        <div
+          role="listbox"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 2px)",
+            left: 0,
+            right: 0,
+            zIndex: 90,
+            maxHeight: 250,
+            overflowY: "auto",
+            border: "1px solid rgba(71,85,105,.9)",
+            borderRadius: 0,
+            background: "#0f172a",
+            boxShadow: "0 10px 24px rgba(0,0,0,.36)",
+          }}
+        >
+          <button
+            type="button"
+            role="option"
+            aria-selected={!value}
+            onClick={() => chooseFinish("")}
+            style={{
+              ...optionButtonStyle,
+              background: !value
+                ? "rgba(30,41,59,.98)"
+                : optionButtonStyle.background,
+              fontWeight: !value ? 800 : optionButtonStyle.fontWeight,
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                ...swatchStyle,
+                background: customColor || "#d9c2a5",
+              }}
+            />
+            <span>Custom Color</span>
+          </button>
+
+          {WOOD_FINISHES.map((finish) => {
+            const isActive = finish.id === value;
+
+            return (
+              <button
+                key={finish.id}
+                type="button"
+                role="option"
+                aria-selected={isActive}
+                onClick={() => chooseFinish(finish.id)}
+                style={{
+                  ...optionButtonStyle,
+                  background: isActive
+                    ? "rgba(30,41,59,.98)"
+                    : optionButtonStyle.background,
+                  fontWeight: isActive
+                    ? 800
+                    : optionButtonStyle.fontWeight,
+                }}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    ...swatchStyle,
+                    background: getWoodFinishSwatchColor(
+                      finish,
+                      "#d9c2a5",
+                    ),
+                  }}
+                />
+                <span>{finish.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 export function PropertiesPanel({
   selectedComp: committedSelectedComp,
   liveSelectedComp = null,
@@ -4526,23 +4765,16 @@ export function PropertiesPanel({
               selectedComp.finish !== undefined) && (
               <div style={{ marginBottom: 6 }}>
                 <label style={S.floatingLabel}>Wood Finish</label>
-                <select
+                <WoodFinishPicker
                   value={selectedComp.finish ?? ""}
+                  customColor={selectedComp.fill || "#d9c2a5"}
                   disabled={editorMode !== "editable" || isLocked(selectedComp)}
-                  onChange={(e) =>
+                  onChange={(finishId) =>
                     applyStyleChange(
-                      applyWoodFinish(selectedComp, e.target.value),
+                      applyWoodFinish(selectedComp, finishId),
                     )
                   }
-                  style={inputStyle}
-                >
-                  <option value="">Custom Color</option>
-                  {WOOD_FINISHES.map((finish) => (
-                    <option key={finish.id} value={finish.id}>
-                      {finish.label}
-                    </option>
-                  ))}
-                </select>
+                />
               </div>
             )}
 
