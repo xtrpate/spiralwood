@@ -116,6 +116,20 @@ exports.getAll = async (req, res) => {
 };
 
 // ── GET /api/products/:id ─────────────────────────────────────────────────────
+exports.getCategories = async (req, res) => {
+  try {
+    const [categories] = await pool.query(
+      `SELECT id, name, type
+       FROM categories
+       WHERE type = 'build'
+       ORDER BY name ASC`,
+    );
+
+    res.json({ categories });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
 exports.getOne = async (req, res) => {
   try {
     const [[product]] = await pool.query(
@@ -171,6 +185,12 @@ exports.create = async (req, res) => {
       blueprint_id,
       bill_of_materials = "[]",
     } = req.body;
+
+    const normalizedType = String(type || "standard").trim().toLowerCase();
+
+    if (!["standard", "blueprint"].includes(normalizedType)) {
+      return respondInvalid(conn, res, "Invalid product type.");
+    }
 
     // ── Input validation ──────────────────────────────────────────────
     if (!isNonEmptyString(name)) {
@@ -235,7 +255,7 @@ exports.create = async (req, res) => {
     const numReorder = reorder_point ? parseInt(reorder_point) : 0;
     const wantsFeatured =
       is_featured === "true" || is_featured === 1 || is_featured === true;
-    const boolFeatured = type === "standard" && wantsFeatured ? 1 : 0;
+    const boolFeatured = normalizedType === "standard" && wantsFeatured ? 1 : 0;
     const catId =
       category_id && !isNaN(parseInt(category_id))
         ? parseInt(category_id)
@@ -244,6 +264,36 @@ exports.create = async (req, res) => {
       blueprint_id && !isNaN(parseInt(blueprint_id))
         ? parseInt(blueprint_id)
         : null;
+
+    if (normalizedType === "blueprint") {
+      if (!bpId) {
+        return respondInvalid(
+          conn,
+          res,
+          "Blueprint products must be published from Blueprint Management.",
+        );
+      }
+
+      const [[linkedBlueprint]] = await conn.query(
+        "SELECT id FROM blueprints WHERE id = ? AND is_deleted = 0 LIMIT 1",
+        [bpId],
+      );
+
+      if (!linkedBlueprint) {
+        return respondInvalid(
+          conn,
+          res,
+          "The linked Blueprint could not be found or is archived.",
+        );
+      }
+    } else if (bpId) {
+      return respondInvalid(
+        conn,
+        res,
+        "Ready-made products cannot be linked to a Blueprint.",
+      );
+    }
+
     if (boolFeatured) {
       const featuredCount = await getHomepageNewProductCount(conn);
 
@@ -263,7 +313,7 @@ exports.create = async (req, res) => {
         name,
         description || null,
         catId,
-        type,
+        normalizedType,
         image_url,
         boolFeatured,
         is_published,
@@ -324,7 +374,7 @@ exports.create = async (req, res) => {
     }
 
     await conn.commit();
-    req.auditRecord = { id: productId, new: { name, type } };
+    req.auditRecord = { id: productId, new: { name, type: normalizedType } };
     res.status(201).json({ message: "Product created.", id: productId });
   } catch (err) {
     await conn.rollback();
@@ -347,12 +397,28 @@ exports.update = async (req, res) => {
     ]);
     if (!old) return res.status(404).json({ message: "Product not found." });
 
+    if (req.body.type !== undefined) {
+      const requestedType = String(req.body.type || "")
+        .trim()
+        .toLowerCase();
+      const currentType = String(old.type || "")
+        .trim()
+        .toLowerCase();
+
+      if (requestedType !== currentType) {
+        return respondInvalid(
+          conn,
+          res,
+          "Product type cannot be changed. Publish Blueprint products from Blueprint Management.",
+        );
+      }
+    }
+
     const allowedColumns = [
       "barcode",
       "name",
       "description",
       "category_id",
-      "type",
       "is_featured",
       "online_price",
       "walkin_price",
@@ -447,7 +513,7 @@ exports.update = async (req, res) => {
       }
     });
 
-    const targetType = updateData.type || old.type;
+    const targetType = old.type;
 
     if (targetType !== "standard") {
       updateData.is_featured = 0;

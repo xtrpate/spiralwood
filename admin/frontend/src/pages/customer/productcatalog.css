@@ -903,6 +903,14 @@
   border-left: 1px solid #d9d9d9;
 }
 
+.qty-btn:disabled,
+.qty-val:disabled {
+  background: #f4f4f5;
+  color: #a1a1aa;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 .qty-val {
   width: 58px;
   min-width: 58px;

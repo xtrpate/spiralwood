@@ -192,7 +192,45 @@ exports.getAllProducts = async (req, res) => {
 
 /* ── Get Single Product Detail By ID ── */
 exports.getProductById = async (req, res) => {
+  const productId = toInt(req.params.id, 0);
+
+  if (productId <= 0) {
+    return res.status(404).json({ message: "Product not found." });
+  }
+
   try {
+    const [[product]] = await db.query(
+      `
+      SELECT
+        p.id,
+        p.barcode,
+        p.name,
+        p.description,
+        p.category_id,
+        p.type,
+        p.image_url,
+        p.is_featured,
+        p.online_price,
+        p.production_cost,
+        p.stock,
+        p.stock_status,
+        p.reorder_point,
+        p.created_at,
+        p.updated_at,
+        c.name AS category
+      FROM products p
+      LEFT JOIN categories c ON c.id = p.category_id
+      WHERE p.id = ?
+        AND p.is_published = 1
+      LIMIT 1
+      `,
+      [productId],
+    );
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found." });
+    }
+
     res.json(product);
   } catch (err) {
     console.error("[customer.products/:id]", err);

@@ -1,16 +1,5 @@
-import React from "react";
-
-const SHOP_CATEGORIES = [
-  { id: 1, name: "Bedroom Furniture" },
-  { id: 2, name: "Kitchen Furniture" },
-  { id: 3, name: "Bathroom Furniture" },
-  { id: 4, name: "Office Furniture" },
-  { id: 5, name: "Living Room Furniture" },
-  { id: 6, name: "Dining Room Furniture" },
-  { id: 7, name: "Wardrobe and Closet" },
-  { id: 8, name: "TV Console and Storage" },
-];
-
+import React, { useEffect, useState } from "react";
+import api from "../../../services/api";
 export function BlueprintPublishModal({
   publishing,
   setPublishModal,
@@ -18,6 +7,47 @@ export function BlueprintPublishModal({
   publishForm,
   setPublishForm,
 }) {
+  const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadCategories = async () => {
+      setCategoriesLoading(true);
+
+      try {
+        const { data } = await api.get("/products/categories");
+        if (!active) return;
+
+        const nextCategories = Array.isArray(data?.categories)
+          ? data.categories
+          : [];
+
+        setCategories(nextCategories);
+        setPublishForm((current) => {
+          const currentId = String(current?.category_id || "");
+          const stillExists = nextCategories.some(
+            (category) => String(category.id) === currentId,
+          );
+
+          if (!currentId || stillExists) return current;
+          return { ...current, category_id: "" };
+        });
+      } catch {
+        if (active) setCategories([]);
+      } finally {
+        if (active) setCategoriesLoading(false);
+      }
+    };
+
+    loadCategories();
+
+    return () => {
+      active = false;
+    };
+  }, [setPublishForm]);
+
   return (
     <div
       style={{
@@ -182,6 +212,9 @@ export function BlueprintPublishModal({
             <select
               required
               value={publishForm.category_id || ""}
+              disabled={
+                publishing || categoriesLoading || categories.length === 0
+              }
               onChange={(event) =>
                 setPublishForm({
                   ...publishForm,
@@ -201,15 +234,25 @@ export function BlueprintPublishModal({
                 background: "#ffffff",
               }}
             >
-              <option value="">Select furniture category</option>
-              {SHOP_CATEGORIES.map((category) => (
+              <option value="">
+                {categoriesLoading
+                  ? "Loading categories..."
+                  : categories.length === 0
+                    ? "No product categories available"
+                    : "Select furniture category"}
+              </option>
+              {categories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
                 </option>
               ))}
             </select>
             <div style={{ marginTop: 6, fontSize: 11, color: "#64748b" }}>
-              This category is used by Product Management filters after publishing.
+              {categoriesLoading
+                ? "Loading Product Management categories..."
+                : categories.length === 0
+                  ? "No product categories are available in the database."
+                  : "Categories are loaded from the Product Management database."}
             </div>
           </div>
 

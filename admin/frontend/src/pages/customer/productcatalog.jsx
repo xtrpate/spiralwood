@@ -103,6 +103,11 @@ const StockBadge = ({ status, stock }) => {
   return <span className={cls}>{label}</span>;
 };
 
+const isProductUnavailable = (product) =>
+  !product ||
+  product.stock_status === "out_of_stock" ||
+  Number(product.stock || 0) <= 0;
+
 export default function ProductCatalog() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -300,12 +305,12 @@ export default function ProductCatalog() {
 
   const openProduct = (product) => {
     setSelected(product);
-    setQty(1);
+    setQty(isProductUnavailable(product) ? 0 : 1);
     setCartMsg("");
   };
 
   const quickAddToCart = (product) => {
-    if (!product || product.stock_status === "out_of_stock") return;
+    if (isProductUnavailable(product)) return;
 
     const stock = Number(product.stock || 0);
     if (stock <= 0) return;
@@ -326,7 +331,7 @@ export default function ProductCatalog() {
   };
 
   const handleCardAddToCart = (product) => {
-    if (!product || product.stock_status === "out_of_stock") return;
+    if (isProductUnavailable(product)) return;
 
     quickAddToCart(product);
   };
@@ -440,6 +445,11 @@ export default function ProductCatalog() {
     ((normalizedMin - sliderMin) / (safeSliderMax - sliderMin)) * 100;
   const maxPercent =
     ((normalizedMax - sliderMin) / (safeSliderMax - sliderMin)) * 100;
+
+  const selectedStock = Number(selected?.stock || 0);
+  const selectedUnavailable = selected
+    ? isProductUnavailable(selected)
+    : false;
 
   const detailRows = selected
     ? [
@@ -753,10 +763,10 @@ export default function ProductCatalog() {
                       <button
                         type="button"
                         className="btn-add-cart"
-                        disabled={product.stock_status === "out_of_stock"}
+                        disabled={isProductUnavailable(product)}
                         onClick={() => handleCardAddToCart(product)}
                       >
-                        {product.stock_status === "out_of_stock"
+                        {isProductUnavailable(product)
                           ? "Unavailable"
                           : "Add to Cart"}
                       </button>
@@ -1017,6 +1027,7 @@ export default function ProductCatalog() {
                     <button
                       type="button"
                       className="qty-btn"
+                      disabled={selectedUnavailable}
                       onClick={() =>
                         setQty((value) => Math.max(1, Number(value || 1) - 1))
                       }
@@ -1027,12 +1038,13 @@ export default function ProductCatalog() {
                     <input
                       type="number"
                       className="qty-val"
-                      min="1"
-                      max={Number(selected.stock ?? 1) || 1}
+                      min={selectedUnavailable ? 0 : 1}
+                      max={Math.max(selectedStock, 1)}
                       value={qty}
+                      disabled={selectedUnavailable}
                       onChange={(e) => {
                         const newQty = parseInt(e.target.value, 10);
-                        const maxStock = Number(selected.stock ?? 1) || 1;
+                        const maxStock = Math.max(selectedStock, 1);
                         if (!isNaN(newQty) && newQty > 0) {
                           setQty(Math.min(newQty, maxStock));
                         } else if (e.target.value === "") {
@@ -1047,8 +1059,9 @@ export default function ProductCatalog() {
                     <button
                       type="button"
                       className="qty-btn"
+                      disabled={selectedUnavailable}
                       onClick={() => {
-                        const maxStock = Number(selected.stock ?? 1) || 1;
+                        const maxStock = Math.max(selectedStock, 1);
                         setQty((value) =>
                           Math.min(Number(value || 1) + 1, maxStock),
                         );
@@ -1063,12 +1076,10 @@ export default function ProductCatalog() {
                   <button
                     type="button"
                     className="detail-add-btn"
-                    disabled={selected.stock_status === "out_of_stock"}
+                    disabled={selectedUnavailable}
                     onClick={handleModalAddToCart}
                   >
-                    {selected.stock_status === "out_of_stock"
-                      ? "Unavailable"
-                      : "Add to Cart"}
+                    {selectedUnavailable ? "Unavailable" : "Add to Cart"}
                   </button>
 
                   <button

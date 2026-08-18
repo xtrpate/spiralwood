@@ -24,17 +24,6 @@ const DEFAULT = {
   is_featured: false,
 };
 
-const SHOP_CATEGORIES = [
-  { id: 1, name: "Bedroom Furniture" },
-  { id: 2, name: "Kitchen Furniture" },
-  { id: 3, name: "Bathroom Furniture" },
-  { id: 4, name: "Office Furniture" },
-  { id: 5, name: "Living Room Furniture" },
-  { id: 6, name: "Dining Room Furniture" },
-  { id: 7, name: "Wardrobe & Closet" },
-  { id: 8, name: "TV Console & Storage" },
-];
-
 export default function ProductFormPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -49,8 +38,37 @@ export default function ProductFormPage() {
   const [preview, setPreview] = useState("");
   const [bom, setBom] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
 
   const isBlueprint = form.type === "blueprint";
+
+  useEffect(() => {
+    let active = true;
+
+    const loadCategories = async () => {
+      setCategoriesLoading(true);
+
+      try {
+        const { data } = await api.get("/products/categories");
+        if (!active) return;
+
+        setCategories(
+          Array.isArray(data?.categories) ? data.categories : [],
+        );
+      } catch {
+        if (active) setCategories([]);
+      } finally {
+        if (active) setCategoriesLoading(false);
+      }
+    };
+
+    loadCategories();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isEdit) return;
@@ -67,6 +85,21 @@ export default function ProductFormPage() {
         walkin_price: unifiedPrice,
       }));
       setBom(savedBom || []);
+
+      if (rest.category_id && rest.category_name) {
+        setCategories((current) => {
+          const exists = current.some(
+            (category) => String(category.id) === String(rest.category_id),
+          );
+
+          if (exists) return current;
+
+          return [
+            ...current,
+            { id: rest.category_id, name: rest.category_name },
+          ].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        });
+      }
 
       if (rest.image_url) {
         setPreview(buildAssetUrl(rest.image_url));
@@ -208,9 +241,16 @@ export default function ProductFormPage() {
                 value={form.category_id}
                 onChange={(event) => set("category_id", event.target.value)}
                 style={input}
+                disabled={categoriesLoading || categories.length === 0}
               >
-                <option value="">Select category</option>
-                {SHOP_CATEGORIES.map((category) => (
+                <option value="">
+                  {categoriesLoading
+                    ? "Loading categories..."
+                    : categories.length === 0
+                      ? "No product categories available"
+                      : "Select category"}
+                </option>
+                {categories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
                   </option>
@@ -219,14 +259,18 @@ export default function ProductFormPage() {
             </Field>
 
             <Field label="Product type">
-              <select
-                value={form.type}
-                onChange={(event) => set("type", event.target.value)}
-                style={input}
-              >
-                <option value="standard">Ready-made product</option>
-                <option value="blueprint">Blueprint product</option>
-              </select>
+              <input
+                value={isBlueprint ? "Blueprint product" : "Ready-made product"}
+                readOnly
+                style={readOnlyInput}
+              />
+              <div style={helperText}>
+                {isBlueprint
+                  ? "Blueprint product type is linked to Blueprint Management and cannot be changed here."
+                  : isEdit
+                    ? "Product type cannot be changed after creation."
+                    : "Products created here are ready-made. Publish Blueprint products from Blueprint Management."}
+              </div>
             </Field>
           </Row>
 

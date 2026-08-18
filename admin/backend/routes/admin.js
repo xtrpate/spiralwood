@@ -159,6 +159,7 @@ router.get("/dashboard", adminStaff, dashboard.getDashboard);
 // ══════════════════════════════════════════════════════════════════════════════
 router.get("/products/report", adminStaff, products.getReport);
 router.get("/products", adminStaff, products.getAll);
+router.get("/products/categories", adminStaff, products.getCategories);
 router.patch("/products/bulk-publish", adminOnly, products.bulkPublish);
 router.get("/products/:id", adminStaff, products.getOne);
 router.post(
