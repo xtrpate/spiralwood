@@ -308,7 +308,7 @@ export default function LandingPage() {
 
   const formatPrice = (value) => {
     const num = Number(value || 0);
-    return `â‚±${num.toLocaleString("en-PH", {
+    return `\u20B1${num.toLocaleString("en-PH", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
