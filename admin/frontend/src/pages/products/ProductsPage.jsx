@@ -149,11 +149,7 @@ function ProductThumbnail({ product }) {
 
   if (product?.image_url) {
     return (
-      <img
-        src={buildAssetUrl(product.image_url)}
-        alt=""
-        style={productImage}
-      />
+      <img src={buildAssetUrl(product.image_url)} alt="" style={productImage} />
     );
   }
 
@@ -324,13 +320,9 @@ export default function ProductsPage() {
       return;
     }
 
-    const isCurrentlyFeatured =
-      Number(targetProduct.is_featured || 0) === 1;
+    const isCurrentlyFeatured = Number(targetProduct.is_featured || 0) === 1;
 
-    if (
-      !isCurrentlyFeatured &&
-      newProductsCount >= MAX_HOMEPAGE_NEW_PRODUCTS
-    ) {
+    if (!isCurrentlyFeatured && newProductsCount >= MAX_HOMEPAGE_NEW_PRODUCTS) {
       toast.error(NEW_PRODUCT_LIMIT_MESSAGE);
       return;
     }
@@ -393,7 +385,9 @@ export default function ProductsPage() {
         ids: [product.id],
         is_published: isPublished,
       });
-      toast.success(isPublished ? "Product published." : "Product unpublished.");
+      toast.success(
+        isPublished ? "Product published." : "Product unpublished.",
+      );
       await Promise.all([load(), loadSummary()]);
     } catch {
       toast.error("Failed to update publishing status.");
@@ -567,7 +561,9 @@ export default function ProductsPage() {
             </button>
           </div>
         ) : (
-          <span style={publishHint}>Select products to publish or unpublish</span>
+          <span style={publishHint}>
+            Select products to publish or unpublish
+          </span>
         )}
       </div>
 
@@ -753,7 +749,9 @@ export default function ProductsPage() {
 
                     <td style={td}>
                       {isBlueprint ? (
-                        <span style={blueprintStatusBadge}>Build on request</span>
+                        <span style={blueprintStatusBadge}>
+                          Build on request
+                        </span>
                       ) : (
                         <span
                           style={{
@@ -890,7 +888,9 @@ export default function ProductsPage() {
                                   toggleActive(product.id, isActive);
                                 }}
                               >
-                                {isActive ? "Disable product" : "Enable product"}
+                                {isActive
+                                  ? "Disable product"
+                                  : "Enable product"}
                               </button>
                               <button
                                 type="button"
@@ -957,8 +957,7 @@ export default function ProductsPage() {
                 style={{
                   ...pageButton,
                   opacity: filters.page >= pageCount ? 0.4 : 1,
-                  cursor:
-                    filters.page >= pageCount ? "not-allowed" : "pointer",
+                  cursor: filters.page >= pageCount ? "not-allowed" : "pointer",
                 }}
               >
                 Next
