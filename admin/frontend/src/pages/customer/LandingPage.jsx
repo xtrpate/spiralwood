@@ -583,6 +583,185 @@ export default function LandingPage() {
       {/* WISDOM HOME TUTORIAL TRUE MANUAL GRAB DRAG V1.0.13.7 */}
       {/* WISDOM HOME TUTORIAL SMOOTH RELEASE SETTLE V1.0.13.8 */}
       <section className="wisdom-home-tutorial" aria-label="How to customize furniture with WISDOM">
+        <style>{`
+          /* WISDOM HOME GUIDED MOTION V1.0.0 START */
+
+          /* First-load hero copy: restrained stagger, one time per page mount. */
+          .wisdom-home-tutorial__kicker {
+            animation: wisdomHomeHeroIntro 420ms 40ms
+              cubic-bezier(0.22, 1, 0.36, 1) both;
+          }
+
+          .wisdom-home-tutorial__headline {
+            animation: wisdomHomeHeroIntro 460ms 90ms
+              cubic-bezier(0.22, 1, 0.36, 1) both;
+          }
+
+          .wisdom-home-tutorial__hero-summary {
+            animation: wisdomHomeHeroIntro 440ms 145ms
+              cubic-bezier(0.22, 1, 0.36, 1) both;
+          }
+
+          .wisdom-home-tutorial__cta {
+            transition:
+              transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+              background-color 180ms ease,
+              color 180ms ease,
+              border-color 180ms ease !important;
+            animation: wisdomHomeHeroIntro 420ms 205ms
+              cubic-bezier(0.22, 1, 0.36, 1) both;
+            will-change: transform;
+          }
+
+          .wisdom-home-tutorial__catalog-link {
+            animation: wisdomHomeHeroIntro 420ms 250ms
+              cubic-bezier(0.22, 1, 0.36, 1) both;
+          }
+
+          /* Active copy is keyed by step, so this runs only when the step changes. */
+          .wisdom-home-tutorial__active-step {
+            animation: wisdomHomeStepCopyIn 360ms
+              cubic-bezier(0.22, 1, 0.36, 1) both !important;
+          }
+
+          /*
+           * The existing drag rail owns the card transform.
+           * Only the inner image receives a tiny reveal, and it is disabled
+           * while dragging/settling/rebasing so manual swipe remains untouched.
+           */
+          .wisdom-home-tutorial__stage:not(.is-dragging):not(.is-settling):not(.is-rebasing)
+            .wisdom-home-tutorial__main-card
+            .wisdom-home-tutorial__image {
+            animation: wisdomHomeHeroImageReveal 420ms
+              cubic-bezier(0.22, 1, 0.36, 1) both;
+          }
+
+          /* Existing dynamic width now visibly communicates progress. */
+          .wisdom-home-tutorial__progress-fill {
+            transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1) !important;
+          }
+
+          .wisdom-home-tutorial__progress-number,
+          .wisdom-home-tutorial__card-dot {
+            transition:
+              transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+              background-color 220ms ease,
+              color 220ms ease,
+              border-color 220ms ease,
+              opacity 220ms ease !important;
+          }
+
+          .wisdom-home-tutorial__progress-step.is-active
+            .wisdom-home-tutorial__progress-number {
+            animation: wisdomHomeProgressSettle 340ms
+              cubic-bezier(0.22, 1, 0.36, 1) both;
+          }
+
+          .wisdom-home-tutorial__card-dot.is-active {
+            transform: scale(1.14);
+          }
+
+          /* CTA: premium micro-motion, no bounce/loop. */
+          .wisdom-home-tutorial__cta-icon,
+          .wisdom-home-tutorial__cta .wisdom-hero-customize-icon {
+            transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1) !important;
+          }
+
+          .wisdom-home-tutorial__cta:hover {
+            transform: translateY(-2px) !important;
+          }
+
+          .wisdom-home-tutorial__cta:hover .wisdom-home-tutorial__cta-icon {
+            transform: translateX(2px);
+          }
+
+          .wisdom-home-tutorial__cta:hover .wisdom-hero-customize-icon {
+            transform: rotate(7deg);
+          }
+
+          .wisdom-home-tutorial__cta:active {
+            transform: translateY(0) scale(0.99) !important;
+          }
+
+          @keyframes wisdomHomeHeroIntro {
+            from {
+              opacity: 0;
+              transform: translateY(8px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+
+          @keyframes wisdomHomeStepCopyIn {
+            from {
+              opacity: 0;
+              transform: translateY(7px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+
+          @keyframes wisdomHomeHeroImageReveal {
+            from {
+              opacity: 0.72;
+              transform: scale(0.992);
+            }
+            to {
+              opacity: 1;
+              transform: scale(1);
+            }
+          }
+
+          @keyframes wisdomHomeProgressSettle {
+            0% {
+              transform: scale(0.94);
+            }
+            65% {
+              transform: scale(1.06);
+            }
+            100% {
+              transform: scale(1);
+            }
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .wisdom-home-tutorial__kicker,
+            .wisdom-home-tutorial__headline,
+            .wisdom-home-tutorial__hero-summary,
+            .wisdom-home-tutorial__active-step,
+            .wisdom-home-tutorial__cta,
+            .wisdom-home-tutorial__catalog-link,
+            .wisdom-home-tutorial__main-card .wisdom-home-tutorial__image,
+            .wisdom-home-tutorial__progress-step.is-active
+              .wisdom-home-tutorial__progress-number {
+              animation: none !important;
+            }
+
+            .wisdom-home-tutorial__progress-fill,
+            .wisdom-home-tutorial__progress-number,
+            .wisdom-home-tutorial__card-dot,
+            .wisdom-home-tutorial__cta,
+            .wisdom-home-tutorial__cta-icon,
+            .wisdom-home-tutorial__cta .wisdom-hero-customize-icon {
+              transition: none !important;
+            }
+
+            .wisdom-home-tutorial__cta:hover,
+            .wisdom-home-tutorial__cta:active,
+            .wisdom-home-tutorial__cta:hover .wisdom-home-tutorial__cta-icon,
+            .wisdom-home-tutorial__cta:hover .wisdom-hero-customize-icon,
+            .wisdom-home-tutorial__card-dot.is-active {
+              transform: none !important;
+            }
+          }
+
+          /* WISDOM HOME GUIDED MOTION V1.0.0 END */
+        `}</style>
+
         <div className="wisdom-home-tutorial__frame">
           {(() => {
             const slide = HERO_SHOWCASE_SLIDES[heroSlideIndex];
