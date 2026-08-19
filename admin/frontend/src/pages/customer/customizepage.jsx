@@ -951,6 +951,7 @@ function CustomizeModal({ product, onClose, onAdd }) {
 }
 
 function ProductCard({ product, onView, onCustomize }) {
+  const [isCardHovered, setIsCardHovered] = useState(false);
   const profile = detectTemplateProfile(product || {});
   const dimensionConfig = resolveDimensionConfig(
     product,
@@ -960,7 +961,13 @@ function ProductCard({ product, onView, onCustomize }) {
   const dimensions = dimensionConfig.defaultDimensions;
 
   return (
-    <div className="cust-product-card">
+    <div
+      className={`cust-product-card${
+        isCardHovered ? " cust-product-card--floating" : ""
+      }`}
+      onMouseEnter={() => setIsCardHovered(true)}
+      onMouseLeave={() => setIsCardHovered(false)}
+    >
       <div className="cust-product-image-wrap">
         {product.has_saved_3d ? (
           <div

@@ -41,6 +41,7 @@ export function useBlueprintPersistence({
   setPublishModal,
   setSaving,
   setPublishing,
+  setPublishFeedbackStatus,
   worldSize,
   sheetSize,
   exportViews,
@@ -283,6 +284,7 @@ export function useBlueprintPersistence({
         return;
       }
 
+      setPublishFeedbackStatus("loading");
       setPublishing(true);
 
       try {
@@ -330,6 +332,12 @@ export function useBlueprintPersistence({
             : previous,
         );
 
+        setPublishFeedbackStatus("success");
+
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, 700);
+        });
+
         toast.success("Blueprint published to the customer customize gallery.");
         setPublishModal(false);
       } catch (error) {
@@ -341,6 +349,7 @@ export function useBlueprintPersistence({
         );
       } finally {
         setPublishing(false);
+        setPublishFeedbackStatus("loading");
       }
     },
     [
@@ -349,6 +358,7 @@ export function useBlueprintPersistence({
       designTotal,
       saveDesign,
       setPublishing,
+      setPublishFeedbackStatus,
       id,
       components,
       setBlueprint,

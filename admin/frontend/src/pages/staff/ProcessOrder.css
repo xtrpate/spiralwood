@@ -681,3 +681,54 @@
     height: 44px;
   }
 }
+/* WISDOM POS SUCCESS MOTION V1.0.0 START */
+.pos-order-success-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  background: #111111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center;
+  animation: wisdomPosSuccessCircleIn 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.pos-order-success-check-svg {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pos-order-success-check-path {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: wisdomPosSuccessCheckDraw 340ms 250ms ease-out forwards;
+}
+
+@keyframes wisdomPosSuccessCircleIn {
+  0% { opacity: 0; transform: scale(0.55); }
+  68% { opacity: 1; transform: scale(1.07); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes wisdomPosSuccessCheckDraw {
+  to { stroke-dashoffset: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-order-success-icon {
+    animation-duration: 360ms;
+    animation-timing-function: ease-out;
+  }
+  .pos-order-success-check-path {
+    animation-duration: 300ms;
+    animation-delay: 160ms;
+  }
+}
+/* WISDOM POS SUCCESS MOTION V1.0.0 END */

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import api from "../../services/api";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle, Receipt } from "lucide-react";
+import { Receipt } from "lucide-react";
 import LocationPicker from "../../components/LocationPicker";
 import PosCheckoutQr from "../../components/PosCheckoutQr";
 import "./ProcessOrder.css";
@@ -895,7 +895,14 @@ export default function ProcessOrder() {
             padding: 40,
           }}
         >
-          <CheckCircle size={56} color="#059669" style={{ marginBottom: 16 }} />
+          <div className="pos-order-success-icon" aria-hidden="true">
+            <svg className="pos-order-success-check-svg" viewBox="0 0 24 24">
+              <path
+                className="pos-order-success-check-path"
+                d="m5.5 12.5 4 4 9-10"
+              />
+            </svg>
+          </div>
           <h2
             style={{
               color: "#0a0a0a",
