@@ -121,6 +121,7 @@ export default function BlueprintDesign() {
   // --- Publish to Catalog State ---
   const [publishModal, setPublishModal] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [publishFeedbackStatus, setPublishFeedbackStatus] = useState("loading");
   const [publishForm, setPublishForm] = useState({
     name: blueprint?.title || "",
     description: "Custom blueprint product.",
@@ -1877,6 +1878,7 @@ export default function BlueprintDesign() {
       setPublishModal,
       setSaving,
       setPublishing,
+      setPublishFeedbackStatus,
       worldSize: { w: WORLD_W, h: WORLD_H, d: WORLD_D },
       sheetSize: { w: SHEET_W, h: SHEET_H },
       exportViews: EXPORT_VIEWS,
@@ -3340,6 +3342,7 @@ export default function BlueprintDesign() {
       {publishModal && (
         <BlueprintPublishModal
           publishing={publishing}
+          publishFeedbackStatus={publishFeedbackStatus}
           setPublishModal={setPublishModal}
           handlePublishProduct={handlePublishProduct}
           publishForm={publishForm}

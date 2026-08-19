@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import api from "../../../services/api";
+import { MotionFeedbackOverlay } from "../../../components/MotionFeedbackOverlay";
 export function BlueprintPublishModal({
   publishing,
+  publishFeedbackStatus,
   setPublishModal,
   handlePublishProduct,
   publishForm,
@@ -60,7 +62,7 @@ export function BlueprintPublishModal({
         justifyContent: "center",
         padding: 20,
       }}
-      onClick={(event) => {
+      onMouseDown={(event) => {
         if (event.target === event.currentTarget && !publishing) {
           setPublishModal(false);
         }
@@ -338,6 +340,18 @@ export function BlueprintPublishModal({
           </div>
         </form>
       </div>
+
+      <MotionFeedbackOverlay
+        open={publishing}
+        status={publishFeedbackStatus}
+        successVariant="filled"
+        message={
+          publishFeedbackStatus === "success"
+            ? "Blueprint published successfully"
+            : "Publishing blueprint..."
+        }
+        blocking
+      />
     </div>
   );
 }
