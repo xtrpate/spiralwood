@@ -231,7 +231,30 @@ exports.getProductById = async (req, res) => {
       return res.status(404).json({ message: "Product not found." });
     }
 
-    res.json(product);
+    const [images] = await db.query(
+      `SELECT id, image_url, sort_order, is_primary
+       FROM product_images
+       WHERE product_id = ?
+       ORDER BY sort_order ASC, id ASC`,
+      [productId],
+    );
+
+    res.json({
+      ...product,
+      images:
+        images.length > 0
+          ? images
+          : product.image_url
+            ? [
+                {
+                  id: null,
+                  image_url: product.image_url,
+                  sort_order: 0,
+                  is_primary: 1,
+                },
+              ]
+            : [],
+    });
   } catch (err) {
     console.error("[customer.products/:id]", err);
     res.status(500).json({

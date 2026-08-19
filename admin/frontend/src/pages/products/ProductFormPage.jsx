@@ -24,6 +24,8 @@ const DEFAULT = {
   is_featured: false,
 };
 
+const MAX_PRODUCT_IMAGES = 6;
+
 export default function ProductFormPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -34,8 +36,8 @@ export default function ProductFormPage() {
   const isEdit = Boolean(id);
 
   const [form, setForm] = useState(DEFAULT);
-  const [image, setImage] = useState(null);
-  const [preview, setPreview] = useState("");
+  const [galleryItems, setGalleryItems] = useState([]);
+  const [galleryMessage, setGalleryMessage] = useState("");
   const [bom, setBom] = useState([]);
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState([]);
@@ -74,7 +76,11 @@ export default function ProductFormPage() {
     if (!isEdit) return;
 
     api.get(`/products/${id}`).then((response) => {
-      const { bill_of_materials: savedBom, ...rest } = response.data;
+      const {
+        bill_of_materials: savedBom,
+        images: savedImages,
+        ...rest
+      } = response.data;
       const unifiedPrice =
         rest.online_price ?? rest.walkin_price ?? "";
 
@@ -101,14 +107,124 @@ export default function ProductFormPage() {
         });
       }
 
-      if (rest.image_url) {
-        setPreview(buildAssetUrl(rest.image_url));
+      const normalizedGallery = Array.isArray(savedImages)
+        ? [...savedImages]
+            .sort(
+              (a, b) =>
+                Number(a.sort_order || 0) - Number(b.sort_order || 0),
+            )
+            .filter((item) => item?.image_url)
+            .slice(0, MAX_PRODUCT_IMAGES)
+            .map((item) => ({
+              key: item.id
+                ? `existing-${item.id}`
+                : `legacy-${rest.id || id}`,
+              kind: item.id ? "existing" : "legacy",
+              id: item.id || null,
+              image_url: item.image_url,
+              preview: buildAssetUrl(item.image_url),
+              name: item.id ? `Saved image ${item.id}` : "Current product image",
+            }))
+        : [];
+
+      if (normalizedGallery.length > 0) {
+        setGalleryItems(normalizedGallery);
+      } else if (rest.image_url) {
+        setGalleryItems([
+          {
+            key: `legacy-${rest.id || id}`,
+            kind: "legacy",
+            id: null,
+            image_url: rest.image_url,
+            preview: buildAssetUrl(rest.image_url),
+            name: "Current product image",
+          },
+        ]);
+      } else {
+        setGalleryItems([]);
       }
     });
   }, [id, isEdit]);
 
   const set = (key, value) =>
     setForm((current) => ({ ...current, [key]: value }));
+
+  const moveGalleryItem = (fromIndex, toIndex) => {
+    setGalleryItems((current) => {
+      if (
+        fromIndex < 0 ||
+        fromIndex >= current.length ||
+        toIndex < 0 ||
+        toIndex >= current.length ||
+        fromIndex === toIndex
+      ) {
+        return current;
+      }
+
+      const next = [...current];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+    setGalleryMessage("");
+  };
+
+  const makeGalleryMain = (index) => {
+    if (index <= 0) return;
+    moveGalleryItem(index, 0);
+  };
+
+  const removeGalleryItem = (index) => {
+    setGalleryItems((current) => {
+      const target = current[index];
+
+      if (target?.kind === "new" && target.preview) {
+        URL.revokeObjectURL(target.preview);
+      }
+
+      return current.filter((_, itemIndex) => itemIndex !== index);
+    });
+    setGalleryMessage("");
+  };
+
+  const addGalleryFiles = (fileList) => {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+
+    const available = MAX_PRODUCT_IMAGES - galleryItems.length;
+
+    if (available <= 0) {
+      setGalleryMessage(
+        `You can add up to ${MAX_PRODUCT_IMAGES} product images.`,
+      );
+      return;
+    }
+
+    const accepted = files.slice(0, available);
+    const now = Date.now();
+
+    const additions = accepted.map((file, index) => ({
+      key: `new-${now}-${index}-${file.name}`,
+      kind: "new",
+      id: null,
+      file,
+      image_url: null,
+      preview: URL.createObjectURL(file),
+      name: file.name,
+    }));
+
+    setGalleryItems((current) => [...current, ...additions]);
+
+    if (files.length > available) {
+      setGalleryMessage(
+        `Only ${available} more image${
+          available === 1 ? "" : "s"
+        } can be added. Maximum is ${MAX_PRODUCT_IMAGES}.`,
+      );
+    } else {
+      setGalleryMessage("");
+    }
+  };
 
   // WISDOM PRODUCT BOM UI REMOVED V2
   // Existing saved BOM data is preserved but is no longer edited here.
@@ -161,19 +277,53 @@ export default function ProductFormPage() {
 
       fd.append("bill_of_materials", JSON.stringify(bom));
 
-      if (image) {
-        fd.append("image", image);
+      if (!isBlueprint) {
+        const newItems = galleryItems.filter(
+          (item) => item.kind === "new" && item.file,
+        );
+        const newIndexByKey = new Map(
+          newItems.map((item, index) => [item.key, index]),
+        );
+
+        newItems.forEach((item) => {
+          fd.append("images", item.file);
+        });
+
+        const galleryOrder = galleryItems.map((item) => {
+          if (item.kind === "existing") {
+            return {
+              type: "existing",
+              id: Number(item.id),
+            };
+          }
+
+          if (item.kind === "legacy") {
+            return {
+              type: "legacy",
+            };
+          }
+
+          return {
+            type: "new",
+            index: newIndexByKey.get(item.key),
+          };
+        });
+
+        fd.append("gallery_order", JSON.stringify(galleryOrder));
       }
 
+      // Multiple Cloudinary uploads can legitimately take longer than the shared
+      // 30-second Axios default. Keep the longer timeout local to Product saves
+      // so the rest of the application retains its normal request timeout.
+      const productSaveRequestConfig = {
+        timeout: 180000,
+      };
+
       if (isEdit) {
-        await api.put(`/products/${id}`, fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        await api.put(`/products/${id}`, fd, productSaveRequestConfig);
         toast.success("Product updated successfully.");
       } else {
-        await api.post("/products", fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        await api.post("/products", fd, productSaveRequestConfig);
         toast.success("Product created successfully.");
       }
 
@@ -347,64 +497,138 @@ export default function ProductFormPage() {
           </Section>
         ) : (
           <Section
-            title="Product image"
-            description="Use a clear product photo. PNG or JPG is recommended."
+            title="Product images"
+            description="Add up to 6 product views. The first image is the main image shown across the catalog."
           >
-            <div style={imagePanel}>
-              <div style={previewBox}>
-                {preview ? (
-                  <img src={preview} alt="" style={previewImage} />
-                ) : (
-                  <span style={previewPlaceholder}>No image</span>
-                )}
-              </div>
-
-              <div style={imageDetails}>
-                <div style={imageStatus}>
-                  {image
-                    ? image.name
-                    : preview
-                      ? "Current product image"
-                      : "No image selected"}
+            <div style={galleryToolbar}>
+              <div>
+                <div style={galleryCount}>
+                  {galleryItems.length} of {MAX_PRODUCT_IMAGES} images
                 </div>
-
-                <div style={imageActions}>
-                  <label style={btnSecondary}>
-                    {preview ? "Replace image" : "Choose image"}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={(event) => {
-                        const file = event.target.files?.[0] || null;
-                        setImage(file);
-
-                        if (file) {
-                          setPreview(URL.createObjectURL(file));
-                        }
-                      }}
-                    />
-                  </label>
-
-                  {image && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setImage(null);
-                        setPreview("");
-                      }}
-                      style={btnText}
-                    >
-                      Clear selection
-                    </button>
-                  )}
-                </div>
-
                 <div style={helperText}>
-                  Recommended: a clean, high-quality image with the product clearly
-                  visible.
+                  Add front, side, detail, or lifestyle views when available.
                 </div>
               </div>
+
+              <label
+                style={{
+                  ...btnSecondary,
+                  opacity:
+                    galleryItems.length >= MAX_PRODUCT_IMAGES ? 0.5 : 1,
+                  cursor:
+                    galleryItems.length >= MAX_PRODUCT_IMAGES
+                      ? "not-allowed"
+                      : "pointer",
+                }}
+              >
+                Add images
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  hidden
+                  disabled={galleryItems.length >= MAX_PRODUCT_IMAGES}
+                  onChange={(event) => {
+                    addGalleryFiles(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+
+            {galleryMessage ? (
+              <div style={galleryMessageStyle}>{galleryMessage}</div>
+            ) : null}
+
+            {galleryItems.length > 0 ? (
+              <div style={galleryGrid}>
+                {galleryItems.map((item, index) => (
+                  <div key={item.key} style={galleryCard}>
+                    <div style={galleryImageBox}>
+                      {item.preview ? (
+                        <img
+                          src={item.preview}
+                          alt={`${form.name || "Product"} view ${index + 1}`}
+                          style={galleryImage}
+                        />
+                      ) : (
+                        <span style={previewPlaceholder}>No image</span>
+                      )}
+
+                      {index === 0 ? (
+                        <span style={galleryMainBadge}>Main</span>
+                      ) : null}
+                    </div>
+
+                    <div style={galleryCardFooter}>
+                      <div style={galleryImageName} title={item.name}>
+                        {index === 0 ? "Main image" : `Image ${index + 1}`}
+                      </div>
+
+                      <div style={galleryActionRow}>
+                        {index > 0 ? (
+                          <button
+                            type="button"
+                            style={galleryMiniButton}
+                            onClick={() => makeGalleryMain(index)}
+                          >
+                            Make main
+                          </button>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          style={{
+                            ...galleryIconButton,
+                            opacity: index === 0 ? 0.35 : 1,
+                          }}
+                          disabled={index === 0}
+                          onClick={() => moveGalleryItem(index, index - 1)}
+                          aria-label="Move image left"
+                          title="Move left"
+                        >
+                          &larr;
+                        </button>
+
+                        <button
+                          type="button"
+                          style={{
+                            ...galleryIconButton,
+                            opacity:
+                              index === galleryItems.length - 1 ? 0.35 : 1,
+                          }}
+                          disabled={index === galleryItems.length - 1}
+                          onClick={() => moveGalleryItem(index, index + 1)}
+                          aria-label="Move image right"
+                          title="Move right"
+                        >
+                          &rarr;
+                        </button>
+
+                        <button
+                          type="button"
+                          style={galleryRemoveButton}
+                          onClick={() => removeGalleryItem(index)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={galleryEmpty}>
+                <div style={galleryEmptyTitle}>No product image selected</div>
+                <div style={helperText}>
+                  You can save the product without an image and add images later.
+                </div>
+              </div>
+            )}
+
+            <div style={helperText}>
+              JPG, PNG, or WEBP. The Main image remains the compatibility image
+              used by existing catalog, cart, POS, and order displays.
             </div>
           </Section>
         )}
@@ -692,58 +916,147 @@ const checkbox = {
   accentColor: "#18181b",
 };
 
-const imagePanel = {
-  display: "flex",
-  alignItems: "center",
-  gap: 15,
-  padding: 12,
-  background: "#fafafa",
-  border: "1px dashed #cfd1d5",
-  borderRadius: 2,
-};
-
-const previewBox = {
-  width: 86,
-  height: 86,
-  flex: "0 0 86px",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  overflow: "hidden",
-  background: "#ffffff",
-  border: "1px solid #dedfe2",
-  borderRadius: 2,
-};
-
-const previewImage = {
-  width: "100%",
-  height: "100%",
-  objectFit: "cover",
-};
-
 const previewPlaceholder = {
   color: "#a1a1aa",
   fontSize: 11,
   fontWeight: 400,
 };
 
-const imageDetails = {
-  flex: 1,
-  minWidth: 0,
-};
-
-const imageStatus = {
-  marginBottom: 8,
-  color: "#3f3f46",
-  fontSize: 11.5,
-  fontWeight: 500,
-};
-
-const imageActions = {
+const galleryToolbar = {
   display: "flex",
   alignItems: "center",
-  gap: 7,
+  justifyContent: "space-between",
+  gap: 14,
+  marginBottom: 14,
+};
+
+const galleryCount = {
+  color: "#27272a",
+  fontSize: 11.5,
+  fontWeight: 600,
+};
+
+const galleryMessageStyle = {
+  marginBottom: 12,
+  padding: "8px 10px",
+  border: "1px solid #e4e4e7",
+  background: "#fafafa",
+  color: "#52525b",
+  fontSize: 10.5,
+  lineHeight: 1.4,
+};
+
+const galleryGrid = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 10,
+  marginBottom: 10,
+};
+
+const galleryCard = {
+  minWidth: 0,
+  border: "1px solid #dedfe2",
+  background: "#ffffff",
+};
+
+const galleryImageBox = {
+  position: "relative",
+  height: 132,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  overflow: "hidden",
+  background: "#f7f5f2",
+  borderBottom: "1px solid #eeeeef",
+};
+
+const galleryImage = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+};
+
+const galleryMainBadge = {
+  position: "absolute",
+  top: 8,
+  left: 8,
+  padding: "4px 7px",
+  background: "#18181b",
+  color: "#ffffff",
+  fontSize: 9.5,
+  fontWeight: 600,
+  letterSpacing: "0.03em",
+};
+
+const galleryCardFooter = {
+  padding: 9,
+};
+
+const galleryImageName = {
+  marginBottom: 8,
+  overflow: "hidden",
+  color: "#3f3f46",
+  fontSize: 10.5,
+  fontWeight: 600,
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const galleryActionRow = {
+  display: "flex",
+  alignItems: "center",
+  gap: 5,
   flexWrap: "wrap",
+};
+
+const galleryMiniButton = {
+  minHeight: 27,
+  padding: "0 7px",
+  border: "1px solid #d4d4d8",
+  background: "#ffffff",
+  color: "#27272a",
+  fontFamily: "inherit",
+  fontSize: 9.5,
+  fontWeight: 500,
+  cursor: "pointer",
+};
+
+const galleryIconButton = {
+  width: 28,
+  minHeight: 27,
+  padding: 0,
+  border: "1px solid #d4d4d8",
+  background: "#ffffff",
+  color: "#27272a",
+  fontFamily: "inherit",
+  fontSize: 11,
+  cursor: "pointer",
+};
+
+const galleryRemoveButton = {
+  minHeight: 27,
+  padding: "0 7px",
+  border: 0,
+  background: "transparent",
+  color: "#71717a",
+  fontFamily: "inherit",
+  fontSize: 9.5,
+  fontWeight: 500,
+  cursor: "pointer",
+};
+
+const galleryEmpty = {
+  marginBottom: 10,
+  padding: "22px 14px",
+  border: "1px dashed #cfd1d5",
+  background: "#fafafa",
+  textAlign: "center",
+};
+
+const galleryEmptyTitle = {
+  color: "#3f3f46",
+  fontSize: 11.5,
+  fontWeight: 600,
 };
 
 const helperText = {

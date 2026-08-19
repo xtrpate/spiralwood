@@ -10,6 +10,330 @@ const MAX_HOMEPAGE_NEW_PRODUCTS = 4;
 const NEW_PRODUCT_LIMIT_MESSAGE =
   "You can show up to 4 new products on the homepage. Unmark one product first.";
 
+const MAX_PRODUCT_IMAGES = 6;
+
+function parseGalleryOrder(rawValue) {
+  if (
+    rawValue === undefined ||
+    rawValue === null ||
+    rawValue === ""
+  ) {
+    return null;
+  }
+
+  let parsed = rawValue;
+
+  if (typeof rawValue === "string") {
+    try {
+      parsed = JSON.parse(rawValue);
+    } catch {
+      throw new Error("Product image order is invalid.");
+    }
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error("Product image order is invalid.");
+  }
+
+  if (parsed.length > MAX_PRODUCT_IMAGES) {
+    throw new Error(
+      `A product can have up to ${MAX_PRODUCT_IMAGES} images.`,
+    );
+  }
+
+  return parsed;
+}
+
+function getGalleryUploads(req) {
+  const legacy = req.productImageUploads?.legacy || null;
+  const gallery = Array.isArray(req.productImageUploads?.gallery)
+    ? req.productImageUploads.gallery
+    : [];
+
+  return {
+    legacy,
+    gallery,
+    all: [...(legacy ? [legacy] : []), ...gallery],
+  };
+}
+
+function resolveCreateGalleryUrls(req, galleryOrder) {
+  const uploads = getGalleryUploads(req);
+  const files = uploads.gallery.length
+    ? uploads.gallery
+    : uploads.legacy
+      ? [uploads.legacy]
+      : [];
+
+  if (files.length > MAX_PRODUCT_IMAGES) {
+    throw new Error(
+      `A product can have up to ${MAX_PRODUCT_IMAGES} images.`,
+    );
+  }
+
+  if (galleryOrder === null) {
+    return files.map((file) => file.path);
+  }
+
+  if (uploads.legacy) {
+    throw new Error(
+      "The legacy product image field cannot be mixed with gallery ordering.",
+    );
+  }
+
+  const usedNewIndexes = new Set();
+  const urls = [];
+
+  for (const entry of galleryOrder) {
+    if (!entry || String(entry.type || "") !== "new") {
+      throw new Error(
+        "New products can only reference newly uploaded gallery images.",
+      );
+    }
+
+    const index = Number(entry.index);
+
+    if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= uploads.gallery.length ||
+      usedNewIndexes.has(index)
+    ) {
+      throw new Error("Product image order contains an invalid upload.");
+    }
+
+    usedNewIndexes.add(index);
+    urls.push(uploads.gallery[index].path);
+  }
+
+  if (usedNewIndexes.size !== uploads.gallery.length) {
+    throw new Error(
+      "Every uploaded product image must appear in the image order.",
+    );
+  }
+
+  return urls;
+}
+
+async function getProductGallery(conn, productId) {
+  const [rows] = await conn.query(
+    `SELECT id, product_id, image_url, sort_order, is_primary
+     FROM product_images
+     WHERE product_id = ?
+     ORDER BY sort_order ASC, id ASC`,
+    [productId],
+  );
+
+  return rows;
+}
+
+async function syncLegacyPrimaryGalleryImage(
+  conn,
+  productId,
+  imageUrl,
+) {
+  const rows = await getProductGallery(conn, productId);
+
+  await conn.query(
+    "UPDATE product_images SET is_primary = 0 WHERE product_id = ?",
+    [productId],
+  );
+
+  const primary =
+    rows.find((row) => Number(row.is_primary) === 1) ||
+    rows[0] ||
+    null;
+
+  if (primary) {
+    await conn.query(
+      `UPDATE product_images
+       SET image_url = ?, sort_order = 0, is_primary = 1
+       WHERE id = ? AND product_id = ?`,
+      [imageUrl, primary.id, productId],
+    );
+    return;
+  }
+
+  await conn.query(
+    `INSERT INTO product_images
+       (product_id, image_url, sort_order, is_primary)
+     VALUES (?, ?, 0, 1)`,
+    [productId, imageUrl],
+  );
+}
+
+async function applyProductGalleryOrder(
+  conn,
+  {
+    productId,
+    order,
+    newFiles,
+    legacyImageUrl,
+  },
+) {
+  if (!Array.isArray(order)) {
+    throw new Error("Product image order is invalid.");
+  }
+
+  if (order.length > MAX_PRODUCT_IMAGES) {
+    throw new Error(
+      `A product can have up to ${MAX_PRODUCT_IMAGES} images.`,
+    );
+  }
+
+  if (newFiles.length > MAX_PRODUCT_IMAGES) {
+    throw new Error(
+      `A product can have up to ${MAX_PRODUCT_IMAGES} images.`,
+    );
+  }
+
+  const existingRows = await getProductGallery(conn, productId);
+  const existingById = new Map(
+    existingRows.map((row) => [Number(row.id), row]),
+  );
+
+  const usedExistingIds = new Set();
+  const usedNewIndexes = new Set();
+  let legacyUsed = false;
+  const resolved = [];
+
+  for (const entry of order) {
+    if (!entry || typeof entry !== "object") {
+      throw new Error("Product image order contains an invalid item.");
+    }
+
+    const type = String(entry.type || "").trim().toLowerCase();
+
+    if (type === "existing") {
+      const imageId = Number(entry.id);
+      const row = existingById.get(imageId);
+
+      if (
+        !Number.isInteger(imageId) ||
+        !row ||
+        usedExistingIds.has(imageId)
+      ) {
+        throw new Error(
+          "Product image order contains an invalid existing image.",
+        );
+      }
+
+      usedExistingIds.add(imageId);
+      resolved.push({
+        type: "existing",
+        id: imageId,
+        image_url: row.image_url,
+      });
+      continue;
+    }
+
+    if (type === "new") {
+      const index = Number(entry.index);
+
+      if (
+        !Number.isInteger(index) ||
+        index < 0 ||
+        index >= newFiles.length ||
+        usedNewIndexes.has(index)
+      ) {
+        throw new Error(
+          "Product image order contains an invalid uploaded image.",
+        );
+      }
+
+      usedNewIndexes.add(index);
+      resolved.push({
+        type: "new",
+        file: newFiles[index],
+        image_url: newFiles[index].path,
+      });
+      continue;
+    }
+
+    if (type === "legacy") {
+      if (!legacyImageUrl || legacyUsed) {
+        throw new Error(
+          "Product image order contains an invalid legacy image.",
+        );
+      }
+
+      legacyUsed = true;
+
+      const matchingRow = existingRows.find(
+        (row) =>
+          String(row.image_url || "") === String(legacyImageUrl),
+      );
+
+      if (matchingRow && !usedExistingIds.has(Number(matchingRow.id))) {
+        usedExistingIds.add(Number(matchingRow.id));
+        resolved.push({
+          type: "existing",
+          id: Number(matchingRow.id),
+          image_url: matchingRow.image_url,
+        });
+      } else {
+        resolved.push({
+          type: "legacy",
+          image_url: legacyImageUrl,
+        });
+      }
+
+      continue;
+    }
+
+    throw new Error("Product image order contains an unknown item type.");
+  }
+
+  if (usedNewIndexes.size !== newFiles.length) {
+    throw new Error(
+      "Every uploaded product image must appear in the image order.",
+    );
+  }
+
+  const retainedIds = resolved
+    .filter((item) => item.type === "existing")
+    .map((item) => item.id);
+
+  if (retainedIds.length > 0) {
+    const placeholders = retainedIds.map(() => "?").join(",");
+    await conn.query(
+      `DELETE FROM product_images
+       WHERE product_id = ?
+         AND id NOT IN (${placeholders})`,
+      [productId, ...retainedIds],
+    );
+  } else {
+    await conn.query(
+      "DELETE FROM product_images WHERE product_id = ?",
+      [productId],
+    );
+  }
+
+  for (let index = 0; index < resolved.length; index += 1) {
+    const item = resolved[index];
+    const isPrimary = index === 0 ? 1 : 0;
+
+    if (item.type === "existing") {
+      await conn.query(
+        `UPDATE product_images
+         SET sort_order = ?, is_primary = ?
+         WHERE id = ? AND product_id = ?`,
+        [index, isPrimary, item.id, productId],
+      );
+      continue;
+    }
+
+    await conn.query(
+      `INSERT INTO product_images
+         (product_id, image_url, sort_order, is_primary)
+       VALUES (?, ?, ?, ?)`,
+      [productId, item.image_url, index, isPrimary],
+    );
+  }
+
+  return resolved[0]?.image_url || null;
+}
+
 async function getHomepageNewProductCount(conn, excludeProductId = null) {
   let sql =
     "SELECT id FROM products WHERE type = 'standard' AND is_featured = 1";
@@ -155,9 +479,25 @@ exports.getOne = async (req, res) => {
       [parseInt(req.params.id)],
     );
 
+    const images = await getProductGallery(pool, parseInt(req.params.id));
+
     res.json({
       ...product,
       bill_of_materials: bom,
+      images:
+        images.length > 0
+          ? images
+          : product.image_url
+            ? [
+                {
+                  id: null,
+                  product_id: product.id,
+                  image_url: product.image_url,
+                  sort_order: 0,
+                  is_primary: 1,
+                },
+              ]
+            : [],
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -246,7 +586,17 @@ exports.create = async (req, res) => {
       );
     }
 
-    const image_url = req.file ? req.file.path : null;
+    let galleryOrder;
+    let createGalleryUrls;
+
+    try {
+      galleryOrder = parseGalleryOrder(req.body.gallery_order);
+      createGalleryUrls = resolveCreateGalleryUrls(req, galleryOrder);
+    } catch (galleryError) {
+      return respondInvalid(conn, res, galleryError.message);
+    }
+
+    const image_url = createGalleryUrls[0] || null;
 
     const numOnlinePrice = online_price ? parseFloat(online_price) : 0;
     const numWalkinPrice = walkin_price ? parseFloat(walkin_price) : 0;
@@ -326,6 +676,20 @@ exports.create = async (req, res) => {
       ],
     );
     const productId = result.insertId;
+
+    for (let index = 0; index < createGalleryUrls.length; index += 1) {
+      await conn.query(
+        `INSERT INTO product_images
+           (product_id, image_url, sort_order, is_primary)
+         VALUES (?, ?, ?, ?)`,
+        [
+          productId,
+          createGalleryUrls[index],
+          index,
+          index === 0 ? 1 : 0,
+        ],
+      );
+    }
 
     // Auto-set stock_status
     await conn.query(
@@ -538,8 +902,50 @@ exports.update = async (req, res) => {
         return res.status(400).json({ message: NEW_PRODUCT_LIMIT_MESSAGE });
       }
     }
-    if (req.file) {
-      updateData.image_url = req.file.path;
+    let galleryOrder;
+
+    try {
+      galleryOrder = parseGalleryOrder(req.body.gallery_order);
+    } catch (galleryError) {
+      return respondInvalid(conn, res, galleryError.message);
+    }
+
+    const galleryUploads = getGalleryUploads(req);
+
+    if (galleryOrder !== null) {
+      if (galleryUploads.legacy) {
+        return respondInvalid(
+          conn,
+          res,
+          "The legacy image field cannot be mixed with gallery ordering.",
+        );
+      }
+
+      try {
+        updateData.image_url = await applyProductGalleryOrder(conn, {
+          productId,
+          order: galleryOrder,
+          newFiles: galleryUploads.gallery,
+          legacyImageUrl: old.image_url || null,
+        });
+      } catch (galleryError) {
+        return respondInvalid(conn, res, galleryError.message);
+      }
+    } else if (galleryUploads.legacy) {
+      // Backward compatibility for older clients that still replace one image.
+      updateData.image_url = galleryUploads.legacy.path;
+
+      await syncLegacyPrimaryGalleryImage(
+        conn,
+        productId,
+        galleryUploads.legacy.path,
+      );
+    } else if (galleryUploads.gallery.length > 0) {
+      return respondInvalid(
+        conn,
+        res,
+        "Product gallery ordering is required when uploading multiple images.",
+      );
     }
 
     const keys = Object.keys(updateData);

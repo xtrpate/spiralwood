@@ -2031,10 +2031,11 @@
    ========================================================================== */
 
 .mobile-filter-toggle {
-  display: none;
+  display: none; /* Hidden on desktop */
 }
 
 @media (max-width: 780px) {
+  /* Hide desktop sidebar and header sort dropdown */
   .catalog-sidebar {
     display: none !important;
   }
@@ -2053,19 +2054,10 @@
     gap: 10px !important;
   }
 
-  .catalog-clear-inline {
-    width: 100% !important;
-    order: -1 !important;
-    text-align: right !important;
-    min-height: auto !important;
-    padding: 0 4px 0 0 !important;
-    margin-bottom: 12px !important;
-  }
-
   .catalog-search-shell {
     flex: 1 1 auto !important;
-    width: auto !important;
-    max-width: none !important;
+    width: 100% !important;
+    max-width: none !important; /* Forces it to fill the space */
   }
 
   .catalog-search input {
@@ -2091,6 +2083,15 @@
   .mobile-filter-toggle:active,
   .mobile-filter-toggle:focus {
     border-color: #111111;
+  }
+
+  .catalog-clear-inline {
+    width: 100% !important;
+    order: -1 !important;
+    text-align: right !important;
+    min-height: auto !important;
+    padding: 0 4px 0 0 !important;
+    margin-bottom: 12px !important;
   }
 
   /* Mobile Filter Modal */
@@ -2309,3 +2310,138 @@
     font-weight: 700;
   }
 }
+/* WISDOM PRODUCT GALLERY BATCH 1 V1.1.0 START */
+
+.detail-thumb-row.product-gallery-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+button.detail-thumb {
+  padding: 0;
+  overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
+  background: #ffffff;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+button.detail-thumb:hover {
+  border-color: #737373;
+  transform: translateY(-1px);
+}
+
+button.detail-thumb.active {
+  border-color: #111111;
+}
+
+@media (max-width: 640px) {
+  .detail-thumb-row.product-gallery-row {
+    gap: 8px;
+  }
+
+  button.detail-thumb {
+    width: 72px;
+    height: 72px;
+  }
+}
+
+/* WISDOM PRODUCT GALLERY BATCH 1 V1.1.0 END */
+
+/* WISDOM PRODUCT GALLERY SEMANTIC MERGE V1.3.4 START */
+
+.detail-info-row:last-child {
+  border-bottom: 0 !important;
+}
+
+.detail-main-image-zoom-trigger {
+  position: relative;
+  padding: 0 !important;
+  color: inherit;
+  font: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: zoom-in;
+}
+
+.detail-image-enlarge-label {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  padding: 8px 10px;
+  border: 1px solid #d8d8d8;
+  background: rgba(255, 255, 255, 0.94);
+  color: #111111;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.product-image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 34px;
+  background: rgba(0, 0, 0, 0.9);
+}
+
+.product-image-lightbox-stage {
+  width: min(1240px, calc(100vw - 110px));
+  height: min(850px, calc(100vh - 100px));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+}
+
+.product-image-lightbox-close {
+  position: fixed;
+  top: 18px;
+  right: 22px;
+  z-index: 12001;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 0;
+  background: #111111;
+  color: #ffffff;
+  font: inherit;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .detail-image-enlarge-label {
+    right: 10px;
+    bottom: 10px;
+    padding: 7px 9px;
+    font-size: 10px;
+  }
+
+  .product-image-lightbox {
+    padding: 14px;
+  }
+
+  .product-image-lightbox-stage {
+    width: calc(100vw - 28px);
+    height: calc(100vh - 72px);
+  }
+
+  .product-image-lightbox-close {
+    top: 8px;
+    right: 8px;
+  }
+}
+
+/* WISDOM PRODUCT GALLERY SEMANTIC MERGE V1.3.4 END */

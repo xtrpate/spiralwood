@@ -120,6 +120,8 @@ export default function ProductCatalog() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
+  const [selectedImageUrl, setSelectedImageUrl] = useState("");
+  const [isImageZoomOpen, setIsImageZoomOpen] = useState(false);
   const [total, setTotal] = useState(0);
 
   const { addToCart } = useCart();
@@ -250,6 +252,7 @@ export default function ProductCatalog() {
     const timer = setTimeout(fetchProducts, 300);
     return () => clearTimeout(timer);
   }, [fetchProducts, mobileFilterOpen]);
+
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const q = params.get("q") || "";
@@ -279,7 +282,9 @@ export default function ProductCatalog() {
         (cat) => String(cat.id) === requestedCategoryId,
       );
 
-      setCatFilter(idMatch ? String(idMatch.id) : UNMATCHED_CATEGORY_FILTER);
+      setCatFilter(
+        idMatch ? String(idMatch.id) : UNMATCHED_CATEGORY_FILTER,
+      );
       setUrlMapped(true);
       return;
     }
@@ -287,12 +292,13 @@ export default function ProductCatalog() {
     if (categoryName) {
       const match = categories.find(
         (cat) =>
-          String(cat.name || "")
-            .trim()
-            .toLowerCase() === categoryName.trim().toLowerCase(),
+          String(cat.name || "").trim().toLowerCase() ===
+          categoryName.trim().toLowerCase(),
       );
 
-      setCatFilter(match ? String(match.id) : UNMATCHED_CATEGORY_FILTER);
+      setCatFilter(
+        match ? String(match.id) : UNMATCHED_CATEGORY_FILTER,
+      );
     } else {
       setCatFilter("all");
     }
@@ -300,10 +306,28 @@ export default function ProductCatalog() {
     setUrlMapped(true);
   }, [categories, location.search, urlMapped]);
 
-  const openProduct = (product) => {
+  const openProduct = async (product) => {
     setSelected(product);
+    setSelectedImageUrl(product?.image_url || "");
+    setIsImageZoomOpen(false);
     setQty(isProductUnavailable(product) ? 0 : 1);
     setCartMsg("");
+
+    try {
+      const { data } = await api.get(`/customer/products/${product.id}`);
+
+      setSelected((current) =>
+        current?.id === product.id
+          ? {
+              ...current,
+              ...data,
+            }
+          : current,
+      );
+    } catch (err) {
+      // Keep the already-open catalog product as a safe one-image fallback.
+      console.error("[product gallery detail]", err);
+    }
   };
 
   const quickAddToCart = (product) => {
@@ -444,7 +468,24 @@ export default function ProductCatalog() {
     ((normalizedMax - sliderMin) / (safeSliderMax - sliderMin)) * 100;
 
   const selectedStock = Number(selected?.stock || 0);
-  const selectedUnavailable = selected ? isProductUnavailable(selected) : false;
+  const selectedUnavailable = selected
+    ? isProductUnavailable(selected)
+    : false;
+
+  const selectedImages = selected
+    ? Array.isArray(selected.images) && selected.images.length > 0
+      ? selected.images.filter((item) => item?.image_url)
+      : selected.image_url
+        ? [
+            {
+              id: null,
+              image_url: selected.image_url,
+              sort_order: 0,
+              is_primary: 1,
+            },
+          ]
+        : []
+    : [];
 
   const detailRows = selected
     ? [
@@ -452,6 +493,10 @@ export default function ProductCatalog() {
         {
           label: "STOCK",
           value: `${Number(selected.stock || 0).toLocaleString("en-PH")} units`,
+        },
+        {
+          label: "WARRANTY",
+          value: "1 year",
         },
       ]
     : [];
@@ -947,9 +992,14 @@ export default function ProductCatalog() {
         >
           <div className="detail-modal">
             <div className="detail-modal-left">
-              <div className="detail-main-image">
+              <button
+                type="button"
+                className="detail-main-image detail-main-image-zoom-trigger"
+                onClick={() => setIsImageZoomOpen(true)}
+                aria-label={`View larger image of ${selected.name}`}
+              >
                 <ProductImage
-                  src={selected.image_url}
+                  src={selectedImageUrl || selected.image_url}
                   alt={selected.name}
                   className="product-img-fallback"
                   style={{
@@ -968,30 +1018,47 @@ export default function ProductCatalog() {
                     padding: "28px",
                   }}
                 />
-              </div>
 
-              <div className="detail-thumb-row">
-                <div className="detail-thumb active">
-                  <ProductImage
-                    src={selected.image_url}
-                    alt={selected.name}
-                    className="product-img-fallback"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: "100%",
-                      height: "100%",
-                    }}
-                    imgStyle={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain",
-                      padding: "10px",
-                    }}
-                  />
+                <span className="detail-image-enlarge-label">View larger</span>
+              </button>
+
+              {selectedImages.length > 1 ? (
+                <div className="detail-thumb-row product-gallery-row">
+                  {selectedImages.map((image, index) => (
+                    <button
+                      key={image.id || `${image.image_url}-${index}`}
+                      type="button"
+                      className={`detail-thumb ${
+                        (selectedImageUrl || selected.image_url) ===
+                        image.image_url
+                          ? "active"
+                          : ""
+                      }`}
+                      onClick={() => setSelectedImageUrl(image.image_url)}
+                      aria-label={`View ${selected.name} image ${index + 1}`}
+                    >
+                      <ProductImage
+                        src={image.image_url}
+                        alt={`${selected.name} view ${index + 1}`}
+                        className="product-img-fallback"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: "100%",
+                          height: "100%",
+                        }}
+                        imgStyle={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          padding: 0,
+                        }}
+                      />
+                    </button>
+                  ))}
                 </div>
-              </div>
+              ) : null}
             </div>
 
             <div className="detail-modal-right">
@@ -1095,6 +1162,50 @@ export default function ProductCatalog() {
 
               {cartMsg ? <div className="detail-message">{cartMsg}</div> : null}
             </div>
+          </div>
+        </div>
+      )}
+
+      {selected && isImageZoomOpen && (
+        <div
+          className="product-image-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${selected.name} enlarged product image`}
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsImageZoomOpen(false);
+            }
+          }}
+        >
+          <button
+            type="button"
+            className="product-image-lightbox-close"
+            onClick={() => setIsImageZoomOpen(false)}
+            aria-label="Close enlarged product image"
+          >
+            &times;
+          </button>
+
+          <div className="product-image-lightbox-stage">
+            <ProductImage
+              src={selectedImageUrl || selected.image_url}
+              alt={`${selected.name} enlarged`}
+              className="product-img-fallback"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "100%",
+                height: "100%",
+              }}
+              imgStyle={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+                padding: 0,
+              }}
+            />
           </div>
         </div>
       )}
