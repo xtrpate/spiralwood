@@ -321,6 +321,7 @@ export default function Customer3DViewer({
   const historyRef = useRef({ past: [], future: [] });
   const customizeFeedbackTimerRef = useRef(null);
   const finishMenuRef = useRef(null);
+  const initialViewFramedRef = useRef(false);
 
   const [components, setComponents] = useState(() =>
     normalizeViewerComponents(initialComponents),
@@ -680,12 +681,12 @@ export default function Customer3DViewer({
 
     // WISDOM CUSTOMER 3D FURNITURE REALISM V1.0.3
     // Reduce flat ambient wash while preserving the existing material system.
-    scene.add(new THREE.AmbientLight(0xffffff, 1.08));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.45));
 
-    const hemisphereLight = new THREE.HemisphereLight(0xfffdf8, 0xd8c5aa, 0.82);
+    const hemisphereLight = new THREE.HemisphereLight(0xfffdf8, 0xd8c5aa, 0.45);
     scene.add(hemisphereLight);
 
-    const keyLight = new THREE.DirectionalLight(0xfffbf5, 2.15);
+    const keyLight = new THREE.DirectionalLight(0xfffbf5, 2.85);
     keyLight.position.set(1300, 2250, 1400);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.set(2048, 2048);
@@ -1056,6 +1057,30 @@ export default function Customer3DViewer({
       requestAnimationFrame(() => {
         fitReadOnlyCameraToFurniture("3D");
       });
+    } else if (
+      !readOnly &&
+      !boundsBox.isEmpty() &&
+      !initialViewFramedRef.current
+    ) {
+      requestAnimationFrame(() => {
+        const center = new THREE.Vector3();
+        boundsBox.getCenter(center);
+        const size = new THREE.Vector3();
+        boundsBox.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const distance = maxDim * 1.8 + 500;
+
+        if (cameraRef.current && orbitRef.current) {
+          cameraRef.current.position.set(
+            center.x + distance * 0.8,
+            center.y + distance * 0.3,
+            center.z + distance * 0.8,
+          );
+          orbitRef.current.target.copy(center);
+          orbitRef.current.update();
+        }
+        initialViewFramedRef.current = true;
+      });
     }
 
     if (!boundsBox.isEmpty()) {
@@ -1368,7 +1393,7 @@ export default function Customer3DViewer({
       default:
         cameraRef.current.position.set(
           center.x + distance * 0.8,
-          center.y + distance * 0.6,
+          center.y + distance * 0.3,
           center.z + distance * 0.8,
         );
         break;

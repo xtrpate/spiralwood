@@ -61,7 +61,10 @@ function classifySurface(comp = {}, role = "front") {
     normalizedRole === "metal" ||
     /metal|steel|aluminum|aluminium|chrome/.test(text)
   ) {
-    if (normalizedRole === "metal" || !/wood|plywood|laminate|veneer/.test(text)) {
+    if (
+      normalizedRole === "metal" ||
+      !/wood|plywood|laminate|veneer/.test(text)
+    ) {
       return { kind: "metal", species: "metal" };
     }
   }
@@ -98,7 +101,11 @@ function classifySurface(comp = {}, role = "front") {
     return { kind: "engineered", species };
   }
 
-  if (/veneer|solid wood|wood|oak|walnut|mahogany|teak|pine|maple|beech|ash/.test(text)) {
+  if (
+    /veneer|solid wood|wood|oak|walnut|mahogany|teak|pine|maple|beech|ash/.test(
+      text,
+    )
+  ) {
     return { kind: "wood", species };
   }
 
@@ -130,24 +137,25 @@ function drawWoodPattern(ctx, random, species, intensity = 1) {
   ctx.fillStyle = "rgb(238,238,238)";
   ctx.fillRect(0, 0, TEXTURE_SIZE, TEXTURE_SIZE);
 
-  const speciesStrength = {
-    walnut: 1.35,
-    mahogany: 1.2,
-    teak: 1.08,
-    pine: 0.78,
-    maple: 0.62,
-    beech: 0.72,
-    ash: 0.9,
-    oak: 1,
-    wood: 0.88,
-  }[species] || 0.88;
+  const speciesStrength =
+    {
+      walnut: 1.35,
+      mahogany: 1.2,
+      teak: 1.08,
+      pine: 0.78,
+      maple: 0.62,
+      beech: 0.72,
+      ash: 0.9,
+      oak: 1,
+      wood: 0.88,
+    }[species] || 0.88;
 
   const strength = speciesStrength * intensity;
 
   for (let band = 0; band < 54; band += 1) {
     const baseY = (band / 54) * TEXTURE_SIZE + (random() - 0.5) * 5;
-    const alpha = 0.025 + random() * 0.065 * strength;
-    const shade = 105 + Math.floor(random() * 80);
+    const alpha = 0.08 + random() * 0.15 * strength;
+    const shade = 40 + Math.floor(random() * 50);
     ctx.strokeStyle = `rgba(${shade},${shade},${shade},${alpha})`;
     ctx.lineWidth = 0.45 + random() * 1.4;
     ctx.beginPath();
@@ -270,7 +278,13 @@ function drawSolidSurfacePattern(ctx, random) {
     ctx.fillStyle = `rgba(${shade},${shade},${shade},${0.025 + random() * 0.045})`;
     const r = 0.35 + random() * 1.1;
     ctx.beginPath();
-    ctx.arc(random() * TEXTURE_SIZE, random() * TEXTURE_SIZE, r, 0, Math.PI * 2);
+    ctx.arc(
+      random() * TEXTURE_SIZE,
+      random() * TEXTURE_SIZE,
+      r,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
   }
 }
@@ -328,7 +342,7 @@ function createTexturePair(profile, direction, role) {
   map.colorSpace = THREE.SRGBColorSpace;
   map.wrapS = THREE.RepeatWrapping;
   map.wrapT = THREE.RepeatWrapping;
-  map.repeat.set(2.4, 2.4);
+  map.repeat.set(3.5, 3.5);
   map.center.set(0.5, 0.5);
   map.rotation = getGrainRotation(direction);
   map.anisotropy = 4;
@@ -354,25 +368,88 @@ function getSurfaceDefaults(profile, role) {
 
   switch (profile.kind) {
     case "wood":
-      return { roughness: roleRoughness, metalness: 0.01, clearcoat: normalizedRole === "front" ? 0.2 : 0.08, clearcoatRoughness: 0.42, bumpScale: 0.16, reflectivity: 0.42 };
+      return {
+        roughness: roleRoughness,
+        metalness: 0.01,
+        clearcoat: normalizedRole === "front" ? 0.2 : 0.08,
+        clearcoatRoughness: 0.42,
+        bumpScale: 0.65,
+        reflectivity: 0.42,
+      };
     case "plywood":
-      return { roughness: Math.max(roleRoughness, 0.58), metalness: 0, clearcoat: normalizedRole === "front" ? 0.1 : 0.04, clearcoatRoughness: 0.56, bumpScale: 0.11, reflectivity: 0.34 };
+      return {
+        roughness: Math.max(roleRoughness, 0.58),
+        metalness: 0,
+        clearcoat: normalizedRole === "front" ? 0.1 : 0.04,
+        clearcoatRoughness: 0.56,
+        bumpScale: 0.11,
+        reflectivity: 0.34,
+      };
     case "laminate":
-      return { roughness: normalizedRole === "inside" ? 0.48 : 0.34, metalness: 0.01, clearcoat: 0.3, clearcoatRoughness: 0.28, bumpScale: 0.035, reflectivity: 0.54 };
+      return {
+        roughness: normalizedRole === "inside" ? 0.48 : 0.34,
+        metalness: 0.01,
+        clearcoat: 0.3,
+        clearcoatRoughness: 0.28,
+        bumpScale: 0.035,
+        reflectivity: 0.54,
+      };
     case "engineered":
-      return { roughness: 0.68, metalness: 0, clearcoat: 0.04, clearcoatRoughness: 0.72, bumpScale: 0.07, reflectivity: 0.28 };
+      return {
+        roughness: 0.68,
+        metalness: 0,
+        clearcoat: 0.04,
+        clearcoatRoughness: 0.72,
+        bumpScale: 0.07,
+        reflectivity: 0.28,
+      };
     case "fabric":
-      return { roughness: 0.94, metalness: 0, clearcoat: 0, clearcoatRoughness: 1, bumpScale: 0.12, reflectivity: 0.18, sheen: 0.28, sheenRoughness: 0.86 };
+      return {
+        roughness: 0.94,
+        metalness: 0,
+        clearcoat: 0,
+        clearcoatRoughness: 1,
+        bumpScale: 0.12,
+        reflectivity: 0.18,
+        sheen: 0.28,
+        sheenRoughness: 0.86,
+      };
     case "metal":
-      return { roughness: 0.24, metalness: 0.9, clearcoat: 0.24, clearcoatRoughness: 0.2, bumpScale: 0.025, reflectivity: 0.68 };
+      return {
+        roughness: 0.24,
+        metalness: 0.9,
+        clearcoat: 0.24,
+        clearcoatRoughness: 0.2,
+        bumpScale: 0.025,
+        reflectivity: 0.68,
+      };
     case "solid-surface":
-      return { roughness: 0.28, metalness: 0.01, clearcoat: 0.36, clearcoatRoughness: 0.22, bumpScale: 0.018, reflectivity: 0.58 };
+      return {
+        roughness: 0.28,
+        metalness: 0.01,
+        clearcoat: 0.36,
+        clearcoatRoughness: 0.22,
+        bumpScale: 0.018,
+        reflectivity: 0.58,
+      };
     default:
-      return { roughness: roleRoughness, metalness: 0.02, clearcoat: 0.12, clearcoatRoughness: 0.48, bumpScale: 0, reflectivity: 0.4 };
+      return {
+        roughness: roleRoughness,
+        metalness: 0.02,
+        clearcoat: 0.12,
+        clearcoatRoughness: 0.48,
+        bumpScale: 0,
+        reflectivity: 0.4,
+      };
   }
 }
 
-function createProceduralFurnitureMaterial(comp = {}, color = "#d9c2a5", role = "front", overrides = {}) {
+function createProceduralFurnitureMaterial(
+  comp = {},
+  color = "#d9c2a5",
+  role = "front",
+  overrides = {},
+) {
   const profile = classifySurface(comp, role);
   const direction = ["wood", "plywood", "laminate"].includes(profile.kind)
     ? getGrainDirection(comp)
@@ -400,7 +477,10 @@ function createProceduralFurnitureMaterial(comp = {}, color = "#d9c2a5", role = 
   if (Number(defaults.sheen) > 0) {
     params.sheen = defaults.sheen;
     params.sheenRoughness = defaults.sheenRoughness;
-    params.sheenColor = new THREE.Color(color || "#d9c2a5").lerp(new THREE.Color("#ffffff"), 0.22);
+    params.sheenColor = new THREE.Color(color || "#d9c2a5").lerp(
+      new THREE.Color("#ffffff"),
+      0.22,
+    );
   }
 
   const material = new THREE.MeshPhysicalMaterial(params);
