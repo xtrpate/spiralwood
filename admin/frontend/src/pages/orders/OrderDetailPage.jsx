@@ -5,6 +5,7 @@ import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 import CustomerTemplateWorkbench from "../customer/CustomerTemplateWorkbench";
 import OrderDiscussionPanel from "./OrderDiscussionPanel";
+import "../../components/motion-feedback.css";
 
 const parseMapCoordinate = (value) => {
   if (typeof value === "number") {
@@ -448,6 +449,10 @@ export default function OrderDetailPage() {
     id: null,
     action: "",
   });
+  const [paymentVerifyFeedback, setPaymentVerifyFeedback] = useState({
+    id: null,
+    status: "idle",
+  });
   const [recordingCashPayment, setRecordingCashPayment] = useState(false);
   const [cashPaymentError, setCashPaymentError] = useState("");
   const [customCashAmount, setCustomCashAmount] = useState("");
@@ -640,11 +645,22 @@ export default function OrderDetailPage() {
     if (paymentReviewLockRef.current) return;
     paymentReviewLockRef.current = true;
     setReviewingPayment({ id: paymentId, action });
+    if (action === "verified") {
+      setPaymentVerifyFeedback({ id: paymentId, status: "loading" });
+    }
     try {
       const { data } = await api.post(`/orders/${id}/verify-payment`, {
         payment_id: paymentId,
         action,
       });
+      if (action === "verified") {
+        setPaymentVerifyFeedback({ id: paymentId, status: "success" });
+
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, 700);
+        });
+      }
+
       toast.success(data?.message || `Payment ${action}.`);
       await load();
     } catch (err) {
@@ -662,6 +678,7 @@ export default function OrderDetailPage() {
     } finally {
       paymentReviewLockRef.current = false;
       setReviewingPayment({ id: null, action: "" });
+      setPaymentVerifyFeedback({ id: null, status: "idle" });
     }
   };
 
@@ -2284,18 +2301,60 @@ export default function OrderDetailPage() {
                             <td style={td}>
                               {normalize(payment.status) === "pending" ? (
                                 <div style={inlineActions}>
-                                  <button
-                                    onClick={() =>
-                                      verifyPayment(payment.id, "verified")
-                                    }
-                                    disabled={reviewingPayment.id !== null}
-                                    style={btnAccept}
-                                  >
-                                    {reviewingPayment.id === payment.id &&
-                                    reviewingPayment.action === "verified"
-                                      ? "Verifying..."
-                                      : "Verify"}
-                                  </button>
+                                  {paymentVerifyFeedback.id === payment.id &&
+                                  paymentVerifyFeedback.status === "success" ? (
+                                    <div
+                                      role="status"
+                                      aria-live="polite"
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 8,
+                                        minHeight: 34,
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      <span
+                                        className="wisdom-motion-success-icon is-filled"
+                                        aria-hidden="true"
+                                        style={{ width: 28, height: 28 }}
+                                      >
+                                        <span className="wisdom-motion-success-circle is-filled" />
+                                        <svg
+                                          className="wisdom-motion-success-check is-filled"
+                                          viewBox="0 0 24 24"
+                                          style={{ width: 16, height: 16 }}
+                                        >
+                                          <path
+                                            className="wisdom-motion-success-check-path"
+                                            d="m5.5 12.5 4 4 9-10"
+                                          />
+                                        </svg>
+                                      </span>
+                                      <span
+                                        style={{
+                                          fontSize: 12,
+                                          fontWeight: 700,
+                                          color: "#18181b",
+                                        }}
+                                      >
+                                        Payment verified successfully
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() =>
+                                        verifyPayment(payment.id, "verified")
+                                      }
+                                      disabled={reviewingPayment.id !== null}
+                                      style={btnAccept}
+                                    >
+                                      {reviewingPayment.id === payment.id &&
+                                      reviewingPayment.action === "verified"
+                                        ? "Verifying..."
+                                        : "Verify"}
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() =>
                                       verifyPayment(payment.id, "rejected")
