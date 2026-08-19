@@ -8,6 +8,10 @@ import "./customizepage.css";
 import useAuthStore from "../../store/authStore";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import LocationPicker from "../../components/LocationPicker";
+import {
+  MotionFeedbackOverlay,
+  getMotionFeedbackDurations,
+} from "../../components/MotionFeedbackOverlay";
 import { getCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
 
 // Strict parsing prevents blank strings, whitespace, booleans, arrays,
@@ -187,6 +191,7 @@ export default function CustomCheckoutPage() {
   });
 
   const [loading, setLoading] = useState(false);
+  const [submitFeedbackStatus, setSubmitFeedbackStatus] = useState("loading");
   const [error, setError] = useState("");
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
 
@@ -382,6 +387,9 @@ export default function CustomCheckoutPage() {
       return;
     }
 
+    const feedbackDurations = getMotionFeedbackDurations();
+    const feedbackStartedAt = Date.now();
+    setSubmitFeedbackStatus("loading");
     setLoading(true);
 
     try {
@@ -465,6 +473,25 @@ export default function CustomCheckoutPage() {
 
       removeManyFromCustomCart(submittedKeys);
       sessionStorage.removeItem("cust_selected_custom_checkout");
+
+      const remainingLoadingMs = Math.max(
+        0,
+        feedbackDurations.loading - (Date.now() - feedbackStartedAt),
+      );
+
+      if (remainingLoadingMs > 0) {
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, remainingLoadingMs),
+        );
+      }
+
+      setSubmitFeedbackStatus("success");
+
+      const visibleSuccessMs = Math.max(feedbackDurations.success, 700);
+
+      await new Promise((resolve) =>
+        window.setTimeout(resolve, visibleSuccessMs),
+      );
 
       const nextId = res?.data?.order_id;
       if (nextId) {
@@ -943,6 +970,18 @@ export default function CustomCheckoutPage() {
           </div>
         </div>
       </div>
+
+      <MotionFeedbackOverlay
+        open={loading}
+        status={submitFeedbackStatus}
+        successVariant="filled"
+        message={
+          submitFeedbackStatus === "success"
+            ? "Request submitted successfully"
+            : "Submitting request..."
+        }
+        blocking
+      />
     </div>
   );
 }

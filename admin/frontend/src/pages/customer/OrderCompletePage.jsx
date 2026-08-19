@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronRight, Check, ShoppingBag } from "lucide-react";
+import { ChevronRight, ShoppingBag } from "lucide-react";
 import "./cart.css";
 
 const CONFIRMATION_KEY = "wisdom_last_order_confirmation";
@@ -110,8 +110,19 @@ export default function OrderCompletePage() {
       </div>
 
       <section className="order-complete-content">
-        <div className="order-complete-success-icon" aria-hidden="true">
-          <Check size={34} strokeWidth={2.2} />
+        <div
+          className="order-complete-success-icon order-complete-success-animated"
+          aria-hidden="true"
+        >
+          <svg
+            className="order-complete-success-check-svg"
+            viewBox="0 0 24 24"
+          >
+            <path
+              className="order-complete-success-check-path"
+              d="m5.5 12.5 4 4 9-10"
+            />
+          </svg>
         </div>
 
         <h1>{isPaidOnline ? "Payment successful" : "Thank you for your purchase"}</h1>

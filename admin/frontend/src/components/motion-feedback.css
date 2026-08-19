@@ -82,6 +82,31 @@
   stroke-dashoffset: 26;
   animation: wisdomMotionSuccessCheckDraw 160ms ease-out forwards;
 }
+
+/* Checkout/custom-request success: spinner -> filled black confirmation. */
+.wisdom-motion-success-icon.is-filled {
+  width: 44px;
+  height: 44px;
+}
+
+.wisdom-motion-success-circle.is-filled {
+  background: #111111;
+  border-color: #111111;
+  opacity: 0;
+  transform: scale(0.72);
+  animation: wisdomMotionFilledCircleIn 260ms cubic-bezier(0.22, 1, 0.36, 1)
+    forwards;
+}
+
+.wisdom-motion-success-check.is-filled {
+  stroke: #ffffff;
+}
+
+.wisdom-motion-success-icon.is-filled .wisdom-motion-success-check-path {
+  stroke-dasharray: 26;
+  stroke-dashoffset: 26;
+  animation: wisdomMotionFilledCheckDraw 240ms 170ms ease-out forwards;
+}
 @keyframes wisdomMotionSpin {
   to {
     transform: rotate(360deg);
@@ -90,6 +115,30 @@
 
 
 @keyframes wisdomMotionSuccessCheckDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes wisdomMotionFilledCircleIn {
+  0% {
+    opacity: 0.35;
+    transform: scale(0.72);
+    background: transparent;
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.04);
+    background: #111111;
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    background: #111111;
+  }
+}
+
+@keyframes wisdomMotionFilledCheckDraw {
   to {
     stroke-dashoffset: 0;
   }

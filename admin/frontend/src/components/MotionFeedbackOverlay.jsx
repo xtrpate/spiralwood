@@ -19,8 +19,10 @@ export function MotionFeedbackOverlay({
   status = "loading",
   message,
   blocking = false,
+  successVariant = "outline",
 }) {
   const success = status === "success";
+  const filledSuccess = success && successVariant === "filled";
 
   if (!open) return null;
 
@@ -33,10 +35,21 @@ export function MotionFeedbackOverlay({
     >
       <div className="wisdom-motion-feedback-content">
         {success ? (
-          <span className="wisdom-motion-success-icon" aria-hidden="true">
-            <span className="wisdom-motion-success-circle" />
+          <span
+            className={`wisdom-motion-success-icon ${
+              filledSuccess ? "is-filled" : ""
+            }`}
+            aria-hidden="true"
+          >
+            <span
+              className={`wisdom-motion-success-circle ${
+                filledSuccess ? "is-filled" : ""
+              }`}
+            />
             <svg
-              className="wisdom-motion-success-check"
+              className={`wisdom-motion-success-check ${
+                filledSuccess ? "is-filled" : ""
+              }`}
               viewBox="0 0 24 24"
             >
               <path

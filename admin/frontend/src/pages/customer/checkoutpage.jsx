@@ -6,6 +6,10 @@ import { ChevronRight } from "lucide-react";
 import useAuthStore from "../../store/authStore";
 import toast from "react-hot-toast";
 import LocationPicker from "../../components/LocationPicker";
+import {
+  MotionFeedbackOverlay,
+  getMotionFeedbackDurations,
+} from "../../components/MotionFeedbackOverlay";
 import "./customizepage.css";
 import "./cart.css";
 
@@ -97,6 +101,8 @@ export default function CheckoutPage() {
   const [checkoutItems, setCheckoutItems] = useState([]);
   const [selectionReady, setSelectionReady] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkoutFeedbackStatus, setCheckoutFeedbackStatus] =
+    useState("loading");
 
   const [checkoutNote, setCheckoutNote] = useState("");
   useEffect(() => {
@@ -360,6 +366,9 @@ export default function CheckoutPage() {
       formData.append("delivery_lng", String(deliveryPin.lng));
     }
 
+    const feedbackDurations = getMotionFeedbackDurations();
+    const feedbackStartedAt = Date.now();
+    setCheckoutFeedbackStatus("loading");
     setLoading(true);
 
     try {
@@ -422,6 +431,25 @@ export default function CheckoutPage() {
         .filter(Boolean);
       removeMany(submittedKeys);
       sessionStorage.removeItem("cust_selected_keys");
+
+      const remainingLoadingMs = Math.max(
+        0,
+        feedbackDurations.loading - (Date.now() - feedbackStartedAt),
+      );
+
+      if (remainingLoadingMs > 0) {
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, remainingLoadingMs),
+        );
+      }
+
+      setCheckoutFeedbackStatus("success");
+
+      const visibleSuccessMs = Math.max(feedbackDurations.success, 700);
+
+      await new Promise((resolve) =>
+        window.setTimeout(resolve, visibleSuccessMs),
+      );
 
       if (res?.data?.payment_url) {
         window.location.assign(res.data.payment_url);
@@ -1028,6 +1056,18 @@ export default function CheckoutPage() {
           </div>
         </div>
       )}
+
+      <MotionFeedbackOverlay
+        open={loading}
+        status={checkoutFeedbackStatus}
+        successVariant="filled"
+        message={
+          checkoutFeedbackStatus === "success"
+            ? "Order placed successfully"
+            : "Placing order..."
+        }
+        blocking
+      />
     </div>
   );
 }

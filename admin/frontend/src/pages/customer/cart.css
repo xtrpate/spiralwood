@@ -3072,3 +3072,61 @@
 .fm-cart-thumb.is-blueprint-preview .cust-viewer-stage {
   overflow: hidden !important;
 }
+/* WISDOM ORDER COMPLETE SUCCESS MOTION V1.0.3 START */
+.order-complete-success-icon.order-complete-success-animated {
+  transform-origin: center;
+  animation: wisdomOrderCompleteSuccessIn 520ms
+    cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.order-complete-success-check-svg {
+  width: 34px;
+  height: 34px;
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.order-complete-success-check-path {
+  stroke-dasharray: 30;
+  stroke-dashoffset: 30;
+  animation: wisdomOrderCompleteCheckDraw 340ms 250ms ease-out forwards;
+}
+
+@keyframes wisdomOrderCompleteSuccessIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+
+  68% {
+    opacity: 1;
+    transform: scale(1.07);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes wisdomOrderCompleteCheckDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .order-complete-success-icon.order-complete-success-animated {
+    animation-duration: 360ms;
+    animation-timing-function: ease-out;
+  }
+
+  .order-complete-success-check-path {
+    animation-duration: 300ms;
+    animation-delay: 160ms;
+  }
+}
+/* WISDOM ORDER COMPLETE SUCCESS MOTION V1.0.3 END */
