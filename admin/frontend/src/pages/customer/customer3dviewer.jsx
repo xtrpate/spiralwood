@@ -682,11 +682,7 @@ export default function Customer3DViewer({
     // Reduce flat ambient wash while preserving the existing material system.
     scene.add(new THREE.AmbientLight(0xffffff, 1.08));
 
-    const hemisphereLight = new THREE.HemisphereLight(
-      0xfffdf8,
-      0xd8c5aa,
-      0.82,
-    );
+    const hemisphereLight = new THREE.HemisphereLight(0xfffdf8, 0xd8c5aa, 0.82);
     scene.add(hemisphereLight);
 
     const keyLight = new THREE.DirectionalLight(0xfffbf5, 2.15);
@@ -776,7 +772,7 @@ export default function Customer3DViewer({
         const pH = new THREE.Vector3(
           box.max.x + offset,
           (box.min.y + box.max.y) / 2,
-          box.max.z,
+          box.min.z - offset,
         );
         const pD = new THREE.Vector3(
           box.max.x + offset,
@@ -1067,94 +1063,71 @@ export default function Customer3DViewer({
       const tick = 25;
       const linePoints = [];
 
+      // 1. WIDTH LINE (Front Bottom)
       linePoints.push(
         boundsBox.min.x,
         boundsBox.min.y,
         boundsBox.max.z + offset,
-      );
-      linePoints.push(
         boundsBox.max.x,
         boundsBox.min.y,
         boundsBox.max.z + offset,
-      );
-      linePoints.push(
+        // Width Ticks
         boundsBox.min.x,
         boundsBox.min.y,
         boundsBox.max.z + offset - tick,
-      );
-      linePoints.push(
         boundsBox.min.x,
         boundsBox.min.y,
         boundsBox.max.z + offset + tick,
-      );
-      linePoints.push(
         boundsBox.max.x,
         boundsBox.min.y,
         boundsBox.max.z + offset - tick,
-      );
-      linePoints.push(
         boundsBox.max.x,
         boundsBox.min.y,
         boundsBox.max.z + offset + tick,
       );
 
+      // 2. HEIGHT LINE (Back Right Corner)
+      const backZ = boundsBox.min.z - offset;
       linePoints.push(
         boundsBox.max.x + offset,
         boundsBox.min.y,
-        boundsBox.max.z,
-      );
-      linePoints.push(
+        backZ,
         boundsBox.max.x + offset,
         boundsBox.max.y,
-        boundsBox.max.z,
-      );
-      linePoints.push(
+        backZ,
+        // Height Ticks
         boundsBox.max.x + offset - tick,
         boundsBox.min.y,
-        boundsBox.max.z,
-      );
-      linePoints.push(
+        backZ,
         boundsBox.max.x + offset + tick,
         boundsBox.min.y,
-        boundsBox.max.z,
-      );
-      linePoints.push(
+        backZ,
         boundsBox.max.x + offset - tick,
         boundsBox.max.y,
-        boundsBox.max.z,
-      );
-      linePoints.push(
+        backZ,
         boundsBox.max.x + offset + tick,
         boundsBox.max.y,
-        boundsBox.max.z,
+        backZ,
       );
 
+      // 3. DEPTH LINE (Right Side Bottom)
       linePoints.push(
         boundsBox.max.x + offset,
         boundsBox.min.y,
         boundsBox.min.z,
-      );
-      linePoints.push(
         boundsBox.max.x + offset,
         boundsBox.min.y,
         boundsBox.max.z,
-      );
-      linePoints.push(
+        // Depth Ticks
         boundsBox.max.x + offset - tick,
         boundsBox.min.y,
         boundsBox.min.z,
-      );
-      linePoints.push(
         boundsBox.max.x + offset + tick,
         boundsBox.min.y,
         boundsBox.min.z,
-      );
-      linePoints.push(
         boundsBox.max.x + offset - tick,
         boundsBox.min.y,
         boundsBox.max.z,
-      );
-      linePoints.push(
         boundsBox.max.x + offset + tick,
         boundsBox.min.y,
         boundsBox.max.z,
@@ -1169,9 +1142,8 @@ export default function Customer3DViewer({
       const dimensionLines = new THREE.LineSegments(lineGeo, lineMat);
       rootGroup.add(dimensionLines);
     }
-  }, [components]); // 👉 Separated to stop disappearing bug
+  }, [components]);
 
-  // 👉 SEPARATE EFFECT JUST FOR HIGHLIGHTS
   useEffect(() => {
     if (!sceneRef.current || !rootGroupRef.current) return;
 
@@ -1602,7 +1574,6 @@ export default function Customer3DViewer({
   const undoDisabled = !historyRef.current.past.length;
   const redoDisabled = !historyRef.current.future.length;
 
-
   return (
     <div style={styles.root}>
       <div style={styles.topBar}>
@@ -1663,7 +1634,6 @@ export default function Customer3DViewer({
             ))}
           </div>
         </div>
-
       </div>
 
       <div
@@ -1684,8 +1654,14 @@ export default function Customer3DViewer({
         >
           {!readOnly ? (
             <>
-              <div style={styles.customizeViewerControls}>
-                <div style={styles.customizeViewerControlRow}>
+              <div
+                style={styles.customizeViewerControls}
+                className="cust-mobile-controls"
+              >
+                <div
+                  style={styles.customizeViewerControlRow}
+                  className="cust-mobile-control-row"
+                >
                   <div
                     style={{
                       ...styles.cameraToolbar,
@@ -1700,9 +1676,7 @@ export default function Customer3DViewer({
                           onClick={() => changeCameraView(view)}
                           style={{
                             ...styles.cameraBtn,
-                            ...(view === "Bottom"
-                              ? styles.cameraBtnLast
-                              : {}),
+                            ...(view === "Bottom" ? styles.cameraBtnLast : {}),
                             ...(activeView === view
                               ? styles.cameraBtnActive
                               : {}),
@@ -1714,7 +1688,10 @@ export default function Customer3DViewer({
                     )}
                   </div>
 
-                  <div style={styles.customizeProgressArea}>
+                  <div
+                    style={styles.customizeProgressArea}
+                    className="cust-mobile-hide"
+                  >
                     <div style={styles.customizeProgressHeader}>
                       <div>
                         <div style={styles.customizeProgressEyebrow}>
@@ -1731,10 +1708,8 @@ export default function Customer3DViewer({
                       <div style={styles.customizeSteps}>
                         {CUSTOMIZE_GUIDE_STEPS.map((step, index) => {
                           const stepNumber = index + 1;
-                          const isComplete =
-                            stepNumber < customizeProgressStep;
-                          const isActive =
-                            stepNumber === customizeProgressStep;
+                          const isComplete = stepNumber < customizeProgressStep;
+                          const isActive = stepNumber === customizeProgressStep;
 
                           return (
                             <div key={step.label} style={styles.customizeStep}>
@@ -1753,8 +1728,7 @@ export default function Customer3DViewer({
                                   {isComplete ? "✓" : stepNumber}
                                 </span>
 
-                                {index <
-                                CUSTOMIZE_GUIDE_STEPS.length - 1 ? (
+                                {index < CUSTOMIZE_GUIDE_STEPS.length - 1 ? (
                                   <span
                                     style={{
                                       ...styles.customizeStepLine,
@@ -1784,7 +1758,10 @@ export default function Customer3DViewer({
                   </div>
                 </div>
 
-                <div style={styles.customizeGuideDock}>
+                <div
+                  style={styles.customizeGuideDock}
+                  className="cust-mobile-guide-dock"
+                >
                   <button
                     type="button"
                     onClick={openCustomizeGuide}
@@ -1794,7 +1771,10 @@ export default function Customer3DViewer({
                   </button>
 
                   {showCustomizeGuide ? (
-                    <div style={styles.customizeGuideCard}>
+                    <div
+                      style={styles.customizeGuideCard}
+                      className="cust-mobile-guide-card"
+                    >
                       <div style={styles.customizeGuideCardTop}>
                         <div>
                           <div style={styles.customizeGuideStepMeta}>
@@ -1802,10 +1782,7 @@ export default function Customer3DViewer({
                             {CUSTOMIZE_GUIDE_STEPS.length}
                           </div>
                           <div style={styles.customizeGuideTitle}>
-                            {
-                              CUSTOMIZE_GUIDE_STEPS[customizeGuideStep]
-                                .title
-                            }
+                            {CUSTOMIZE_GUIDE_STEPS[customizeGuideStep].title}
                           </div>
                         </div>
 
@@ -1819,10 +1796,7 @@ export default function Customer3DViewer({
                       </div>
 
                       <div style={styles.customizeGuideInstruction}>
-                        {
-                          CUSTOMIZE_GUIDE_STEPS[customizeGuideStep]
-                            .instruction
-                        }
+                        {CUSTOMIZE_GUIDE_STEPS[customizeGuideStep].instruction}
                       </div>
 
                       <div style={styles.customizeGuideActions}>
@@ -1895,12 +1869,8 @@ export default function Customer3DViewer({
                       onClick={() => changeCameraView(view)}
                       style={{
                         ...styles.cameraBtn,
-                        ...(view === "Bottom"
-                          ? styles.cameraBtnLast
-                          : {}),
-                        ...(activeView === view
-                          ? styles.cameraBtnActive
-                          : {}),
+                        ...(view === "Bottom" ? styles.cameraBtnLast : {}),
+                        ...(activeView === view ? styles.cameraBtnActive : {}),
                       }}
                     >
                       {view}
@@ -2024,7 +1994,6 @@ export default function Customer3DViewer({
             }}
           >
             <div style={styles.sidebarScroll}>
-
               <div style={styles.customizeOptionalToolsHeading}>
                 <span style={styles.customizeOptionalToolsTitle}>
                   Optional Tools
@@ -2635,6 +2604,37 @@ export default function Customer3DViewer({
           </aside>
         )}
       </div>
+
+      <style>{`
+        @media (max-width: 960px) {
+          .cust-mobile-hide {
+            display: none !important;
+          }
+          .cust-mobile-controls {
+            display: flex !important;
+            flex-direction: row !important;
+            justify-content: space-between !important;
+            align-items: center !important;
+            padding: 10px 12px !important;
+          }
+          .cust-mobile-control-row {
+            grid-template-columns: 1fr !important;
+            gap: 0 !important;
+            display: block !important;
+          }
+          .cust-mobile-guide-dock {
+            padding-top: 0 !important;
+            margin: 0 !important;
+            justify-items: end !important;
+          }
+          /* Anchors the popup card safely to the right edge so it doesn't spill off screen */
+          .cust-mobile-guide-card {
+            left: auto !important;
+            right: 0 !important;
+            width: min(340px, calc(100vw - 24px)) !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
@@ -3347,7 +3347,7 @@ const styles = {
   customizeOptionalSection: {
     order: 5,
     background: "#fafafa",
-    borderColor: "#e5e7eb",
+    border: "1px solid #e5e7eb",
     minHeight: 72,
     height: "100%",
   },
@@ -3355,7 +3355,7 @@ const styles = {
   customizeHumanSection: {
     order: 6,
     background: "#fafafa",
-    borderColor: "#e5e7eb",
+    border: "1px solid #e5e7eb",
     minHeight: 72,
     height: "100%",
   },
@@ -3371,7 +3371,7 @@ const styles = {
   },
 
   sidebarSectionActive: {
-    borderColor: "#111111",
+    border: "1px solid #111111",
   },
 
   customizeActiveSection: {
@@ -3727,6 +3727,9 @@ const styles = {
     height: "auto",
     overflow: "visible",
     borderTop: "1px solid #d9dee4",
+    borderRight: "1px solid transparent",
+    borderBottom: "1px solid transparent",
+    borderLeft: "1px solid transparent",
     background: "#ffffff",
     padding: "8px 9px 12px",
     display: "grid",
@@ -3737,7 +3740,10 @@ const styles = {
   },
 
   customizeActiveFooter: {
-    border: "2px solid #111111",
+    borderTop: "2px solid #111111",
+    borderRight: "2px solid #111111",
+    borderBottom: "2px solid #111111",
+    borderLeft: "2px solid #111111",
     background: "#ffffff",
     boxShadow: "none",
   },
