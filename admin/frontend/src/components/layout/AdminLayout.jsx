@@ -7,6 +7,10 @@ import useAuthStore from "../../store/authStore";
 import toast from "react-hot-toast";
 import { useCart } from "../../pages/customer/cartcontext";
 import NotificationBell from "../NotificationBell";
+import {
+  MotionFeedbackOverlay,
+  getMotionFeedbackDurations,
+} from "../MotionFeedbackOverlay";
 
 import "./AdminLayout.css";
 import adminSystemIcon from "../../assets/admin-system-icon.png";
@@ -178,6 +182,8 @@ export default function AdminLayout() {
   }, [location.pathname]);
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [logoutFeedbackStatus, setLogoutFeedbackStatus] = useState("loading");
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
@@ -233,10 +239,25 @@ export default function AdminLayout() {
   };
 
   const confirmLogout = () => {
+    if (signingOut) return;
+
     setShowLogoutModal(false);
-    logout();
-    clearCart(false);
-    navigate("/login");
+    setLogoutFeedbackStatus("loading");
+    setSigningOut(true);
+
+    const durations = getMotionFeedbackDurations();
+
+    window.setTimeout(() => {
+      setLogoutFeedbackStatus("success");
+
+      window.setTimeout(() => {
+        setSigningOut(false);
+        setLogoutFeedbackStatus("loading");
+        logout();
+        clearCart(false);
+        navigate("/login", { replace: true });
+      }, durations.success);
+    }, durations.loading);
   };
 
   const visibleItems = NAV_ITEMS.filter(
@@ -724,6 +745,16 @@ export default function AdminLayout() {
           </div>
         </div>
       )}{" "}
+      <MotionFeedbackOverlay
+        open={signingOut}
+        status={logoutFeedbackStatus}
+        message={
+          logoutFeedbackStatus === "success"
+            ? "Logout successful"
+            : "Logging out..."
+        }
+        blocking
+      />
     </div>
   );
 }

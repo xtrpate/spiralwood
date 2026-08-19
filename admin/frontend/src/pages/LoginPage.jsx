@@ -80,6 +80,12 @@ export default function LoginPage() {
     //   return;
     // }
 
+    try {
+      sessionStorage.removeItem("wisdom_login_feedback");
+    } catch {
+      // Login should still work if browser storage is unavailable.
+    }
+
     setLoading(true);
 
     const redirectTo = location.state?.from?.pathname
@@ -89,6 +95,12 @@ export default function LoginPage() {
     try {
       const user = await login(form.email, form.password, rememberMe, captchaToken);
 
+      try {
+        sessionStorage.setItem("wisdom_login_feedback", "success");
+      } catch {
+        // Navigation should not depend on browser storage.
+      }
+
       const nextRoute =
         user?.role === "customer"
           ? getCustomerPostLoginRoute(redirectTo)
@@ -96,6 +108,12 @@ export default function LoginPage() {
 
       navigate(nextRoute, { replace: true });
     } catch (err) {
+      try {
+        sessionStorage.removeItem("wisdom_login_feedback");
+      } catch {
+        // Keep the original login error path intact.
+      }
+
       const code = err?.response?.data?.code;
       const emailFromServer = err?.response?.data?.email;
 
@@ -129,7 +147,7 @@ export default function LoginPage() {
           </button>
 
           <div className="auth-card-header">
-            <h2>SIGN IN</h2>
+            <h2>LOGIN</h2>
           </div>
 
           <form className="auth-form" onSubmit={handleSubmit}>
@@ -238,7 +256,7 @@ export default function LoginPage() {
                   Logging in...
                 </>
               ) : (
-                "Log in"
+                "Login"
               )}
             </button>
 

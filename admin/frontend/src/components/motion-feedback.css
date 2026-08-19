@@ -1,0 +1,163 @@
+.wisdom-motion-feedback {
+  position: fixed;
+  inset: 0;
+  z-index: 30000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  pointer-events: none;
+  animation: wisdomMotionBackdropIn 180ms ease-out both;
+}
+
+.wisdom-motion-feedback.is-blocking {
+  pointer-events: auto;
+}
+
+.wisdom-motion-feedback-content {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-width: 150px;
+  color: #111111;
+  text-align: center;
+  animation: wisdomMotionContentIn 220ms ease-out both;
+}
+
+.wisdom-motion-feedback-message {
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+
+.wisdom-motion-feedback-message-reveal {
+  animation: wisdomMotionMessageReveal 180ms ease-out both;
+}
+.wisdom-motion-spinner {
+  width: 38px;
+  height: 38px;
+  border: 3px solid #d4d4d8;
+  border-top-color: #111111;
+  border-radius: 50%;
+  animation: wisdomMotionSpin 700ms linear infinite;
+}
+
+.wisdom-motion-success-icon {
+  position: relative;
+  width: 50px;
+  height: 50px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wisdom-motion-success-circle {
+  position: absolute;
+  inset: 0;
+  border: 3px solid #111111;
+  border-radius: 50%;
+}
+
+.wisdom-motion-success-check {
+  position: relative;
+  width: 25px;
+  height: 25px;
+  fill: none;
+  stroke: #111111;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.wisdom-motion-success-check-path {
+  stroke-dasharray: 26;
+  stroke-dashoffset: 26;
+  animation: wisdomMotionSuccessCheckDraw 160ms ease-out forwards;
+}
+@keyframes wisdomMotionSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+@keyframes wisdomMotionSuccessCheckDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes wisdomMotionMessageReveal {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+
+@keyframes wisdomMotionDraw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes wisdomMotionBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes wisdomMotionContentIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /*
+   * Keep the spinner, success ring, and check draw active.
+   * Those are essential state/progress indicators, not decorative motion.
+   * Only suppress the larger backdrop/content entrance movement.
+   */
+  .wisdom-motion-feedback,
+  .wisdom-motion-feedback-content {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .wisdom-motion-feedback-content {
+    transform: none;
+  }
+
+  .wisdom-motion-feedback-message-reveal {
+    animation-duration: 120ms;
+  }
+
+  .wisdom-motion-spinner {
+    animation-duration: 550ms;
+  }
+
+
+  .wisdom-motion-success-check-path {
+    animation-duration: 160ms;
+  }
+}

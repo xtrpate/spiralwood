@@ -37,6 +37,10 @@ import "./customerlayout.css";
 import "./profile.css";
 import CustomerNotificationBell from "../../components/CustomerNotificationBell";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
+import {
+  MotionFeedbackOverlay,
+  getMotionFeedbackDurations,
+} from "../../components/MotionFeedbackOverlay";
 
 const navItems = [
   { to: "/", icon: Home, label: "Home" },
@@ -127,6 +131,8 @@ export default function CustomerLayout() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [activeOrdersCount, setActiveOrdersCount] = useState(0);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [logoutFeedbackStatus, setLogoutFeedbackStatus] = useState("loading");
   const [itemToRemove, setItemToRemove] = useState(null);
   const [siteSettings, setSiteSettings] = useState(null);
   const isTrue = (val) =>
@@ -462,17 +468,34 @@ export default function CustomerLayout() {
   ].filter((item) => item.url);
 
   const handleLogout = () => {
+    if (signingOut) return;
+
     setAccountOpen(false);
     setMenuOpen(false);
     closeMiniCart();
     setLogoutConfirmOpen(false);
+    setLogoutFeedbackStatus("loading");
+    setSigningOut(true);
 
-    // clear visible cart only on logout
-    // keep saved customer cart backup + cloud cart intact
-    clearCart(false);
+    const durations = getMotionFeedbackDurations();
 
-    logout();
-    navigate("/login", { replace: true });
+    window.setTimeout(() => {
+      setLogoutFeedbackStatus("success");
+
+      window.setTimeout(() => {
+        // clear visible cart only on logout
+        // keep saved customer cart backup + cloud cart intact
+        clearCart(false);
+
+        // /login stays inside CustomerLayout, so clear transient motion
+        // state before navigation or the success overlay can remain stuck.
+        setSigningOut(false);
+        setLogoutFeedbackStatus("loading");
+
+        logout();
+        navigate("/login", { replace: true });
+      }, durations.success);
+    }, durations.loading);
   };
 
   const openLogoutConfirm = () => {
@@ -610,7 +633,7 @@ export default function CustomerLayout() {
   const isMixedCart = hasBlueprintItems && hasStandardItems;
 
   const miniCartCheckoutLabel = !customerUser
-    ? "Sign in to Continue"
+    ? "Login to Continue"
     : isMixedCart
       ? "Review in Cart"
       : hasBlueprintItems && blueprintItemCount > 1
@@ -1095,7 +1118,7 @@ export default function CustomerLayout() {
                         }}
                       >
                         <LogIn size={16} />
-                        <span>Sign In</span>
+                        <span>Login</span>
                       </button>
 
                       <button
@@ -1538,6 +1561,17 @@ export default function CustomerLayout() {
           </div>
         </div>
       )}
+
+      <MotionFeedbackOverlay
+        open={signingOut}
+        status={logoutFeedbackStatus}
+        message={
+          logoutFeedbackStatus === "success"
+            ? "Logout successful"
+            : "Logging out..."
+        }
+        blocking
+      />
 
       {itemToRemove && (
         <div

@@ -20,12 +20,18 @@ import "./POSLayout.css";
 import useAuthStore from "../../store/authStore";
 import { useCart } from "../../pages/customer/cartcontext";
 import NotificationBell from "../../components/NotificationBell";
+import {
+  MotionFeedbackOverlay,
+  getMotionFeedbackDurations,
+} from "../../components/MotionFeedbackOverlay";
 
 export default function POSLayout() {
   const { user, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
   const [showMiniLogout, setShowMiniLogout] = useState(false);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [logoutFeedbackStatus, setLogoutFeedbackStatus] = useState("loading");
   const { clearCart } = useCart();
 
   const isAdmin = user?.role === "admin";
@@ -122,10 +128,25 @@ export default function POSLayout() {
             : "System";
 
   const handleLogout = () => {
+    if (signingOut) return;
+
     setLogoutConfirmOpen(false);
-    logout();
-    clearCart(false);
-    window.location.href = "/login";
+    setLogoutFeedbackStatus("loading");
+    setSigningOut(true);
+
+    const durations = getMotionFeedbackDurations();
+
+    window.setTimeout(() => {
+      setLogoutFeedbackStatus("success");
+
+      window.setTimeout(() => {
+        setSigningOut(false);
+        setLogoutFeedbackStatus("loading");
+        logout();
+        clearCart(false);
+        window.location.href = "/login";
+      }, durations.success);
+    }, durations.loading);
   };
 
   const openLogoutConfirm = () => {
@@ -400,6 +421,17 @@ export default function POSLayout() {
           </div>
         </div>
       )}
+
+      <MotionFeedbackOverlay
+        open={signingOut}
+        status={logoutFeedbackStatus}
+        message={
+          logoutFeedbackStatus === "success"
+            ? "Logout successful"
+            : "Logging out..."
+        }
+        blocking
+      />
     </div>
   );
 }
