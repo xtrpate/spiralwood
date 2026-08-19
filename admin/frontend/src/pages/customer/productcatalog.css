@@ -2031,11 +2031,10 @@
    ========================================================================== */
 
 .mobile-filter-toggle {
-  display: none; /* Hidden on desktop */
+  display: none;
 }
 
 @media (max-width: 780px) {
-  /* Hide desktop sidebar and header sort dropdown */
   .catalog-sidebar {
     display: none !important;
   }
@@ -2047,17 +2046,26 @@
   .catalog-toolbar {
     display: flex !important;
     flex-direction: row !important;
-    flex-wrap: nowrap !important;
+    flex-wrap: wrap !important;
     align-items: center !important;
     justify-content: space-between !important;
     width: 100% !important;
     gap: 10px !important;
   }
 
+  .catalog-clear-inline {
+    width: 100% !important;
+    order: -1 !important;
+    text-align: right !important;
+    min-height: auto !important;
+    padding: 0 4px 0 0 !important;
+    margin-bottom: 12px !important;
+  }
+
   .catalog-search-shell {
     flex: 1 1 auto !important;
-    width: 100% !important;
-    max-width: none !important; /* Forces it to fill the space */
+    width: auto !important;
+    max-width: none !important;
   }
 
   .catalog-search input {
@@ -2083,10 +2091,6 @@
   .mobile-filter-toggle:active,
   .mobile-filter-toggle:focus {
     border-color: #111111;
-  }
-
-  .catalog-clear-inline {
-    width: 100% !important;
   }
 
   /* Mobile Filter Modal */

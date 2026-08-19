@@ -246,10 +246,10 @@ export default function ProductCatalog() {
   }, [search, catFilter, stockFilter, priceMin, priceMax, sortBy]);
 
   useEffect(() => {
+    if (mobileFilterOpen) return;
     const timer = setTimeout(fetchProducts, 300);
     return () => clearTimeout(timer);
-  }, [fetchProducts]);
-
+  }, [fetchProducts, mobileFilterOpen]);
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const q = params.get("q") || "";
@@ -279,9 +279,7 @@ export default function ProductCatalog() {
         (cat) => String(cat.id) === requestedCategoryId,
       );
 
-      setCatFilter(
-        idMatch ? String(idMatch.id) : UNMATCHED_CATEGORY_FILTER,
-      );
+      setCatFilter(idMatch ? String(idMatch.id) : UNMATCHED_CATEGORY_FILTER);
       setUrlMapped(true);
       return;
     }
@@ -289,13 +287,12 @@ export default function ProductCatalog() {
     if (categoryName) {
       const match = categories.find(
         (cat) =>
-          String(cat.name || "").trim().toLowerCase() ===
-          categoryName.trim().toLowerCase(),
+          String(cat.name || "")
+            .trim()
+            .toLowerCase() === categoryName.trim().toLowerCase(),
       );
 
-      setCatFilter(
-        match ? String(match.id) : UNMATCHED_CATEGORY_FILTER,
-      );
+      setCatFilter(match ? String(match.id) : UNMATCHED_CATEGORY_FILTER);
     } else {
       setCatFilter("all");
     }
@@ -447,9 +444,7 @@ export default function ProductCatalog() {
     ((normalizedMax - sliderMin) / (safeSliderMax - sliderMin)) * 100;
 
   const selectedStock = Number(selected?.stock || 0);
-  const selectedUnavailable = selected
-    ? isProductUnavailable(selected)
-    : false;
+  const selectedUnavailable = selected ? isProductUnavailable(selected) : false;
 
   const detailRows = selected
     ? [
@@ -923,11 +918,17 @@ export default function ProductCatalog() {
             </div>
 
             <div className="mobile-filter-footer">
-              {hasActiveFilters && (
-                <button className="clear-filters" onClick={clearFilters}>
-                  Clear All Filters
-                </button>
-              )}
+              <button
+                className="clear-filters"
+                onClick={clearFilters}
+                disabled={!hasActiveFilters}
+                style={{
+                  opacity: hasActiveFilters ? 1 : 0.4,
+                  cursor: hasActiveFilters ? "pointer" : "not-allowed",
+                }}
+              >
+                Clear All Filters
+              </button>
               <button
                 className="price-apply-btn"
                 onClick={() => setMobileFilterOpen(false)}
