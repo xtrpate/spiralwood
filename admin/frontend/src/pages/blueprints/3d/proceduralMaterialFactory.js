@@ -340,9 +340,22 @@ function createTexturePair(profile, direction, role) {
 
   const map = new THREE.CanvasTexture(canvas);
   map.colorSpace = THREE.SRGBColorSpace;
-  map.wrapS = THREE.RepeatWrapping;
-  map.wrapT = THREE.RepeatWrapping;
-  map.repeat.set(3.5, 3.5);
+
+  // WISDOM WOOD TEXTURE SEAM FIX V1
+  // The generated wood canvas does not have matching opposite edges.
+  // Mirrored wrapping joins the same edge pixels together for wood-like
+  // materials, removing the obvious rectangular cut-and-paste seams.
+  const isWoodLike = ["wood", "plywood", "laminate"].includes(profile.kind);
+  map.wrapS = isWoodLike
+    ? THREE.MirroredRepeatWrapping
+    : THREE.RepeatWrapping;
+  map.wrapT = isWoodLike
+    ? THREE.MirroredRepeatWrapping
+    : THREE.RepeatWrapping;
+
+  // Keep visible grain, but reduce how often the texture tile repeats.
+  const repeatScale = isWoodLike ? 2.2 : 3.5;
+  map.repeat.set(repeatScale, repeatScale);
   map.center.set(0.5, 0.5);
   map.rotation = getGrainRotation(direction);
   map.anisotropy = 4;
@@ -373,7 +386,7 @@ function getSurfaceDefaults(profile, role) {
         metalness: 0.01,
         clearcoat: normalizedRole === "front" ? 0.2 : 0.08,
         clearcoatRoughness: 0.42,
-        bumpScale: 0.65,
+        bumpScale: 0.28,
         reflectivity: 0.42,
       };
     case "plywood":
