@@ -230,6 +230,12 @@ const hasExactAdmin3DSource = (blueprint = {}) => {
 // WISDOM PERSISTENT GENERATED PREVIEW CACHE V1.0.6
 const COMPACT_PREVIEW_CACHE_PREFIX = "wisdom:generated-blueprint-preview:v3:";
 
+// WISDOM COMPACT HD PREVIEW CACHE VERSION V1
+// Included in the hashed key so previously cached 1x / 0.90-quality
+// snapshots regenerate automatically while remaining eligible for
+// the existing prefix-based cache pruning.
+const COMPACT_PREVIEW_RENDER_VERSION = "hd-2x-webp96-v1";
+
 const compactPreviewHash = (value = "") => {
   const text = String(value || "");
   let hash = 2166136261;
@@ -264,7 +270,12 @@ const buildCompactPreviewCacheKey = (
   return (
     COMPACT_PREVIEW_CACHE_PREFIX +
     compactPreviewHash(
-      [preset, compactHeight, geometrySource].join("|"),
+      [
+        preset,
+        compactHeight,
+        COMPACT_PREVIEW_RENDER_VERSION,
+        geometrySource,
+      ].join("|"),
     )
   );
 };
@@ -569,10 +580,17 @@ export default function CustomerBlueprintViewer({
       preserveDrawingBuffer: compact,
     });
 
-    renderer.setSize(width, height);
+    // WISDOM COMPACT STATIC HD RENDER V1
+    // Compact mode exists only long enough to capture one cached image.
+    // Render that one frame at 2x so the furniture remains crisp when the
+    // snapshot is displayed across the full card width. Non-compact viewer
+    // behavior is preserved exactly.
     renderer.setPixelRatio(
-      Math.min(window.devicePixelRatio || 1, compact ? 1.3 : 1.8),
+      compact
+        ? 2
+        : Math.min(window.devicePixelRatio || 1, 1.8),
     );
+    renderer.setSize(width, height);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -887,9 +905,11 @@ export default function CustomerBlueprintViewer({
           // WISDOM CAPTURE COMPACT RUNTIME PREVIEW V1.0.5
           // Generated from the real Three.js furniture scene; never from
           // blueprint.thumbnail_url / preview_image_url.
+          // HD V1: preserve small furniture edges and wood detail when the
+          // one-time 2x render is compressed into the cached card snapshot.
           const runtimeFrame = renderer.domElement.toDataURL(
             "image/webp",
-            0.9,
+            0.96,
           );
           if (
             runtimeFrame &&

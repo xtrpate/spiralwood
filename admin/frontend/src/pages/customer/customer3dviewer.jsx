@@ -318,6 +318,16 @@ export default function Customer3DViewer({
   const labelWRef = useRef(null);
   const labelHRef = useRef(null);
   const labelDRef = useRef(null);
+
+  // WISDOM CUSTOMER DIMENSION LABEL STABILITY V1
+  // Keep a tiny amount of screen-space history for each floating dimension
+  // label. OrbitControls damping can otherwise produce microscopic sub-pixel
+  // changes every frame that make text look like it is vibrating.
+  const dimensionLabelScreenRef = useRef({
+    width: { x: null, y: null },
+    height: { x: null, y: null },
+    depth: { x: null, y: null },
+  });
   const historyRef = useRef({ past: [], future: [] });
   const customizeFeedbackTimerRef = useRef(null);
   const finishMenuRef = useRef(null);
@@ -781,23 +791,71 @@ export default function Customer3DViewer({
           (box.min.z + box.max.z) / 2,
         );
 
-        const updateDiv = (divRef, vec) => {
-          if (!divRef.current) return;
-          const projected = vec.clone().project(camera);
+        const updateDiv = (divRef, vec, labelKey) => {
+          const element = divRef.current;
+          if (!element) return;
 
-          if (projected.z > 1) {
-            divRef.current.style.display = "none";
+          const projected = vec.clone().project(camera);
+          const screenState = dimensionLabelScreenRef.current[labelKey];
+
+          if (
+            projected.z > 1 ||
+            projected.z < -1 ||
+            !Number.isFinite(projected.x) ||
+            !Number.isFinite(projected.y)
+          ) {
+            element.style.display = "none";
+
+            if (screenState) {
+              screenState.x = null;
+              screenState.y = null;
+            }
             return;
           }
-          divRef.current.style.display = "block";
-          const x = (projected.x * 0.5 + 0.5) * cWidth;
-          const y = (-projected.y * 0.5 + 0.5) * cHeight;
-          divRef.current.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
+
+          const targetX = (projected.x * 0.5 + 0.5) * cWidth;
+          const targetY = (-projected.y * 0.5 + 0.5) * cHeight;
+
+          if (!screenState) return;
+
+          if (
+            !Number.isFinite(screenState.x) ||
+            !Number.isFinite(screenState.y)
+          ) {
+            screenState.x = targetX;
+            screenState.y = targetY;
+          } else {
+            const dx = targetX - screenState.x;
+            const dy = targetY - screenState.y;
+            const travel = Math.hypot(dx, dy);
+
+            // Ignore tiny OrbitControls damping noise. For genuine camera
+            // movement, smoothly follow the projected point without adding
+            // a long, visible lag during faster rotations.
+            if (travel > 0.22) {
+              const follow =
+                travel >= 32 ? 0.82 :
+                travel >= 12 ? 0.64 :
+                0.42;
+
+              screenState.x += dx * follow;
+              screenState.y += dy * follow;
+            }
+          }
+
+          // Quarter-pixel stabilization prevents text rasterization shimmer
+          // while still looking continuous during normal mouse orbiting.
+          const x = Math.round(screenState.x * 4) / 4;
+          const y = Math.round(screenState.y * 4) / 4;
+
+          element.style.display = "block";
+          element.style.transform =
+            `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
         };
 
-        updateDiv(labelWRef, pW);
-        updateDiv(labelHRef, pH);
-        updateDiv(labelDRef, pD);
+        updateDiv(labelWRef, pW, "width");
+        updateDiv(labelHRef, pH, "height");
+        updateDiv(labelDRef, pD, "depth");
       }
     };
     animate();
@@ -3016,7 +3074,10 @@ const styles = {
     fontWeight: "700",
     border: "1px solid #111111",
     pointerEvents: "none",
-    transform: "translate(-50%, -50%)",
+    transform: "translate3d(0, 0, 0) translate(-50%, -50%)",
+    transformOrigin: "50% 50%",
+    willChange: "transform",
+    backfaceVisibility: "hidden",
     display: "none",
     whiteSpace: "nowrap",
     zIndex: 10,
