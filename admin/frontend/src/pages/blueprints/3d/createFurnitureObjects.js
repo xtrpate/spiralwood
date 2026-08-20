@@ -57,6 +57,14 @@ const WARDROBE_PART_SET = new Set([
 // depth-buffer competition while preserving all saved component coordinates.
 const WARDROBE_DOOR_VISUAL_CLEARANCE = 3;
 
+// WISDOM WARDROBE SHELF CONTACT STABILITY V1
+// Internal shelves are saved flush against side/divider/back boundaries.
+// Since every part is a separate closed mesh, those flush end faces can be
+// coplanar and compete in the depth buffer. Keep the real component size
+// unchanged and inset only the rendered shelf by an imperceptible 1 mm per
+// side so orbiting the camera cannot reveal flickering contact faces.
+const WARDROBE_SHELF_VISUAL_CLEARANCE = 1;
+
 function toneColor(color, amount = 0) {
   const c = new THREE.Color(color || "#c08a5a");
 
@@ -275,11 +283,41 @@ function buildWardrobePart3D(root, selectableMeshes, comp, palette, r = 0) {
     return true;
   }
 
+  if (comp.type === "wr_top_shelf" || comp.type === "wr_shelf") {
+    // Render-only clearance: component.width/depth remain untouched, so
+    // measurements, editing, BOM data and saved blueprint coordinates stay exact.
+    const maxWidthClearance = Math.max(0, (w - 1) / 2);
+    const maxDepthClearance = Math.max(0, (d - 1) / 2);
+    const widthClearance = Math.min(
+      WARDROBE_SHELF_VISUAL_CLEARANCE,
+      maxWidthClearance,
+    );
+    const depthClearance = Math.min(
+      WARDROBE_SHELF_VISUAL_CLEARANCE,
+      maxDepthClearance,
+    );
+
+    addBoxPart(
+      root,
+      selectableMeshes,
+      [
+        Math.max(1, w - widthClearance * 2),
+        h,
+        Math.max(1, d - depthClearance * 2),
+      ],
+      [0, 0, 0],
+      faceMat,
+      comp.id,
+      true,
+      Math.min(r, 3),
+    );
+
+    return true;
+  }
+
   if (
     comp.type === "wr_top_panel" ||
     comp.type === "wr_bottom_panel" ||
-    comp.type === "wr_top_shelf" ||
-    comp.type === "wr_shelf" ||
     comp.type === "wr_base_top" ||
     comp.type === "wr_table"
   ) {
