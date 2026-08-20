@@ -736,9 +736,9 @@ const FURNITURE_TEMPLATE_TYPES = [
     blueprintStyle: "assembly_template",
     cornerRadius: 0,
     thumbnailPng: "/library-thumbs/closet-wardrobe-cabinet.png",
-    w: 1800,
-    h: 2200,
-    d: 600,
+    w: 3200,
+    h: 2400,
+    d: 620,
   },
 ];
 
