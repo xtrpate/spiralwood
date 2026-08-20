@@ -2873,7 +2873,10 @@ function ThreeDViewer({
         applyTransformModeRaw();
       });
 
-      centerOnObject(entry.obj, true);
+      // WISDOM DOUBLE-CLICK SELECT ONLY V1
+      // Double-click keeps whole-furniture/assembly selection, but it no longer
+      // changes the camera position or OrbitControls target. Camera navigation
+      // stays fully manual through left-drag, wheel zoom, right-pan and keys.
       syncSelectionOutlines();
     };
 
