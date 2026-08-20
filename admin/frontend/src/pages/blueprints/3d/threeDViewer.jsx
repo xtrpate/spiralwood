@@ -83,16 +83,28 @@ const isDoorPreviewComponent = (component = {}) => {
     .trim()
     .toLowerCase();
 
+  return component?.type === "wr_door" || /(^|[\s_-])door([\s_-]|$)/.test(text);
+};
+
+const isDrawerPreviewComponent = (component = {}) => {
+  const text = [
+    component?.type,
+    component?.label,
+    component?.partCode,
+    component?.category,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+    .toLowerCase();
+
   return (
-    component?.type === "wr_door" ||
-    /(^|[\s_-])door([\s_-]|$)/.test(text)
+    component?.type === "wr_drawer_front" ||
+    /(^|[\s_-])drawer([\s_-]|$)/.test(text)
   );
 };
 
-const resolveDoorPreviewHingeSide = (
-  component = {},
-  allComponents = [],
-) => {
+const resolveDoorPreviewHingeSide = (component = {}, allComponents = []) => {
   const explicit = String(
     component?.hingeSide ??
       component?.hinge_side ??
@@ -114,66 +126,40 @@ const resolveDoorPreviewHingeSide = (
   if (/\bleft\b/.test(labelText)) return "left";
 
   const siblings = (allComponents || []).filter((item) => {
-    if (
-      !item ||
-      item.id === component.id ||
-      !isDoorPreviewComponent(item)
-    ) {
+    if (!item || item.id === component.id || !isDoorPreviewComponent(item)) {
       return false;
     }
 
-    if (
-      component?.groupId &&
-      item?.groupId !== component.groupId
-    ) {
+    if (component?.groupId && item?.groupId !== component.groupId) {
       return false;
     }
 
-    const yTolerance = Math.max(
-      80,
-      Number(component?.height || 0) * 0.15,
-    );
+    const yTolerance = Math.max(80, Number(component?.height || 0) * 0.15);
 
-    const zTolerance = Math.max(
-      120,
-      Number(component?.depth || 0) * 4,
-    );
+    const zTolerance = Math.max(120, Number(component?.depth || 0) * 4);
 
     return (
-      Math.abs(
-        Number(item?.y || 0) -
-          Number(component?.y || 0),
-      ) <= yTolerance &&
-      Math.abs(
-        Number(item?.z || 0) -
-          Number(component?.z || 0),
-      ) <= zTolerance
+      Math.abs(Number(item?.y || 0) - Number(component?.y || 0)) <=
+        yTolerance &&
+      Math.abs(Number(item?.z || 0) - Number(component?.z || 0)) <= zTolerance
     );
   });
 
   const ordered = [component, ...siblings].sort(
-    (a, b) =>
-      Number(a?.x || 0) - Number(b?.x || 0),
+    (a, b) => Number(a?.x || 0) - Number(b?.x || 0),
   );
 
   if (ordered.length > 1) {
-    const index = ordered.findIndex(
-      (item) => item.id === component.id,
-    );
+    const index = ordered.findIndex((item) => item.id === component.id);
 
-    return index >= Math.ceil(ordered.length / 2)
-      ? "right"
-      : "left";
+    return index >= Math.ceil(ordered.length / 2) ? "right" : "left";
   }
 
   return "left";
 };
 
 const easeOutCubic = (value) => {
-  const t = Math.max(
-    0,
-    Math.min(1, Number(value) || 0),
-  );
+  const t = Math.max(0, Math.min(1, Number(value) || 0));
 
   return 1 - Math.pow(1 - t, 3);
 };
@@ -285,10 +271,9 @@ function ThreeDViewer({
   const [isLibraryDragPlacing, setIsLibraryDragPlacing] = useState(false);
   const [isExploded3D, setIsExploded3D] = useState(false);
   const [explodeStrength, setExplodeStrength] = useState(55);
-  const [doorPreviewOpenId, setDoorPreviewOpenId] =
-    useState(null);
-  const doorPreviewRef = useRef(null);
-  const doorPreviewAnimationRef = useRef(0);
+  const [openPreviewIds, setOpenPreviewIds] = useState([]);
+  const doorPreviewsRef = useRef(new Map());
+  const doorPreviewAnimationsRef = useRef(new Map());
 
   useEffect(() => {
     if (!showLibraryPanel && activeLeftPanel === "library") {
@@ -296,10 +281,9 @@ function ThreeDViewer({
     }
   }, [showLibraryPanel, activeLeftPanel]);
 
-  const selectedCustomProfileId =
-    isWoodworkingProfileComponent(selectedComp)
-      ? selectedComp?.id || null
-      : null;
+  const selectedCustomProfileId = isWoodworkingProfileComponent(selectedComp)
+    ? selectedComp?.id || null
+    : null;
 
   useEffect(() => {
     if (!selectedCustomProfileId) return;
@@ -1223,16 +1207,12 @@ function ThreeDViewer({
       if (!obj || !comp) return null;
 
       const state = stateOverride || singleScaleStateRef.current;
-      const baseComp =
-        state?.id === comp.id && state?.comp ? state.comp : comp;
+      const baseComp = state?.id === comp.id && state?.comp ? state.comp : comp;
       const startScale = state?.startScale || new THREE.Vector3(1, 1, 1);
 
-      const safeStartScaleX =
-        Math.abs(startScale.x) > 1e-6 ? startScale.x : 1;
-      const safeStartScaleY =
-        Math.abs(startScale.y) > 1e-6 ? startScale.y : 1;
-      const safeStartScaleZ =
-        Math.abs(startScale.z) > 1e-6 ? startScale.z : 1;
+      const safeStartScaleX = Math.abs(startScale.x) > 1e-6 ? startScale.x : 1;
+      const safeStartScaleY = Math.abs(startScale.y) > 1e-6 ? startScale.y : 1;
+      const safeStartScaleZ = Math.abs(startScale.z) > 1e-6 ? startScale.z : 1;
 
       const width = normalizeDimensionMm(
         Math.abs(baseComp.width * (obj.scale.x / safeStartScaleX)),
@@ -1267,16 +1247,13 @@ function ThreeDViewer({
       if (!obj || !comp) return null;
 
       const updates =
-        getAnchoredScaleUpdates(obj, comp) ||
-        compFromWorld(obj, comp, "scale");
+        getAnchoredScaleUpdates(obj, comp) || compFromWorld(obj, comp, "scale");
 
       if (!updates) return null;
 
       const scaleState = singleScaleStateRef.current;
       const baseComp =
-        scaleState?.id === comp.id && scaleState?.comp
-          ? scaleState.comp
-          : comp;
+        scaleState?.id === comp.id && scaleState?.comp ? scaleState.comp : comp;
 
       const previewComp = normalizeComponent({
         ...baseComp,
@@ -1376,404 +1353,372 @@ function ThreeDViewer({
     if (ids.length) return ids;
     return selectedId ? [selectedId] : [];
   }, [selectedId, selectedIds]);
-  const selectedDoorPreviewComp = useMemo(() => {
-    if (activeSelectionIds3D.length !== 1) return null;
 
-    const activeId = activeSelectionIds3D[0];
-    const component =
-      (components || []).find(
-        (item) => item.id === activeId,
-      ) || null;
+  const previewableComps = useMemo(() => {
+    if (activeSelectionIds3D.length === 0) return [];
 
-    return isDoorPreviewComponent(component)
-      ? component
-      : null;
+    return activeSelectionIds3D
+      .map((id) => (components || []).find((item) => item.id === id))
+      .filter(
+        (comp) =>
+          comp &&
+          (isDoorPreviewComponent(comp) || isDrawerPreviewComponent(comp)),
+      );
   }, [activeSelectionIds3D, components]);
 
-  const doorPreviewControlComp = useMemo(() => {
-    if (doorPreviewOpenId) {
-      const openComponent =
-        (components || []).find(
-          (item) => item.id === doorPreviewOpenId,
-        ) || null;
+  const clearDoorPreview = useCallback((id, { updateState = true } = {}) => {
+    if (!id) return;
 
-      if (openComponent) return openComponent;
+    const animFrame = doorPreviewAnimationsRef.current.get(id);
+    if (animFrame) {
+      cancelAnimationFrame(animFrame);
+      doorPreviewAnimationsRef.current.delete(id);
     }
 
-    return selectedDoorPreviewComp;
-  }, [
-    doorPreviewOpenId,
-    components,
-    selectedDoorPreviewComp,
-  ]);
+    const preview = doorPreviewsRef.current.get(id);
+    if (!preview) return;
 
-  const clearDoorPreview = useCallback(
+    if (preview.original) preview.original.visible = true;
+    if (preview.originals) {
+      preview.originals.forEach((orig) => {
+        if (orig) orig.visible = true;
+      });
+    }
+
+    if (preview.pivot?.parent) {
+      preview.pivot.parent.remove(preview.pivot);
+    }
+
+    if (preview.transform && typeof preview.transformVisible === "boolean") {
+      preview.transform.visible = preview.transformVisible;
+    }
+    if (preview.outlineGroup && typeof preview.outlineVisible === "boolean") {
+      preview.outlineGroup.visible = preview.outlineVisible;
+    }
+
+    doorPreviewsRef.current.delete(id);
+
+    if (updateState) {
+      setOpenPreviewIds((prev) => prev.filter((openId) => openId !== id));
+    }
+  }, []);
+
+  const clearAllDoorPreviews = useCallback(
     ({ updateState = true } = {}) => {
-      if (doorPreviewAnimationRef.current) {
-        cancelAnimationFrame(
-          doorPreviewAnimationRef.current,
-        );
-        doorPreviewAnimationRef.current = 0;
-      }
-
-      const preview = doorPreviewRef.current;
-
-      if (preview?.original) {
-        preview.original.visible = true;
-      }
-
-      if (preview?.pivot?.parent) {
-        preview.pivot.parent.remove(preview.pivot);
-      }
-
-      if (
-        preview?.transform &&
-        typeof preview.transformVisible === "boolean"
-      ) {
-        preview.transform.visible =
-          preview.transformVisible;
-      }
-
-      if (
-        preview?.outlineGroup &&
-        typeof preview.outlineVisible === "boolean"
-      ) {
-        preview.outlineGroup.visible =
-          preview.outlineVisible;
-      }
-
-      doorPreviewRef.current = null;
-
-      if (updateState) {
-        setDoorPreviewOpenId(null);
-      }
+      const ids = Array.from(doorPreviewsRef.current.keys());
+      ids.forEach((id) => clearDoorPreview(id, { updateState: false }));
+      if (updateState) setOpenPreviewIds([]);
     },
-    [],
+    [clearDoorPreview],
   );
 
-  const animateDoorPreviewTo = useCallback(
-    (targetAngle, onDone = null) => {
-      const preview = doorPreviewRef.current;
-      if (!preview?.pivot) return;
+  const animateDoorPreviewTo = useCallback((id, targetAngle, onDone = null) => {
+    const preview = doorPreviewsRef.current.get(id);
+    if (!preview?.pivot) return;
 
-      if (doorPreviewAnimationRef.current) {
-        cancelAnimationFrame(
-          doorPreviewAnimationRef.current,
-        );
+    const currentAnim = doorPreviewAnimationsRef.current.get(id);
+    if (currentAnim) {
+      cancelAnimationFrame(currentAnim);
+    }
+
+    const startAngle = Number(preview.currentAngle || 0);
+    const destination = Number(targetAngle || 0);
+    const startedAt = performance.now();
+
+    const step = (now) => {
+      const current = doorPreviewsRef.current.get(id);
+
+      if (!current || current !== preview || !current.pivot) {
+        doorPreviewAnimationsRef.current.delete(id);
+        return;
       }
 
-      const startAngle = Number(
-        preview.currentAngle || 0,
+      const progress = Math.min(
+        1,
+        Math.max(0, (now - startedAt) / DOOR_PREVIEW_DURATION_MS),
       );
+      const eased = easeOutCubic(progress);
 
-      const destination = Number(
-        targetAngle || 0,
-      );
+      current.currentAngle = startAngle + (destination - startAngle) * eased;
 
-      const startedAt = performance.now();
-
-      const step = (now) => {
-        const current = doorPreviewRef.current;
-
-        if (
-          !current ||
-          current !== preview ||
-          !current.pivot
-        ) {
-          doorPreviewAnimationRef.current = 0;
-          return;
-        }
-
-        const progress = Math.min(
-          1,
-          Math.max(
-            0,
-            (now - startedAt) /
-              DOOR_PREVIEW_DURATION_MS,
-          ),
+      if (current.isDrawer) {
+        const localForward = new THREE.Vector3(0, 0, 1).applyQuaternion(
+          current.basePivotQuaternion,
         );
-
-        const eased = easeOutCubic(progress);
-
-        current.currentAngle =
-          startAngle +
-          (destination - startAngle) * eased;
-
-        const localTurn =
-          new THREE.Quaternion().setFromAxisAngle(
-            new THREE.Vector3(0, 1, 0),
-            current.direction *
-              current.currentAngle,
-          );
-
+        current.pivot.position
+          .copy(current.basePivotPosition)
+          .add(localForward.multiplyScalar(current.currentAngle));
+      } else {
+        const localTurn = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 1, 0),
+          current.direction * current.currentAngle,
+        );
         current.pivot.quaternion
           .copy(current.basePivotQuaternion)
           .multiply(localTurn);
+      }
 
-        current.pivot.updateMatrixWorld(true);
+      current.pivot.updateMatrixWorld(true);
 
-        if (progress < 1) {
-          doorPreviewAnimationRef.current =
-            requestAnimationFrame(step);
-          return;
-        }
+      if (progress < 1) {
+        doorPreviewAnimationsRef.current.set(id, requestAnimationFrame(step));
+        return;
+      }
 
-        current.currentAngle = destination;
-        doorPreviewAnimationRef.current = 0;
-        onDone?.();
-      };
+      current.currentAngle = destination;
+      doorPreviewAnimationsRef.current.delete(id);
+      onDone?.();
+    };
 
-      doorPreviewAnimationRef.current =
-        requestAnimationFrame(step);
-    },
-    [],
-  );
+    doorPreviewAnimationsRef.current.set(id, requestAnimationFrame(step));
+  }, []);
 
   const createDoorPreview = useCallback(
     (component) => {
       if (!component?.id) return false;
 
-      clearDoorPreview();
+      // If this specific door is already animating, reset it
+      if (doorPreviewsRef.current.has(component.id)) {
+        clearDoorPreview(component.id, { updateState: false });
+      }
 
-      const entry = entryMapRef.current.get(
-        component.id,
-      );
+      const isDrawer = isDrawerPreviewComponent(component);
 
-      const original = entry?.obj;
-      const parent = original?.parent;
+      let targetIds = [component.id];
+      if (isDrawer) {
+        const sourceComponents = componentsRef.current || [];
+        targetIds = sourceComponents
+          .filter((c) => {
+            if (c.id === component.id) return true;
+            if (component.groupId && c.groupId !== component.groupId)
+              return false;
 
-      if (!original || !parent) return false;
+            const type = String(c.type || "").toLowerCase();
+            const label = String(c.label || c.partCode || "").toLowerCase();
+            const isDrawerPart =
+              type.includes("drawer") ||
+              type.includes("hardware") ||
+              type.includes("handle") ||
+              label.includes("drawer") ||
+              label.includes("handle");
+            if (!isDrawerPart) return false;
 
-      const clone = original.clone(true);
-      clone.name =
-        `door-preview-clone-${component.id}`;
+            const yDiff = Math.abs(Number(c.y || 0) - Number(component.y || 0));
+            const heightTolerance = Math.max(
+              150,
+              Number(component.height || 0),
+            );
+            if (yDiff > heightTolerance) return false;
 
-      clone.traverse((child) => {
-        child.userData = {
-          ...(child.userData || {}),
-          isDoorPreviewClone: true,
-        };
+            const xDiff = Math.abs(Number(c.x || 0) - Number(component.x || 0));
+            const widthTolerance = Math.max(
+              100,
+              Number(component.width || 0) / 2 + 50,
+            );
+            if (xDiff > widthTolerance) return false;
+
+            return true;
+          })
+          .map((c) => c.id);
+      }
+
+      const originals = [];
+      const clones = [];
+      let parent = null;
+      let primaryOriginal = null;
+
+      targetIds.forEach((id) => {
+        const entry = entryMapRef.current.get(id);
+        const orig = entry?.obj;
+        if (orig) {
+          if (id === component.id) {
+            primaryOriginal = orig;
+            parent = orig.parent;
+          }
+          originals.push(orig);
+
+          const clone = orig.clone(true);
+          clone.name = `door-preview-clone-${id}`;
+          clone.traverse((child) => {
+            child.userData = {
+              ...(child.userData || {}),
+              isDoorPreviewClone: true,
+            };
+          });
+          clone.position.copy(orig.position);
+          clone.quaternion.copy(orig.quaternion);
+          clone.scale.copy(orig.scale);
+          clones.push(clone);
+        }
       });
 
-      clone.position.copy(original.position);
-      clone.quaternion.copy(original.quaternion);
-      clone.scale.copy(original.scale);
+      if (!primaryOriginal || !parent) return false;
 
-      const hingeSide =
-        resolveDoorPreviewHingeSide(
+      let hingePosition = primaryOriginal.position.clone();
+      let direction = 1;
+
+      if (!isDrawer) {
+        const hingeSide = resolveDoorPreviewHingeSide(
           component,
           componentsRef.current || [],
         );
-
-      const width = Math.max(
-        1,
-        Number(component?.width || 1),
-      );
-
-      const localHingeOffset =
-        new THREE.Vector3(
-          hingeSide === "right"
-            ? width / 2
-            : -width / 2,
+        const width = Math.max(1, Number(component?.width || 1));
+        const localHingeOffset = new THREE.Vector3(
+          hingeSide === "right" ? width / 2 : -width / 2,
           0,
           0,
         );
-
-      const hingePosition = original.position
-        .clone()
-        .add(
-          localHingeOffset
-            .clone()
-            .applyQuaternion(
-              original.quaternion,
-            ),
-        );
+        hingePosition = primaryOriginal.position
+          .clone()
+          .add(
+            localHingeOffset
+              .clone()
+              .applyQuaternion(primaryOriginal.quaternion),
+          );
+        direction = hingeSide === "right" ? 1 : -1;
+      }
 
       const pivot = new THREE.Group();
-      pivot.name =
-        `door-preview-pivot-${component.id}`;
+      pivot.name = `door-preview-pivot-${component.id}`;
       pivot.position.copy(hingePosition);
-      pivot.quaternion.copy(
-        original.quaternion,
-      );
+      pivot.quaternion.copy(primaryOriginal.quaternion);
 
       parent.add(pivot);
-      parent.add(clone);
+
+      clones.forEach((clone) => {
+        parent.add(clone);
+        clone.updateMatrixWorld(true);
+        pivot.attach(clone);
+      });
 
       parent.updateMatrixWorld(true);
       pivot.updateMatrixWorld(true);
-      clone.updateMatrixWorld(true);
-
-      // Only the temporary clone is attached to the hinge pivot.
-      // The real editable door object keeps its original transform.
-      pivot.attach(clone);
-      pivot.updateMatrixWorld(true);
 
       const transform = transformRef.current;
-      const outlineGroup =
-        selectionOutlineGroupRef.current;
+      const outlineGroup = selectionOutlineGroupRef.current;
 
       const transformVisible =
-        typeof transform?.visible === "boolean"
-          ? transform.visible
-          : true;
-
+        typeof transform?.visible === "boolean" ? transform.visible : true;
       const outlineVisible =
         typeof outlineGroup?.visible === "boolean"
           ? outlineGroup.visible
           : true;
 
-      // Hide only editor visuals while previewing.
-      // Do not detach TransformControls.
-      // Do not modify OrbitControls or camera state.
       if (transform) transform.visible = false;
-      if (outlineGroup) {
-        outlineGroup.visible = false;
-      }
+      if (outlineGroup) outlineGroup.visible = false;
 
-      original.visible = false;
+      originals.forEach((orig) => {
+        orig.visible = false;
+      });
 
-      doorPreviewRef.current = {
+      // 👉 Register this specific door in the Maps!
+      doorPreviewsRef.current.set(component.id, {
         id: component.id,
-        original,
+        isDrawer,
+        originals,
         pivot,
-        basePivotQuaternion:
-          original.quaternion.clone(),
-        direction:
-          hingeSide === "right" ? 1 : -1,
+        basePivotPosition: pivot.position.clone(),
+        basePivotQuaternion: primaryOriginal.quaternion.clone(),
+        direction,
         currentAngle: 0,
-        componentSignature:
-          getDoorPreviewComponentSignature(component),
+        componentSignature: getDoorPreviewComponentSignature(component),
         transform,
         transformVisible,
         outlineGroup,
         outlineVisible,
-      };
+      });
 
-      setDoorPreviewOpenId(component.id);
+      setOpenPreviewIds((prev) => [...new Set([...prev, component.id])]);
 
-      animateDoorPreviewTo(
-        THREE.MathUtils.degToRad(
-          DOOR_PREVIEW_OPEN_DEGREES,
-        ),
-      );
+      if (isDrawer) {
+        animateDoorPreviewTo(component.id, 350);
+      } else {
+        animateDoorPreviewTo(
+          component.id,
+          THREE.MathUtils.degToRad(DOOR_PREVIEW_OPEN_DEGREES),
+        );
+      }
 
       return true;
     },
     [animateDoorPreviewTo, clearDoorPreview],
   );
 
-  const toggleSelectedDoorPreview = useCallback(
-    () => {
-      // Manual close must work even after normal canvas clicks or a
-      // selection change. Camera interaction never decides door state.
-      const activePreview = doorPreviewRef.current;
+  const toggleSelectedDoorPreview = useCallback(() => {
+    if (isExploded3D || previewableComps.length === 0) return;
 
-      if (
-        activePreview?.id &&
-        doorPreviewOpenId === activePreview.id
-      ) {
-        animateDoorPreviewTo(0, () => {
-          clearDoorPreview();
-        });
-        return;
-      }
+    const anyOpen = previewableComps.some((comp) =>
+      doorPreviewsRef.current.has(comp.id),
+    );
 
-      const component = selectedDoorPreviewComp;
-
-      if (!component?.id || isExploded3D) {
-        return;
-      }
-
-      createDoorPreview(component);
-    },
-    [
-      selectedDoorPreviewComp,
-      isExploded3D,
-      doorPreviewOpenId,
-      animateDoorPreviewTo,
-      clearDoorPreview,
-      createDoorPreview,
-    ],
-  );
-
-  useEffect(() => {
-    if (!doorPreviewRef.current) return;
-
-    // Normal mouse/camera/selection interaction keeps the door open.
-    // Exploded mode is a different visualization, so it closes preview.
-    if (isExploded3D) {
-      clearDoorPreview();
+    if (anyOpen) {
+      previewableComps.forEach((comp) => {
+        if (doorPreviewsRef.current.has(comp.id)) {
+          animateDoorPreviewTo(comp.id, 0, () => {
+            clearDoorPreview(comp.id);
+          });
+        }
+      });
+    } else {
+      previewableComps.forEach((comp) => {
+        createDoorPreview(comp);
+      });
     }
-  }, [isExploded3D, clearDoorPreview]);
+  }, [
+    previewableComps,
+    isExploded3D,
+    animateDoorPreviewTo,
+    clearDoorPreview,
+    createDoorPreview,
+  ]);
 
   useEffect(() => {
-    const preview = doorPreviewRef.current;
-    if (!preview) return;
+    if (isExploded3D) {
+      clearAllDoorPreviews();
+    }
+  }, [isExploded3D, clearAllDoorPreviews]);
 
-    const previewDoorIsSelected =
-      activeSelectionIds3D.length === 1 &&
-      activeSelectionIds3D[0] === preview.id;
+  useEffect(() => {
+    openPreviewIds.forEach((id) => {
+      const preview = doorPreviewsRef.current.get(id);
+      if (!preview) return;
 
-    // When another object is selected while the door stays open,
-    // restore normal editor visuals for that new selection.
-    if (preview.transform) {
-      preview.transform.visible =
-        previewDoorIsSelected
+      const previewDoorIsSelected =
+        activeSelectionIds3D.length === 1 && activeSelectionIds3D[0] === id;
+
+      if (preview.transform) {
+        preview.transform.visible = previewDoorIsSelected
           ? false
           : preview.transformVisible;
-    }
+      }
 
-    if (preview.outlineGroup) {
-      preview.outlineGroup.visible =
-        previewDoorIsSelected
+      if (preview.outlineGroup) {
+        preview.outlineGroup.visible = previewDoorIsSelected
           ? false
           : preview.outlineVisible;
-    }
-  }, [
-    activeSelectionIds3D,
-    doorPreviewOpenId,
-  ]);
-
-  const openDoorPreviewComponentSignature = useMemo(() => {
-    if (!doorPreviewOpenId) return "";
-
-    const openComponent =
-      (components || []).find(
-        (item) => item.id === doorPreviewOpenId,
-      ) || null;
-
-    return getDoorPreviewComponentSignature(
-      openComponent,
-    );
-  }, [doorPreviewOpenId, components]);
+      }
+    });
+  }, [activeSelectionIds3D, openPreviewIds]);
 
   useEffect(() => {
-    const preview = doorPreviewRef.current;
-    if (!preview?.id) return;
+    openPreviewIds.forEach((id) => {
+      const preview = doorPreviewsRef.current.get(id);
+      if (!preview) return;
 
-    // React may provide a new components array after a normal mouse click or
-    // selection change. That must not close the door. Close only if the actual
-    // open-door component was removed or its real transform/geometry changed.
-    if (
-      !openDoorPreviewComponentSignature ||
-      openDoorPreviewComponentSignature !==
-        preview.componentSignature
-    ) {
-      clearDoorPreview();
-    }
-  }, [
-    openDoorPreviewComponentSignature,
-    clearDoorPreview,
-  ]);
+      const openComponent = (components || []).find((item) => item.id === id);
+      const signature = getDoorPreviewComponentSignature(openComponent);
+
+      if (!signature || signature !== preview.componentSignature) {
+        clearDoorPreview(id);
+      }
+    });
+  }, [components, openPreviewIds, clearDoorPreview]);
 
   useEffect(
     () => () => {
-      clearDoorPreview({
-        updateState: false,
-      });
+      clearAllDoorPreviews({ updateState: false });
     },
-    [clearDoorPreview],
+    [clearAllDoorPreviews],
   );
 
   const explodedDisplayOffsets = useMemo(() => {
@@ -2064,11 +2009,7 @@ function ThreeDViewer({
     const updatesById = {};
 
     state.items.forEach((item) => {
-      updatesById[item.id] = compFromWorld(
-        item.obj,
-        item.comp,
-        state.mode,
-      );
+      updatesById[item.id] = compFromWorld(item.obj, item.comp, state.mode);
     });
 
     if (onBeforeDragRef.current) {
@@ -2416,10 +2357,23 @@ function ThreeDViewer({
     const pickMesh = (event) => {
       setMouseFromEvent(event);
       raycasterRef.current.setFromCamera(mouseRef.current, camera);
-      const hits = raycasterRef.current.intersectObjects(
-        selectableMeshesRef.current,
-        false,
-      );
+      const activeMeshes = [];
+      rootGroupRef.current.traverse((child) => {
+        if (child.isMesh && child.visible && child.userData?.rootId) {
+          let isHidden = false;
+          let p = child;
+          while (p) {
+            if (!p.visible) {
+              isHidden = true;
+              break;
+            }
+            p = p.parent;
+          }
+          if (!isHidden) activeMeshes.push(child);
+        }
+      });
+
+      const hits = raycasterRef.current.intersectObjects(activeMeshes, false);
       return hits[0] || null;
     };
 
@@ -2486,16 +2440,11 @@ function ThreeDViewer({
 
         const scaleState = singleScaleStateRef.current;
         const isScaleCommit =
-          transformModeRef.current === "scale" &&
-          scaleState?.id === currentId;
+          transformModeRef.current === "scale" && scaleState?.id === currentId;
 
         const updates = isScaleCommit
           ? getAnchoredScaleUpdates(entry.obj, entry.comp, scaleState)
-          : compFromWorld(
-              entry.obj,
-              entry.comp,
-              transformModeRef.current,
-            );
+          : compFromWorld(entry.obj, entry.comp, transformModeRef.current);
 
         if (onBeforeDragRef.current) {
           onPushHistoryRef.current?.(onBeforeDragRef.current);
@@ -3290,14 +3239,10 @@ function ThreeDViewer({
         }
       />
 
-      {doorPreviewControlComp && !isExploded3D ? (
+      {previewableComps.length > 0 && !isExploded3D ? (
         <div
-          onMouseDown={(event) =>
-            event.stopPropagation()
-          }
-          onPointerDown={(event) =>
-            event.stopPropagation()
-          }
+          onMouseDown={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
           style={{
             position: "absolute",
             left: "50%",
@@ -3308,12 +3253,10 @@ function ThreeDViewer({
             alignItems: "center",
             gap: 8,
             padding: "7px 8px",
-            border:
-              "1px solid rgba(100,116,139,.65)",
+            border: "1px solid rgba(100,116,139,.65)",
             borderRadius: 2,
             background: "rgba(7,14,26,.96)",
-            boxShadow:
-              "0 8px 20px rgba(0,0,0,.24)",
+            boxShadow: "0 8px 20px rgba(0,0,0,.24)",
             color: "#dbeafe",
           }}
         >
@@ -3329,10 +3272,9 @@ function ThreeDViewer({
               color: "#93a8c4",
             }}
           >
-            Door Preview -{" "}
-            {doorPreviewControlComp.label ||
-              doorPreviewControlComp.partCode ||
-              "Selected Door"}
+            {previewableComps.length > 1
+              ? `Multi Preview - ${previewableComps.length} Selected`
+              : `${isDrawerPreviewComponent(previewableComps[0]) ? "Drawer" : "Door"} Preview - ${previewableComps[0].label || previewableComps[0].partCode || "Selected Part"}`}
           </span>
 
           <button
@@ -3341,40 +3283,42 @@ function ThreeDViewer({
             style={{
               minHeight: 30,
               padding: "5px 12px",
-              border:
-                doorPreviewOpenId ===
-                doorPreviewControlComp.id
-                  ? "1px solid rgba(148,163,184,.8)"
-                  : "1px solid rgba(96,165,250,.92)",
+              border: previewableComps.some((c) =>
+                openPreviewIds.includes(c.id),
+              )
+                ? "1px solid rgba(148,163,184,.8)"
+                : "1px solid rgba(96,165,250,.92)",
               borderRadius: 0,
-              background:
-                doorPreviewOpenId ===
-                doorPreviewControlComp.id
-                  ? "rgba(30,41,59,.9)"
-                  : "rgba(37,99,235,.3)",
+              background: previewableComps.some((c) =>
+                openPreviewIds.includes(c.id),
+              )
+                ? "rgba(30,41,59,.9)"
+                : "rgba(37,99,235,.3)",
               color: "#f8fafc",
               fontSize: 9,
               fontWeight: 600,
               cursor: "pointer",
             }}
           >
-            {doorPreviewOpenId ===
-            doorPreviewControlComp.id
-              ? "Close Door"
-              : "Open Door"}
+            {previewableComps.some((c) => openPreviewIds.includes(c.id))
+              ? previewableComps.length > 1
+                ? "Close All"
+                : isDrawerPreviewComponent(previewableComps[0])
+                  ? "Close Drawer"
+                  : "Close Door"
+              : previewableComps.length > 1
+                ? "Open All"
+                : isDrawerPreviewComponent(previewableComps[0])
+                  ? "Open Drawer"
+                  : "Open Door"}
           </button>
 
-          <span
-            style={{
-              fontSize: 8,
-              color: "#64748b",
-              whiteSpace: "nowrap",
-            }}
-          >
+          <span style={{ fontSize: 8, color: "#64748b", whiteSpace: "nowrap" }}>
             Visual only
           </span>
         </div>
       ) : null}
+
       <TransformToolbar
         transformMode={transformMode}
         setTransformMode={setTransformMode}
