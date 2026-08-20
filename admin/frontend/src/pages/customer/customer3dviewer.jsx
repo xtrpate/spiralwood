@@ -1210,58 +1210,51 @@ export default function Customer3DViewer({
     const personHeight = clampNumber(personHeightMm, 1200, 2300);
     const floorY = -(WORLD_H / 2) + FLOOR_OFFSET;
 
-    const headRadius = Math.max(70, Math.round(personHeight * 0.065));
-    const neckHeight = Math.max(18, Math.round(personHeight * 0.02));
-    const torsoHeight = Math.max(260, Math.round(personHeight * 0.33));
-    const hipHeight = Math.max(18, Math.round(personHeight * 0.02));
+    // New proportions for a solid, unified blocky look
+    const headRadius = Math.max(75, Math.round(personHeight * 0.075));
+    const torsoHeight = Math.max(380, Math.round(personHeight * 0.38));
+    const footHeight = 24;
     const legHeight = Math.max(
       280,
       Math.round(
-        personHeight -
-          (headRadius * 2 + neckHeight + torsoHeight + hipHeight + 24),
+        personHeight - (headRadius * 2 + torsoHeight + footHeight - 15),
       ),
     );
 
-    const shoulderWidth = Math.max(180, Math.round(personHeight * 0.16));
-    const torsoDepth = Math.max(110, Math.round(personHeight * 0.08));
-    const legWidth = Math.max(55, Math.round(personHeight * 0.032));
-    const legDepth = Math.max(55, Math.round(personHeight * 0.032));
-    const legGap = Math.max(26, Math.round(shoulderWidth * 0.18));
-    const footWidth = legWidth + 24;
-    const footHeight = 24;
-    const footDepth = legDepth + 90;
+    const shoulderWidth = Math.max(240, Math.round(personHeight * 0.2));
+    const torsoDepth = Math.max(120, Math.round(personHeight * 0.08));
 
+    const legWidth = Math.max(75, Math.round(shoulderWidth * 0.35));
+    const legDepth = Math.max(90, Math.round(torsoDepth * 0.8));
+    const legGap = Math.max(25, Math.round(shoulderWidth * 0.15));
+
+    const footDepth = legDepth + 30;
+
+    // Single, uniform smooth material for the whole body
     const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x94a3b8,
-      roughness: 0.95,
-    });
-    const headMat = new THREE.MeshStandardMaterial({
       color: 0xcbd5e1,
-      roughness: 0.95,
-    });
-    const footMat = new THREE.MeshStandardMaterial({
-      color: 0x64748b,
-      roughness: 1,
+      roughness: 0.85,
+      metalness: 0.05,
     });
 
     const leftFoot = new THREE.Mesh(
-      new THREE.BoxGeometry(footWidth, footHeight, footDepth),
-      footMat,
+      new THREE.BoxGeometry(legWidth, footHeight, footDepth),
+      bodyMat,
     );
     leftFoot.position.set(
       -(legGap / 2 + legWidth / 2),
       floorY + footHeight / 2,
-      footDepth * 0.08,
+      (footDepth - legDepth) / 2,
     );
 
     const rightFoot = new THREE.Mesh(
-      new THREE.BoxGeometry(footWidth, footHeight, footDepth),
-      footMat,
+      new THREE.BoxGeometry(legWidth, footHeight, footDepth),
+      bodyMat,
     );
     rightFoot.position.set(
       legGap / 2 + legWidth / 2,
       floorY + footHeight / 2,
-      footDepth * 0.08,
+      (footDepth - legDepth) / 2,
     );
 
     const leftLeg = new THREE.Mesh(
@@ -1288,25 +1281,16 @@ export default function Customer3DViewer({
       new THREE.BoxGeometry(shoulderWidth, torsoHeight, torsoDepth),
       bodyMat,
     );
-    torso.position.set(
-      0,
-      floorY + footHeight + legHeight + hipHeight + torsoHeight / 2,
-      0,
-    );
+    torso.position.set(0, floorY + footHeight + legHeight + torsoHeight / 2, 0);
 
     const head = new THREE.Mesh(
-      new THREE.SphereGeometry(headRadius, 24, 24),
-      headMat,
+      new THREE.SphereGeometry(headRadius, 32, 32),
+      bodyMat,
     );
+    // Sink the head slightly into the torso so it rests naturally without a neck gap
     head.position.set(
       0,
-      floorY +
-        footHeight +
-        legHeight +
-        hipHeight +
-        torsoHeight +
-        neckHeight +
-        headRadius,
+      floorY + footHeight + legHeight + torsoHeight + headRadius - 15,
       0,
     );
 
