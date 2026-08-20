@@ -6,6 +6,8 @@ const jwt = require("jsonwebtoken");
 const db = require("../../config/db"); // Uses the unified db config
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 const { verifyRecaptcha } = require("../../utils/verifyRecaptcha");
+const { sendSms } = require("../../services/semaphore.service");
+
 require("dotenv").config();
 
 const OTP_EXPIRY_MINUTES = 15;
@@ -14,6 +16,24 @@ const RESET_TOKEN_EXPIRY = "10m";
 
 const generateOtp = () =>
   Math.floor(100000 + Math.random() * 900000).toString();
+
+const normalizePhilippinePhone = (phone) => {
+  let value = String(phone || "").replace(/\D/g, "");
+
+  if (value.startsWith("09") && value.length === 11) {
+    return "63" + value.slice(1);
+  }
+
+  if (value.startsWith("639") && value.length === 12) {
+    return value;
+  }
+
+  if (value.startsWith("9") && value.length === 10) {
+    return "63" + value;
+  }
+
+  throw new Error("Invalid Philippine mobile number.");
+};
 
 /* ── Helper: Fetch Global Email Footer ── */
 const getGlobalEmailFooter = async () => {
@@ -305,49 +325,91 @@ exports.register = async (req, res) => {
     }
 
     const hashed = await bcrypt.hash(password, 12);
-    const otp = generateOtp();
-    const expiry = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    // Email OTP
+    const emailOtp = generateOtp();
+    const emailOtpExpiry = new Date(
+      Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
+    );
+
+    // Phone OTP
+    const phoneOtp = generateOtp();
+    const phoneOtpHash = await bcrypt.hash(phoneOtp, 10);
+    const phoneOtpExpires = new Date(
+      Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
+    );
+
+    const normalizedPhone = normalizePhilippinePhone(phone);
 
     const [result] = await db.query(
       `
-      INSERT INTO users
-        (
-          name,
-          email,
-          password,
-          phone,
-          address,
-          role,
-          is_verified,
-          otp_code,
-          otp_purpose,   /* 👉 FIX: Added the column */
-          otp_expires,
-          approval_status,
-          is_active
-        )
-      VALUES
-        (?, ?, ?, ?, ?, 'customer', FALSE, ?, 'verify_email', ?, 'approved', TRUE) /* 👉 FIX: Added 'verify_email' */
-      `,
-      [fullName, normalizedEmail, hashed, phone, address, otp, expiry],
+  INSERT INTO users
+  (
+    name,
+    email,
+    password,
+    phone,
+    address,
+    role,
+    is_verified,
+    otp_code,
+    otp_purpose,
+    otp_expires,
+    phone_verified,
+    phone_otp_hash,
+    phone_otp_expires,
+    approval_status,
+    is_active
+  )
+  VALUES
+  (
+    ?, ?, ?, ?, ?, 'customer',
+    FALSE,
+    ?, 'verify_email', ?,
+    FALSE,
+    ?, ?,
+    'approved',
+    TRUE
+  )
+  `,
+      [
+        fullName,
+        normalizedEmail,
+        hashed,
+        normalizedPhone,
+        address,
+        emailOtp,
+        emailOtpExpiry,
+        phoneOtpHash,
+        phoneOtpExpires,
+      ],
     );
 
     try {
-      // 1. Try to send the email
-      await sendOtpEmail(normalizedEmail, otp, String(first_name).trim());
+      const firstName = String(first_name).trim();
 
-      // 2. If email succeeds, tell frontend to show the OTP tab!
+      // 1. Send email OTP
+      await sendOtpEmail(normalizedEmail, emailOtp, firstName);
+
+      // 2. Send phone OTP
+      // await sendSms({
+      //   phone: normalizedPhone,
+      //   message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+      // });
+
       return res.status(201).json({
         message:
-          "Registration successful. Please check your email for the 6-digit verification code.",
+          "Registration successful. Verification codes were sent to your email and phone.",
         user_id: result.insertId,
       });
-    } catch (emailError) {
-      // 3. IF EMAIL FAILS: Delete the stuck user from the database!
-      console.log("Email failed! Rolling back user creation...");
+    } catch (verificationError) {
+      console.error("Verification message failed:", verificationError.message);
+
+      // Delete user if either email or SMS fails
       await db.query("DELETE FROM users WHERE id = ?", [result.insertId]);
 
       return res.status(500).json({
-        message: "We couldn't send the verification email. Please try again.",
+        message: "We couldn't send the verification codes. Please try again.",
       });
     }
   } catch (err) {
@@ -413,27 +475,125 @@ exports.verifyOtp = async (req, res) => {
 
     await db.query(
       `
-      UPDATE users
-      SET
-        is_verified = TRUE,
-        otp_code = NULL,
-        otp_purpose = NULL,
-        otp_expires = NULL,
-        approval_status = 'approved',
-        is_active = TRUE
-      WHERE id = ?
-      `,
+  UPDATE users
+  SET
+    is_verified = TRUE,
+    otp_code = NULL,
+    otp_purpose = NULL,
+    otp_expires = NULL
+  WHERE id = ?
+  `,
       [user.id],
     );
 
     return res.json({
-      message: "Email verified successfully. You can now log in.",
+      message:
+        "Email verified successfully. Please verify your phone number to complete registration.",
+      next: "phone_verification",
     });
   } catch (err) {
     console.error("[verify-otp]", err);
     return res.status(500).json({
       message: "Server error",
       error: err.message,
+    });
+  }
+};
+
+exports.verifyPhoneOtp = async (req, res) => {
+  const { email, otp } = req.body;
+
+  if (!email || !otp) {
+    return res.status(400).json({
+      message: "Email and phone verification code are required.",
+    });
+  }
+
+  try {
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const normalizedOtp = String(otp).trim();
+
+    const [rows] = await db.query(
+      `
+      SELECT
+        id,
+        phone_otp_hash,
+        phone_otp_expires,
+        phone_verified,
+        is_verified
+      FROM users
+      WHERE email = ?
+        AND role = 'customer'
+      LIMIT 1
+      `,
+      [normalizedEmail],
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({
+        message: "Account not found.",
+      });
+    }
+
+    const user = rows[0];
+
+    if (!user.is_verified) {
+      return res.status(400).json({
+        message: "Please verify your email first.",
+      });
+    }
+
+    if (user.phone_verified) {
+      return res.status(400).json({
+        message: "Phone number is already verified.",
+      });
+    }
+
+    if (
+      !user.phone_otp_expires ||
+      new Date() > new Date(user.phone_otp_expires)
+    ) {
+      return res.status(400).json({
+        message:
+          "Phone verification code has expired. Please request a new one.",
+        code: "PHONE_OTP_EXPIRED",
+      });
+    }
+
+    const isMatch = await bcrypt.compare(
+      normalizedOtp,
+      user.phone_otp_hash || "",
+    );
+
+    if (!isMatch) {
+      return res.status(400).json({
+        message: "Invalid phone verification code.",
+      });
+    }
+
+    await db.query(
+      `
+  UPDATE users
+  SET
+    phone_verified = TRUE,
+    phone_otp_hash = NULL,
+    phone_otp_expires = NULL,
+    is_active = TRUE,
+    approval_status = 'approved'
+  WHERE id = ?
+  `,
+      [user.id],
+    );
+
+    return res.json({
+      message: "Phone number verified successfully. Your account is now ready.",
+      verified: true,
+    });
+  } catch (err) {
+    console.error("[verify-phone-otp]", err);
+
+    return res.status(500).json({
+      message: "Server error",
     });
   }
 };
@@ -565,6 +725,82 @@ exports.resendOtp = async (req, res) => {
     return res.status(500).json({
       message: "Server error",
       error: err.message,
+    });
+  }
+};
+
+exports.resendPhoneOtp = async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      message: "Email is required.",
+    });
+  }
+
+  try {
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const [rows] = await db.query(
+      `
+      SELECT
+        id,
+        phone,
+        phone_verified
+      FROM users
+      WHERE email = ?
+        AND role = 'customer'
+      LIMIT 1
+      `,
+      [normalizedEmail],
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        message: "Account not found.",
+      });
+    }
+
+    const user = rows[0];
+
+    if (user.phone_verified) {
+      return res.status(400).json({
+        message: "Phone number is already verified.",
+      });
+    }
+
+    const phoneOtp = generateOtp();
+
+    const phoneOtpHash = await bcrypt.hash(phoneOtp, 10);
+
+    const phoneOtpExpires = new Date(
+      Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
+    );
+
+    await db.query(
+      `
+      UPDATE users
+      SET
+        phone_otp_hash = ?,
+        phone_otp_expires = ?
+      WHERE id = ?
+      `,
+      [phoneOtpHash, phoneOtpExpires, user.id],
+    );
+
+    await sendSms({
+      phone: user.phone,
+      message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+    });
+
+    return res.json({
+      message: "A new phone verification code has been sent.",
+    });
+  } catch (err) {
+    console.error("[resend-phone-otp]", err);
+
+    return res.status(500).json({
+      message: "Server error",
     });
   }
 };

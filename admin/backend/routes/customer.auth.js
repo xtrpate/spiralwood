@@ -16,8 +16,17 @@ const {
    CUSTOMER AUTHENTICATION ROUTES
 ══════════════════════════════════════════════════════════════ */
 router.post("/register", registerLimiter, authController.register);
+
 router.post("/verify-otp", otpLimiter, authController.verifyOtp);
 router.post("/resend-otp", otpRequestLimiter, authController.resendOtp);
+
+router.post("/verify-phone-otp", otpLimiter, authController.verifyPhoneOtp);
+
+router.post(
+  "/resend-phone-otp",
+  otpRequestLimiter,
+  authController.resendPhoneOtp,
+);
 router.post(
   "/forgot-password",
   otpRequestLimiter,

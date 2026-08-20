@@ -151,6 +151,7 @@ export default function RegisterPage() {
 
   const handleVerifyOtp = async () => {
     const code = otp.join("");
+
     if (code.length < 6) {
       return setOtpError("Please enter all 6 digits.");
     }
@@ -160,6 +161,7 @@ export default function RegisterPage() {
 
     try {
       await verifyOtp(registeredEmail, code);
+
       setStep("success");
     } catch (err) {
       setOtpError(
@@ -254,7 +256,6 @@ export default function RegisterPage() {
             <div className="step-indicator">
               <div className="step-dot done" />
               <div className="step-dot active" />
-              <div className="step-dot" />
             </div>
 
             <div className="auth-card-header">
@@ -367,7 +368,6 @@ export default function RegisterPage() {
 
           <div className="step-indicator">
             <div className="step-dot active" />
-            <div className="step-dot" />
             <div className="step-dot" />
           </div>
 

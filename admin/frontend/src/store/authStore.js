@@ -162,6 +162,14 @@ const useAuthStore = create((set, get) => ({
     return data;
   },
 
+  verifyPhoneOtp: async (email, otp) => {
+    const { data } = await api.post("/customer/auth/verify-phone-otp", {
+      email,
+      otp,
+    });
+    return data;
+  },
+
   verifyResetOtp: async (email, otp) => {
     const { data } = await api.post("/customer/auth/verify-reset-otp", {
       email,
@@ -173,6 +181,13 @@ const useAuthStore = create((set, get) => ({
 
   resendOtp: async (email) => {
     const { data } = await api.post("/customer/auth/resend-otp", { email });
+    return data;
+  },
+
+  resendPhoneOtp: async (email) => {
+    const { data } = await api.post("/customer/auth/resend-phone-otp", {
+      email,
+    });
     return data;
   },
 

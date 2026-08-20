@@ -11,6 +11,7 @@
     "cloudinary": "^1.41.3",
     "compression": "^1.8.1",
     "date-fns": "^3.6.0",
+    "httpsms": "^0.0.4",
     "jspdf": "^4.2.0",
     "jspdf-autotable": "^5.0.7",
     "konva": "^9.3.14",

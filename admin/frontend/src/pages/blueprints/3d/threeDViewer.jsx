@@ -91,24 +91,6 @@ const isDoorPreviewComponent = (component = {}) => {
   return component?.type === "wr_door" || /(^|[\s_-])door([\s_-]|$)/.test(text);
 };
 
-const isDrawerPreviewComponent = (component = {}) => {
-  const text = [
-    component?.type,
-    component?.label,
-    component?.partCode,
-    component?.category,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .trim()
-    .toLowerCase();
-
-  return (
-    component?.type === "wr_drawer_front" ||
-    /(^|[\s_-])drawer([\s_-]|$)/.test(text)
-  );
-};
-
 const resolveDoorPreviewHingeSide = (component = {}, allComponents = []) => {
   const explicit = String(
     component?.hingeSide ??
@@ -237,18 +219,10 @@ const isDrawerPreviewComponent = (component = {}) => {
     role.startsWith("drawer_") ||
     /(^|[\s_-])drawer([\s_-]|$)/.test(text) ||
     /(^|-)drw(?:-|$)/i.test(
-      String(
-        component?.partCode ||
-          component?.technicalId ||
-          "",
-      ),
+      String(component?.partCode || component?.technicalId || ""),
     ) ||
     /(^|-)d\d+(?:-|$)/i.test(
-      String(
-        component?.partCode ||
-          component?.technicalId ||
-          "",
-      ),
+      String(component?.partCode || component?.technicalId || ""),
     )
   );
 };
@@ -287,11 +261,7 @@ const resolveDrawerPreviewKey = (component = {}) => {
     return `drawer-id:${String(explicit).trim()}`;
   }
 
-  const rawCode = String(
-    component?.partCode ||
-      component?.technicalId ||
-      "",
-  )
+  const rawCode = String(component?.partCode || component?.technicalId || "")
     .trim()
     .toUpperCase();
 
@@ -303,41 +273,28 @@ const resolveDrawerPreviewKey = (component = {}) => {
 
     if (
       baseCode !== rawCode &&
-      (
-        /(?:^|-)DRW(?:-|$)/i.test(baseCode) ||
+      (/(?:^|-)DRW(?:-|$)/i.test(baseCode) ||
         /(?:^|-)DRAWER(?:-|$)/i.test(baseCode) ||
-        /(?:^|-)D\d+(?:-|$)/i.test(baseCode)
-      )
+        /(?:^|-)D\d+(?:-|$)/i.test(baseCode))
     ) {
       return `code:${baseCode}`;
     }
   }
 
-  const labelText = String(
-    component?.label ||
-      component?.name ||
-      "",
-  )
+  const labelText = String(component?.label || component?.name || "")
     .trim()
     .toLowerCase();
 
   if (labelText) {
-    const bayMatch = labelText.match(
-      /\bbay\s*(\d+)\b/i,
-    );
+    const bayMatch = labelText.match(/\bbay\s*(\d+)\b/i);
 
     const drawerMatch =
       labelText.match(
         /\bdrawer\s*(?:front|left\s+side|right\s+side|side|back|bottom|handle|slide|runner)?\s*(\d+)\b/i,
-      ) ||
-      labelText.match(
-        /\bdrawer\s*(\d+)\b/i,
-      );
+      ) || labelText.match(/\bdrawer\s*(\d+)\b/i);
 
     if (drawerMatch) {
-      const bayKey = bayMatch
-        ? `bay${bayMatch[1]}:`
-        : "";
+      const bayKey = bayMatch ? `bay${bayMatch[1]}:` : "";
 
       return `label:${bayKey}drawer${drawerMatch[1]}`;
     }
@@ -346,10 +303,7 @@ const resolveDrawerPreviewKey = (component = {}) => {
   return `single:${component.id}`;
 };
 
-const resolveDrawerPreviewSet = (
-  component = {},
-  allComponents = [],
-) => {
+const resolveDrawerPreviewSet = (component = {}, allComponents = []) => {
   if (!isDrawerPreviewComponent(component)) {
     return {
       key: "",
@@ -362,8 +316,7 @@ const resolveDrawerPreviewSet = (
 
   const allMembers = (allComponents || []).filter(
     (item) =>
-      isDrawerPreviewComponent(item) &&
-      resolveDrawerPreviewKey(item) === key,
+      isDrawerPreviewComponent(item) && resolveDrawerPreviewKey(item) === key,
   );
 
   const movableMembers = allMembers.filter(
@@ -393,20 +346,14 @@ const resolveDrawerPreviewSet = (
   };
 };
 
-const isDrawerPreviewFrontComponent = (
-  component = {},
-) => {
+const isDrawerPreviewFrontComponent = (component = {}) => {
   const type = String(component?.type || "")
     .trim()
     .toLowerCase();
   const role = String(component?.partRole || "")
     .trim()
     .toLowerCase();
-  const code = String(
-    component?.partCode ||
-      component?.technicalId ||
-      "",
-  )
+  const code = String(component?.partCode || component?.technicalId || "")
     .trim()
     .toUpperCase();
   const text = getDrawerPreviewText(component);
@@ -421,15 +368,11 @@ const isDrawerPreviewFrontComponent = (
   );
 };
 
-const getDrawerPreviewComponentsSignature = (
-  components = [],
-) =>
+const getDrawerPreviewComponentsSignature = (components = []) =>
   (components || [])
     .filter((component) => component?.id)
     .slice()
-    .sort((a, b) =>
-      String(a.id).localeCompare(String(b.id)),
-    )
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)))
     .map((component) =>
       [
         component.id,
@@ -538,19 +481,14 @@ function ThreeDViewer({
   const [isLibraryDragPlacing, setIsLibraryDragPlacing] = useState(false);
   const [isExploded3D, setIsExploded3D] = useState(false);
   const [explodeStrength, setExplodeStrength] = useState(55);
-  const [doorPreviewOpenId, setDoorPreviewOpenId] =
-    useState(null);
+  const [doorPreviewOpenId, setDoorPreviewOpenId] = useState(null);
   const doorPreviewRef = useRef(null);
   const doorPreviewAnimationRef = useRef(0);
 
-  const [drawerPreviewOpenId, setDrawerPreviewOpenId] =
-    useState(null);
+  const [drawerPreviewOpenId, setDrawerPreviewOpenId] = useState(null);
   const drawerPreviewRef = useRef(null);
   const drawerPreviewAnimationRef = useRef(0);
   const clearDrawerPreviewRef = useRef(null);
-  const [openPreviewIds, setOpenPreviewIds] = useState([]);
-  const doorPreviewsRef = useRef(new Map());
-  const doorPreviewAnimationsRef = useRef(new Map());
 
   useEffect(() => {
     if (!showLibraryPanel && activeLeftPanel === "library") {
@@ -1630,83 +1568,78 @@ function ThreeDViewer({
     if (ids.length) return ids;
     return selectedId ? [selectedId] : [];
   }, [selectedId, selectedIds]);
+  const selectedDoorPreviewComp = useMemo(() => {
+    if (activeSelectionIds3D.length !== 1) return null;
 
-  const previewableComps = useMemo(() => {
-    if (activeSelectionIds3D.length === 0) return [];
+    const activeId = activeSelectionIds3D[0];
+    const component =
+      (components || []).find((item) => item.id === activeId) || null;
 
-    return activeSelectionIds3D
-      .map((id) => (components || []).find((item) => item.id === id))
-      .filter(
-        (comp) =>
-          comp &&
-          (isDoorPreviewComponent(comp) || isDrawerPreviewComponent(comp)),
-      );
+    return isDoorPreviewComponent(component) ? component : null;
   }, [activeSelectionIds3D, components]);
 
-  const clearDoorPreview = useCallback((id, { updateState = true } = {}) => {
-    if (!id) return;
+  const doorPreviewControlComp = useMemo(() => {
+    if (doorPreviewOpenId) {
+      const openComponent =
+        (components || []).find((item) => item.id === doorPreviewOpenId) ||
+        null;
 
-    const animFrame = doorPreviewAnimationsRef.current.get(id);
-    if (animFrame) {
-      cancelAnimationFrame(animFrame);
-      doorPreviewAnimationsRef.current.delete(id);
+      if (openComponent) return openComponent;
     }
 
-    const preview = doorPreviewsRef.current.get(id);
-    if (!preview) return;
+    return selectedDoorPreviewComp;
+  }, [doorPreviewOpenId, components, selectedDoorPreviewComp]);
 
-    if (preview.original) preview.original.visible = true;
-    if (preview.originals) {
-      preview.originals.forEach((orig) => {
-        if (orig) orig.visible = true;
-      });
+  const clearDoorPreview = useCallback(({ updateState = true } = {}) => {
+    if (doorPreviewAnimationRef.current) {
+      cancelAnimationFrame(doorPreviewAnimationRef.current);
+      doorPreviewAnimationRef.current = 0;
     }
 
-    if (preview.pivot?.parent) {
+    const preview = doorPreviewRef.current;
+
+    if (preview?.original) {
+      preview.original.visible = true;
+    }
+
+    if (preview?.pivot?.parent) {
       preview.pivot.parent.remove(preview.pivot);
     }
 
-    if (preview.transform && typeof preview.transformVisible === "boolean") {
+    if (preview?.transform && typeof preview.transformVisible === "boolean") {
       preview.transform.visible = preview.transformVisible;
     }
-    if (preview.outlineGroup && typeof preview.outlineVisible === "boolean") {
+
+    if (preview?.outlineGroup && typeof preview.outlineVisible === "boolean") {
       preview.outlineGroup.visible = preview.outlineVisible;
     }
 
-    doorPreviewsRef.current.delete(id);
+    doorPreviewRef.current = null;
 
     if (updateState) {
-      setOpenPreviewIds((prev) => prev.filter((openId) => openId !== id));
+      setDoorPreviewOpenId(null);
     }
   }, []);
 
-  const clearAllDoorPreviews = useCallback(
-    ({ updateState = true } = {}) => {
-      const ids = Array.from(doorPreviewsRef.current.keys());
-      ids.forEach((id) => clearDoorPreview(id, { updateState: false }));
-      if (updateState) setOpenPreviewIds([]);
-    },
-    [clearDoorPreview],
-  );
-
-  const animateDoorPreviewTo = useCallback((id, targetAngle, onDone = null) => {
-    const preview = doorPreviewsRef.current.get(id);
+  const animateDoorPreviewTo = useCallback((targetAngle, onDone = null) => {
+    const preview = doorPreviewRef.current;
     if (!preview?.pivot) return;
 
-    const currentAnim = doorPreviewAnimationsRef.current.get(id);
-    if (currentAnim) {
-      cancelAnimationFrame(currentAnim);
+    if (doorPreviewAnimationRef.current) {
+      cancelAnimationFrame(doorPreviewAnimationRef.current);
     }
 
     const startAngle = Number(preview.currentAngle || 0);
+
     const destination = Number(targetAngle || 0);
+
     const startedAt = performance.now();
 
     const step = (now) => {
-      const current = doorPreviewsRef.current.get(id);
+      const current = doorPreviewRef.current;
 
       if (!current || current !== preview || !current.pivot) {
-        doorPreviewAnimationsRef.current.delete(id);
+        doorPreviewAnimationRef.current = 0;
         return;
       }
 
@@ -1714,51 +1647,43 @@ function ThreeDViewer({
         1,
         Math.max(0, (now - startedAt) / DOOR_PREVIEW_DURATION_MS),
       );
+
       const eased = easeOutCubic(progress);
 
       current.currentAngle = startAngle + (destination - startAngle) * eased;
 
-      if (current.isDrawer) {
-        const localForward = new THREE.Vector3(0, 0, 1).applyQuaternion(
-          current.basePivotQuaternion,
-        );
-        current.pivot.position
-          .copy(current.basePivotPosition)
-          .add(localForward.multiplyScalar(current.currentAngle));
-      } else {
-        const localTurn = new THREE.Quaternion().setFromAxisAngle(
-          new THREE.Vector3(0, 1, 0),
-          current.direction * current.currentAngle,
-        );
-        current.pivot.quaternion
-          .copy(current.basePivotQuaternion)
-          .multiply(localTurn);
-      }
+      const localTurn = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        current.direction * current.currentAngle,
+      );
+
+      current.pivot.quaternion
+        .copy(current.basePivotQuaternion)
+        .multiply(localTurn);
 
       current.pivot.updateMatrixWorld(true);
 
       if (progress < 1) {
-        doorPreviewAnimationsRef.current.set(id, requestAnimationFrame(step));
+        doorPreviewAnimationRef.current = requestAnimationFrame(step);
         return;
       }
 
       current.currentAngle = destination;
-      doorPreviewAnimationsRef.current.delete(id);
+      doorPreviewAnimationRef.current = 0;
       onDone?.();
     };
 
-    doorPreviewAnimationsRef.current.set(id, requestAnimationFrame(step));
+    doorPreviewAnimationRef.current = requestAnimationFrame(step);
   }, []);
 
   const createDoorPreview = useCallback(
     (component) => {
       if (!component?.id) return false;
 
+      clearDrawerPreviewRef.current?.();
       clearDoorPreview();
 
-      const entry = entryMapRef.current.get(
-        component.id,
-      );
+      const entry = entryMapRef.current.get(component.id);
 
       const original = entry?.obj;
       const parent = original?.parent;
@@ -1766,8 +1691,7 @@ function ThreeDViewer({
       if (!original || !parent) return false;
 
       const clone = original.clone(true);
-      clone.name =
-        `door-preview-clone-${component.id}`;
+      clone.name = `door-preview-clone-${component.id}`;
 
       clone.traverse((child) => {
         child.userData = {
@@ -1780,41 +1704,38 @@ function ThreeDViewer({
       clone.quaternion.copy(original.quaternion);
       clone.scale.copy(original.scale);
 
-      const hingeSide =
-        resolveDoorPreviewHingeSide(
-          component,
-          componentsRef.current || [],
-        );
-        const width = Math.max(1, Number(component?.width || 1));
-        const localHingeOffset = new THREE.Vector3(
-          hingeSide === "right" ? width / 2 : -width / 2,
-          0,
-          0,
-        );
-        hingePosition = primaryOriginal.position
-          .clone()
-          .add(
-            localHingeOffset
-              .clone()
-              .applyQuaternion(primaryOriginal.quaternion),
-          );
-        direction = hingeSide === "right" ? 1 : -1;
-      }
+      const hingeSide = resolveDoorPreviewHingeSide(
+        component,
+        componentsRef.current || [],
+      );
+
+      const width = Math.max(1, Number(component?.width || 1));
+
+      const localHingeOffset = new THREE.Vector3(
+        hingeSide === "right" ? width / 2 : -width / 2,
+        0,
+        0,
+      );
+
+      const hingePosition = original.position
+        .clone()
+        .add(localHingeOffset.clone().applyQuaternion(original.quaternion));
 
       const pivot = new THREE.Group();
       pivot.name = `door-preview-pivot-${component.id}`;
       pivot.position.copy(hingePosition);
-      pivot.quaternion.copy(primaryOriginal.quaternion);
+      pivot.quaternion.copy(original.quaternion);
 
       parent.add(pivot);
-
-      clones.forEach((clone) => {
-        parent.add(clone);
-        clone.updateMatrixWorld(true);
-        pivot.attach(clone);
-      });
+      parent.add(clone);
 
       parent.updateMatrixWorld(true);
+      pivot.updateMatrixWorld(true);
+      clone.updateMatrixWorld(true);
+
+      // Only the temporary clone is attached to the hinge pivot.
+      // The real editable door object keeps its original transform.
+      pivot.attach(clone);
       pivot.updateMatrixWorld(true);
 
       const transform = transformRef.current;
@@ -1822,45 +1743,39 @@ function ThreeDViewer({
 
       const transformVisible =
         typeof transform?.visible === "boolean" ? transform.visible : true;
+
       const outlineVisible =
         typeof outlineGroup?.visible === "boolean"
           ? outlineGroup.visible
           : true;
 
+      // Hide only editor visuals while previewing.
+      // Do not detach TransformControls.
+      // Do not modify OrbitControls or camera state.
       if (transform) transform.visible = false;
-      if (outlineGroup) outlineGroup.visible = false;
+      if (outlineGroup) {
+        outlineGroup.visible = false;
+      }
 
-      originals.forEach((orig) => {
-        orig.visible = false;
-      });
+      original.visible = false;
 
-      // 👉 Register this specific door in the Maps!
-      doorPreviewsRef.current.set(component.id, {
+      doorPreviewRef.current = {
         id: component.id,
-        isDrawer,
-        originals,
+        original,
         pivot,
-        basePivotPosition: pivot.position.clone(),
-        basePivotQuaternion: primaryOriginal.quaternion.clone(),
-        direction,
+        basePivotQuaternion: original.quaternion.clone(),
+        direction: hingeSide === "right" ? 1 : -1,
         currentAngle: 0,
         componentSignature: getDoorPreviewComponentSignature(component),
         transform,
         transformVisible,
         outlineGroup,
         outlineVisible,
-      });
+      };
 
-      setOpenPreviewIds((prev) => [...new Set([...prev, component.id])]);
+      setDoorPreviewOpenId(component.id);
 
-      if (isDrawer) {
-        animateDoorPreviewTo(component.id, 350);
-      } else {
-        animateDoorPreviewTo(
-          component.id,
-          THREE.MathUtils.degToRad(DOOR_PREVIEW_OPEN_DEGREES),
-        );
-      }
+      animateDoorPreviewTo(THREE.MathUtils.degToRad(DOOR_PREVIEW_OPEN_DEGREES));
 
       return true;
     },
@@ -1868,115 +1783,122 @@ function ThreeDViewer({
   );
 
   const toggleSelectedDoorPreview = useCallback(() => {
-    if (isExploded3D || previewableComps.length === 0) return;
+    // Manual close must work even after normal canvas clicks or a
+    // selection change. Camera interaction never decides door state.
+    const activePreview = doorPreviewRef.current;
 
-    const anyOpen = previewableComps.some((comp) =>
-      doorPreviewsRef.current.has(comp.id),
-    );
-
-    if (anyOpen) {
-      previewableComps.forEach((comp) => {
-        if (doorPreviewsRef.current.has(comp.id)) {
-          animateDoorPreviewTo(comp.id, 0, () => {
-            clearDoorPreview(comp.id);
-          });
-        }
+    if (activePreview?.id && doorPreviewOpenId === activePreview.id) {
+      animateDoorPreviewTo(0, () => {
+        clearDoorPreview();
       });
-    } else {
-      previewableComps.forEach((comp) => {
-        createDoorPreview(comp);
-      });
+      return;
     }
+
+    const component = selectedDoorPreviewComp;
+
+    if (!component?.id || isExploded3D) {
+      return;
+    }
+
+    createDoorPreview(component);
   }, [
-    previewableComps,
+    selectedDoorPreviewComp,
     isExploded3D,
+    doorPreviewOpenId,
     animateDoorPreviewTo,
     clearDoorPreview,
     createDoorPreview,
   ]);
 
   useEffect(() => {
+    if (!doorPreviewRef.current) return;
+
+    // Normal mouse/camera/selection interaction keeps the door open.
+    // Exploded mode is a different visualization, so it closes preview.
     if (isExploded3D) {
-      clearAllDoorPreviews();
+      clearDoorPreview();
     }
-  }, [isExploded3D, clearAllDoorPreviews]);
+  }, [isExploded3D, clearDoorPreview]);
 
   useEffect(() => {
-    openPreviewIds.forEach((id) => {
-      const preview = doorPreviewsRef.current.get(id);
-      if (!preview) return;
+    const preview = doorPreviewRef.current;
+    if (!preview) return;
 
-      const previewDoorIsSelected =
-        activeSelectionIds3D.length === 1 && activeSelectionIds3D[0] === id;
+    const previewDoorIsSelected =
+      activeSelectionIds3D.length === 1 &&
+      activeSelectionIds3D[0] === preview.id;
 
-      if (preview.transform) {
-        preview.transform.visible = previewDoorIsSelected
-          ? false
-          : preview.transformVisible;
-      }
+    // When another object is selected while the door stays open,
+    // restore normal editor visuals for that new selection.
+    if (preview.transform) {
+      preview.transform.visible = previewDoorIsSelected
+        ? false
+        : preview.transformVisible;
+    }
 
-      if (preview.outlineGroup) {
-        preview.outlineGroup.visible = previewDoorIsSelected
-          ? false
-          : preview.outlineVisible;
-      }
-    });
-  }, [activeSelectionIds3D, openPreviewIds]);
+    if (preview.outlineGroup) {
+      preview.outlineGroup.visible = previewDoorIsSelected
+        ? false
+        : preview.outlineVisible;
+    }
+  }, [activeSelectionIds3D, doorPreviewOpenId]);
+
+  const openDoorPreviewComponentSignature = useMemo(() => {
+    if (!doorPreviewOpenId) return "";
+
+    const openComponent =
+      (components || []).find((item) => item.id === doorPreviewOpenId) || null;
+
+    return getDoorPreviewComponentSignature(openComponent);
+  }, [doorPreviewOpenId, components]);
 
   useEffect(() => {
-    openPreviewIds.forEach((id) => {
-      const preview = doorPreviewsRef.current.get(id);
-      if (!preview) return;
+    const preview = doorPreviewRef.current;
+    if (!preview?.id) return;
 
-      const openComponent = (components || []).find((item) => item.id === id);
-      const signature = getDoorPreviewComponentSignature(openComponent);
-
-      if (!signature || signature !== preview.componentSignature) {
-        clearDoorPreview(id);
-      }
-    });
-  }, [components, openPreviewIds, clearDoorPreview]);
+    // React may provide a new components array after a normal mouse click or
+    // selection change. That must not close the door. Close only if the actual
+    // open-door component was removed or its real transform/geometry changed.
+    if (
+      !openDoorPreviewComponentSignature ||
+      openDoorPreviewComponentSignature !== preview.componentSignature
+    ) {
+      clearDoorPreview();
+    }
+  }, [openDoorPreviewComponentSignature, clearDoorPreview]);
 
   useEffect(
     () => () => {
-      clearAllDoorPreviews({ updateState: false });
+      clearDoorPreview({
+        updateState: false,
+      });
     },
-    [clearAllDoorPreviews],
+    [clearDoorPreview],
   );
-
 
   const selectedDrawerPreviewComp = useMemo(() => {
     if (activeSelectionIds3D.length !== 1) return null;
 
     const activeId = activeSelectionIds3D[0];
     const component =
-      (components || []).find(
-        (item) => item.id === activeId,
-      ) || null;
+      (components || []).find((item) => item.id === activeId) || null;
 
-    return isDrawerPreviewComponent(component)
-      ? component
-      : null;
+    return isDrawerPreviewComponent(component) ? component : null;
   }, [activeSelectionIds3D, components]);
 
   const drawerPreviewControlComp = useMemo(() => {
     if (drawerPreviewOpenId) {
       const openComponent =
-        (components || []).find(
-          (item) => item.id === drawerPreviewOpenId,
-        ) || null;
+        (components || []).find((item) => item.id === drawerPreviewOpenId) ||
+        null;
 
       if (openComponent) return openComponent;
 
-      const fallbackId =
-        drawerPreviewRef.current?.memberIds?.[0] ||
-        "";
+      const fallbackId = drawerPreviewRef.current?.memberIds?.[0] || "";
 
       if (fallbackId) {
         const fallbackComponent =
-          (components || []).find(
-            (item) => item.id === fallbackId,
-          ) || null;
+          (components || []).find((item) => item.id === fallbackId) || null;
 
         if (fallbackComponent) {
           return fallbackComponent;
@@ -1985,69 +1907,46 @@ function ThreeDViewer({
     }
 
     return selectedDrawerPreviewComp;
-  }, [
-    drawerPreviewOpenId,
-    components,
-    selectedDrawerPreviewComp,
-  ]);
+  }, [drawerPreviewOpenId, components, selectedDrawerPreviewComp]);
 
-  const clearDrawerPreview = useCallback(
-    ({ updateState = true } = {}) => {
-      if (drawerPreviewAnimationRef.current) {
-        cancelAnimationFrame(
-          drawerPreviewAnimationRef.current,
-        );
-        drawerPreviewAnimationRef.current = 0;
+  const clearDrawerPreview = useCallback(({ updateState = true } = {}) => {
+    if (drawerPreviewAnimationRef.current) {
+      cancelAnimationFrame(drawerPreviewAnimationRef.current);
+      drawerPreviewAnimationRef.current = 0;
+    }
+
+    const preview = drawerPreviewRef.current;
+
+    (preview?.originals || []).forEach(({ object, visible }) => {
+      if (object) {
+        object.visible = visible;
       }
+    });
 
-      const preview = drawerPreviewRef.current;
+    if (preview?.group?.parent) {
+      preview.group.parent.remove(preview.group);
+    }
 
-      (preview?.originals || []).forEach(
-        ({ object, visible }) => {
-          if (object) {
-            object.visible = visible;
-          }
-        },
-      );
+    if (preview?.transform && typeof preview.transformVisible === "boolean") {
+      preview.transform.visible = preview.transformVisible;
+    }
 
-      if (preview?.group?.parent) {
-        preview.group.parent.remove(preview.group);
-      }
+    if (preview?.outlineGroup && typeof preview.outlineVisible === "boolean") {
+      preview.outlineGroup.visible = preview.outlineVisible;
+    }
 
-      if (
-        preview?.transform &&
-        typeof preview.transformVisible === "boolean"
-      ) {
-        preview.transform.visible =
-          preview.transformVisible;
-      }
+    drawerPreviewRef.current = null;
 
-      if (
-        preview?.outlineGroup &&
-        typeof preview.outlineVisible === "boolean"
-      ) {
-        preview.outlineGroup.visible =
-          preview.outlineVisible;
-      }
-
-      drawerPreviewRef.current = null;
-
-      if (updateState) {
-        setDrawerPreviewOpenId(null);
-      }
-    },
-    [],
-  );
+    if (updateState) {
+      setDrawerPreviewOpenId(null);
+    }
+  }, []);
 
   useEffect(() => {
-    clearDrawerPreviewRef.current =
-      clearDrawerPreview;
+    clearDrawerPreviewRef.current = clearDrawerPreview;
 
     return () => {
-      if (
-        clearDrawerPreviewRef.current ===
-        clearDrawerPreview
-      ) {
+      if (clearDrawerPreviewRef.current === clearDrawerPreview) {
         clearDrawerPreviewRef.current = null;
       }
     };
@@ -2059,60 +1958,41 @@ function ThreeDViewer({
       if (!preview?.group) return;
 
       if (drawerPreviewAnimationRef.current) {
-        cancelAnimationFrame(
-          drawerPreviewAnimationRef.current,
-        );
+        cancelAnimationFrame(drawerPreviewAnimationRef.current);
       }
 
-      const startDistance = Number(
-        preview.currentDistance || 0,
-      );
+      const startDistance = Number(preview.currentDistance || 0);
 
-      const destination = Number(
-        targetDistance || 0,
-      );
+      const destination = Number(targetDistance || 0);
 
       const startedAt = performance.now();
 
       const step = (now) => {
         const current = drawerPreviewRef.current;
 
-        if (
-          !current ||
-          current !== preview ||
-          !current.group
-        ) {
+        if (!current || current !== preview || !current.group) {
           drawerPreviewAnimationRef.current = 0;
           return;
         }
 
         const progress = Math.min(
           1,
-          Math.max(
-            0,
-            (now - startedAt) /
-              DRAWER_PREVIEW_DURATION_MS,
-          ),
+          Math.max(0, (now - startedAt) / DRAWER_PREVIEW_DURATION_MS),
         );
 
         const eased = easeOutCubic(progress);
 
         current.currentDistance =
-          startDistance +
-          (destination - startDistance) * eased;
+          startDistance + (destination - startDistance) * eased;
 
         current.group.position
           .copy(current.basePosition)
-          .addScaledVector(
-            current.direction,
-            current.currentDistance,
-          );
+          .addScaledVector(current.direction, current.currentDistance);
 
         current.group.updateMatrixWorld(true);
 
         if (progress < 1) {
-          drawerPreviewAnimationRef.current =
-            requestAnimationFrame(step);
+          drawerPreviewAnimationRef.current = requestAnimationFrame(step);
           return;
         }
 
@@ -2121,8 +2001,7 @@ function ThreeDViewer({
         onDone?.();
       };
 
-      drawerPreviewAnimationRef.current =
-        requestAnimationFrame(step);
+      drawerPreviewAnimationRef.current = requestAnimationFrame(step);
     },
     [],
   );
@@ -2140,36 +2019,24 @@ function ThreeDViewer({
         componentsRef.current || [],
       );
 
-      if (
-        !drawerSet.key ||
-        drawerSet.movableMembers.length === 0
-      ) {
+      if (!drawerSet.key || drawerSet.movableMembers.length === 0) {
         return false;
       }
 
-      const memberEntries =
-        drawerSet.movableMembers.map((member) => ({
-          member,
-          entry: entryMapRef.current.get(member.id),
-        }));
+      const memberEntries = drawerSet.movableMembers.map((member) => ({
+        member,
+        entry: entryMapRef.current.get(member.id),
+      }));
 
-      if (
-        memberEntries.some(
-          ({ entry }) => !entry?.obj?.parent,
-        )
-      ) {
+      if (memberEntries.some(({ entry }) => !entry?.obj?.parent)) {
         return false;
       }
 
-      const parent =
-        memberEntries[0]?.entry?.obj?.parent ||
-        null;
+      const parent = memberEntries[0]?.entry?.obj?.parent || null;
 
       if (
         !parent ||
-        memberEntries.some(
-          ({ entry }) => entry.obj.parent !== parent,
-        )
+        memberEntries.some(({ entry }) => entry.obj.parent !== parent)
       ) {
         // Current editor components normally share rootGroup.
         // Refuse a mixed-parent drawer rather than moving it incorrectly.
@@ -2177,22 +2044,14 @@ function ThreeDViewer({
       }
 
       const frontMember =
-        drawerSet.movableMembers.find(
-          isDrawerPreviewFrontComponent,
-        ) || component;
+        drawerSet.movableMembers.find(isDrawerPreviewFrontComponent) ||
+        component;
 
       const frontEntry =
-        entryMapRef.current.get(frontMember.id) ||
-        memberEntries[0]?.entry;
+        entryMapRef.current.get(frontMember.id) || memberEntries[0]?.entry;
 
-      const direction = new THREE.Vector3(
-        0,
-        0,
-        1,
-      )
-        .applyQuaternion(
-          frontEntry.obj.quaternion,
-        )
+      const direction = new THREE.Vector3(0, 0, 1)
+        .applyQuaternion(frontEntry.obj.quaternion)
         .normalize();
 
       if (direction.lengthSq() < 0.5) {
@@ -2209,24 +2068,19 @@ function ThreeDViewer({
                 .toLowerCase()
                 .includes("handle"),
           )
-          .map(
-            (item) =>
-              Number(item?.depth || 0),
-          ),
+          .map((item) => Number(item?.depth || 0)),
       );
 
       const extensionDistance = Math.min(
         DRAWER_PREVIEW_MAX_EXTENSION_MM,
         Math.max(
           DRAWER_PREVIEW_MIN_EXTENSION_MM,
-          drawerDepth *
-            DRAWER_PREVIEW_EXTENSION_RATIO,
+          drawerDepth * DRAWER_PREVIEW_EXTENSION_RATIO,
         ),
       );
 
       const group = new THREE.Group();
-      group.name =
-        `drawer-preview-group-${drawerSet.key}`;
+      group.name = `drawer-preview-group-${drawerSet.key}`;
 
       parent.add(group);
       parent.updateMatrixWorld(true);
@@ -2239,8 +2093,7 @@ function ThreeDViewer({
         const original = entry.obj;
         const clone = original.clone(true);
 
-        clone.name =
-          `drawer-preview-clone-${member.id}`;
+        clone.name = `drawer-preview-clone-${member.id}`;
 
         clone.traverse((child) => {
           child.userData = {
@@ -2279,13 +2132,10 @@ function ThreeDViewer({
       });
 
       const transform = transformRef.current;
-      const outlineGroup =
-        selectionOutlineGroupRef.current;
+      const outlineGroup = selectionOutlineGroupRef.current;
 
       const transformVisible =
-        typeof transform?.visible === "boolean"
-          ? transform.visible
-          : true;
+        typeof transform?.visible === "boolean" ? transform.visible : true;
 
       const outlineVisible =
         typeof outlineGroup?.visible === "boolean"
@@ -2300,14 +2150,8 @@ function ThreeDViewer({
       drawerPreviewRef.current = {
         id: component.id,
         key: drawerSet.key,
-        memberIds:
-          drawerSet.movableMembers.map(
-            (item) => item.id,
-          ),
-        selectionIds:
-          drawerSet.allMembers.map(
-            (item) => item.id,
-          ),
+        memberIds: drawerSet.movableMembers.map((item) => item.id),
+        selectionIds: drawerSet.allMembers.map((item) => item.id),
         originals,
         clones,
         group,
@@ -2315,10 +2159,9 @@ function ThreeDViewer({
         direction,
         currentDistance: 0,
         extensionDistance,
-        componentSignature:
-          getDrawerPreviewComponentsSignature(
-            drawerSet.movableMembers,
-          ),
+        componentSignature: getDrawerPreviewComponentsSignature(
+          drawerSet.movableMembers,
+        ),
         transform,
         transformVisible,
         outlineGroup,
@@ -2327,52 +2170,38 @@ function ThreeDViewer({
 
       setDrawerPreviewOpenId(component.id);
 
-      animateDrawerPreviewTo(
-        extensionDistance,
-      );
+      animateDrawerPreviewTo(extensionDistance);
 
       return true;
     },
-    [
-      animateDrawerPreviewTo,
-      clearDoorPreview,
-      clearDrawerPreview,
-    ],
+    [animateDrawerPreviewTo, clearDoorPreview, clearDrawerPreview],
   );
 
-  const toggleSelectedDrawerPreview = useCallback(
-    () => {
-      const activePreview =
-        drawerPreviewRef.current;
+  const toggleSelectedDrawerPreview = useCallback(() => {
+    const activePreview = drawerPreviewRef.current;
 
-      if (
-        activePreview?.id &&
-        drawerPreviewOpenId === activePreview.id
-      ) {
-        animateDrawerPreviewTo(0, () => {
-          clearDrawerPreview();
-        });
-        return;
-      }
+    if (activePreview?.id && drawerPreviewOpenId === activePreview.id) {
+      animateDrawerPreviewTo(0, () => {
+        clearDrawerPreview();
+      });
+      return;
+    }
 
-      const component =
-        selectedDrawerPreviewComp;
+    const component = selectedDrawerPreviewComp;
 
-      if (!component?.id || isExploded3D) {
-        return;
-      }
+    if (!component?.id || isExploded3D) {
+      return;
+    }
 
-      createDrawerPreview(component);
-    },
-    [
-      selectedDrawerPreviewComp,
-      isExploded3D,
-      drawerPreviewOpenId,
-      animateDrawerPreviewTo,
-      clearDrawerPreview,
-      createDrawerPreview,
-    ],
-  );
+    createDrawerPreview(component);
+  }, [
+    selectedDrawerPreviewComp,
+    isExploded3D,
+    drawerPreviewOpenId,
+    animateDrawerPreviewTo,
+    clearDrawerPreview,
+    createDrawerPreview,
+  ]);
 
   useEffect(() => {
     if (!drawerPreviewRef.current) return;
@@ -2386,56 +2215,40 @@ function ThreeDViewer({
     const preview = drawerPreviewRef.current;
     if (!preview) return;
 
-    const previewDrawerIsSelected =
-      activeSelectionIds3D.some((id) =>
-        (preview.selectionIds || []).includes(id),
-      );
+    const previewDrawerIsSelected = activeSelectionIds3D.some((id) =>
+      (preview.selectionIds || []).includes(id),
+    );
 
     if (preview.transform) {
-      preview.transform.visible =
-        previewDrawerIsSelected
-          ? false
-          : preview.transformVisible;
+      preview.transform.visible = previewDrawerIsSelected
+        ? false
+        : preview.transformVisible;
     }
 
     if (preview.outlineGroup) {
-      preview.outlineGroup.visible =
-        previewDrawerIsSelected
-          ? false
-          : preview.outlineVisible;
+      preview.outlineGroup.visible = previewDrawerIsSelected
+        ? false
+        : preview.outlineVisible;
     }
-  }, [
-    activeSelectionIds3D,
-    drawerPreviewOpenId,
-  ]);
+  }, [activeSelectionIds3D, drawerPreviewOpenId]);
 
-  const openDrawerPreviewComponentSignature =
-    useMemo(() => {
-      const preview = drawerPreviewRef.current;
+  const openDrawerPreviewComponentSignature = useMemo(() => {
+    const preview = drawerPreviewRef.current;
 
-      if (
-        !drawerPreviewOpenId ||
-        !preview?.memberIds?.length
-      ) {
-        return "";
-      }
+    if (!drawerPreviewOpenId || !preview?.memberIds?.length) {
+      return "";
+    }
 
-      const openMembers =
-        (components || []).filter((item) =>
-          preview.memberIds.includes(item.id),
-        );
+    const openMembers = (components || []).filter((item) =>
+      preview.memberIds.includes(item.id),
+    );
 
-      if (
-        openMembers.length !==
-        preview.memberIds.length
-      ) {
-        return "";
-      }
+    if (openMembers.length !== preview.memberIds.length) {
+      return "";
+    }
 
-      return getDrawerPreviewComponentsSignature(
-        openMembers,
-      );
-    }, [drawerPreviewOpenId, components]);
+    return getDrawerPreviewComponentsSignature(openMembers);
+  }, [drawerPreviewOpenId, components]);
 
   useEffect(() => {
     const preview = drawerPreviewRef.current;
@@ -2443,15 +2256,11 @@ function ThreeDViewer({
 
     if (
       !openDrawerPreviewComponentSignature ||
-      openDrawerPreviewComponentSignature !==
-        preview.componentSignature
+      openDrawerPreviewComponentSignature !== preview.componentSignature
     ) {
       clearDrawerPreview();
     }
-  }, [
-    openDrawerPreviewComponentSignature,
-    clearDrawerPreview,
-  ]);
+  }, [openDrawerPreviewComponentSignature, clearDrawerPreview]);
 
   useEffect(
     () => () => {
@@ -3098,23 +2907,10 @@ function ThreeDViewer({
     const pickMesh = (event) => {
       setMouseFromEvent(event);
       raycasterRef.current.setFromCamera(mouseRef.current, camera);
-      const activeMeshes = [];
-      rootGroupRef.current.traverse((child) => {
-        if (child.isMesh && child.visible && child.userData?.rootId) {
-          let isHidden = false;
-          let p = child;
-          while (p) {
-            if (!p.visible) {
-              isHidden = true;
-              break;
-            }
-            p = p.parent;
-          }
-          if (!isHidden) activeMeshes.push(child);
-        }
-      });
-
-      const hits = raycasterRef.current.intersectObjects(activeMeshes, false);
+      const hits = raycasterRef.current.intersectObjects(
+        selectableMeshesRef.current,
+        false,
+      );
       return hits[0] || null;
     };
 
@@ -3983,7 +3779,7 @@ function ThreeDViewer({
         }
       />
 
-      {doorPreviewControlComp && !isExploded3D ? (
+      {doorPreviewControlComp && !drawerPreviewControlComp && !isExploded3D ? (
         <div
           onMouseDown={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
@@ -4016,9 +3812,10 @@ function ThreeDViewer({
               color: "#93a8c4",
             }}
           >
-            {previewableComps.length > 1
-              ? `Multi Preview - ${previewableComps.length} Selected`
-              : `${isDrawerPreviewComponent(previewableComps[0]) ? "Drawer" : "Door"} Preview - ${previewableComps[0].label || previewableComps[0].partCode || "Selected Part"}`}
+            Door Preview -{" "}
+            {doorPreviewControlComp.label ||
+              doorPreviewControlComp.partCode ||
+              "Selected Door"}
           </span>
 
           <button
@@ -4027,41 +3824,115 @@ function ThreeDViewer({
             style={{
               minHeight: 30,
               padding: "5px 12px",
-              border: previewableComps.some((c) =>
-                openPreviewIds.includes(c.id),
-              )
-                ? "1px solid rgba(148,163,184,.8)"
-                : "1px solid rgba(96,165,250,.92)",
+              border:
+                doorPreviewOpenId === doorPreviewControlComp.id
+                  ? "1px solid rgba(148,163,184,.8)"
+                  : "1px solid rgba(96,165,250,.92)",
               borderRadius: 0,
-              background: previewableComps.some((c) =>
-                openPreviewIds.includes(c.id),
-              )
-                ? "rgba(30,41,59,.9)"
-                : "rgba(37,99,235,.3)",
+              background:
+                doorPreviewOpenId === doorPreviewControlComp.id
+                  ? "rgba(30,41,59,.9)"
+                  : "rgba(37,99,235,.3)",
               color: "#f8fafc",
               fontSize: 9,
               fontWeight: 600,
               cursor: "pointer",
             }}
           >
-            {previewableComps.some((c) => openPreviewIds.includes(c.id))
-              ? previewableComps.length > 1
-                ? "Close All"
-                : isDrawerPreviewComponent(previewableComps[0])
-                  ? "Close Drawer"
-                  : "Close Door"
-              : previewableComps.length > 1
-                ? "Open All"
-                : isDrawerPreviewComponent(previewableComps[0])
-                  ? "Open Drawer"
-                  : "Open Door"}
+            {doorPreviewOpenId === doorPreviewControlComp.id
+              ? "Close Door"
+              : "Open Door"}
           </button>
 
-          <span style={{ fontSize: 8, color: "#64748b", whiteSpace: "nowrap" }}>
+          <span
+            style={{
+              fontSize: 8,
+              color: "#64748b",
+              whiteSpace: "nowrap",
+            }}
+          >
             Visual only
           </span>
         </div>
       ) : null}
+
+      {drawerPreviewControlComp && !isExploded3D ? (
+        <div
+          onMouseDown={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: 18,
+            transform: "translateX(-50%)",
+            zIndex: 1300,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "7px 8px",
+            border: "1px solid rgba(100,116,139,.65)",
+            borderRadius: 2,
+            background: "rgba(7,14,26,.96)",
+            boxShadow: "0 8px 20px rgba(0,0,0,.24)",
+            color: "#dbeafe",
+          }}
+        >
+          <span
+            style={{
+              maxWidth: 190,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontSize: 9,
+              fontWeight: 600,
+              letterSpacing: ".04em",
+              color: "#93a8c4",
+            }}
+          >
+            Drawer Preview -{" "}
+            {drawerPreviewControlComp.label ||
+              drawerPreviewControlComp.partCode ||
+              "Selected Drawer"}
+          </span>
+
+          <button
+            type="button"
+            onClick={toggleSelectedDrawerPreview}
+            style={{
+              minHeight: 30,
+              padding: "5px 12px",
+              border:
+                drawerPreviewOpenId === drawerPreviewControlComp.id
+                  ? "1px solid rgba(148,163,184,.8)"
+                  : "1px solid rgba(96,165,250,.92)",
+              borderRadius: 0,
+              background:
+                drawerPreviewOpenId === drawerPreviewControlComp.id
+                  ? "rgba(30,41,59,.9)"
+                  : "rgba(37,99,235,.3)",
+              color: "#f8fafc",
+              fontSize: 9,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            {drawerPreviewOpenId === drawerPreviewControlComp.id
+              ? "Close Drawer"
+              : "Open Drawer"}
+          </button>
+
+          <span
+            style={{
+              fontSize: 8,
+              color: "#64748b",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Visual only
+          </span>
+        </div>
+      ) : null}
+
       <TransformToolbar
         transformMode={transformMode}
         setTransformMode={setTransformMode}

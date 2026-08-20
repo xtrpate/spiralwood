@@ -42,8 +42,7 @@ export function moveCameraFromKeyboard({
 
   if (moveDir.lengthSq() === 0) return false;
 
-  const speed =
-    (keys["ShiftLeft"] || keys["ShiftRight"] ? 2200 : 1100) * delta;
+  const speed = (keys["ShiftLeft"] || keys["ShiftRight"] ? 2200 : 1100) * delta;
 
   moveDir.normalize().multiplyScalar(speed);
   camera.position.add(moveDir);

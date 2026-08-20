@@ -67,6 +67,7 @@ import WarrantyPageCustomer from "./pages/customer/warrantypage";
 import ProfileSettings from "./pages/customer/profilesettings";
 import LandingPage from "./pages/customer/LandingPage";
 import VerifyOtpPage from "./pages/customer/verifyotppage";
+import PhoneOtpPage from "./pages/customer/phoneotppage";
 import ResetPasswordPage from "./pages/customer/resetpasswordpage";
 import PendingApprovalPage from "./pages/customer/pendingapprovalpage";
 import TermsPage from "./pages/customer/TermsPage";
@@ -307,6 +308,7 @@ export default function App() {
                   <Route path="terms" element={<TermsPage />} />
                   <Route path="privacy" element={<PrivacyPolicyPage />} />
                   <Route path="verify-otp" element={<VerifyOtpPage />} />
+                  <Route path="phone-otp" element={<PhoneOtpPage />} />
 
                   <Route
                     path="pending-approval"
@@ -330,10 +332,7 @@ export default function App() {
                   <Route path="cart" element={<CartPage />} />
                   <Route path="customize" element={<CustomizePage />} />
 
-                  <Route
-                    path="custom-cart"
-                    element={<CustomCartEditRoute />}
-                  />
+                  <Route path="custom-cart" element={<CustomCartEditRoute />} />
 
                   <Route
                     path="checkout"
