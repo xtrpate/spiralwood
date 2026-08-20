@@ -68,6 +68,11 @@ const EMPTY_EXPLODED_DISPLAY_OFFSETS = new Map();
 const DOOR_PREVIEW_OPEN_DEGREES = 82;
 const DOOR_PREVIEW_DURATION_MS = 320;
 
+const DRAWER_PREVIEW_DURATION_MS = 320;
+const DRAWER_PREVIEW_EXTENSION_RATIO = 0.72;
+const DRAWER_PREVIEW_MIN_EXTENSION_MM = 120;
+const DRAWER_PREVIEW_MAX_EXTENSION_MM = 520;
+
 // WISDOM ADMIN DOOR PREVIEW MANUAL CLOSE V2.0.2
 // Door state is independent from normal camera and canvas selection interaction.
 
@@ -201,6 +206,268 @@ const getDoorPreviewComponentSignature = (component = null) => {
   ].join("|");
 };
 
+// WISDOM ADMIN DRAWER OPEN/CLOSE PREVIEW V1.0.1
+// Drawer preview is visual-only. It never mutates saved component coordinates.
+const getDrawerPreviewText = (component = {}) =>
+  [
+    component?.type,
+    component?.partRole,
+    component?.label,
+    component?.partCode,
+    component?.technicalId,
+    component?.category,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+    .toLowerCase();
+
+const isDrawerPreviewComponent = (component = {}) => {
+  if (!component?.id) return false;
+
+  if (
+    component?.drawerAssemblyId ||
+    component?.drawer_assembly_id ||
+    component?.drawerId ||
+    component?.drawer_id ||
+    component?.drawerGroupId ||
+    component?.drawer_group_id
+  ) {
+    return true;
+  }
+
+  const type = String(component?.type || "")
+    .trim()
+    .toLowerCase();
+  const role = String(component?.partRole || "")
+    .trim()
+    .toLowerCase();
+  const text = getDrawerPreviewText(component);
+
+  return (
+    type === "drawer_front_panel" ||
+    type.startsWith("wr_drawer_") ||
+    type.startsWith("drawer_") ||
+    role.startsWith("drawer_") ||
+    /(^|[\s_-])drawer([\s_-]|$)/.test(text) ||
+    /(^|-)drw(?:-|$)/i.test(
+      String(
+        component?.partCode ||
+          component?.technicalId ||
+          "",
+      ),
+    ) ||
+    /(^|-)d\d+(?:-|$)/i.test(
+      String(
+        component?.partCode ||
+          component?.technicalId ||
+          "",
+      ),
+    )
+  );
+};
+
+const isDrawerPreviewFixedHardware = (component = {}) => {
+  const type = String(component?.type || "")
+    .trim()
+    .toLowerCase();
+  const role = String(component?.partRole || "")
+    .trim()
+    .toLowerCase();
+  const text = getDrawerPreviewText(component);
+
+  return (
+    type.includes("drawer_slide") ||
+    type.includes("drawer_runner") ||
+    role.includes("drawer_slide") ||
+    role.includes("drawer_runner") ||
+    /(^|[\s_-])(slide|runner)([\s_-]|$)/.test(text)
+  );
+};
+
+const resolveDrawerPreviewKey = (component = {}) => {
+  if (!component?.id) return "";
+
+  const explicit =
+    component?.drawerAssemblyId ??
+    component?.drawer_assembly_id ??
+    component?.drawerId ??
+    component?.drawer_id ??
+    component?.drawerGroupId ??
+    component?.drawer_group_id ??
+    "";
+
+  if (String(explicit).trim()) {
+    return `drawer-id:${String(explicit).trim()}`;
+  }
+
+  const rawCode = String(
+    component?.partCode ||
+      component?.technicalId ||
+      "",
+  )
+    .trim()
+    .toUpperCase();
+
+  if (rawCode) {
+    const baseCode = rawCode.replace(
+      /-(?:F|FRONT|SL|SR|SIDE-L|SIDE-R|SIDE-LEFT|SIDE-RIGHT|BK|BACK|BOT|BOTTOM|HDL|HANDLE|SLIDE(?:-[LR])?|RUNNER(?:-[LR])?)$/i,
+      "",
+    );
+
+    if (
+      baseCode !== rawCode &&
+      (
+        /(?:^|-)DRW(?:-|$)/i.test(baseCode) ||
+        /(?:^|-)DRAWER(?:-|$)/i.test(baseCode) ||
+        /(?:^|-)D\d+(?:-|$)/i.test(baseCode)
+      )
+    ) {
+      return `code:${baseCode}`;
+    }
+  }
+
+  const labelText = String(
+    component?.label ||
+      component?.name ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (labelText) {
+    const bayMatch = labelText.match(
+      /\bbay\s*(\d+)\b/i,
+    );
+
+    const drawerMatch =
+      labelText.match(
+        /\bdrawer\s*(?:front|left\s+side|right\s+side|side|back|bottom|handle|slide|runner)?\s*(\d+)\b/i,
+      ) ||
+      labelText.match(
+        /\bdrawer\s*(\d+)\b/i,
+      );
+
+    if (drawerMatch) {
+      const bayKey = bayMatch
+        ? `bay${bayMatch[1]}:`
+        : "";
+
+      return `label:${bayKey}drawer${drawerMatch[1]}`;
+    }
+  }
+
+  return `single:${component.id}`;
+};
+
+const resolveDrawerPreviewSet = (
+  component = {},
+  allComponents = [],
+) => {
+  if (!isDrawerPreviewComponent(component)) {
+    return {
+      key: "",
+      allMembers: [],
+      movableMembers: [],
+    };
+  }
+
+  const key = resolveDrawerPreviewKey(component);
+
+  const allMembers = (allComponents || []).filter(
+    (item) =>
+      isDrawerPreviewComponent(item) &&
+      resolveDrawerPreviewKey(item) === key,
+  );
+
+  const movableMembers = allMembers.filter(
+    (item) => !isDrawerPreviewFixedHardware(item),
+  );
+
+  if (movableMembers.length > 0) {
+    return {
+      key,
+      allMembers,
+      movableMembers,
+    };
+  }
+
+  if (!isDrawerPreviewFixedHardware(component)) {
+    return {
+      key,
+      allMembers: [component],
+      movableMembers: [component],
+    };
+  }
+
+  return {
+    key,
+    allMembers,
+    movableMembers: [],
+  };
+};
+
+const isDrawerPreviewFrontComponent = (
+  component = {},
+) => {
+  const type = String(component?.type || "")
+    .trim()
+    .toLowerCase();
+  const role = String(component?.partRole || "")
+    .trim()
+    .toLowerCase();
+  const code = String(
+    component?.partCode ||
+      component?.technicalId ||
+      "",
+  )
+    .trim()
+    .toUpperCase();
+  const text = getDrawerPreviewText(component);
+
+  return (
+    type === "drawer_front_panel" ||
+    type === "wr_drawer_front" ||
+    role === "drawer_front" ||
+    role === "drawer_front_panel" ||
+    /-F$/i.test(code) ||
+    /drawer[\s_-]*front/.test(text)
+  );
+};
+
+const getDrawerPreviewComponentsSignature = (
+  components = [],
+) =>
+  (components || [])
+    .filter((component) => component?.id)
+    .slice()
+    .sort((a, b) =>
+      String(a.id).localeCompare(String(b.id)),
+    )
+    .map((component) =>
+      [
+        component.id,
+        component.type || "",
+        component.partRole || "",
+        component.partCode || "",
+        component.drawerAssemblyId ||
+          component.drawer_assembly_id ||
+          component.drawerId ||
+          component.drawer_id ||
+          "",
+        Number(component.x || 0),
+        Number(component.y || 0),
+        Number(component.z || 0),
+        Number(component.width || 0),
+        Number(component.height || 0),
+        Number(component.depth || 0),
+        Number(component.rotationX || 0),
+        Number(component.rotationY || 0),
+        Number(component.rotationZ || 0),
+      ].join("|"),
+    )
+    .join("||");
+
 function ThreeDViewer({
   onPushHistory,
   components,
@@ -289,6 +556,12 @@ function ThreeDViewer({
     useState(null);
   const doorPreviewRef = useRef(null);
   const doorPreviewAnimationRef = useRef(0);
+
+  const [drawerPreviewOpenId, setDrawerPreviewOpenId] =
+    useState(null);
+  const drawerPreviewRef = useRef(null);
+  const drawerPreviewAnimationRef = useRef(0);
+  const clearDrawerPreviewRef = useRef(null);
 
   useEffect(() => {
     if (!showLibraryPanel && activeLeftPanel === "library") {
@@ -1533,6 +1806,7 @@ function ThreeDViewer({
     (component) => {
       if (!component?.id) return false;
 
+      clearDrawerPreviewRef.current?.();
       clearDoorPreview();
 
       const entry = entryMapRef.current.get(
@@ -1774,6 +2048,524 @@ function ThreeDViewer({
       });
     },
     [clearDoorPreview],
+  );
+
+
+  const selectedDrawerPreviewComp = useMemo(() => {
+    if (activeSelectionIds3D.length !== 1) return null;
+
+    const activeId = activeSelectionIds3D[0];
+    const component =
+      (components || []).find(
+        (item) => item.id === activeId,
+      ) || null;
+
+    return isDrawerPreviewComponent(component)
+      ? component
+      : null;
+  }, [activeSelectionIds3D, components]);
+
+  const drawerPreviewControlComp = useMemo(() => {
+    if (drawerPreviewOpenId) {
+      const openComponent =
+        (components || []).find(
+          (item) => item.id === drawerPreviewOpenId,
+        ) || null;
+
+      if (openComponent) return openComponent;
+
+      const fallbackId =
+        drawerPreviewRef.current?.memberIds?.[0] ||
+        "";
+
+      if (fallbackId) {
+        const fallbackComponent =
+          (components || []).find(
+            (item) => item.id === fallbackId,
+          ) || null;
+
+        if (fallbackComponent) {
+          return fallbackComponent;
+        }
+      }
+    }
+
+    return selectedDrawerPreviewComp;
+  }, [
+    drawerPreviewOpenId,
+    components,
+    selectedDrawerPreviewComp,
+  ]);
+
+  const clearDrawerPreview = useCallback(
+    ({ updateState = true } = {}) => {
+      if (drawerPreviewAnimationRef.current) {
+        cancelAnimationFrame(
+          drawerPreviewAnimationRef.current,
+        );
+        drawerPreviewAnimationRef.current = 0;
+      }
+
+      const preview = drawerPreviewRef.current;
+
+      (preview?.originals || []).forEach(
+        ({ object, visible }) => {
+          if (object) {
+            object.visible = visible;
+          }
+        },
+      );
+
+      if (preview?.group?.parent) {
+        preview.group.parent.remove(preview.group);
+      }
+
+      if (
+        preview?.transform &&
+        typeof preview.transformVisible === "boolean"
+      ) {
+        preview.transform.visible =
+          preview.transformVisible;
+      }
+
+      if (
+        preview?.outlineGroup &&
+        typeof preview.outlineVisible === "boolean"
+      ) {
+        preview.outlineGroup.visible =
+          preview.outlineVisible;
+      }
+
+      drawerPreviewRef.current = null;
+
+      if (updateState) {
+        setDrawerPreviewOpenId(null);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    clearDrawerPreviewRef.current =
+      clearDrawerPreview;
+
+    return () => {
+      if (
+        clearDrawerPreviewRef.current ===
+        clearDrawerPreview
+      ) {
+        clearDrawerPreviewRef.current = null;
+      }
+    };
+  }, [clearDrawerPreview]);
+
+  const animateDrawerPreviewTo = useCallback(
+    (targetDistance, onDone = null) => {
+      const preview = drawerPreviewRef.current;
+      if (!preview?.group) return;
+
+      if (drawerPreviewAnimationRef.current) {
+        cancelAnimationFrame(
+          drawerPreviewAnimationRef.current,
+        );
+      }
+
+      const startDistance = Number(
+        preview.currentDistance || 0,
+      );
+
+      const destination = Number(
+        targetDistance || 0,
+      );
+
+      const startedAt = performance.now();
+
+      const step = (now) => {
+        const current = drawerPreviewRef.current;
+
+        if (
+          !current ||
+          current !== preview ||
+          !current.group
+        ) {
+          drawerPreviewAnimationRef.current = 0;
+          return;
+        }
+
+        const progress = Math.min(
+          1,
+          Math.max(
+            0,
+            (now - startedAt) /
+              DRAWER_PREVIEW_DURATION_MS,
+          ),
+        );
+
+        const eased = easeOutCubic(progress);
+
+        current.currentDistance =
+          startDistance +
+          (destination - startDistance) * eased;
+
+        current.group.position
+          .copy(current.basePosition)
+          .addScaledVector(
+            current.direction,
+            current.currentDistance,
+          );
+
+        current.group.updateMatrixWorld(true);
+
+        if (progress < 1) {
+          drawerPreviewAnimationRef.current =
+            requestAnimationFrame(step);
+          return;
+        }
+
+        current.currentDistance = destination;
+        drawerPreviewAnimationRef.current = 0;
+        onDone?.();
+      };
+
+      drawerPreviewAnimationRef.current =
+        requestAnimationFrame(step);
+    },
+    [],
+  );
+
+  const createDrawerPreview = useCallback(
+    (component) => {
+      if (!component?.id) return false;
+
+      // Only one moving-furniture preview may own the editor visuals.
+      clearDoorPreview();
+      clearDrawerPreview();
+
+      const drawerSet = resolveDrawerPreviewSet(
+        component,
+        componentsRef.current || [],
+      );
+
+      if (
+        !drawerSet.key ||
+        drawerSet.movableMembers.length === 0
+      ) {
+        return false;
+      }
+
+      const memberEntries =
+        drawerSet.movableMembers.map((member) => ({
+          member,
+          entry: entryMapRef.current.get(member.id),
+        }));
+
+      if (
+        memberEntries.some(
+          ({ entry }) => !entry?.obj?.parent,
+        )
+      ) {
+        return false;
+      }
+
+      const parent =
+        memberEntries[0]?.entry?.obj?.parent ||
+        null;
+
+      if (
+        !parent ||
+        memberEntries.some(
+          ({ entry }) => entry.obj.parent !== parent,
+        )
+      ) {
+        // Current editor components normally share rootGroup.
+        // Refuse a mixed-parent drawer rather than moving it incorrectly.
+        return false;
+      }
+
+      const frontMember =
+        drawerSet.movableMembers.find(
+          isDrawerPreviewFrontComponent,
+        ) || component;
+
+      const frontEntry =
+        entryMapRef.current.get(frontMember.id) ||
+        memberEntries[0]?.entry;
+
+      const direction = new THREE.Vector3(
+        0,
+        0,
+        1,
+      )
+        .applyQuaternion(
+          frontEntry.obj.quaternion,
+        )
+        .normalize();
+
+      if (direction.lengthSq() < 0.5) {
+        return false;
+      }
+
+      const drawerDepth = Math.max(
+        1,
+        ...drawerSet.movableMembers
+          .filter(
+            (item) =>
+              !isDrawerPreviewFrontComponent(item) &&
+              !String(item?.partRole || "")
+                .toLowerCase()
+                .includes("handle"),
+          )
+          .map(
+            (item) =>
+              Number(item?.depth || 0),
+          ),
+      );
+
+      const extensionDistance = Math.min(
+        DRAWER_PREVIEW_MAX_EXTENSION_MM,
+        Math.max(
+          DRAWER_PREVIEW_MIN_EXTENSION_MM,
+          drawerDepth *
+            DRAWER_PREVIEW_EXTENSION_RATIO,
+        ),
+      );
+
+      const group = new THREE.Group();
+      group.name =
+        `drawer-preview-group-${drawerSet.key}`;
+
+      parent.add(group);
+      parent.updateMatrixWorld(true);
+      group.updateMatrixWorld(true);
+
+      const originals = [];
+      const clones = [];
+
+      memberEntries.forEach(({ member, entry }) => {
+        const original = entry.obj;
+        const clone = original.clone(true);
+
+        clone.name =
+          `drawer-preview-clone-${member.id}`;
+
+        clone.traverse((child) => {
+          child.userData = {
+            ...(child.userData || {}),
+            isDrawerPreviewClone: true,
+          };
+        });
+
+        clone.position.copy(original.position);
+        clone.quaternion.copy(original.quaternion);
+        clone.scale.copy(original.scale);
+
+        parent.add(clone);
+
+        parent.updateMatrixWorld(true);
+        group.updateMatrixWorld(true);
+        clone.updateMatrixWorld(true);
+
+        // Preserve each part's exact world transform while collecting all
+        // drawer-box pieces under one temporary moving preview group.
+        group.attach(clone);
+        group.updateMatrixWorld(true);
+
+        originals.push({
+          id: member.id,
+          object: original,
+          visible: original.visible,
+        });
+
+        clones.push({
+          id: member.id,
+          object: clone,
+        });
+
+        original.visible = false;
+      });
+
+      const transform = transformRef.current;
+      const outlineGroup =
+        selectionOutlineGroupRef.current;
+
+      const transformVisible =
+        typeof transform?.visible === "boolean"
+          ? transform.visible
+          : true;
+
+      const outlineVisible =
+        typeof outlineGroup?.visible === "boolean"
+          ? outlineGroup.visible
+          : true;
+
+      if (transform) transform.visible = false;
+      if (outlineGroup) {
+        outlineGroup.visible = false;
+      }
+
+      drawerPreviewRef.current = {
+        id: component.id,
+        key: drawerSet.key,
+        memberIds:
+          drawerSet.movableMembers.map(
+            (item) => item.id,
+          ),
+        selectionIds:
+          drawerSet.allMembers.map(
+            (item) => item.id,
+          ),
+        originals,
+        clones,
+        group,
+        basePosition: group.position.clone(),
+        direction,
+        currentDistance: 0,
+        extensionDistance,
+        componentSignature:
+          getDrawerPreviewComponentsSignature(
+            drawerSet.movableMembers,
+          ),
+        transform,
+        transformVisible,
+        outlineGroup,
+        outlineVisible,
+      };
+
+      setDrawerPreviewOpenId(component.id);
+
+      animateDrawerPreviewTo(
+        extensionDistance,
+      );
+
+      return true;
+    },
+    [
+      animateDrawerPreviewTo,
+      clearDoorPreview,
+      clearDrawerPreview,
+    ],
+  );
+
+  const toggleSelectedDrawerPreview = useCallback(
+    () => {
+      const activePreview =
+        drawerPreviewRef.current;
+
+      if (
+        activePreview?.id &&
+        drawerPreviewOpenId === activePreview.id
+      ) {
+        animateDrawerPreviewTo(0, () => {
+          clearDrawerPreview();
+        });
+        return;
+      }
+
+      const component =
+        selectedDrawerPreviewComp;
+
+      if (!component?.id || isExploded3D) {
+        return;
+      }
+
+      createDrawerPreview(component);
+    },
+    [
+      selectedDrawerPreviewComp,
+      isExploded3D,
+      drawerPreviewOpenId,
+      animateDrawerPreviewTo,
+      clearDrawerPreview,
+      createDrawerPreview,
+    ],
+  );
+
+  useEffect(() => {
+    if (!drawerPreviewRef.current) return;
+
+    if (isExploded3D) {
+      clearDrawerPreview();
+    }
+  }, [isExploded3D, clearDrawerPreview]);
+
+  useEffect(() => {
+    const preview = drawerPreviewRef.current;
+    if (!preview) return;
+
+    const previewDrawerIsSelected =
+      activeSelectionIds3D.some((id) =>
+        (preview.selectionIds || []).includes(id),
+      );
+
+    if (preview.transform) {
+      preview.transform.visible =
+        previewDrawerIsSelected
+          ? false
+          : preview.transformVisible;
+    }
+
+    if (preview.outlineGroup) {
+      preview.outlineGroup.visible =
+        previewDrawerIsSelected
+          ? false
+          : preview.outlineVisible;
+    }
+  }, [
+    activeSelectionIds3D,
+    drawerPreviewOpenId,
+  ]);
+
+  const openDrawerPreviewComponentSignature =
+    useMemo(() => {
+      const preview = drawerPreviewRef.current;
+
+      if (
+        !drawerPreviewOpenId ||
+        !preview?.memberIds?.length
+      ) {
+        return "";
+      }
+
+      const openMembers =
+        (components || []).filter((item) =>
+          preview.memberIds.includes(item.id),
+        );
+
+      if (
+        openMembers.length !==
+        preview.memberIds.length
+      ) {
+        return "";
+      }
+
+      return getDrawerPreviewComponentsSignature(
+        openMembers,
+      );
+    }, [drawerPreviewOpenId, components]);
+
+  useEffect(() => {
+    const preview = drawerPreviewRef.current;
+    if (!preview?.id) return;
+
+    if (
+      !openDrawerPreviewComponentSignature ||
+      openDrawerPreviewComponentSignature !==
+        preview.componentSignature
+    ) {
+      clearDrawerPreview();
+    }
+  }, [
+    openDrawerPreviewComponentSignature,
+    clearDrawerPreview,
+  ]);
+
+  useEffect(
+    () => () => {
+      clearDrawerPreview({
+        updateState: false,
+      });
+    },
+    [clearDrawerPreview],
   );
 
   const explodedDisplayOffsets = useMemo(() => {
@@ -3293,7 +4085,9 @@ function ThreeDViewer({
         }
       />
 
-      {doorPreviewControlComp && !isExploded3D ? (
+      {doorPreviewControlComp &&
+      !drawerPreviewControlComp &&
+      !isExploded3D ? (
         <div
           onMouseDown={(event) =>
             event.stopPropagation()
@@ -3378,6 +4172,93 @@ function ThreeDViewer({
           </span>
         </div>
       ) : null}
+
+      {drawerPreviewControlComp && !isExploded3D ? (
+        <div
+          onMouseDown={(event) =>
+            event.stopPropagation()
+          }
+          onPointerDown={(event) =>
+            event.stopPropagation()
+          }
+          style={{
+            position: "absolute",
+            left: "50%",
+            bottom: 18,
+            transform: "translateX(-50%)",
+            zIndex: 1300,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "7px 8px",
+            border:
+              "1px solid rgba(100,116,139,.65)",
+            borderRadius: 2,
+            background: "rgba(7,14,26,.96)",
+            boxShadow:
+              "0 8px 20px rgba(0,0,0,.24)",
+            color: "#dbeafe",
+          }}
+        >
+          <span
+            style={{
+              maxWidth: 190,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontSize: 9,
+              fontWeight: 600,
+              letterSpacing: ".04em",
+              color: "#93a8c4",
+            }}
+          >
+            Drawer Preview -{" "}
+            {drawerPreviewControlComp.label ||
+              drawerPreviewControlComp.partCode ||
+              "Selected Drawer"}
+          </span>
+
+          <button
+            type="button"
+            onClick={toggleSelectedDrawerPreview}
+            style={{
+              minHeight: 30,
+              padding: "5px 12px",
+              border:
+                drawerPreviewOpenId ===
+                drawerPreviewControlComp.id
+                  ? "1px solid rgba(148,163,184,.8)"
+                  : "1px solid rgba(96,165,250,.92)",
+              borderRadius: 0,
+              background:
+                drawerPreviewOpenId ===
+                drawerPreviewControlComp.id
+                  ? "rgba(30,41,59,.9)"
+                  : "rgba(37,99,235,.3)",
+              color: "#f8fafc",
+              fontSize: 9,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            {drawerPreviewOpenId ===
+            drawerPreviewControlComp.id
+              ? "Close Drawer"
+              : "Open Drawer"}
+          </button>
+
+          <span
+            style={{
+              fontSize: 8,
+              color: "#64748b",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Visual only
+          </span>
+        </div>
+      ) : null}
+
       <TransformToolbar
         transformMode={transformMode}
         setTransformMode={setTransformMode}
