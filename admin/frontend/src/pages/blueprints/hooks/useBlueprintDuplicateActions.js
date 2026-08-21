@@ -6,6 +6,25 @@ import { makeGroupId, snap } from "../data/utils";
 import { createObjectId, deepClone } from "../data/editorUtils";
 import { getSelectionBoundsXYZ } from "../data/selectionUtils";
 
+// WISDOM UNIVERSAL PART MACHINING DUPLICATE SAFETY V2.0.1
+const makeDuplicateMachiningId = (prefix) =>
+  String(prefix) + "_" + createObjectId().replace(/[^a-zA-Z0-9_-]/g, "");
+
+const remapDuplicateMachiningMetadata = (item = {}) => ({
+  machiningCutouts: Array.isArray(item.machiningCutouts)
+    ? item.machiningCutouts.map((cutout) => ({
+        ...deepClone(cutout),
+        id: makeDuplicateMachiningId("cutout"),
+      }))
+    : item.machiningCutouts,
+  woodworkingOperations: Array.isArray(item.woodworkingOperations)
+    ? item.woodworkingOperations.map((operation) => ({
+        ...deepClone(operation),
+        id: makeDuplicateMachiningId("woodop"),
+      }))
+    : item.woodworkingOperations,
+});
+
 export function useBlueprintDuplicateActions({
   components,
   setComponents,
@@ -135,29 +154,143 @@ export function useBlueprintDuplicateActions({
         return null;
       };
 
-      for (let copyIndex = 1; copyIndex <= copies; copyIndex += 1) {
+      for (
+        let copyIndex = 1;
+        copyIndex <= copies;
+        copyIndex += 1
+      ) {
         const groupIdMap = new Map();
 
+        // WISDOM MANUAL MOVING GROUPS V1.1.0
+        // Every duplicate gets fresh object ids and fresh moving-group ids.
+        // This prevents the duplicate drawer/door from joining the original.
+        const objectIdMap = new Map(
+          sourceItems
+            .filter((item) => item?.id)
+            .map((item) => [
+              item.id,
+              createObjectId(),
+            ]),
+        );
+
+        const motionGroupIdMap = new Map();
+        const motionReferenceIdMap = new Map();
+
         sourceItems.forEach((item) => {
-          const cloneGroupKey = getCloneAssemblyKey(item);
-          let nextGroupId = item.groupId || null;
+          const sourceMotionGroupId = String(
+            item.motionGroupId ??
+              item.motion_group_id ??
+              "",
+          ).trim();
+
+          if (
+            sourceMotionGroupId &&
+            !motionGroupIdMap.has(sourceMotionGroupId)
+          ) {
+            motionGroupIdMap.set(
+              sourceMotionGroupId,
+              `manual-motion-${makeGroupId()}`,
+            );
+          }
+        });
+
+        for (const sourceMotionGroupId of motionGroupIdMap.keys()) {
+          const groupItems = sourceItems.filter(
+            (item) =>
+              String(
+                item.motionGroupId ??
+                  item.motion_group_id ??
+                  "",
+              ).trim() === sourceMotionGroupId,
+          );
+
+          const savedReferenceId =
+            groupItems
+              .map((item) =>
+                String(
+                  item.motionReferencePartId ??
+                    item.motion_reference_part_id ??
+                    "",
+                ).trim(),
+              )
+              .find((id) => objectIdMap.has(id)) ||
+            groupItems[0]?.id ||
+            "";
+
+          motionReferenceIdMap.set(
+            sourceMotionGroupId,
+            objectIdMap.get(savedReferenceId) ||
+              objectIdMap.get(groupItems[0]?.id) ||
+              "",
+          );
+        }
+
+        sourceItems.forEach((item) => {
+          const cloneGroupKey =
+            getCloneAssemblyKey(item);
+          let nextGroupId =
+            item.groupId || null;
 
           if (cloneGroupKey) {
             if (!groupIdMap.has(cloneGroupKey)) {
-              groupIdMap.set(cloneGroupKey, makeGroupId());
+              groupIdMap.set(
+                cloneGroupKey,
+                makeGroupId(),
+              );
             }
-            nextGroupId = groupIdMap.get(cloneGroupKey);
+            nextGroupId =
+              groupIdMap.get(cloneGroupKey);
           }
+
+          const nextId =
+            objectIdMap.get(item.id) ||
+            createObjectId();
+
+          const sourceMotionGroupId = String(
+            item.motionGroupId ??
+              item.motion_group_id ??
+              "",
+          ).trim();
+
+          const nextMotionGroupId =
+            sourceMotionGroupId
+              ? motionGroupIdMap.get(
+                  sourceMotionGroupId,
+                ) || ""
+              : "";
+
+          const nextMotionReferencePartId =
+            sourceMotionGroupId
+              ? motionReferenceIdMap.get(
+                  sourceMotionGroupId,
+                ) || nextId
+              : "";
+
+          const duplicatedMachiningMetadata =
+            remapDuplicateMachiningMetadata(item);
 
           clones.push(
             normalizeComponent({
               ...deepClone(item),
-              id: createObjectId(),
+              ...duplicatedMachiningMetadata,
+              id: nextId,
               groupId: nextGroupId,
               assemblyId: nextGroupId,
-              x: snap((Number(item.x) || 0) + offsetX * copyIndex),
-              y: snap((Number(item.y) || 0) + offsetY * copyIndex),
-              z: snap((Number(item.z) || 0) + offsetZ * copyIndex),
+              motionGroupId: nextMotionGroupId,
+              motionReferencePartId:
+                nextMotionReferencePartId,
+              x: snap(
+                (Number(item.x) || 0) +
+                  offsetX * copyIndex,
+              ),
+              y: snap(
+                (Number(item.y) || 0) +
+                  offsetY * copyIndex,
+              ),
+              z: snap(
+                (Number(item.z) || 0) +
+                  offsetZ * copyIndex,
+              ),
               locked: false,
             }),
           );

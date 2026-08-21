@@ -17,6 +17,7 @@ import { normalizeProductionMetadata } from "./productionMetadata";
 import { normalizeHardwareRequirements } from "./hardwareMetadata";
 import { normalizeWoodworkingProfileMetadata } from "./woodworkingProfile";
 import { normalizeWoodworkingOperations } from "./woodworkingOperations";
+import { normalizeUniversalMachiningMetadata } from "./universalMachiningV2";
 
 const GRID_SIZE = 20;
 const MIN_COMPONENT_DIMENSION_MM = 1;
@@ -25,6 +26,37 @@ const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 function isHexColor(value = "") {
   return HEX_COLOR_RE.test(String(value || "").trim());
+}
+
+// WISDOM MANUAL PART FUNCTION V1.0.0
+// "auto" preserves existing generated-furniture detection.
+// "normal" explicitly disables moving-part preview.
+// "door" and "drawer" explicitly enable preview for manual parts.
+const PART_FUNCTION_VALUES = new Set([
+  "auto",
+  "normal",
+  "door",
+  "drawer",
+]);
+
+function normalizePartFunction(value = "auto") {
+  const normalized = String(value || "auto")
+    .trim()
+    .toLowerCase();
+
+  return PART_FUNCTION_VALUES.has(normalized)
+    ? normalized
+    : "auto";
+}
+
+function normalizeDoorHinge(value = "auto") {
+  const normalized = String(value || "auto")
+    .trim()
+    .toLowerCase();
+
+  if (normalized.startsWith("l")) return "left";
+  if (normalized.startsWith("r")) return "right";
+  return "auto";
 }
 
 const LEGACY_UNIQUE_PART_CODES = {
@@ -340,6 +372,8 @@ function normalizeComponent(c) {
       [],
   );
   const woodworkingProfile = normalizeWoodworkingProfileMetadata(c);
+  const universalMachiningMetadata =
+    normalizeUniversalMachiningMetadata(c);
   const woodworkingOperations = normalizeWoodworkingOperations(
     c.woodworkingOperations ??
       c.woodworking_operations ??
@@ -372,6 +406,38 @@ function normalizeComponent(c) {
     blueprintStyle: c.blueprintStyle || "box",
     type: c.type || "custom_component",
     label: c.label || "Component",
+
+    // Manual moving-part semantics live inside the existing Blueprint JSON.
+    // They do not change geometry, material, pricing, or inventory.
+    partFunction: normalizePartFunction(
+      c.partFunction ??
+        c.part_function ??
+        c.interactionType ??
+        c.interaction_type ??
+        "auto",
+    ),
+    doorHinge: normalizeDoorHinge(
+      c.doorHinge ??
+        c.door_hinge ??
+        c.hingeSide ??
+        c.hinge_side ??
+        "auto",
+    ),
+
+    // WISDOM MANUAL MOVING GROUPS V1.1.0
+    // Kept separate from furniture groupId / assemblyId so a drawer or door
+    // can move independently without reclassifying the whole cabinet.
+    motionGroupId: String(
+      c.motionGroupId ??
+        c.motion_group_id ??
+        "",
+    ).trim(),
+    motionReferencePartId: String(
+      c.motionReferencePartId ??
+        c.motion_reference_part_id ??
+        "",
+    ).trim(),
+
     // Keep saved component coordinates and sizes at production-level
     // millimeter precision. Placement and move tools still use the 20 mm
     // grid explicitly through snap(), but normalization must not force an
@@ -422,6 +488,13 @@ function normalizeComponent(c) {
     // payload so Undo/Redo, Duplicate, Save/Reload, and future Cut List logic
     // all read the same shape definition.
     ...(woodworkingProfile || {}),
+
+    // WISDOM UNIVERSAL PART MACHINING V2.0.1
+    // Separate from Custom Shape profile metadata so normal part identity,
+    // renderer, assembly, pricing, and inventory remain untouched.
+    ...(!woodworkingProfile && universalMachiningMetadata
+      ? universalMachiningMetadata
+      : {}),
 
     // Woodworking Operations V5A production metadata. Geometry application
     // is intentionally deferred to V5B, but Save/Reload and Duplicate must

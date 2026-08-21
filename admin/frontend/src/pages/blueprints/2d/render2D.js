@@ -20,7 +20,23 @@ import {
   getWoodworkingProfile2DPoints,
   getWoodworkingProfile2DCutouts,
   buildWoodworkingProfileSvgMarkup,
+  isWoodworkingProfileComponent,
 } from "../data/woodworkingProfile";
+import {
+  getMachiningProxyComponent,
+  getUniversalMachiningCapability,
+  getUniversalMachiningDescriptor,
+  getUniversalMachiningCutouts,
+  getUniversalMachiningCutoutStatus,
+  getUniversalMachiningCutoutPoints,
+  getUniversalMachiningOperationStatus,
+  getViewMachiningPlane,
+  hasUniversalMachiningMetadata,
+} from "../data/universalMachiningV2";
+import {
+  getWoodworkingOperationFootprintPoints,
+  normalizeWoodworkingOperations,
+} from "../data/woodworkingOperations";
 
 const GRID_SIZE = 20;
 const BOARD = 18;
@@ -96,7 +112,90 @@ function getBlueprintStroke(comp) {
   return "#1e3a8a";
 }
 
-function buildBlueprintSvgMarkup(comp, box, view) {
+// WISDOM UNIVERSAL PART MACHINING 2D V2.0.2
+function getUniversalMachiningOverlayData(comp, view, box) {
+  if (isWoodworkingProfileComponent(comp) || !hasUniversalMachiningMetadata(comp)) {
+    return null;
+  }
+
+  const capability = getUniversalMachiningCapability(comp);
+  if (!capability.supported) {
+    return null;
+  }
+
+  const descriptor = getUniversalMachiningDescriptor(comp);
+  const machiningComp = getMachiningProxyComponent(comp);
+  const viewPlane = getViewMachiningPlane(view);
+  if (!descriptor || !machiningComp || descriptor.plane !== viewPlane) return null;
+
+  const mirrorX = view === "back" || view === "right";
+  const toScreen = ([u, v]) => {
+    let x = (u / Math.max(1, descriptor.u) + 0.5) * box.w;
+    if (mirrorX) x = box.w - x;
+    const y = (0.5 - v / Math.max(1, descriptor.v)) * box.h;
+    return [x, y];
+  };
+
+  const cutouts = getUniversalMachiningCutouts(comp)
+    .filter((item) => getUniversalMachiningCutoutStatus(comp, item).valid)
+    .map((item) => ({
+      id: item.id,
+      points: getUniversalMachiningCutoutPoints(item, item.type === "round" ? 40 : 4).flatMap(toScreen),
+    }));
+
+  const visibleSurface = view === "back" || view === "left" ? "face_b" : "face_a";
+  const operations = normalizeWoodworkingOperations(comp.woodworkingOperations)
+    .filter((operation) =>
+      operation.surface === visibleSurface &&
+      getUniversalMachiningOperationStatus(comp, operation).valid
+    )
+    .map((operation) => ({
+      id: operation.id,
+      points: getWoodworkingOperationFootprintPoints(
+        machiningComp,
+        operation,
+        operation.type === "bore" ? 40 : 4,
+      ).flatMap(toScreen),
+    }));
+
+  return { cutouts, operations };
+}
+
+function buildUniversalMachiningSvgMarkup(comp, view, box) {
+  const data = getUniversalMachiningOverlayData(comp, view, box);
+  if (!data) return "";
+
+  const polygon = (points, attrs) => {
+    const pairs = [];
+    for (let index = 0; index < points.length; index += 2) {
+      pairs.push(String(points[index]) + "," + String(points[index + 1]));
+    }
+    return '<polygon points="' + pairs.join(" ") + '" ' + attrs + ' />';
+  };
+
+  return [
+    ...data.cutouts.map((item) => polygon(item.points, 'fill="#ffffff" stroke="#0f172a" stroke-width="1.1"')),
+    ...data.operations.map((item) => polygon(item.points, 'fill="none" stroke="#b45309" stroke-width="1" stroke-dasharray="4 3"')),
+  ].join("");
+}
+
+function renderUniversalMachiningOverlay(comp, view, box) {
+  const data = getUniversalMachiningOverlayData(comp, view, box);
+  if (!data) return null;
+
+  return (
+    <Group listening={false}>
+      {data.cutouts.map((item) => (
+        <Line key={"universal-cutout-" + item.id} points={item.points} closed fill="#ffffff" stroke="#0f172a" strokeWidth={1.1} listening={false} />
+      ))}
+      {data.operations.map((item) => (
+        <Line key={"universal-operation-" + item.id} points={item.points} closed fill="rgba(180,83,9,0.04)" stroke="#b45309" strokeWidth={1} dash={[4, 3]} listening={false} />
+      ))}
+    </Group>
+  );
+}
+
+function buildBaseBlueprintSvgMarkup(comp, box, view) {
   const effectiveView = view === "exploded" ? "front" : view;
   const stroke = getBlueprintStroke(comp);
   const woodworkingProfileMarkup = buildWoodworkingProfileSvgMarkup(
@@ -376,6 +475,11 @@ function buildBlueprintSvgMarkup(comp, box, view) {
     default:
       return rect(0, 0, box.w, box.h);
   }
+}
+
+function buildBlueprintSvgMarkup(comp, box, view) {
+  return String(buildBaseBlueprintSvgMarkup(comp, box, view) || "") +
+    String(buildUniversalMachiningSvgMarkup(comp, view, box) || "");
 }
 
 // ── React-Konva 2D render functions ──────────────────────────────────────────
@@ -873,7 +977,7 @@ function renderPatioSetBlueprint(box, stroke) {
   );
 }
 
-function renderBlueprintShape(comp, view, box) {
+function renderBaseBlueprintShape(comp, view, box) {
   const effectiveView = view === "exploded" ? "front" : view;
   const stroke = getBlueprintStroke(comp);
   const woodworkingProfilePoints = getWoodworkingProfile2DPoints(
@@ -1237,6 +1341,18 @@ function renderBlueprintShape(comp, view, box) {
         <Rect x={0} y={0} width={box.w} height={box.h} {...outlineProps} />
       );
   }
+}
+
+function renderBlueprintShape(comp, view, box) {
+  const base = renderBaseBlueprintShape(comp, view, box);
+  const overlay = renderUniversalMachiningOverlay(comp, view, box);
+  if (!overlay) return base;
+  return (
+    <Group listening={false}>
+      {base}
+      {overlay}
+    </Group>
+  );
 }
 
 export {

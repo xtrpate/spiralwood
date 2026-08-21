@@ -76,7 +76,100 @@ const DRAWER_PREVIEW_MAX_EXTENSION_MM = 520;
 // WISDOM ADMIN DOOR PREVIEW MANUAL CLOSE V2.0.2
 // Door state is independent from normal camera and canvas selection interaction.
 
+// WISDOM MANUAL PART FUNCTION PREVIEW OVERRIDE V1.0.0
+// Explicit manual tagging wins over legacy type/label/part-code detection.
+// Components on Automatic stay on the existing detector.
+const getPartFunction = (component = {}) => {
+  const value = String(
+    component?.partFunction ??
+      component?.part_function ??
+      component?.interactionType ??
+      component?.interaction_type ??
+      "auto",
+  )
+    .trim()
+    .toLowerCase();
+
+  return ["auto", "normal", "door", "drawer"].includes(value)
+    ? value
+    : "auto";
+};
+
+// WISDOM MANUAL MOVING GROUPS V1.1.0
+const getMotionGroupId = (component = {}) =>
+  String(
+    component?.motionGroupId ??
+      component?.motion_group_id ??
+      "",
+  ).trim();
+
+const getMotionReferencePartId = (component = {}) =>
+  String(
+    component?.motionReferencePartId ??
+      component?.motion_reference_part_id ??
+      "",
+  ).trim();
+
+const resolveManualMotionSet = (
+  component = {},
+  allComponents = [],
+  expectedFunction = "",
+) => {
+  const functionType = getPartFunction(component);
+  const groupId = getMotionGroupId(component);
+
+  if (
+    !component?.id ||
+    !groupId ||
+    functionType !== expectedFunction
+  ) {
+    return {
+      groupId: "",
+      members: component?.id ? [component] : [],
+      reference: component?.id ? component : null,
+    };
+  }
+
+  const members = (allComponents || []).filter(
+    (item) =>
+      item?.id &&
+      getPartFunction(item) === expectedFunction &&
+      getMotionGroupId(item) === groupId,
+  );
+
+  if (!members.length) {
+    return {
+      groupId,
+      members: [component],
+      reference: component,
+    };
+  }
+
+  const referenceId =
+    getMotionReferencePartId(component) ||
+    members
+      .map(getMotionReferencePartId)
+      .find(Boolean) ||
+    component.id;
+
+  const reference =
+    members.find((item) => item.id === referenceId) ||
+    component ||
+    members[0];
+
+  return {
+    groupId,
+    members,
+    reference,
+  };
+};
+
 const isDoorPreviewComponent = (component = {}) => {
+  const partFunction = getPartFunction(component);
+  if (partFunction !== "auto") {
+    return partFunction === "door";
+  }
+
   const text = [
     component?.type,
     component?.label,
@@ -160,6 +253,10 @@ const getDoorPreviewComponentSignature = (component = null) => {
   return [
     component.id,
     component.type || "",
+    getPartFunction(component),
+    component.doorHinge || component.door_hinge || "",
+    getMotionGroupId(component),
+    getMotionReferencePartId(component),
     Number(component.x || 0),
     Number(component.y || 0),
     Number(component.z || 0),
@@ -173,6 +270,14 @@ const getDoorPreviewComponentSignature = (component = null) => {
     component.partCode || "",
   ].join("|");
 };
+
+const getDoorPreviewComponentsSignature = (components = []) =>
+  (components || [])
+    .filter((component) => component?.id)
+    .slice()
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)))
+    .map(getDoorPreviewComponentSignature)
+    .join("||");
 
 // WISDOM ADMIN DRAWER OPEN/CLOSE PREVIEW V1.0.1
 // Drawer preview is visual-only. It never mutates saved component coordinates.
@@ -192,6 +297,11 @@ const getDrawerPreviewText = (component = {}) =>
 
 const isDrawerPreviewComponent = (component = {}) => {
   if (!component?.id) return false;
+
+  const partFunction = getPartFunction(component);
+  if (partFunction !== "auto") {
+    return partFunction === "drawer";
+  }
 
   if (
     component?.drawerAssemblyId ||
@@ -247,6 +357,14 @@ const isDrawerPreviewFixedHardware = (component = {}) => {
 
 const resolveDrawerPreviewKey = (component = {}) => {
   if (!component?.id) return "";
+
+  const motionGroupId = getMotionGroupId(component);
+  if (
+    getPartFunction(component) === "drawer" &&
+    motionGroupId
+  ) {
+    return `motion:${motionGroupId}`;
+  }
 
   const explicit =
     component?.drawerAssemblyId ??
@@ -377,6 +495,9 @@ const getDrawerPreviewComponentsSignature = (components = []) =>
       [
         component.id,
         component.type || "",
+        getPartFunction(component),
+        getMotionGroupId(component),
+        getMotionReferencePartId(component),
         component.partRole || "",
         component.partCode || "",
         component.drawerAssemblyId ||
@@ -1598,9 +1719,17 @@ function ThreeDViewer({
 
     const preview = doorPreviewRef.current;
 
-    if (preview?.original) {
-      preview.original.visible = true;
-    }
+    const originals =
+      preview?.originals ||
+      (preview?.original
+        ? [{ object: preview.original, visible: true }]
+        : []);
+
+    originals.forEach(({ object, visible }) => {
+      if (object) {
+        object.visible = visible;
+      }
+    });
 
     if (preview?.pivot?.parent) {
       preview.pivot.parent.remove(preview.pivot);
@@ -1683,90 +1812,207 @@ function ThreeDViewer({
       clearDrawerPreviewRef.current?.();
       clearDoorPreview();
 
-      const entry = entryMapRef.current.get(component.id);
+      const sourceComponents = componentsRef.current || [];
+      const manualSet = resolveManualMotionSet(
+        component,
+        sourceComponents,
+        "door",
+      );
 
-      const original = entry?.obj;
-      const parent = original?.parent;
+      const members =
+        manualSet.members.length > 0
+          ? manualSet.members
+          : [component];
 
-      if (!original || !parent) return false;
+      const referenceComponent =
+        manualSet.reference || component;
 
-      const clone = original.clone(true);
-      clone.name = `door-preview-clone-${component.id}`;
+      const memberEntries = members.map((member) => ({
+        member,
+        entry: entryMapRef.current.get(member.id),
+      }));
 
-      clone.traverse((child) => {
-        child.userData = {
-          ...(child.userData || {}),
-          isDoorPreviewClone: true,
-        };
+      if (
+        memberEntries.some(
+          ({ entry }) => !entry?.obj?.parent,
+        )
+      ) {
+        return false;
+      }
+
+      const parent =
+        memberEntries[0]?.entry?.obj?.parent || null;
+
+      if (
+        !parent ||
+        memberEntries.some(
+          ({ entry }) => entry.obj.parent !== parent,
+        )
+      ) {
+        return false;
+      }
+
+      const referenceEntry =
+        entryMapRef.current.get(referenceComponent.id) ||
+        memberEntries[0]?.entry;
+
+      const referenceOriginal = referenceEntry?.obj;
+      if (!referenceOriginal) return false;
+
+      const explicitHingeComponent = [
+        referenceComponent,
+        component,
+        ...members,
+      ].find((item) => {
+        const value = String(
+          item?.doorHinge ??
+            item?.door_hinge ??
+            item?.hingeSide ??
+            item?.hinge_side ??
+            "",
+        )
+          .trim()
+          .toLowerCase();
+
+        return (
+          value.startsWith("l") ||
+          value.startsWith("r")
+        );
       });
 
-      clone.position.copy(original.position);
-      clone.quaternion.copy(original.quaternion);
-      clone.scale.copy(original.scale);
+      const hingeSide = explicitHingeComponent
+        ? String(
+            explicitHingeComponent.doorHinge ??
+              explicitHingeComponent.door_hinge ??
+              explicitHingeComponent.hingeSide ??
+              explicitHingeComponent.hinge_side ??
+              "",
+          )
+            .trim()
+            .toLowerCase()
+            .startsWith("r")
+          ? "right"
+          : "left"
+        : resolveDoorPreviewHingeSide(
+            referenceComponent,
+            sourceComponents,
+          );
 
-      const hingeSide = resolveDoorPreviewHingeSide(
-        component,
-        componentsRef.current || [],
+      const width = Math.max(
+        1,
+        Number(referenceComponent?.width || 1),
       );
-
-      const width = Math.max(1, Number(component?.width || 1));
 
       const localHingeOffset = new THREE.Vector3(
-        hingeSide === "right" ? width / 2 : -width / 2,
+        hingeSide === "right"
+          ? width / 2
+          : -width / 2,
         0,
         0,
       );
 
-      const hingePosition = original.position
+      const hingePosition = referenceOriginal.position
         .clone()
-        .add(localHingeOffset.clone().applyQuaternion(original.quaternion));
+        .add(
+          localHingeOffset
+            .clone()
+            .applyQuaternion(
+              referenceOriginal.quaternion,
+            ),
+        );
 
       const pivot = new THREE.Group();
-      pivot.name = `door-preview-pivot-${component.id}`;
+      pivot.name =
+        `door-preview-pivot-${manualSet.groupId || component.id}`;
       pivot.position.copy(hingePosition);
-      pivot.quaternion.copy(original.quaternion);
+      pivot.quaternion.copy(
+        referenceOriginal.quaternion,
+      );
 
       parent.add(pivot);
-      parent.add(clone);
-
       parent.updateMatrixWorld(true);
       pivot.updateMatrixWorld(true);
-      clone.updateMatrixWorld(true);
 
-      // Only the temporary clone is attached to the hinge pivot.
-      // The real editable door object keeps its original transform.
-      pivot.attach(clone);
-      pivot.updateMatrixWorld(true);
+      const originals = [];
+      const clones = [];
+
+      memberEntries.forEach(({ member, entry }) => {
+        const original = entry.obj;
+        const clone = original.clone(true);
+
+        clone.name =
+          `door-preview-clone-${member.id}`;
+
+        clone.traverse((child) => {
+          child.userData = {
+            ...(child.userData || {}),
+            isDoorPreviewClone: true,
+          };
+        });
+
+        clone.position.copy(original.position);
+        clone.quaternion.copy(original.quaternion);
+        clone.scale.copy(original.scale);
+
+        parent.add(clone);
+
+        parent.updateMatrixWorld(true);
+        pivot.updateMatrixWorld(true);
+        clone.updateMatrixWorld(true);
+
+        // Attach every visual clone to one hinge pivot while preserving
+        // its exact world transform. Saved Blueprint coordinates never move.
+        pivot.attach(clone);
+        pivot.updateMatrixWorld(true);
+
+        originals.push({
+          id: member.id,
+          object: original,
+          visible: original.visible,
+        });
+
+        clones.push({
+          id: member.id,
+          object: clone,
+        });
+
+        original.visible = false;
+      });
 
       const transform = transformRef.current;
-      const outlineGroup = selectionOutlineGroupRef.current;
+      const outlineGroup =
+        selectionOutlineGroupRef.current;
 
       const transformVisible =
-        typeof transform?.visible === "boolean" ? transform.visible : true;
+        typeof transform?.visible === "boolean"
+          ? transform.visible
+          : true;
 
       const outlineVisible =
         typeof outlineGroup?.visible === "boolean"
           ? outlineGroup.visible
           : true;
 
-      // Hide only editor visuals while previewing.
-      // Do not detach TransformControls.
-      // Do not modify OrbitControls or camera state.
       if (transform) transform.visible = false;
       if (outlineGroup) {
         outlineGroup.visible = false;
       }
 
-      original.visible = false;
-
       doorPreviewRef.current = {
         id: component.id,
-        original,
+        groupId: manualSet.groupId || "",
+        referenceId: referenceComponent.id,
+        memberIds: members.map((item) => item.id),
+        originals,
+        clones,
         pivot,
-        basePivotQuaternion: original.quaternion.clone(),
-        direction: hingeSide === "right" ? 1 : -1,
+        basePivotQuaternion:
+          referenceOriginal.quaternion.clone(),
+        direction:
+          hingeSide === "right" ? 1 : -1,
         currentAngle: 0,
-        componentSignature: getDoorPreviewComponentSignature(component),
+        componentSignature:
+          getDoorPreviewComponentsSignature(members),
         transform,
         transformVisible,
         outlineGroup,
@@ -1775,7 +2021,11 @@ function ThreeDViewer({
 
       setDoorPreviewOpenId(component.id);
 
-      animateDoorPreviewTo(THREE.MathUtils.degToRad(DOOR_PREVIEW_OPEN_DEGREES));
+      animateDoorPreviewTo(
+        THREE.MathUtils.degToRad(
+          DOOR_PREVIEW_OPEN_DEGREES,
+        ),
+      );
 
       return true;
     },
@@ -1824,9 +2074,15 @@ function ThreeDViewer({
     const preview = doorPreviewRef.current;
     if (!preview) return;
 
+    const previewMemberIds =
+      preview.memberIds?.length
+        ? preview.memberIds
+        : [preview.id];
+
     const previewDoorIsSelected =
-      activeSelectionIds3D.length === 1 &&
-      activeSelectionIds3D[0] === preview.id;
+      activeSelectionIds3D.some((id) =>
+        previewMemberIds.includes(id),
+      );
 
     // When another object is selected while the door stays open,
     // restore normal editor visuals for that new selection.
@@ -1846,10 +2102,16 @@ function ThreeDViewer({
   const openDoorPreviewComponentSignature = useMemo(() => {
     if (!doorPreviewOpenId) return "";
 
-    const openComponent =
-      (components || []).find((item) => item.id === doorPreviewOpenId) || null;
+    const previewMemberIds =
+      doorPreviewRef.current?.memberIds?.length
+        ? doorPreviewRef.current.memberIds
+        : [doorPreviewOpenId];
 
-    return getDoorPreviewComponentSignature(openComponent);
+    const openMembers = (components || []).filter(
+      (item) => previewMemberIds.includes(item.id),
+    );
+
+    return getDoorPreviewComponentsSignature(openMembers);
   }, [doorPreviewOpenId, components]);
 
   useEffect(() => {
@@ -2043,8 +2305,20 @@ function ThreeDViewer({
         return false;
       }
 
+      const manualReferenceId =
+        getMotionReferencePartId(component) ||
+        drawerSet.movableMembers
+          .map(getMotionReferencePartId)
+          .find(Boolean) ||
+        "";
+
       const frontMember =
-        drawerSet.movableMembers.find(isDrawerPreviewFrontComponent) ||
+        drawerSet.movableMembers.find(
+          (item) => item.id === manualReferenceId,
+        ) ||
+        drawerSet.movableMembers.find(
+          isDrawerPreviewFrontComponent,
+        ) ||
         component;
 
       const frontEntry =
@@ -3713,6 +3987,9 @@ function ThreeDViewer({
         selectedComp={selectedComp}
         liveSelectedComp={liveSelectedComp}
         selectedIds={selectedIds}
+        selectedComponents={(components || []).filter((item) =>
+          activeSelectionIds3D.includes(item.id),
+        )}
         selectionSummary={selectionSummary}
         isLocked={isLocked}
         onChange={onUpdateComp}

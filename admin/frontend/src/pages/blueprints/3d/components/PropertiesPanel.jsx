@@ -25,7 +25,6 @@ import {
   updateWoodworkingOperation,
   deleteWoodworkingOperation,
   getWoodworkingOperationFootprint,
-  getWoodworkingOperationStatus,
 } from "../../data/woodworkingOperations";
 import {
   isWoodworkingProfileComponent,
@@ -44,18 +43,27 @@ import {
   resetContourCurvesAroundPoint,
   resetContourCurveRatios,
   MAX_PROFILE_CUTOUTS,
-  createProfileCutout,
-  updateProfileCutout,
-  deleteProfileCutout,
   getProfileCutoutLocalPoints,
-  getProfileCutoutStatus,
-  getWoodworkingProfileLocalPoints,
   MAX_PROFILE_EDGE_NOTCHES,
   createProfileEdgeNotch,
   updateProfileEdgeNotch,
   deleteProfileEdgeNotch,
   getProfileEdgeNotchStatus,
 } from "../../data/woodworkingProfile";
+import {
+  getMachiningProxyComponent,
+  getUniversalMachiningCapability,
+  getUniversalMachiningDescriptor,
+  getUniversalMachiningOuterPoints,
+  getUniversalMachiningCutouts,
+  createUniversalMachiningCutout,
+  updateUniversalMachiningCutout,
+  deleteUniversalMachiningCutout,
+  getUniversalMachiningCutoutStatus,
+  getUniversalMachiningOperationStatus,
+  getMachiningPlaneLabel,
+  getMachiningSurfaceLabels,
+} from "../../data/universalMachiningV2";
 
 function ContourEditorCard({
   selectedComp,
@@ -1270,7 +1278,7 @@ function CutoutEditorCard({
   );
   const activeCutout = cutouts[safeIndex] || null;
   const activeStatus = activeCutout
-    ? getProfileCutoutStatus(selectedComp, activeCutout)
+    ? getUniversalMachiningCutoutStatus(selectedComp, activeCutout)
     : null;
 
   const disabled =
@@ -1319,7 +1327,7 @@ function CutoutEditorCard({
   };
 
   const outerPoints = (
-    getWoodworkingProfileLocalPoints(selectedComp, {
+    getUniversalMachiningOuterPoints(selectedComp, {
       curveSegments: 48,
       cornerSegments: 10,
       filletSegments: 10,
@@ -1328,8 +1336,11 @@ function CutoutEditorCard({
 
   const commitCutouts = (nextCutouts) => {
     if (!Array.isArray(nextCutouts)) return;
+    const storageField = isWoodworkingProfileComponent(selectedComp)
+      ? "profileCutouts"
+      : "machiningCutouts";
     onChange(selectedComp.id, {
-      profileCutouts: nextCutouts,
+      [storageField]: nextCutouts,
     });
   };
 
@@ -1337,7 +1348,7 @@ function CutoutEditorCard({
     if (!activeCutout) return;
 
     commitCutouts(
-      updateProfileCutout(
+      updateUniversalMachiningCutout(
         selectedComp,
         activeCutout.id,
         attrs,
@@ -1348,7 +1359,7 @@ function CutoutEditorCard({
   const addCutout = (type) => {
     if (cutouts.length >= MAX_PROFILE_CUTOUTS) return;
 
-    const created = createProfileCutout(selectedComp, type);
+    const created = createUniversalMachiningCutout(selectedComp, type);
     if (!created) return;
 
     const nextCutouts = [...cutouts, created];
@@ -1359,7 +1370,7 @@ function CutoutEditorCard({
   const removeActive = () => {
     if (!activeCutout) return;
 
-    const nextCutouts = deleteProfileCutout(
+    const nextCutouts = deleteUniversalMachiningCutout(
       selectedComp,
       activeCutout.id,
     );
@@ -1382,7 +1393,7 @@ function CutoutEditorCard({
     const target = cutouts[index];
     if (!target) return;
 
-    const nextCutouts = updateProfileCutout(
+    const nextCutouts = updateUniversalMachiningCutout(
       selectedComp,
       target.id,
       {
@@ -1423,7 +1434,7 @@ function CutoutEditorCard({
           fontWeight: 850,
         }}
       >
-        Internal Holes & Cutouts
+        Cutouts
       </div>
 
       <div
@@ -1434,9 +1445,8 @@ function CutoutEditorCard({
           lineHeight: 1.45,
         }}
       >
-        Add real through-holes to this board. Drag a cutout in the preview
-        or type exact local U / V millimeter positions. Invalid cutouts stay
-        saved for correction but are not cut from the 3D board.
+        Add a round hole or rectangle cutout, then adjust its position and size.
+        Only valid cutouts are applied to the actual 3D part.
       </div>
 
       <svg
@@ -1466,7 +1476,7 @@ function CutoutEditorCard({
         ) : null}
 
         {cutouts.map((cutout, index) => {
-          const status = getProfileCutoutStatus(
+          const status = getUniversalMachiningCutoutStatus(
             selectedComp,
             cutout,
           );
@@ -1572,7 +1582,7 @@ function CutoutEditorCard({
                 : "pointer",
           }}
         >
-          + Rect Cutout
+          + Rectangle
         </button>
       </div>
 
@@ -1609,7 +1619,7 @@ function CutoutEditorCard({
                   cursor: disabled ? "not-allowed" : "pointer",
                 }}
               >
-                {cutout.type === "round" ? "○" : "□"} C{index + 1}
+                {cutout.type === "round" ? "Hole" : "Rect"} {index + 1}
               </button>
             ))}
           </div>
@@ -1630,7 +1640,7 @@ function CutoutEditorCard({
               lineHeight: 1.4,
             }}
           >
-            {activeStatus?.valid ? "VALID" : "CHECK"} ·{" "}
+            {activeStatus?.valid ? "READY" : "CHECK"} ·{" "}
             {activeStatus?.message || "Select a cutout."}
           </div>
 
@@ -1644,7 +1654,7 @@ function CutoutEditorCard({
           >
             <div>
               <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                Center U (mm)
+                Horizontal Position (mm)
               </label>
               <input
                 type="number"
@@ -1662,7 +1672,7 @@ function CutoutEditorCard({
 
             <div>
               <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                Center V (mm)
+                Vertical Position (mm)
               </label>
               <input
                 type="number"
@@ -1836,7 +1846,7 @@ function CutoutEditorCard({
                   : "pointer",
             }}
           >
-            Delete Selected Cutout
+            Delete This Cutout
           </button>
         </>
       ) : (
@@ -1862,9 +1872,7 @@ function CutoutEditorCard({
           lineHeight: 1.4,
         }}
       >
-        {cutouts.length}/{MAX_PROFILE_CUTOUTS} cutouts. Dimensions are stored
-        in exact millimeters; resizing the board does not silently change hole
-        diameter or cutout size.
+        {cutouts.length}/{MAX_PROFILE_CUTOUTS} cutouts · exact millimeter sizes are saved with this part.
       </div>
     </div>
   );
@@ -1885,6 +1893,13 @@ function WoodworkingOperationsCard({
     setDraftType("dado");
   }, [selectedComp?.id]);
 
+  const machiningComp =
+    getMachiningProxyComponent(selectedComp) || selectedComp;
+  const machiningDescriptor =
+    getUniversalMachiningDescriptor(selectedComp);
+  const surfaceLabels = getMachiningSurfaceLabels(
+    machiningDescriptor?.plane || "xy",
+  );
   const operations = normalizeWoodworkingOperations(
     selectedComp?.woodworkingOperations,
   );
@@ -1892,21 +1907,19 @@ function WoodworkingOperationsCard({
     operations.find((item) => item.id === activeId) ||
     operations[0] ||
     null;
-  const dims = getOperationProfileDimensions(selectedComp);
+  const dims = getOperationProfileDimensions(machiningComp);
   const operationOuterPoints =
-    getWoodworkingProfileLocalPoints(selectedComp, {
+    getUniversalMachiningOuterPoints(selectedComp, {
       curveSegments: 56,
       cornerSegments: 10,
       filletSegments: 10,
     }) || [];
-  const operationCutoutPolygons = (
-    Array.isArray(selectedComp?.profileCutouts)
-      ? selectedComp.profileCutouts
-      : []
+  const operationCutoutPolygons = getUniversalMachiningCutouts(
+    selectedComp,
   )
     .filter(
       (cutout) =>
-        getProfileCutoutStatus(selectedComp, cutout).valid,
+        getUniversalMachiningCutoutStatus(selectedComp, cutout).valid,
     )
     .map((cutout) =>
       getProfileCutoutLocalPoints(
@@ -1915,7 +1928,7 @@ function WoodworkingOperationsCard({
       ),
     );
   const status = active
-    ? getWoodworkingOperationStatus(
+    ? getUniversalMachiningOperationStatus(
         selectedComp,
         active,
         {
@@ -1944,7 +1957,7 @@ function WoodworkingOperationsCard({
     }
 
     const created = createWoodworkingOperation(
-      selectedComp,
+      machiningComp,
       draftType,
     );
     const next = [...operations, created];
@@ -1990,7 +2003,7 @@ function WoodworkingOperationsCard({
     if (!active) return null;
 
     const footprint = getWoodworkingOperationFootprint(
-      selectedComp,
+      machiningComp,
       active,
     );
 
@@ -2059,7 +2072,7 @@ function WoodworkingOperationsCard({
           marginBottom: 4,
         }}
       >
-        Woodworking Operations · V5B
+        Machining Operations
       </div>
 
       <div
@@ -2070,9 +2083,8 @@ function WoodworkingOperationsCard({
           marginBottom: 8,
         }}
       >
-        Dado, rabbet, groove, recess/pocket, and bore/drill now remove
-        material from the actual 3D Custom Shape Part. CHECK operations stay
-        saved for correction but are intentionally not cut in 3D.
+        Add a dado, rabbet, groove, pocket, or drill operation. Invalid
+        operations stay saved for correction but are not applied in 3D.
       </div>
 
       <div
@@ -2245,8 +2257,8 @@ function WoodworkingOperationsCard({
                 }
                 style={inputStyle}
               >
-                <option value="face_a">Face A</option>
-                <option value="face_b">Face B</option>
+                <option value="face_a">{surfaceLabels.face_a}</option>
+                <option value="face_b">{surfaceLabels.face_b}</option>
               </select>
             </div>
 
@@ -2406,7 +2418,7 @@ function WoodworkingOperationsCard({
             >
               <div>
                 <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                  Center U (mm)
+                  Horizontal Position (mm)
                 </label>
                 <input
                   type="number"
@@ -2423,7 +2435,7 @@ function WoodworkingOperationsCard({
               </div>
               <div>
                 <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                  Center V (mm)
+                  Vertical Position (mm)
                 </label>
                 <input
                   type="number"
@@ -2472,7 +2484,7 @@ function WoodworkingOperationsCard({
               >
                 <div>
                   <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                    Center U (mm)
+                    Horizontal Position (mm)
                   </label>
                   <input
                     type="number"
@@ -2489,7 +2501,7 @@ function WoodworkingOperationsCard({
                 </div>
                 <div>
                   <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                    Center V (mm)
+                    Vertical Position (mm)
                   </label>
                   <input
                     type="number"
@@ -2642,8 +2654,7 @@ function WoodworkingOperationsCard({
           lineHeight: 1.4,
         }}
       >
-        {operations.length}/{MAX_WOODWORKING_OPERATIONS} operations · profile{" "}
-        {dims.plane.toUpperCase()} · thickness {Math.round(dims.thickness)}mm.
+        {operations.length}/{MAX_WOODWORKING_OPERATIONS} operations · {getMachiningPlaneLabel(dims.plane)} · thickness {Math.round(dims.thickness)} mm.
       </div>
     </div>
   );
@@ -2887,10 +2898,65 @@ function WoodFinishPicker({
     </div>
   );
 }
+
+// WISDOM MANUAL PART FUNCTION V1.0.0
+const PART_FUNCTION_OPTIONS = [
+  ["auto", "Automatic"],
+  ["normal", "Normal Part"],
+  ["door", "Door"],
+  ["drawer", "Drawer"],
+];
+
+const DOOR_HINGE_OPTIONS = [
+  ["auto", "Auto"],
+  ["left", "Left"],
+  ["right", "Right"],
+];
+
+const getPartFunctionChoice = (component = {}) => {
+  const value = String(
+    component?.partFunction ??
+      component?.part_function ??
+      component?.interactionType ??
+      component?.interaction_type ??
+      "auto",
+  )
+    .trim()
+    .toLowerCase();
+
+  return ["auto", "normal", "door", "drawer"].includes(value)
+    ? value
+    : "auto";
+};
+
+const getDoorHingeChoice = (component = {}) => {
+  const value = String(
+    component?.doorHinge ??
+      component?.door_hinge ??
+      component?.hingeSide ??
+      component?.hinge_side ??
+      "auto",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (value.startsWith("l")) return "left";
+  if (value.startsWith("r")) return "right";
+  return "auto";
+};
+
+// WISDOM MANUAL MOVING GROUPS V1.1.0
+const createManualMotionGroupId = (partFunction = "part") => {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 9);
+  return `manual-${partFunction}-${timestamp}-${random}`;
+};
+
 export function PropertiesPanel({
   selectedComp: committedSelectedComp,
   liveSelectedComp = null,
   selectedIds = [],
+  selectedComponents = [],
   selectionSummary = null,
   isLocked,
   onChange,
@@ -2909,6 +2975,8 @@ export function PropertiesPanel({
 }) {
   const selectedComp = liveSelectedComp || committedSelectedComp;
   const hasSmartBuild = Boolean(renderSmartBuild);
+  const partFunction = getPartFunctionChoice(selectedComp);
+  const doorHinge = getDoorHingeChoice(selectedComp);
 
   const [hardwareDraftType, setHardwareDraftType] =
     useState("concealed_hinge");
@@ -2956,6 +3024,176 @@ export function PropertiesPanel({
       applyToSelection: selectedIds.length > 1,
     });
   };
+
+  const createSelectionMotionGroup = (nextFunction) => {
+    if (
+      !selectedComp ||
+      selectedIds.length < 2 ||
+      !["door", "drawer"].includes(nextFunction)
+    ) {
+      return;
+    }
+
+    const motionGroupId = createManualMotionGroupId(nextFunction);
+
+    onChange(
+      selectedComp.id,
+      {
+        partFunction: nextFunction,
+        motionGroupId,
+        // The current primary selected part becomes the movement reference.
+        // Every member stores the same reference id so Save/Reload is stable.
+        motionReferencePartId: selectedComp.id,
+        doorHinge: "auto",
+      },
+      {
+        applyToSelection: true,
+      },
+    );
+  };
+
+  const clearSelectionMotionGroup = () => {
+    if (!selectedComp || selectedIds.length < 2) return;
+
+    onChange(
+      selectedComp.id,
+      {
+        partFunction: "auto",
+        motionGroupId: "",
+        motionReferencePartId: "",
+        doorHinge: "auto",
+      },
+      {
+        applyToSelection: true,
+      },
+    );
+  };
+
+  // WISDOM MANUAL DOOR DRAWER FINAL UI V2.0.0
+  const motionSelection = Array.isArray(selectedComponents)
+    ? selectedComponents.filter((item) => item?.id)
+    : [];
+
+  const getMotionGroupIdForUi = (component = {}) =>
+    String(
+      component?.motionGroupId ??
+        component?.motion_group_id ??
+        "",
+    ).trim();
+
+  const getMotionFunctionForUi = (component = {}) =>
+    String(
+      component?.partFunction ??
+        component?.part_function ??
+        "auto",
+    )
+      .trim()
+      .toLowerCase();
+
+  const getMotionReferenceIdForUi = (component = {}) =>
+    String(
+      component?.motionReferencePartId ??
+        component?.motion_reference_part_id ??
+        "",
+    ).trim();
+
+  const firstMotionMember = motionSelection[0] || null;
+  const firstMotionGroupId = getMotionGroupIdForUi(firstMotionMember);
+  const firstMotionFunction = getMotionFunctionForUi(firstMotionMember);
+
+  const allSelectedShareMotionGroup =
+    motionSelection.length > 1 &&
+    !!firstMotionGroupId &&
+    ["door", "drawer"].includes(firstMotionFunction) &&
+    motionSelection.every(
+      (item) =>
+        getMotionGroupIdForUi(item) === firstMotionGroupId &&
+        getMotionFunctionForUi(item) === firstMotionFunction,
+    );
+
+  const activeMovingGroupType = allSelectedShareMotionGroup
+    ? firstMotionFunction
+    : "";
+
+  const selectionHasAnyMovingGroup = motionSelection.some(
+    (item) => !!getMotionGroupIdForUi(item),
+  );
+
+  const selectionHasMixedMovingGroups =
+    motionSelection.length > 1 &&
+    !allSelectedShareMotionGroup &&
+    selectionHasAnyMovingGroup;
+
+  const savedMotionReferenceId =
+    motionSelection
+      .map(getMotionReferenceIdForUi)
+      .find(Boolean) || "";
+
+  const motionReferencePart =
+    motionSelection.find(
+      (item) => item.id === savedMotionReferenceId,
+    ) ||
+    selectedComp ||
+    firstMotionMember ||
+    null;
+
+  const movingGroupStateText =
+    activeMovingGroupType === "door"
+      ? "Door"
+      : activeMovingGroupType === "drawer"
+        ? "Drawer"
+        : selectionHasMixedMovingGroups
+          ? "Mixed"
+          : "Not Grouped";
+
+  const movingGroupStatusStyle = {
+    minHeight: 22,
+    padding: "0 8px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    border: activeMovingGroupType
+      ? "1px solid rgba(96,165,250,.64)"
+      : selectionHasMixedMovingGroups
+        ? "1px solid rgba(245,158,11,.52)"
+        : "1px solid rgba(71,85,105,.68)",
+    borderRadius: 999,
+    background: activeMovingGroupType
+      ? "rgba(37,99,235,.18)"
+      : selectionHasMixedMovingGroups
+        ? "rgba(180,83,9,.14)"
+        : "rgba(15,23,42,.62)",
+    color: activeMovingGroupType
+      ? "#bfdbfe"
+      : selectionHasMixedMovingGroups
+        ? "#fde68a"
+        : "#94a3b8",
+    fontSize: 8,
+    fontWeight: 850,
+    letterSpacing: ".05em",
+    textTransform: "uppercase",
+  };
+
+  const movingGroupButtonStyle = (active, disabled) => ({
+    minHeight: 34,
+    padding: "6px 8px",
+    border: active
+      ? "1px solid rgba(96,165,250,.98)"
+      : "1px solid rgba(71,85,105,.76)",
+    borderRadius: 0,
+    background: active
+      ? "rgba(37,99,235,.36)"
+      : "rgba(15,23,42,.58)",
+    boxShadow: active
+      ? "inset 0 0 0 1px rgba(191,219,254,.10)"
+      : "none",
+    color: active ? "#f8fafc" : "#cbd5e1",
+    fontSize: 9,
+    fontWeight: 800,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.45 : 1,
+  });
 
   const getHardwareRequirements = () =>
     Array.isArray(selectedComp?.hardwareRequirements)
@@ -3013,6 +3251,8 @@ export function PropertiesPanel({
   const woodworkingProfile = isWoodworkingProfile
     ? getWoodworkingProfileDescriptor(selectedComp)
     : null;
+  const machiningProfile = getUniversalMachiningDescriptor(selectedComp);
+  const machiningCapability = getUniversalMachiningCapability(selectedComp);
   const boxWallMax = selectedComp
     ? Math.max(
         20,
@@ -3369,6 +3609,217 @@ export function PropertiesPanel({
                 </div>
               </div>
             </div>
+
+            {/* WISDOM MANUAL MOVING GROUPS V1.1.0 */}
+            {/* WISDOM MANUAL DOOR DRAWER FINAL UI V2.0.0 */}
+            <div style={inspectorSectionStyle}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  marginBottom: 8,
+                }}
+              >
+                <div
+                  style={{
+                    ...inspectorSectionTitleStyle,
+                    marginBottom: 0,
+                  }}
+                >
+                  Moving Parts
+                </div>
+
+                <span style={movingGroupStatusStyle}>
+                  {movingGroupStateText}
+                </span>
+              </div>
+
+              <div
+                style={{
+                  marginBottom: 10,
+                  color: "#7f93ad",
+                  fontSize: 9,
+                  lineHeight: 1.45,
+                }}
+              >
+                Set the selected pieces to move together as one door or drawer.
+              </div>
+
+              <div
+                style={{
+                  marginBottom: 10,
+                  padding: "9px 10px",
+                  border: "1px solid rgba(71,85,105,.56)",
+                  borderRadius: 0,
+                  background: "rgba(15,23,42,.46)",
+                }}
+              >
+                <div
+                  style={{
+                    marginBottom: 4,
+                    color: "#8497b1",
+                    fontSize: 8,
+                    fontWeight: 800,
+                    letterSpacing: ".04em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Reference Part
+                </div>
+
+                <div
+                  style={{
+                    color: "#e5eefc",
+                    fontSize: 10,
+                    fontWeight: 800,
+                    lineHeight: 1.4,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {motionReferencePart?.label ||
+                    motionReferencePart?.partCode ||
+                    "Primary selected part"}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 5,
+                    color: "#64748b",
+                    fontSize: 8,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Select the front panel last before choosing Door or Drawer.
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginBottom: 7,
+                  color: "#9fb1c9",
+                  fontSize: 9,
+                  fontWeight: 800,
+                  letterSpacing: ".05em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Movement Type
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 6,
+                }}
+              >
+                <button
+                  type="button"
+                  aria-pressed={activeMovingGroupType === "door"}
+                  disabled={
+                    editorMode !== "editable" ||
+                    Number(selectionSummary?.lockedCount || 0) > 0
+                  }
+                  onClick={() => {
+                    if (activeMovingGroupType !== "door") {
+                      createSelectionMotionGroup("door");
+                    }
+                  }}
+                  style={movingGroupButtonStyle(
+                    activeMovingGroupType === "door",
+                    editorMode !== "editable" ||
+                      Number(selectionSummary?.lockedCount || 0) > 0,
+                  )}
+                >
+                  Door
+                </button>
+
+                <button
+                  type="button"
+                  aria-pressed={activeMovingGroupType === "drawer"}
+                  disabled={
+                    editorMode !== "editable" ||
+                    Number(selectionSummary?.lockedCount || 0) > 0
+                  }
+                  onClick={() => {
+                    if (activeMovingGroupType !== "drawer") {
+                      createSelectionMotionGroup("drawer");
+                    }
+                  }}
+                  style={movingGroupButtonStyle(
+                    activeMovingGroupType === "drawer",
+                    editorMode !== "editable" ||
+                      Number(selectionSummary?.lockedCount || 0) > 0,
+                  )}
+                >
+                  Drawer
+                </button>
+              </div>
+
+              {selectionHasAnyMovingGroup ? (
+                <button
+                  type="button"
+                  disabled={
+                    editorMode !== "editable" ||
+                    Number(selectionSummary?.lockedCount || 0) > 0
+                  }
+                  onClick={clearSelectionMotionGroup}
+                  style={{
+                    width: "100%",
+                    minHeight: 30,
+                    marginTop: 7,
+                    padding: "5px 8px",
+                    border: "1px solid rgba(71,85,105,.76)",
+                    borderRadius: 0,
+                    background: "rgba(15,23,42,.55)",
+                    color: "#cbd5e1",
+                    fontSize: 8.5,
+                    fontWeight: 800,
+                    cursor:
+                      editorMode !== "editable" ||
+                      Number(selectionSummary?.lockedCount || 0) > 0
+                        ? "not-allowed"
+                        : "pointer",
+                    opacity:
+                      editorMode !== "editable" ||
+                      Number(selectionSummary?.lockedCount || 0) > 0
+                        ? 0.45
+                        : 1,
+                  }}
+                >
+                  Remove Group
+                </button>
+              ) : null}
+
+              {selectionHasMixedMovingGroups ? (
+                <div
+                  style={{
+                    marginTop: 7,
+                    color: "#fde68a",
+                    fontSize: 8,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  The selection contains different moving groups. Choose Door
+                  or Drawer to create one new group from the selected parts.
+                </div>
+              ) : null}
+
+              {Number(selectionSummary?.lockedCount || 0) > 0 ? (
+                <div
+                  style={{
+                    marginTop: 7,
+                    color: "#fca5a5",
+                    fontSize: 8,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Unlock all selected parts before changing the movement type.
+                </div>
+              ) : null}
+            </div>
           </>
         ) : selectedComp ? (
           <>
@@ -3503,6 +3954,169 @@ export function PropertiesPanel({
                 </div>
                 <div>Rotation · {selectedComp.rotationY || 0}°</div>
               </div>
+            </div>
+
+            {/* WISDOM MANUAL PART FUNCTION V1.0.0 */}
+            <div style={inspectorSectionStyle}>
+              <div style={inspectorSectionTitleStyle}>Part Function</div>
+
+              <div
+                style={{
+                  marginBottom: 9,
+                  color: "#7f93ad",
+                  fontSize: 9,
+                  lineHeight: 1.45,
+                }}
+              >
+                Choose how this part behaves in the 3D movement preview.
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 6,
+                }}
+              >
+                {PART_FUNCTION_OPTIONS.map(([value, label]) => {
+                  const active = partFunction === value;
+                  const disabled =
+                    editorMode !== "editable" || isLocked(selectedComp);
+
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => {
+                        if (active) return;
+
+                        // Reclassifying one part explicitly removes it from any
+                        // prior manual moving group. This prevents stale group
+                        // ids from silently reconnecting the part later.
+                        onChange(selectedComp.id, {
+                          partFunction: value,
+                          motionGroupId: "",
+                          motionReferencePartId: "",
+                          doorHinge:
+                            value === "door" ? doorHinge : "auto",
+                        });
+                      }}
+                      style={{
+                        minHeight: 30,
+                        padding: "5px 7px",
+                        border: active
+                          ? "1px solid rgba(96,165,250,.92)"
+                          : "1px solid rgba(71,85,105,.72)",
+                        borderRadius: 0,
+                        background: active
+                          ? "rgba(37,99,235,.24)"
+                          : "rgba(15,23,42,.55)",
+                        color: active ? "#dbeafe" : "#94a3b8",
+                        fontSize: 8,
+                        fontWeight: 800,
+                        cursor: disabled ? "not-allowed" : "pointer",
+                        opacity: disabled ? 0.45 : 1,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "7px 8px",
+                  border: "1px solid rgba(71,85,105,.52)",
+                  borderRadius: 0,
+                  background: "rgba(15,23,42,.42)",
+                  color: "#93a8c4",
+                  fontSize: 8,
+                  lineHeight: 1.45,
+                }}
+              >
+                {partFunction === "door"
+                  ? "Opens as a door."
+                  : partFunction === "drawer"
+                    ? "Slides as a drawer."
+                    : partFunction === "normal"
+                      ? "Stays fixed."
+                      : "Uses the existing part type automatically."}
+              </div>
+
+              {partFunction === "door" ? (
+                <div style={{ marginTop: 10 }}>
+                  <div
+                    style={{
+                      marginBottom: 6,
+                      color: "#9fb1c9",
+                      fontSize: 9,
+                      fontWeight: 800,
+                    }}
+                  >
+                    Door Hinge
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      gap: 5,
+                    }}
+                  >
+                    {DOOR_HINGE_OPTIONS.map(([value, label]) => {
+                      const active = doorHinge === value;
+                      const disabled =
+                        editorMode !== "editable" || isLocked(selectedComp);
+
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() =>
+                            onChange(selectedComp.id, {
+                              doorHinge: value,
+                            })
+                          }
+                          style={{
+                            minHeight: 28,
+                            padding: "4px 5px",
+                            border: active
+                              ? "1px solid rgba(96,165,250,.9)"
+                              : "1px solid rgba(71,85,105,.72)",
+                            borderRadius: 0,
+                            background: active
+                              ? "rgba(37,99,235,.24)"
+                              : "rgba(15,23,42,.55)",
+                            color: active ? "#dbeafe" : "#94a3b8",
+                            fontSize: 8,
+                            fontWeight: 800,
+                            cursor: disabled ? "not-allowed" : "pointer",
+                            opacity: disabled ? 0.45 : 1,
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 6,
+                      color: "#64748b",
+                      fontSize: 8,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    Auto uses the existing part data. Choose Left or Right
+                    when the hinge side needs to be fixed.
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div style={inspectorSectionStyle}>
@@ -4262,6 +4876,77 @@ export function PropertiesPanel({
                   onChange={onChange}
                   inputStyle={inputStyle}
                 />
+              </div>
+            ) : null}
+
+            {/* WISDOM UNIVERSAL PART MACHINING V2.0.1 */}
+            {!isWoodworkingProfile && selectedComp?.type !== "reference_proxy" ? (
+              <div style={inspectorSectionStyle}>
+                <div style={inspectorSectionTitleStyle}>Machining</div>
+
+                {!machiningCapability.supported ? (
+                  <div
+                    style={{
+                      padding: 9,
+                      border: "1px solid rgba(120,53,15,.72)",
+                      background: "rgba(120,53,15,.10)",
+                      color: "#fde68a",
+                      fontSize: 9,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {machiningCapability.message}
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ marginBottom: 8 }}>
+                      <label style={S.floatingLabel}>Machining Direction</label>
+                      <select
+                        value={selectedComp.machiningPlane || "auto"}
+                        disabled={editorMode !== "editable" || isLocked(selectedComp)}
+                        onChange={(event) =>
+                          onChange(selectedComp.id, {
+                            machiningPlane: event.target.value,
+                          })
+                        }
+                        style={inputStyle}
+                      >
+                        <option value="auto">Auto - use the thinnest dimension</option>
+                        <option value="xy">Front / Back</option>
+                        <option value="xz">Top / Bottom</option>
+                        <option value="yz">Left / Right</option>
+                      </select>
+                    </div>
+
+                    <div
+                      style={{
+                        marginBottom: 9,
+                        color: "#7f93ad",
+                        fontSize: 8.5,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      Active direction: {getMachiningPlaneLabel(machiningProfile?.plane || "xy")}. The actual rendered board surface is used for the 3D cut.
+                    </div>
+
+                    <CutoutEditorCard
+                      selectedComp={selectedComp}
+                      woodworkingProfile={machiningProfile}
+                      editorMode={editorMode}
+                      isLocked={isLocked}
+                      onChange={onChange}
+                      inputStyle={inputStyle}
+                    />
+
+                    <WoodworkingOperationsCard
+                      selectedComp={selectedComp}
+                      editorMode={editorMode}
+                      isLocked={isLocked}
+                      onChange={onChange}
+                      inputStyle={inputStyle}
+                    />
+                  </>
+                )}
               </div>
             ) : null}
 

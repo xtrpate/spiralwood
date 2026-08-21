@@ -20,6 +20,13 @@ import {
   normalizeWoodworkingOperations,
   operationPolygonsOverlap,
 } from "./woodworkingOperations";
+import {
+  getUniversalMachiningCapability,
+  getUniversalMachiningCutouts,
+  getUniversalMachiningCutoutStatus,
+  getUniversalMachiningOperationStatus,
+  hasUniversalMachiningMetadata,
+} from "./universalMachiningV2";
 
 const REAL_COMPONENT_FILTER = (component) =>
   component && component.type !== "reference_proxy";
@@ -46,6 +53,35 @@ const getPartCode = (component = {}) => cleanText(component.partCode);
 
 const getPartRole = (component = {}) =>
   cleanText(component.partRole || component.assemblyRole).toLowerCase();
+
+// WISDOM MANUAL PART FUNCTION V1.0.0
+const getPartFunction = (component = {}) => {
+  const value = cleanText(
+    component.partFunction ??
+      component.part_function ??
+      component.interactionType ??
+      component.interaction_type ??
+      "auto",
+  ).toLowerCase();
+
+  return ["auto", "normal", "door", "drawer"].includes(value)
+    ? value
+    : "auto";
+};
+
+const getDoorHinge = (component = {}) => {
+  const value = cleanText(
+    component.doorHinge ??
+      component.door_hinge ??
+      component.hingeSide ??
+      component.hinge_side ??
+      "auto",
+  ).toLowerCase();
+
+  if (value.startsWith("l")) return "left";
+  if (value.startsWith("r")) return "right";
+  return "auto";
+};
 
 const getBox = (component = {}) => {
   const x = Number(component.x);
@@ -129,6 +165,28 @@ const stableComponentSnapshot = (component = {}) => ({
   parentPartId: component.parentPartId || "",
   partRole: getPartRole(component),
   partCode: getPartCode(component),
+  partFunction: getPartFunction(component),
+  doorHinge: getDoorHinge(component),
+  motionGroupId: cleanText(
+    component.motionGroupId || component.motion_group_id,
+  ),
+  motionReferencePartId: cleanText(
+    component.motionReferencePartId ||
+      component.motion_reference_part_id,
+  ),
+  machiningVersion: Number(component.machiningVersion) || 0,
+  machiningPlane: cleanText(component.machiningPlane || component.machining_plane),
+  machiningCutouts: Array.isArray(component.machiningCutouts)
+    ? component.machiningCutouts.map((item) => ({
+        id: cleanText(item?.id),
+        type: cleanText(item?.type),
+        u: roundMetric(item?.u),
+        v: roundMetric(item?.v),
+        diameter: roundMetric(item?.diameter),
+        width: roundMetric(item?.width),
+        height: roundMetric(item?.height),
+      }))
+    : [],
   type: component.type || "",
   label: component.label || "",
   x: roundMetric(component.x),
@@ -722,6 +780,65 @@ function buildCustomShapeValidationIssues(component = {}) {
   return { errors, warnings };
 }
 
+
+function buildUniversalMachiningValidationIssues(component = {}) {
+  const errors = [];
+  const warnings = [];
+  if (
+    isWoodworkingProfileComponent(component) ||
+    !hasUniversalMachiningMetadata(component)
+  ) {
+    return { errors, warnings };
+  }
+
+  const capability = getUniversalMachiningCapability(component);
+  const issueBase = {
+    componentId: cleanText(component.id) || null,
+    assemblyId: getAssemblyId(component),
+    partCode: getPartCode(component),
+  };
+  const partLabel = cleanText(component.label) || getPartCode(component) || "Part";
+
+  if (!capability.supported) {
+    errors.push(makeIssue({
+      severity: "error",
+      code: "UNSUPPORTED_UNIVERSAL_MACHINING",
+      title: "Machining surface is unsupported",
+      message: partLabel + ": " + capability.message,
+      ...issueBase,
+    }));
+    return { errors, warnings };
+  }
+
+  getUniversalMachiningCutouts(component).forEach((cutout, index) => {
+    const status = getUniversalMachiningCutoutStatus(component, cutout);
+    if (status.valid) return;
+    errors.push(makeIssue({
+      severity: "error",
+      code: "INVALID_UNIVERSAL_CUTOUT",
+      title: "Invalid part cutout",
+      message: partLabel + " - Cutout " + (index + 1) + ": " + status.message,
+      ...issueBase,
+    }));
+  });
+
+  normalizeWoodworkingOperations(component.woodworkingOperations).forEach(
+    (operation, index) => {
+      const status = getUniversalMachiningOperationStatus(component, operation);
+      if (status.valid) return;
+      errors.push(makeIssue({
+        severity: "error",
+        code: "INVALID_UNIVERSAL_OPERATION",
+        title: "Invalid machining operation",
+        message: partLabel + " - " + getOperationLabel(operation.type) + " " + (index + 1) + ": " + status.message,
+        ...issueBase,
+      }));
+    },
+  );
+
+  return { errors, warnings };
+}
+
 function buildDesignValidationReport({
   components = [],
   worldDimensions = null,
@@ -896,6 +1013,12 @@ function buildDesignValidationReport({
 
       errors.push(...customShapeIssues.errors);
       warnings.push(...customShapeIssues.warnings);
+    } else if (hasUniversalMachiningMetadata(component)) {
+      const universalMachiningIssues =
+        buildUniversalMachiningValidationIssues(component);
+
+      errors.push(...universalMachiningIssues.errors);
+      warnings.push(...universalMachiningIssues.warnings);
     }
 
     if (isPanelLikePart(component)) {
