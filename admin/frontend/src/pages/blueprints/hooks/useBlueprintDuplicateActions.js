@@ -6,6 +6,25 @@ import { makeGroupId, snap } from "../data/utils";
 import { createObjectId, deepClone } from "../data/editorUtils";
 import { getSelectionBoundsXYZ } from "../data/selectionUtils";
 
+// WISDOM UNIVERSAL PART MACHINING DUPLICATE SAFETY V2.0.1
+const makeDuplicateMachiningId = (prefix) =>
+  String(prefix) + "_" + createObjectId().replace(/[^a-zA-Z0-9_-]/g, "");
+
+const remapDuplicateMachiningMetadata = (item = {}) => ({
+  machiningCutouts: Array.isArray(item.machiningCutouts)
+    ? item.machiningCutouts.map((cutout) => ({
+        ...deepClone(cutout),
+        id: makeDuplicateMachiningId("cutout"),
+      }))
+    : item.machiningCutouts,
+  woodworkingOperations: Array.isArray(item.woodworkingOperations)
+    ? item.woodworkingOperations.map((operation) => ({
+        ...deepClone(operation),
+        id: makeDuplicateMachiningId("woodop"),
+      }))
+    : item.woodworkingOperations,
+});
+
 export function useBlueprintDuplicateActions({
   components,
   setComponents,
@@ -247,9 +266,13 @@ export function useBlueprintDuplicateActions({
                 ) || nextId
               : "";
 
+          const duplicatedMachiningMetadata =
+            remapDuplicateMachiningMetadata(item);
+
           clones.push(
             normalizeComponent({
               ...deepClone(item),
+              ...duplicatedMachiningMetadata,
               id: nextId,
               groupId: nextGroupId,
               assemblyId: nextGroupId,

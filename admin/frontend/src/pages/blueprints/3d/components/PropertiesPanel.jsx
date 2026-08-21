@@ -25,7 +25,6 @@ import {
   updateWoodworkingOperation,
   deleteWoodworkingOperation,
   getWoodworkingOperationFootprint,
-  getWoodworkingOperationStatus,
 } from "../../data/woodworkingOperations";
 import {
   isWoodworkingProfileComponent,
@@ -44,18 +43,27 @@ import {
   resetContourCurvesAroundPoint,
   resetContourCurveRatios,
   MAX_PROFILE_CUTOUTS,
-  createProfileCutout,
-  updateProfileCutout,
-  deleteProfileCutout,
   getProfileCutoutLocalPoints,
-  getProfileCutoutStatus,
-  getWoodworkingProfileLocalPoints,
   MAX_PROFILE_EDGE_NOTCHES,
   createProfileEdgeNotch,
   updateProfileEdgeNotch,
   deleteProfileEdgeNotch,
   getProfileEdgeNotchStatus,
 } from "../../data/woodworkingProfile";
+import {
+  getMachiningProxyComponent,
+  getUniversalMachiningCapability,
+  getUniversalMachiningDescriptor,
+  getUniversalMachiningOuterPoints,
+  getUniversalMachiningCutouts,
+  createUniversalMachiningCutout,
+  updateUniversalMachiningCutout,
+  deleteUniversalMachiningCutout,
+  getUniversalMachiningCutoutStatus,
+  getUniversalMachiningOperationStatus,
+  getMachiningPlaneLabel,
+  getMachiningSurfaceLabels,
+} from "../../data/universalMachiningV2";
 
 function ContourEditorCard({
   selectedComp,
@@ -1270,7 +1278,7 @@ function CutoutEditorCard({
   );
   const activeCutout = cutouts[safeIndex] || null;
   const activeStatus = activeCutout
-    ? getProfileCutoutStatus(selectedComp, activeCutout)
+    ? getUniversalMachiningCutoutStatus(selectedComp, activeCutout)
     : null;
 
   const disabled =
@@ -1319,7 +1327,7 @@ function CutoutEditorCard({
   };
 
   const outerPoints = (
-    getWoodworkingProfileLocalPoints(selectedComp, {
+    getUniversalMachiningOuterPoints(selectedComp, {
       curveSegments: 48,
       cornerSegments: 10,
       filletSegments: 10,
@@ -1328,8 +1336,11 @@ function CutoutEditorCard({
 
   const commitCutouts = (nextCutouts) => {
     if (!Array.isArray(nextCutouts)) return;
+    const storageField = isWoodworkingProfileComponent(selectedComp)
+      ? "profileCutouts"
+      : "machiningCutouts";
     onChange(selectedComp.id, {
-      profileCutouts: nextCutouts,
+      [storageField]: nextCutouts,
     });
   };
 
@@ -1337,7 +1348,7 @@ function CutoutEditorCard({
     if (!activeCutout) return;
 
     commitCutouts(
-      updateProfileCutout(
+      updateUniversalMachiningCutout(
         selectedComp,
         activeCutout.id,
         attrs,
@@ -1348,7 +1359,7 @@ function CutoutEditorCard({
   const addCutout = (type) => {
     if (cutouts.length >= MAX_PROFILE_CUTOUTS) return;
 
-    const created = createProfileCutout(selectedComp, type);
+    const created = createUniversalMachiningCutout(selectedComp, type);
     if (!created) return;
 
     const nextCutouts = [...cutouts, created];
@@ -1359,7 +1370,7 @@ function CutoutEditorCard({
   const removeActive = () => {
     if (!activeCutout) return;
 
-    const nextCutouts = deleteProfileCutout(
+    const nextCutouts = deleteUniversalMachiningCutout(
       selectedComp,
       activeCutout.id,
     );
@@ -1382,7 +1393,7 @@ function CutoutEditorCard({
     const target = cutouts[index];
     if (!target) return;
 
-    const nextCutouts = updateProfileCutout(
+    const nextCutouts = updateUniversalMachiningCutout(
       selectedComp,
       target.id,
       {
@@ -1423,7 +1434,7 @@ function CutoutEditorCard({
           fontWeight: 850,
         }}
       >
-        Internal Holes & Cutouts
+        Cutouts
       </div>
 
       <div
@@ -1434,9 +1445,8 @@ function CutoutEditorCard({
           lineHeight: 1.45,
         }}
       >
-        Add real through-holes to this board. Drag a cutout in the preview
-        or type exact local U / V millimeter positions. Invalid cutouts stay
-        saved for correction but are not cut from the 3D board.
+        Add a round hole or rectangle cutout, then adjust its position and size.
+        Only valid cutouts are applied to the actual 3D part.
       </div>
 
       <svg
@@ -1466,7 +1476,7 @@ function CutoutEditorCard({
         ) : null}
 
         {cutouts.map((cutout, index) => {
-          const status = getProfileCutoutStatus(
+          const status = getUniversalMachiningCutoutStatus(
             selectedComp,
             cutout,
           );
@@ -1572,7 +1582,7 @@ function CutoutEditorCard({
                 : "pointer",
           }}
         >
-          + Rect Cutout
+          + Rectangle
         </button>
       </div>
 
@@ -1609,7 +1619,7 @@ function CutoutEditorCard({
                   cursor: disabled ? "not-allowed" : "pointer",
                 }}
               >
-                {cutout.type === "round" ? "○" : "□"} C{index + 1}
+                {cutout.type === "round" ? "Hole" : "Rect"} {index + 1}
               </button>
             ))}
           </div>
@@ -1630,7 +1640,7 @@ function CutoutEditorCard({
               lineHeight: 1.4,
             }}
           >
-            {activeStatus?.valid ? "VALID" : "CHECK"} ·{" "}
+            {activeStatus?.valid ? "READY" : "CHECK"} ·{" "}
             {activeStatus?.message || "Select a cutout."}
           </div>
 
@@ -1644,7 +1654,7 @@ function CutoutEditorCard({
           >
             <div>
               <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                Center U (mm)
+                Horizontal Position (mm)
               </label>
               <input
                 type="number"
@@ -1662,7 +1672,7 @@ function CutoutEditorCard({
 
             <div>
               <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                Center V (mm)
+                Vertical Position (mm)
               </label>
               <input
                 type="number"
@@ -1836,7 +1846,7 @@ function CutoutEditorCard({
                   : "pointer",
             }}
           >
-            Delete Selected Cutout
+            Delete This Cutout
           </button>
         </>
       ) : (
@@ -1862,9 +1872,7 @@ function CutoutEditorCard({
           lineHeight: 1.4,
         }}
       >
-        {cutouts.length}/{MAX_PROFILE_CUTOUTS} cutouts. Dimensions are stored
-        in exact millimeters; resizing the board does not silently change hole
-        diameter or cutout size.
+        {cutouts.length}/{MAX_PROFILE_CUTOUTS} cutouts · exact millimeter sizes are saved with this part.
       </div>
     </div>
   );
@@ -1885,6 +1893,13 @@ function WoodworkingOperationsCard({
     setDraftType("dado");
   }, [selectedComp?.id]);
 
+  const machiningComp =
+    getMachiningProxyComponent(selectedComp) || selectedComp;
+  const machiningDescriptor =
+    getUniversalMachiningDescriptor(selectedComp);
+  const surfaceLabels = getMachiningSurfaceLabels(
+    machiningDescriptor?.plane || "xy",
+  );
   const operations = normalizeWoodworkingOperations(
     selectedComp?.woodworkingOperations,
   );
@@ -1892,21 +1907,19 @@ function WoodworkingOperationsCard({
     operations.find((item) => item.id === activeId) ||
     operations[0] ||
     null;
-  const dims = getOperationProfileDimensions(selectedComp);
+  const dims = getOperationProfileDimensions(machiningComp);
   const operationOuterPoints =
-    getWoodworkingProfileLocalPoints(selectedComp, {
+    getUniversalMachiningOuterPoints(selectedComp, {
       curveSegments: 56,
       cornerSegments: 10,
       filletSegments: 10,
     }) || [];
-  const operationCutoutPolygons = (
-    Array.isArray(selectedComp?.profileCutouts)
-      ? selectedComp.profileCutouts
-      : []
+  const operationCutoutPolygons = getUniversalMachiningCutouts(
+    selectedComp,
   )
     .filter(
       (cutout) =>
-        getProfileCutoutStatus(selectedComp, cutout).valid,
+        getUniversalMachiningCutoutStatus(selectedComp, cutout).valid,
     )
     .map((cutout) =>
       getProfileCutoutLocalPoints(
@@ -1915,7 +1928,7 @@ function WoodworkingOperationsCard({
       ),
     );
   const status = active
-    ? getWoodworkingOperationStatus(
+    ? getUniversalMachiningOperationStatus(
         selectedComp,
         active,
         {
@@ -1944,7 +1957,7 @@ function WoodworkingOperationsCard({
     }
 
     const created = createWoodworkingOperation(
-      selectedComp,
+      machiningComp,
       draftType,
     );
     const next = [...operations, created];
@@ -1990,7 +2003,7 @@ function WoodworkingOperationsCard({
     if (!active) return null;
 
     const footprint = getWoodworkingOperationFootprint(
-      selectedComp,
+      machiningComp,
       active,
     );
 
@@ -2059,7 +2072,7 @@ function WoodworkingOperationsCard({
           marginBottom: 4,
         }}
       >
-        Woodworking Operations · V5B
+        Machining Operations
       </div>
 
       <div
@@ -2070,9 +2083,8 @@ function WoodworkingOperationsCard({
           marginBottom: 8,
         }}
       >
-        Dado, rabbet, groove, recess/pocket, and bore/drill now remove
-        material from the actual 3D Custom Shape Part. CHECK operations stay
-        saved for correction but are intentionally not cut in 3D.
+        Add a dado, rabbet, groove, pocket, or drill operation. Invalid
+        operations stay saved for correction but are not applied in 3D.
       </div>
 
       <div
@@ -2245,8 +2257,8 @@ function WoodworkingOperationsCard({
                 }
                 style={inputStyle}
               >
-                <option value="face_a">Face A</option>
-                <option value="face_b">Face B</option>
+                <option value="face_a">{surfaceLabels.face_a}</option>
+                <option value="face_b">{surfaceLabels.face_b}</option>
               </select>
             </div>
 
@@ -2406,7 +2418,7 @@ function WoodworkingOperationsCard({
             >
               <div>
                 <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                  Center U (mm)
+                  Horizontal Position (mm)
                 </label>
                 <input
                   type="number"
@@ -2423,7 +2435,7 @@ function WoodworkingOperationsCard({
               </div>
               <div>
                 <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                  Center V (mm)
+                  Vertical Position (mm)
                 </label>
                 <input
                   type="number"
@@ -2472,7 +2484,7 @@ function WoodworkingOperationsCard({
               >
                 <div>
                   <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                    Center U (mm)
+                    Horizontal Position (mm)
                   </label>
                   <input
                     type="number"
@@ -2489,7 +2501,7 @@ function WoodworkingOperationsCard({
                 </div>
                 <div>
                   <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                    Center V (mm)
+                    Vertical Position (mm)
                   </label>
                   <input
                     type="number"
@@ -2642,8 +2654,7 @@ function WoodworkingOperationsCard({
           lineHeight: 1.4,
         }}
       >
-        {operations.length}/{MAX_WOODWORKING_OPERATIONS} operations · profile{" "}
-        {dims.plane.toUpperCase()} · thickness {Math.round(dims.thickness)}mm.
+        {operations.length}/{MAX_WOODWORKING_OPERATIONS} operations · {getMachiningPlaneLabel(dims.plane)} · thickness {Math.round(dims.thickness)} mm.
       </div>
     </div>
   );
@@ -3240,6 +3251,8 @@ export function PropertiesPanel({
   const woodworkingProfile = isWoodworkingProfile
     ? getWoodworkingProfileDescriptor(selectedComp)
     : null;
+  const machiningProfile = getUniversalMachiningDescriptor(selectedComp);
+  const machiningCapability = getUniversalMachiningCapability(selectedComp);
   const boxWallMax = selectedComp
     ? Math.max(
         20,
@@ -4863,6 +4876,77 @@ export function PropertiesPanel({
                   onChange={onChange}
                   inputStyle={inputStyle}
                 />
+              </div>
+            ) : null}
+
+            {/* WISDOM UNIVERSAL PART MACHINING V2.0.1 */}
+            {!isWoodworkingProfile && selectedComp?.type !== "reference_proxy" ? (
+              <div style={inspectorSectionStyle}>
+                <div style={inspectorSectionTitleStyle}>Machining</div>
+
+                {!machiningCapability.supported ? (
+                  <div
+                    style={{
+                      padding: 9,
+                      border: "1px solid rgba(120,53,15,.72)",
+                      background: "rgba(120,53,15,.10)",
+                      color: "#fde68a",
+                      fontSize: 9,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {machiningCapability.message}
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ marginBottom: 8 }}>
+                      <label style={S.floatingLabel}>Machining Direction</label>
+                      <select
+                        value={selectedComp.machiningPlane || "auto"}
+                        disabled={editorMode !== "editable" || isLocked(selectedComp)}
+                        onChange={(event) =>
+                          onChange(selectedComp.id, {
+                            machiningPlane: event.target.value,
+                          })
+                        }
+                        style={inputStyle}
+                      >
+                        <option value="auto">Auto - use the thinnest dimension</option>
+                        <option value="xy">Front / Back</option>
+                        <option value="xz">Top / Bottom</option>
+                        <option value="yz">Left / Right</option>
+                      </select>
+                    </div>
+
+                    <div
+                      style={{
+                        marginBottom: 9,
+                        color: "#7f93ad",
+                        fontSize: 8.5,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      Active direction: {getMachiningPlaneLabel(machiningProfile?.plane || "xy")}. The actual rendered board surface is used for the 3D cut.
+                    </div>
+
+                    <CutoutEditorCard
+                      selectedComp={selectedComp}
+                      woodworkingProfile={machiningProfile}
+                      editorMode={editorMode}
+                      isLocked={isLocked}
+                      onChange={onChange}
+                      inputStyle={inputStyle}
+                    />
+
+                    <WoodworkingOperationsCard
+                      selectedComp={selectedComp}
+                      editorMode={editorMode}
+                      isLocked={isLocked}
+                      onChange={onChange}
+                      inputStyle={inputStyle}
+                    />
+                  </>
+                )}
               </div>
             ) : null}
 

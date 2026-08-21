@@ -17,6 +17,7 @@ import { normalizeProductionMetadata } from "./productionMetadata";
 import { normalizeHardwareRequirements } from "./hardwareMetadata";
 import { normalizeWoodworkingProfileMetadata } from "./woodworkingProfile";
 import { normalizeWoodworkingOperations } from "./woodworkingOperations";
+import { normalizeUniversalMachiningMetadata } from "./universalMachiningV2";
 
 const GRID_SIZE = 20;
 const MIN_COMPONENT_DIMENSION_MM = 1;
@@ -371,6 +372,8 @@ function normalizeComponent(c) {
       [],
   );
   const woodworkingProfile = normalizeWoodworkingProfileMetadata(c);
+  const universalMachiningMetadata =
+    normalizeUniversalMachiningMetadata(c);
   const woodworkingOperations = normalizeWoodworkingOperations(
     c.woodworkingOperations ??
       c.woodworking_operations ??
@@ -485,6 +488,13 @@ function normalizeComponent(c) {
     // payload so Undo/Redo, Duplicate, Save/Reload, and future Cut List logic
     // all read the same shape definition.
     ...(woodworkingProfile || {}),
+
+    // WISDOM UNIVERSAL PART MACHINING V2.0.1
+    // Separate from Custom Shape profile metadata so normal part identity,
+    // renderer, assembly, pricing, and inventory remain untouched.
+    ...(!woodworkingProfile && universalMachiningMetadata
+      ? universalMachiningMetadata
+      : {}),
 
     // Woodworking Operations V5A production metadata. Geometry application
     // is intentionally deferred to V5B, but Save/Reload and Duplicate must

@@ -28,8 +28,14 @@ import { addWoodworkingProfile3D } from "../shapes/woodworkingProfile3D";
 import { isWoodworkingProfileComponent } from "../data/woodworkingProfile";
 import { CASEWORK_SET, TABLE_SET, BENCH_SET } from "../data/furnitureTypes";
 import { createDiningChairTemplateComponents } from "../data/templateComponents";
+import { applyUniversalMachining3D } from "../shapes/universalMachining3DV2";
 
 const FLOOR_OFFSET = 40;
+
+// WISDOM UNIVERSAL PART MACHINING V2.0.1
+function finalizeFurnitureRoot(root, comp, selectableMeshes) {
+  return applyUniversalMachining3D(root, selectableMeshes, comp);
+}
 
 const WARDROBE_PART_SET = new Set([
   "wr_side_panel",
@@ -433,12 +439,12 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       addEdgeHighlight(root, profileMesh, palette.edge, 0.07);
     }
 
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (WARDROBE_PART_SET.has(comp.type)) {
     buildWardrobePart3D(root, selectableMeshes, comp, palette, r);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
   if (comp.type === "chair_seat_panel") {
     const seat = addRoundedPanel(
@@ -455,7 +461,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       r,
     );
     addEdgeHighlight(root, seat, palette.edge, 0.09);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "chair_front_leg" || comp.type === "chair_back_leg") {
@@ -470,7 +476,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       r,
     );
     addEdgeHighlight(root, leg, palette.edge, 0.08);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (
@@ -489,7 +495,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       r,
     );
     addEdgeHighlight(root, rail, palette.edge, 0.08);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "chair_back_slat") {
@@ -507,7 +513,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       r,
     );
     addEdgeHighlight(root, slat, palette.edge, 0.08);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (TABLE_SET.has(comp.type)) {
@@ -520,7 +526,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       carcassMat,
       r,
     );
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (BENCH_SET.has(comp.type)) {
@@ -534,7 +540,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       comp.type === "garden_bench",
       r,
     );
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (
@@ -552,22 +558,22 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       countertopMat,
       r,
     );
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "sofa") {
     buildSofa3D(root, selectableMeshes, comp, palette, r);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "bed_frame") {
     buildBed3D(root, selectableMeshes, comp, palette, frontMat, carcassMat, r);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "office_chair") {
     buildOfficeChair3D(root, selectableMeshes, comp, palette, r);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "lounger") {
@@ -580,7 +586,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       carcassMat,
       r,
     );
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "patio_dining_set") {
@@ -593,7 +599,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       carcassMat,
       r,
     );
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "hardware") {
@@ -614,7 +620,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
     knob.userData.rootId = comp.id;
     root.add(knob);
     selectableMeshes.push(knob);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "countertop") {
@@ -632,7 +638,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       r,
     );
     addEdgeHighlight(root, top, 0xf2dcc2, 0.08);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "reference_proxy") {
@@ -672,7 +678,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
     selectableMeshes.push(frame);
 
     addEdgeHighlight(root, board, 0xffffff, 0.1);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "dining_chair") {
@@ -786,7 +792,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       comp.id,
       r,
     );
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "rounded_box") {
@@ -860,7 +866,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       addEdgeHighlight(root, body, palette.edge, 0.09);
     }
 
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   // ── Custom Shapes ──────────────────────────────────────────────────────
@@ -876,7 +882,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       r,
     );
     addEdgeHighlight(root, mesh, palette.edge, 0.07);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "shape_triangle") {
@@ -891,7 +897,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       r,
     );
     addEdgeHighlight(root, mesh, palette.edge, 0.07);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "shape_cube") {
@@ -906,7 +912,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       r,
     );
     addEdgeHighlight(root, mesh, palette.edge, 0.07);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   if (comp.type === "shape_trapezoid") {
@@ -923,7 +929,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
       r,
     );
     addEdgeHighlight(root, mesh, palette.edge, 0.07);
-    return root;
+    return finalizeFurnitureRoot(root, comp, selectableMeshes);
   }
 
   const body = addBoxPart(
@@ -937,7 +943,7 @@ function createFurnitureObject(comp, selected, editing, selectableMeshes) {
     r,
   );
   addEdgeHighlight(root, body, palette.edge, 0.07);
-  return root;
+  return finalizeFurnitureRoot(root, comp, selectableMeshes);
 }
 
 export { createFurnitureObject };
