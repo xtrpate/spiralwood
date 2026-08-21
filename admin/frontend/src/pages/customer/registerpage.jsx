@@ -162,7 +162,12 @@ export default function RegisterPage() {
     try {
       await verifyOtp(registeredEmail, code);
 
-      setStep("success");
+      navigate("/phone-otp", {
+        state: {
+          email: registeredEmail,
+          phone: form.phone,
+        },
+      });
     } catch (err) {
       setOtpError(
         err.response?.data?.message ||

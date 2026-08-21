@@ -22,19 +22,9 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const AVATAR_EXTENSIONS = new Set([
-  ".jpg",
-  ".jpeg",
-  ".jfif",
-  ".png",
-  ".webp",
-]);
+const AVATAR_EXTENSIONS = new Set([".jpg", ".jpeg", ".jfif", ".png", ".webp"]);
 
-const AVATAR_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
+const AVATAR_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 
@@ -43,12 +33,11 @@ const avatarRawUpload = multer({
   limits: { fileSize: AVATAR_MAX_BYTES },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || "").toLowerCase();
-    const mime = String(file.mimetype || "").trim().toLowerCase();
+    const mime = String(file.mimetype || "")
+      .trim()
+      .toLowerCase();
 
-    if (
-      AVATAR_EXTENSIONS.has(ext) &&
-      AVATAR_MIME_TYPES.has(mime)
-    ) {
+    if (AVATAR_EXTENSIONS.has(ext) && AVATAR_MIME_TYPES.has(mime)) {
       cb(null, true);
       return;
     }
@@ -116,14 +105,11 @@ const handleAvatarUpload = (req, res, next) => {
       });
     }
 
-    const ext = path.extname(
-      req.file.originalname || "",
-    ).toLowerCase();
+    const ext = path.extname(req.file.originalname || "").toLowerCase();
 
     if (!verifyBufferSignature(req.file.buffer, ext)) {
       return res.status(400).json({
-        message:
-          "Profile picture content does not match its image file type.",
+        message: "Profile picture content does not match its image file type.",
       });
     }
 
@@ -131,9 +117,7 @@ const handleAvatarUpload = (req, res, next) => {
       const result = await uploadAvatarBufferToCloudinary(req.file);
 
       if (!result?.secure_url) {
-        throw new Error(
-          "Cloudinary did not return a secure image URL.",
-        );
+        throw new Error("Cloudinary did not return a secure image URL.");
       }
 
       // Preserve the controller contract: customer.profile.uploadAvatar
@@ -150,8 +134,7 @@ const handleAvatarUpload = (req, res, next) => {
       );
 
       return res.status(502).json({
-        message:
-          "Profile picture upload failed. Please try again.",
+        message: "Profile picture upload failed. Please try again.",
       });
     }
   });
@@ -165,7 +148,7 @@ router.post(
   "/avatar",
   authenticate,
   requireCustomer,
-  handleAvatarUpload, // 👉 Replace uploadAvatar.single("avatar") with our new wrapper!
+  handleAvatarUpload,
   logAction("update_customer_avatar", "users"),
   profileController.uploadAvatar,
 );
@@ -175,6 +158,19 @@ router.put(
   requireCustomer,
   logAction("update_customer_profile", "users"),
   profileController.updateBasic,
+);
+
+router.post(
+  "/request-current-email-auth",
+  authenticate,
+  requireCustomer,
+  profileController.requestCurrentEmailAuth,
+);
+router.post(
+  "/verify-current-email-auth",
+  authenticate,
+  requireCustomer,
+  profileController.verifyCurrentEmailAuth,
 );
 router.post(
   "/request-email-change",
@@ -190,12 +186,33 @@ router.post(
   profileController.verifyEmailChange,
 );
 
-router.put(
-  "/phone",
+router.post(
+  "/request-current-phone-auth",
+  authenticate,
+  requireCustomer,
+  profileController.requestCurrentPhoneAuth,
+);
+
+router.post(
+  "/verify-current-phone-auth",
+  authenticate,
+  requireCustomer,
+  profileController.verifyCurrentPhoneAuth,
+);
+
+router.post(
+  "/request-phone-change",
+  authenticate,
+  requireCustomer,
+  profileController.requestPhoneChange,
+);
+
+router.post(
+  "/verify-phone-change",
   authenticate,
   requireCustomer,
   logAction("update_customer_phone", "users"),
-  profileController.updatePhone,
+  profileController.verifyPhoneChange,
 );
 
 router.post(

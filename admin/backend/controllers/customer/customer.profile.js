@@ -1,18 +1,22 @@
 // controllers/customer/customer.profile.js
-const db = require("../../config/db"); // Uses the unified db config
+const db = require("../../config/db");
 const bcrypt = require("bcryptjs");
 const path = require("path");
 const fs = require("fs");
-const twilio = require("twilio");
-
-/* ── Twilio ── */
-const twilioClient = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN,
-);
+const { sendSms } = require("../../services/semaphore.service");
 
 /* ── OTP generator ── */
 const genOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+/* ── Phone normalization helper ── */
+const normalizePhilippinePhone = (phone) => {
+  let value = String(phone || "").replace(/\D/g, "");
+  if (value.startsWith("09") && value.length === 11)
+    return "63" + value.slice(1);
+  if (value.startsWith("639") && value.length === 12) return value;
+  if (value.startsWith("9") && value.length === 10) return "63" + value;
+  return value;
+};
 
 /* ── Directory for deleting old avatars ── */
 const avatarDir = path.join(__dirname, "../../uploads/avatars");
@@ -487,5 +491,355 @@ exports.verifyPasswordChange = async (req, res) => {
   } catch (err) {
     console.error("[profile/verify-password-change]", err);
     res.status(500).json({ message: "Failed." });
+  }
+};
+
+/* ────────────────────────────────────────
+   POST /request-phone-change
+──────────────────────────────────────── */
+exports.requestPhoneChange = async (req, res) => {
+  const { new_phone } = req.body;
+  if (!new_phone?.trim()) {
+    return res.status(400).json({ message: "New phone number is required." });
+  }
+
+  const trimmedPhone = new_phone.trim();
+  if (trimmedPhone.length !== 11 || !trimmedPhone.startsWith("09")) {
+    return res.status(400).json({
+      message:
+        "Phone number must be an 11-digit mobile number starting with 09.",
+    });
+  }
+
+  if (trimmedPhone === req.user.phone) {
+    return res.status(400).json({
+      message:
+        "New phone number must be different from your current phone number.",
+    });
+  }
+
+  try {
+    // Check if phone number is already in use
+    const [exists] = await db.query(
+      "SELECT id FROM users WHERE phone = ? AND id != ?",
+      [trimmedPhone, req.user.id],
+    );
+    if (exists.length > 0) {
+      return res.status(409).json({
+        message: "This phone number is already linked to another account.",
+      });
+    }
+
+    const otp = genOtp();
+    const expires = new Date(Date.now() + 15 * 60 * 1000);
+
+    await db.query(
+      `UPDATE users
+       SET otp_code=?, otp_expires=?, otp_purpose='change_phone'
+       WHERE id=?`,
+      [otp, expires, req.user.id],
+    );
+
+    await sendSms({
+      phone: normalizePhilippinePhone(trimmedPhone),
+      message: `Your Spiral Wood Services verification code to update your phone number is ${otp}. Valid for 15 minutes.`,
+    });
+
+    res.json({ message: "OTP sent to new phone number." });
+  } catch (err) {
+    console.error("[profile/request-phone-change]", err);
+    res.status(500).json({ message: "Failed to send SMS verification code." });
+  }
+};
+
+/* ────────────────────────────────────────
+   POST /verify-phone-change
+──────────────────────────────────────── */
+exports.verifyPhoneChange = async (req, res) => {
+  const { otp, new_phone } = req.body;
+  if (!otp || !new_phone) {
+    return res
+      .status(400)
+      .json({ message: "OTP and new phone number are required." });
+  }
+
+  try {
+    const [rows] = await db.query(
+      "SELECT phone, otp_code, otp_expires, otp_purpose FROM users WHERE id=?",
+      [req.user.id],
+    );
+    const u = rows[0];
+
+    if (!u || u.otp_code !== otp || u.otp_purpose !== "change_phone") {
+      return res.status(400).json({ message: "Invalid OTP code." });
+    }
+    if (new Date(u.otp_expires) < new Date()) {
+      return res
+        .status(400)
+        .json({ message: "OTP has expired. Please request a new one." });
+    }
+
+    const trimmedPhone = new_phone.trim();
+    const existingPhone = String(u.phone || "").trim();
+    const phoneChanged = trimmedPhone !== existingPhone;
+
+    const [updateResult] = await db.query(
+      `UPDATE users
+       SET phone=?, otp_code=NULL, otp_expires=NULL, otp_purpose=NULL, phone_verified=TRUE
+       WHERE id=?`,
+      [trimmedPhone, req.user.id],
+    );
+
+    if (phoneChanged && updateResult?.affectedRows === 1) {
+      req.auditRecord = {
+        id: req.user.id,
+        old: { phone_configured: Boolean(existingPhone) },
+        new: {
+          phone_changed: true,
+          phone_configured: true,
+          changed_fields: ["phone"],
+        },
+      };
+    }
+
+    res.json({
+      message: "Phone number updated successfully.",
+      phone: trimmedPhone,
+    });
+  } catch (err) {
+    console.error("[profile/verify-phone-change]", err);
+    res.status(500).json({ message: "Verification failed." });
+  }
+};
+
+/* ────────────────────────────────────────
+   POST /request-current-phone-auth
+   (Sends OTP to CURRENT phone OR CURRENT email)
+──────────────────────────────────────── */
+exports.requestCurrentPhoneAuth = async (req, res) => {
+  const { method } = req.body; // Expects 'sms' or 'email'
+
+  try {
+    const [rows] = await db.query("SELECT phone, email FROM users WHERE id=?", [
+      req.user.id,
+    ]);
+    const u = rows[0];
+
+    if (method === "sms" && !u.phone) {
+      return res
+        .status(400)
+        .json({ message: "No phone number attached to this account." });
+    }
+
+    const otp = genOtp();
+    const expires = new Date(Date.now() + 15 * 60 * 1000);
+
+    // Save the OTP to the database
+    await db.query(
+      `UPDATE users SET otp_code=?, otp_expires=?, otp_purpose='auth_current_phone' WHERE id=?`,
+      [otp, expires, req.user.id],
+    );
+
+    // ROUTE 1: User requested SMS to current phone
+    if (method === "sms") {
+      await sendSms({
+        phone: normalizePhilippinePhone(u.phone),
+        message: `Spiral Wood Services: Your security code to authorize a phone number change is ${otp}. Valid for 15 mins.`,
+      });
+      return res.json({ message: "Security OTP sent to your current phone." });
+    }
+
+    // ROUTE 2: User clicked "Lost Access", requested Email
+    else if (method === "email") {
+      const payload = {
+        sender: { name: "Spiral Wood Services", email: process.env.MAIL_USER },
+        to: [{ email: u.email, name: "Customer" }],
+        subject: "Authorize Phone Number Change",
+        htmlContent: `
+          <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+            <h2 style="color:#8B4513">Phone Update Request</h2>
+            <p>Use this OTP to authorize changing the phone number on your account.</p>
+            <div style="font-size:36px;font-weight:900;letter-spacing:10px;
+                        color:#8B4513;background:#fff3e0;padding:20px;
+                        border-radius:10px;text-align:center;margin:20px 0">
+              ${otp}
+            </div>
+            <p style="color:#c62828;font-size:13px">⚠ If you didn't request this, secure your account immediately.</p>
+          </div>
+        `,
+      };
+
+      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "api-key": process.env.BREVO_API_KEY,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) throw new Error("Email sending failed");
+
+      return res.json({ message: "Security OTP sent to your email address." });
+    }
+  } catch (err) {
+    console.error("[profile/request-current-phone-auth]", err);
+    res.status(500).json({ message: "Failed to send authorization code." });
+  }
+};
+
+/* ────────────────────────────────────────
+   POST /verify-current-phone-auth
+──────────────────────────────────────── */
+exports.verifyCurrentPhoneAuth = async (req, res) => {
+  const { otp } = req.body;
+
+  if (!otp) return res.status(400).json({ message: "OTP is required." });
+
+  try {
+    const [rows] = await db.query(
+      "SELECT otp_code, otp_expires, otp_purpose FROM users WHERE id=?",
+      [req.user.id],
+    );
+    const u = rows[0];
+
+    if (!u || u.otp_code !== otp || u.otp_purpose !== "auth_current_phone") {
+      return res.status(400).json({ message: "Invalid OTP code." });
+    }
+    if (new Date(u.otp_expires) < new Date()) {
+      return res.status(400).json({ message: "OTP has expired." });
+    }
+
+    // Clear the OTP so it can't be reused, allowing them to proceed to step 3
+    await db.query(
+      `UPDATE users SET otp_code=NULL, otp_expires=NULL, otp_purpose=NULL WHERE id=?`,
+      [req.user.id],
+    );
+
+    res.json({
+      message: "Identity verified. Proceed to enter new phone number.",
+    });
+  } catch (err) {
+    console.error("[profile/verify-current-phone-auth]", err);
+    res.status(500).json({ message: "Verification failed." });
+  }
+};
+
+/* ────────────────────────────────────────
+   POST /request-current-email-auth
+   (Sends OTP to CURRENT email OR CURRENT phone)
+──────────────────────────────────────── */
+exports.requestCurrentEmailAuth = async (req, res) => {
+  const { method } = req.body; // Expects 'email' or 'sms'
+
+  try {
+    const [rows] = await db.query("SELECT email, phone FROM users WHERE id=?", [
+      req.user.id,
+    ]);
+    const u = rows[0];
+
+    if (method === "sms" && !u.phone) {
+      return res
+        .status(400)
+        .json({
+          message:
+            "No phone number attached to this account. Please update your phone number first.",
+        });
+    }
+
+    const otp = genOtp();
+    const expires = new Date(Date.now() + 15 * 60 * 1000);
+
+    // Save the OTP to the database
+    await db.query(
+      `UPDATE users SET otp_code=?, otp_expires=?, otp_purpose='auth_current_email' WHERE id=?`,
+      [otp, expires, req.user.id],
+    );
+
+    // ROUTE 1: User requested Email
+    if (method === "email") {
+      const payload = {
+        sender: { name: "Spiral Wood Services", email: process.env.MAIL_USER },
+        to: [{ email: u.email, name: "Customer" }],
+        subject: "Authorize Email Address Change",
+        htmlContent: `
+          <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+            <h2 style="color:#8B4513">Email Update Request</h2>
+            <p>Use this OTP to authorize changing the email address on your account.</p>
+            <div style="font-size:36px;font-weight:900;letter-spacing:10px;
+                        color:#8B4513;background:#fff3e0;padding:20px;
+                        border-radius:10px;text-align:center;margin:20px 0">
+              ${otp}
+            </div>
+            <p style="color:#c62828;font-size:13px">⚠ If you didn't request this, secure your account immediately.</p>
+          </div>
+        `,
+      };
+
+      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "api-key": process.env.BREVO_API_KEY,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) throw new Error("Email sending failed");
+      return res.json({ message: "Security OTP sent to your current email." });
+    }
+
+    // ROUTE 2: User clicked "Lost Access", requested SMS
+    else if (method === "sms") {
+      await sendSms({
+        phone: normalizePhilippinePhone(u.phone),
+        message: `Spiral Wood Services: Your security code to authorize an email change is ${otp}. Valid for 15 mins.`,
+      });
+      return res.json({
+        message: "Security OTP sent to your registered phone number.",
+      });
+    }
+  } catch (err) {
+    console.error("[profile/request-current-email-auth]", err);
+    res.status(500).json({ message: "Failed to send authorization code." });
+  }
+};
+
+/* ────────────────────────────────────────
+   POST /verify-current-email-auth
+──────────────────────────────────────── */
+exports.verifyCurrentEmailAuth = async (req, res) => {
+  const { otp } = req.body;
+
+  if (!otp) return res.status(400).json({ message: "OTP is required." });
+
+  try {
+    const [rows] = await db.query(
+      "SELECT otp_code, otp_expires, otp_purpose FROM users WHERE id=?",
+      [req.user.id],
+    );
+    const u = rows[0];
+
+    if (!u || u.otp_code !== otp || u.otp_purpose !== "auth_current_email") {
+      return res.status(400).json({ message: "Invalid OTP code." });
+    }
+    if (new Date(u.otp_expires) < new Date()) {
+      return res.status(400).json({ message: "OTP has expired." });
+    }
+
+    // Clear the OTP
+    await db.query(
+      `UPDATE users SET otp_code=NULL, otp_expires=NULL, otp_purpose=NULL WHERE id=?`,
+      [req.user.id],
+    );
+
+    res.json({
+      message: "Identity verified. Proceed to enter new email address.",
+    });
+  } catch (err) {
+    console.error("[profile/verify-current-email-auth]", err);
+    res.status(500).json({ message: "Verification failed." });
   }
 };

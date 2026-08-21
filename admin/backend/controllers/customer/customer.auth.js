@@ -392,10 +392,10 @@ exports.register = async (req, res) => {
       await sendOtpEmail(normalizedEmail, emailOtp, firstName);
 
       // 2. Send phone OTP
-      // await sendSms({
-      //   phone: normalizedPhone,
-      //   message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
-      // });
+      await sendSms({
+        phone: normalizedPhone,
+        message: `Your Spiral Wood Services phone verification code is ${phoneOtp}. It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+      });
 
       return res.status(201).json({
         message:

@@ -248,6 +248,7 @@ export default function ProfileSettings() {
   /* Email change */
   const [editEmail, setEditEmail] = useState(false);
   const [currentEmailOtp, setCurrentEmailOtp] = useState("");
+  const [emailAuthMethod, setEmailAuthMethod] = useState("email");
   const [newEmail, setNewEmail] = useState("");
   const [newEmailOtp, setNewEmailOtp] = useState("");
   const [emailStep, setEmailStep] = useState(1);
@@ -255,11 +256,18 @@ export default function ProfileSettings() {
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailCooldown, setEmailCooldown] = useState(0);
 
-  /* Phone change (Simplified - No OTP) */
+  /* Phone change (with OTP verification) */
   const [editPhone, setEditPhone] = useState(false);
-  const [newPhone, setNewPhone] = useState(user?.phone || "");
+  const [phoneStep, setPhoneStep] = useState(1);
+  const [newPhone, setNewPhone] = useState(
+    user?.phone ? user.phone.replace(/^(\+?63|0)/, "") : "",
+  );
+  const [currentPhoneOtp, setCurrentPhoneOtp] = useState("");
+  const [phoneAuthMethod, setPhoneAuthMethod] = useState("sms");
+  const [phoneOtp, setPhoneOtp] = useState("");
   const [phoneMsg, setPhoneMsg] = useState({ type: "", text: "" });
   const [phoneLoading, setPhoneLoading] = useState(false);
+  const [phoneCooldown, setPhoneCooldown] = useState(0);
   const [showPhone, setShowPhone] = useState(false);
 
   /* Password change */
@@ -287,8 +295,10 @@ export default function ProfileSettings() {
       timers.push(setTimeout(() => setEmailCooldown((c) => c - 1), 1000));
     if (passCooldown > 0)
       timers.push(setTimeout(() => setPassCooldown((c) => c - 1), 1000));
+    if (phoneCooldown > 0)
+      timers.push(setTimeout(() => setPhoneCooldown((c) => c - 1), 1000));
     return () => timers.forEach(clearTimeout);
-  }, [emailCooldown, passCooldown]);
+  }, [emailCooldown, passCooldown, phoneCooldown]);
 
   /* ── Page Loading State ── */
   const [pageLoading, setPageLoading] = useState(true);
@@ -516,18 +526,20 @@ export default function ProfileSettings() {
 
   /* ════ EMAIL CHANGE ════ */
 
-  // STEP 1: Request OTP to Current Email
-  const requestCurrentEmailOtp = async () => {
+  // STEP 1: Request OTP to Current Email (or Phone)
+  const requestCurrentEmailAuth = async (method = "email") => {
     setEmailLoading(true);
     setEmailMsg({ type: "", text: "" });
     try {
-      // Ensure backend handles sending an OTP to the current logged-in user
-      await api.post("/customer/profile/request-current-email-otp");
+      await api.post("/customer/profile/request-current-email-auth", {
+        method,
+      });
+      setEmailAuthMethod(method);
       setEmailStep(2);
       setEmailCooldown(60);
       setEmailMsg({
         type: "success",
-        text: `Verification OTP sent to ${user?.email}`,
+        text: `Security code sent to your ${method === "email" ? "current email" : "registered phone"}.`,
       });
     } catch (err) {
       setEmailMsg({
@@ -539,19 +551,19 @@ export default function ProfileSettings() {
     }
   };
 
-  // STEP 2: Verify Current Email OTP
-  const verifyCurrentEmailOtp = async () => {
+  // STEP 2: Verify Identity OTP
+  const verifyCurrentEmailAuth = async () => {
     if (!currentEmailOtp.trim())
       return setEmailMsg({ type: "error", text: "Enter the OTP." });
+
     setEmailLoading(true);
     try {
-      // Ensure backend handles verifying the current email OTP
-      await api.post("/customer/profile/verify-current-email-otp", {
+      await api.post("/customer/profile/verify-current-email-auth", {
         otp: currentEmailOtp,
       });
       setEmailMsg({
         type: "success",
-        text: "Current email verified. Enter your new email address.",
+        text: "Identity verified. Enter your new email address.",
       });
       setEmailStep(3);
       setCurrentEmailOtp("");
@@ -616,36 +628,121 @@ export default function ProfileSettings() {
     }
   };
 
-  /* ════ PHONE CHANGE (Simplified) ════ */
-  const savePhone = async () => {
+  /* ════ PHONE CHANGE (PHASE 1: IDENTITY VERIFICATION) ════ */
+  const requestCurrentPhoneAuth = async (method = "sms") => {
+    setPhoneLoading(true);
+    setPhoneMsg({ type: "", text: "" });
+    try {
+      await api.post("/customer/profile/request-current-phone-auth", {
+        method,
+      });
+      setPhoneAuthMethod(method);
+      setPhoneStep(2);
+      setPhoneCooldown(60);
+      setPhoneMsg({
+        type: "success",
+        text: `Security code sent to your ${method === "sms" ? "current phone" : "email"}.`,
+      });
+    } catch (err) {
+      setPhoneMsg({
+        type: "error",
+        text:
+          err.response?.data?.message || "Failed to send authorization code.",
+      });
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
+  const verifyCurrentPhoneAuth = async () => {
+    if (!currentPhoneOtp.trim())
+      return setPhoneMsg({ type: "error", text: "Enter the OTP code." });
+
+    setPhoneLoading(true);
+    try {
+      await api.post("/customer/profile/verify-current-phone-auth", {
+        otp: currentPhoneOtp,
+      });
+      setPhoneStep(3); // Identity verified, move to entering the new number!
+      setPhoneMsg({
+        type: "success",
+        text: "Identity verified. Enter your new phone number.",
+      });
+      setCurrentPhoneOtp("");
+    } catch (err) {
+      setPhoneMsg({
+        type: "error",
+        text: err.response?.data?.message || "Invalid OTP code.",
+      });
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
+  /* ════ PHONE CHANGE (OTP VERIFIED) ════ */
+  const requestPhoneOtp = async () => {
     if (!newPhone.trim())
       return setPhoneMsg({ type: "error", text: "Enter a phone number." });
 
-    if (newPhone.length !== 11) {
+    if (newPhone.length !== 11 || !newPhone.startsWith("09")) {
       return setPhoneMsg({
         type: "error",
-        text: "Phone number must be exactly 11 digits.",
+        text: "Phone number must be an 11-digit number starting with 09.",
       });
     }
-    if (!newPhone.startsWith("09")) {
+
+    if (newPhone === user?.phone) {
       return setPhoneMsg({
         type: "error",
-        text: "Phone number must start with '09'.",
+        text: "New phone number must be different from your current number.",
       });
     }
 
     setPhoneLoading(true);
     setPhoneMsg({ type: "", text: "" });
     try {
-      await api.put("/customer/profile/phone", { phone: newPhone });
-      setUser((prev) => ({ ...prev, phone: newPhone }));
-      setPhoneMsg({ type: "success", text: "Phone number updated!" });
-      setEditPhone(false);
-      setShowPhone(false);
+      await api.post("/customer/profile/request-phone-change", {
+        new_phone: newPhone,
+      });
+      setPhoneStep(2);
+      setPhoneCooldown(60);
+      setPhoneMsg({
+        type: "success",
+        text: `Verification OTP sent to ${newPhone}`,
+      });
     } catch (err) {
       setPhoneMsg({
         type: "error",
-        text: err.response?.data?.message || "Update failed.",
+        text:
+          err.response?.data?.message || "Failed to send verification code.",
+      });
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
+  const verifyPhoneOtp = async () => {
+    if (!phoneOtp.trim())
+      return setPhoneMsg({ type: "error", text: "Enter the OTP code." });
+
+    setPhoneLoading(true);
+    try {
+      const res = await api.post("/customer/profile/verify-phone-change", {
+        otp: phoneOtp,
+        new_phone: newPhone,
+      });
+      setUser({ ...user, phone: res.data.phone });
+      setPhoneMsg({
+        type: "success",
+        text: "Phone number updated successfully!",
+      });
+      setEditPhone(false);
+      setPhoneStep(1);
+      setPhoneOtp("");
+    } catch (err) {
+      setPhoneMsg({
+        type: "error",
+        text: err.response?.data?.message || "Invalid OTP code.",
       });
     } finally {
       setPhoneLoading(false);
@@ -730,7 +827,10 @@ export default function ProfileSettings() {
     }
     if (section === "phone") {
       setEditPhone(false);
+      setPhoneStep(1);
       setNewPhone(user?.phone || "");
+      setCurrentPhoneOtp("");
+      setPhoneOtp("");
       setPhoneMsg({ type: "", text: "" });
     }
     if (section === "pass") {
@@ -1084,17 +1184,17 @@ export default function ProfileSettings() {
                       marginBottom: "16px",
                     }}
                   >
-                    For security purposes, please verify your current email
-                    address first.
+                    To protect your account, please verify your identity before
+                    changing your email address.
                   </p>
-                  <div className="form-field">
+                  <div className="form-field" style={{ maxWidth: "380px" }}>
                     <label>Current Email</label>
-                    <input type="email" value={user?.email} disabled />
+                    <input type="email" value={user?.email || ""} readOnly />
                   </div>
                   <div className="profile-form-actions">
                     <button
                       className="btn btn-primary"
-                      onClick={requestCurrentEmailOtp}
+                      onClick={() => requestCurrentEmailAuth("email")}
                       disabled={emailLoading}
                     >
                       {emailLoading ? "Sending…" : "Send Verification OTP"}
@@ -1106,17 +1206,40 @@ export default function ProfileSettings() {
                       Cancel
                     </button>
                   </div>
+                  <div style={{ marginTop: "16px" }}>
+                    <button
+                      type="button"
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#111111",
+                        fontSize: "13px",
+                        textDecoration: "underline",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                      onClick={() => requestCurrentEmailAuth("sms")}
+                      disabled={emailLoading}
+                    >
+                      I lost access to this email
+                    </button>
+                  </div>
                 </div>
               ) : emailStep === 2 ? (
                 <div className="verify-step">
-                  <h4>📧 Verify Current Email</h4>
+                  <h4>🔒 Verify Identity</h4>
                   <p>
-                    We sent a 6-digit OTP to <strong>{user?.email}</strong>.
-                    Enter it below to proceed.
+                    We sent a 6-digit verification code to your{" "}
+                    <strong>
+                      {emailAuthMethod === "email"
+                        ? user?.email
+                        : "registered phone"}
+                    </strong>
+                    . Enter it below to proceed.
                   </p>
                   <div
                     className="otp-input-row"
-                    style={{ marginBottom: "20px" }}
+                    style={{ marginBottom: "20px", maxWidth: "380px" }}
                   >
                     <input
                       type="text"
@@ -1131,7 +1254,7 @@ export default function ProfileSettings() {
                       className="resend-btn"
                       onClick={() => {
                         setEmailCooldown(60);
-                        requestCurrentEmailOtp();
+                        requestCurrentEmailAuth(emailAuthMethod);
                       }}
                       disabled={emailCooldown > 0}
                     >
@@ -1146,8 +1269,8 @@ export default function ProfileSettings() {
                   >
                     <button
                       className="btn btn-primary"
-                      onClick={verifyCurrentEmailOtp}
-                      disabled={emailLoading}
+                      onClick={verifyCurrentEmailAuth}
+                      disabled={emailLoading || currentEmailOtp.length < 6}
                     >
                       {emailLoading ? "Verifying…" : "Next"}
                     </button>
@@ -1260,95 +1383,321 @@ export default function ProfileSettings() {
               {!editPhone && (
                 <button
                   className="edit-toggle"
-                  onClick={() => setEditPhone(true)}
+                  onClick={() => {
+                    setEditPhone(true);
+                    // Smart skip: If they have no phone, jump straight to entering a new one (Step 3)
+                    setPhoneStep(user?.phone ? 1 : 3);
+                    setNewPhone("");
+                    setShowPhone(false);
+                    setPhoneMsg({ type: "", text: "" });
+                  }}
                 >
-                  <Pencil size={13} /> Edit
+                  <Pencil size={13} /> {user?.phone ? "Change" : "Add"}
                 </button>
               )}
             </div>
             <div className="profile-section-body">
               <Alert type={phoneMsg.type} msg={phoneMsg.text} />
+
               {!editPhone ? (
+                /* READ-ONLY VIEW */
                 <div className="field-display">
                   <div className="field-row">
                     <label>Current Phone</label>
                     <span className={user?.phone ? "field-val" : "field-empty"}>
                       {user?.phone
-                        ? `*********${user.phone.slice(-2)}`
+                        ? `+63 ••••••••${String(user.phone).slice(-2)}`
                         : "Not set"}
                     </span>
                   </div>
                 </div>
-              ) : (
+              ) : phoneStep === 1 ? (
+                /* STEP 1: REQUEST AUTHENTICATION */
                 <div className="profile-form">
-                  <div className="form-field">
-                    <label>Phone Number</label>
-                    <div style={{ position: "relative" }}>
-                      <input
-                        type="text"
-                        value={
-                          showPhone
-                            ? newPhone
-                            : newPhone.length > 2
-                              ? "•".repeat(newPhone.length - 2) +
-                                newPhone.slice(-2)
-                              : newPhone
-                        }
-                        placeholder="09XXXXXXXXX"
-                        style={{
-                          width: "100%",
-                          paddingRight: 50,
-                          letterSpacing: showPhone ? "normal" : "2px",
-                        }}
-                        onChange={(e) => {
-                          if (!showPhone) {
-                            setShowPhone(true);
-                            return;
-                          }
-
-                          let val = e.target.value.replace(/\D/g, "");
-                          if (val.length > 0 && val[0] !== "0") val = "0" + val;
-                          if (val.length > 1 && val[1] !== "9")
-                            val = "09" + val.slice(2);
-                          if (val.length > 11) val = val.slice(0, 11);
-                          setNewPhone(val);
-                        }}
-                      />
-
-                      <button
-                        type="button"
-                        onClick={() => setShowPhone(!showPhone)}
-                        style={{
-                          position: "absolute",
-                          right: 10,
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          color: "#aaa",
-                          display: "flex",
-                          alignItems: "center",
-                        }}
-                      >
-                        {showPhone ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#52525b",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    To protect your account, please verify your identity before
+                    changing your phone number.
+                  </p>
+                  <div className="form-field" style={{ maxWidth: "380px" }}>
+                    <label>Current Phone Number</label>
+                    <div className="phone-input-group">
+                      <div className="phone-prefix">
+                        <span>🇵🇭</span> +63
+                      </div>
+                      <div className="phone-input-wrapper">
+                        <input
+                          type="text"
+                          value={(() => {
+                            const p = user?.phone
+                              ? String(user.phone).replace(/^(\+?63|0)/, "")
+                              : "";
+                            if (showPhone) return p;
+                            return p.length > 2
+                              ? "•".repeat(p.length - 2) + p.slice(-2)
+                              : p;
+                          })()}
+                          readOnly
+                          style={{
+                            letterSpacing:
+                              showPhone || !user?.phone ? "normal" : "2px",
+                            paddingRight: "40px",
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="field-eye-btn"
+                          onClick={() => setShowPhone((prev) => !prev)}
+                        >
+                          {showPhone ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
                     </div>
                   </div>
-
                   <div className="profile-form-actions">
                     <button
                       className="btn btn-primary"
-                      onClick={savePhone}
-                      disabled={phoneLoading || !isPhoneChanged}
+                      onClick={() => requestCurrentPhoneAuth("sms")}
+                      disabled={phoneLoading}
                     >
-                      {phoneLoading ? "Saving…" : "Save Changes"}
+                      {phoneLoading
+                        ? "Sending OTP…"
+                        : "Send SMS Verification Code"}
                     </button>
                     <button
                       className="btn btn-secondary"
                       onClick={() => cancelSection("phone")}
                     >
                       Cancel
+                    </button>
+                  </div>
+                  <div style={{ marginTop: "16px" }}>
+                    <button
+                      type="button"
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#111111",
+                        fontSize: "13px",
+                        textDecoration: "underline",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                      onClick={() => requestCurrentPhoneAuth("email")}
+                      disabled={phoneLoading}
+                    >
+                      I lost access to this number
+                    </button>
+                  </div>
+                </div>
+              ) : phoneStep === 2 ? (
+                /* STEP 2: VERIFY AUTHENTICATION */
+                <div className="verify-step">
+                  <h4>🔒 Verify Identity</h4>
+                  <p>
+                    We sent a 6-digit verification code to your{" "}
+                    <strong>
+                      {phoneAuthMethod === "sms" ? "current phone" : "email"}
+                    </strong>
+                    . Enter it below to proceed.
+                  </p>
+                  <div
+                    className="otp-input-row"
+                    style={{ marginBottom: "20px", maxWidth: "380px" }}
+                  >
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={currentPhoneOtp}
+                      onChange={(e) =>
+                        setCurrentPhoneOtp(e.target.value.replace(/\D/g, ""))
+                      }
+                    />
+                    <button
+                      className="resend-btn"
+                      onClick={() => {
+                        setPhoneCooldown(60);
+                        requestCurrentPhoneAuth(phoneAuthMethod);
+                      }}
+                      disabled={phoneCooldown > 0}
+                    >
+                      {phoneCooldown > 0
+                        ? `Resend (${phoneCooldown}s)`
+                        : "Resend"}
+                    </button>
+                  </div>
+                  <div
+                    className="profile-form-actions"
+                    style={{ marginTop: 14 }}
+                  >
+                    <button
+                      className="btn btn-primary"
+                      onClick={verifyCurrentPhoneAuth}
+                      disabled={phoneLoading || currentPhoneOtp.length < 6}
+                    >
+                      {phoneLoading ? "Verifying…" : "Next"}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => cancelSection("phone")}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : phoneStep === 3 ? (
+                /* STEP 3: ENTER NEW NUMBER */
+                <div className="profile-form">
+                  <p
+                    style={{
+                      fontSize: "13px",
+                      color: "#52525b",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    Enter your new 10-digit mobile number. A 6-digit
+                    verification code will be sent to verify ownership.
+                  </p>
+                  <div className="form-field" style={{ maxWidth: "380px" }}>
+                    <label>New Phone Number</label>
+                    <div className="phone-input-group">
+                      <div className="phone-prefix">
+                        <span>🇵🇭</span> +63
+                      </div>
+                      <div className="phone-input-wrapper">
+                        <input
+                          type="text"
+                          value={
+                            showPhone
+                              ? newPhone
+                              : newPhone.length > 2
+                                ? "•".repeat(newPhone.length - 2) +
+                                  newPhone.slice(-2)
+                                : newPhone
+                          }
+                          placeholder="9XXXXXXXXX"
+                          maxLength={10}
+                          style={{
+                            letterSpacing:
+                              showPhone || !newPhone ? "normal" : "2px",
+                            paddingRight: "40px",
+                          }}
+                          onFocus={() => {
+                            if (!newPhone) setShowPhone(true);
+                          }}
+                          onChange={(e) => {
+                            if (!showPhone) {
+                              setShowPhone(true);
+                              return;
+                            }
+                            let val = e.target.value.replace(/\D/g, "");
+                            if (val.length > 0 && val[0] === "0")
+                              val = val.slice(1);
+                            if (val.length > 10) val = val.slice(0, 10);
+                            setNewPhone(val);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="field-eye-btn"
+                          onClick={() => setShowPhone((prev) => !prev)}
+                        >
+                          {showPhone ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="profile-form-actions">
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => {
+                        const formatted = "09" + newPhone;
+                        requestPhoneOtpCustom(formatted); // Make sure this function sets step to 4!
+                      }}
+                      disabled={phoneLoading || newPhone.length < 10}
+                    >
+                      {phoneLoading ? "Sending OTP…" : "Send Verification OTP"}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => cancelSection("phone")}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* STEP 4: VERIFY NEW NUMBER */
+                <div className="verify-step">
+                  <h4>📱 Verify New Phone Number</h4>
+                  <p>
+                    We sent a 6-digit verification code to{" "}
+                    <strong>
+                      +63{" "}
+                      {newPhone.length > 2
+                        ? "••••••••" + newPhone.slice(-2)
+                        : newPhone}
+                    </strong>
+                    . Enter it below to confirm.
+                  </p>
+                  <div
+                    className="otp-input-row"
+                    style={{ marginBottom: "20px", maxWidth: "380px" }}
+                  >
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={phoneOtp}
+                      onChange={(e) =>
+                        setPhoneOtp(e.target.value.replace(/\D/g, ""))
+                      }
+                    />
+                    <button
+                      className="resend-btn"
+                      onClick={() => {
+                        setPhoneCooldown(60);
+                        requestPhoneOtpCustom("09" + newPhone);
+                      }}
+                      disabled={phoneCooldown > 0}
+                    >
+                      {phoneCooldown > 0
+                        ? `Resend (${phoneCooldown}s)`
+                        : "Resend"}
+                    </button>
+                  </div>
+                  <div
+                    className="profile-form-actions"
+                    style={{ marginTop: 14 }}
+                  >
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => verifyPhoneOtpCustom("09" + newPhone)}
+                      disabled={phoneLoading || phoneOtp.length < 6}
+                    >
+                      {phoneLoading ? (
+                        "Verifying…"
+                      ) : (
+                        <>
+                          {" "}
+                          <ShieldCheck size={14} /> Verify & Update Phone{" "}
+                        </>
+                      )}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setPhoneStep(3);
+                        setPhoneMsg({ type: "", text: "" });
+                      }}
+                    >
+                      Back
                     </button>
                   </div>
                 </div>
@@ -1392,7 +1741,7 @@ export default function ProfileSettings() {
                     For your security, please enter your current password to
                     receive a verification code.
                   </p>
-                  <div className="form-field">
+                  <div className="form-field" style={{ maxWidth: "380px" }}>
                     <label>Current Password</label>
                     <div style={{ position: "relative" }}>
                       <input
@@ -1529,7 +1878,11 @@ export default function ProfileSettings() {
                         ph: "Repeat new password",
                       },
                     ].map((f) => (
-                      <div className="form-field" key={f.key}>
+                      <div
+                        className="form-field"
+                        key={f.key}
+                        style={{ maxWidth: "380px" }}
+                      >
                         <label>{f.label}</label>
                         <div style={{ position: "relative" }}>
                           <input
