@@ -47,6 +47,35 @@ const getPartCode = (component = {}) => cleanText(component.partCode);
 const getPartRole = (component = {}) =>
   cleanText(component.partRole || component.assemblyRole).toLowerCase();
 
+// WISDOM MANUAL PART FUNCTION V1.0.0
+const getPartFunction = (component = {}) => {
+  const value = cleanText(
+    component.partFunction ??
+      component.part_function ??
+      component.interactionType ??
+      component.interaction_type ??
+      "auto",
+  ).toLowerCase();
+
+  return ["auto", "normal", "door", "drawer"].includes(value)
+    ? value
+    : "auto";
+};
+
+const getDoorHinge = (component = {}) => {
+  const value = cleanText(
+    component.doorHinge ??
+      component.door_hinge ??
+      component.hingeSide ??
+      component.hinge_side ??
+      "auto",
+  ).toLowerCase();
+
+  if (value.startsWith("l")) return "left";
+  if (value.startsWith("r")) return "right";
+  return "auto";
+};
+
 const getBox = (component = {}) => {
   const x = Number(component.x);
   const y = Number(component.y);
@@ -129,6 +158,15 @@ const stableComponentSnapshot = (component = {}) => ({
   parentPartId: component.parentPartId || "",
   partRole: getPartRole(component),
   partCode: getPartCode(component),
+  partFunction: getPartFunction(component),
+  doorHinge: getDoorHinge(component),
+  motionGroupId: cleanText(
+    component.motionGroupId || component.motion_group_id,
+  ),
+  motionReferencePartId: cleanText(
+    component.motionReferencePartId ||
+      component.motion_reference_part_id,
+  ),
   type: component.type || "",
   label: component.label || "",
   x: roundMetric(component.x),

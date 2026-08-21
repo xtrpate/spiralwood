@@ -2887,10 +2887,65 @@ function WoodFinishPicker({
     </div>
   );
 }
+
+// WISDOM MANUAL PART FUNCTION V1.0.0
+const PART_FUNCTION_OPTIONS = [
+  ["auto", "Automatic"],
+  ["normal", "Normal Part"],
+  ["door", "Door"],
+  ["drawer", "Drawer"],
+];
+
+const DOOR_HINGE_OPTIONS = [
+  ["auto", "Auto"],
+  ["left", "Left"],
+  ["right", "Right"],
+];
+
+const getPartFunctionChoice = (component = {}) => {
+  const value = String(
+    component?.partFunction ??
+      component?.part_function ??
+      component?.interactionType ??
+      component?.interaction_type ??
+      "auto",
+  )
+    .trim()
+    .toLowerCase();
+
+  return ["auto", "normal", "door", "drawer"].includes(value)
+    ? value
+    : "auto";
+};
+
+const getDoorHingeChoice = (component = {}) => {
+  const value = String(
+    component?.doorHinge ??
+      component?.door_hinge ??
+      component?.hingeSide ??
+      component?.hinge_side ??
+      "auto",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (value.startsWith("l")) return "left";
+  if (value.startsWith("r")) return "right";
+  return "auto";
+};
+
+// WISDOM MANUAL MOVING GROUPS V1.1.0
+const createManualMotionGroupId = (partFunction = "part") => {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 9);
+  return `manual-${partFunction}-${timestamp}-${random}`;
+};
+
 export function PropertiesPanel({
   selectedComp: committedSelectedComp,
   liveSelectedComp = null,
   selectedIds = [],
+  selectedComponents = [],
   selectionSummary = null,
   isLocked,
   onChange,
@@ -2909,6 +2964,8 @@ export function PropertiesPanel({
 }) {
   const selectedComp = liveSelectedComp || committedSelectedComp;
   const hasSmartBuild = Boolean(renderSmartBuild);
+  const partFunction = getPartFunctionChoice(selectedComp);
+  const doorHinge = getDoorHingeChoice(selectedComp);
 
   const [hardwareDraftType, setHardwareDraftType] =
     useState("concealed_hinge");
@@ -2956,6 +3013,176 @@ export function PropertiesPanel({
       applyToSelection: selectedIds.length > 1,
     });
   };
+
+  const createSelectionMotionGroup = (nextFunction) => {
+    if (
+      !selectedComp ||
+      selectedIds.length < 2 ||
+      !["door", "drawer"].includes(nextFunction)
+    ) {
+      return;
+    }
+
+    const motionGroupId = createManualMotionGroupId(nextFunction);
+
+    onChange(
+      selectedComp.id,
+      {
+        partFunction: nextFunction,
+        motionGroupId,
+        // The current primary selected part becomes the movement reference.
+        // Every member stores the same reference id so Save/Reload is stable.
+        motionReferencePartId: selectedComp.id,
+        doorHinge: "auto",
+      },
+      {
+        applyToSelection: true,
+      },
+    );
+  };
+
+  const clearSelectionMotionGroup = () => {
+    if (!selectedComp || selectedIds.length < 2) return;
+
+    onChange(
+      selectedComp.id,
+      {
+        partFunction: "auto",
+        motionGroupId: "",
+        motionReferencePartId: "",
+        doorHinge: "auto",
+      },
+      {
+        applyToSelection: true,
+      },
+    );
+  };
+
+  // WISDOM MANUAL DOOR DRAWER FINAL UI V2.0.0
+  const motionSelection = Array.isArray(selectedComponents)
+    ? selectedComponents.filter((item) => item?.id)
+    : [];
+
+  const getMotionGroupIdForUi = (component = {}) =>
+    String(
+      component?.motionGroupId ??
+        component?.motion_group_id ??
+        "",
+    ).trim();
+
+  const getMotionFunctionForUi = (component = {}) =>
+    String(
+      component?.partFunction ??
+        component?.part_function ??
+        "auto",
+    )
+      .trim()
+      .toLowerCase();
+
+  const getMotionReferenceIdForUi = (component = {}) =>
+    String(
+      component?.motionReferencePartId ??
+        component?.motion_reference_part_id ??
+        "",
+    ).trim();
+
+  const firstMotionMember = motionSelection[0] || null;
+  const firstMotionGroupId = getMotionGroupIdForUi(firstMotionMember);
+  const firstMotionFunction = getMotionFunctionForUi(firstMotionMember);
+
+  const allSelectedShareMotionGroup =
+    motionSelection.length > 1 &&
+    !!firstMotionGroupId &&
+    ["door", "drawer"].includes(firstMotionFunction) &&
+    motionSelection.every(
+      (item) =>
+        getMotionGroupIdForUi(item) === firstMotionGroupId &&
+        getMotionFunctionForUi(item) === firstMotionFunction,
+    );
+
+  const activeMovingGroupType = allSelectedShareMotionGroup
+    ? firstMotionFunction
+    : "";
+
+  const selectionHasAnyMovingGroup = motionSelection.some(
+    (item) => !!getMotionGroupIdForUi(item),
+  );
+
+  const selectionHasMixedMovingGroups =
+    motionSelection.length > 1 &&
+    !allSelectedShareMotionGroup &&
+    selectionHasAnyMovingGroup;
+
+  const savedMotionReferenceId =
+    motionSelection
+      .map(getMotionReferenceIdForUi)
+      .find(Boolean) || "";
+
+  const motionReferencePart =
+    motionSelection.find(
+      (item) => item.id === savedMotionReferenceId,
+    ) ||
+    selectedComp ||
+    firstMotionMember ||
+    null;
+
+  const movingGroupStateText =
+    activeMovingGroupType === "door"
+      ? "Door"
+      : activeMovingGroupType === "drawer"
+        ? "Drawer"
+        : selectionHasMixedMovingGroups
+          ? "Mixed"
+          : "Not Grouped";
+
+  const movingGroupStatusStyle = {
+    minHeight: 22,
+    padding: "0 8px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    border: activeMovingGroupType
+      ? "1px solid rgba(96,165,250,.64)"
+      : selectionHasMixedMovingGroups
+        ? "1px solid rgba(245,158,11,.52)"
+        : "1px solid rgba(71,85,105,.68)",
+    borderRadius: 999,
+    background: activeMovingGroupType
+      ? "rgba(37,99,235,.18)"
+      : selectionHasMixedMovingGroups
+        ? "rgba(180,83,9,.14)"
+        : "rgba(15,23,42,.62)",
+    color: activeMovingGroupType
+      ? "#bfdbfe"
+      : selectionHasMixedMovingGroups
+        ? "#fde68a"
+        : "#94a3b8",
+    fontSize: 8,
+    fontWeight: 850,
+    letterSpacing: ".05em",
+    textTransform: "uppercase",
+  };
+
+  const movingGroupButtonStyle = (active, disabled) => ({
+    minHeight: 34,
+    padding: "6px 8px",
+    border: active
+      ? "1px solid rgba(96,165,250,.98)"
+      : "1px solid rgba(71,85,105,.76)",
+    borderRadius: 0,
+    background: active
+      ? "rgba(37,99,235,.36)"
+      : "rgba(15,23,42,.58)",
+    boxShadow: active
+      ? "inset 0 0 0 1px rgba(191,219,254,.10)"
+      : "none",
+    color: active ? "#f8fafc" : "#cbd5e1",
+    fontSize: 9,
+    fontWeight: 800,
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.45 : 1,
+  });
 
   const getHardwareRequirements = () =>
     Array.isArray(selectedComp?.hardwareRequirements)
@@ -3369,6 +3596,217 @@ export function PropertiesPanel({
                 </div>
               </div>
             </div>
+
+            {/* WISDOM MANUAL MOVING GROUPS V1.1.0 */}
+            {/* WISDOM MANUAL DOOR DRAWER FINAL UI V2.0.0 */}
+            <div style={inspectorSectionStyle}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  marginBottom: 8,
+                }}
+              >
+                <div
+                  style={{
+                    ...inspectorSectionTitleStyle,
+                    marginBottom: 0,
+                  }}
+                >
+                  Moving Parts
+                </div>
+
+                <span style={movingGroupStatusStyle}>
+                  {movingGroupStateText}
+                </span>
+              </div>
+
+              <div
+                style={{
+                  marginBottom: 10,
+                  color: "#7f93ad",
+                  fontSize: 9,
+                  lineHeight: 1.45,
+                }}
+              >
+                Set the selected pieces to move together as one door or drawer.
+              </div>
+
+              <div
+                style={{
+                  marginBottom: 10,
+                  padding: "9px 10px",
+                  border: "1px solid rgba(71,85,105,.56)",
+                  borderRadius: 0,
+                  background: "rgba(15,23,42,.46)",
+                }}
+              >
+                <div
+                  style={{
+                    marginBottom: 4,
+                    color: "#8497b1",
+                    fontSize: 8,
+                    fontWeight: 800,
+                    letterSpacing: ".04em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Reference Part
+                </div>
+
+                <div
+                  style={{
+                    color: "#e5eefc",
+                    fontSize: 10,
+                    fontWeight: 800,
+                    lineHeight: 1.4,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {motionReferencePart?.label ||
+                    motionReferencePart?.partCode ||
+                    "Primary selected part"}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 5,
+                    color: "#64748b",
+                    fontSize: 8,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Select the front panel last before choosing Door or Drawer.
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginBottom: 7,
+                  color: "#9fb1c9",
+                  fontSize: 9,
+                  fontWeight: 800,
+                  letterSpacing: ".05em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Movement Type
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 6,
+                }}
+              >
+                <button
+                  type="button"
+                  aria-pressed={activeMovingGroupType === "door"}
+                  disabled={
+                    editorMode !== "editable" ||
+                    Number(selectionSummary?.lockedCount || 0) > 0
+                  }
+                  onClick={() => {
+                    if (activeMovingGroupType !== "door") {
+                      createSelectionMotionGroup("door");
+                    }
+                  }}
+                  style={movingGroupButtonStyle(
+                    activeMovingGroupType === "door",
+                    editorMode !== "editable" ||
+                      Number(selectionSummary?.lockedCount || 0) > 0,
+                  )}
+                >
+                  Door
+                </button>
+
+                <button
+                  type="button"
+                  aria-pressed={activeMovingGroupType === "drawer"}
+                  disabled={
+                    editorMode !== "editable" ||
+                    Number(selectionSummary?.lockedCount || 0) > 0
+                  }
+                  onClick={() => {
+                    if (activeMovingGroupType !== "drawer") {
+                      createSelectionMotionGroup("drawer");
+                    }
+                  }}
+                  style={movingGroupButtonStyle(
+                    activeMovingGroupType === "drawer",
+                    editorMode !== "editable" ||
+                      Number(selectionSummary?.lockedCount || 0) > 0,
+                  )}
+                >
+                  Drawer
+                </button>
+              </div>
+
+              {selectionHasAnyMovingGroup ? (
+                <button
+                  type="button"
+                  disabled={
+                    editorMode !== "editable" ||
+                    Number(selectionSummary?.lockedCount || 0) > 0
+                  }
+                  onClick={clearSelectionMotionGroup}
+                  style={{
+                    width: "100%",
+                    minHeight: 30,
+                    marginTop: 7,
+                    padding: "5px 8px",
+                    border: "1px solid rgba(71,85,105,.76)",
+                    borderRadius: 0,
+                    background: "rgba(15,23,42,.55)",
+                    color: "#cbd5e1",
+                    fontSize: 8.5,
+                    fontWeight: 800,
+                    cursor:
+                      editorMode !== "editable" ||
+                      Number(selectionSummary?.lockedCount || 0) > 0
+                        ? "not-allowed"
+                        : "pointer",
+                    opacity:
+                      editorMode !== "editable" ||
+                      Number(selectionSummary?.lockedCount || 0) > 0
+                        ? 0.45
+                        : 1,
+                  }}
+                >
+                  Remove Group
+                </button>
+              ) : null}
+
+              {selectionHasMixedMovingGroups ? (
+                <div
+                  style={{
+                    marginTop: 7,
+                    color: "#fde68a",
+                    fontSize: 8,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  The selection contains different moving groups. Choose Door
+                  or Drawer to create one new group from the selected parts.
+                </div>
+              ) : null}
+
+              {Number(selectionSummary?.lockedCount || 0) > 0 ? (
+                <div
+                  style={{
+                    marginTop: 7,
+                    color: "#fca5a5",
+                    fontSize: 8,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Unlock all selected parts before changing the movement type.
+                </div>
+              ) : null}
+            </div>
           </>
         ) : selectedComp ? (
           <>
@@ -3503,6 +3941,169 @@ export function PropertiesPanel({
                 </div>
                 <div>Rotation · {selectedComp.rotationY || 0}°</div>
               </div>
+            </div>
+
+            {/* WISDOM MANUAL PART FUNCTION V1.0.0 */}
+            <div style={inspectorSectionStyle}>
+              <div style={inspectorSectionTitleStyle}>Part Function</div>
+
+              <div
+                style={{
+                  marginBottom: 9,
+                  color: "#7f93ad",
+                  fontSize: 9,
+                  lineHeight: 1.45,
+                }}
+              >
+                Choose how this part behaves in the 3D movement preview.
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 6,
+                }}
+              >
+                {PART_FUNCTION_OPTIONS.map(([value, label]) => {
+                  const active = partFunction === value;
+                  const disabled =
+                    editorMode !== "editable" || isLocked(selectedComp);
+
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => {
+                        if (active) return;
+
+                        // Reclassifying one part explicitly removes it from any
+                        // prior manual moving group. This prevents stale group
+                        // ids from silently reconnecting the part later.
+                        onChange(selectedComp.id, {
+                          partFunction: value,
+                          motionGroupId: "",
+                          motionReferencePartId: "",
+                          doorHinge:
+                            value === "door" ? doorHinge : "auto",
+                        });
+                      }}
+                      style={{
+                        minHeight: 30,
+                        padding: "5px 7px",
+                        border: active
+                          ? "1px solid rgba(96,165,250,.92)"
+                          : "1px solid rgba(71,85,105,.72)",
+                        borderRadius: 0,
+                        background: active
+                          ? "rgba(37,99,235,.24)"
+                          : "rgba(15,23,42,.55)",
+                        color: active ? "#dbeafe" : "#94a3b8",
+                        fontSize: 8,
+                        fontWeight: 800,
+                        cursor: disabled ? "not-allowed" : "pointer",
+                        opacity: disabled ? 0.45 : 1,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "7px 8px",
+                  border: "1px solid rgba(71,85,105,.52)",
+                  borderRadius: 0,
+                  background: "rgba(15,23,42,.42)",
+                  color: "#93a8c4",
+                  fontSize: 8,
+                  lineHeight: 1.45,
+                }}
+              >
+                {partFunction === "door"
+                  ? "Opens as a door."
+                  : partFunction === "drawer"
+                    ? "Slides as a drawer."
+                    : partFunction === "normal"
+                      ? "Stays fixed."
+                      : "Uses the existing part type automatically."}
+              </div>
+
+              {partFunction === "door" ? (
+                <div style={{ marginTop: 10 }}>
+                  <div
+                    style={{
+                      marginBottom: 6,
+                      color: "#9fb1c9",
+                      fontSize: 9,
+                      fontWeight: 800,
+                    }}
+                  >
+                    Door Hinge
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      gap: 5,
+                    }}
+                  >
+                    {DOOR_HINGE_OPTIONS.map(([value, label]) => {
+                      const active = doorHinge === value;
+                      const disabled =
+                        editorMode !== "editable" || isLocked(selectedComp);
+
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() =>
+                            onChange(selectedComp.id, {
+                              doorHinge: value,
+                            })
+                          }
+                          style={{
+                            minHeight: 28,
+                            padding: "4px 5px",
+                            border: active
+                              ? "1px solid rgba(96,165,250,.9)"
+                              : "1px solid rgba(71,85,105,.72)",
+                            borderRadius: 0,
+                            background: active
+                              ? "rgba(37,99,235,.24)"
+                              : "rgba(15,23,42,.55)",
+                            color: active ? "#dbeafe" : "#94a3b8",
+                            fontSize: 8,
+                            fontWeight: 800,
+                            cursor: disabled ? "not-allowed" : "pointer",
+                            opacity: disabled ? 0.45 : 1,
+                          }}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 6,
+                      color: "#64748b",
+                      fontSize: 8,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    Auto uses the existing part data. Choose Left or Right
+                    when the hinge side needs to be fixed.
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div style={inspectorSectionStyle}>
