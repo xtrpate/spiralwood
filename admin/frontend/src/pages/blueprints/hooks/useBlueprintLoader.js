@@ -70,14 +70,23 @@ export function useBlueprintLoader({
       return;
     }
 
+    let active = true;
+
     api
       .get(`/blueprints/${id}/estimation`)
-      .then((res) => setEstimatedPrice(res.data?.grand_total || null))
-      .catch(() => setEstimatedPrice(null));
+      .then((res) => {
+        if (!active) return;
+        setEstimatedPrice(res.data?.grand_total || null);
+      })
+      .catch(() => {
+        if (active) setEstimatedPrice(null);
+      });
 
     api
       .get(`/blueprints/${id}`)
       .then((response) => {
+        if (!active) return;
+
         const blueprintData = response.data;
         setBlueprint(blueprintData);
 
@@ -209,10 +218,17 @@ export function useBlueprintLoader({
         setSelectedTraceId(null);
         setView("front");
       })
-      .catch(() => toast.error("Failed to load blueprint."));
+      .catch(() => {
+        if (active) toast.error("Failed to load blueprint.");
+      });
+
+    // Late responses from the previously opened Blueprint must never overwrite
+    // the state of the Blueprint that is now active in the route.
+    return () => {
+      active = false;
+    };
 
     // Keep the same reload behavior as the original editor: reload only when
     // the route blueprint id changes. State setters are stable React values.
-
   }, [id]);
 }

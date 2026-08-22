@@ -12,6 +12,17 @@ export function BlueprintPublishModal({
   const [categories, setCategories] = useState([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
 
+  const discardPublishDraft = () => {
+    if (publishing) return;
+
+    setPublishForm({
+      name: "",
+      description: "Custom blueprint product.",
+      category_id: "",
+    });
+    setPublishModal(false);
+  };
+
   useEffect(() => {
     let active = true;
 
@@ -64,7 +75,7 @@ export function BlueprintPublishModal({
       }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !publishing) {
-          setPublishModal(false);
+          discardPublishDraft();
         }
       }}
     >
@@ -303,7 +314,7 @@ export function BlueprintPublishModal({
           >
             <button
               type="button"
-              onClick={() => setPublishModal(false)}
+              onClick={discardPublishDraft}
               disabled={publishing}
               style={{
                 minHeight: 42,

@@ -195,8 +195,10 @@ export function useBlueprintPersistence({
             Number(estimatedPrice !== null ? estimatedPrice : designTotal || 0),
           ),
         ),
-        title: publishForm?.name || blueprint?.title || "",
-        description: publishForm?.description || blueprint?.description || "",
+        // Normal Save uses Blueprint metadata only. Publish form values are
+        // temporary and are applied only by the Publish workflow.
+        title: blueprint?.title || "",
+        description: blueprint?.description || "",
       });
 
       const savedBlueprintPatch = response?.data?.blueprint || {};
