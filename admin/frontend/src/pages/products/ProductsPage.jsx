@@ -40,21 +40,42 @@ const formatPeso = (value) =>
     maximumFractionDigits: 2,
   })}`;
 
+const parseBlueprintComponents = (value) => {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 const buildProductBlueprintPreview = (product = {}) => {
-  if (!product?.blueprint_id) return null;
+  const sourceBlueprintId =
+    product?.blueprint_id || product?.blueprint_snapshot_source_id || null;
+
+  if (!sourceBlueprintId) return null;
+
+  const components = parseBlueprintComponents(
+    product?.blueprint_components_json,
+  );
 
   const hasScene =
     Boolean(product?.blueprint_design_data) ||
-    Boolean(product?.blueprint_view_3d_data);
+    Boolean(product?.blueprint_view_3d_data) ||
+    components.length > 0;
 
   if (!hasScene && !product?.blueprint_thumbnail_url) return null;
 
   return {
-    id: product.blueprint_id,
+    id: sourceBlueprintId,
     title: product.blueprint_title || product.name || "Blueprint",
     thumbnail_url: product.blueprint_thumbnail_url || null,
     design_data: product.blueprint_design_data || null,
     view_3d_data: product.blueprint_view_3d_data || null,
+    components,
   };
 };
 
@@ -116,10 +137,12 @@ function ProductThumbnail({ product }) {
   }, [
     isBlueprint,
     product?.blueprint_id,
+    product?.blueprint_snapshot_source_id,
     product?.blueprint_title,
     product?.blueprint_thumbnail_url,
     product?.blueprint_design_data,
     product?.blueprint_view_3d_data,
+    product?.blueprint_components_json,
     product?.name,
   ]);
 

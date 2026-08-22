@@ -406,13 +406,16 @@ exports.getAll = async (req, res) => {
 
     const [products] = await pool.query(
       `SELECT p.*, c.name AS category_name,
-              b.title AS blueprint_title,
-              b.thumbnail_url AS blueprint_thumbnail_url,
-              b.design_data AS blueprint_design_data,
-              b.view_3d_data AS blueprint_view_3d_data
+              COALESCE(b.title, pbs.title) AS blueprint_title,
+              COALESCE(b.thumbnail_url, pbs.thumbnail_url) AS blueprint_thumbnail_url,
+              COALESCE(b.design_data, pbs.design_data) AS blueprint_design_data,
+              COALESCE(b.view_3d_data, pbs.view_3d_data) AS blueprint_view_3d_data,
+              pbs.source_blueprint_id AS blueprint_snapshot_source_id,
+              pbs.components_json AS blueprint_components_json
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN blueprints b ON b.id = p.blueprint_id
+       LEFT JOIN product_blueprint_snapshots pbs ON pbs.product_id = p.id
        WHERE ${where.join(" AND ")}
        ORDER BY 
          CASE 
@@ -458,13 +461,16 @@ exports.getOne = async (req, res) => {
   try {
     const [[product]] = await pool.query(
       `SELECT p.*, c.name AS category_name,
-              b.title AS blueprint_title,
-              b.thumbnail_url AS blueprint_thumbnail_url,
-              b.design_data AS blueprint_design_data,
-              b.view_3d_data AS blueprint_view_3d_data
+              COALESCE(b.title, pbs.title) AS blueprint_title,
+              COALESCE(b.thumbnail_url, pbs.thumbnail_url) AS blueprint_thumbnail_url,
+              COALESCE(b.design_data, pbs.design_data) AS blueprint_design_data,
+              COALESCE(b.view_3d_data, pbs.view_3d_data) AS blueprint_view_3d_data,
+              pbs.source_blueprint_id AS blueprint_snapshot_source_id,
+              pbs.components_json AS blueprint_components_json
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN blueprints b ON b.id = p.blueprint_id
+       LEFT JOIN product_blueprint_snapshots pbs ON pbs.product_id = p.id
        WHERE p.id = ?`,
       [parseInt(req.params.id)],
     );
