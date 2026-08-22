@@ -437,32 +437,18 @@ export default function BlueprintsPage() {
     setCreating(true);
 
     try {
-      let res;
-
-      try {
-        res = await api.post("/blueprints", {
-          title: createForm.title.trim(),
-          description: cleanedDescription || null,
-          source: "created",
-          stage: "design",
-          is_template: markAsTemplate ? 1 : 0,
-          is_gallery: publishToCustomer ? 1 : 0,
-          design_data: JSON.stringify(designSeed),
-        });
-      } catch {
-        const fd = new FormData();
-        fd.append("title", createForm.title.trim());
-        fd.append("description", cleanedDescription || "");
-        fd.append("source", "created");
-        fd.append("stage", "design");
-        fd.append("is_template", markAsTemplate ? "1" : "0");
-        fd.append("is_gallery", publishToCustomer ? "1" : "0");
-        fd.append("design_data", JSON.stringify(designSeed));
-
-        res = await api.post("/blueprints", fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-      }
+      // Created-from-scratch Blueprints are a normal JSON request. Do not retry
+      // the same create as multipart after an unknown failure: the first POST
+      // may already have committed even when its response was interrupted.
+      const res = await api.post("/blueprints", {
+        title: createForm.title.trim(),
+        description: cleanedDescription || null,
+        source: "created",
+        stage: "design",
+        is_template: markAsTemplate ? 1 : 0,
+        is_gallery: publishToCustomer ? 1 : 0,
+        design_data: JSON.stringify(designSeed),
+      });
 
       const newId =
         res?.data?.id || res?.data?.blueprint?.id || res?.data?.data?.id;

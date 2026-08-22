@@ -9,6 +9,26 @@ import {
 import { snap, makeGroupId, formatDims } from "../data/utils";
 import { createObjectId, deepClone } from "../data/editorUtils";
 
+// WISDOM BLUEPRINT COPY/PASTE RELATIONSHIP SAFETY V1.1.0
+// Pasted parts must never reuse machining-operation identities from the source.
+const makePasteMetadataId = (prefix) =>
+  `${prefix}_${createObjectId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+
+const remapPasteMachiningMetadata = (item = {}) => ({
+  machiningCutouts: Array.isArray(item.machiningCutouts)
+    ? item.machiningCutouts.map((cutout) => ({
+        ...deepClone(cutout),
+        id: makePasteMetadataId("cutout"),
+      }))
+    : item.machiningCutouts,
+  woodworkingOperations: Array.isArray(item.woodworkingOperations)
+    ? item.woodworkingOperations.map((operation) => ({
+        ...deepClone(operation),
+        id: makePasteMetadataId("woodop"),
+      }))
+    : item.woodworkingOperations,
+});
+
 export function useBlueprintSelectionActions({
   components,
   setComponents,
@@ -157,8 +177,103 @@ export function useBlueprintSelectionActions({
       return;
     }
 
+    const hasLockedDependent = components.some((component) => {
+      if (!component?.id || idsToRemove.has(component.id) || !isLocked(component)) {
+        return false;
+      }
+
+      const parentPartId = String(
+        component.parentPartId ?? component.parent_part_id ?? "",
+      ).trim();
+      const motionReferencePartId = String(
+        component.motionReferencePartId ??
+          component.motion_reference_part_id ??
+          "",
+      ).trim();
+
+      return (
+        (parentPartId && idsToRemove.has(parentPartId)) ||
+        (motionReferencePartId && idsToRemove.has(motionReferencePartId))
+      );
+    });
+
+    if (hasLockedDependent) {
+      toast.error(
+        "Cannot delete. A locked component still depends on the selected part.",
+      );
+      return;
+    }
+
     pushHistory(components);
-    setComponents((prev) => prev.filter((c) => !idsToRemove.has(c.id)));
+    setComponents((prev) => {
+      const remaining = prev.filter((c) => !idsToRemove.has(c.id));
+      const remainingIdSet = new Set(
+        remaining.map((component) => String(component.id || "")).filter(Boolean),
+      );
+      const motionMembersByGroup = new Map();
+
+      remaining.forEach((component) => {
+        const motionGroupId = String(
+          component.motionGroupId ?? component.motion_group_id ?? "",
+        ).trim();
+
+        if (!motionGroupId) return;
+        if (!motionMembersByGroup.has(motionGroupId)) {
+          motionMembersByGroup.set(motionGroupId, []);
+        }
+        motionMembersByGroup.get(motionGroupId).push(component);
+      });
+
+      const replacementMotionReferenceByGroup = new Map();
+      motionMembersByGroup.forEach((members, motionGroupId) => {
+        const validSavedReference = members
+          .map((component) =>
+            String(
+              component.motionReferencePartId ??
+                component.motion_reference_part_id ??
+                "",
+            ).trim(),
+          )
+          .find((referenceId) => referenceId && remainingIdSet.has(referenceId));
+
+        replacementMotionReferenceByGroup.set(
+          motionGroupId,
+          validSavedReference || String(members[0]?.id || ""),
+        );
+      });
+
+      return remaining.map((component) => {
+        const parentPartId = String(
+          component.parentPartId ?? component.parent_part_id ?? "",
+        ).trim();
+        const motionReferencePartId = String(
+          component.motionReferencePartId ??
+            component.motion_reference_part_id ??
+            "",
+        ).trim();
+        const parentWasRemoved =
+          parentPartId && idsToRemove.has(parentPartId);
+        const motionReferenceWasRemoved =
+          motionReferencePartId && idsToRemove.has(motionReferencePartId);
+
+        if (!parentWasRemoved && !motionReferenceWasRemoved) {
+          return component;
+        }
+
+        const motionGroupId = String(
+          component.motionGroupId ?? component.motion_group_id ?? "",
+        ).trim();
+        const nextMotionReferencePartId = motionReferenceWasRemoved
+          ? replacementMotionReferenceByGroup.get(motionGroupId) || ""
+          : component.motionReferencePartId;
+
+        return normalizeComponent({
+          ...component,
+          parentPartId: parentWasRemoved ? null : component.parentPartId,
+          motionReferencePartId: nextMotionReferencePartId,
+        });
+      });
+    });
     setSelectedId(null);
     setSelectedIds([]);
     setEdit3DId(null);
@@ -183,6 +298,11 @@ export function useBlueprintSelectionActions({
       return;
     }
 
+    if (selectedComponents.some((item) => isLocked(item))) {
+      toast.error("Cannot copy. One or more selected components are locked.");
+      return;
+    }
+
     setClipboardObject(deepClone(selectedComponents));
 
     toast.success(
@@ -190,7 +310,7 @@ export function useBlueprintSelectionActions({
         ? `${selectedComponents.length} object(s) copied.`
         : `${selectedComponents[0]?.label || "Object"} copied.`,
     );
-  }, [selectedComponents, setClipboardObject]);
+  }, [selectedComponents, setClipboardObject, isLocked]);
 
   const pasteCopiedObject = useCallback(() => {
     if (editorMode !== "editable") {
@@ -209,23 +329,121 @@ export function useBlueprintSelectionActions({
       return;
     }
 
+    // Match Duplicate protection: locked parts must not become editable clones
+    // through Copy/Paste.
+    const hasCurrentlyLockedSource = sourceItems.some((item) => {
+      const sourceId = String(item?.id || "").trim();
+      if (!sourceId) return false;
+
+      const currentSource = components.find(
+        (component) => String(component?.id || "") === sourceId,
+      );
+
+      return currentSource ? isLocked(currentSource) : false;
+    });
+
+    if (
+      sourceItems.some((item) => isLocked(item)) ||
+      hasCurrentlyLockedSource
+    ) {
+      toast.error(
+        "Cannot paste. One or more source components are currently locked.",
+      );
+      return;
+    }
     const OFFSET = 160;
     const groupIdMap = new Map();
+    const objectIdMap = new Map(
+      sourceItems
+        .filter((item) => item?.id)
+        .map((item) => [String(item.id), createObjectId()]),
+    );
+    const motionGroupIdMap = new Map();
+    const motionReferenceIdMap = new Map();
+
+    sourceItems.forEach((item) => {
+      const sourceMotionGroupId = String(
+        item.motionGroupId ?? item.motion_group_id ?? "",
+      ).trim();
+
+      if (sourceMotionGroupId && !motionGroupIdMap.has(sourceMotionGroupId)) {
+        motionGroupIdMap.set(
+          sourceMotionGroupId,
+          `manual-motion-${makeGroupId()}`,
+        );
+      }
+    });
+
+    for (const sourceMotionGroupId of motionGroupIdMap.keys()) {
+      const groupItems = sourceItems.filter(
+        (item) =>
+          String(
+            item.motionGroupId ?? item.motion_group_id ?? "",
+          ).trim() === sourceMotionGroupId,
+      );
+
+      const savedReferenceId =
+        groupItems
+          .map((item) =>
+            String(
+              item.motionReferencePartId ??
+                item.motion_reference_part_id ??
+                "",
+            ).trim(),
+          )
+          .find((referenceId) => objectIdMap.has(referenceId)) ||
+        String(groupItems[0]?.id || "");
+
+      motionReferenceIdMap.set(
+        sourceMotionGroupId,
+        objectIdMap.get(savedReferenceId) ||
+          objectIdMap.get(String(groupItems[0]?.id || "")) ||
+          "",
+      );
+    }
 
     const pasted = sourceItems.map((item) => {
-      let nextGroupId = item.groupId || null;
+      const sourceId = String(item?.id || "");
+      const nextId = objectIdMap.get(sourceId) || createObjectId();
+      const sourceGroupId = String(
+        item.groupId || item.assemblyId || "",
+      ).trim();
+      let nextGroupId = null;
 
-      if (item.groupId) {
-        if (!groupIdMap.has(item.groupId)) {
-          groupIdMap.set(item.groupId, makeGroupId());
+      if (sourceGroupId) {
+        if (!groupIdMap.has(sourceGroupId)) {
+          groupIdMap.set(sourceGroupId, makeGroupId());
         }
-        nextGroupId = groupIdMap.get(item.groupId);
+        nextGroupId = groupIdMap.get(sourceGroupId);
       }
+
+      const sourceParentPartId = String(
+        item.parentPartId ?? item.parent_part_id ?? "",
+      ).trim();
+      const nextParentPartId = sourceParentPartId
+        ? objectIdMap.get(sourceParentPartId) || null
+        : null;
+
+      const sourceMotionGroupId = String(
+        item.motionGroupId ?? item.motion_group_id ?? "",
+      ).trim();
+      const nextMotionGroupId = sourceMotionGroupId
+        ? motionGroupIdMap.get(sourceMotionGroupId) || ""
+        : "";
+      const nextMotionReferencePartId = sourceMotionGroupId
+        ? motionReferenceIdMap.get(sourceMotionGroupId) || nextId
+        : "";
+      const pastedMachiningMetadata = remapPasteMachiningMetadata(item);
 
       return normalizeComponent({
         ...deepClone(item),
-        id: createObjectId(),
+        ...pastedMachiningMetadata,
+        id: nextId,
         groupId: nextGroupId,
+        assemblyId: nextGroupId,
+        parentPartId: nextParentPartId,
+        motionGroupId: nextMotionGroupId,
+        motionReferencePartId: nextMotionReferencePartId,
         x: snap((Number(item.x) || 0) + OFFSET),
         y: snap(Number(item.y) || 0),
         z: snap((Number(item.z) || 0) + OFFSET),
@@ -248,6 +466,7 @@ export function useBlueprintSelectionActions({
     editorMode,
     clipboardObject,
     components,
+    isLocked,
     pushHistory,
     setComponents,
     setEdit3DId,

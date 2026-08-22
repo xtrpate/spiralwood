@@ -1,5 +1,5 @@
 // BlueprintDesign.jsx — Main component (orchestrates all modules)
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
@@ -55,7 +55,6 @@ import { buildConversionCutListRows } from "./data/conversionCutListUtils";
 import {
   buildDesignValidationReport,
   getDesignComponentSignature,
-  getSavedDesignComponentSignature,
 } from "./data/designValidation";
 
 // ── 3D Viewer ─────────────────────────────────────────────────────────────────
@@ -166,29 +165,136 @@ export default function BlueprintDesign() {
     );
   }, [components]);
 
-  const savedDesignComponentSignature = useMemo(
-    () => getSavedDesignComponentSignature(blueprint?.design_data),
-    [blueprint?.design_data],
-  );
-
   const currentDesignComponentSignature = useMemo(
     () => getDesignComponentSignature(components),
     [components],
   );
 
-  const hasUnsavedDesignChanges = useMemo(() => {
-    if (savedDesignComponentSignature === null) {
-      return components.some(
-        (component) => component?.type !== "reference_proxy",
-      );
-    }
+  // Unsaved-change tracking covers the editor state that Save Design persists,
+  // not only component geometry. View/selection/grid state is intentionally
+  // excluded because it is workspace UI state rather than saved Blueprint data.
+  const currentEditorStateSignature = useMemo(
+    () =>
+      JSON.stringify({
+        components: currentDesignComponentSignature,
+        unit,
+        editorMode,
+        referenceFiles,
+        importTemplateType,
+        importDimensions,
+        importComments,
+        referenceCalibrationByView,
+        traceObjectsByView,
+      }),
+    [
+      currentDesignComponentSignature,
+      unit,
+      editorMode,
+      referenceFiles,
+      importTemplateType,
+      importDimensions,
+      importComments,
+      referenceCalibrationByView,
+      traceObjectsByView,
+    ],
+  );
+  const currentEditorStateSignatureRef = useRef(currentEditorStateSignature);
+  currentEditorStateSignatureRef.current = currentEditorStateSignature;
+  const [savedEditorStateSignature, setSavedEditorStateSignature] =
+    useState(null);
 
-    return currentDesignComponentSignature !== savedDesignComponentSignature;
-  }, [
-    components,
-    currentDesignComponentSignature,
-    savedDesignComponentSignature,
-  ]);
+  useEffect(() => {
+    // A route change starts a fresh baseline. The loader will establish the
+    // saved signature once the matching Blueprint record arrives.
+    setSavedEditorStateSignature(null);
+  }, [id]);
+
+  useEffect(() => {
+    if (!blueprint || String(blueprint.id) !== String(id)) return;
+
+    setSavedEditorStateSignature((previous) =>
+      previous === null ? currentEditorStateSignatureRef.current : previous,
+    );
+  }, [id, blueprint?.id, blueprint?.design_data]);
+
+  const markEditorStateSaved = useCallback((savedSignature) => {
+    if (typeof savedSignature === "string") {
+      setSavedEditorStateSignature(savedSignature);
+    }
+  }, []);
+
+  const hasUnsavedDesignChanges = useMemo(
+    () =>
+      savedEditorStateSignature !== null &&
+      currentEditorStateSignature !== savedEditorStateSignature,
+    [currentEditorStateSignature, savedEditorStateSignature],
+  );
+
+  const confirmLeaveWithUnsavedChanges = useCallback(() => {
+    if (!hasUnsavedDesignChanges) return true;
+    return window.confirm(
+      "You have unsaved Blueprint changes. Leave without saving?",
+    );
+  }, [hasUnsavedDesignChanges]);
+
+  const guardedNavigate = useCallback(
+    (to, options) => {
+      if (!confirmLeaveWithUnsavedChanges()) return;
+      navigate(to, options);
+    },
+    [confirmLeaveWithUnsavedChanges, navigate],
+  );
+
+  useEffect(() => {
+    if (!hasUnsavedDesignChanges) return undefined;
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedDesignChanges]);
+
+  useEffect(() => {
+    if (!hasUnsavedDesignChanges) return undefined;
+
+    const handleInternalLinkClick = (event) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      const element =
+        event.target instanceof Element
+          ? event.target.closest("a[href]")
+          : null;
+
+      if (!element || element.target === "_blank" || element.hasAttribute("download")) {
+        return;
+      }
+
+      const destination = new URL(element.href, window.location.href);
+      if (destination.origin !== window.location.origin) return;
+      if (destination.href === window.location.href) return;
+
+      if (!confirmLeaveWithUnsavedChanges()) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+
+    document.addEventListener("click", handleInternalLinkClick, true);
+    return () =>
+      document.removeEventListener("click", handleInternalLinkClick, true);
+  }, [confirmLeaveWithUnsavedChanges, hasUnsavedDesignChanges]);
 
   const openProjectEstimate = useCallback(() => {
     if (!id || id === "new") {
@@ -1874,6 +1980,8 @@ export default function BlueprintDesign() {
       conversionCutListRows,
       estimatedPrice,
       designTotal,
+      editorStateSignature: currentEditorStateSignature,
+      onDesignSaved: markEditorStateSaved,
       publishForm,
       setPublishModal,
       setSaving,
@@ -1940,7 +2048,7 @@ export default function BlueprintDesign() {
       `}</style>
 
       <BlueprintEditorHeader
-        navigate={navigate}
+        navigate={guardedNavigate}
         blueprint={blueprint}
         view={view}
         setView={setView}

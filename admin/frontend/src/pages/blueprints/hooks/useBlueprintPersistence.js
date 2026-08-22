@@ -37,6 +37,8 @@ export function useBlueprintPersistence({
   conversionCutListRows,
   estimatedPrice,
   designTotal,
+  editorStateSignature,
+  onDesignSaved,
   publishForm,
   setPublishModal,
   setSaving,
@@ -47,6 +49,8 @@ export function useBlueprintPersistence({
   exportViews,
 }) {
   const saveDesign = useCallback(async () => {
+    const savingEditorStateSignature = editorStateSignature;
+
     if (!id || id === "new") {
       toast.error(
         "Create the blueprint record first before saving the design.",
@@ -216,6 +220,10 @@ export function useBlueprintPersistence({
         };
       });
 
+      if (typeof onDesignSaved === "function") {
+        onDesignSaved(savingEditorStateSignature);
+      }
+
       toast.success("Blueprint saved.");
       return {
         ok: true,
@@ -252,6 +260,8 @@ export function useBlueprintPersistence({
     conversionCutListRows,
     estimatedPrice,
     designTotal,
+    editorStateSignature,
+    onDesignSaved,
     publishForm,
     setSaving,
     setBlueprint,
