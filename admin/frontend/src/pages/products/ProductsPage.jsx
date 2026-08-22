@@ -674,6 +674,8 @@ export default function ProductsPage() {
                     key={product.id}
                     style={{
                       ...tableRow,
+                      position: "relative",
+                      zIndex: actionMenuId === product.id ? 50 : 0,
                       opacity: isActive ? 1 : 0.6,
                       background: selectedIds.includes(product.id)
                         ? "#fafafa"
@@ -829,7 +831,14 @@ export default function ProductsPage() {
                       )}
                     </td>
 
-                    <td style={td}>
+                    <td
+                      style={{
+                        ...td,
+                        position: "relative",
+                        overflow: "visible",
+                        zIndex: actionMenuId === product.id ? 100 : 1,
+                      }}
+                    >
                       <div style={rowActions}>
                         <button
                           type="button"
@@ -1238,6 +1247,8 @@ const blueprintImage = {
   width: 46,
   height: 46,
   overflow: "hidden",
+  pointerEvents: "none",
+  isolation: "isolate",
   background: "#f7f5f2",
   border: "1px solid #e4e4e7",
   borderRadius: 2,
@@ -1388,6 +1399,7 @@ const rowActions = {
 const moreWrap = {
   position: "relative",
   display: "inline-flex",
+  zIndex: 2,
 };
 
 const moreMenu = {

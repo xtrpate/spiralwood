@@ -540,6 +540,7 @@ exports.getAllBlueprints = async (req, res) => {
          SELECT 1 FROM products p 
          WHERE p.blueprint_id = b.id 
          AND p.is_published = 1
+         AND p.is_active = 1
        )`;
     const params = [];
 
@@ -648,12 +649,19 @@ exports.getAllBlueprints = async (req, res) => {
 
     // ── FIXED: Using .query for wood types dropdown ──
     const [woodTypes] = await db.query(
-      `SELECT DISTINCT wood_type
-       FROM blueprints
-       WHERE is_deleted = 0
-         AND (is_gallery = 1 OR is_template = 1)
-         AND wood_type IS NOT NULL
-         AND wood_type != ''`,
+      `SELECT DISTINCT b.wood_type
+       FROM blueprints b
+       WHERE b.is_deleted = 0
+         AND (b.is_gallery = 1 OR b.is_template = 1)
+         AND b.wood_type IS NOT NULL
+         AND b.wood_type != ''
+         AND EXISTS (
+           SELECT 1
+           FROM products p
+           WHERE p.blueprint_id = b.id
+             AND p.is_published = 1
+             AND p.is_active = 1
+         )`,
       [], // Pass empty array for query safety
     );
 
@@ -687,6 +695,7 @@ exports.getBlueprintById = async (req, res) => {
            SELECT 1 FROM products p 
            WHERE p.blueprint_id = b.id 
            AND p.is_published = 1
+         AND p.is_active = 1
          )
        LIMIT 1`,
       [parseInt(req.params.id)],

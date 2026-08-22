@@ -190,6 +190,12 @@ router.patch(
   logAction("toggle_active_product", "products"),
   products.toggleActive,
 );
+router.put(
+  "/products/blueprint/:blueprint_id/publish",
+  adminOnly,
+  logAction("publish_blueprint_product", "products"),
+  products.publishByBlueprint,
+);
 router.patch(
   "/products/blueprint/:blueprint_id/unpublish",
   adminOnly,

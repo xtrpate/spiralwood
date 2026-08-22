@@ -131,6 +131,7 @@ exports.getAll = async (req, res) => {
                     FROM products published_product
                     WHERE published_product.blueprint_id = b.id
                       AND published_product.is_published = 1
+                      AND published_product.is_active = 1
                   )
                   THEN 1
                 ELSE 0
@@ -277,6 +278,7 @@ exports.getOne = async (req, res) => {
                     FROM products published_product
                     WHERE published_product.blueprint_id = b.id
                       AND published_product.is_published = 1
+                      AND published_product.is_active = 1
                   )
                   THEN 1
                 ELSE 0
@@ -764,6 +766,7 @@ exports.archive = async (req, res) => {
          FROM products p
          WHERE p.blueprint_id = ?
            AND p.is_published = 1
+           AND p.is_active = 1
        ) AS has_published_product`,
       [blueprintId],
     );
