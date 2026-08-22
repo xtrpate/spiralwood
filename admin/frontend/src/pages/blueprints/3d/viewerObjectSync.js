@@ -1,5 +1,8 @@
 import * as THREE from "three";
-import { clearObject3DChildren } from "./sceneSetup";
+import {
+  clearObject3DChildren,
+  disposeObject3DResources,
+} from "./sceneSetup";
 
 const OUTLINE_COLOR = 0x38bdf8;
 
@@ -30,34 +33,56 @@ export function rebuildViewerObjects({
     };
   }
 
-  clearObject3DChildren(rootGroup);
+  const stagingRoot = new THREE.Group();
+  stagingRoot.name = "viewer-rebuild-staging";
 
   const entryMap = new Map();
   const selectableMeshes = [];
   const activeSelectedIds = new Set(selectedIds || []);
 
-  (components || []).forEach((rawComponent) => {
-    const component = normalizeComponent(rawComponent);
-    const selected =
-      selectedId === component.id || activeSelectedIds.has(component.id);
-    const editing = edit3DId === component.id;
+  try {
+    (components || []).forEach((rawComponent) => {
+      const component = normalizeComponent(rawComponent);
+      const selected =
+        selectedId === component.id || activeSelectedIds.has(component.id);
+      const editing = edit3DId === component.id;
 
-    const object = createFurnitureObject(
-      component,
-      selected,
-      editing,
-      selectableMeshes,
-    );
+      const object = createFurnitureObject(
+        component,
+        selected,
+        editing,
+        selectableMeshes,
+      );
 
-    configureObjectFromComponent({
-      object,
-      component,
-      worldPosition: worldFromComponent(component),
+      configureObjectFromComponent({
+        object,
+        component,
+        worldPosition: worldFromComponent(component),
+      });
+
+      stagingRoot.add(object);
+      entryMap.set(component.id, { obj: object, comp: component });
     });
+  } catch (error) {
+    disposeObject3DResources(stagingRoot);
+    throw error;
+  }
 
-    rootGroup.add(object);
-    entryMap.set(component.id, { obj: object, comp: component });
+  // Build the complete replacement before touching the visible furniture.
+  // This removes the clear-first gap that can present as a whole-model blink.
+  const previousChildren = [...rootGroup.children];
+  const nextChildren = [...stagingRoot.children];
+
+  nextChildren.forEach((child) => {
+    rootGroup.add(child);
   });
+
+  previousChildren.forEach((child) => {
+    rootGroup.remove(child);
+    disposeObject3DResources(child);
+  });
+
+  rootGroup.updateMatrixWorld(true);
 
   return {
     entryMap,

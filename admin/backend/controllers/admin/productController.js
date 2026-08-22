@@ -1128,15 +1128,64 @@ exports.toggleFeatured = async (req, res) => {
 // ── GET /api/products/report ──────────────────────────────────────────────────
 exports.getReport = async (req, res) => {
   try {
-    // ── FIXED: Added empty array [] ──
+    const { search, type, status, category_id, is_active } = req.query;
+    const where = ["1=1"];
+    const params = [];
+
+    if (search) {
+      where.push("(p.name LIKE ? OR p.barcode LIKE ?)");
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    if (type) {
+      where.push("p.type = ?");
+      params.push(type);
+    }
+
+    if (status) {
+      where.push("p.stock_status = ?");
+      params.push(status);
+    }
+
+    if (category_id) {
+      where.push("p.category_id = ?");
+      params.push(category_id);
+    }
+
+    if (is_active !== undefined && is_active !== "") {
+      where.push("p.is_active = ?");
+      params.push(
+        is_active === "false" || is_active === "0" ? 0 : 1,
+      );
+    }
+
     const [rows] = await pool.query(
-      `SELECT p.barcode, p.name, c.name AS category, p.type,
-              p.online_price, p.walkin_price, p.production_cost,
-              p.profit_margin, p.stock, p.stock_status, p.is_featured
-       FROM products p LEFT JOIN categories c ON c.id = p.category_id
-       ORDER BY p.name ASC`,
-      [],
+      `SELECT
+          p.id AS product_id,
+          p.barcode,
+          p.name,
+          c.name AS category,
+          p.type,
+          COALESCE(p.blueprint_id, pbs.source_blueprint_id) AS blueprint_source_id,
+          p.online_price AS price,
+          p.production_cost,
+          p.profit_margin,
+          p.stock,
+          p.reorder_point,
+          p.stock_status,
+          p.is_published,
+          p.is_active,
+          p.is_featured,
+          p.created_at,
+          p.updated_at
+       FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN product_blueprint_snapshots pbs ON pbs.product_id = p.id
+       WHERE ${where.join(" AND ")}
+       ORDER BY p.name ASC, p.id ASC`,
+      params,
     );
+
     res.json(rows);
   } catch (err) {
     res.status(500).json({ message: err.message });

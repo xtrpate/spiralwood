@@ -2995,8 +2995,6 @@ function ThreeDViewer({
   }, [getActiveSelectionIds]);
 
   const rebuildObjects = useCallback(() => {
-    console.log("3D rebuild components:", components);
-
     const rootGroup = rootGroupRef.current;
     if (!rootGroup) return;
 

@@ -1,8 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import toast from "react-hot-toast";
-import { Package2, CheckCircle2, CircleX, Globe2, EyeOff } from "lucide-react";
+import {
+  Package2,
+  CheckCircle2,
+  CircleX,
+  Globe2,
+  EyeOff,
+  FileDown,
+} from "lucide-react";
 import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
 
 // WISDOM PRODUCT MANAGEMENT PROFESSIONAL UI V2
@@ -77,6 +86,325 @@ const buildProductBlueprintPreview = (product = {}) => {
     view_3d_data: product.blueprint_view_3d_data || null,
     components,
   };
+};
+
+const productReportPdfText = (value) =>
+  String(value ?? "-")
+    .replace(/[–—]/g, "-")
+    .replace(/₱/g, "PHP ");
+
+const productReportMoney = (value) =>
+  `PHP ${Number(value || 0).toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+const productReportStatus = (value) =>
+  String(value || "-")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const productReportYesNo = (value) =>
+  Number(value) === 1 ? "Yes" : "No";
+
+const exportProductReportPdf = ({
+  rows,
+  scopeLabel,
+  filterLabel,
+}) => {
+  const doc = new jsPDF({
+    orientation: "landscape",
+    unit: "mm",
+    format: "a4",
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 14;
+  const footerY = pageHeight - 7;
+  const generatedAt = new Date();
+
+  const readyMade = rows.filter((row) => row.type !== "blueprint");
+  const blueprints = rows.filter((row) => row.type === "blueprint");
+
+  const summary = {
+    total: rows.length,
+    readyMade: readyMade.length,
+    blueprints: blueprints.length,
+    active: rows.filter((row) => Number(row.is_active) === 1).length,
+    published: rows.filter((row) => Number(row.is_published) === 1).length,
+    needsAttention: readyMade.filter((row) =>
+      ["low_stock", "out_of_stock"].includes(String(row.stock_status || "")),
+    ).length,
+  };
+
+  doc.setProperties({
+    title: `Spiral Wood Services Product Report - ${scopeLabel}`,
+    subject: "Product catalog, pricing, inventory, and availability report",
+    author: "Spiral Wood Services",
+    creator: "WISDOM",
+  });
+
+  const tableBase = {
+    theme: "striped",
+    margin: { left: marginX, right: marginX, bottom: 15 },
+    styles: {
+      font: "helvetica",
+      fontSize: 7.1,
+      cellPadding: 2.2,
+      textColor: [45, 49, 55],
+      lineColor: [225, 228, 232],
+      lineWidth: 0.1,
+      valign: "middle",
+    },
+    headStyles: {
+      fillColor: [24, 24, 27],
+      textColor: [255, 255, 255],
+      fontStyle: "bold",
+      lineColor: [24, 24, 27],
+    },
+    alternateRowStyles: {
+      fillColor: [248, 248, 249],
+    },
+  };
+
+  const ensureSpace = (currentY, minimumHeight = 34) => {
+    if (currentY + minimumHeight <= pageHeight - 17) return currentY;
+    doc.addPage();
+    return 17;
+  };
+
+  const addSectionTitle = (number, title, y) => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9.5);
+    doc.setTextColor(24, 24, 27);
+    doc.text(`${number}. ${title.toUpperCase()}`, marginX, y);
+    return y + 4;
+  };
+
+  const addPageFooter = () => {
+    const pageCount = doc.internal.getNumberOfPages();
+    const generatedLabel = productReportPdfText(
+      generatedAt.toLocaleString("en-PH", {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    );
+
+    for (let page = 1; page <= pageCount; page += 1) {
+      doc.setPage(page);
+      doc.setDrawColor(225, 228, 232);
+      doc.line(marginX, footerY - 4, pageWidth - marginX, footerY - 4);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.8);
+      doc.setTextColor(120, 120, 120);
+      doc.text(
+        `Internal Product Report | Generated ${generatedLabel}`,
+        marginX,
+        footerY,
+      );
+      doc.text(`Page ${page} of ${pageCount}`, pageWidth - marginX, footerY, {
+        align: "right",
+      });
+    }
+  };
+
+  doc.setTextColor(17, 17, 17);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text("SPIRAL WOOD SERVICES", marginX, 16);
+
+  doc.setFontSize(11);
+  doc.text("PRODUCT CATALOG & INVENTORY REPORT", marginX, 23);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(82, 82, 91);
+  doc.text(`Scope: ${productReportPdfText(scopeLabel)}`, marginX, 31);
+  doc.text(
+    `Filters: ${productReportPdfText(filterLabel || "None")}`,
+    marginX + 70,
+    31,
+  );
+
+  doc.setFontSize(7.2);
+  doc.setTextColor(113, 113, 122);
+  doc.text(
+    "Internal product catalog report covering pricing, inventory, publishing, and product availability.",
+    marginX,
+    37,
+  );
+
+  doc.setDrawColor(24, 24, 27);
+  doc.setLineWidth(0.4);
+  doc.line(marginX, 41, pageWidth - marginX, 41);
+
+  let currentY = addSectionTitle(1, "Catalog Overview", 49);
+
+  autoTable(doc, {
+    ...tableBase,
+    startY: currentY,
+    head: [[
+      "Products",
+      "Ready-made",
+      "Blueprints",
+      "Active",
+      "Published",
+      "Low / Out of Stock",
+    ]],
+    body: [[
+      String(summary.total),
+      String(summary.readyMade),
+      String(summary.blueprints),
+      String(summary.active),
+      String(summary.published),
+      String(summary.needsAttention),
+    ]],
+    styles: {
+      ...tableBase.styles,
+      halign: "center",
+      fontSize: 8,
+      cellPadding: 3.2,
+    },
+    bodyStyles: {
+      fontStyle: "bold",
+      textColor: [24, 24, 27],
+    },
+  });
+
+  currentY = doc.lastAutoTable.finalY + 9;
+
+  if (readyMade.length > 0) {
+    currentY = ensureSpace(currentY, 54);
+    currentY = addSectionTitle(2, "Ready-made Catalog & Pricing", currentY);
+
+    autoTable(doc, {
+      ...tableBase,
+      startY: currentY,
+      head: [[
+        "Product",
+        "Barcode",
+        "Category",
+        "Price",
+        "Production Cost",
+        "Profit",
+        "Published",
+        "Active",
+      ]],
+      body: readyMade.map((row) => [
+        productReportPdfText(row.name),
+        productReportPdfText(row.barcode || "-"),
+        productReportPdfText(row.category || "-"),
+        productReportMoney(row.price),
+        productReportMoney(row.production_cost),
+        productReportMoney(row.profit_margin),
+        productReportYesNo(row.is_published),
+        productReportYesNo(row.is_active),
+      ]),
+      columnStyles: {
+        3: { halign: "right" },
+        4: { halign: "right" },
+        5: { halign: "right" },
+        6: { halign: "center" },
+        7: { halign: "center" },
+      },
+    });
+
+    currentY = doc.lastAutoTable.finalY + 9;
+    currentY = ensureSpace(currentY, 48);
+    currentY = addSectionTitle(3, "Ready-made Inventory Status", currentY);
+
+    autoTable(doc, {
+      ...tableBase,
+      startY: currentY,
+      head: [[
+        "Product",
+        "Barcode",
+        "Stock",
+        "Reorder Point",
+        "Stock Status",
+        "Homepage New Product",
+        "Active",
+      ]],
+      body: readyMade.map((row) => [
+        productReportPdfText(row.name),
+        productReportPdfText(row.barcode || "-"),
+        Number(row.stock || 0).toLocaleString("en-PH"),
+        Number(row.reorder_point || 0).toLocaleString("en-PH"),
+        productReportPdfText(productReportStatus(row.stock_status)),
+        productReportYesNo(row.is_featured),
+        productReportYesNo(row.is_active),
+      ]),
+      columnStyles: {
+        2: { halign: "right" },
+        3: { halign: "right" },
+        5: { halign: "center" },
+        6: { halign: "center" },
+      },
+    });
+
+    currentY = doc.lastAutoTable.finalY + 9;
+  }
+
+  if (blueprints.length > 0) {
+    currentY = ensureSpace(currentY, 46);
+    currentY = addSectionTitle(
+      readyMade.length > 0 ? 4 : 2,
+      "Blueprint Product Catalog",
+      currentY,
+    );
+
+    autoTable(doc, {
+      ...tableBase,
+      startY: currentY,
+      head: [[
+        "Product",
+        "Barcode",
+        "Category",
+        "Blueprint Source",
+        "Pricing",
+        "Inventory",
+        "Published",
+        "Active",
+      ]],
+      body: blueprints.map((row) => [
+        productReportPdfText(row.name),
+        productReportPdfText(row.barcode || "-"),
+        productReportPdfText(row.category || "-"),
+        row.blueprint_source_id
+          ? `#${row.blueprint_source_id}`
+          : "Archived source",
+        "After estimation",
+        "Made to order",
+        productReportYesNo(row.is_published),
+        productReportYesNo(row.is_active),
+      ]),
+      columnStyles: {
+        3: { halign: "center" },
+        6: { halign: "center" },
+        7: { halign: "center" },
+      },
+    });
+  }
+
+  addPageFooter();
+
+  const dateStamp = [
+    generatedAt.getFullYear(),
+    String(generatedAt.getMonth() + 1).padStart(2, "0"),
+    String(generatedAt.getDate()).padStart(2, "0"),
+  ].join("-");
+
+  doc.save(
+    `spiral-wood-product-report-${scopeLabel
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")}-${dateStamp}.pdf`,
+  );
 };
 
 function ProductThumbnail({ product }) {
@@ -193,6 +521,9 @@ export default function ProductsPage() {
   const [actionMenuId, setActionMenuId] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportScope, setExportScope] = useState("filtered");
+  const [exporting, setExporting] = useState(false);
 
   const [filters, setFilters] = useState({
     search: "",
@@ -455,6 +786,84 @@ export default function ProductsPage() {
     }));
   };
 
+  const productReportFilterLabel = useMemo(() => {
+    const labels = [];
+
+    if (filters.search) {
+      labels.push(`Search: "${filters.search}"`);
+    }
+
+    if (filters.category_id) {
+      const category = categories.find(
+        (item) => String(item.id) === String(filters.category_id),
+      );
+      labels.push(`Category: ${category?.name || filters.category_id}`);
+    }
+
+    if (filters.type) {
+      labels.push(
+        `Type: ${filters.type === "blueprint" ? "Blueprint" : "Ready-made"}`,
+      );
+    }
+
+    if (filters.status) {
+      labels.push(`Stock: ${productReportStatus(filters.status)}`);
+    }
+
+    if (filters.is_active === "1") {
+      labels.push("Record status: Active");
+    } else if (filters.is_active === "0") {
+      labels.push("Record status: Disabled");
+    }
+
+    return labels.length > 0 ? labels.join(" | ") : "None";
+  }, [categories, filters]);
+
+  const handleExportReport = async () => {
+    setExporting(true);
+
+    try {
+      const params =
+        exportScope === "filtered"
+          ? {
+              search: filters.search || undefined,
+              category_id: filters.category_id || undefined,
+              type: filters.type || undefined,
+              status: filters.status || undefined,
+              is_active:
+                filters.is_active === "" ? undefined : filters.is_active,
+            }
+          : {};
+
+      const { data } = await api.get("/products/report", { params });
+      const rows = Array.isArray(data) ? data : [];
+
+      if (!rows.length) {
+        toast.error("No products found for this report.");
+        return;
+      }
+
+      exportProductReportPdf({
+        rows,
+        scopeLabel:
+          exportScope === "filtered" ? "Current filters" : "All products",
+        filterLabel:
+          exportScope === "filtered" ? productReportFilterLabel : "None",
+      });
+
+      toast.success(
+        `Product report created for ${rows.length} product${rows.length === 1 ? "" : "s"}.`,
+      );
+      setExportOpen(false);
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Failed to create product report.",
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const pageCount = Math.max(1, Math.ceil(total / 20));
 
   return (
@@ -483,13 +892,15 @@ export default function ProductsPage() {
           </span>
           <button
             type="button"
-            onClick={() =>
-              api
-                .get("/products/report")
-                .then((response) => console.log("Report:", response.data))
-            }
-            style={btnSecondary}
+            onClick={() => setExportOpen(true)}
+            style={{
+              ...btnSecondary,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 7,
+            }}
           >
+            <FileDown size={14} strokeWidth={1.8} aria-hidden="true" />
             Export report
           </button>
           <button
@@ -998,6 +1409,99 @@ export default function ProductsPage() {
           )}
         </div>
       </div>
+
+      {exportOpen && (
+        <div style={modalBackdrop}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="export-products-title"
+            style={{ ...dialog, width: "min(520px, 100%)" }}
+          >
+            <div style={dialogEyebrow}>Product report</div>
+            <h2 id="export-products-title" style={dialogTitle}>
+              Export product report
+            </h2>
+            <p style={{ ...dialogText, marginBottom: 16 }}>
+              Create a PDF report using the same internal report format as the
+              Sales Report.
+            </p>
+
+            <div style={exportScopeList}>
+              <button
+                type="button"
+                onClick={() => setExportScope("filtered")}
+                style={{
+                  ...exportScopeOption,
+                  ...(exportScope === "filtered"
+                    ? exportScopeOptionSelected
+                    : {}),
+                }}
+                disabled={exporting}
+              >
+                <span style={exportScopeTitle}>Current filters</span>
+                <span style={exportScopeMeta}>
+                  {total.toLocaleString("en-PH")} matching product
+                  {total === 1 ? "" : "s"}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setExportScope("all")}
+                style={{
+                  ...exportScopeOption,
+                  ...(exportScope === "all"
+                    ? exportScopeOptionSelected
+                    : {}),
+                }}
+                disabled={exporting}
+              >
+                <span style={exportScopeTitle}>All products</span>
+                <span style={exportScopeMeta}>
+                  {summary.total.toLocaleString("en-PH")} total product
+                  {summary.total === 1 ? "" : "s"}
+                </span>
+              </button>
+            </div>
+
+            <div style={exportContents}>
+              <div style={exportContentsLabel}>Included in PDF</div>
+              <div style={exportContentsText}>
+                Catalog summary, ready-made pricing, inventory status, Blueprint
+                products, publishing, and availability.
+              </div>
+            </div>
+
+            <div style={dialogActions}>
+              <button
+                type="button"
+                onClick={() => setExportOpen(false)}
+                style={btnSecondary}
+                disabled={exporting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExportReport}
+                style={{
+                  ...btnPrimary,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 7,
+                  opacity: exporting ? 0.65 : 1,
+                  cursor: exporting ? "wait" : "pointer",
+                }}
+                disabled={exporting}
+              >
+                <FileDown size={14} strokeWidth={1.8} aria-hidden="true" />
+                {exporting ? "Preparing..." : "Export PDF"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pendingDelete && (
         <div style={modalBackdrop}>
@@ -1574,6 +2078,74 @@ const emptyCell = {
   fontSize: 12,
   fontWeight: 400,
   textAlign: "center",
+};
+
+const exportScopeList = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 8,
+  marginBottom: 12,
+};
+
+const exportScopeOption = {
+  minHeight: 76,
+  padding: "12px 13px",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  justifyContent: "center",
+  gap: 5,
+  background: "#ffffff",
+  color: "#27272a",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  textAlign: "left",
+  cursor: "pointer",
+};
+
+const exportScopeOptionSelected = {
+  background: "#fafafa",
+  borderColor: "#18181b",
+  boxShadow: "inset 0 0 0 1px #18181b",
+};
+
+const exportScopeTitle = {
+  color: "#18181b",
+  fontSize: 12.5,
+  fontWeight: 600,
+  lineHeight: 1.25,
+};
+
+const exportScopeMeta = {
+  color: "#71717a",
+  fontSize: 10.5,
+  fontWeight: 400,
+  lineHeight: 1.35,
+};
+
+const exportContents = {
+  marginBottom: 18,
+  padding: "11px 12px",
+  background: "#fafafa",
+  border: "1px solid #e4e4e7",
+  borderRadius: 2,
+};
+
+const exportContentsLabel = {
+  marginBottom: 4,
+  color: "#3f3f46",
+  fontSize: 9.5,
+  fontWeight: 600,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+};
+
+const exportContentsText = {
+  color: "#71717a",
+  fontSize: 11.5,
+  fontWeight: 400,
+  lineHeight: 1.45,
 };
 
 const modalBackdrop = {
