@@ -704,8 +704,8 @@ export default function Customer3DViewer({
   const doorMotionAnimationRef = useRef(0);
   const drawerMotionAnimationRef = useRef(0);
   // WISDOM CUSTOMER INDIVIDUAL DOOR / DRAWER CLICK PREVIEW V1.1.0
-  const individualDoorPreviewKeyRef = useRef("");
-  const individualDrawerPreviewKeyRef = useRef("");
+  // WISDOM CUSTOMER MULTI-OPEN MOTION PREVIEW V1.2.0
+  // Individual movable units now keep independent open/closed preview state.
 
   const canvasSizeRef = useRef({ width: 1, height: 1 });
   const labelWRef = useRef(null);
@@ -1463,6 +1463,11 @@ export default function Customer3DViewer({
       }
 
       (doorMotionPreviewRef.current || []).forEach((preview) => {
+        if (preview?.animationFrame) {
+          cancelAnimationFrame(preview.animationFrame);
+          preview.animationFrame = 0;
+        }
+
         (preview?.originals || []).forEach(({ object, visible }) => {
           if (object) object.visible = visible;
         });
@@ -1473,7 +1478,6 @@ export default function Customer3DViewer({
       });
 
       doorMotionPreviewRef.current = [];
-      individualDoorPreviewKeyRef.current = "";
       if (updateState) setDoorsPreviewOpen(false);
     },
     [],
@@ -1487,6 +1491,11 @@ export default function Customer3DViewer({
       }
 
       (drawerMotionPreviewRef.current || []).forEach((preview) => {
+        if (preview?.animationFrame) {
+          cancelAnimationFrame(preview.animationFrame);
+          preview.animationFrame = 0;
+        }
+
         (preview?.originals || []).forEach(({ object, visible }) => {
           if (object) object.visible = visible;
         });
@@ -1497,7 +1506,6 @@ export default function Customer3DViewer({
       });
 
       drawerMotionPreviewRef.current = [];
-      individualDrawerPreviewKeyRef.current = "";
       if (updateState) setDrawersPreviewOpen(false);
     },
     [],
@@ -1514,6 +1522,13 @@ export default function Customer3DViewer({
       if (doorMotionAnimationRef.current) {
         cancelAnimationFrame(doorMotionAnimationRef.current);
       }
+
+      previews.forEach((preview) => {
+        if (preview?.animationFrame) {
+          cancelAnimationFrame(preview.animationFrame);
+          preview.animationFrame = 0;
+        }
+      });
 
       const starts = previews.map((preview) =>
         Number(preview?.currentAngle || 0),
@@ -1584,6 +1599,13 @@ export default function Customer3DViewer({
         cancelAnimationFrame(drawerMotionAnimationRef.current);
       }
 
+      previews.forEach((preview) => {
+        if (preview?.animationFrame) {
+          cancelAnimationFrame(preview.animationFrame);
+          preview.animationFrame = 0;
+        }
+      });
+
       const starts = previews.map((preview) =>
         Number(preview?.currentDistance || 0),
       );
@@ -1639,7 +1661,122 @@ export default function Customer3DViewer({
     [],
   );
 
-  const openAllCustomerDoors = useCallback((targetKey = "") => {
+  const animateCustomerDoorPreviewTo = useCallback(
+    (preview, targetAngle, onDone = null) => {
+      if (!preview?.pivot) {
+        onDone?.();
+        return;
+      }
+
+      if (preview.animationFrame) {
+        cancelAnimationFrame(preview.animationFrame);
+        preview.animationFrame = 0;
+      }
+
+      const startAngle = Number(preview.currentAngle || 0);
+      const destination = Number(targetAngle || 0);
+      const startedAt = performance.now();
+
+      const step = (now) => {
+        if (!preview?.pivot?.parent) {
+          preview.animationFrame = 0;
+          return;
+        }
+
+        const progress = Math.min(
+          1,
+          Math.max(
+            0,
+            (now - startedAt) / CUSTOMER_MOTION_PREVIEW_DURATION_MS,
+          ),
+        );
+        const eased = customerMotionEaseOutCubic(progress);
+
+        preview.currentAngle =
+          startAngle + (destination - startAngle) * eased;
+
+        const localTurn = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 1, 0),
+          preview.direction * preview.currentAngle,
+        );
+
+        preview.pivot.quaternion
+          .copy(preview.basePivotQuaternion)
+          .multiply(localTurn);
+        preview.pivot.updateMatrixWorld(true);
+
+        if (progress < 1) {
+          preview.animationFrame = requestAnimationFrame(step);
+          return;
+        }
+
+        preview.currentAngle = destination;
+        preview.animationFrame = 0;
+        onDone?.();
+      };
+
+      preview.animationFrame = requestAnimationFrame(step);
+    },
+    [],
+  );
+
+  const animateCustomerDrawerPreviewTo = useCallback(
+    (preview, targetRatio, onDone = null) => {
+      if (!preview?.group) {
+        onDone?.();
+        return;
+      }
+
+      if (preview.animationFrame) {
+        cancelAnimationFrame(preview.animationFrame);
+        preview.animationFrame = 0;
+      }
+
+      const startDistance = Number(preview.currentDistance || 0);
+      const ratio = Math.max(0, Math.min(1, Number(targetRatio) || 0));
+      const destination = preview.extensionDistance * ratio;
+      const startedAt = performance.now();
+
+      const step = (now) => {
+        if (!preview?.group?.parent) {
+          preview.animationFrame = 0;
+          return;
+        }
+
+        const progress = Math.min(
+          1,
+          Math.max(
+            0,
+            (now - startedAt) / CUSTOMER_MOTION_PREVIEW_DURATION_MS,
+          ),
+        );
+        const eased = customerMotionEaseOutCubic(progress);
+
+        preview.currentDistance =
+          startDistance + (destination - startDistance) * eased;
+
+        preview.group.position
+          .copy(preview.basePosition)
+          .addScaledVector(preview.direction, preview.currentDistance);
+        preview.group.updateMatrixWorld(true);
+
+        if (progress < 1) {
+          preview.animationFrame = requestAnimationFrame(step);
+          return;
+        }
+
+        preview.currentDistance = destination;
+        preview.animationFrame = 0;
+        onDone?.();
+      };
+
+      preview.animationFrame = requestAnimationFrame(step);
+    },
+    [],
+  );
+
+  const openAllCustomerDoors = useCallback(
+    (targetKey = "", { preserveExisting = false } = {}) => {
     const allSets = buildCustomerDoorPreviewSets(components);
     const requestedKey =
       typeof targetKey === "string" ? targetKey.trim() : "";
@@ -1649,13 +1786,23 @@ export default function Customer3DViewer({
 
     if (!sets.length) return;
 
-    clearCustomerDoorPreviews();
-    individualDoorPreviewKeyRef.current = requestedKey;
+    const keepCurrent = Boolean(requestedKey && preserveExisting);
+
+    if (!keepCurrent) {
+      clearCustomerDoorPreviews();
+    }
+
     setSelectedCompIds([]);
 
+    const existingKeys = new Set(
+      (doorMotionPreviewRef.current || []).map((preview) => preview.key),
+    );
+    const setsToCreate = keepCurrent
+      ? sets.filter((set) => !existingKeys.has(set.key))
+      : sets;
     const created = [];
 
-    sets.forEach((set) => {
+    setsToCreate.forEach((set) => {
       const memberEntries = set.members.map((member) => ({
         member,
         object: renderedObjectMapRef.current.get(member.id) || null,
@@ -1775,23 +1922,41 @@ export default function Customer3DViewer({
         basePivotQuaternion: referenceOriginal.quaternion.clone(),
         direction: hingeSide === "right" ? 1 : -1,
         currentAngle: 0,
+        animationFrame: 0,
       });
     });
 
     if (!created.length) {
-      clearCustomerDoorPreviews();
+      if (!keepCurrent) {
+        clearCustomerDoorPreviews();
+      }
+      return;
+    }
+
+    const openAngle = THREE.MathUtils.degToRad(
+      CUSTOMER_DOOR_PREVIEW_OPEN_DEGREES,
+    );
+
+    if (keepCurrent) {
+      doorMotionPreviewRef.current = [
+        ...doorMotionPreviewRef.current,
+        ...created,
+      ];
+      setDoorsPreviewOpen(false);
+      created.forEach((preview) => {
+        animateCustomerDoorPreviewTo(preview, openAngle);
+      });
       return;
     }
 
     doorMotionPreviewRef.current = created;
     setDoorsPreviewOpen(!requestedKey);
-    animateCustomerDoorPreviewsTo(
-      THREE.MathUtils.degToRad(CUSTOMER_DOOR_PREVIEW_OPEN_DEGREES),
-    );
+    animateCustomerDoorPreviewsTo(openAngle);
   }, [
     components,
     clearCustomerDoorPreviews,
     animateCustomerDoorPreviewsTo,
+    animateCustomerDoorPreviewTo,
   ]);
 
   const closeAllCustomerDoors = useCallback(() => {
@@ -1805,7 +1970,38 @@ export default function Customer3DViewer({
     });
   }, [animateCustomerDoorPreviewsTo, clearCustomerDoorPreviews]);
 
-  const openAllCustomerDrawers = useCallback((targetKey = "") => {
+  const closeCustomerDoorPreviewByKey = useCallback(
+    (targetKey) => {
+      const key = String(targetKey || "").trim();
+      if (!key) return;
+
+      const preview = (doorMotionPreviewRef.current || []).find(
+        (item) => item?.key === key,
+      );
+      if (!preview) return;
+
+      // Once one unit closes, the furniture is no longer in an "all open" state.
+      setDoorsPreviewOpen(false);
+
+      animateCustomerDoorPreviewTo(preview, 0, () => {
+        (preview?.originals || []).forEach(({ object, visible }) => {
+          if (object) object.visible = visible;
+        });
+
+        if (preview?.pivot?.parent) {
+          preview.pivot.parent.remove(preview.pivot);
+        }
+
+        doorMotionPreviewRef.current = (
+          doorMotionPreviewRef.current || []
+        ).filter((item) => item !== preview);
+      });
+    },
+    [animateCustomerDoorPreviewTo],
+  );
+
+  const openAllCustomerDrawers = useCallback(
+    (targetKey = "", { preserveExisting = false } = {}) => {
     const allSets = buildCustomerDrawerPreviewSets(components);
     const requestedKey =
       typeof targetKey === "string" ? targetKey.trim() : "";
@@ -1815,13 +2011,23 @@ export default function Customer3DViewer({
 
     if (!sets.length) return;
 
-    clearCustomerDrawerPreviews();
-    individualDrawerPreviewKeyRef.current = requestedKey;
+    const keepCurrent = Boolean(requestedKey && preserveExisting);
+
+    if (!keepCurrent) {
+      clearCustomerDrawerPreviews();
+    }
+
     setSelectedCompIds([]);
 
+    const existingKeys = new Set(
+      (drawerMotionPreviewRef.current || []).map((preview) => preview.key),
+    );
+    const setsToCreate = keepCurrent
+      ? sets.filter((set) => !existingKeys.has(set.key))
+      : sets;
     const created = [];
 
-    sets.forEach((set) => {
+    setsToCreate.forEach((set) => {
       const memberEntries = set.movableMembers.map((member) => ({
         member,
         object: renderedObjectMapRef.current.get(member.id) || null,
@@ -1925,11 +2131,26 @@ export default function Customer3DViewer({
         direction,
         currentDistance: 0,
         extensionDistance,
+        animationFrame: 0,
       });
     });
 
     if (!created.length) {
-      clearCustomerDrawerPreviews();
+      if (!keepCurrent) {
+        clearCustomerDrawerPreviews();
+      }
+      return;
+    }
+
+    if (keepCurrent) {
+      drawerMotionPreviewRef.current = [
+        ...drawerMotionPreviewRef.current,
+        ...created,
+      ];
+      setDrawersPreviewOpen(false);
+      created.forEach((preview) => {
+        animateCustomerDrawerPreviewTo(preview, 1);
+      });
       return;
     }
 
@@ -1940,6 +2161,7 @@ export default function Customer3DViewer({
     components,
     clearCustomerDrawerPreviews,
     animateCustomerDrawerPreviewsTo,
+    animateCustomerDrawerPreviewTo,
   ]);
 
   const closeAllCustomerDrawers = useCallback(() => {
@@ -1953,6 +2175,35 @@ export default function Customer3DViewer({
     });
   }, [animateCustomerDrawerPreviewsTo, clearCustomerDrawerPreviews]);
 
+  const closeCustomerDrawerPreviewByKey = useCallback(
+    (targetKey) => {
+      const key = String(targetKey || "").trim();
+      if (!key) return;
+
+      const preview = (drawerMotionPreviewRef.current || []).find(
+        (item) => item?.key === key,
+      );
+      if (!preview) return;
+
+      setDrawersPreviewOpen(false);
+
+      animateCustomerDrawerPreviewTo(preview, 0, () => {
+        (preview?.originals || []).forEach(({ object, visible }) => {
+          if (object) object.visible = visible;
+        });
+
+        if (preview?.group?.parent) {
+          preview.group.parent.remove(preview.group);
+        }
+
+        drawerMotionPreviewRef.current = (
+          drawerMotionPreviewRef.current || []
+        ).filter((item) => item !== preview);
+      });
+    },
+    [animateCustomerDrawerPreviewTo],
+  );
+
   const toggleCustomerDoorFromComponentId = useCallback(
     (componentId) => {
       const targetId = String(componentId || "").trim();
@@ -1964,24 +2215,22 @@ export default function Customer3DViewer({
 
       if (!targetSet) return false;
 
-      const isSameIndividualDoor =
-        !doorsPreviewOpen &&
-        individualDoorPreviewKeyRef.current === targetSet.key &&
-        doorMotionPreviewRef.current.length === 1;
+      const existingPreview = (doorMotionPreviewRef.current || []).find(
+        (preview) => preview?.key === targetSet.key,
+      );
 
-      if (isSameIndividualDoor) {
-        closeAllCustomerDoors();
+      if (existingPreview) {
+        closeCustomerDoorPreviewByKey(targetSet.key);
       } else {
-        openAllCustomerDoors(targetSet.key);
+        openAllCustomerDoors(targetSet.key, { preserveExisting: true });
       }
 
       return true;
     },
     [
       components,
-      doorsPreviewOpen,
       openAllCustomerDoors,
-      closeAllCustomerDoors,
+      closeCustomerDoorPreviewByKey,
     ],
   );
 
@@ -1998,24 +2247,22 @@ export default function Customer3DViewer({
 
       if (!targetSet) return false;
 
-      const isSameIndividualDrawer =
-        !drawersPreviewOpen &&
-        individualDrawerPreviewKeyRef.current === targetSet.key &&
-        drawerMotionPreviewRef.current.length === 1;
+      const existingPreview = (drawerMotionPreviewRef.current || []).find(
+        (preview) => preview?.key === targetSet.key,
+      );
 
-      if (isSameIndividualDrawer) {
-        closeAllCustomerDrawers();
+      if (existingPreview) {
+        closeCustomerDrawerPreviewByKey(targetSet.key);
       } else {
-        openAllCustomerDrawers(targetSet.key);
+        openAllCustomerDrawers(targetSet.key, { preserveExisting: true });
       }
 
       return true;
     },
     [
       components,
-      drawersPreviewOpen,
       openAllCustomerDrawers,
-      closeAllCustomerDrawers,
+      closeCustomerDrawerPreviewByKey,
     ],
   );
 
