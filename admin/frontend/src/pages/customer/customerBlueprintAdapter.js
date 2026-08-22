@@ -1,5 +1,7 @@
 
 
+import { getRotatedComponentBounds3D } from "../blueprints/data/rotationBounds";
+
 const DEFAULT_WORLD_SIZE = { w: 6400, h: 3200, d: 5200 };
 const DEFAULT_IMPORT_DIMENSIONS = { w: 1200, h: 900, d: 600 };
 
@@ -106,13 +108,18 @@ const normalizeComponent = (raw = {}, index = 0) => {
 const getBounds = (components = []) => {
   if (!components.length) return null;
 
-  const minX = Math.min(...components.map((c) => c.x));
-  const minY = Math.min(...components.map((c) => c.y));
-  const minZ = Math.min(...components.map((c) => c.z));
+  const boxes = components
+    .map((component) => getRotatedComponentBounds3D(component))
+    .filter(Boolean);
 
-  const maxX = Math.max(...components.map((c) => c.x + c.width));
-  const maxY = Math.max(...components.map((c) => c.y + c.height));
-  const maxZ = Math.max(...components.map((c) => c.z + c.depth));
+  if (!boxes.length) return null;
+
+  const minX = Math.min(...boxes.map((box) => box.minX));
+  const minY = Math.min(...boxes.map((box) => box.minY));
+  const minZ = Math.min(...boxes.map((box) => box.minZ));
+  const maxX = Math.max(...boxes.map((box) => box.maxX));
+  const maxY = Math.max(...boxes.map((box) => box.maxY));
+  const maxZ = Math.max(...boxes.map((box) => box.maxZ));
 
   return {
     minX,

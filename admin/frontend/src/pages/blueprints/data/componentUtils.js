@@ -18,6 +18,10 @@ import { normalizeHardwareRequirements } from "./hardwareMetadata";
 import { normalizeWoodworkingProfileMetadata } from "./woodworkingProfile";
 import { normalizeWoodworkingOperations } from "./woodworkingOperations";
 import { normalizeUniversalMachiningMetadata } from "./universalMachiningV2";
+import {
+  getRotatedComponentBounds3D,
+  getRotatedProjectedBox,
+} from "./rotationBounds";
 
 const GRID_SIZE = 20;
 const MIN_COMPONENT_DIMENSION_MM = 1;
@@ -521,27 +525,24 @@ function normalizeComponent(c) {
 }
 
 function getProjectedBox(comp, view) {
-  if (view === "front" || view === "back") {
-    return { x: comp.x, y: comp.y, w: comp.width, h: comp.height };
-  }
-  if (view === "left" || view === "right") {
-    return { x: comp.z, y: comp.y, w: comp.depth, h: comp.height };
-  }
-  if (view === "top") {
-    return { x: comp.x, y: comp.z, w: comp.width, h: comp.depth };
-  }
-  return null;
+  return getRotatedProjectedBox(comp, view);
 }
 
 function getComponentsBounds3D(components) {
   if (!components.length) return null;
 
-  const minX = Math.min(...components.map((c) => c.x));
-  const minY = Math.min(...components.map((c) => c.y));
-  const minZ = Math.min(...components.map((c) => c.z));
-  const maxX = Math.max(...components.map((c) => c.x + c.width));
-  const maxY = Math.max(...components.map((c) => c.y + c.height));
-  const maxZ = Math.max(...components.map((c) => c.z + c.depth));
+  const boxes = components
+    .map((component) => getRotatedComponentBounds3D(component))
+    .filter(Boolean);
+
+  if (!boxes.length) return null;
+
+  const minX = Math.min(...boxes.map((box) => box.minX));
+  const minY = Math.min(...boxes.map((box) => box.minY));
+  const minZ = Math.min(...boxes.map((box) => box.minZ));
+  const maxX = Math.max(...boxes.map((box) => box.maxX));
+  const maxY = Math.max(...boxes.map((box) => box.maxY));
+  const maxZ = Math.max(...boxes.map((box) => box.maxZ));
 
   return {
     minX,

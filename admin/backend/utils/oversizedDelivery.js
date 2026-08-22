@@ -72,55 +72,130 @@ const estimateUprightFloorCapacity = (dimensions = {}, limits = {}) => {
   return Math.max(1, normalOrientation, rotatedOrientation);
 };
 
+const ROTATION_EPSILON = 1e-10;
+
+const toFiniteNumber = (value, fallback = 0) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
+
+const normalizeRotationDegrees = (value) => {
+  const degrees = toFiniteNumber(value, 0);
+  const normalized = ((degrees % 360) + 360) % 360;
+
+  return normalized < ROTATION_EPSILON ||
+    Math.abs(normalized - 360) < ROTATION_EPSILON
+    ? 0
+    : normalized;
+};
+
+const getRotatedComponentBounds3D = (item = {}) => {
+  const width = toPositiveMm(item?.width ?? item?.w ?? item?.width_mm);
+  const height = toPositiveMm(item?.height ?? item?.h ?? item?.height_mm);
+  const depth = toPositiveMm(item?.depth ?? item?.d ?? item?.depth_mm);
+
+  if (!width || !height || !depth) return null;
+
+  const x = toFiniteNumber(item?.x ?? item?.position_x, 0);
+  const y = toFiniteNumber(item?.y ?? item?.position_y, 0);
+  const z = toFiniteNumber(item?.z ?? item?.position_z, 0);
+
+  const rotationX = normalizeRotationDegrees(
+    item?.rotationX ?? item?.rotation_x,
+  );
+  const rotationY = normalizeRotationDegrees(
+    item?.rotationY ?? item?.rotation_y,
+  );
+  const rotationZ = normalizeRotationDegrees(
+    item?.rotationZ ?? item?.rotation_z,
+  );
+
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  const centerZ = z + depth / 2;
+
+  if (rotationX === 0 && rotationY === 0 && rotationZ === 0) {
+    return {
+      minX: x,
+      minY: y,
+      minZ: z,
+      maxX: x + width,
+      maxY: y + height,
+      maxZ: z + depth,
+    };
+  }
+
+  const rx = (rotationX * Math.PI) / 180;
+  const ry = (rotationY * Math.PI) / 180;
+  const rz = (rotationZ * Math.PI) / 180;
+
+  const a = Math.cos(rx);
+  const b = Math.sin(rx);
+  const c = Math.cos(ry);
+  const d = Math.sin(ry);
+  const e = Math.cos(rz);
+  const f = Math.sin(rz);
+
+  const m00 = c * e;
+  const m01 = -c * f;
+  const m02 = d;
+
+  const m10 = a * f + b * e * d;
+  const m11 = a * e - b * f * d;
+  const m12 = -b * c;
+
+  const m20 = b * f - a * e * d;
+  const m21 = b * e + a * f * d;
+  const m22 = a * c;
+
+  const halfW = width / 2;
+  const halfH = height / 2;
+  const halfD = depth / 2;
+
+  const extentX =
+    Math.abs(m00) * halfW +
+    Math.abs(m01) * halfH +
+    Math.abs(m02) * halfD;
+
+  const extentY =
+    Math.abs(m10) * halfW +
+    Math.abs(m11) * halfH +
+    Math.abs(m12) * halfD;
+
+  const extentZ =
+    Math.abs(m20) * halfW +
+    Math.abs(m21) * halfH +
+    Math.abs(m22) * halfD;
+
+  return {
+    minX: centerX - extentX,
+    minY: centerY - extentY,
+    minZ: centerZ - extentZ,
+    maxX: centerX + extentX,
+    maxY: centerY + extentY,
+    maxZ: centerZ + extentZ,
+  };
+};
+
 const computeBoundsFromComponents = (items = []) => {
   if (!Array.isArray(items) || items.length === 0) {
     return null;
   }
 
-  const normalized = items
-    .map((item) => ({
-      x: Number(item?.x ?? item?.position_x ?? 0) || 0,
-      y: Number(item?.y ?? item?.position_y ?? 0) || 0,
-      z: Number(item?.z ?? item?.position_z ?? 0) || 0,
+  const boxes = items
+    .map((item) => getRotatedComponentBounds3D(item))
+    .filter(Boolean);
 
-      width: toPositiveMm(
-        item?.width ?? item?.w ?? item?.width_mm,
-      ),
-
-      height: toPositiveMm(
-        item?.height ?? item?.h ?? item?.height_mm,
-      ),
-
-      depth: toPositiveMm(
-        item?.depth ?? item?.d ?? item?.depth_mm,
-      ),
-    }))
-    .filter(
-      (item) =>
-        item.width !== null &&
-        item.height !== null &&
-        item.depth !== null,
-    );
-
-  if (normalized.length === 0) {
+  if (boxes.length === 0) {
     return null;
   }
 
-  const minX = Math.min(...normalized.map((item) => item.x));
-  const minY = Math.min(...normalized.map((item) => item.y));
-  const minZ = Math.min(...normalized.map((item) => item.z));
-
-  const maxX = Math.max(
-    ...normalized.map((item) => item.x + item.width),
-  );
-
-  const maxY = Math.max(
-    ...normalized.map((item) => item.y + item.height),
-  );
-
-  const maxZ = Math.max(
-    ...normalized.map((item) => item.z + item.depth),
-  );
+  const minX = Math.min(...boxes.map((box) => box.minX));
+  const minY = Math.min(...boxes.map((box) => box.minY));
+  const minZ = Math.min(...boxes.map((box) => box.minZ));
+  const maxX = Math.max(...boxes.map((box) => box.maxX));
+  const maxY = Math.max(...boxes.map((box) => box.maxY));
+  const maxZ = Math.max(...boxes.map((box) => box.maxZ));
 
   return {
     width_mm: Math.max(1, Math.round(maxX - minX)),
@@ -444,6 +519,7 @@ async function assessOrderDelivery(
 
 module.exports = {
   STANDARD_TRUCK_SETTING_KEYS,
+  computeBoundsFromComponents,
   getStandardTruckLimits,
   assessDimensions,
   assessCustomOrderItem,
