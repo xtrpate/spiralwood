@@ -681,7 +681,7 @@ export default function AppointmentPage() {
                     <section className="appt-form-section">
                       <div className="appt-section-head weekly-section-head">
                         <div>
-                          <h3>Choose a schedule</h3>
+                          <h3>Choose a schedule *</h3>
                           <p>Select an available time slot below.</p>
                         </div>
                         <div className="weekly-nav-controls">

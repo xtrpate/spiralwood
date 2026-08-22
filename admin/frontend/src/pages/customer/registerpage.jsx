@@ -88,6 +88,12 @@ export default function RegisterPage() {
       );
     }
 
+    if (form.phone.length !== 10) {
+      return setError(
+        "Phone number must be exactly 10 digits after the +63 prefix.",
+      );
+    }
+
     if (!captchaToken) {
       return setError("Please complete the CAPTCHA verification.");
     }
@@ -98,7 +104,7 @@ export default function RegisterPage() {
         first_name: form.first_name,
         last_name: form.last_name,
         email: form.email,
-        phone: form.phone,
+        phone: "09" + form.phone,
         address: form.address,
         password: form.password,
         recaptcha_token: captchaToken,
@@ -165,7 +171,7 @@ export default function RegisterPage() {
       navigate("/phone-otp", {
         state: {
           email: registeredEmail,
-          phone: form.phone,
+          phone: "09" + form.phone,
         },
       });
     } catch (err) {
@@ -436,26 +442,29 @@ export default function RegisterPage() {
             <div className="field">
               <label>Phone Number *</label>
               <div className="field-input-wrap">
-                <input
-                  type="tel"
-                  className="no-icon"
-                  placeholder="09XXXXXXXXX"
-                  value={form.phone}
-                  onChange={(e) => {
-                    // 1. Remove all non-numeric characters
-                    let val = e.target.value.replace(/\D/g, "");
-                    // 2. Auto-format: If they type '9' first, prepend '0'
-                    if (val.length > 0 && val[0] !== "0") val = "0" + val;
-                    // 3. Auto-format: Force the second digit to be '9'
-                    if (val.length > 1 && val[1] !== "9")
-                      val = "09" + val.slice(2);
-                    // 4. Restrict to exactly 11 digits
-                    if (val.length > 11) val = val.slice(0, 11);
+                <div className="phone-input-group">
+                  <div className="phone-prefix">
+                    <span>🇵🇭</span> +63
+                  </div>
+                  <input
+                    type="tel"
+                    className="no-icon"
+                    placeholder="9XXXXXXXXX"
+                    value={form.phone}
+                    maxLength={10}
+                    onChange={(e) => {
+                      // 1. Remove non-numeric characters
+                      let val = e.target.value.replace(/\D/g, "");
+                      // 2. If they accidentally start typing 0, slice it off so it starts with 9
+                      if (val.length > 0 && val[0] === "0") val = val.slice(1);
+                      // 3. Limit to 10 digits
+                      if (val.length > 10) val = val.slice(0, 10);
 
-                    set("phone", val);
-                  }}
-                  required
-                />
+                      set("phone", val);
+                    }}
+                    required
+                  />
+                </div>
               </div>
             </div>
 

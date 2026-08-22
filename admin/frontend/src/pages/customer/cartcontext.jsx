@@ -152,14 +152,10 @@ const getInitialCart = () => {
   // Main source of truth na ang full local cart.
   // Legacy custom cart is fallback lang for old sessions.
   if (localCart.length > 0) {
-    return localCart
-      .map(normalizeCartItem)
-      .filter(Boolean);
+    return localCart.map(normalizeCartItem).filter(Boolean);
   }
 
-  return legacyCustomCart
-    .map(normalizeCartItem)
-    .filter(Boolean);
+  return legacyCustomCart.map(normalizeCartItem).filter(Boolean);
 };
 
 export function CartProvider({ children }) {
@@ -193,9 +189,8 @@ export function CartProvider({ children }) {
           .filter(Boolean);
 
         setCart((currentLocalCart) => {
-          const normalizedLocalCart = (Array.isArray(currentLocalCart)
-            ? currentLocalCart
-            : []
+          const normalizedLocalCart = (
+            Array.isArray(currentLocalCart) ? currentLocalCart : []
           )
             .map(normalizeCartItem)
             .filter(Boolean);
@@ -332,7 +327,7 @@ export function CartProvider({ children }) {
       console.error("Failed to clear stored reference photos:", error),
     );
 
-    // 👉 NEW: If we are not syncing to the cloud (logout), tell the background effect to ignore the upcoming empty cart!
+    // If we are not syncing to the cloud (logout), tell the background effect to ignore the upcoming empty cart!
     if (!syncToCloud) {
       skipNextSync.current = true;
     }
@@ -343,6 +338,8 @@ export function CartProvider({ children }) {
     sessionStorage.removeItem(LEGACY_CUSTOM_STORAGE_KEY);
     sessionStorage.removeItem("cust_selected_keys");
     sessionStorage.removeItem("cust_selected_custom_checkout");
+
+    sessionStorage.removeItem("cust_cart_selected_keys");
 
     if (syncToCloud && user && user.role === "customer") {
       api.post("/customer/cart/sync", { cart: [] }).catch((err) => {

@@ -74,9 +74,7 @@ const buildLiveCartBlueprintPreview = (item = {}) => {
   return {
     id: item?.blueprint_id || item?.key || null,
     title:
-      item?.base_blueprint_title ||
-      item?.product_name ||
-      "Custom Furniture",
+      item?.base_blueprint_title || item?.product_name || "Custom Furniture",
     thumbnail_url: null,
     components,
     view_3d_data: {
@@ -111,7 +109,17 @@ export default function CartPage() {
   const [toastMsg, setToastMsg] = useState("");
   const [isHiding, setIsHiding] = useState(false);
 
-  const [selected, setSelected] = useState(new Set());
+  // 1. Initialize selected items from sessionStorage so it persists when returning from checkout
+  const [selected, setSelected] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("cust_cart_selected_keys");
+      if (saved) return new Set(JSON.parse(saved));
+    } catch (e) {
+      console.error("Failed to load saved cart selection", e);
+    }
+    return new Set(); // Start empty! No more auto-checking.
+  });
+
   const [checkoutError, setCheckoutError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -122,18 +130,22 @@ export default function CartPage() {
     return () => clearTimeout(timer);
   }, []);
 
+  // 2. Remove items from selection ONLY if they are deleted from the cart
   useEffect(() => {
     setSelected((prev) => {
       const cartKeys = new Set(cart.map((i) => i.key));
-      const next = new Set([...prev].filter((k) => cartKeys.has(k)));
-
-      cart.forEach((i) => {
-        if (!prev.has(i.key)) next.add(i.key);
-      });
-
-      return next;
+      // Only keep selected items that STILL exist in the cart
+      return new Set([...prev].filter((k) => cartKeys.has(k)));
     });
   }, [cart]);
+
+  // 3. Save the checkbox state to sessionStorage whenever the user clicks one
+  useEffect(() => {
+    sessionStorage.setItem(
+      "cust_cart_selected_keys",
+      JSON.stringify(Array.from(selected)),
+    );
+  }, [selected]);
 
   useEffect(() => {
     if (!checkoutError) return;
