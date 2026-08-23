@@ -681,9 +681,8 @@ export default function ProfileSettings() {
 
   /* ════ PHONE CHANGE (OTP VERIFIED) ════ */
   const requestPhoneOtp = async (formattedPhone) => {
-    // Grab the passed 11-digit number, or manually format it
     const phoneToSend =
-      typeof formattedPhone === "string" ? formattedPhone : "09" + newPhone;
+      typeof formattedPhone === "string" ? formattedPhone : "0" + newPhone;
 
     if (!phoneToSend || phoneToSend.length !== 11)
       return setPhoneMsg({
@@ -704,7 +703,7 @@ export default function ProfileSettings() {
       await api.post("/customer/profile/request-phone-change", {
         new_phone: phoneToSend,
       });
-      setPhoneStep(4); // 👉 CRITICAL FIX: Moves UI to the OTP Input box
+      setPhoneStep(4);
       setPhoneCooldown(60);
       setPhoneMsg({
         type: "success",
@@ -726,7 +725,7 @@ export default function ProfileSettings() {
       return setPhoneMsg({ type: "error", text: "Enter the OTP code." });
 
     const phoneToSend =
-      typeof formattedPhone === "string" ? formattedPhone : "09" + newPhone;
+      typeof formattedPhone === "string" ? formattedPhone : "0" + newPhone;
 
     setPhoneLoading(true);
     try {
@@ -1613,10 +1612,7 @@ export default function ProfileSettings() {
                   <div className="profile-form-actions">
                     <button
                       className="btn btn-primary"
-                      onClick={() => {
-                        const formatted = "09" + newPhone;
-                        requestPhoneOtpCustom(formatted); // Make sure this function sets step to 4!
-                      }}
+                      onClick={() => requestPhoneOtp("0" + newPhone)}
                       disabled={phoneLoading || newPhone.length < 10}
                     >
                       {phoneLoading ? "Sending OTP…" : "Send Verification OTP"}
@@ -1660,7 +1656,7 @@ export default function ProfileSettings() {
                       className="resend-btn"
                       onClick={() => {
                         setPhoneCooldown(60);
-                        requestPhoneOtp("09" + newPhone);
+                        requestPhoneOtp("0" + newPhone);
                       }}
                       disabled={phoneCooldown > 0}
                     >
@@ -1675,7 +1671,7 @@ export default function ProfileSettings() {
                   >
                     <button
                       className="btn btn-primary"
-                      onClick={() => verifyPhoneOtpCustom("09" + newPhone)}
+                      onClick={() => verifyPhoneOtp("0" + newPhone)}
                       disabled={phoneLoading || phoneOtp.length < 6}
                     >
                       {phoneLoading ? (
