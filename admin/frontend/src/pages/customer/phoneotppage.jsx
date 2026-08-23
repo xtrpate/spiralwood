@@ -21,6 +21,10 @@ export default function PhoneOtpPage() {
   const otpRefs = useRef([]);
 
   useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
+
+  useEffect(() => {
     if (resendCooldown <= 0) return;
 
     const timer = setTimeout(() => {
@@ -133,7 +137,10 @@ export default function PhoneOtpPage() {
   };
 
   return (
-    <div className="auth-root">
+    <div
+      className="auth-root"
+      style={{ marginTop: "60px", marginBottom: "60px" }}
+    >
       <div className="auth-split">
         <div className="auth-brand-panel">
           <div className="brand-logo">W</div>
