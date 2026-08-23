@@ -22,9 +22,6 @@ const TABS = [
   { key: "customer", label: "Customer Requests" },
   { key: "archive", label: "Archive" },
 ];
-const ALLOWED_IMPORT_EXTENSIONS = ["pdf", "png", "jpg", "jpeg", "svg"];
-const MAX_IMPORT_FILE_SIZE_MB = 15;
-
 const DEFAULT_CREATE_FORM = {
   title: "",
   description: "",
@@ -46,29 +43,6 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString("en-PH");
-}
-
-function getFileExtension(filename = "") {
-  const parts = String(filename).split(".");
-  return parts.length > 1 ? parts.pop().toLowerCase() : "";
-}
-
-function validateImportFile(file) {
-  if (!file) {
-    return "Please select a file.";
-  }
-
-  const ext = getFileExtension(file.name);
-  if (!ALLOWED_IMPORT_EXTENSIONS.includes(ext)) {
-    return "Only PDF, PNG, JPG, JPEG, and SVG blueprint files are allowed.";
-  }
-
-  const maxBytes = MAX_IMPORT_FILE_SIZE_MB * 1024 * 1024;
-  if (file.size > maxBytes) {
-    return `File size must not exceed ${MAX_IMPORT_FILE_SIZE_MB}MB.`;
-  }
-
-  return null;
 }
 
 function getBlueprintIcon(fileType) {
@@ -161,10 +135,6 @@ export default function BlueprintsPage() {
   });
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [importModal, setImportModal] = useState(false);
-  const [importForm, setImportForm] = useState({ title: "", file: null });
-  const [importing, setImporting] = useState(false);
-
   const [createModal, setCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState(DEFAULT_CREATE_FORM);
   const [creating, setCreating] = useState(false);
@@ -345,47 +315,6 @@ export default function BlueprintsPage() {
     }
   };
 
-  const handleImport = async (e) => {
-    e.preventDefault();
-
-    if (!importForm.title.trim()) {
-      toast.error("Please enter a blueprint title.");
-      return;
-    }
-
-    const fileError = validateImportFile(importForm.file);
-    if (fileError) {
-      toast.error(fileError);
-      return;
-    }
-
-    setImporting(true);
-
-    try {
-      const fd = new FormData();
-      fd.append("title", importForm.title.trim());
-      fd.append("source", "imported");
-      fd.append("stage", "design");
-      fd.append("file", importForm.file);
-
-      await api.post("/blueprints", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      toast.success("Blueprint file imported.");
-      setImportModal(false);
-      setImportForm({ title: "", file: null });
-      setTab("imports");
-      load();
-    } catch (err) {
-      toast.error(
-        err?.response?.data?.message || "Failed to import blueprint file.",
-      );
-    } finally {
-      setImporting(false);
-    }
-  };
-
   const handleCreateBlueprint = async (e) => {
     e.preventDefault();
 
@@ -437,32 +366,18 @@ export default function BlueprintsPage() {
     setCreating(true);
 
     try {
-      let res;
-
-      try {
-        res = await api.post("/blueprints", {
-          title: createForm.title.trim(),
-          description: cleanedDescription || null,
-          source: "created",
-          stage: "design",
-          is_template: markAsTemplate ? 1 : 0,
-          is_gallery: publishToCustomer ? 1 : 0,
-          design_data: JSON.stringify(designSeed),
-        });
-      } catch {
-        const fd = new FormData();
-        fd.append("title", createForm.title.trim());
-        fd.append("description", cleanedDescription || "");
-        fd.append("source", "created");
-        fd.append("stage", "design");
-        fd.append("is_template", markAsTemplate ? "1" : "0");
-        fd.append("is_gallery", publishToCustomer ? "1" : "0");
-        fd.append("design_data", JSON.stringify(designSeed));
-
-        res = await api.post("/blueprints", fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-      }
+      // Created-from-scratch Blueprints are a normal JSON request. Do not retry
+      // the same create as multipart after an unknown failure: the first POST
+      // may already have committed even when its response was interrupted.
+      const res = await api.post("/blueprints", {
+        title: createForm.title.trim(),
+        description: cleanedDescription || null,
+        source: "created",
+        stage: "design",
+        is_template: markAsTemplate ? 1 : 0,
+        is_gallery: publishToCustomer ? 1 : 0,
+        design_data: JSON.stringify(designSeed),
+      });
 
       const newId =
         res?.data?.id || res?.data?.blueprint?.id || res?.data?.data?.id;
@@ -1180,111 +1095,6 @@ export default function BlueprintsPage() {
           >
             Next
           </button>
-        </div>
-      )}
-
-      {importModal && (
-        <div style={overlay}>
-          <div style={modalBox}>
-            <h3
-              style={{
-                margin: "0 0 16px",
-                fontSize: 20,
-                fontWeight: 800,
-                color: "#0a0a0a",
-                letterSpacing: "-0.01em",
-              }}
-            >
-              Import Blueprint File
-            </h3>
-            <p
-              style={{
-                fontSize: 13,
-                color: "#52525b",
-                marginBottom: 20,
-                lineHeight: 1.6,
-              }}
-            >
-              Accepted blueprint files: PDF, PNG, JPG, JPEG, SVG.
-              <br />
-              Imported files can be opened in the design tool as a traceable
-              background/reference.
-            </p>
-
-            <form onSubmit={handleImport}>
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelSm}>Blueprint Title</label>
-                <input
-                  required
-                  value={importForm.title}
-                  onChange={(e) =>
-                    setImportForm((f) => ({ ...f, title: e.target.value }))
-                  }
-                  style={inputFull}
-                  placeholder="Enter blueprint title"
-                />
-              </div>
-
-              <div style={{ marginBottom: 16 }}>
-                <label style={labelSm}>
-                  Blueprint File (PDF, PNG, JPG, JPEG, or SVG)
-                </label>
-                <input
-                  type="file"
-                  required
-                  accept=".pdf,.png,.jpg,.jpeg,.svg"
-                  onChange={(e) =>
-                    setImportForm((f) => ({
-                      ...f,
-                      file: e.target.files?.[0] || null,
-                    }))
-                  }
-                  style={inputFull}
-                />
-              </div>
-
-              {!!importForm.file && (
-                <div
-                  style={{
-                    marginBottom: 20,
-                    padding: "12px 14px",
-                    background: "#fafafa",
-                    border: "1px solid #e4e4e7",
-                    borderRadius: 2,
-                    fontSize: 13,
-                    color: "#18181b",
-                  }}
-                >
-                  <div style={{ marginBottom: 4 }}>
-                    <strong style={{ fontWeight: 800 }}>Selected:</strong>{" "}
-                    {importForm.file.name}
-                  </div>
-                  <div>
-                    <strong style={{ fontWeight: 800 }}>Size:</strong>{" "}
-                    {(importForm.file.size / (1024 * 1024)).toFixed(2)} MB
-                  </div>
-                </div>
-              )}
-
-              <div
-                style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImportModal(false);
-                    setImportForm({ title: "", file: null });
-                  }}
-                  style={btnGhost}
-                >
-                  Cancel
-                </button>
-                <button type="submit" disabled={importing} style={btnPrimary}>
-                  {importing ? "Importing..." : "Import"}
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
       )}
 

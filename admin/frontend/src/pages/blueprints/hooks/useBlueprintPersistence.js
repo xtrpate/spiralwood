@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import toast from "react-hot-toast";
 import api from "../../../services/api";
 import {
@@ -37,6 +37,8 @@ export function useBlueprintPersistence({
   conversionCutListRows,
   estimatedPrice,
   designTotal,
+  editorStateSignature,
+  onDesignSaved,
   publishForm,
   setPublishModal,
   setSaving,
@@ -46,7 +48,11 @@ export function useBlueprintPersistence({
   sheetSize,
   exportViews,
 }) {
+  const publishInFlightRef = useRef(false);
+
   const saveDesign = useCallback(async () => {
+    const savingEditorStateSignature = editorStateSignature;
+
     if (!id || id === "new") {
       toast.error(
         "Create the blueprint record first before saving the design.",
@@ -191,8 +197,10 @@ export function useBlueprintPersistence({
             Number(estimatedPrice !== null ? estimatedPrice : designTotal || 0),
           ),
         ),
-        title: publishForm?.name || blueprint?.title || "",
-        description: publishForm?.description || blueprint?.description || "",
+        // Normal Save uses Blueprint metadata only. Publish form values are
+        // temporary and are applied only by the Publish workflow.
+        title: blueprint?.title || "",
+        description: blueprint?.description || "",
       });
 
       const savedBlueprintPatch = response?.data?.blueprint || {};
@@ -215,6 +223,10 @@ export function useBlueprintPersistence({
             null,
         };
       });
+
+      if (typeof onDesignSaved === "function") {
+        onDesignSaved(savingEditorStateSignature);
+      }
 
       toast.success("Blueprint saved.");
       return {
@@ -252,6 +264,8 @@ export function useBlueprintPersistence({
     conversionCutListRows,
     estimatedPrice,
     designTotal,
+    editorStateSignature,
+    onDesignSaved,
     publishForm,
     setSaving,
     setBlueprint,
@@ -279,58 +293,61 @@ export function useBlueprintPersistence({
       // Blueprint gallery templates intentionally have no fixed selling price.
       const automaticPrice = 0;
 
-      const saveResult = await saveDesign();
-      if (!saveResult?.ok) {
+      // Lock immediately so repeated Publish clicks cannot queue extra saves
+      // while the first publish request is still starting.
+      if (publishInFlightRef.current) {
         return;
       }
 
+      publishInFlightRef.current = true;
       setPublishFeedbackStatus("loading");
       setPublishing(true);
 
       try {
-        const payload = {
-          barcode: `BP-${Date.now()}`,
-          name: productName,
-          description: String(
-            publishForm.description || "Custom blueprint product",
-          ).trim(),
-          category_id: categoryId,
-          type: "blueprint",
-          online_price: automaticPrice,
-          walkin_price: automaticPrice,
-          production_cost: 0,
-          stock: 0,
-          stock_status: "out_of_stock",
-          reorder_point: 0,
-          is_featured: 0,
-          is_published: 1,
-          blueprint_id: Number(id),
-          variations: "[]",
-          bill_of_materials: "[]",
-          design_data: JSON.stringify({ components }),
-        };
+        const saveResult = await saveDesign();
+        if (!saveResult?.ok) {
+          return;
+        }
+        const productDescription =
+          String(
+            publishForm.description || "Custom blueprint product.",
+          ).trim() || "Custom blueprint product.";
 
-        await api.post("/products", payload);
-        await api.put(`/blueprints/${id}`, {
-          title: productName,
-          description: payload.description,
-          is_template: 1,
-          is_gallery: 1,
-          base_price: automaticPrice,
-        });
+        // First publish creates the linked Product. Republish updates the same
+        // Product instead of creating another Product row.
+        const publishResponse = await api.put(
+          `/products/blueprint/${id}/publish`,
+          {
+            name: productName,
+            description: productDescription,
+            category_id: categoryId,
+          },
+        );
+
+        const publishedBlueprint = publishResponse?.data?.blueprint || {};
+        const publishedProduct = publishResponse?.data?.product || {};
 
         setBlueprint((previous) =>
           previous
             ? {
                 ...previous,
-                title: productName,
-                description: payload.description,
+                ...publishedBlueprint,
+                title: publishedBlueprint.title || productName,
+                description:
+                  publishedBlueprint.description || productDescription,
                 is_template: 1,
                 is_gallery: 1,
-                base_price: automaticPrice,
+                base_price:
+                  publishedBlueprint.base_price ?? automaticPrice,
               }
             : previous,
         );
+
+        if (Number(publishedProduct.is_active) === 0) {
+          toast(
+            "Blueprint Product updated, but it is disabled and hidden from customers.",
+          );
+        }
 
         setPublishFeedbackStatus("success");
 
@@ -348,6 +365,7 @@ export function useBlueprintPersistence({
             "Failed to publish blueprint.",
         );
       } finally {
+        publishInFlightRef.current = false;
         setPublishing(false);
         setPublishFeedbackStatus("loading");
       }

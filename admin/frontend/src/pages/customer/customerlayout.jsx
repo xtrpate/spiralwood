@@ -343,6 +343,8 @@ export default function CustomerLayout() {
             item.category_label || item.category || "Customize Template",
           badge: "Customize",
           imageUrl: item.preview_image_url || item.thumbnail_url || "",
+          // WISDOM HEADER SEARCH LIVE BLUEPRINT PREVIEW V1.0.1
+          blueprintPreview: item,
           priceText: "Customize template",
           searchValue: item.title,
         }));
@@ -906,7 +908,27 @@ export default function CustomerLayout() {
                             justifyContent: "center",
                           }}
                         >
-                          {item.imageUrl ? (
+                          {item.resultType === "template" &&
+                          item.blueprintPreview ? (
+                            <div
+                              aria-label={`${item.title} furniture preview`}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                pointerEvents: "none",
+                              }}
+                            >
+                              <CustomerBlueprintViewer
+                                blueprint={item.blueprintPreview}
+                                readOnly
+                                showHumanControls={false}
+                                compact
+                                compactHeight={44}
+                                defaultPreset="isometric"
+                                defaultShowHuman={false}
+                              />
+                            </div>
+                          ) : item.imageUrl ? (
                             <img
                               src={buildAssetUrl(item.imageUrl)}
                               alt={item.title}

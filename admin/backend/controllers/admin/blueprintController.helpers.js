@@ -936,10 +936,119 @@ async function backfillLegacyArchivedDates() {
   );
 }
 
+async function snapshotAndDetachBlueprintProducts(conn, blueprintIds = []) {
+  if (!Array.isArray(blueprintIds) || !blueprintIds.length) return;
+
+  const bpPlaceholders = blueprintIds.map(() => "?").join(",");
+
+  const [blueprintRows] = await conn.query(
+    `SELECT id, title, description, stage, source, file_url, file_type,
+            thumbnail_url, design_data, view_3d_data, base_price,
+            is_template, is_gallery, created_at, updated_at
+       FROM blueprints
+       WHERE id IN (${bpPlaceholders})
+       FOR UPDATE`,
+    blueprintIds,
+  );
+
+  if (!blueprintRows.length) return;
+
+  const [componentRows] = await conn.query(
+    `SELECT *
+       FROM blueprint_components
+       WHERE blueprint_id IN (${bpPlaceholders})
+       ORDER BY blueprint_id ASC, id ASC`,
+    blueprintIds,
+  );
+
+  const componentsByBlueprint = new Map();
+  for (const component of componentRows) {
+    const blueprintId = Number(component.blueprint_id);
+    if (!componentsByBlueprint.has(blueprintId)) {
+      componentsByBlueprint.set(blueprintId, []);
+    }
+    componentsByBlueprint.get(blueprintId).push(component);
+  }
+
+  const blueprintById = new Map(
+    blueprintRows.map((row) => [Number(row.id), row]),
+  );
+
+  const [linkedProducts] = await conn.query(
+    `SELECT id, blueprint_id
+       FROM products
+       WHERE blueprint_id IN (${bpPlaceholders})
+         AND type = 'blueprint'
+       ORDER BY id ASC
+       FOR UPDATE`,
+    blueprintIds,
+  );
+
+  for (const product of linkedProducts) {
+    const blueprintId = Number(product.blueprint_id);
+    const blueprint = blueprintById.get(blueprintId);
+    if (!blueprint) continue;
+
+    const components = componentsByBlueprint.get(blueprintId) || [];
+
+    await conn.query(
+      `INSERT INTO product_blueprint_snapshots
+         (product_id, source_blueprint_id, title, description, thumbnail_url,
+          file_url, file_type, source, design_data, view_3d_data,
+          components_json, captured_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE
+         source_blueprint_id = VALUES(source_blueprint_id),
+         title = VALUES(title),
+         description = VALUES(description),
+         thumbnail_url = VALUES(thumbnail_url),
+         file_url = VALUES(file_url),
+         file_type = VALUES(file_type),
+         source = VALUES(source),
+         design_data = VALUES(design_data),
+         view_3d_data = VALUES(view_3d_data),
+         components_json = VALUES(components_json),
+         captured_at = NOW()`,
+      [
+        Number(product.id),
+        blueprintId,
+        blueprint.title || null,
+        blueprint.description || null,
+        blueprint.thumbnail_url || null,
+        blueprint.file_url || null,
+        blueprint.file_type || null,
+        blueprint.source || null,
+        blueprint.design_data || null,
+        blueprint.view_3d_data || null,
+        JSON.stringify(components),
+      ],
+    );
+  }
+
+  if (linkedProducts.length > 0) {
+    // Product and any order references survive the editable Blueprint.
+    // Hide/detach the Product so a deleted design cannot remain customer-visible.
+    // Price, stock, images and BOM are intentionally untouched.
+    await conn.query(
+      `UPDATE products
+       SET blueprint_id = NULL,
+           is_published = 0,
+           is_active = 0,
+           is_featured = 0
+       WHERE blueprint_id IN (${bpPlaceholders})
+         AND type = 'blueprint'`,
+      blueprintIds,
+    );
+  }
+}
+
 async function deleteBlueprintCascade(conn, blueprintIds = []) {
   if (!Array.isArray(blueprintIds) || !blueprintIds.length) return;
 
   const bpPlaceholders = blueprintIds.map(() => "?").join(",");
+
+  // Preserve linked Product design/history before Blueprint rows are removed.
+  await snapshotAndDetachBlueprintProducts(conn, blueprintIds);
 
   const [estimationRows] = await conn.query(
     `SELECT id

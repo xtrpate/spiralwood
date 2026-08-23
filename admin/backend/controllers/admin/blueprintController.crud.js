@@ -60,10 +60,6 @@ exports.getAll = async (req, res) => {
       }
     }
 
-    if (tab === "imports") {
-      where.push("b.source = 'imported' AND b.is_deleted = 0");
-    }
-
     if (tab === "gallery") {
       where.push(
         "(b.is_template = 1 OR b.is_gallery = 1) AND b.is_deleted = 0",
@@ -135,6 +131,7 @@ exports.getAll = async (req, res) => {
                     FROM products published_product
                     WHERE published_product.blueprint_id = b.id
                       AND published_product.is_published = 1
+                      AND published_product.is_active = 1
                   )
                   THEN 1
                 ELSE 0
@@ -281,6 +278,7 @@ exports.getOne = async (req, res) => {
                     FROM products published_product
                     WHERE published_product.blueprint_id = b.id
                       AND published_product.is_published = 1
+                      AND published_product.is_active = 1
                   )
                   THEN 1
                 ELSE 0
@@ -501,12 +499,22 @@ exports.create = async (req, res) => {
 
 // ── PUT /api/blueprints/:id ───────────────────────────────────────────────────
 exports.update = async (req, res) => {
+  const conn = await pool.getConnection();
+
   try {
-    const [[bp]] = await pool.query("SELECT * FROM blueprints WHERE id = ?", [
-      parseInt(req.params.id),
-    ]);
+    await conn.beginTransaction();
+
+    const blueprintId = parseInt(req.params.id);
+
+    // Serialize saves for the same Blueprint before allocating the next
+    // revision number.
+    const [[bp]] = await conn.query(
+      "SELECT * FROM blueprints WHERE id = ? FOR UPDATE",
+      [blueprintId],
+    );
 
     if (!bp) {
+      await conn.rollback();
       return res.status(404).json({ message: "Blueprint not found." });
     }
 
@@ -567,6 +575,7 @@ exports.update = async (req, res) => {
     }
 
     if (filtered.title != null && !String(filtered.title).trim()) {
+      await conn.rollback();
       return res
         .status(400)
         .json({ message: "Blueprint title cannot be empty." });
@@ -589,6 +598,7 @@ exports.update = async (req, res) => {
     }
 
     if (!Object.keys(filtered).length) {
+      await conn.rollback();
       return res.status(400).json({ message: "No updatable fields." });
     }
 
@@ -622,20 +632,26 @@ exports.update = async (req, res) => {
     });
 
     if (incomingHasDesignData) {
-      const [[{ maxRev }]] = await pool.query(
-        `SELECT COALESCE(MAX(revision_number), 0) AS maxRev
+      const [[latestRevision]] = await conn.query(
+        `SELECT revision_number
          FROM blueprint_revisions
-         WHERE blueprint_id = ?`,
-        [parseInt(req.params.id)],
+         WHERE blueprint_id = ?
+         ORDER BY revision_number DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [blueprintId],
       );
 
-      await pool.query(
+      const nextRevisionNumber =
+        Number(latestRevision?.revision_number || 0) + 1;
+
+      await conn.query(
         `INSERT INTO blueprint_revisions
           (blueprint_id, revision_number, stage_at_save, revision_data, revised_by)
          VALUES (?,?,?,?,?)`,
         [
-          parseInt(req.params.id),
-          maxRev + 1,
+          blueprintId,
+          nextRevisionNumber,
           bp.stage,
           bp.design_data,
           parseInt(req.user.id),
@@ -647,12 +663,14 @@ exports.update = async (req, res) => {
       .map((key) => `${key} = ?`)
       .join(", ");
 
-    await pool.query(
+    await conn.query(
       `UPDATE blueprints
        SET ${sets}
        WHERE id = ?`,
-      [...Object.values(filtered), parseInt(req.params.id)],
+      [...Object.values(filtered), blueprintId],
     );
+
+    await conn.commit();
 
     // A revision row is written whenever incomingHasDesignData is true,
     // even if the normalized design content turns out equivalent — that
@@ -683,8 +701,16 @@ exports.update = async (req, res) => {
       },
     });
   } catch (err) {
+    try {
+      await conn.rollback();
+    } catch (rollbackError) {
+      console.error("update blueprint rollback error:", rollbackError);
+    }
+
     console.error("update blueprint error:", err);
     res.status(err.statusCode || 500).json({ message: err.message });
+  } finally {
+    conn.release();
   }
 };
 
@@ -740,6 +766,7 @@ exports.archive = async (req, res) => {
          FROM products p
          WHERE p.blueprint_id = ?
            AND p.is_published = 1
+           AND p.is_active = 1
        ) AS has_published_product`,
       [blueprintId],
     );

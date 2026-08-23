@@ -28,6 +28,8 @@ import {
   hasUniversalMachiningMetadata,
 } from "./universalMachiningV2";
 
+import { getRotatedComponentBounds3D } from "./rotationBounds";
+
 const REAL_COMPONENT_FILTER = (component) =>
   component && component.type !== "reference_proxy";
 
@@ -83,34 +85,8 @@ const getDoorHinge = (component = {}) => {
   return "auto";
 };
 
-const getBox = (component = {}) => {
-  const x = Number(component.x);
-  const y = Number(component.y);
-  const z = Number(component.z);
-  const width = Number(component.width);
-  const height = Number(component.height);
-  const depth = Number(component.depth);
-
-  if (
-    ![x, y, z, width, height, depth].every((value) =>
-      Number.isFinite(value),
-    )
-  ) {
-    return null;
-  }
-
-  return {
-    minX: x,
-    minY: y,
-    minZ: z,
-    maxX: x + width,
-    maxY: y + height,
-    maxZ: z + depth,
-    width,
-    height,
-    depth,
-  };
-};
+const getBox = (component = {}) =>
+  getRotatedComponentBounds3D(component);
 
 const getBounds = (items = []) => {
   const boxes = items.map(getBox).filter(Boolean);

@@ -406,13 +406,16 @@ exports.getAll = async (req, res) => {
 
     const [products] = await pool.query(
       `SELECT p.*, c.name AS category_name,
-              b.title AS blueprint_title,
-              b.thumbnail_url AS blueprint_thumbnail_url,
-              b.design_data AS blueprint_design_data,
-              b.view_3d_data AS blueprint_view_3d_data
+              COALESCE(b.title, pbs.title) AS blueprint_title,
+              COALESCE(b.thumbnail_url, pbs.thumbnail_url) AS blueprint_thumbnail_url,
+              COALESCE(b.design_data, pbs.design_data) AS blueprint_design_data,
+              COALESCE(b.view_3d_data, pbs.view_3d_data) AS blueprint_view_3d_data,
+              pbs.source_blueprint_id AS blueprint_snapshot_source_id,
+              pbs.components_json AS blueprint_components_json
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN blueprints b ON b.id = p.blueprint_id
+       LEFT JOIN product_blueprint_snapshots pbs ON pbs.product_id = p.id
        WHERE ${where.join(" AND ")}
        ORDER BY 
          CASE 
@@ -458,13 +461,16 @@ exports.getOne = async (req, res) => {
   try {
     const [[product]] = await pool.query(
       `SELECT p.*, c.name AS category_name,
-              b.title AS blueprint_title,
-              b.thumbnail_url AS blueprint_thumbnail_url,
-              b.design_data AS blueprint_design_data,
-              b.view_3d_data AS blueprint_view_3d_data
+              COALESCE(b.title, pbs.title) AS blueprint_title,
+              COALESCE(b.thumbnail_url, pbs.thumbnail_url) AS blueprint_thumbnail_url,
+              COALESCE(b.design_data, pbs.design_data) AS blueprint_design_data,
+              COALESCE(b.view_3d_data, pbs.view_3d_data) AS blueprint_view_3d_data,
+              pbs.source_blueprint_id AS blueprint_snapshot_source_id,
+              pbs.components_json AS blueprint_components_json
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN blueprints b ON b.id = p.blueprint_id
+       LEFT JOIN product_blueprint_snapshots pbs ON pbs.product_id = p.id
        WHERE p.id = ?`,
       [parseInt(req.params.id)],
     );
@@ -1122,15 +1128,64 @@ exports.toggleFeatured = async (req, res) => {
 // ── GET /api/products/report ──────────────────────────────────────────────────
 exports.getReport = async (req, res) => {
   try {
-    // ── FIXED: Added empty array [] ──
+    const { search, type, status, category_id, is_active } = req.query;
+    const where = ["1=1"];
+    const params = [];
+
+    if (search) {
+      where.push("(p.name LIKE ? OR p.barcode LIKE ?)");
+      params.push(`%${search}%`, `%${search}%`);
+    }
+
+    if (type) {
+      where.push("p.type = ?");
+      params.push(type);
+    }
+
+    if (status) {
+      where.push("p.stock_status = ?");
+      params.push(status);
+    }
+
+    if (category_id) {
+      where.push("p.category_id = ?");
+      params.push(category_id);
+    }
+
+    if (is_active !== undefined && is_active !== "") {
+      where.push("p.is_active = ?");
+      params.push(
+        is_active === "false" || is_active === "0" ? 0 : 1,
+      );
+    }
+
     const [rows] = await pool.query(
-      `SELECT p.barcode, p.name, c.name AS category, p.type,
-              p.online_price, p.walkin_price, p.production_cost,
-              p.profit_margin, p.stock, p.stock_status, p.is_featured
-       FROM products p LEFT JOIN categories c ON c.id = p.category_id
-       ORDER BY p.name ASC`,
-      [],
+      `SELECT
+          p.id AS product_id,
+          p.barcode,
+          p.name,
+          c.name AS category,
+          p.type,
+          COALESCE(p.blueprint_id, pbs.source_blueprint_id) AS blueprint_source_id,
+          p.online_price AS price,
+          p.production_cost,
+          p.profit_margin,
+          p.stock,
+          p.reorder_point,
+          p.stock_status,
+          p.is_published,
+          p.is_active,
+          p.is_featured,
+          p.created_at,
+          p.updated_at
+       FROM products p
+       LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN product_blueprint_snapshots pbs ON pbs.product_id = p.id
+       WHERE ${where.join(" AND ")}
+       ORDER BY p.name ASC, p.id ASC`,
+      params,
     );
+
     res.json(rows);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -1207,6 +1262,196 @@ exports.togglePublish = async (req, res) => {
   } catch (err) {
     console.error("[togglePublish Error]:", err);
     res.status(500).json({ message: err.message });
+  }
+};
+
+// ── PUT /api/products/blueprint/:blueprint_id/publish ───────────────────
+exports.publishByBlueprint = async (req, res) => {
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const blueprintId = parseInt(req.params.blueprint_id);
+    const productName = String(req.body.name || "").trim();
+    const productDescription =
+      String(req.body.description || "Custom blueprint product.").trim() ||
+      "Custom blueprint product.";
+    const categoryId = parseInt(req.body.category_id);
+
+    if (!Number.isInteger(blueprintId) || blueprintId <= 0) {
+      await conn.rollback();
+      return res.status(400).json({ message: "Invalid Blueprint ID." });
+    }
+
+    if (!productName) {
+      await conn.rollback();
+      return res.status(400).json({ message: "Product name is required." });
+    }
+
+    if (!Number.isInteger(categoryId) || categoryId <= 0) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Select a furniture category before publishing.",
+      });
+    }
+
+    // Lock the Blueprint row so two publish requests for the same Blueprint
+    // cannot create two Products at the same time.
+    const [[blueprint]] = await conn.query(
+      `SELECT id, is_deleted
+       FROM blueprints
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [blueprintId],
+    );
+
+    if (!blueprint || Number(blueprint.is_deleted) === 1) {
+      await conn.rollback();
+      return res.status(404).json({
+        message: "The Blueprint could not be found or is archived.",
+      });
+    }
+
+    const [[category]] = await conn.query(
+      `SELECT id
+       FROM categories
+       WHERE id = ? AND type = 'build'
+       LIMIT 1`,
+      [categoryId],
+    );
+
+    if (!category) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Select a valid furniture category before publishing.",
+      });
+    }
+
+    const [linkedProducts] = await conn.query(
+      `SELECT id, name, description, category_id, is_published, is_active
+       FROM products
+       WHERE blueprint_id = ?
+         AND type = 'blueprint'
+       ORDER BY id ASC
+       FOR UPDATE`,
+      [blueprintId],
+    );
+
+    const canonicalProduct = linkedProducts[0] || null;
+    let productId = canonicalProduct ? Number(canonicalProduct.id) : null;
+    let created = false;
+
+    if (canonicalProduct) {
+      // Do not change the Product's existing price, stock, active state,
+      // images, or BOM during republish.
+      await conn.query(
+        `UPDATE products
+         SET name = ?,
+             description = ?,
+             category_id = ?,
+             is_featured = 0,
+             is_published = 1
+         WHERE id = ?`,
+        [productName, productDescription, categoryId, productId],
+      );
+    } else {
+      const [createResult] = await conn.query(
+        `INSERT INTO products
+           (name, description, category_id, type, is_featured, is_published,
+            blueprint_id, online_price, walkin_price, production_cost, stock,
+            reorder_point, stock_status)
+         VALUES (?, ?, ?, 'blueprint', 0, 1, ?, 0, 0, 0, 0, 0, 'out_of_stock')`,
+        [productName, productDescription, categoryId, blueprintId],
+      );
+
+      productId = Number(createResult.insertId);
+      created = true;
+    }
+
+    // Old duplicate rows are kept for history/order references. Only the first
+    // Product remains published for this Blueprint.
+    const duplicateProductIds = linkedProducts
+      .slice(1)
+      .map((row) => Number(row.id))
+      .filter((value) => Number.isInteger(value) && value > 0);
+
+    if (duplicateProductIds.length > 0) {
+      const placeholders = duplicateProductIds.map(() => "?").join(",");
+      await conn.query(
+        `UPDATE products
+         SET is_published = 0
+         WHERE id IN (${placeholders})`,
+        duplicateProductIds,
+      );
+    }
+
+    // Keep the current Blueprint publish fields. Product price behavior is not
+    // changed by this fix.
+    await conn.query(
+      `UPDATE blueprints
+       SET title = ?,
+           description = ?,
+           is_template = 1,
+           is_gallery = 1,
+           base_price = 0
+       WHERE id = ?`,
+      [productName, productDescription, blueprintId],
+    );
+
+    const [[publishedProduct]] = await conn.query(
+      `SELECT id, name, description, category_id, type, is_published,
+              is_active, blueprint_id
+       FROM products
+       WHERE id = ?
+       LIMIT 1`,
+      [productId],
+    );
+
+    await conn.commit();
+
+    req.auditRecord = {
+      id: productId,
+      old: canonicalProduct,
+      new: {
+        name: productName,
+        description: productDescription,
+        category_id: categoryId,
+        blueprint_id: blueprintId,
+        is_published: true,
+        created,
+        duplicate_products_unpublished: duplicateProductIds.length,
+      },
+    };
+
+    res.status(created ? 201 : 200).json({
+      message: created
+        ? "Blueprint Product created."
+        : "Blueprint Product updated.",
+      created,
+      product: publishedProduct,
+      duplicate_products_unpublished: duplicateProductIds.length,
+      blueprint: {
+        id: blueprintId,
+        title: productName,
+        description: productDescription,
+        is_template: 1,
+        is_gallery: 1,
+        base_price: 0,
+      },
+    });
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch {
+      // Keep the original error.
+    }
+
+    console.error("[publishByBlueprint Error]:", err);
+    res.status(500).json({ message: err.message });
+  } finally {
+    conn.release();
   }
 };
 

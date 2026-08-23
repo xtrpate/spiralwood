@@ -15,7 +15,6 @@ import useAuthStore from "./store/authStore";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { SessionLoginFeedback } from "./components/MotionFeedbackOverlay";
 import TasksPage from "./pages/tasks/TasksPage";
-import ImportPage from "./pages/blueprints/importPage";
 
 import MyTasks from "./pages/staff/MyTasks";
 
@@ -430,16 +429,6 @@ export default function App() {
                   />
                 </Route>
               </Route>
-
-              {/* ADMIN & STAFF PUBLIC ROUTES */}
-              <Route
-                path="/admin/blueprints/:id/import"
-                element={
-                  <RequireAuth roles={["admin"]}>
-                    <ImportPage />
-                  </RequireAuth>
-                }
-              />
 
               {/* ADMIN PORTAL */}
               <Route
