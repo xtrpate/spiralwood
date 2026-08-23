@@ -15,6 +15,18 @@ import {
 import "./AdminLayout.css";
 import adminSystemIcon from "../../assets/admin-system-icon.png";
 
+const getLogoUrl = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  if (/^(https?:|data:|blob:)/i.test(raw)) {
+    return buildAssetUrl(raw);
+  }
+
+  const cleaned = raw.replace(/\\/g, "/").replace(/^\/+/, "");
+  return buildAssetUrl(`/${cleaned}`);
+};
+
 const NAV_ITEMS = [
   { section: "Dashboard" },
   {
@@ -193,10 +205,10 @@ export default function AdminLayout() {
       .then((res) => {
         if (active) {
           if (res.data?.display?.site_name) {
-            document.title = res.data.display.site_name + " - Admin"; // Added " - Admin" to distinguish the tab
+            document.title = res.data.display.site_name + " - Admin";
           }
           if (res.data?.display?.site_logo) {
-            const faviconUrl = buildAssetUrl(res.data.display.site_logo);
+            const faviconUrl = getLogoUrl(res.data.display.site_logo);
             setBrandLogo(faviconUrl);
             let link = document.querySelector("link[rel~='icon']");
             if (!link) {
@@ -321,6 +333,9 @@ export default function AdminLayout() {
                   flex: "0 0 28px",
                   objectFit: "contain",
                   display: "block",
+                }}
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
                 }}
               />
             )}

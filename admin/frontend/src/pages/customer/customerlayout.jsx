@@ -440,15 +440,9 @@ export default function CustomerLayout() {
             dynamicAddress,
           )}`,
     email: siteSettings?.display?.business_email || "spiralwood@gmail.com",
-    facebookUrl: String(
-      siteSettings?.display?.social_facebook || "",
-    ).trim(),
-    instagramUrl: String(
-      siteSettings?.display?.social_instagram || "",
-    ).trim(),
-    telegramUrl: String(
-      siteSettings?.display?.social_telegram || "",
-    ).trim(),
+    facebookUrl: String(siteSettings?.display?.social_facebook || "").trim(),
+    instagramUrl: String(siteSettings?.display?.social_instagram || "").trim(),
+    telegramUrl: String(siteSettings?.display?.social_telegram || "").trim(),
   };
 
   const footerSocialLinks = [
@@ -631,7 +625,9 @@ export default function CustomerLayout() {
 
   const hasBlueprintItems = cart.some((item) => isBlueprintItem(item));
   const hasStandardItems = cart.some((item) => !isBlueprintItem(item));
-  const blueprintItemCount = cart.filter((item) => isBlueprintItem(item)).length;
+  const blueprintItemCount = cart.filter((item) =>
+    isBlueprintItem(item),
+  ).length;
   const isMixedCart = hasBlueprintItems && hasStandardItems;
 
   const miniCartCheckoutLabel = !customerUser
@@ -681,7 +677,7 @@ export default function CustomerLayout() {
     navigate("/checkout");
   };
 
-  const BrandBlock = ({ compact = false, footer = false }) => {
+  const renderBrandBlock = ({ compact = false, footer = false }) => {
     if (!footer) {
       return (
         <div
@@ -1024,7 +1020,7 @@ export default function CustomerLayout() {
             onClick={handleGoHome}
             aria-label="Go to home"
           >
-            <BrandBlock />
+            {renderBrandBlock({})}
           </button>
 
           <div className="cust-header-right">
@@ -1182,7 +1178,7 @@ export default function CustomerLayout() {
             onClick={handleGoHome}
             aria-label="Go to home"
           >
-            <BrandBlock compact />
+            {renderBrandBlock({ compact: true })}
           </button>
 
           <button
@@ -1320,7 +1316,11 @@ export default function CustomerLayout() {
                         ) : imageSrc ? (
                           <img
                             src={imageSrc}
-                            alt={item.base_blueprint_title || item.product_name || "Custom design"}
+                            alt={
+                              item.base_blueprint_title ||
+                              item.product_name ||
+                              "Custom design"
+                            }
                           />
                         ) : (
                           <div className="cust-mini-cart-thumb-fallback">
@@ -1948,7 +1948,7 @@ export default function CustomerLayout() {
 
           <div className="cust-footer-bottom cust-footer-bottom-v2">
             <div className="footer-brand">
-              <BrandBlock compact footer />
+              {renderBrandBlock({ compact: true, footer: true })}
             </div>
 
             <p>

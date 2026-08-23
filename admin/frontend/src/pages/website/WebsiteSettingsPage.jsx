@@ -3,6 +3,18 @@ import React, { useEffect, useState } from "react";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 
+const getLogoUrl = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  if (/^(https?:|data:|blob:)/i.test(raw)) {
+    return buildAssetUrl(raw);
+  }
+
+  const cleaned = raw.replace(/\\/g, "/").replace(/^\/+/, "");
+  return buildAssetUrl(`/${cleaned}`);
+};
+
 const DELIVERY_LIMIT_KEYS = [
   "standard_truck_limit_width_mm",
   "standard_truck_limit_height_mm",
@@ -33,7 +45,8 @@ const SECTION_META = {
   delivery: {
     label: "Truck Capacity",
     icon: "🚚",
-    description: "Usable internal measurements for the standard delivery truck.",
+    description:
+      "Usable internal measurements for the standard delivery truck.",
   },
 };
 
@@ -333,7 +346,7 @@ export default function WebsiteSettingsPage() {
         });
 
         setSettings(flat);
-        setPreview(flat.site_logo ? buildAssetUrl(flat.site_logo) : "");
+        setPreview(getLogoUrl(flat.site_logo));
       } catch (error) {
         if (cancelled) return;
 
@@ -409,7 +422,9 @@ export default function WebsiteSettingsPage() {
           longitude > 180
         ) {
           setActiveTab("display");
-          toast.error("Enter valid business latitude and longitude coordinates.");
+          toast.error(
+            "Enter valid business latitude and longitude coordinates.",
+          );
           return false;
         }
       }
@@ -1017,9 +1032,9 @@ export default function WebsiteSettingsPage() {
 
         {activeTab === "delivery" && (
           <div className="website-settings-notice">
-            <strong>Use actual usable cargo measurements.</strong>{" "}
-            The system compares final furniture width, height, and length with
-            these limits. It does not calculate a larger truck fee.
+            <strong>Use actual usable cargo measurements.</strong> The system
+            compares final furniture width, height, and length with these
+            limits. It does not calculate a larger truck fee.
           </div>
         )}
 
@@ -1075,7 +1090,10 @@ function SettingRow({
   return (
     <div className={rowClass}>
       <div className="website-settings-row-copy">
-        <label className="website-settings-label" htmlFor={`setting-${keyName}`}>
+        <label
+          className="website-settings-label"
+          htmlFor={`setting-${keyName}`}
+        >
           {meta.label}
         </label>
         <p className="website-settings-hint">{meta.hint}</p>
