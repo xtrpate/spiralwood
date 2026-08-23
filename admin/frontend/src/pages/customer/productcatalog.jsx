@@ -23,6 +23,17 @@ const formatPeso = (value) => {
     maximumFractionDigits: 2,
   })}`;
 };
+
+const formatFilterPeso = (value) => {
+  const amount = Number(value || 0);
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
+
+  return `₱${safeAmount.toLocaleString("en-PH", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+};
+
 const formatTypeLabel = (type) => {
   const raw = String(type || "standard")
     .replace(/_/g, " ")
@@ -429,14 +440,6 @@ export default function ProductCatalog() {
     setPriceMax(String(nextMax));
   };
 
-  const resetPriceFilter = () => {
-    if (!priceBounds.max) return;
-    setPriceMin("");
-    setPriceMax("");
-    setTempPriceMin("");
-    setTempPriceMax("");
-  };
-
   const hasActiveFilters =
     search ||
     catFilter !== "all" ||
@@ -581,45 +584,83 @@ export default function ProductCatalog() {
             </div>
 
             <div className="price-slider-shell">
-              <div className="price-inputs">
-                <input
-                  type="number"
-                  min={sliderMin}
-                  max={safeSliderMax}
-                  placeholder="MIN"
-                  value={tempPriceMin}
-                  onChange={(e) => setTempPriceMin(e.target.value)}
+              <div className="price-slider-wrap">
+                <div
+                  className="price-slider-track"
+                  aria-hidden="true"
                 />
-                <span>—</span>
+                <div
+                  className="price-slider-progress"
+                  aria-hidden="true"
+                  style={{
+                    left: `${sliderMax ? minPercent : 0}%`,
+                    right: `${sliderMax ? 100 - maxPercent : 100}%`,
+                  }}
+                />
+
                 <input
-                  type="number"
+                  type="range"
+                  className="price-range-input price-range-min"
                   min={sliderMin}
                   max={safeSliderMax}
-                  placeholder="MAX"
-                  value={tempPriceMax}
-                  onChange={(e) => setTempPriceMax(e.target.value)}
+                  step="0.01"
+                  value={sliderMax ? normalizedMin : sliderMin}
+                  disabled={!sliderMax}
+                  aria-label="Minimum price"
+                  aria-valuetext={formatFilterPeso(
+                    sliderMax ? normalizedMin : sliderMin,
+                  )}
+                  onChange={(e) => {
+                    const nextValue = Number(e.target.value);
+                    setTempPriceMin(
+                      String(Math.min(nextValue, normalizedMax)),
+                    );
+                  }}
+                />
+
+                <input
+                  type="range"
+                  className="price-range-input price-range-max"
+                  min={sliderMin}
+                  max={safeSliderMax}
+                  step="0.01"
+                  value={sliderMax ? normalizedMax : safeSliderMax}
+                  disabled={!sliderMax}
+                  aria-label="Maximum price"
+                  aria-valuetext={formatFilterPeso(
+                    sliderMax ? normalizedMax : sliderMax,
+                  )}
+                  onChange={(e) => {
+                    const nextValue = Number(e.target.value);
+                    setTempPriceMax(
+                      String(Math.max(nextValue, normalizedMin)),
+                    );
+                  }}
                 />
               </div>
 
-              <div className="price-filter-actions">
+              <div className="price-filter-meta">
                 <button
                   type="button"
-                  className="price-apply-btn"
+                  className="price-filter-submit"
                   onClick={applyPriceFilter}
                   disabled={!sliderMax}
                 >
                   Filter
                 </button>
 
-                {(priceMin !== "" || priceMax !== "") && (
-                  <button
-                    type="button"
-                    className="price-reset-btn"
-                    onClick={resetPriceFilter}
-                  >
-                    Reset
-                  </button>
-                )}
+                <div className="price-range-copy" aria-live="polite">
+                  <span>Price:</span>
+                  <strong>
+                    {formatFilterPeso(
+                      sliderMax ? normalizedMin : sliderMin,
+                    )}{" "}
+                    —{" "}
+                    {formatFilterPeso(
+                      sliderMax ? normalizedMax : sliderMax,
+                    )}
+                  </strong>
+                </div>
               </div>
             </div>
           </div>
@@ -920,43 +961,83 @@ export default function ProductCatalog() {
               <div className="filter-section">
                 <div className="sidebar-title">Filter by Price</div>
                 <div className="price-slider-shell">
-                  <div className="price-inputs">
-                    <input
-                      type="number"
-                      min={sliderMin}
-                      max={safeSliderMax}
-                      placeholder="MIN"
-                      value={tempPriceMin}
-                      onChange={(e) => setTempPriceMin(e.target.value)}
+                  <div className="price-slider-wrap">
+                    <div
+                      className="price-slider-track"
+                      aria-hidden="true"
                     />
-                    <span>—</span>
+                    <div
+                      className="price-slider-progress"
+                      aria-hidden="true"
+                      style={{
+                        left: `${sliderMax ? minPercent : 0}%`,
+                        right: `${sliderMax ? 100 - maxPercent : 100}%`,
+                      }}
+                    />
+
                     <input
-                      type="number"
+                      type="range"
+                      className="price-range-input price-range-min"
                       min={sliderMin}
                       max={safeSliderMax}
-                      placeholder="MAX"
-                      value={tempPriceMax}
-                      onChange={(e) => setTempPriceMax(e.target.value)}
+                      step="0.01"
+                      value={sliderMax ? normalizedMin : sliderMin}
+                      disabled={!sliderMax}
+                      aria-label="Minimum price"
+                      aria-valuetext={formatFilterPeso(
+                        sliderMax ? normalizedMin : sliderMin,
+                      )}
+                      onChange={(e) => {
+                        const nextValue = Number(e.target.value);
+                        setTempPriceMin(
+                          String(Math.min(nextValue, normalizedMax)),
+                        );
+                      }}
+                    />
+
+                    <input
+                      type="range"
+                      className="price-range-input price-range-max"
+                      min={sliderMin}
+                      max={safeSliderMax}
+                      step="0.01"
+                      value={sliderMax ? normalizedMax : safeSliderMax}
+                      disabled={!sliderMax}
+                      aria-label="Maximum price"
+                      aria-valuetext={formatFilterPeso(
+                        sliderMax ? normalizedMax : sliderMax,
+                      )}
+                      onChange={(e) => {
+                        const nextValue = Number(e.target.value);
+                        setTempPriceMax(
+                          String(Math.max(nextValue, normalizedMin)),
+                        );
+                      }}
                     />
                   </div>
-                  <div className="price-filter-actions">
+
+                  <div className="price-filter-meta">
                     <button
                       type="button"
-                      className="price-apply-btn"
+                      className="price-filter-submit"
                       onClick={applyPriceFilter}
                       disabled={!sliderMax}
                     >
-                      Apply Price
+                      Filter
                     </button>
-                    {(priceMin !== "" || priceMax !== "") && (
-                      <button
-                        type="button"
-                        className="price-reset-btn"
-                        onClick={resetPriceFilter}
-                      >
-                        Reset
-                      </button>
-                    )}
+
+                    <div className="price-range-copy" aria-live="polite">
+                      <span>Price:</span>
+                      <strong>
+                        {formatFilterPeso(
+                          sliderMax ? normalizedMin : sliderMin,
+                        )}{" "}
+                        —{" "}
+                        {formatFilterPeso(
+                          sliderMax ? normalizedMax : sliderMax,
+                        )}
+                      </strong>
+                    </div>
                   </div>
                 </div>
               </div>
