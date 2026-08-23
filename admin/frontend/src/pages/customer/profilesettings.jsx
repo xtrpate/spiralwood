@@ -680,18 +680,18 @@ export default function ProfileSettings() {
   };
 
   /* ════ PHONE CHANGE (OTP VERIFIED) ════ */
-  const requestPhoneOtp = async () => {
-    if (!newPhone.trim())
-      return setPhoneMsg({ type: "error", text: "Enter a phone number." });
+  const requestPhoneOtp = async (formattedPhone) => {
+    // Grab the passed 11-digit number, or manually format it
+    const phoneToSend =
+      typeof formattedPhone === "string" ? formattedPhone : "09" + newPhone;
 
-    if (newPhone.length !== 11 || !newPhone.startsWith("09")) {
+    if (!phoneToSend || phoneToSend.length !== 11)
       return setPhoneMsg({
         type: "error",
-        text: "Phone number must be an 11-digit number starting with 09.",
+        text: "Enter a valid 10-digit phone number.",
       });
-    }
 
-    if (newPhone === user?.phone) {
+    if (phoneToSend === user?.phone) {
       return setPhoneMsg({
         type: "error",
         text: "New phone number must be different from your current number.",
@@ -702,13 +702,13 @@ export default function ProfileSettings() {
     setPhoneMsg({ type: "", text: "" });
     try {
       await api.post("/customer/profile/request-phone-change", {
-        new_phone: newPhone,
+        new_phone: phoneToSend,
       });
-      setPhoneStep(2);
+      setPhoneStep(4); // 👉 CRITICAL FIX: Moves UI to the OTP Input box
       setPhoneCooldown(60);
       setPhoneMsg({
         type: "success",
-        text: `Verification OTP sent to ${newPhone}`,
+        text: `Verification OTP sent to +63 ${newPhone}`,
       });
     } catch (err) {
       setPhoneMsg({
@@ -721,15 +721,18 @@ export default function ProfileSettings() {
     }
   };
 
-  const verifyPhoneOtp = async () => {
+  const verifyPhoneOtp = async (formattedPhone) => {
     if (!phoneOtp.trim())
       return setPhoneMsg({ type: "error", text: "Enter the OTP code." });
+
+    const phoneToSend =
+      typeof formattedPhone === "string" ? formattedPhone : "09" + newPhone;
 
     setPhoneLoading(true);
     try {
       const res = await api.post("/customer/profile/verify-phone-change", {
         otp: phoneOtp,
-        new_phone: newPhone,
+        new_phone: phoneToSend,
       });
       setUser({ ...user, phone: res.data.phone });
       setPhoneMsg({
@@ -984,16 +987,10 @@ export default function ProfileSettings() {
                   <div className="profile-form-actions">
                     <button
                       className="btn btn-primary"
-                      onClick={saveName}
-                      disabled={nameLoading || !isNameChanged}
+                      onClick={() => requestPhoneOtp("09" + newPhone)}
+                      disabled={phoneLoading || newPhone.length < 10}
                     >
-                      {nameLoading ? (
-                        "Saving…"
-                      ) : (
-                        <>
-                          <Check size={14} /> Save Changes
-                        </>
-                      )}
+                      {phoneLoading ? "Sending OTP…" : "Send Verification OTP"}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -1663,7 +1660,7 @@ export default function ProfileSettings() {
                       className="resend-btn"
                       onClick={() => {
                         setPhoneCooldown(60);
-                        requestPhoneOtpCustom("09" + newPhone);
+                        requestPhoneOtp("09" + newPhone);
                       }}
                       disabled={phoneCooldown > 0}
                     >
