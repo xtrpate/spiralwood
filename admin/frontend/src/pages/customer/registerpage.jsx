@@ -104,7 +104,7 @@ export default function RegisterPage() {
         first_name: form.first_name,
         last_name: form.last_name,
         email: form.email,
-        phone: "09" + form.phone,
+        phone: "0" + form.phone,
         address: form.address,
         password: form.password,
         recaptcha_token: captchaToken,
@@ -171,7 +171,7 @@ export default function RegisterPage() {
       navigate("/phone-otp", {
         state: {
           email: registeredEmail,
-          phone: "09" + form.phone,
+          phone: "0" + form.phone,
         },
       });
     } catch (err) {
