@@ -1,0 +1,77 @@
+.admin-submitted-design-preview {
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid #dcdde1;
+  background: #ffffff;
+}
+
+.admin-submitted-design-summary {
+  border-top: 0;
+}
+
+.admin-submitted-design-layout {
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+
+.admin-submitted-design-preview .staff-prod-viewer {
+  min-height: 510px;
+}
+
+.admin-submitted-design-preview .staff-prod-viewer-stage {
+  min-height: 430px;
+}
+
+.admin-submitted-design-preview .staff-prod-viewer-canvas {
+  height: 440px;
+}
+
+.admin-submitted-design-preview .production-blueprint-details {
+  padding: 15px;
+}
+
+.admin-submitted-design-note {
+  margin-top: 14px;
+  padding: 10px 11px;
+  border: 1px solid #d7d7dc;
+  background: #f7f7f8;
+  color: #4f5055;
+  font-size: 9.5px;
+  line-height: 1.55;
+}
+
+.admin-submitted-design-parts {
+  background: #ffffff;
+}
+
+.admin-submitted-design-parts .production-blueprint-table-wrap {
+  max-height: 300px;
+  overflow: auto;
+}
+
+.admin-submitted-design-parts .production-blueprint-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+@media (max-width: 1180px) {
+  .admin-submitted-design-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-submitted-design-preview .production-blueprint-view-section {
+    border-right: 0;
+    border-bottom: 1px solid #dcdde1;
+  }
+}
+
+@media (max-width: 720px) {
+  .admin-submitted-design-preview .staff-prod-viewer-canvas {
+    height: 390px;
+  }
+
+  .admin-submitted-design-preview .staff-prod-viewer-stage {
+    min-height: 390px;
+  }
+}

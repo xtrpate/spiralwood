@@ -633,7 +633,10 @@ const disposeObjectTree = (root) => {
   }
 };
 
-const buildRenderableObject = (component) => {
+const buildRenderableObject = (
+  component,
+  { receiveFurnitureShadow = true } = {},
+) => {
   try {
     const object3D = createFurnitureObject(component, false, false, []);
     const solidHex = getSolidColorHex(component);
@@ -651,7 +654,7 @@ const buildRenderableObject = (component) => {
     object3D.traverse?.((object) => {
       if (!object?.isMesh) return;
       object.castShadow = true;
-      object.receiveShadow = true;
+      object.receiveShadow = receiveFurnitureShadow;
     });
 
     return object3D;
@@ -671,7 +674,7 @@ const buildRenderableObject = (component) => {
     );
 
     mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    mesh.receiveShadow = receiveFurnitureShadow;
     fallback.add(mesh);
     return fallback;
   }
@@ -681,6 +684,7 @@ export default function StaffProductionBlueprintViewer({
   blueprint,
   compact = false,
   compactHeight = 122,
+  cleanFurnitureSelfShadow = false,
 }) {
   const mountRef = useRef(null);
   const rendererRef = useRef(null);
@@ -1641,7 +1645,9 @@ export default function StaffProductionBlueprintViewer({
     const worldD = sceneData.worldSize?.d || 5200;
 
     sceneData.components.forEach((component) => {
-      const object3D = buildRenderableObject(component);
+      const object3D = buildRenderableObject(component, {
+        receiveFurnitureShadow: !cleanFurnitureSelfShadow,
+      });
       const componentId = String(component?.id ?? "");
       object3D.userData = {
         ...(object3D.userData || {}),
@@ -1678,6 +1684,7 @@ export default function StaffProductionBlueprintViewer({
     fitCameraToFurniture(viewRef.current);
     renderCurrentFrame();
   }, [
+    cleanFurnitureSelfShadow,
     sceneData,
     has3D,
     fitCameraToFurniture,
