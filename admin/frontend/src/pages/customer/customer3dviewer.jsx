@@ -3276,7 +3276,7 @@ export default function Customer3DViewer({
                           onClick={rememberCustomizeGuide}
                           style={styles.customizeGuideSkipBtn}
                         >
-                          Skip guide
+                          Close
                         </button>
                       </div>
 
