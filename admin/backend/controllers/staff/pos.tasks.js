@@ -284,6 +284,318 @@ exports.getTasks = async (req, res) => {
   }
 };
 
+/* ── Get Assigned Production Blueprint (Indoor Staff/Admin) ── */
+exports.getAssignedOrderBlueprint = async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.orderId, 10);
+
+    if (!Number.isInteger(orderId) || orderId <= 0) {
+      return res.status(400).json({ message: "Invalid production order." });
+    }
+
+    let assignmentQuery = `
+      SELECT
+        pt.blueprint_id AS task_blueprint_id,
+        o.blueprint_id AS order_blueprint_id,
+        o.order_number,
+        o.status AS order_status
+      FROM project_tasks pt
+      INNER JOIN orders o ON o.id = pt.order_id
+      WHERE pt.order_id = ?
+    `;
+    const queryParams = [orderId];
+
+    if (req.user.role !== "admin") {
+      assignmentQuery += ` AND pt.assigned_to = ?`;
+      queryParams.push(parseInt(req.user.id, 10));
+    }
+
+    assignmentQuery += `
+      ORDER BY (pt.blueprint_id IS NOT NULL) DESC, pt.id ASC
+      LIMIT 1
+    `;
+
+    const [assignments] = await db.query(assignmentQuery, queryParams);
+
+    if (!assignments.length) {
+      return res.status(404).json({
+        message: "Production work not found for your account.",
+      });
+    }
+
+    const assignment = assignments[0];
+    const blueprintId = Number(
+      assignment.task_blueprint_id || assignment.order_blueprint_id || 0,
+    );
+
+    if (!Number.isInteger(blueprintId) || blueprintId <= 0) {
+      return res.status(404).json({
+        message: "No production Blueprint is linked to this work.",
+      });
+    }
+
+    const [blueprintRows] = await db.query(
+      `SELECT
+         b.id,
+         b.title,
+         b.description,
+         b.stage,
+         b.design_data,
+         b.view_3d_data,
+         b.created_at,
+         b.updated_at
+       FROM blueprints b
+       WHERE b.id = ?
+       LIMIT 1`,
+      [blueprintId],
+    );
+
+    if (!blueprintRows.length) {
+      return res.status(404).json({
+        message: "The production Blueprint is no longer available.",
+      });
+    }
+
+    const [components] = await db.query(
+      `SELECT *
+       FROM blueprint_components
+       WHERE blueprint_id = ?
+       ORDER BY id ASC`,
+      [blueprintId],
+    );
+
+    const [orderItems] = await db.query(
+      `SELECT
+         oi.id,
+         oi.product_id,
+         oi.product_name,
+         oi.quantity,
+         oi.customization_json,
+         p.blueprint_id AS product_blueprint_id
+       FROM order_items oi
+       LEFT JOIN products p ON p.id = oi.product_id
+       WHERE oi.order_id = ?
+       ORDER BY oi.id ASC`,
+      [orderId],
+    );
+
+    const parseCustomization = (value) => {
+      if (!value) return null;
+      if (typeof value === "object" && !Buffer.isBuffer(value)) return value;
+
+      try {
+        return JSON.parse(String(value));
+      } catch {
+        return null;
+      }
+    };
+
+    const preparedItems = orderItems.map((item) => ({
+      item,
+      customization: parseCustomization(item.customization_json),
+    }));
+
+    const hasSnapshot = ({ customization }) =>
+      Array.isArray(customization?.editor_snapshot?.components) &&
+      customization.editor_snapshot.components.length > 0;
+
+    const exactCandidates = preparedItems.filter(({ item, customization }) => {
+      if (!hasSnapshot({ customization })) return false;
+
+      const savedBlueprintId = Number(customization?.blueprint_id || 0);
+      const productBlueprintId = Number(item?.product_blueprint_id || 0);
+
+      return (
+        savedBlueprintId === blueprintId ||
+        productBlueprintId === blueprintId
+      );
+    });
+
+    const fallbackCandidates = preparedItems.filter(hasSnapshot);
+    const candidates =
+      exactCandidates.length > 0
+        ? exactCandidates
+        : fallbackCandidates.length === 1
+          ? fallbackCandidates
+          : [];
+
+    const snapshotSignature = ({ customization }) =>
+      JSON.stringify({
+        components: customization?.editor_snapshot?.components || [],
+        width:
+          customization?.width ??
+          customization?.width_mm ??
+          customization?.customization_snapshot?.width ??
+          customization?.customization_snapshot?.width_mm ??
+          null,
+        height:
+          customization?.height ??
+          customization?.height_mm ??
+          customization?.customization_snapshot?.height ??
+          customization?.customization_snapshot?.height_mm ??
+          null,
+        depth:
+          customization?.depth ??
+          customization?.depth_mm ??
+          customization?.customization_snapshot?.depth ??
+          customization?.customization_snapshot?.depth_mm ??
+          null,
+        wood_type:
+          customization?.wood_type ??
+          customization?.customization_snapshot?.wood_type ??
+          null,
+        finish_color:
+          customization?.finish_color ??
+          customization?.customization_snapshot?.finish_color ??
+          null,
+        color:
+          customization?.color ??
+          customization?.customization_snapshot?.color ??
+          null,
+        hardware:
+          customization?.hardware ??
+          customization?.customization_snapshot?.hardware ??
+          null,
+      });
+
+    if (candidates.length > 1) {
+      const signatures = new Set(candidates.map(snapshotSignature));
+
+      if (signatures.size > 1) {
+        return res.status(409).json({
+          message:
+            "This production order contains multiple different customized items for the same Blueprint. Ask an administrator to identify the exact production item.",
+        });
+      }
+    }
+
+    const selected = candidates[0] || null;
+
+    let productionBlueprint = {
+      ...blueprintRows[0],
+      components,
+    };
+    let designSource = "approved_blueprint";
+    let selectedOrderItem = null;
+
+    if (selected) {
+      const customization = selected.customization;
+      const editorSnapshot = customization.editor_snapshot;
+      const customComponents = editorSnapshot.components;
+      const customizationSnapshot =
+        customization.customization_snapshot &&
+        typeof customization.customization_snapshot === "object"
+          ? customization.customization_snapshot
+          : {};
+
+      const firstPart = customComponents[0] || {};
+      const material = String(
+        customization.wood_type ||
+          customizationSnapshot.wood_type ||
+          firstPart.material ||
+          firstPart.wood_type ||
+          "",
+      ).trim();
+      const hardware = String(
+        customization.hardware ||
+          customizationSnapshot.hardware ||
+          firstPart.hardware ||
+          "",
+      ).trim();
+      const doorStyle = String(
+        customization.door_style ||
+          customizationSnapshot.door_style ||
+          "",
+      ).trim();
+
+      const positiveNumber = (...values) => {
+        for (const value of values) {
+          const number = Number(value);
+          if (Number.isFinite(number) && number > 0) return number;
+        }
+        return 0;
+      };
+
+      const widthMm = positiveNumber(
+        customization.width,
+        customization.width_mm,
+        customizationSnapshot.width,
+        customizationSnapshot.width_mm,
+      );
+      const heightMm = positiveNumber(
+        customization.height,
+        customization.height_mm,
+        customizationSnapshot.height,
+        customizationSnapshot.height_mm,
+      );
+      const depthMm = positiveNumber(
+        customization.depth,
+        customization.depth_mm,
+        customizationSnapshot.depth,
+        customizationSnapshot.depth_mm,
+      );
+
+      const defaultDimensions = {};
+      if (widthMm > 0) defaultDimensions.width_mm = widthMm;
+      if (heightMm > 0) defaultDimensions.height_mm = heightMm;
+      if (depthMm > 0) defaultDimensions.depth_mm = depthMm;
+
+      const productionDesignData = {
+        ...editorSnapshot,
+        components: customComponents,
+        ...(material ? { woodType: material } : {}),
+        ...(hardware ? { hardware } : {}),
+        ...(Object.keys(defaultDimensions).length
+          ? {
+              customerCustomization: {
+                ...(editorSnapshot.customerCustomization || {}),
+                default_dimensions: defaultDimensions,
+              },
+            }
+          : {}),
+      };
+
+      productionBlueprint = {
+        ...productionBlueprint,
+        title: selected.item.product_name || productionBlueprint.title,
+        design_data: JSON.stringify(productionDesignData),
+        view_3d_data: JSON.stringify(productionDesignData),
+        components: customComponents,
+        ...(Object.keys(defaultDimensions).length
+          ? { default_dimensions: defaultDimensions }
+          : {}),
+        ...(material ? { primary_material: material, wood_type: material } : {}),
+        ...(hardware ? { hardware } : {}),
+        ...(doorStyle ? { door_style: doorStyle } : {}),
+      };
+
+      selectedOrderItem = {
+        id: selected.item.id,
+        product_id: selected.item.product_id,
+        product_name: selected.item.product_name,
+        quantity: selected.item.quantity,
+      };
+      designSource = "order_customization";
+    }
+
+    return res.json({
+      order: {
+        id: orderId,
+        order_number: assignment.order_number,
+        status: assignment.order_status,
+      },
+      order_item: selectedOrderItem,
+      design_source: designSource,
+      blueprint: productionBlueprint,
+    });
+  } catch (err) {
+    console.error("[pos.tasks GET /orders/:orderId/blueprint]", err);
+    return res.status(500).json({
+      message: "Failed to load the production Blueprint.",
+    });
+  }
+};
+
 /* ── Create/Assign Task ── */
 exports.createTask = async (req, res) => {
   return res.status(400).json({

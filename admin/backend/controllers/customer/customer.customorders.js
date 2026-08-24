@@ -214,6 +214,9 @@ const sanitizeEditorSnapshotForStorage = (snapshot = null) => {
         id: comp?.id || null,
         type: comp?.type || null,
         label: comp?.label || null,
+        category: toTrimmedStringOrNull(comp?.category),
+        partCode: toTrimmedStringOrNull(comp?.partCode),
+
         x: Number(comp?.x || 0) || 0,
         y: Number(comp?.y || 0) || 0,
         z: Number(comp?.z || 0) || 0,
@@ -223,9 +226,40 @@ const sanitizeEditorSnapshotForStorage = (snapshot = null) => {
         rotationX: Number(comp?.rotationX || 0) || 0,
         rotationY: Number(comp?.rotationY || 0) || 0,
         rotationZ: Number(comp?.rotationZ || 0) || 0,
+
         material: toTrimmedStringOrNull(comp?.material),
+        wood_type: toTrimmedStringOrNull(comp?.wood_type),
         finish: toTrimmedStringOrNull(comp?.finish),
+        finish_id: toTrimmedStringOrNull(comp?.finish_id),
+        woodFinish: toTrimmedStringOrNull(comp?.woodFinish),
         fill: toTrimmedStringOrNull(comp?.fill),
+        color: toTrimmedStringOrNull(comp?.color),
+        finish_color: toTrimmedStringOrNull(comp?.finish_color),
+        color_mode: toTrimmedStringOrNull(comp?.color_mode),
+
+        // Exact visual production metadata that CustomerTemplateWorkbench has
+        // already normalized before the customer submits the design.
+        grainDirection: toTrimmedStringOrNull(comp?.grainDirection),
+
+        // Visual-only moving-part metadata. Keeping these values means future
+        // Staff production previews use the exact same door/drawer grouping
+        // the customer saw without changing any saved geometry.
+        partFunction: toTrimmedStringOrNull(comp?.partFunction),
+        doorHinge: toTrimmedStringOrNull(comp?.doorHinge),
+        motionGroupId: toTrimmedStringOrNull(comp?.motionGroupId),
+        motionReferencePartId: toTrimmedStringOrNull(
+          comp?.motionReferencePartId,
+        ),
+
+        groupId: toTrimmedStringOrNull(comp?.groupId),
+        groupLabel: toTrimmedStringOrNull(comp?.groupLabel),
+        groupType: toTrimmedStringOrNull(comp?.groupType),
+        assemblyId: toTrimmedStringOrNull(comp?.assemblyId),
+        assemblyName: toTrimmedStringOrNull(comp?.assemblyName),
+        assemblyType: toTrimmedStringOrNull(comp?.assemblyType),
+        parentPartId: toTrimmedStringOrNull(comp?.parentPartId),
+        partRole: toTrimmedStringOrNull(comp?.partRole),
+
         qty: Math.max(1, Number(comp?.qty || 1)),
         locked: Boolean(comp?.locked),
         blueprintStyle: toTrimmedStringOrNull(comp?.blueprintStyle),

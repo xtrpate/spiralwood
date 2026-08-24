@@ -1,0 +1,493 @@
+.production-blueprint-page {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 0 32px;
+  color: #18181b;
+}
+
+.production-blueprint-topbar {
+  min-height: 40px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.production-blueprint-back {
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid #18181b;
+  border-radius: 0;
+  background: #ffffff;
+  color: #18181b;
+  font-size: 10.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.production-blueprint-back:hover { background: #f4f4f5; }
+
+.production-blueprint-readonly {
+  min-height: 25px;
+  padding: 4px 9px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #18181b;
+  background: #18181b;
+  color: #ffffff;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.production-blueprint-document {
+  width: 100%;
+  border: 1px solid #dcdde1;
+  background: #ffffff;
+}
+
+.production-blueprint-header {
+  padding: 15px 17px 13px;
+  border-bottom: 1px solid #dcdde1;
+}
+
+.production-blueprint-header h1 {
+  margin: 0;
+  color: #111111;
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.production-blueprint-header p {
+  margin: 6px 0 0;
+  color: #6e6f74;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.production-blueprint-summarybar {
+  min-height: 56px;
+  padding: 9px 13px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid #dcdde1;
+}
+
+.production-blueprint-summarybar > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.production-blueprint-summarybar > div > span {
+  color: #77787e;
+  font-size: 8.5px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.production-blueprint-summarybar strong {
+  color: #18181b;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.production-blueprint-source {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 1px solid #dedee2;
+  background: #fafafa;
+  color: #67686d;
+  font-size: 8.5px;
+  font-weight: 650;
+}
+
+.production-blueprint-source-order {
+  border-color: #18181b;
+  background: #18181b;
+  color: #ffffff;
+}
+
+.production-blueprint-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+}
+
+.production-blueprint-view-section {
+  min-width: 0;
+  border-right: 1px solid #dcdde1;
+}
+
+.production-blueprint-details {
+  min-width: 0;
+  padding: 16px;
+}
+
+.production-blueprint-section-head { margin-bottom: 10px; }
+.production-blueprint-section-head h2,
+.production-blueprint-parts-head h2 {
+  margin: 0;
+  color: #18181b;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.production-blueprint-section-head p,
+.production-blueprint-parts-head p {
+  margin: 4px 0 0;
+  color: #7b7c81;
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+
+.production-blueprint-detail-block {
+  display: grid;
+  border-top: 1px solid #e2e2e5;
+}
+
+.production-blueprint-detail-block + .production-blueprint-detail-block {
+  margin-top: 17px;
+}
+
+.production-blueprint-detail-block h3 {
+  margin: 0;
+  padding: 10px 0 7px;
+  color: #303036;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.production-blueprint-detail-row {
+  min-height: 41px;
+  padding: 8px 0;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(92px, 0.9fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid #e7e7ea;
+}
+
+.production-blueprint-detail-row > span {
+  color: #77787e;
+  font-size: 9.5px;
+}
+
+.production-blueprint-detail-row strong {
+  color: #202024;
+  font-size: 10.5px;
+  font-weight: 650;
+  line-height: 1.4;
+  text-align: right;
+  word-break: break-word;
+}
+
+.production-blueprint-finish-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.production-blueprint-finish-swatch {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  border: 1px solid #cfd0d4;
+}
+
+.production-blueprint-note,
+.production-blueprint-order-note {
+  margin-top: 14px;
+  padding: 10px 11px;
+  border: 1px solid #dfdfe3;
+  background: #fafafa;
+  color: #68696f;
+  font-size: 9.5px;
+  line-height: 1.5;
+}
+
+.production-blueprint-order-note {
+  border-color: #cfcfd4;
+  background: #f4f4f5;
+  color: #3f3f46;
+}
+
+.staff-prod-viewer {
+  min-height: 590px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f7f5f1;
+}
+
+.staff-prod-viewer-toolbar {
+  min-height: 48px;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #dcdde1;
+  background: #ffffff;
+  overflow-x: auto;
+}
+
+.staff-prod-viewer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  white-space: nowrap;
+}
+
+.staff-prod-viewer-actions button {
+  min-width: 52px;
+  min-height: 34px;
+  margin-left: -1px;
+  padding: 6px 11px;
+  border: 1px solid #d4d5d9;
+  border-radius: 0;
+  background: #ffffff;
+  color: #303036;
+  font-size: 9.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.staff-prod-viewer-actions button:first-child { margin-left: 0; }
+.staff-prod-viewer-actions button.active {
+  position: relative;
+  z-index: 1;
+  border-color: #18181b;
+  background: #18181b;
+  color: #ffffff;
+}
+
+.staff-prod-motion-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.staff-prod-motion-actions button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid #18181b;
+  border-radius: 0;
+  background: #ffffff;
+  color: #18181b;
+  font-size: 9px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.staff-prod-motion-actions button:hover,
+.staff-prod-motion-actions button.active {
+  background: #18181b;
+  color: #ffffff;
+}
+
+.staff-prod-viewer-stage {
+  position: relative;
+  flex: 1;
+  min-height: 510px;
+  background: #f7f5f1;
+}
+
+.staff-prod-viewer-canvas {
+  width: 100%;
+  height: 520px;
+}
+
+.staff-prod-viewer-help {
+  padding: 8px 11px;
+  border-top: 1px solid #dcdde1;
+  background: #ffffff;
+  color: #77787e;
+  font-size: 9px;
+}
+
+.staff-prod-viewer-compact {
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  background: #f7f5f1;
+}
+
+.staff-prod-viewer-compact .staff-prod-viewer-canvas {
+  height: 100%;
+}
+
+.staff-prod-viewer-empty {
+  min-height: 590px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 24px;
+  text-align: center;
+}
+
+.staff-prod-viewer-empty strong {
+  color: #29292d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.staff-prod-viewer-empty span {
+  max-width: 420px;
+  color: #77787e;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.staff-prod-viewer-empty button {
+  margin-top: 5px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid #18181b;
+  border-radius: 0;
+  background: #18181b;
+  color: #ffffff;
+  font-size: 9.5px;
+  cursor: pointer;
+}
+
+.production-blueprint-parts {
+  padding: 14px;
+  border-top: 1px solid #dcdde1;
+}
+
+.production-blueprint-parts-head {
+  margin-bottom: 11px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.production-blueprint-parts-head > span {
+  color: #77787e;
+  font-size: 9.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.production-blueprint-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e2e2e5;
+}
+
+.production-blueprint-table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+  background: #ffffff;
+}
+
+.production-blueprint-table th,
+.production-blueprint-table td {
+  padding: 10px 11px;
+  border-bottom: 1px solid #e7e7ea;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.production-blueprint-table th {
+  background: #fafafa;
+  color: #6e6f74;
+  font-size: 8.5px;
+  font-weight: 750;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.production-blueprint-table td {
+  color: #333338;
+  font-size: 10px;
+  font-weight: 450;
+}
+
+.production-blueprint-table tbody tr:last-child td { border-bottom: 0; }
+.production-blueprint-table td:first-child {
+  color: #18181b;
+  font-weight: 650;
+}
+
+.production-blueprint-table td .production-blueprint-finish-value {
+  justify-content: flex-start;
+}
+
+.production-blueprint-empty-parts {
+  padding: 28px 14px;
+  border: 1px solid #e2e2e5;
+  color: #77787e;
+  text-align: center;
+  font-size: 10.5px;
+}
+
+.production-blueprint-state {
+  min-height: 220px;
+  padding: 34px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #dcdde1;
+  background: #ffffff;
+  text-align: center;
+}
+
+.production-blueprint-state strong {
+  color: #18181b;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.production-blueprint-state span {
+  max-width: 520px;
+  color: #77787e;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1050px) {
+  .production-blueprint-layout { grid-template-columns: 1fr; }
+  .production-blueprint-view-section {
+    border-right: 0;
+    border-bottom: 1px solid #dcdde1;
+  }
+}
+
+@media (max-width: 640px) {
+  .production-blueprint-topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .production-blueprint-readonly { align-self: flex-start; }
+  .production-blueprint-header { padding: 13px; }
+  .production-blueprint-header h1 { font-size: 19px; }
+  .production-blueprint-summarybar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .production-blueprint-details,
+  .production-blueprint-parts { padding: 11px; }
+  .staff-prod-viewer-canvas { height: 430px; }
+  .staff-prod-viewer-stage { min-height: 430px; }
+}
