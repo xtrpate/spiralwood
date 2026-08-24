@@ -17,7 +17,10 @@ const PAYMENT_SETTING_KEYS = [
   "cop_enabled",
 ];
 const MESSAGE_SETTING_KEYS = ["email_footer", "checkout_note"];
-const POLICY_SETTING_KEYS = ["warranty_period_days", "cancellation_fee_pct"];
+const POLICY_SETTING_KEYS = ["warranty_period_days"];
+const WARRANTY_POLICY_VERSION_KEY = "warranty_policy_version";
+const WARRANTY_POLICY_VERSION = "2";
+const DEFAULT_WARRANTY_PERIOD_DAYS = 365;
 const DELIVERY_SETTING_KEYS = [
   "standard_truck_limit_width_mm",
   "standard_truck_limit_height_mm",
@@ -61,7 +64,6 @@ const SETTING_KEY_GROUPS = {
   email_production_started: "email",
   email_out_for_delivery: "email",
   warranty_period_days: "policy",
-  cancellation_fee_pct: "policy",
   standard_truck_limit_width_mm: "delivery",
   standard_truck_limit_height_mm: "delivery",
   standard_truck_limit_depth_mm: "delivery",
@@ -87,9 +89,28 @@ exports.getSettings = async (req, res) => {
       [],
     );
     const grouped = rows.reduce((acc, r) => {
+      if (
+        r.setting_key === "cancellation_fee_pct" ||
+        r.setting_key === WARRANTY_POLICY_VERSION_KEY
+      ) {
+        return acc;
+      }
+
       (acc[r.group_name] = acc[r.group_name] || {})[r.setting_key] = r.value;
       return acc;
     }, {});
+
+    const warrantyVersion = rows.find(
+      (row) => row.setting_key === WARRANTY_POLICY_VERSION_KEY,
+    )?.value;
+
+    if (String(warrantyVersion || "") !== WARRANTY_POLICY_VERSION) {
+      grouped.policy = grouped.policy || {};
+      grouped.policy.warranty_period_days = String(
+        DEFAULT_WARRANTY_PERIOD_DAYS,
+      );
+    }
+
     res.json(grouped);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -127,6 +148,24 @@ exports.updateSettings = async (req, res) => {
         },
       ]),
     );
+
+    if (
+      Object.prototype.hasOwnProperty.call(req.body, "warranty_period_days")
+    ) {
+      const warrantyDays = Number(req.body.warranty_period_days);
+
+      if (
+        !Number.isInteger(warrantyDays) ||
+        warrantyDays < 1 ||
+        warrantyDays > 3650
+      ) {
+        const error = new Error(
+          "Warranty Period must be a whole number from 1 to 3650 days.",
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+    }
 
     const hasDeliveryLimitUpdate = DELIVERY_SETTING_KEYS.some((key) =>
       Object.prototype.hasOwnProperty.call(req.body, key),
@@ -187,6 +226,27 @@ exports.updateSettings = async (req, res) => {
            updated_by = VALUES(updated_by)`,
         [key, nextValue, groupName, parseInt(req.user.id)],
       );
+
+      if (key === "warranty_period_days") {
+        await conn.query(
+          `INSERT INTO website_content
+             (content_key, content_type, content, group_name, is_visible, updated_by)
+           VALUES
+             (?, 'setting', ?, 'policy', 0, ?)
+           ON DUPLICATE KEY UPDATE
+             content_type = 'setting',
+             content = VALUES(content),
+             group_name = 'policy',
+             is_visible = 0,
+             updated_by = VALUES(updated_by)`,
+          [
+            WARRANTY_POLICY_VERSION_KEY,
+            WARRANTY_POLICY_VERSION,
+            parseInt(req.user.id),
+          ],
+        );
+      }
+
       changedKeys.push(key);
     }
     if (req.file) {

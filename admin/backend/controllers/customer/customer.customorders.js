@@ -2016,7 +2016,7 @@ exports.rejectEstimation = async (req, res) => {
       transactionActive = false;
       return res.status(400).json({
         message:
-          "This order already has payment or contract activity. Please use the standard order cancellation/refund request instead of rejecting the quotation directly.",
+          "This order already has payment or contract activity. Please contact support about cancelling this order instead of rejecting the quotation directly.",
       });
     }
 
