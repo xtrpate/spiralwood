@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
-import CustomerTemplateWorkbench from "../customer/CustomerTemplateWorkbench";
+import AdminSubmittedDesignPreview from "./AdminSubmittedDesignPreview";
 import OrderDiscussionPanel from "./OrderDiscussionPanel";
 import "../../components/motion-feedback.css";
 
@@ -2780,7 +2780,13 @@ export default function OrderDetailPage() {
       {customRequestPreviewItem && customRequestPreviewBlueprint && (
         <div style={overlay} onClick={closeCustomRequestPreview}>
           <div
-            style={{ ...modalBox, width: 1100, maxWidth: "96vw" }}
+            style={{
+              ...modalBox,
+              width: 1480,
+              maxWidth: "96vw",
+              maxHeight: "92vh",
+              overflowY: "auto",
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={modalHeader}>
@@ -2791,15 +2797,16 @@ export default function OrderDetailPage() {
                     "Custom Furniture"}
                 </h3>
                 <p style={modalSubtitle}>
-                  Read-only preview of the exact submitted customer draft.
+                  Review the exact submitted design, movable parts, and measurements.
                 </p>
               </div>
             </div>
 
             <div style={{ paddingTop: 6 }}>
-              <CustomerTemplateWorkbench
+              <AdminSubmittedDesignPreview
                 blueprint={customRequestPreviewBlueprint}
-                readOnly
+                item={customRequestPreviewItem}
+                orderNumber={order?.order_number || ""}
               />
             </div>
 

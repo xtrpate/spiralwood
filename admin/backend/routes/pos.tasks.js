@@ -50,6 +50,11 @@ router.get("/staff", adminOnly, posTasksController.getStaff);
    PROJECT TASKS
 ══════════════════════════════════════════════════════════════ */
 router.get("/", indoorOnlyOrAdmin, posTasksController.getTasks);
+router.get(
+  "/orders/:orderId/blueprint",
+  indoorOnlyOrAdmin,
+  posTasksController.getAssignedOrderBlueprint,
+);
 router.post("/", adminOnly, posTasksController.createTask);
 
 router.put(

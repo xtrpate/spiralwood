@@ -17,6 +17,7 @@ import { SessionLoginFeedback } from "./components/MotionFeedbackOverlay";
 import TasksPage from "./pages/tasks/TasksPage";
 
 import MyTasks from "./pages/staff/MyTasks";
+import ProductionBlueprintView from "./pages/staff/ProductionBlueprintView";
 
 import AdminLayout from "./components/layout/AdminLayout";
 import DashboardPage from "./pages/dashboard/DashboardPage";
@@ -626,6 +627,15 @@ export default function App() {
                   element={
                     <RequireStaffType allowedTypes={["indoor"]}>
                       <MyTasks />
+                    </RequireStaffType>
+                  }
+                />
+
+                <Route
+                  path="tasks/:orderId/blueprint"
+                  element={
+                    <RequireStaffType allowedTypes={["indoor"]}>
+                      <ProductionBlueprintView />
                     </RequireStaffType>
                   }
                 />

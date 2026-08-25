@@ -1023,22 +1023,7 @@ export default function LandingPage() {
                       </article>
                     ) : null}
                   </div>
-
-                  <div className="wisdom-home-tutorial__card-nav" aria-label="Tutorial slide position">
-                    <div className="wisdom-home-tutorial__card-dots">
-                      {HERO_SHOWCASE_SLIDES.map((dotSlide, dotIndex) => (
-                        <button
-                          key={dotSlide.step}
-                          type="button"
-                          className={`wisdom-home-tutorial__card-dot${dotIndex === heroSlideIndex ? " is-active" : ""}`}
-                          onClick={() => goToHeroSlide(dotIndex)}
-                          aria-label={`Go to tutorial step ${dotIndex + 1}: ${dotSlide.label}`}
-                          aria-current={dotIndex === heroSlideIndex ? "step" : undefined}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
+</div>
               </>
             );
           })()}

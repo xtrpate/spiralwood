@@ -1,9 +1,11 @@
 // WISDOM INDOOR MY TASKS UI V1
 import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import api from "../../services/api";
 import useAuthStore from "../../store/authStore";
+import { extractCustomerBlueprintScene } from "../customer/customerBlueprintAdapter";
+import StaffProductionBlueprintViewer from "./StaffProductionBlueprintViewer";
 
 const REQUIRED_STEPS = [
   "Cutting Machine",
@@ -566,6 +568,11 @@ export default function MyTasks() {
 
                   {isExpanded ? (
                     <div style={expandedArea}>
+                      <ProductionBlueprintPanel
+                        orderId={order.orderId}
+                        orderNumber={order.orderNumber}
+                      />
+
                       {order.adminNote ? (
                         <div style={noteBox}>
                           <div style={noteLabel}>Admin Note</div>
@@ -760,6 +767,133 @@ export default function MyTasks() {
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function ProductionBlueprintPanel({ orderId, orderNumber }) {
+  const navigate = useNavigate();
+  const [record, setRecord] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    const numericOrderId = Number(orderId);
+
+    if (!Number.isInteger(numericOrderId) || numericOrderId <= 0) {
+      setRecord(null);
+      setError("No production Blueprint is linked to this work.");
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    setLoading(true);
+    setError("");
+
+    api
+      .get(`/tasks/orders/${numericOrderId}/blueprint`)
+      .then(({ data }) => {
+        if (!active) return;
+        setRecord(data || null);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setRecord(null);
+        setError(
+          err?.response?.data?.message ||
+            "Production Blueprint is not available.",
+        );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [orderId]);
+
+  const blueprint = record?.blueprint || null;
+  const scene = useMemo(
+    () => (blueprint ? extractCustomerBlueprintScene(blueprint) : null),
+    [blueprint],
+  );
+
+  const has3D =
+    Array.isArray(scene?.components) &&
+    scene.components.length > 0 &&
+    Number(scene?.bounds?.width || 0) > 20 &&
+    Number(scene?.bounds?.height || 0) > 20;
+
+  const dimensionText = scene
+    ? [
+        scene.defaultDimensions?.width_mm,
+        scene.defaultDimensions?.height_mm,
+        scene.defaultDimensions?.depth_mm,
+      ]
+        .map((value) => {
+          const number = Number(value);
+          return Number.isFinite(number) && number > 0
+            ? `${Math.round(number)} mm`
+            : "—";
+        })
+        .join(" × ")
+    : "";
+
+  return (
+    <div style={productionBlueprintPanel}>
+      <div style={productionBlueprintPreview}>
+        {loading ? (
+          <div style={productionPreviewState}>Loading design...</div>
+        ) : blueprint && has3D ? (
+          <StaffProductionBlueprintViewer
+            blueprint={blueprint}
+            compact
+            compactHeight={122}
+          />
+        ) : (
+          <div style={productionPreviewState}>
+            {blueprint ? "No 3D view available" : "Blueprint unavailable"}
+          </div>
+        )}
+      </div>
+
+      <div style={productionBlueprintContent}>
+        <div style={productionBlueprintKicker}>Production Blueprint</div>
+        <div style={productionBlueprintTitle}>
+          {loading
+            ? "Preparing furniture reference..."
+            : blueprint?.title || "Assigned production work"}
+        </div>
+
+        <div style={productionBlueprintCopy}>
+          {error
+            ? error
+            : blueprint
+              ? `Production design reference${orderNumber ? ` for ${orderNumber}` : ""}.`
+              : "No production Blueprint is linked to this work."}
+        </div>
+
+        {blueprint && dimensionText ? (
+          <div style={productionBlueprintDimensions}>{dimensionText}</div>
+        ) : null}
+
+        <span style={productionReadOnlyBadge}>Read Only</span>
+      </div>
+
+      <div style={productionBlueprintAction}>
+        <button
+          type="button"
+          onClick={() => navigate(`/staff/tasks/${Number(orderId)}/blueprint`)}
+          disabled={!blueprint}
+          style={blueprint ? productionOpenButton : productionOpenButtonDisabled}
+        >
+          View Blueprint
+        </button>
+      </div>
     </div>
   );
 }
@@ -1242,6 +1376,124 @@ const disabledButton = {
   ...baseActionButton,
   border: "1px solid #dedee2",
   background: "#f3f3f5",
+  color: "#a0a1a6",
+  cursor: "not-allowed",
+};
+
+
+const productionBlueprintPanel = {
+  marginTop: 14,
+  padding: 12,
+  display: "flex",
+  alignItems: "center",
+  gap: 14,
+  flexWrap: "wrap",
+  border: "1px solid #dcdde1",
+  borderRadius: 0,
+  background: "#fafafa",
+};
+
+const productionBlueprintPreview = {
+  width: 190,
+  height: 122,
+  flex: "0 0 190px",
+  overflow: "hidden",
+  border: "1px solid #dedee2",
+  borderRadius: 0,
+  background: "#f7f2ea",
+};
+
+const productionPreviewState = {
+  width: "100%",
+  height: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 12,
+  boxSizing: "border-box",
+  color: "#77787e",
+  fontSize: 9.5,
+  fontWeight: 550,
+  textAlign: "center",
+};
+
+const productionBlueprintContent = {
+  minWidth: 220,
+  flex: "1 1 280px",
+};
+
+const productionBlueprintKicker = {
+  marginBottom: 5,
+  color: "#77787e",
+  fontSize: 8.5,
+  fontWeight: 750,
+  letterSpacing: "0.075em",
+  textTransform: "uppercase",
+};
+
+const productionBlueprintTitle = {
+  color: "#18181b",
+  fontSize: 13,
+  fontWeight: 750,
+  lineHeight: 1.35,
+};
+
+const productionBlueprintCopy = {
+  marginTop: 5,
+  color: "#696a70",
+  fontSize: 10,
+  fontWeight: 400,
+  lineHeight: 1.5,
+};
+
+const productionBlueprintDimensions = {
+  marginTop: 7,
+  color: "#3f3f46",
+  fontSize: 9.5,
+  fontWeight: 650,
+};
+
+const productionReadOnlyBadge = {
+  minHeight: 22,
+  marginTop: 8,
+  padding: "3px 7px",
+  boxSizing: "border-box",
+  display: "inline-flex",
+  alignItems: "center",
+  border: "1px solid #d7d8dc",
+  borderRadius: 0,
+  background: "#ffffff",
+  color: "#55565b",
+  fontSize: 8.5,
+  fontWeight: 700,
+  letterSpacing: "0.055em",
+  textTransform: "uppercase",
+};
+
+const productionBlueprintAction = {
+  flex: "0 0 auto",
+  alignSelf: "stretch",
+  display: "flex",
+  alignItems: "center",
+};
+
+const productionOpenButton = {
+  minHeight: 34,
+  padding: "6px 12px",
+  border: "1px solid #18181b",
+  borderRadius: 0,
+  background: "#18181b",
+  color: "#ffffff",
+  fontSize: 10,
+  fontWeight: 650,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const productionOpenButtonDisabled = {
+  ...productionOpenButton,
+  borderColor: "#dedee2",
+  background: "#f0f0f2",
   color: "#a0a1a6",
   cursor: "not-allowed",
 };

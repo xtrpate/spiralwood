@@ -5,6 +5,44 @@ const { signUploadPath } = require("../../utils/signedUrl");
 const { createNotificationSafe } = require("../../utils/notificationHelper");
 const { writeAuditLogSafe } = require("../../middleware/auditLog");
 
+const WARRANTY_PERIOD_KEY = "warranty_period_days";
+const WARRANTY_POLICY_VERSION_KEY = "warranty_policy_version";
+const WARRANTY_POLICY_VERSION = "2";
+const DEFAULT_WARRANTY_PERIOD_DAYS = 365;
+
+const getWarrantyPeriodDays = async () => {
+  const [rows] = await db.query(
+    `SELECT content_key, content
+     FROM website_content
+     WHERE content_type = 'setting'
+       AND content_key IN (?, ?)`,
+    [WARRANTY_PERIOD_KEY, WARRANTY_POLICY_VERSION_KEY],
+  );
+
+  const values = new Map(
+    rows.map((row) => [String(row.content_key), row.content]),
+  );
+
+  if (
+    String(values.get(WARRANTY_POLICY_VERSION_KEY) || "") !==
+    WARRANTY_POLICY_VERSION
+  ) {
+    return DEFAULT_WARRANTY_PERIOD_DAYS;
+  }
+
+  const configuredDays = Number(values.get(WARRANTY_PERIOD_KEY));
+
+  if (
+    !Number.isInteger(configuredDays) ||
+    configuredDays < 1 ||
+    configuredDays > 3650
+  ) {
+    return DEFAULT_WARRANTY_PERIOD_DAYS;
+  }
+
+  return configuredDays;
+};
+
 /* ── Helper: split stored proof_url into separate frontend fields ── */
 const splitStoredProofs = (value) => {
   const parts = String(value || "")
@@ -23,6 +61,8 @@ const splitStoredProofs = (value) => {
 ──────────────────────────────────────────────────────────────────────────── */
 const getEligibleOrders = async (req, res) => {
   try {
+    const warrantyPeriodDays = await getWarrantyPeriodDays();
+
     const [rows] = await db.query(
       `
   SELECT
@@ -36,7 +76,7 @@ const getEligibleOrders = async (req, res) => {
       d.delivered_date,
       DATE_ADD(
           COALESCE(d.delivered_date, o.updated_at, o.created_at),
-          INTERVAL 1 YEAR
+          INTERVAL ? DAY
       ) AS warranty_expiry,
       oi.product_id,
       oi.product_name
@@ -54,12 +94,12 @@ const getEligibleOrders = async (req, res) => {
     AND o.payment_status = 'paid'
     AND DATE_ADD(
           COALESCE(d.delivered_date, o.updated_at, o.created_at),
-          INTERVAL 1 YEAR
+          INTERVAL ? DAY
         ) >= CURDATE()
     AND w.id IS NULL
   ORDER BY COALESCE(d.delivered_date, o.created_at) DESC
   `,
-      [req.user.id],
+      [warrantyPeriodDays, req.user.id, warrantyPeriodDays],
     );
 
     const grouped = [];
@@ -188,6 +228,8 @@ const submitClaim = async (req, res) => {
   const combinedUrls = [photo_url, proof_url].join(",");
 
   try {
+    const warrantyPeriodDays = await getWarrantyPeriodDays();
+
     let orderLookupSql = `
       SELECT
         o.id,
@@ -197,7 +239,7 @@ const submitClaim = async (req, res) => {
         o.payment_status,
         DATE_ADD(
           COALESCE(d.delivered_date, o.updated_at, o.created_at),
-          INTERVAL 1 YEAR
+          INTERVAL ? DAY
         ) AS warranty_expiry
       FROM orders o
       LEFT JOIN deliveries d
@@ -205,7 +247,7 @@ const submitClaim = async (req, res) => {
       WHERE o.customer_id = ?
     `;
 
-    const params = [req.user.id];
+    const params = [warrantyPeriodDays, req.user.id];
 
     if (String(order_id || "").trim()) {
       orderLookupSql += ` AND o.id = ?`;

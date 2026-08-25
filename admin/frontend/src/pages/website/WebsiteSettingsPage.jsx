@@ -40,7 +40,7 @@ const SECTION_META = {
   policy: {
     label: "Policies",
     icon: "📋",
-    description: "Warranty and cancellation settings.",
+    description: "Customer warranty settings.",
   },
   delivery: {
     label: "Truck Capacity",
@@ -230,18 +230,9 @@ const KEY_META = {
     type: "number",
     suffix: "days",
     min: 1,
+    max: 3650,
     step: 1,
-    hint: "Warranty period counted from order completion.",
-    width: "number",
-  },
-  cancellation_fee_pct: {
-    label: "Cancellation Fee",
-    type: "number",
-    suffix: "%",
-    min: 0,
-    max: 100,
-    step: 0.01,
-    hint: "Fee applied to eligible custom order cancellations after down payment.",
+    hint: "Warranty period counted from the delivery date.",
     width: "number",
   },
 
@@ -312,7 +303,7 @@ const TAB_KEYS = {
     "email_footer",
     "checkout_note",
   ],
-  policy: ["warranty_period_days", "cancellation_fee_pct"],
+  policy: ["warranty_period_days"],
   delivery: DELIVERY_LIMIT_KEYS,
 };
 
@@ -345,6 +336,15 @@ export default function WebsiteSettingsPage() {
           if (group && typeof group === "object") Object.assign(flat, group);
         });
 
+        const warrantyDays = Number(flat.warranty_period_days);
+        if (
+          !Number.isInteger(warrantyDays) ||
+          warrantyDays < 1 ||
+          warrantyDays > 3650
+        ) {
+          flat.warranty_period_days = "365";
+        }
+
         setSettings(flat);
         setPreview(getLogoUrl(flat.site_logo));
       } catch (error) {
@@ -373,6 +373,20 @@ export default function WebsiteSettingsPage() {
   };
 
   const validateSettings = () => {
+    if (Object.prototype.hasOwnProperty.call(dirty, "warranty_period_days")) {
+      const warrantyDays = Number(settings.warranty_period_days);
+
+      if (
+        !Number.isInteger(warrantyDays) ||
+        warrantyDays < 1 ||
+        warrantyDays > 3650
+      ) {
+        setActiveTab("policy");
+        toast.error("Enter a valid Warranty Period from 1 to 3650 days.");
+        return false;
+      }
+    }
+
     const deliveryChanged = DELIVERY_LIMIT_KEYS.some((key) =>
       Object.prototype.hasOwnProperty.call(dirty, key),
     );
