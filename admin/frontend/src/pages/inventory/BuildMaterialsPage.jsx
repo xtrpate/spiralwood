@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import api from "../../services/api";
+import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
 
 import "./BuildMaterialsPage.css";
@@ -12,33 +12,218 @@ export default function BuildMaterialsPage() {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
 
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
-  const [search, setSearch] = useState("");
-  const [stockFilter, setStockFilter] = useState("");
+  const [total, setTotal] = useState(0);
+  const [categories, setCategories] = useState([]);
+  const [selectedIds, setSelectedIds] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
+  const [filters, setFilters] = useState(() => {
+    const fromEdit = sessionStorage.getItem("wisdom_navigating_to_build_edit");
 
-    api
-      .get("/products", { params: { limit: 1000, search } })
-      .then((response) => {
-        if (!active) return;
-        const readyMadeProducts = (response.data.products || []).filter(
-          (product) =>
-            String(product.type || "standard").toLowerCase() !== "blueprint",
-        );
-        setProducts(readyMadeProducts);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    if (fromEdit === "true") {
+      try {
+        const saved = sessionStorage.getItem("wisdom_build_filters");
+        if (saved) return JSON.parse(saved);
+      } catch (err) {}
+    }
 
-    return () => {
-      active = false;
+    return {
+      search: "",
+      stockFilter: "",
+      categoryFilter: "",
+      visibilityFilter: "",
+      page: 1,
     };
-  }, [search]);
+  });
+
+  const [actionMenuId, setActionMenuId] = useState(null);
+  const [pendingArchive, setPendingArchive] = useState(null);
+  const [bulkArchiveModal, setBulkArchiveModal] = useState(false);
+  const [archiving, setArchiving] = useState(false);
+
+  const [pendingUnpublish, setPendingUnpublish] = useState(null);
+  const [unpublishing, setUnpublishing] = useState(false);
+
+  const [pendingPublish, setPendingPublish] = useState(null);
+  const [publishing, setPublishing] = useState(false);
+  const [bulkPublishModal, setBulkPublishModal] = useState(false);
+  const [bulkPublishing, setBulkPublishing] = useState(false);
+
+  useEffect(() => {
+    sessionStorage.removeItem("wisdom_navigating_to_build_edit");
+  }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem("wisdom_build_filters", JSON.stringify(filters));
+  }, [filters]);
+
+  const updateFilter = (key, value) => {
+    setFilters((current) => ({
+      ...current,
+      [key]: value,
+      page: 1,
+    }));
+  };
+
+  useEffect(() => {
+    api
+      .get("/products/categories")
+      .then((res) => {
+        setCategories(
+          Array.isArray(res.data?.categories) ? res.data.categories : [],
+        );
+      })
+      .catch(() => {});
+  }, []);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Logic for active vs published state
+      let isActive = "all";
+      let isPublished = undefined;
+
+      if (filters.visibilityFilter === "published") {
+        isPublished = 1;
+      }
+
+      if (filters.visibilityFilter === "unpublished") {
+        isPublished = 0;
+      }
+
+      if (filters.visibilityFilter === "archived") {
+        isActive = 0;
+      }
+
+      const response = await api.get("/products", {
+        params: {
+          limit: 20,
+          page: filters.page,
+          search: filters.search || undefined,
+          category_id: filters.categoryFilter || undefined,
+          status: filters.stockFilter || undefined,
+          is_published: isPublished,
+          type: "standard",
+          is_active: isActive,
+        },
+      });
+      setProducts(response.data.products || []);
+      setTotal(Number(response.data.total || 0));
+    } catch (err) {
+      toast.error("Failed to load materials.");
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    filters.page,
+    filters.search,
+    filters.categoryFilter,
+    filters.stockFilter,
+    filters.visibilityFilter,
+  ]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    if (actionMenuId == null) return undefined;
+    const closeMenu = () => setActionMenuId(null);
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") closeMenu();
+    };
+
+    document.addEventListener("click", closeMenu);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("click", closeMenu);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [actionMenuId]);
+
+  const confirmPublish = async () => {
+    if (!pendingPublish?.id) return;
+    setPublishing(true);
+    try {
+      await api.patch("/products/bulk-publish", {
+        ids: [pendingPublish.id],
+        is_published: true,
+      });
+      toast.success("Added to product page.");
+      setPendingPublish(null);
+      loadData();
+    } catch {
+      toast.error("Failed to add to product page.");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const confirmBulkPublish = async () => {
+    if (selectedIds.length === 0) return;
+    setBulkPublishing(true);
+    try {
+      await api.patch("/products/bulk-publish", {
+        ids: selectedIds,
+        is_published: true,
+      });
+      toast.success("Added to product page.");
+      setBulkPublishModal(false);
+      setSelectedIds([]);
+      loadData();
+    } catch {
+      toast.error("Failed to add to product page.");
+    } finally {
+      setBulkPublishing(false);
+    }
+  };
+
+  const confirmArchive = async () => {
+    if (!pendingArchive?.id) return;
+    setArchiving(true);
+    try {
+      await api.patch(`/products/${pendingArchive.id}/active`, {
+        is_active: false,
+      });
+      toast.success("Build material archived.");
+      setPendingArchive(null);
+      loadData();
+    } catch (err) {
+      toast.error("Failed to archive material.");
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  const confirmUnpublish = async () => {
+    if (!pendingUnpublish?.id) return;
+    setUnpublishing(true);
+    try {
+      await api.patch("/products/bulk-publish", {
+        ids: [pendingUnpublish.id],
+        is_published: false,
+      });
+      toast.success("Removed from product page.");
+      setPendingUnpublish(null);
+      loadData();
+    } catch (err) {
+      toast.error("Failed to remove from product page.");
+    } finally {
+      setUnpublishing(false);
+    }
+  };
+
+  const handleRestore = async (id) => {
+    try {
+      await api.patch(`/products/${id}/active`, { is_active: true });
+      toast.success("Build material restored.");
+      loadData();
+    } catch {
+      toast.error("Failed to restore material.");
+    }
+  };
 
   const formatMoney = (value) => {
     const amount = Number(value);
@@ -69,9 +254,54 @@ export default function BuildMaterialsPage() {
     return { key: "in_stock", label: "In stock", tone: "neutral" };
   };
 
-  const visibleProducts = products.filter((product) =>
-    stockFilter ? getStatus(product).key === stockFilter : true,
-  );
+  const totalPages = Math.max(1, Math.ceil(total / 20));
+
+  // Bulk Actions
+  const handleSelectAll = (event) => {
+    setSelectedIds(event.target.checked ? products.map((p) => p.id) : []);
+  };
+
+  const handleSelectOne = (id, checked) => {
+    setSelectedIds((current) =>
+      checked ? [...current, id] : current.filter((sid) => sid !== id),
+    );
+  };
+
+  const handleBulkPublish = async (isPublished) => {
+    if (selectedIds.length === 0) return;
+    try {
+      await api.patch("/products/bulk-publish", {
+        ids: selectedIds,
+        is_published: isPublished,
+      });
+      toast.success(
+        isPublished ? "Added to product page." : "Removed from product page.",
+      );
+      loadData();
+    } catch {
+      toast.error("Failed to update status.");
+    }
+  };
+
+  const confirmBulkArchive = async () => {
+    if (selectedIds.length === 0) return;
+    setArchiving(true);
+    try {
+      await Promise.all(
+        selectedIds.map((id) =>
+          api.patch(`/products/${id}/active`, { is_active: false }),
+        ),
+      );
+      toast.success("Selected materials archived.");
+      setBulkArchiveModal(false);
+      setSelectedIds([]);
+      loadData();
+    } catch {
+      toast.error("Failed to archive some materials.");
+    } finally {
+      setArchiving(false);
+    }
+  };
 
   return (
     <div className="build-materials-admin">
@@ -83,6 +313,13 @@ export default function BuildMaterialsPage() {
             product cost, profit, and stock level.
           </p>
         </div>
+        <button
+          type="button"
+          className="build-materials-primary-button"
+          onClick={() => navigate("/admin/inventory/build/new")}
+        >
+          + Add item
+        </button>
       </div>
 
       <div className="build-materials-toolbar">
@@ -93,16 +330,35 @@ export default function BuildMaterialsPage() {
               id="build-material-search"
               type="search"
               placeholder="Search by product name"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              value={filters.search}
+              onChange={(event) => updateFilter("search", event.target.value)}
             />
+          </div>
+          <div className="build-materials-filter-field">
+            <label htmlFor="build-material-category-filter">Category</label>
+            <select
+              id="build-material-category-filter"
+              value={filters.categoryFilter}
+              onChange={(event) =>
+                updateFilter("categoryFilter", event.target.value)
+              }
+            >
+              <option value="">All categories</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="build-materials-filter-field">
             <label htmlFor="build-material-stock-filter">Stock level</label>
             <select
               id="build-material-stock-filter"
-              value={stockFilter}
-              onChange={(event) => setStockFilter(event.target.value)}
+              value={filters.stockFilter}
+              onChange={(event) =>
+                updateFilter("stockFilter", event.target.value)
+              }
             >
               <option value="">All stock levels</option>
               <option value="in_stock">In stock</option>
@@ -110,13 +366,80 @@ export default function BuildMaterialsPage() {
               <option value="out_of_stock">Out of stock</option>
             </select>
           </div>
+          <div className="build-materials-filter-field">
+            <label htmlFor="build-material-visibility-filter">Visibility</label>
+            <select
+              id="build-material-visibility-filter"
+              value={filters.visibilityFilter}
+              onChange={(event) =>
+                updateFilter("visibilityFilter", event.target.value)
+              }
+            >
+              <option value="">All products</option>
+              <option value="published">Published</option>
+              <option value="unpublished">Unpublished</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
         </div>
-        <div className="build-materials-count">
-          {loading
-            ? "Loading products..."
-            : `${visibleProducts.length.toLocaleString("en-PH")} ready-made product${
-                visibleProducts.length === 1 ? "" : "s"
-              } shown`}
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+            flexWrap: "wrap",
+            marginTop: 14,
+          }}
+        >
+          {selectedIds.length > 0 ? (
+            <div style={bulkActionsStyle}>
+              <span style={selectedCountStyle}>
+                {selectedIds.length} selected
+              </span>
+              <button
+                type="button"
+                onClick={() => setBulkPublishModal(true)}
+                style={btnPrimarySmall}
+              >
+                Add to product page
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBulkPublish(false)}
+                style={btnSecondarySmall}
+              >
+                Remove from product page
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const hasPublished = products.some(
+                    (p) =>
+                      selectedIds.includes(p.id) &&
+                      Number(p.is_published) === 1,
+                  );
+                  if (hasPublished) {
+                    toast.error(
+                      "Please unpublish the selected products from the product page before you can archive them.",
+                    );
+                  } else {
+                    setBulkArchiveModal(true);
+                  }
+                }}
+                style={btnDangerSmall}
+              >
+                Archive
+              </button>
+            </div>
+          ) : null}
+          <div className="build-materials-count">
+            {loading
+              ? "Loading products..."
+              : `${total.toLocaleString("en-PH")} product${
+                  total === 1 ? "" : "s"
+                } shown`}
+          </div>
         </div>
       </div>
 
@@ -126,6 +449,18 @@ export default function BuildMaterialsPage() {
             <table>
               <thead>
                 <tr>
+                  <th style={{ textAlign: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={
+                        products.length > 0 &&
+                        selectedIds.length === products.length
+                      }
+                      onChange={handleSelectAll}
+                      style={checkboxStyle}
+                    />
+                  </th>
+                  <th>Image</th>
                   <th>Product</th>
                   <th>Walk-in Price</th>
                   <th>Product Cost</th>
@@ -133,17 +468,18 @@ export default function BuildMaterialsPage() {
                   <th>Available Stock</th>
                   <th>Reorder Point</th>
                   <th>Status</th>
+                  <th style={{ textAlign: "center" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {!loading && visibleProducts.length === 0 ? (
+                {!loading && products.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="build-materials-empty">
+                    <td colSpan="10" className="build-materials-empty">
                       No ready-made products match the selected filters.
                     </td>
                   </tr>
                 ) : (
-                  visibleProducts.map((product) => {
+                  products.map((product) => {
                     const sellingPrice = Number(product.walkin_price || 0);
                     const productCost = Number(product.production_cost || 0);
                     const storedProfit = Number(product.profit_margin);
@@ -162,13 +498,74 @@ export default function BuildMaterialsPage() {
                         ? (profit / sellingPrice) * 100
                         : null;
                     const status = getStatus(product);
+                    const isActive = Number(product.is_active) !== 0;
 
                     return (
-                      <tr key={product.id}>
+                      <tr
+                        key={product.id}
+                        style={{
+                          position: "relative",
+                          zIndex: actionMenuId === product.id ? 50 : 0,
+                          background: selectedIds.includes(product.id)
+                            ? "#fafafa"
+                            : "#ffffff",
+                          opacity: isActive ? 1 : 0.6,
+                        }}
+                      >
+                        <td style={{ textAlign: "center" }}>
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(product.id)}
+                            onChange={(event) =>
+                              handleSelectOne(product.id, event.target.checked)
+                            }
+                            style={checkboxStyle}
+                          />
+                        </td>
+                        <td>
+                          {product.image_url ? (
+                            <img
+                              src={buildAssetUrl(product.image_url)}
+                              alt=""
+                              style={productImageStyle}
+                            />
+                          ) : (
+                            <div style={imagePlaceholderStyle}>—</div>
+                          )}
+                        </td>
                         <td>
                           <div className="build-materials-product-name">
                             {product.name}
                           </div>
+                          {!isActive && (
+                            <div
+                              style={{
+                                fontSize: 10,
+                                color: "#71717a",
+                                fontWeight: 500,
+                                marginTop: 2,
+                              }}
+                            >
+                              Archived
+                            </div>
+                          )}
+                          {isActive && (
+                            <span
+                              style={{
+                                fontSize: 10,
+                                color:
+                                  Number(product.is_published) === 1
+                                    ? "#166534"
+                                    : "#71717a",
+                                fontWeight: 500,
+                              }}
+                            >
+                              ●{" "}
+                              {Number(product.is_published) === 1
+                                ? "Published"
+                                : "Unpublished"}
+                            </span>
+                          )}
                         </td>
                         <td>
                           {hasSellingPrice ? (
@@ -176,14 +573,18 @@ export default function BuildMaterialsPage() {
                               {formatMoney(sellingPrice)}
                             </span>
                           ) : (
-                            <span className="build-materials-muted">Not set</span>
+                            <span className="build-materials-muted">
+                              Not set
+                            </span>
                           )}
                         </td>
                         <td>
                           {hasProductCost ? (
                             formatMoney(productCost)
                           ) : (
-                            <span className="build-materials-muted">Not set</span>
+                            <span className="build-materials-muted">
+                              Not set
+                            </span>
                           )}
                         </td>
                         <td>
@@ -217,6 +618,114 @@ export default function BuildMaterialsPage() {
                             {status.label}
                           </span>
                         </td>
+
+                        <td
+                          style={{ position: "relative", overflow: "visible" }}
+                        >
+                          <div style={rowActions}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                sessionStorage.setItem(
+                                  "wisdom_navigating_to_build_edit",
+                                  "true",
+                                );
+                                navigate(
+                                  `/admin/inventory/build/${product.id}/edit`,
+                                );
+                              }}
+                              style={btnEditAction}
+                            >
+                              Edit
+                            </button>
+
+                            <div
+                              style={moreWrap}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                style={btnMore}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActionMenuId((current) =>
+                                    current === product.id ? null : product.id,
+                                  );
+                                }}
+                              >
+                                ⋯
+                              </button>
+
+                              {actionMenuId === product.id && (
+                                <div role="menu" style={moreMenu}>
+                                  {!isActive ? (
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      style={menuItem}
+                                      onClick={() => {
+                                        setActionMenuId(null);
+                                        handleRestore(product.id);
+                                      }}
+                                    >
+                                      Restore material
+                                    </button>
+                                  ) : (
+                                    <>
+                                      {Number(product.is_published) === 1 ? (
+                                        <button
+                                          type="button"
+                                          role="menuitem"
+                                          style={menuItem}
+                                          onClick={() => {
+                                            setActionMenuId(null);
+                                            setPendingUnpublish(product);
+                                          }}
+                                        >
+                                          Remove from product page
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          role="menuitem"
+                                          style={menuItem}
+                                          onClick={() => {
+                                            setActionMenuId(null);
+                                            setPendingPublish(product);
+                                          }}
+                                        >
+                                          Add to product page
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        style={{
+                                          ...menuItem,
+                                          color: "#b42318",
+                                        }}
+                                        onClick={() => {
+                                          setActionMenuId(null);
+                                          if (
+                                            Number(product.is_published) === 1
+                                          ) {
+                                            toast.error(
+                                              "Please remove the product from the product page first before you can archive it.",
+                                            );
+                                          } else {
+                                            setPendingArchive(product);
+                                          }
+                                        }}
+                                      >
+                                        Archive
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })
@@ -224,8 +733,206 @@ export default function BuildMaterialsPage() {
               </tbody>
             </table>
           </div>
+          {total > 20 && (
+            <div style={paginationFooter}>
+              <span style={paginationText}>
+                Showing {(filters.page - 1) * 20 + 1} to{" "}
+                {Math.min(filters.page * 20, total)} of {total}
+              </span>
+              <div style={paginationControls}>
+                <button
+                  type="button"
+                  disabled={filters.page <= 1}
+                  onClick={() =>
+                    setFilters((p) => ({ ...p, page: p.page - 1 }))
+                  }
+                  style={{
+                    ...pageButton,
+                    opacity: filters.page <= 1 ? 0.4 : 1,
+                  }}
+                >
+                  Prev
+                </button>
+                <span style={pageText}>
+                  {filters.page} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={filters.page >= totalPages}
+                  onClick={() =>
+                    setFilters((p) => ({ ...p, page: p.page + 1 }))
+                  }
+                  style={{
+                    ...pageButton,
+                    opacity: filters.page >= totalPages ? 0.4 : 1,
+                  }}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {bulkPublishModal && (
+        <div style={modalBackdrop}>
+          <div role="dialog" aria-modal="true" style={dialog}>
+            <div style={dialogEyebrow}>Bulk Action</div>
+            <h2 style={dialogTitle}>Publish {selectedIds.length} Materials?</h2>
+            <p style={dialogText}>
+              Do you want to continue? This action will publish the selected
+              products and will be shown on the front store.
+            </p>
+            <div style={dialogActions}>
+              <button
+                type="button"
+                onClick={() => setBulkPublishModal(false)}
+                style={btnSecondaryModal}
+                disabled={bulkPublishing}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmBulkPublish}
+                style={btnPrimaryModal}
+                disabled={bulkPublishing}
+              >
+                {bulkPublishing ? "Publishing..." : "Add to product page"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingPublish && (
+        <div style={modalBackdrop}>
+          <div role="dialog" aria-modal="true" style={dialog}>
+            <div style={dialogEyebrow}>Publish Product</div>
+            <h2 style={dialogTitle}>Publish "{pendingPublish.name}"?</h2>
+            <p style={dialogText}>
+              Do you want to continue? This action will publish the product and
+              will be shown on the front store.
+            </p>
+
+            <div style={dialogActions}>
+              <button
+                type="button"
+                onClick={() => setPendingPublish(null)}
+                style={btnSecondaryModal}
+                disabled={publishing}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmPublish}
+                style={btnPrimaryModal}
+                disabled={publishing}
+              >
+                {publishing ? "Publishing..." : "Add to product page"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {bulkArchiveModal && (
+        <div style={modalBackdrop}>
+          <div role="dialog" aria-modal="true" style={dialog}>
+            <div style={dialogEyebrow}>Bulk Action</div>
+            <h2 style={dialogTitle}>Archive {selectedIds.length} Materials?</h2>
+            <p style={dialogText}>
+              This will remove the selected items from your active Build
+              Materials inventory.
+            </p>
+            <div style={dialogActions}>
+              <button
+                type="button"
+                onClick={() => setBulkArchiveModal(false)}
+                style={btnSecondaryModal}
+                disabled={archiving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmBulkArchive}
+                style={btnDanger}
+                disabled={archiving}
+              >
+                {archiving ? "Archiving..." : "Archive materials"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingUnpublish && (
+        <div style={modalBackdrop}>
+          <div role="dialog" aria-modal="true" style={dialog}>
+            <div style={dialogEyebrow}>Remove Product</div>
+            <h2 style={dialogTitle}>Remove "{pendingUnpublish.name}"?</h2>
+            <p style={dialogText}>
+              Are you sure you want to remove "{pendingUnpublish.name}" from the
+              product page? Doing this will unpublish the product and completely
+              hide it from the customer store.
+            </p>
+
+            <div style={dialogActions}>
+              <button
+                type="button"
+                onClick={() => setPendingUnpublish(null)}
+                style={btnSecondaryModal}
+                disabled={unpublishing}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmUnpublish}
+                style={btnDanger}
+                disabled={unpublishing}
+              >
+                {unpublishing ? "Removing..." : "Remove from product page"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingArchive && (
+        <div style={modalBackdrop}>
+          <div role="dialog" aria-modal="true" style={dialog}>
+            <div style={dialogEyebrow}>Archive Material</div>
+            <h2 style={dialogTitle}>Archive "{pendingArchive.name}"?</h2>
+            <p style={dialogText}>
+              This will remove the item from your active Build Materials
+              inventory.
+            </p>
+
+            <div style={dialogActions}>
+              <button
+                type="button"
+                onClick={() => setPendingArchive(null)}
+                style={btnSecondaryModal}
+                disabled={archiving}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmArchive}
+                style={btnDanger}
+                disabled={archiving}
+              >
+                {archiving ? "Archiving..." : "Archive material"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -849,4 +1556,251 @@ const modalBox = {
   overflowY: "auto",
   border: "1px solid #e4e4e7",
   boxShadow: "0 20px 60px rgba(0,0,0,.15)",
+};
+
+const rowActions = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 5,
+};
+const btnEditAction = {
+  minHeight: 29,
+  padding: "0 10px",
+  background: "#18181b",
+  color: "#ffffff",
+  border: "1px solid #18181b",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  fontSize: 11,
+  fontWeight: 500,
+  cursor: "pointer",
+};
+const moreWrap = {
+  position: "relative",
+  display: "inline-flex",
+  zIndex: 2,
+};
+const btnMore = {
+  width: 29,
+  height: 29,
+  padding: 0,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#ffffff",
+  color: "#18181b",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  fontSize: 15,
+  fontWeight: 600,
+  lineHeight: 1,
+  cursor: "pointer",
+};
+const moreMenu = {
+  position: "absolute",
+  top: "calc(100% + 5px)",
+  right: 0,
+  zIndex: 50,
+  minWidth: 170,
+  padding: 4,
+  background: "#ffffff",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
+  boxShadow: "0 8px 20px rgba(0,0,0,0.10)",
+};
+const menuItem = {
+  width: "100%",
+  minHeight: 32,
+  padding: "0 9px",
+  display: "flex",
+  alignItems: "center",
+  background: "#ffffff",
+  color: "#27272a",
+  border: 0,
+  borderRadius: 2,
+  fontFamily: "inherit",
+  fontSize: 11.5,
+  fontWeight: 500,
+  textAlign: "left",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+const modalBackdrop = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 1000,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 20,
+  background: "rgba(0,0,0,0.42)",
+};
+const dialog = {
+  width: "min(430px, 100%)",
+  padding: 20,
+  background: "#ffffff",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
+  boxShadow: "0 18px 48px rgba(0,0,0,0.18)",
+};
+const dialogEyebrow = {
+  marginBottom: 6,
+  color: "#71717a",
+  fontSize: 9.5,
+  fontWeight: 600,
+  letterSpacing: "0.1em",
+  textTransform: "uppercase",
+};
+const dialogTitle = {
+  margin: 0,
+  color: "#18181b",
+  fontSize: 18,
+  fontWeight: 700,
+};
+const dialogText = {
+  margin: "8px 0 20px",
+  color: "#52525b",
+  fontSize: 13,
+  fontWeight: 400,
+  lineHeight: 1.5,
+};
+const dialogActions = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: 8,
+};
+const btnDanger = {
+  minHeight: 36,
+  padding: "0 14px",
+  background: "#b42318",
+  color: "#ffffff",
+  border: "1px solid #b42318",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+const btnSecondaryModal = {
+  minHeight: 36,
+  padding: "0 14px",
+  background: "#ffffff",
+  color: "#27272a",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  fontSize: 12,
+  fontWeight: 500,
+  cursor: "pointer",
+};
+
+const btnPrimaryModal = {
+  minHeight: 36,
+  padding: "0 14px",
+  background: "#18181b",
+  color: "#ffffff",
+  border: "1px solid #18181b",
+  borderRadius: 2,
+  fontFamily: "inherit",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const checkboxStyle = {
+  width: 14,
+  height: 14,
+  accentColor: "#18181b",
+  cursor: "pointer",
+};
+const productImageStyle = {
+  width: 40,
+  height: 40,
+  display: "block",
+  objectFit: "cover",
+  background: "#fafafa",
+  border: "1px solid #dedfe2",
+  borderRadius: 2,
+};
+const imagePlaceholderStyle = {
+  width: 40,
+  height: 40,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#fafafa",
+  color: "#a1a1aa",
+  border: "1px solid #dedfe2",
+  borderRadius: 2,
+};
+const paginationFooter = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "12px 16px",
+  borderTop: "1px solid #e4e4e7",
+  background: "#ffffff",
+};
+const paginationText = {
+  color: "#71717a",
+  fontSize: 11,
+};
+const paginationControls = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+};
+const pageButton = {
+  padding: "4px 10px",
+  background: "#ffffff",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
+  fontSize: 11,
+  cursor: "pointer",
+  color: "#18181b",
+};
+const pageText = {
+  fontSize: 11,
+  fontWeight: 600,
+  color: "#3f3f46",
+};
+const bulkActionsStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+};
+const selectedCountStyle = {
+  fontSize: 11,
+  fontWeight: 600,
+  color: "#18181b",
+  marginRight: 4,
+};
+const btnPrimarySmall = {
+  padding: "4px 10px",
+  background: "#18181b",
+  color: "#ffffff",
+  border: "1px solid #18181b",
+  borderRadius: 2,
+  fontSize: 11,
+  cursor: "pointer",
+};
+const btnSecondarySmall = {
+  padding: "4px 10px",
+  background: "#ffffff",
+  color: "#18181b",
+  border: "1px solid #d4d4d8",
+  borderRadius: 2,
+  fontSize: 11,
+  cursor: "pointer",
+};
+const btnDangerSmall = {
+  padding: "4px 10px",
+  background: "#fef2f2",
+  color: "#991b1b",
+  border: "1px solid #fecaca",
+  borderRadius: 2,
+  fontSize: 11,
+  cursor: "pointer",
 };

@@ -180,6 +180,9 @@ export default function AppointmentPage() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
 
+  const [apptToCancel, setApptToCancel] = useState(null);
+  const [isCancellingAppt, setIsCancellingAppt] = useState(false);
+
   const [appointments, setAppointments] = useState([]);
   const [appointmentView, setAppointmentView] = useState("book");
   const [loadingAppts, setLoadingAppts] = useState(true);
@@ -295,23 +298,25 @@ export default function AppointmentPage() {
     }
   };
 
-  const handleCancel = async (id) => {
-    if (
-      !window.confirm(
-        "Are you sure you want to cancel this appointment?\n\nThis action cannot be undone.",
-      )
-    )
-      return;
+  const handleCancel = (id) => {
+    setApptToCancel(id);
+  };
+
+  const executeCancelAppt = async () => {
+    if (!apptToCancel) return;
+    setIsCancellingAppt(true);
 
     try {
-      await api.delete(`/customer/appointments/${id}`);
+      await api.delete(`/customer/appointments/${apptToCancel}`);
       await fetchAppointments();
-      alert("Appointment cancelled successfully.");
+      setApptToCancel(null);
       setWeekStart(new Date(weekStart));
     } catch (err) {
       alert(
         err.response?.data?.message || "Could not cancel appointment request.",
       );
+    } finally {
+      setIsCancellingAppt(false);
     }
   };
 
@@ -1026,7 +1031,7 @@ export default function AppointmentPage() {
                             className="appt-btn-cancel"
                             onClick={() => handleCancel(a.id)}
                           >
-                            <X size={12} /> Cancel request
+                            Cancel request
                           </button>
                         )}
                       </div>
@@ -1034,6 +1039,180 @@ export default function AppointmentPage() {
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WISDOM CUSTOM CANCEL APPOINTMENT MODAL */}
+      {apptToCancel && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10050,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            background: "rgba(0, 0, 0, 0.58)",
+            pointerEvents: "auto",
+          }}
+          onClick={() => !isCancellingAppt && setApptToCancel(null)}
+        >
+          <div
+            style={{
+              width: "min(100%, 520px)",
+              background: "#ffffff",
+              border: "1px solid #d1d5db",
+              borderRadius: 0,
+              boxShadow: "0 24px 70px rgba(0,0,0,0.24)",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: "16px",
+                padding: "22px 22px 16px",
+                borderBottom: "1px solid #e5e7eb",
+              }}
+            >
+              <div>
+                <div
+                  style={{
+                    marginBottom: "6px",
+                    fontSize: "0.72rem",
+                    fontWeight: 800,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    color: "#6b7280",
+                  }}
+                >
+                  Appointment Request
+                </div>
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: "1.35rem",
+                    lineHeight: 1.2,
+                    color: "#111111",
+                    fontWeight: 700,
+                  }}
+                >
+                  Cancel this appointment?
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setApptToCancel(null)}
+                disabled={isCancellingAppt}
+                aria-label="Close"
+                style={{
+                  width: "38px",
+                  height: "38px",
+                  flex: "0 0 auto",
+                  border: "1px solid #d1d5db",
+                  background: "#ffffff",
+                  color: "#111111",
+                  display: "grid",
+                  placeItems: "center",
+                  cursor: isCancellingAppt ? "not-allowed" : "pointer",
+                  padding: 0,
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gap: "14px",
+                padding: "20px 22px",
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: "0.96rem",
+                  lineHeight: 1.75,
+                  color: "#27272a",
+                }}
+              >
+                Cancel this appointment request? It will remain in your history,
+                but it will no longer be active.
+              </p>
+
+              <div
+                style={{
+                  borderLeft: "3px solid #111111",
+                  background: "#f4f4f5",
+                  padding: "12px 14px",
+                  fontSize: "0.88rem",
+                  lineHeight: 1.65,
+                  color: "#27272a",
+                }}
+              >
+                You may submit a new appointment request if you still need a
+                consultation or site measurement in the future.
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+                padding: "16px 22px 22px",
+                borderTop: "1px solid #e5e7eb",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setApptToCancel(null)}
+                disabled={isCancellingAppt}
+                style={{
+                  minHeight: "42px",
+                  padding: "0 16px",
+                  fontFamily: "inherit",
+                  fontSize: "0.88rem",
+                  fontWeight: 800,
+                  border: "1px solid #d1d5db",
+                  background: "#f4f4f5",
+                  color: "#111111",
+                  cursor: isCancellingAppt ? "not-allowed" : "pointer",
+                  opacity: isCancellingAppt ? 0.55 : 1,
+                }}
+              >
+                Keep appointment
+              </button>
+
+              <button
+                type="button"
+                onClick={executeCancelAppt}
+                disabled={isCancellingAppt}
+                style={{
+                  minHeight: "42px",
+                  padding: "0 16px",
+                  fontFamily: "inherit",
+                  fontSize: "0.88rem",
+                  fontWeight: 800,
+                  border: "1px solid #b91c1c",
+                  background: "#b91c1c",
+                  color: "#ffffff",
+                  cursor: isCancellingAppt ? "not-allowed" : "pointer",
+                  opacity: isCancellingAppt ? 0.55 : 1,
+                }}
+              >
+                {isCancellingAppt ? "Cancelling..." : "Cancel appointment"}
+              </button>
             </div>
           </div>
         </div>

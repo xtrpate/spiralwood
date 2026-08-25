@@ -705,6 +705,9 @@ export default function OrdersPage() {
   }, []);
 
   const [orderToConfirm, setOrderToConfirm] = useState(null);
+  const [orderToCancel, setOrderToCancel] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const confirmOrderById = (orderId) => {
     setOrderToConfirm(orderId);
@@ -722,17 +725,26 @@ export default function OrdersPage() {
     }
   };
 
-  const cancelOrderById = async (orderId) => {
-    const reason = window.prompt("Please provide a reason for cancellation:");
-    if (reason === null) return;
+  const cancelOrderById = (orderId) => {
+    setOrderToCancel(orderId);
+    setCancelReason("");
+  };
 
+  const executeCancelOrder = async () => {
+    if (!orderToCancel) return;
+
+    setIsCancelling(true);
     try {
-      await api.put(`/customer/orders/${orderId}/cancel`, { reason });
+      await api.put(`/customer/orders/${orderToCancel}/cancel`, {
+        reason: cancelReason,
+      });
       setSelectedId(null);
+      setOrderToCancel(null);
       fetchOrders();
-      alert("Order has been cancelled.");
     } catch {
       alert("Failed to cancel the order. Please try again.");
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -1262,6 +1274,135 @@ export default function OrdersPage() {
                 }}
               >
                 Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WISDOM CUSTOM CANCEL ORDER MODAL */}
+      {orderToCancel && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10050,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            background: "rgba(15, 23, 42, 0.35)",
+            pointerEvents: "auto",
+          }}
+          onClick={() => !isCancelling && setOrderToCancel(null)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "420px",
+              background: "#ffffff",
+              border: "1px solid #d9d9dc",
+              borderRadius: 6,
+              boxShadow: "0 18px 46px rgba(0,0,0,0.18)",
+              padding: "24px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              style={{
+                margin: 0,
+                color: "#111111",
+                fontSize: "22px",
+                fontWeight: 750,
+                lineHeight: 1.2,
+                letterSpacing: "-0.015em",
+              }}
+            >
+              Cancel Order
+            </h3>
+
+            <p
+              style={{
+                margin: "8px 0 16px",
+                color: "#66666b",
+                fontSize: "14px",
+                fontWeight: 400,
+                lineHeight: 1.5,
+              }}
+            >
+              Are you sure you want to cancel this order? You may optionally
+              provide a reason below.
+            </p>
+
+            <textarea
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Reason for cancellation (optional)"
+              style={{
+                width: "100%",
+                height: "90px",
+                padding: "10px 12px",
+                border: "1px solid #d1d5db",
+                borderRadius: "4px",
+                fontSize: "14px",
+                fontFamily: "inherit",
+                resize: "none",
+                overflowY: "auto",
+                boxSizing: "border-box",
+                outline: "none",
+              }}
+            />
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "8px",
+                marginTop: "22px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setOrderToCancel(null)}
+                disabled={isCancelling}
+                style={{
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #bfc0c4",
+                  borderRadius: 6,
+                  background: "#ffffff",
+                  color: "#111111",
+                  cursor: isCancelling ? "not-allowed" : "pointer",
+                  fontSize: "13px",
+                  fontWeight: 650,
+                  opacity: isCancelling ? 0.6 : 1,
+                }}
+              >
+                Close
+              </button>
+
+              <button
+                type="button"
+                onClick={executeCancelOrder}
+                disabled={isCancelling}
+                style={{
+                  minWidth: "96px",
+                  height: "40px",
+                  padding: "0 14px",
+                  border: "1px solid #111111",
+                  borderRadius: 6,
+                  background: "#111111",
+                  color: "#ffffff",
+                  cursor: isCancelling ? "not-allowed" : "pointer",
+                  fontSize: "13px",
+                  fontWeight: 650,
+                  opacity: isCancelling ? 0.6 : 1,
+                }}
+              >
+                {isCancelling ? "Cancelling..." : "Cancel Order"}
               </button>
             </div>
           </div>

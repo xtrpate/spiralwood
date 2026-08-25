@@ -13,11 +13,7 @@ const NEW_PRODUCT_LIMIT_MESSAGE =
 const MAX_PRODUCT_IMAGES = 6;
 
 function parseGalleryOrder(rawValue) {
-  if (
-    rawValue === undefined ||
-    rawValue === null ||
-    rawValue === ""
-  ) {
+  if (rawValue === undefined || rawValue === null || rawValue === "") {
     return null;
   }
 
@@ -36,9 +32,7 @@ function parseGalleryOrder(rawValue) {
   }
 
   if (parsed.length > MAX_PRODUCT_IMAGES) {
-    throw new Error(
-      `A product can have up to ${MAX_PRODUCT_IMAGES} images.`,
-    );
+    throw new Error(`A product can have up to ${MAX_PRODUCT_IMAGES} images.`);
   }
 
   return parsed;
@@ -66,9 +60,7 @@ function resolveCreateGalleryUrls(req, galleryOrder) {
       : [];
 
   if (files.length > MAX_PRODUCT_IMAGES) {
-    throw new Error(
-      `A product can have up to ${MAX_PRODUCT_IMAGES} images.`,
-    );
+    throw new Error(`A product can have up to ${MAX_PRODUCT_IMAGES} images.`);
   }
 
   if (galleryOrder === null) {
@@ -127,11 +119,7 @@ async function getProductGallery(conn, productId) {
   return rows;
 }
 
-async function syncLegacyPrimaryGalleryImage(
-  conn,
-  productId,
-  imageUrl,
-) {
+async function syncLegacyPrimaryGalleryImage(conn, productId, imageUrl) {
   const rows = await getProductGallery(conn, productId);
 
   await conn.query(
@@ -140,9 +128,7 @@ async function syncLegacyPrimaryGalleryImage(
   );
 
   const primary =
-    rows.find((row) => Number(row.is_primary) === 1) ||
-    rows[0] ||
-    null;
+    rows.find((row) => Number(row.is_primary) === 1) || rows[0] || null;
 
   if (primary) {
     await conn.query(
@@ -164,27 +150,18 @@ async function syncLegacyPrimaryGalleryImage(
 
 async function applyProductGalleryOrder(
   conn,
-  {
-    productId,
-    order,
-    newFiles,
-    legacyImageUrl,
-  },
+  { productId, order, newFiles, legacyImageUrl },
 ) {
   if (!Array.isArray(order)) {
     throw new Error("Product image order is invalid.");
   }
 
   if (order.length > MAX_PRODUCT_IMAGES) {
-    throw new Error(
-      `A product can have up to ${MAX_PRODUCT_IMAGES} images.`,
-    );
+    throw new Error(`A product can have up to ${MAX_PRODUCT_IMAGES} images.`);
   }
 
   if (newFiles.length > MAX_PRODUCT_IMAGES) {
-    throw new Error(
-      `A product can have up to ${MAX_PRODUCT_IMAGES} images.`,
-    );
+    throw new Error(`A product can have up to ${MAX_PRODUCT_IMAGES} images.`);
   }
 
   const existingRows = await getProductGallery(conn, productId);
@@ -202,17 +179,15 @@ async function applyProductGalleryOrder(
       throw new Error("Product image order contains an invalid item.");
     }
 
-    const type = String(entry.type || "").trim().toLowerCase();
+    const type = String(entry.type || "")
+      .trim()
+      .toLowerCase();
 
     if (type === "existing") {
       const imageId = Number(entry.id);
       const row = existingById.get(imageId);
 
-      if (
-        !Number.isInteger(imageId) ||
-        !row ||
-        usedExistingIds.has(imageId)
-      ) {
+      if (!Number.isInteger(imageId) || !row || usedExistingIds.has(imageId)) {
         throw new Error(
           "Product image order contains an invalid existing image.",
         );
@@ -260,8 +235,7 @@ async function applyProductGalleryOrder(
       legacyUsed = true;
 
       const matchingRow = existingRows.find(
-        (row) =>
-          String(row.image_url || "") === String(legacyImageUrl),
+        (row) => String(row.image_url || "") === String(legacyImageUrl),
       );
 
       if (matchingRow && !usedExistingIds.has(Number(matchingRow.id))) {
@@ -303,10 +277,9 @@ async function applyProductGalleryOrder(
       [productId, ...retainedIds],
     );
   } else {
-    await conn.query(
-      "DELETE FROM product_images WHERE product_id = ?",
-      [productId],
-    );
+    await conn.query("DELETE FROM product_images WHERE product_id = ?", [
+      productId,
+    ]);
   }
 
   for (let index = 0; index < resolved.length; index += 1) {
@@ -374,13 +347,27 @@ exports.getAll = async (req, res) => {
     const where = ["1=1"];
     const params = [];
 
-    if (req.query.is_active !== undefined) {
+    if (
+      req.query.is_active !== undefined &&
+      req.query.is_active !== "" &&
+      req.query.is_active !== "all"
+    ) {
       where.push("p.is_active = ?");
+
       params.push(
         req.query.is_active === "false" || req.query.is_active === "0" ? 0 : 1,
       );
     } else {
       where.push("p.is_active = 1");
+    }
+
+    if (req.query.is_published !== undefined && req.query.is_published !== "") {
+      where.push("p.is_published = ?");
+      params.push(
+        req.query.is_published === "true" || req.query.is_published === "1"
+          ? 1
+          : 0,
+      );
     }
 
     if (search) {
@@ -532,7 +519,9 @@ exports.create = async (req, res) => {
       bill_of_materials = "[]",
     } = req.body;
 
-    const normalizedType = String(type || "standard").trim().toLowerCase();
+    const normalizedType = String(type || "standard")
+      .trim()
+      .toLowerCase();
 
     if (!["standard", "blueprint"].includes(normalizedType)) {
       return respondInvalid(conn, res, "Invalid product type.");
@@ -688,12 +677,7 @@ exports.create = async (req, res) => {
         `INSERT INTO product_images
            (product_id, image_url, sort_order, is_primary)
          VALUES (?, ?, ?, ?)`,
-        [
-          productId,
-          createGalleryUrls[index],
-          index,
-          index === 0 ? 1 : 0,
-        ],
+        [productId, createGalleryUrls[index], index, index === 0 ? 1 : 0],
       );
     }
 
@@ -1090,10 +1074,10 @@ exports.toggleFeatured = async (req, res) => {
       }
     }
 
-    await conn.query(
-      "UPDATE products SET is_featured = ? WHERE id = ?",
-      [nextFeatured ? 1 : 0, productId],
-    );
+    await conn.query("UPDATE products SET is_featured = ? WHERE id = ?", [
+      nextFeatured ? 1 : 0,
+      productId,
+    ]);
 
     await conn.commit();
 
@@ -1154,9 +1138,7 @@ exports.getReport = async (req, res) => {
 
     if (is_active !== undefined && is_active !== "") {
       where.push("p.is_active = ?");
-      params.push(
-        is_active === "false" || is_active === "0" ? 0 : 1,
-      );
+      params.push(is_active === "false" || is_active === "0" ? 0 : 1);
     }
 
     const [rows] = await pool.query(
@@ -1210,7 +1192,9 @@ exports.bulkPublish = async (req, res) => {
 
     await writeAuditLogSafe({
       userId: req.user?.id || null,
-      action: publishValue ? "bulk_publish_products" : "bulk_unpublish_products",
+      action: publishValue
+        ? "bulk_publish_products"
+        : "bulk_unpublish_products",
       tableName: "products",
       newValues: {
         is_published: Boolean(publishValue),

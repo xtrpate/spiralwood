@@ -24,6 +24,7 @@ import ProductsPage from "./pages/products/ProductsPage";
 import ProductFormPage from "./pages/products/ProductFormPage";
 import RawMaterialsPage from "./pages/inventory/RawMaterialsPage";
 import BuildMaterialsPage from "./pages/inventory/BuildMaterialsPage";
+import BuildMaterialFormPage from "./pages/inventory/BuildMaterialFormPage";
 import StockMovementPage from "./pages/inventory/StockMovementPage";
 import SuppliersPage from "./pages/inventory/SuppliersPage";
 import BlueprintsPage from "./pages/blueprints/BlueprintsPage";
@@ -451,13 +452,22 @@ export default function App() {
                 <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<DashboardPage />} />
                 <Route path="products" element={<ProductsPage />} />
-                <Route path="products/new" element={<ProductFormPage />} />
                 <Route path="products/:id/edit" element={<ProductFormPage />} />
                 <Route path="inventory/raw" element={<RawMaterialsPage />} />
 
                 <Route
                   path="inventory/build"
                   element={<BuildMaterialsPage />}
+                />
+
+                <Route
+                  path="/admin/inventory/build/new"
+                  element={<BuildMaterialFormPage />}
+                />
+
+                <Route
+                  path="inventory/build/:id/edit"
+                  element={<BuildMaterialFormPage />}
                 />
 
                 <Route

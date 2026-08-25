@@ -104,14 +104,9 @@ const productReportStatus = (value) =>
     .replace(/_/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-const productReportYesNo = (value) =>
-  Number(value) === 1 ? "Yes" : "No";
+const productReportYesNo = (value) => (Number(value) === 1 ? "Yes" : "No");
 
-const exportProductReportPdf = ({
-  rows,
-  scopeLabel,
-  filterLabel,
-}) => {
+const exportProductReportPdf = ({ rows, scopeLabel, filterLabel }) => {
   const doc = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -248,22 +243,26 @@ const exportProductReportPdf = ({
   autoTable(doc, {
     ...tableBase,
     startY: currentY,
-    head: [[
-      "Products",
-      "Ready-made",
-      "Blueprints",
-      "Active",
-      "Published",
-      "Low / Out of Stock",
-    ]],
-    body: [[
-      String(summary.total),
-      String(summary.readyMade),
-      String(summary.blueprints),
-      String(summary.active),
-      String(summary.published),
-      String(summary.needsAttention),
-    ]],
+    head: [
+      [
+        "Products",
+        "Ready-made",
+        "Blueprints",
+        "Active",
+        "Published",
+        "Low / Out of Stock",
+      ],
+    ],
+    body: [
+      [
+        String(summary.total),
+        String(summary.readyMade),
+        String(summary.blueprints),
+        String(summary.active),
+        String(summary.published),
+        String(summary.needsAttention),
+      ],
+    ],
     styles: {
       ...tableBase.styles,
       halign: "center",
@@ -285,16 +284,18 @@ const exportProductReportPdf = ({
     autoTable(doc, {
       ...tableBase,
       startY: currentY,
-      head: [[
-        "Product",
-        "Barcode",
-        "Category",
-        "Price",
-        "Production Cost",
-        "Profit",
-        "Published",
-        "Active",
-      ]],
+      head: [
+        [
+          "Product",
+          "Barcode",
+          "Category",
+          "Price",
+          "Production Cost",
+          "Profit",
+          "Published",
+          "Active",
+        ],
+      ],
       body: readyMade.map((row) => [
         productReportPdfText(row.name),
         productReportPdfText(row.barcode || "-"),
@@ -321,15 +322,17 @@ const exportProductReportPdf = ({
     autoTable(doc, {
       ...tableBase,
       startY: currentY,
-      head: [[
-        "Product",
-        "Barcode",
-        "Stock",
-        "Reorder Point",
-        "Stock Status",
-        "Homepage New Product",
-        "Active",
-      ]],
+      head: [
+        [
+          "Product",
+          "Barcode",
+          "Stock",
+          "Reorder Point",
+          "Stock Status",
+          "Homepage New Product",
+          "Active",
+        ],
+      ],
       body: readyMade.map((row) => [
         productReportPdfText(row.name),
         productReportPdfText(row.barcode || "-"),
@@ -361,16 +364,18 @@ const exportProductReportPdf = ({
     autoTable(doc, {
       ...tableBase,
       startY: currentY,
-      head: [[
-        "Product",
-        "Barcode",
-        "Category",
-        "Blueprint Source",
-        "Pricing",
-        "Inventory",
-        "Published",
-        "Active",
-      ]],
+      head: [
+        [
+          "Product",
+          "Barcode",
+          "Category",
+          "Blueprint Source",
+          "Pricing",
+          "Inventory",
+          "Published",
+          "Active",
+        ],
+      ],
       body: blueprints.map((row) => [
         productReportPdfText(row.name),
         productReportPdfText(row.barcode || "-"),
@@ -525,14 +530,35 @@ export default function ProductsPage() {
   const [exportScope, setExportScope] = useState("filtered");
   const [exporting, setExporting] = useState(false);
 
-  const [filters, setFilters] = useState({
-    search: "",
-    category_id: "",
-    type: "",
-    status: "",
-    is_active: "1",
-    page: 1,
+  const [pendingUnpublish, setPendingUnpublish] = useState(null);
+  const [unpublishing, setUnpublishing] = useState(false);
+
+  const [filters, setFilters] = useState(() => {
+    const fromEdit = sessionStorage.getItem("wisdom_navigating_to_edit");
+
+    if (fromEdit === "true") {
+      try {
+        const saved = sessionStorage.getItem("wisdom_products_filters");
+        if (saved) return JSON.parse(saved);
+      } catch (err) {}
+    }
+
+    return {
+      search: "",
+      category_id: "",
+      type: "",
+      status: "",
+      page: 1,
+    };
   });
+
+  useEffect(() => {
+    sessionStorage.removeItem("wisdom_navigating_to_edit");
+  }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem("wisdom_products_filters", JSON.stringify(filters));
+  }, [filters]);
 
   const buildListParams = useCallback(() => {
     const params = {
@@ -542,11 +568,8 @@ export default function ProductsPage() {
       status: filters.status || undefined,
       page: filters.page,
       limit: 20,
+      is_published: 1,
     };
-
-    if (filters.is_active !== "") {
-      params.is_active = filters.is_active;
-    }
 
     return params;
   }, [filters]);
@@ -571,10 +594,10 @@ export default function ProductsPage() {
     try {
       const [activeResponse, disabledResponse] = await Promise.all([
         api.get("/products", {
-          params: { is_active: 1, page: 1, limit: 5000 },
+          params: { is_active: 1, is_published: 1, page: 1, limit: 5000 },
         }),
         api.get("/products", {
-          params: { is_active: 0, page: 1, limit: 5000 },
+          params: { is_active: 0, is_published: 1, page: 1, limit: 5000 },
         }),
       ]);
 
@@ -639,12 +662,7 @@ export default function ProductsPage() {
       outOfStock: readyMade.filter(
         (product) => product.stock_status === "out_of_stock",
       ).length,
-      published: allProducts.filter(
-        (product) => Number(product.is_published) === 1,
-      ).length,
-      unpublished: allProducts.filter(
-        (product) => Number(product.is_published) !== 1,
-      ).length,
+      published: allProducts.length,
     };
   }, [allProducts]);
 
@@ -696,18 +714,6 @@ export default function ProductsPage() {
     }
   };
 
-  const toggleActive = async (id, currentStatus) => {
-    try {
-      const { data } = await api.patch(`/products/${id}/active`, {
-        is_active: !currentStatus,
-      });
-      toast.success(data.message || "Product status updated.");
-      await Promise.all([load(), loadSummary()]);
-    } catch {
-      toast.error("Failed to update product status.");
-    }
-  };
-
   const handleBulkPublish = async (isPublished) => {
     if (selectedIds.length === 0) {
       return toast.error("Select at least one product first.");
@@ -731,20 +737,21 @@ export default function ProductsPage() {
     }
   };
 
-  const updateSinglePublish = async (product, isPublished) => {
-    if (!product?.id) return;
-
+  const confirmUnpublish = async () => {
+    if (!pendingUnpublish?.id) return;
+    setUnpublishing(true);
     try {
       await api.patch("/products/bulk-publish", {
-        ids: [product.id],
-        is_published: isPublished,
+        ids: [pendingUnpublish.id],
+        is_published: false,
       });
-      toast.success(
-        isPublished ? "Product published." : "Product unpublished.",
-      );
+      toast.success("Removed from product page.");
+      setPendingUnpublish(null);
       await Promise.all([load(), loadSummary()]);
-    } catch {
-      toast.error("Failed to update publishing status.");
+    } catch (err) {
+      toast.error("Failed to remove from product page.");
+    } finally {
+      setUnpublishing(false);
     }
   };
 
@@ -808,12 +815,6 @@ export default function ProductsPage() {
 
     if (filters.status) {
       labels.push(`Stock: ${productReportStatus(filters.status)}`);
-    }
-
-    if (filters.is_active === "1") {
-      labels.push("Record status: Active");
-    } else if (filters.is_active === "0") {
-      labels.push("Record status: Disabled");
     }
 
     return labels.length > 0 ? labels.join(" | ") : "None";
@@ -903,13 +904,6 @@ export default function ProductsPage() {
             <FileDown size={14} strokeWidth={1.8} aria-hidden="true" />
             Export report
           </button>
-          <button
-            type="button"
-            onClick={() => navigate("/admin/products/new")}
-            style={btnPrimary}
-          >
-            + Add product
-          </button>
         </div>
       </div>
 
@@ -965,38 +959,20 @@ export default function ProductsPage() {
           <option value="out_of_stock">Out of stock</option>
         </select>
 
-        <select
-          value={filters.is_active}
-          onChange={(event) => updateFilter("is_active", event.target.value)}
-          aria-label="Filter by record status"
-          style={filterControl}
-        >
-          <option value="1">Active products</option>
-          <option value="0">Disabled products</option>
-          <option value="">All products</option>
-        </select>
-
         {selectedIds.length > 0 ? (
           <div style={bulkActions}>
             <span style={selectedCount}>{selectedIds.length} selected</span>
             <button
               type="button"
-              onClick={() => handleBulkPublish(true)}
-              style={btnPrimarySmall}
-            >
-              Publish
-            </button>
-            <button
-              type="button"
               onClick={() => handleBulkPublish(false)}
-              style={btnSecondarySmall}
+              style={btnDangerSmall}
             >
-              Unpublish
+              Remove from product page
             </button>
           </div>
         ) : (
           <span style={publishHint}>
-            Select products to publish or unpublish
+            Select products to remove from the storefront
           </span>
         )}
       </div>
@@ -1025,12 +1001,6 @@ export default function ProductsPage() {
           value={summary.published}
           Icon={Globe2}
           iconColor="#2563eb"
-        />
-        <SummaryCard
-          label="Unpublished"
-          value={summary.unpublished}
-          Icon={EyeOff}
-          iconColor="#71717a"
         />
       </div>
 
@@ -1276,9 +1246,13 @@ export default function ProductsPage() {
                       <div style={rowActions}>
                         <button
                           type="button"
-                          onClick={() =>
-                            navigate(`/admin/products/${product.id}/edit`)
-                          }
+                          onClick={() => {
+                            sessionStorage.setItem(
+                              "wisdom_navigating_to_edit",
+                              "true",
+                            );
+                            navigate(`/admin/products/${product.id}/edit`);
+                          }}
                           style={btnEdit}
                         >
                           Edit
@@ -1312,39 +1286,10 @@ export default function ProductsPage() {
                                 style={menuItem}
                                 onClick={() => {
                                   setActionMenuId(null);
-                                  updateSinglePublish(
-                                    product,
-                                    Number(product.is_published) !== 1,
-                                  );
+                                  setPendingUnpublish(product);
                                 }}
                               >
-                                {Number(product.is_published) === 1
-                                  ? "Unpublish product"
-                                  : "Publish product"}
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                style={menuItem}
-                                onClick={() => {
-                                  setActionMenuId(null);
-                                  toggleActive(product.id, isActive);
-                                }}
-                              >
-                                {isActive
-                                  ? "Disable product"
-                                  : "Enable product"}
-                              </button>
-                              <button
-                                type="button"
-                                role="menuitem"
-                                style={{ ...menuItem, color: "#b42318" }}
-                                onClick={() => {
-                                  setActionMenuId(null);
-                                  setPendingDelete(product);
-                                }}
-                              >
-                                Delete product
+                                Unpublish product
                               </button>
                             </div>
                           )}
@@ -1451,9 +1396,7 @@ export default function ProductsPage() {
                 onClick={() => setExportScope("all")}
                 style={{
                   ...exportScopeOption,
-                  ...(exportScope === "all"
-                    ? exportScopeOptionSelected
-                    : {}),
+                  ...(exportScope === "all" ? exportScopeOptionSelected : {}),
                 }}
                 disabled={exporting}
               >
@@ -1497,6 +1440,49 @@ export default function ProductsPage() {
               >
                 <FileDown size={14} strokeWidth={1.8} aria-hidden="true" />
                 {exporting ? "Preparing..." : "Export PDF"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 👉 NEW: UNPUBLISH MODAL */}
+      {pendingUnpublish && (
+        <div style={modalBackdrop}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unpublish-product-title"
+            style={dialog}
+          >
+            <div style={dialogEyebrow}>Unpublish Product</div>
+
+            <h2 id="unpublish-product-title" style={dialogTitle}>
+              Do you want to continue?
+            </h2>
+
+            <p style={dialogText}>
+              Unpublishing "{pendingUnpublish.name}" will remove this product
+              from the front store and product page.
+            </p>
+
+            <div style={dialogActions}>
+              <button
+                type="button"
+                onClick={() => setPendingUnpublish(null)}
+                style={btnSecondary}
+                disabled={unpublishing}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmUnpublish}
+                style={btnDanger}
+                disabled={unpublishing}
+              >
+                {unpublishing ? "Unpublishing..." : "Unpublish product"}
               </button>
             </div>
           </div>
@@ -1683,7 +1669,7 @@ const publishHint = {
 
 const summaryGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
   gap: 10,
   marginBottom: 12,
 };
@@ -2003,9 +1989,9 @@ const btnSecondarySmall = {
 const btnEdit = {
   minHeight: 29,
   padding: "0 10px",
-  background: "#ffffff",
-  color: "#27272a",
-  border: "1px solid #d4d4d8",
+  background: "#18181b",
+  color: "#ffffff",
+  border: "1px solid #18181b",
   borderRadius: 2,
   fontFamily: "inherit",
   fontSize: 11,
@@ -2209,4 +2195,11 @@ const btnDanger = {
   fontSize: 12,
   fontWeight: 600,
   cursor: "pointer",
+};
+
+const btnDangerSmall = {
+  ...btnDanger,
+  minHeight: 32,
+  padding: "0 11px",
+  fontSize: 11.5,
 };

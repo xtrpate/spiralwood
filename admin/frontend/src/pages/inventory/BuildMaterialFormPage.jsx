@@ -1,21 +1,15 @@
-// src/pages/products/ProductFormPage.jsx – Create / Edit Product
+// src/pages/inventory/BuildMaterialFormPage.jsx
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
 import toast from "react-hot-toast";
-import CustomerBlueprintViewer from "../customer/CustomerBlueprintViewer";
 
-// WISDOM PRODUCT FORM PROFESSIONAL UI V2
-// WISDOM UNIFIED PRODUCT PRICE V1
-// WISDOM BLUEPRINT CATALOG FINAL POLISH V1
-// WISDOM PRODUCT COST LABEL AND SUMMARY NUMBER FIX V1
 const DEFAULT = {
   name: "",
   barcode: "",
   description: "",
   category_id: "",
-  type: "standard",
-
+  type: "standard", // Always standard for Build Materials
   online_price: "",
   walkin_price: "",
   production_cost: "",
@@ -26,7 +20,7 @@ const DEFAULT = {
 
 const MAX_PRODUCT_IMAGES = 6;
 
-export default function ProductFormPage() {
+export default function BuildMaterialFormPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, []);
@@ -42,8 +36,6 @@ export default function ProductFormPage() {
   const [saving, setSaving] = useState(false);
   const [categories, setCategories] = useState([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
-
-  const isBlueprint = form.type === "blueprint";
 
   useEffect(() => {
     let active = true;
@@ -117,9 +109,7 @@ export default function ProductFormPage() {
               id: item.id || null,
               image_url: item.image_url,
               preview: buildAssetUrl(item.image_url),
-              name: item.id
-                ? `Saved image ${item.id}`
-                : "Current product image",
+              name: item.id ? `Saved image ${item.id}` : "Current image",
             }))
         : [];
 
@@ -133,7 +123,7 @@ export default function ProductFormPage() {
             id: null,
             image_url: rest.image_url,
             preview: buildAssetUrl(rest.image_url),
-            name: "Current product image",
+            name: "Current image",
           },
         ]);
       } else {
@@ -190,9 +180,7 @@ export default function ProductFormPage() {
     const available = MAX_PRODUCT_IMAGES - galleryItems.length;
 
     if (available <= 0) {
-      setGalleryMessage(
-        `You can add up to ${MAX_PRODUCT_IMAGES} product images.`,
-      );
+      setGalleryMessage(`You can add up to ${MAX_PRODUCT_IMAGES} images.`);
       return;
     }
 
@@ -222,9 +210,6 @@ export default function ProductFormPage() {
     }
   };
 
-  // WISDOM PRODUCT BOM UI REMOVED V2
-  // Existing saved BOM data is preserved but is no longer edited here.
-
   const handleSubmit = async (event) => {
     event.preventDefault();
     setSaving(true);
@@ -238,7 +223,6 @@ export default function ProductFormPage() {
         "description",
         "category_id",
         "type",
-
         "online_price",
         "walkin_price",
         "production_cost",
@@ -247,20 +231,10 @@ export default function ProductFormPage() {
         "is_featured",
       ];
 
-      const normalizedForm = isBlueprint
-        ? {
-            ...form,
-            online_price: 0,
-            walkin_price: 0,
-            production_cost: 0,
-            stock: 0,
-            reorder_point: 0,
-            is_featured: false,
-          }
-        : {
-            ...form,
-            walkin_price: form.online_price,
-          };
+      const normalizedForm = {
+        ...form,
+        walkin_price: form.online_price,
+      };
 
       allowedFields.forEach((key) => {
         if (normalizedForm[key] !== undefined && normalizedForm[key] !== null) {
@@ -270,59 +244,54 @@ export default function ProductFormPage() {
 
       fd.append("bill_of_materials", JSON.stringify(bom));
 
-      if (!isBlueprint) {
-        const newItems = galleryItems.filter(
-          (item) => item.kind === "new" && item.file,
-        );
-        const newIndexByKey = new Map(
-          newItems.map((item, index) => [item.key, index]),
-        );
+      const newItems = galleryItems.filter(
+        (item) => item.kind === "new" && item.file,
+      );
+      const newIndexByKey = new Map(
+        newItems.map((item, index) => [item.key, index]),
+      );
 
-        newItems.forEach((item) => {
-          fd.append("images", item.file);
-        });
+      newItems.forEach((item) => {
+        fd.append("images", item.file);
+      });
 
-        const galleryOrder = galleryItems.map((item) => {
-          if (item.kind === "existing") {
-            return {
-              type: "existing",
-              id: Number(item.id),
-            };
-          }
-
-          if (item.kind === "legacy") {
-            return {
-              type: "legacy",
-            };
-          }
-
+      const galleryOrder = galleryItems.map((item) => {
+        if (item.kind === "existing") {
           return {
-            type: "new",
-            index: newIndexByKey.get(item.key),
+            type: "existing",
+            id: Number(item.id),
           };
-        });
+        }
+        if (item.kind === "legacy") {
+          return {
+            type: "legacy",
+          };
+        }
+        return {
+          type: "new",
+          index: newIndexByKey.get(item.key),
+        };
+      });
 
-        fd.append("gallery_order", JSON.stringify(galleryOrder));
-      }
+      fd.append("gallery_order", JSON.stringify(galleryOrder));
 
-      // Multiple Cloudinary uploads can legitimately take longer than the shared
-      // 30-second Axios default. Keep the longer timeout local to Product saves
-      // so the rest of the application retains its normal request timeout.
       const productSaveRequestConfig = {
         timeout: 180000,
       };
 
       if (isEdit) {
         await api.put(`/products/${id}`, fd, productSaveRequestConfig);
-        toast.success("Product updated successfully.");
+        toast.success("Build Material updated successfully.");
       } else {
         await api.post("/products", fd, productSaveRequestConfig);
-        toast.success("Product created successfully.");
+        toast.success("Build Material added successfully.");
       }
 
-      navigate("/admin/products");
+      navigate("/admin/inventory/build"); // 👉 Redirects back to Build Materials
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to save product.");
+      toast.error(
+        err?.response?.data?.message || "Failed to save build material.",
+      );
     } finally {
       setSaving(false);
     }
@@ -333,17 +302,20 @@ export default function ProductFormPage() {
       <div style={pageHeader}>
         <button
           type="button"
-          onClick={() => navigate("/admin/products")}
+          onClick={() => navigate("/admin/inventory/build")} // 👉 Redirects back to Build Materials
           style={btnBack}
         >
-          ← Back to products
+          ← Back
         </button>
 
         <div>
-          <h1 style={pageTitle}>Edit Product Catalog Details</h1>
+          <h1 style={pageTitle}>
+            {isEdit ? "Edit Build Material" : "Add Build Material"}
+          </h1>
           <p style={pageSubtitle}>
-            Update public-facing product details, images, and homepage
-            visibility.
+            {isEdit
+              ? "Update details, pricing, and inventory settings for this build material."
+              : "Add a ready-made finished product to your build materials inventory."}
           </p>
         </div>
       </div>
@@ -351,10 +323,10 @@ export default function ProductFormPage() {
       <form onSubmit={handleSubmit}>
         <Section
           title="Basic information"
-          description="Product identity and customer-facing details."
+          description="Material identity and catalog details."
         >
           <Row>
-            <Field label="Product name" required>
+            <Field label="Material / Product name" required>
               <input
                 required
                 value={form.name}
@@ -387,7 +359,7 @@ export default function ProductFormPage() {
                   {categoriesLoading
                     ? "Loading categories..."
                     : categories.length === 0
-                      ? "No product categories available"
+                      ? "No categories available"
                       : "Select category"}
                 </option>
                 {categories.map((category) => (
@@ -398,39 +370,28 @@ export default function ProductFormPage() {
               </select>
             </Field>
 
-            <Field label="Product type">
+            <Field label="Type">
               <input
-                value={isBlueprint ? "Blueprint product" : "Ready-made product"}
+                value="Ready-made product"
                 readOnly
                 style={readOnlyInput}
               />
-              <div style={helperText}>
-                {isBlueprint
-                  ? "Blueprint product type is linked to Blueprint Management and cannot be changed here."
-                  : isEdit
-                    ? "Product type cannot be changed after creation."
-                    : "Products created here are ready-made. Publish Blueprint products from Blueprint Management."}
-              </div>
             </Field>
           </Row>
 
-          {!isBlueprint && (
-            <Row>
-              <Field label="Featured">
-                <label style={featuredControl}>
-                  <input
-                    type="checkbox"
-                    checked={Boolean(form.is_featured)}
-                    onChange={(event) =>
-                      set("is_featured", event.target.checked)
-                    }
-                    style={checkbox}
-                  />
-                  <span>Show as new product on homepage (maximum 4)</span>
-                </label>
-              </Field>
-            </Row>
-          )}
+          <Row>
+            <Field label="Featured">
+              <label style={featuredControl}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.is_featured)}
+                  onChange={(event) => set("is_featured", event.target.checked)}
+                  style={checkbox}
+                />
+                <span>Show as new product on homepage (maximum 4)</span>
+              </label>
+            </Field>
+          </Row>
 
           <Field label="Description">
             <textarea
@@ -443,276 +404,205 @@ export default function ProductFormPage() {
                 paddingTop: 10,
                 resize: "vertical",
               }}
-              placeholder="Describe the product, materials, or key features"
+              placeholder="Describe the material, product, or key features"
             />
           </Field>
         </Section>
 
-        {isBlueprint ? (
-          <Section
-            title="Blueprint preview"
-            description="This preview comes from the linked Blueprint design and stays consistent with Orders and the customer Customize Gallery."
-          >
-            {form.blueprint_id &&
-            (form.blueprint_design_data ||
-              form.blueprint_view_3d_data ||
-              form.blueprint_thumbnail_url) ? (
-              <div style={blueprintPreviewPanel}>
-                <CustomerBlueprintViewer
-                  blueprint={{
-                    id: form.blueprint_id,
-                    title: form.blueprint_title || form.name || "Blueprint",
-                    thumbnail_url: form.blueprint_thumbnail_url || null,
-                    design_data: form.blueprint_design_data || null,
-                    view_3d_data: form.blueprint_view_3d_data || null,
-                  }}
-                  readOnly
-                  showHumanControls={false}
-                  compact
-                  compactHeight={150}
-                  defaultPreset="isometric"
-                  defaultShowHuman={false}
-                />
+        <Section
+          title="Images"
+          description="Add up to 6 images. The first image is the main image shown across the catalog."
+        >
+          <div style={galleryToolbar}>
+            <div>
+              <div style={galleryCount}>
+                {galleryItems.length} of {MAX_PRODUCT_IMAGES} images
               </div>
-            ) : (
-              <div style={infoBox}>
-                <div style={infoTitle}>
-                  Preview comes from Blueprint Management
-                </div>
-                <div style={infoText}>
-                  Publish this product from a saved Blueprint design to show its
-                  furniture preview here.
-                </div>
-              </div>
-            )}
-          </Section>
-        ) : (
-          <Section
-            title="Product images"
-            description="Add up to 6 product views. The first image is the main image shown across the catalog."
-          >
-            <div style={galleryToolbar}>
-              <div>
-                <div style={galleryCount}>
-                  {galleryItems.length} of {MAX_PRODUCT_IMAGES} images
-                </div>
-                <div style={helperText}>
-                  Add front, side, detail, or lifestyle views when available.
-                </div>
-              </div>
-
-              <label
-                style={{
-                  ...btnSecondary,
-                  opacity: galleryItems.length >= MAX_PRODUCT_IMAGES ? 0.5 : 1,
-                  cursor:
-                    galleryItems.length >= MAX_PRODUCT_IMAGES
-                      ? "not-allowed"
-                      : "pointer",
-                }}
-              >
-                Add images
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  multiple
-                  hidden
-                  disabled={galleryItems.length >= MAX_PRODUCT_IMAGES}
-                  onChange={(event) => {
-                    addGalleryFiles(event.target.files);
-                    event.target.value = "";
-                  }}
-                />
-              </label>
             </div>
 
-            {galleryMessage ? (
-              <div style={galleryMessageStyle}>{galleryMessage}</div>
-            ) : null}
+            <label
+              style={{
+                ...btnSecondary,
+                opacity: galleryItems.length >= MAX_PRODUCT_IMAGES ? 0.5 : 1,
+                cursor:
+                  galleryItems.length >= MAX_PRODUCT_IMAGES
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              Add images
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                hidden
+                disabled={galleryItems.length >= MAX_PRODUCT_IMAGES}
+                onChange={(event) => {
+                  addGalleryFiles(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          </div>
 
-            {galleryItems.length > 0 ? (
-              <div style={galleryGrid}>
-                {galleryItems.map((item, index) => (
-                  <div key={item.key} style={galleryCard}>
-                    <div style={galleryImageBox}>
-                      {item.preview ? (
-                        <img
-                          src={item.preview}
-                          alt={`${form.name || "Product"} view ${index + 1}`}
-                          style={galleryImage}
-                        />
-                      ) : (
-                        <span style={previewPlaceholder}>No image</span>
-                      )}
+          {galleryMessage ? (
+            <div style={galleryMessageStyle}>{galleryMessage}</div>
+          ) : null}
 
-                      {index === 0 ? (
-                        <span style={galleryMainBadge}>Main</span>
-                      ) : null}
+          {galleryItems.length > 0 ? (
+            <div style={galleryGrid}>
+              {galleryItems.map((item, index) => (
+                <div key={item.key} style={galleryCard}>
+                  <div style={galleryImageBox}>
+                    {item.preview ? (
+                      <img
+                        src={item.preview}
+                        alt={`View ${index + 1}`}
+                        style={galleryImage}
+                      />
+                    ) : (
+                      <span style={previewPlaceholder}>No image</span>
+                    )}
+
+                    {index === 0 ? (
+                      <span style={galleryMainBadge}>Main</span>
+                    ) : null}
+                  </div>
+
+                  <div style={galleryCardFooter}>
+                    <div style={galleryImageName} title={item.name}>
+                      {index === 0 ? "Main image" : `Image ${index + 1}`}
                     </div>
 
-                    <div style={galleryCardFooter}>
-                      <div style={galleryImageName} title={item.name}>
-                        {index === 0 ? "Main image" : `Image ${index + 1}`}
-                      </div>
-
-                      <div style={galleryActionRow}>
-                        {index > 0 ? (
-                          <button
-                            type="button"
-                            style={galleryMiniButton}
-                            onClick={() => makeGalleryMain(index)}
-                          >
-                            Make main
-                          </button>
-                        ) : null}
-
+                    <div style={galleryActionRow}>
+                      {index > 0 ? (
                         <button
                           type="button"
-                          style={{
-                            ...galleryIconButton,
-                            opacity: index === 0 ? 0.35 : 1,
-                          }}
-                          disabled={index === 0}
-                          onClick={() => moveGalleryItem(index, index - 1)}
-                          aria-label="Move image left"
-                          title="Move left"
+                          style={galleryMiniButton}
+                          onClick={() => makeGalleryMain(index)}
                         >
-                          &larr;
+                          Make main
                         </button>
+                      ) : null}
 
-                        <button
-                          type="button"
-                          style={{
-                            ...galleryIconButton,
-                            opacity:
-                              index === galleryItems.length - 1 ? 0.35 : 1,
-                          }}
-                          disabled={index === galleryItems.length - 1}
-                          onClick={() => moveGalleryItem(index, index + 1)}
-                          aria-label="Move image right"
-                          title="Move right"
-                        >
-                          &rarr;
-                        </button>
+                      <button
+                        type="button"
+                        style={{
+                          ...galleryIconButton,
+                          opacity: index === 0 ? 0.35 : 1,
+                        }}
+                        disabled={index === 0}
+                        onClick={() => moveGalleryItem(index, index - 1)}
+                        aria-label="Move image left"
+                        title="Move left"
+                      >
+                        &larr;
+                      </button>
 
-                        <button
-                          type="button"
-                          style={galleryRemoveButton}
-                          onClick={() => removeGalleryItem(index)}
-                        >
-                          Remove
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        style={{
+                          ...galleryIconButton,
+                          opacity: index === galleryItems.length - 1 ? 0.35 : 1,
+                        }}
+                        disabled={index === galleryItems.length - 1}
+                        onClick={() => moveGalleryItem(index, index + 1)}
+                        aria-label="Move image right"
+                        title="Move right"
+                      >
+                        &rarr;
+                      </button>
+
+                      <button
+                        type="button"
+                        style={galleryRemoveButton}
+                        onClick={() => removeGalleryItem(index)}
+                      >
+                        Remove
+                      </button>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div style={galleryEmpty}>
-                <div style={galleryEmptyTitle}>No product image selected</div>
-                <div style={helperText}>
-                  You can save the product without an image and add images
-                  later.
                 </div>
-              </div>
-            )}
-
-            <div style={helperText}>
-              JPG, PNG, or WEBP. The Main image remains the compatibility image
-              used by existing catalog, cart, POS, and order displays.
-            </div>
-          </Section>
-        )}
-
-        <Section
-          title="Pricing and inventory"
-          description={
-            isBlueprint
-              ? "Blueprint templates do not have a fixed selling price. The customer quotation is calculated after customization and project estimation."
-              : "Pricing and physical stock are managed in the Build Materials inventory to ensure data accuracy."
-          }
-        >
-          {isBlueprint ? (
-            <div style={infoBox}>
-              <div style={infoTitle}>Quotation after estimation</div>
-              <div style={infoText}>
-                Customer changes can affect materials, dimensions, and labor, so
-                this blueprint has no fixed product price or ready-made stock.
-              </div>
+              ))}
             </div>
           ) : (
-            <>
-              <div style={{ ...infoBox, marginBottom: 14 }}>
-                <div style={infoTitle}>Managed in Build Materials</div>
-                <div style={infoText}>
-                  Pricing, costs, and inventory levels for ready-made products
-                  are tracked securely in the warehouse. To update these values,
-                  please edit the item in the Build Materials page.
-                </div>
+            <div style={galleryEmpty}>
+              <div style={galleryEmptyTitle}>No image selected</div>
+              <div style={helperText}>
+                You can save without an image and add images later.
               </div>
-
-              <Row>
-                <Field label="Price">
-                  <div style={{ ...moneyField, background: "#f7f7f8" }}>
-                    <span style={moneyPrefix}>₱</span>
-                    <input
-                      type="number"
-                      value={form.online_price}
-                      readOnly
-                      style={{ ...moneyInput, color: "#52525b" }}
-                    />
-                  </div>
-                </Field>
-
-                <Field label="Product cost">
-                  <div style={{ ...moneyField, background: "#f7f7f8" }}>
-                    <span style={moneyPrefix}>₱</span>
-                    <input
-                      type="number"
-                      value={form.production_cost}
-                      readOnly
-                      style={{ ...moneyInput, color: "#52525b" }}
-                    />
-                  </div>
-                </Field>
-              </Row>
-
-              <Row>
-                <Field label="Stock on hand">
-                  <input
-                    type="number"
-                    value={Number(form.stock || 0)}
-                    readOnly
-                    style={readOnlyInput}
-                  />
-                </Field>
-
-                <Field label="Reorder point">
-                  <input
-                    type="number"
-                    value={form.reorder_point ?? 0}
-                    readOnly
-                    style={readOnlyInput}
-                  />
-                </Field>
-              </Row>
-            </>
+            </div>
           )}
         </Section>
 
-        {/* WISDOM PRODUCT BOM UI REMOVED V2 */}
+        <Section
+          title="Pricing and inventory"
+          description="Set the selling price and inventory settings. Physical stock changes are recorded through Stock Movement."
+        >
+          <Row>
+            <Field label="Selling Price" required>
+              <MoneyInput
+                value={form.online_price}
+                onChange={(value) =>
+                  setForm((current) => ({
+                    ...current,
+                    online_price: value,
+                    walkin_price: value,
+                  }))
+                }
+              />
+            </Field>
+
+            <Field label="Product cost">
+              <MoneyInput
+                value={form.production_cost}
+                onChange={(value) => set("production_cost", value)}
+                required={false}
+              />
+              <div style={helperText}>
+                Cost per item. Used to calculate profit.
+              </div>
+            </Field>
+          </Row>
+
+          <Row>
+            <Field label="Stock on hand">
+              <input
+                type="number"
+                min="0"
+                value={form.stock ?? 0}
+                onChange={(event) => set("stock", event.target.value)}
+                style={input}
+                placeholder="0"
+              />
+              <div style={helperText}>Current ready-made inventory level.</div>
+            </Field>
+
+            <Field label="Reorder point">
+              <input
+                type="number"
+                min="0"
+                value={form.reorder_point ?? 0}
+                onChange={(event) => set("reorder_point", event.target.value)}
+                style={input}
+                placeholder="0"
+              />
+              <div style={helperText}>Low-stock reminder level.</div>
+            </Field>
+          </Row>
+        </Section>
 
         <div style={footerActions}>
           <button
             type="button"
-            onClick={() => navigate("/admin/products")}
+            onClick={() => navigate("/admin/inventory/build")} // 👉 Redirects back
             style={btnSecondary}
             disabled={saving}
           >
             Cancel
           </button>
           <button type="submit" disabled={saving} style={btnPrimary}>
-            {saving ? "Saving..." : "Save catalog changes"}
+            {saving ? "Saving..." : isEdit ? "Save changes" : "Add item"}
           </button>
         </div>
       </form>
@@ -720,6 +610,7 @@ export default function ProductFormPage() {
   );
 }
 
+// Keep all the identical helper components and styles from ProductFormPage here:
 function Section({ title, description, children }) {
   return (
     <section style={section}>
@@ -1084,35 +975,6 @@ const moneyInput = {
   fontWeight: 400,
 };
 
-const blueprintPreviewPanel = {
-  height: 150,
-  overflow: "hidden",
-  background: "#f7f5f2",
-  border: "1px solid #e4e4e7",
-  borderRadius: 2,
-};
-
-const infoBox = {
-  padding: "11px 12px",
-  background: "#fafafa",
-  border: "1px solid #dedfe2",
-  borderRadius: 2,
-};
-
-const infoTitle = {
-  color: "#27272a",
-  fontSize: 11.5,
-  fontWeight: 600,
-};
-
-const infoText = {
-  marginTop: 3,
-  color: "#71717a",
-  fontSize: 10.5,
-  fontWeight: 400,
-  lineHeight: 1.4,
-};
-
 const footerActions = {
   display: "flex",
   justifyContent: "flex-end",
@@ -1155,17 +1017,4 @@ const btnBack = {
   minHeight: 33,
   padding: "0 10px",
   whiteSpace: "nowrap",
-};
-
-const btnText = {
-  minHeight: 32,
-  padding: "0 7px",
-  background: "transparent",
-  color: "#52525b",
-  border: 0,
-  borderRadius: 2,
-  fontFamily: "inherit",
-  fontSize: 11,
-  fontWeight: 500,
-  cursor: "pointer",
 };

@@ -250,9 +250,11 @@ export default function ProductCatalog() {
       setProducts([]);
       setCategories([]);
       setTotal(0);
-      toast.error(
+
+      setToastMsg(
         err?.response?.data?.message || "Failed to load catalog products.",
       );
+      setIsHiding(false);
     } finally {
       setLoading(false);
     }
@@ -293,9 +295,7 @@ export default function ProductCatalog() {
         (cat) => String(cat.id) === requestedCategoryId,
       );
 
-      setCatFilter(
-        idMatch ? String(idMatch.id) : UNMATCHED_CATEGORY_FILTER,
-      );
+      setCatFilter(idMatch ? String(idMatch.id) : UNMATCHED_CATEGORY_FILTER);
       setUrlMapped(true);
       return;
     }
@@ -303,13 +303,12 @@ export default function ProductCatalog() {
     if (categoryName) {
       const match = categories.find(
         (cat) =>
-          String(cat.name || "").trim().toLowerCase() ===
-          categoryName.trim().toLowerCase(),
+          String(cat.name || "")
+            .trim()
+            .toLowerCase() === categoryName.trim().toLowerCase(),
       );
 
-      setCatFilter(
-        match ? String(match.id) : UNMATCHED_CATEGORY_FILTER,
-      );
+      setCatFilter(match ? String(match.id) : UNMATCHED_CATEGORY_FILTER);
     } else {
       setCatFilter("all");
     }
@@ -471,9 +470,7 @@ export default function ProductCatalog() {
     ((normalizedMax - sliderMin) / (safeSliderMax - sliderMin)) * 100;
 
   const selectedStock = Number(selected?.stock || 0);
-  const selectedUnavailable = selected
-    ? isProductUnavailable(selected)
-    : false;
+  const selectedUnavailable = selected ? isProductUnavailable(selected) : false;
 
   const selectedImages = selected
     ? Array.isArray(selected.images) && selected.images.length > 0
@@ -585,10 +582,7 @@ export default function ProductCatalog() {
 
             <div className="price-slider-shell">
               <div className="price-slider-wrap">
-                <div
-                  className="price-slider-track"
-                  aria-hidden="true"
-                />
+                <div className="price-slider-track" aria-hidden="true" />
                 <div
                   className="price-slider-progress"
                   aria-hidden="true"
@@ -612,9 +606,7 @@ export default function ProductCatalog() {
                   )}
                   onChange={(e) => {
                     const nextValue = Number(e.target.value);
-                    setTempPriceMin(
-                      String(Math.min(nextValue, normalizedMax)),
-                    );
+                    setTempPriceMin(String(Math.min(nextValue, normalizedMax)));
                   }}
                 />
 
@@ -632,9 +624,7 @@ export default function ProductCatalog() {
                   )}
                   onChange={(e) => {
                     const nextValue = Number(e.target.value);
-                    setTempPriceMax(
-                      String(Math.max(nextValue, normalizedMin)),
-                    );
+                    setTempPriceMax(String(Math.max(nextValue, normalizedMin)));
                   }}
                 />
               </div>
@@ -652,13 +642,8 @@ export default function ProductCatalog() {
                 <div className="price-range-copy" aria-live="polite">
                   <span>Price:</span>
                   <strong>
-                    {formatFilterPeso(
-                      sliderMax ? normalizedMin : sliderMin,
-                    )}{" "}
-                    —{" "}
-                    {formatFilterPeso(
-                      sliderMax ? normalizedMax : sliderMax,
-                    )}
+                    {formatFilterPeso(sliderMax ? normalizedMin : sliderMin)} —{" "}
+                    {formatFilterPeso(sliderMax ? normalizedMax : sliderMax)}
                   </strong>
                 </div>
               </div>
@@ -962,10 +947,7 @@ export default function ProductCatalog() {
                 <div className="sidebar-title">Filter by Price</div>
                 <div className="price-slider-shell">
                   <div className="price-slider-wrap">
-                    <div
-                      className="price-slider-track"
-                      aria-hidden="true"
-                    />
+                    <div className="price-slider-track" aria-hidden="true" />
                     <div
                       className="price-slider-progress"
                       aria-hidden="true"

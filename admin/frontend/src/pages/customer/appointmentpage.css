@@ -1806,23 +1806,28 @@
   font-weight: 700 !important;
 }
 
-/* Customer cancellation action: clear destructive action without red styling. */
+/* Customer cancellation action: Warranty-style red outline button */
 .appt-btn-cancel {
-  border: 1px solid #111111 !important;
-  background: #111111 !important;
-  color: #ffffff !important;
-  font-weight: 600 !important;
+  min-height: 40px !important;
+  padding: 0 14px !important;
+  border: 1px solid #b91c1c !important;
+  background: #ffffff !important;
+  color: #b91c1c !important;
+  font-size: 0.86rem !important;
+  font-weight: 800 !important;
   border-radius: 0 !important;
-}
-
-.appt-btn-cancel svg {
-  color: #ffffff !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
 }
 
 .appt-btn-cancel:hover {
-  border-color: #000000 !important;
-  background: #000000 !important;
+  background: #b91c1c !important;
   color: #ffffff !important;
+}
+
+.appt-btn-cancel:disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
 }
 
 /* Controlled emphasis: important customer-facing information only. */
