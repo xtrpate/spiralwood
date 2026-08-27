@@ -7,6 +7,18 @@ import React, {
 } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import {
+  Undo2,
+  Redo2,
+  List,
+  Ruler,
+  Box,
+  RotateCcw,
+  Maximize2,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import api from "../../services/api";
 import OversizedDeliveryWarning from "../../components/OversizedDeliveryWarning";
 import { assessOversizedDelivery } from "../../utils/oversizedDelivery";
@@ -14,6 +26,7 @@ import { assessOversizedDelivery } from "../../utils/oversizedDelivery";
 import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
 import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 import { applyWoodFinish } from "../blueprints/data/componentUtils";
+import "./customer3dviewer-roomle-complete.css";
 
 const WORLD_W = 6400;
 const WORLD_H = 3200;
@@ -22,6 +35,14 @@ const FLOOR_OFFSET = 40;
 const MAX_HISTORY = 60;
 const SELECTION_COLOR = 0x38bdf8;
 const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+/* WISDOM HUMAN REFERENCE RANGE V17
+   450 mm supports baby/newborn-size comparison. */
+const HUMAN_REFERENCE_MIN_HEIGHT_MM = 450;
+
+/* WISDOM HUMAN REFERENCE TALLEST EVER V18
+   2720 mm = 2.72 m = 8 ft 11.1 in, the tallest verified human ever. */
+const HUMAN_REFERENCE_MAX_HEIGHT_MM = 2720;
 
 /* WISDOM CUSTOMIZE GUIDED EXPERIENCE V1.0.14.11 */
 
@@ -226,6 +247,194 @@ const getPartAxisLabels = (comp) => {
     height: looksFlat ? "Thickness" : "Height",
     depth: "Depth",
   };
+};
+
+
+const CUSTOMER_PART_GROUP_ORDER = [
+  "Whole Furniture",
+  "Table Top",
+  "Top",
+  "Body / Carcass",
+  "Body / Panels",
+  "Doors",
+  "Drawers",
+  "Shelves",
+  "Dividers",
+  "Back Panel",
+  "Side Panels",
+  "Front Panel",
+  "Apron",
+  "Rails",
+  "Legs",
+  "Base",
+  "Seat",
+  "Backrest",
+  "Armrests",
+  "Headboard",
+  "Footboard",
+  "Handles & Hardware",
+  "Other Parts",
+];
+
+const toCustomerPartTitle = (value = "") =>
+  String(value || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\d+\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+
+const getCustomerPartGroupLabel = (component = {}) => {
+  const text = [
+    component?.type,
+    component?.label,
+    component?.name,
+    component?.partRole,
+    component?.part_role,
+    component?.partCode,
+    component?.technicalId,
+    component?.category,
+    component?.groupType,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim()
+    .toLowerCase();
+
+  if (!text) return "Other Parts";
+
+  if (
+    text.includes("handle") ||
+    text.includes("knob") ||
+    text.includes("hardware") ||
+    text.includes("pull")
+  ) {
+    return "Handles & Hardware";
+  }
+
+  if (/(^|[\s_-])drawer([\s_-]|$)/.test(text) || text.includes("drw")) {
+    return "Drawers";
+  }
+
+  if (/(^|[\s_-])door([\s_-]|$)/.test(text)) {
+    return "Doors";
+  }
+
+  if (text.includes("table top") || text.includes("tabletop")) {
+    return "Table Top";
+  }
+
+  if (
+    text.includes("top panel") ||
+    text.includes("counter top") ||
+    text.includes("countertop") ||
+    text.includes("worktop") ||
+    text.includes("work top") ||
+    text.includes("surface")
+  ) {
+    return "Top";
+  }
+
+  if (text.includes("shelf")) return "Shelves";
+  if (text.includes("divider")) return "Dividers";
+
+  if (
+    text.includes("headboard") ||
+    text.includes("head board")
+  ) {
+    return "Headboard";
+  }
+
+  if (
+    text.includes("footboard") ||
+    text.includes("foot board")
+  ) {
+    return "Footboard";
+  }
+
+  if (
+    text.includes("backrest") ||
+    text.includes("back rest") ||
+    text.includes("back slat")
+  ) {
+    return "Backrest";
+  }
+
+  if (text.includes("armrest") || text.includes("arm rest")) {
+    return "Armrests";
+  }
+
+  if (
+    text.includes("seat panel") ||
+    text.includes("chair seat") ||
+    /(^|[\s_-])seat([\s_-]|$)/.test(text)
+  ) {
+    return "Seat";
+  }
+
+  if (text.includes("apron")) return "Apron";
+
+  if (
+    text.includes("rail") &&
+    !text.includes("drawer")
+  ) {
+    return "Rails";
+  }
+
+  if (
+    text.includes("leg") ||
+    text.includes("foot") ||
+    text.includes("feet")
+  ) {
+    return "Legs";
+  }
+
+  if (
+    text.includes("plinth") ||
+    text.includes("pedestal") ||
+    /(^|[\s_-])base([\s_-]|$)/.test(text)
+  ) {
+    return "Base";
+  }
+
+  if (
+    text.includes("back panel") ||
+    text.includes("backboard") ||
+    text.includes("back board")
+  ) {
+    return "Back Panel";
+  }
+
+  if (
+    text.includes("side panel") ||
+    text.includes("left panel") ||
+    text.includes("right panel")
+  ) {
+    return "Side Panels";
+  }
+
+  if (text.includes("front panel")) return "Front Panel";
+
+  if (
+    text.includes("carcass") ||
+    text.includes("cabinet body") ||
+    text.includes("wardrobe body")
+  ) {
+    return "Body / Carcass";
+  }
+
+  if (
+    text.includes("body") ||
+    text.includes("panel")
+  ) {
+    return "Body / Panels";
+  }
+
+  const fallback = toCustomerPartTitle(
+    component?.label || component?.name || component?.type || "",
+  );
+
+  return fallback || "Other Parts";
 };
 
 const normalizeViewerComponent = (comp = {}) => {
@@ -725,6 +934,8 @@ export default function Customer3DViewer({
   const customizeFeedbackTimerRef = useRef(null);
   const finishMenuRef = useRef(null);
   const initialViewFramedRef = useRef(false);
+  const viewerRootRef = useRef(null);
+  const dimensionLinesRef = useRef(null);
 
   const [components, setComponents] = useState(() =>
     normalizeViewerComponents(initialComponents),
@@ -749,6 +960,15 @@ export default function Customer3DViewer({
   const [activeView, setActiveView] = useState("3D");
   const [customHex, setCustomHex] = useState("#1e293b");
   const [finishMenuOpen, setFinishMenuOpen] = useState(false);
+  const [showMeasurements, setShowMeasurements] = useState(true);
+  const [partListVisible, setPartListVisible] = useState(false);
+  const [expandedPartLabel, setExpandedPartLabel] = useState("");
+  const [expandedFinishGroupLabel, setExpandedFinishGroupLabel] = useState("");
+  const [unitMenuOpen, setUnitMenuOpen] = useState(false);
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [requestDetailsOpen, setRequestDetailsOpen] = useState(false);
+  const [isViewerFullscreen, setIsViewerFullscreen] = useState(false);
 
   const [customizeProgressStep, setCustomizeProgressStep] = useState(
     readOnly ? 1 : 2,
@@ -839,31 +1059,38 @@ export default function Customer3DViewer({
     [],
   );
 
-  // 👉 AUTO-GROUPING FOR SHORTCUT BUTTONS
+  // Customer-facing groups are derived from the actual blueprint component
+  // metadata so a table, cabinet, chair, shelf, etc. only shows relevant parts.
   const partGroups = useMemo(() => {
-    const groups = [];
-    components.forEach((c) => {
-      const existing = groups.find(
-        (g) =>
-          Math.abs(g.width - c.width) < 1 &&
-          Math.abs(g.height - c.height) < 1 &&
-          Math.abs(g.depth - c.depth) < 1 &&
-          g.material === c.material,
-      );
-      if (existing) {
-        existing.ids.push(c.id);
-      } else {
-        groups.push({
-          label: c.label,
-          width: c.width,
-          height: c.height,
-          depth: c.depth,
-          material: c.material,
-          ids: [c.id],
+    const grouped = new Map();
+
+    components.forEach((component) => {
+      const label = getCustomerPartGroupLabel(component);
+
+      if (!grouped.has(label)) {
+        grouped.set(label, {
+          label,
+          width: component.width,
+          height: component.height,
+          depth: component.depth,
+          material: component.material,
+          ids: [],
         });
       }
+
+      grouped.get(label).ids.push(component.id);
     });
-    return groups;
+
+    return [...grouped.values()].sort((a, b) => {
+      const aIndex = CUSTOMER_PART_GROUP_ORDER.indexOf(a.label);
+      const bIndex = CUSTOMER_PART_GROUP_ORDER.indexOf(b.label);
+
+      const safeA = aIndex < 0 ? CUSTOMER_PART_GROUP_ORDER.length : aIndex;
+      const safeB = bIndex < 0 ? CUSTOMER_PART_GROUP_ORDER.length : bIndex;
+
+      if (safeA !== safeB) return safeA - safeB;
+      return String(a.label || "").localeCompare(String(b.label || ""));
+    });
   }, [components]);
 
   const pushHistorySnapshot = useCallback((snapshot) => {
@@ -1020,6 +1247,18 @@ export default function Customer3DViewer({
   }, [components, selectedCompIds]);
 
   const sampleSelectedPart = selectedGroup[0] || null;
+  const selectedPartGroup = useMemo(
+    () =>
+      partGroups.find((group) =>
+        group.ids.some((id) => selectedCompIds.includes(id)),
+      ) || null,
+    [partGroups, selectedCompIds],
+  );
+
+  useEffect(() => {
+    if (!partListVisible || !selectedPartGroup?.label) return;
+    setExpandedPartLabel(selectedPartGroup.label);
+  }, [partListVisible, selectedPartGroup]);
   const activeFinishId = String(
     (sampleSelectedPart || components[0])?.finish_id ||
       (sampleSelectedPart || components[0])?.woodFinish ||
@@ -1030,6 +1269,22 @@ export default function Customer3DViewer({
   const activeWoodFinish = Array.isArray(WOOD_FINISHES)
     ? WOOD_FINISHES.find((finish) => finish.id === activeFinishId) || null
     : null;
+
+  const uniformFinishId = useMemo(() => {
+    const ids = (Array.isArray(components) ? components : [])
+      .map((component) =>
+        String(
+          component?.finish_id ||
+            component?.woodFinish ||
+            component?.finish ||
+            "",
+        ).trim(),
+      );
+
+    if (!ids.length) return "";
+    const unique = [...new Set(ids)];
+    return unique.length === 1 ? unique[0] : "__mixed__";
+  }, [components]);
 
   useEffect(() => {
     setOverallDrafts({
@@ -1144,6 +1399,20 @@ export default function Customer3DViewer({
     orbit.minDistance = 500;
     orbit.maxDistance = 5000;
     orbit.target.set(0, 0, 0);
+
+    // WISDOM ROOMLE-INSPIRED CAMERA INTERACTION
+    // Left drag = orbit, wheel/middle = zoom, right drag = pan.
+    orbit.enablePan = true;
+    orbit.panSpeed = 0.7;
+    orbit.rotateSpeed = 0.68;
+    orbit.zoomSpeed = 0.82;
+    orbit.screenSpacePanning = true;
+    orbit.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+    orbit.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+    orbit.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+    orbit.touches.ONE = THREE.TOUCH.ROTATE;
+    orbit.touches.TWO = THREE.TOUCH.DOLLY_PAN;
+    if ("zoomToCursor" in orbit) orbit.zoomToCursor = true;
 
     // Keep the 3D viewer interactive.
     // The page itself can still scroll from the options/sidebar area.
@@ -1293,7 +1562,7 @@ export default function Customer3DViewer({
       startY = e.clientY;
     };
     const onPointerUp = (event) => {
-      if (!selectionMode || readOnly || doorsPreviewOpen || drawersPreviewOpen) return;
+      if (readOnly || doorsPreviewOpen || drawersPreviewOpen) return;
 
       const dragDist = Math.hypot(
         event.clientX - startX,
@@ -1318,15 +1587,14 @@ export default function Customer3DViewer({
           const clickedId = obj.userData.id;
           const target = components.find((c) => c.id === clickedId);
           if (target) {
-            // Find Siblings
-            const siblings = components.filter(
-              (c) =>
-                Math.abs(c.width - target.width) < 1 &&
-                Math.abs(c.height - target.height) < 1 &&
-                Math.abs(c.depth - target.depth) < 1 &&
-                c.material === target.material,
+            const semanticGroup = partGroups.find((group) =>
+              group.ids.includes(clickedId),
             );
-            setSelectedCompIds(siblings.map((s) => s.id));
+            setSelectedCompIds(
+              semanticGroup?.ids?.length
+                ? semanticGroup.ids
+                : [clickedId],
+            );
           }
         }
       } else {
@@ -1341,7 +1609,14 @@ export default function Customer3DViewer({
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
     };
-  }, [selectionMode, readOnly, components, doorsPreviewOpen, drawersPreviewOpen]);
+  }, [
+    selectionMode,
+    readOnly,
+    components,
+    partGroups,
+    doorsPreviewOpen,
+    drawersPreviewOpen,
+  ]);
 
   const fitReadOnlyCameraToFurniture = (viewMode = "3D") => {
     if (
@@ -2578,6 +2853,8 @@ export default function Customer3DViewer({
       );
       const lineMat = new THREE.LineBasicMaterial({ color: 0x334155 });
       const dimensionLines = new THREE.LineSegments(lineGeo, lineMat);
+      dimensionLines.visible = showMeasurements;
+      dimensionLinesRef.current = dimensionLines;
       rootGroup.add(dimensionLines);
     }
   }, [
@@ -2585,6 +2862,12 @@ export default function Customer3DViewer({
     clearCustomerDoorPreviews,
     clearCustomerDrawerPreviews,
   ]);
+
+  useEffect(() => {
+    if (dimensionLinesRef.current) {
+      dimensionLinesRef.current.visible = showMeasurements;
+    }
+  }, [showMeasurements, components]);
 
   useEffect(() => {
     if (!sceneRef.current || !rootGroupRef.current) return;
@@ -2624,28 +2907,34 @@ export default function Customer3DViewer({
 
     if (!showPerson || components.length === 0) return;
 
-    const personHeight = clampNumber(personHeightMm, 1200, 2300);
+    const personHeight = clampNumber(
+      personHeightMm,
+      HUMAN_REFERENCE_MIN_HEIGHT_MM,
+      HUMAN_REFERENCE_MAX_HEIGHT_MM,
+    );
     const floorY = -(WORLD_H / 2) + FLOOR_OFFSET;
 
     // New proportions for a solid, unified blocky look
-    const headRadius = Math.max(75, Math.round(personHeight * 0.075));
-    const torsoHeight = Math.max(380, Math.round(personHeight * 0.38));
-    const footHeight = 24;
+    const headRadius = Math.max(20, Math.round(personHeight * 0.075));
+    const torsoHeight = Math.max(110, Math.round(personHeight * 0.38));
+    const referenceScale = personHeight / 1700;
+    const footHeight = Math.max(7, Math.round(24 * referenceScale));
     const legHeight = Math.max(
-      280,
+      110,
       Math.round(
         personHeight - (headRadius * 2 + torsoHeight + footHeight - 15),
       ),
     );
 
-    const shoulderWidth = Math.max(240, Math.round(personHeight * 0.2));
-    const torsoDepth = Math.max(120, Math.round(personHeight * 0.08));
+    const shoulderWidth = Math.max(65, Math.round(personHeight * 0.2));
+    const torsoDepth = Math.max(35, Math.round(personHeight * 0.08));
 
-    const legWidth = Math.max(75, Math.round(shoulderWidth * 0.35));
-    const legDepth = Math.max(90, Math.round(torsoDepth * 0.8));
-    const legGap = Math.max(25, Math.round(shoulderWidth * 0.15));
+    const legWidth = Math.max(22, Math.round(shoulderWidth * 0.35));
+    const legDepth = Math.max(28, Math.round(torsoDepth * 0.8));
+    const legGap = Math.max(8, Math.round(shoulderWidth * 0.15));
 
-    const footDepth = legDepth + 30;
+    const footDepth =
+      legDepth + Math.max(9, Math.round(30 * referenceScale));
 
     // Single, uniform smooth material for the whole body
     const bodyMat = new THREE.MeshStandardMaterial({
@@ -2805,6 +3094,139 @@ export default function Customer3DViewer({
     setActiveView(viewMode);
   };
 
+
+  const resetCameraView = useCallback(() => {
+    changeCameraView("3D");
+    showCustomizeFeedback("Camera reset.");
+  }, [showCustomizeFeedback]);
+
+  const toggleViewerFullscreen = useCallback(async () => {
+    if (typeof document === "undefined" || !viewerRootRef.current) return;
+
+    try {
+      if (document.fullscreenElement === viewerRootRef.current) {
+        await document.exitFullscreen?.();
+      } else {
+        await viewerRootRef.current.requestFullscreen?.();
+      }
+    } catch (error) {
+      console.error("Unable to toggle customer configurator fullscreen:", error);
+      showCustomizeFeedback("Fullscreen is unavailable in this browser.");
+    }
+  }, [showCustomizeFeedback]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+
+    const handleFullscreenChange = () => {
+      setIsViewerFullscreen(
+        document.fullscreenElement === viewerRootRef.current,
+      );
+
+      requestAnimationFrame(() => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("resize"));
+        }
+      });
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener(
+        "fullscreenchange",
+        handleFullscreenChange,
+      );
+    };
+  }, []);
+
+  const handleCreateSnapshot = useCallback(() => {
+    const renderer = rendererRef.current;
+    const scene = sceneRef.current;
+    const camera = cameraRef.current;
+
+    if (!renderer || !scene || !camera || typeof document === "undefined") {
+      showCustomizeFeedback("Snapshot is unavailable.");
+      return;
+    }
+
+    const dimensionLines = dimensionLinesRef.current;
+    const dimensionWasVisible = dimensionLines?.visible;
+    const personGroup = personGroupRef.current;
+    const personWasVisible = personGroup?.visible;
+
+    const selectionVisibility = selectionHelpersRef.current.map((helper) => ({
+      helper,
+      visible: helper?.visible,
+    }));
+
+    try {
+      if (dimensionLines) dimensionLines.visible = false;
+      if (personGroup) personGroup.visible = false;
+
+      selectionVisibility.forEach(({ helper }) => {
+        if (helper) helper.visible = false;
+      });
+
+      renderer.render(scene, camera);
+
+      const dataUrl = renderer.domElement.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = "wisdom-furniture-" + Date.now() + ".png";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      showCustomizeFeedback("Snapshot created.");
+    } catch (error) {
+      console.error("Unable to create customer furniture snapshot:", error);
+      showCustomizeFeedback("Could not create snapshot.");
+    } finally {
+      if (dimensionLines) {
+        dimensionLines.visible = Boolean(dimensionWasVisible);
+      }
+
+      if (personGroup) {
+        personGroup.visible = Boolean(personWasVisible);
+      }
+
+      selectionVisibility.forEach(({ helper, visible }) => {
+        if (helper) helper.visible = Boolean(visible);
+      });
+
+      renderer.render(scene, camera);
+    }
+  }, [showCustomizeFeedback]);
+
+  const finishCatalog = Array.isArray(WOOD_FINISHES)
+    ? WOOD_FINISHES
+    : [];
+
+  const getFinishPreviewChoices = (activeFinishId = "", limit = 3) => {
+    const safeLimit = Math.max(1, Number(limit) || 3);
+    const firstChoices = finishCatalog.slice(0, safeLimit);
+
+    if (
+      activeFinishId &&
+      activeFinishId !== "__mixed__" &&
+      !firstChoices.some((finish) => finish.id === activeFinishId)
+    ) {
+      const activeFinish = finishCatalog.find(
+        (finish) => finish.id === activeFinishId,
+      );
+
+      if (activeFinish) {
+        return [
+          ...firstChoices.slice(0, Math.max(0, safeLimit - 1)),
+          activeFinish,
+        ];
+      }
+    }
+
+    return firstChoices;
+  };
+
   const handleOverallDraftChange = (axis, value) => {
     setOverallDrafts((prev) => ({ ...prev, [axis]: value }));
   };
@@ -2907,7 +3329,7 @@ export default function Customer3DViewer({
     showCustomizeFeedback("Part size updated. Choose a finish when ready.");
   };
 
-  const handleFinishChange = (finishId) => {
+  const handleFinishChange = (finishId, targetIdsOverride = null) => {
     if (!isCustomizable || readOnly || !editable.finish_color) return;
     setCustomizeProgressStep((current) => Math.max(current, 5));
     showCustomizeFeedback(
@@ -2915,9 +3337,12 @@ export default function Customer3DViewer({
         ? "Finish applied. Review your design."
         : "Finish reset. Review your design.",
     );
-    const targetIds = selectedCompIds.length
-      ? selectedCompIds
-      : components.map((c) => c.id);
+    const targetIds =
+      Array.isArray(targetIdsOverride) && targetIdsOverride.length
+        ? targetIdsOverride
+        : selectedCompIds.length
+          ? selectedCompIds
+          : components.map((c) => c.id);
 
     commitComponents((prev) =>
       prev.map((c) => {
@@ -2977,6 +3402,7 @@ export default function Customer3DViewer({
   const handleApply = () => {
     if (typeof onApply !== "function") return;
     setCustomizeProgressStep(6);
+    showCustomizeFeedback("Added to custom cart.");
     onApply({
       quantity: Math.max(1, Number(quantity || 1)),
       comments: String(comments || "").trim(),
@@ -3001,8 +3427,26 @@ export default function Customer3DViewer({
   const redoDisabled = !historyRef.current.future.length;
 
   return (
-    <div style={styles.root}>
-      <div style={styles.topBar}>
+    <div
+      ref={viewerRootRef}
+      className={
+        "wisdom-roomle-root" +
+        (!readOnly ? " is-customize" : "") +
+        (!showMeasurements ? " measurements-hidden" : "")
+      }
+      style={styles.root}
+    >
+      {!readOnly && customizeFeedback ? (
+        <div
+          className="wisdom-config-feedback-toast"
+          role="status"
+          aria-live="polite"
+        >
+          {customizeFeedback}
+        </div>
+      ) : null}
+
+      <div className="wisdom-roomle-topbar" style={styles.topBar}>
         <div style={styles.topBarMeta}>
           <div style={styles.topBarEyebrow}>
             {readOnly ? "Design Preview" : "Customize Design"}
@@ -3063,9 +3507,15 @@ export default function Customer3DViewer({
       </div>
 
       <div
-        className={`customer-3d-viewer-shell ${
-          !readOnly ? "customer-3d-viewer-shell-customize" : ""
-        }`}
+        className={
+          "customer-3d-viewer-shell " +
+          (!readOnly
+            ? "customer-3d-viewer-shell-customize wisdom-roomle-configurator "
+            : "") +
+          (!readOnly && sidebarCollapsed
+            ? "wisdom-sidebar-collapsed"
+            : "")
+        }
         style={{
           ...styles.viewerShell,
           ...(!readOnly ? styles.customizeViewerShell : {}),
@@ -3315,7 +3765,256 @@ export default function Customer3DViewer({
                 </div>
               </div>
 
-              <div style={styles.customizeCanvasStage}>
+              <div
+                className="wisdom-roomle-stage"
+                style={styles.customizeCanvasStage}
+              >
+
+                <div
+                  className="wisdom-roomle-toolbar"
+                  aria-label="3D viewer tools"
+                >
+                  <div className="wisdom-roomle-toolbar-slot">
+                    <button
+                      type="button"
+                      className="wisdom-roomle-tool"
+                      data-tooltip="Undo"
+                      onClick={handleUndo}
+                      disabled={undoDisabled}
+                      aria-label="Undo"
+                    >
+                      <Undo2 size={18} strokeWidth={1.65} />
+                    </button>
+                  </div>
+
+                  <div className="wisdom-roomle-toolbar-slot">
+                    <button
+                      type="button"
+                      className="wisdom-roomle-tool"
+                      data-tooltip="Redo"
+                      onClick={handleRedo}
+                      disabled={redoDisabled}
+                      aria-label="Redo"
+                    >
+                      <Redo2 size={18} strokeWidth={1.65} />
+                    </button>
+                  </div>
+
+                  <div className="wisdom-roomle-toolbar-slot">
+                    <button
+                      type="button"
+                      className={
+                        "wisdom-roomle-tool" +
+                        (partListVisible ? " is-active" : "")
+                      }
+                      data-tooltip={
+                        partListVisible ? "Hide part list" : "Show part list"
+                      }
+                      onClick={() => {
+                        setPartListVisible((visible) => {
+                          const nextVisible = !visible;
+                          if (!nextVisible) {
+                            setExpandedPartLabel("");
+                          }
+                          return nextVisible;
+                        });
+                        if (sidebarCollapsed) setSidebarCollapsed(false);
+                      }}
+                      aria-label={
+                        partListVisible ? "Hide part list" : "Show part list"
+                      }
+                      aria-pressed={partListVisible}
+                    >
+                      <List size={18} strokeWidth={1.65} />
+                    </button>
+                  </div>
+
+                  <div className="wisdom-roomle-toolbar-slot">
+                    <button
+                      type="button"
+                      className={
+                        "wisdom-roomle-tool" +
+                        (showMeasurements ? " is-active" : "")
+                      }
+                      data-tooltip={
+                        showMeasurements
+                          ? "Hide measurements"
+                          : "Show measurements"
+                      }
+                      onClick={() =>
+                        setShowMeasurements((visible) => !visible)
+                      }
+                      aria-label={
+                        showMeasurements
+                          ? "Hide measurements"
+                          : "Show measurements"
+                      }
+                      aria-pressed={showMeasurements}
+                    >
+                      <Ruler size={18} strokeWidth={1.65} />
+                    </button>
+                  </div>
+
+                  <div className="wisdom-roomle-toolbar-slot">
+                    <button
+                      type="button"
+                      className={
+                        "wisdom-roomle-tool wisdom-roomle-unit-tool" +
+                        (unitMenuOpen ? " is-active" : "")
+                      }
+                      data-tooltip="Measurement unit"
+                      onClick={() => {
+                        setUnitMenuOpen((open) => !open);
+                        setViewMenuOpen(false);
+                      }}
+                      aria-label="Measurement unit"
+                      aria-expanded={unitMenuOpen}
+                    >
+                      {unit === "inches" ? "in" : unit}
+                    </button>
+
+                    {unitMenuOpen ? (
+                      <div
+                        className="wisdom-roomle-popover wisdom-roomle-unit-menu"
+                        role="menu"
+                        aria-label="Measurement unit"
+                      >
+                        {["mm", "cm", "m", "inches", "ft", "yd"].map(
+                          (unitOption) => (
+                            <button
+                              key={unitOption}
+                              type="button"
+                              className={
+                                "wisdom-roomle-popover-option" +
+                                (unit === unitOption ? " is-active" : "")
+                              }
+                              onClick={() => {
+                                setUnit(unitOption);
+                                setUnitMenuOpen(false);
+                              }}
+                            >
+                              {unitOption === "inches" ? "in" : unitOption}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="wisdom-roomle-toolbar-slot">
+                    <button
+                      type="button"
+                      className={
+                        "wisdom-roomle-tool" +
+                        (viewMenuOpen ? " is-active" : "")
+                      }
+                      data-tooltip="Camera views"
+                      onClick={() => {
+                        setViewMenuOpen((open) => !open);
+                        setUnitMenuOpen(false);
+                      }}
+                      aria-label="Camera views"
+                      aria-expanded={viewMenuOpen}
+                    >
+                      <Box size={18} strokeWidth={1.65} />
+                    </button>
+
+                    {viewMenuOpen ? (
+                      <div
+                        className="wisdom-roomle-popover wisdom-roomle-view-menu"
+                        role="menu"
+                        aria-label="Camera views"
+                      >
+                        {["3D", "Front", "Back", "Side", "Top", "Bottom"].map(
+                          (view) => (
+                            <button
+                              key={view}
+                              type="button"
+                              className={
+                                "wisdom-roomle-view-option" +
+                                (activeView === view ? " is-active" : "")
+                              }
+                              onClick={() => {
+                                changeCameraView(view);
+                                setViewMenuOpen(false);
+                              }}
+                            >
+                              {view}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="wisdom-roomle-toolbar-slot">
+                    <button
+                      type="button"
+                      className="wisdom-roomle-tool"
+                      data-tooltip="Reset camera"
+                      onClick={resetCameraView}
+                      aria-label="Reset camera"
+                    >
+                      <RotateCcw size={18} strokeWidth={1.65} />
+                    </button>
+                  </div>
+
+                  <div className="wisdom-roomle-toolbar-slot">
+                    <button
+                      type="button"
+                      className={
+                        "wisdom-roomle-tool" +
+                        (isViewerFullscreen ? " is-active" : "")
+                      }
+                      data-tooltip={
+                        isViewerFullscreen
+                          ? "Exit fullscreen"
+                          : "Fullscreen"
+                      }
+                      onClick={toggleViewerFullscreen}
+                      aria-label={
+                        isViewerFullscreen
+                          ? "Exit fullscreen"
+                          : "Fullscreen"
+                      }
+                    >
+                      <Maximize2 size={18} strokeWidth={1.65} />
+                    </button>
+                  </div>
+
+                  <div className="wisdom-roomle-toolbar-slot">
+                    <button
+                      type="button"
+                      className="wisdom-roomle-tool"
+                      data-tooltip="Create snapshot"
+                      onClick={handleCreateSnapshot}
+                      aria-label="Create snapshot"
+                    >
+                      <Camera size={18} strokeWidth={1.65} />
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="wisdom-roomle-sidebar-toggle wisdom-roomle-sidebar-toggle-visible"
+                  data-tooltip={
+                    sidebarCollapsed ? "Show options" : "Hide options"
+                  }
+                  onClick={() =>
+                    setSidebarCollapsed((collapsed) => !collapsed)
+                  }
+                  aria-label={
+                    sidebarCollapsed ? "Show options" : "Hide options"
+                  }
+                >
+                  {sidebarCollapsed ? (
+                    <ChevronLeft size={18} strokeWidth={1.8} />
+                  ) : (
+                    <ChevronRight size={18} strokeWidth={1.8} />
+                  )}
+                </button>
+
                 <div ref={mountRef} style={styles.canvasContainer} />
 
                 <div
@@ -3473,13 +4172,349 @@ export default function Customer3DViewer({
           </aside>
         ) : (
           <aside
+            className="wisdom-roomle-sidebar"
             style={{
               ...styles.sidebar,
               ...styles.customizeSidebarScrollable,
             }}
           >
-            <div style={styles.sidebarScroll}>
-              <div style={styles.customizeOptionalToolsHeading}>
+            <div
+              className="wisdom-roomle-sidebar-scroll"
+              style={styles.sidebarScroll}
+            >
+
+
+              {partListVisible ? (
+                <>
+                  <section className="wisdom-config-section wisdom-config-whole">
+                    <div className="wisdom-config-section-head wisdom-config-section-head-static">
+                      <button
+                        type="button"
+                        className="wisdom-config-part-title-btn"
+                        onClick={() => setSelectedCompIds([])}
+                      >
+                        <span className="wisdom-config-section-title">
+                          WHOLE FURNITURE
+                        </span>
+                        <span className="wisdom-config-section-note">
+                          Apply one wood finish to the complete design
+                        </span>
+                      </button>
+                    </div>
+
+                    {(() => {
+                      const groupKey = "__whole__";
+                      const showAll = expandedFinishGroupLabel === groupKey;
+                      const previewFinishes = getFinishPreviewChoices(
+                        uniformFinishId,
+                        3,
+                      );
+                      const finishesToRender = showAll
+                        ? finishCatalog
+                        : previewFinishes;
+                      const hiddenCount = Math.max(
+                        0,
+                        finishCatalog.length - previewFinishes.length,
+                      );
+
+                      return (
+                        <div
+                          className={
+                            "wisdom-finish-preview-grid" +
+                            (showAll ? " show-all" : "")
+                          }
+                        >
+                          <button
+                            type="button"
+                            className={
+                              "wisdom-finish-choice" +
+                              (!uniformFinishId ? " is-active" : "")
+                            }
+                            onClick={() => {
+                              setSelectedCompIds([]);
+                              handleFinishChange(
+                                "",
+                                components.map((component) => component.id),
+                              );
+                            }}
+                          >
+                            <span className="wisdom-finish-circle wisdom-finish-original">
+                              {!uniformFinishId ? (
+                                <span className="wisdom-finish-check">✓</span>
+                              ) : null}
+                            </span>
+                            <span className="wisdom-finish-label">Original</span>
+                          </button>
+
+                          {finishesToRender.map((finish) => (
+                            <button
+                              key={"whole_" + finish.id}
+                              type="button"
+                              className={
+                                "wisdom-finish-choice" +
+                                (uniformFinishId === finish.id
+                                  ? " is-active"
+                                  : "")
+                              }
+                              onClick={() => {
+                                setSelectedCompIds([]);
+                                handleFinishChange(
+                                  finish.id,
+                                  components.map((component) => component.id),
+                                );
+                              }}
+                            >
+                              <span
+                                className="wisdom-finish-circle"
+                                style={{
+                                  background:
+                                    finish.front ||
+                                    finish.carcass ||
+                                    finish.inside ||
+                                    finish.color ||
+                                    finish.hex ||
+                                    "#dddddd",
+                                }}
+                              >
+                                {uniformFinishId === finish.id ? (
+                                  <span className="wisdom-finish-check">✓</span>
+                                ) : null}
+                              </span>
+                              <span className="wisdom-finish-label">
+                                {finish.label}
+                              </span>
+                            </button>
+                          ))}
+
+                          {finishCatalog.length > previewFinishes.length ? (
+                            <button
+                              type="button"
+                              className="wisdom-finish-more-choice"
+                              onClick={() =>
+                                setExpandedFinishGroupLabel((current) =>
+                                  current === groupKey ? "" : groupKey,
+                                )
+                              }
+                            >
+                              <span className="wisdom-finish-more-circle">
+                                {showAll ? "−" : "+" + hiddenCount}
+                              </span>
+                              <span className="wisdom-finish-label">
+                                {showAll ? "Show less" : "Show all"}
+                              </span>
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
+                  </section>
+
+                  {partGroups.map((group) => {
+                    const representative =
+                      components.find((component) =>
+                        group.ids.includes(component.id),
+                      ) || null;
+
+                    const groupFinishId = String(
+                      representative?.finish_id ||
+                        representative?.woodFinish ||
+                        representative?.finish ||
+                        "",
+                    ).trim();
+
+                    const groupSelected = group.ids.some((id) =>
+                      selectedCompIds.includes(id),
+                    );
+
+                    const showAll = expandedFinishGroupLabel === group.label;
+                    const previewFinishes = getFinishPreviewChoices(
+                      groupFinishId,
+                      3,
+                    );
+                    const finishesToRender = showAll
+                      ? finishCatalog
+                      : previewFinishes;
+                    const hiddenCount = Math.max(
+                      0,
+                      finishCatalog.length - previewFinishes.length,
+                    );
+
+                    return (
+                      <section
+                        key={group.label}
+                        className={
+                          "wisdom-config-section wisdom-config-part-section" +
+                          (groupSelected ? " is-selected" : "")
+                        }
+                      >
+                        <div className="wisdom-config-section-head wisdom-config-section-head-static">
+                          <button
+                            type="button"
+                            className="wisdom-config-part-title-btn"
+                            onClick={() => {
+                              setSelectedCompIds(group.ids || []);
+                              showCustomizeFeedback(
+                                String(group.label || "Furniture part") +
+                                  " selected.",
+                              );
+                            }}
+                          >
+                            <span className="wisdom-config-section-title">
+                              {group.label}
+                            </span>
+                            <span className="wisdom-config-part-count">
+                              {group.ids.length}{" "}
+                              {group.ids.length === 1 ? "part" : "parts"}
+                            </span>
+                          </button>
+
+                          {groupSelected ? (
+                            <span className="wisdom-config-selected-pill">
+                              Selected
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div
+                          className={
+                            "wisdom-finish-preview-grid" +
+                            (showAll ? " show-all" : "")
+                          }
+                        >
+                          <button
+                            type="button"
+                            className={
+                              "wisdom-finish-choice" +
+                              (!groupFinishId ? " is-active" : "")
+                            }
+                            onClick={() => {
+                              setSelectedCompIds(group.ids || []);
+                              handleFinishChange("", group.ids || []);
+                            }}
+                          >
+                            <span className="wisdom-finish-circle wisdom-finish-original">
+                              {!groupFinishId ? (
+                                <span className="wisdom-finish-check">✓</span>
+                              ) : null}
+                            </span>
+                            <span className="wisdom-finish-label">Original</span>
+                          </button>
+
+                          {finishesToRender.map((finish) => (
+                            <button
+                              key={group.label + "_" + finish.id}
+                              type="button"
+                              className={
+                                "wisdom-finish-choice" +
+                                (groupFinishId === finish.id
+                                  ? " is-active"
+                                  : "")
+                              }
+                              onClick={() => {
+                                setSelectedCompIds(group.ids || []);
+                                handleFinishChange(
+                                  finish.id,
+                                  group.ids || [],
+                                );
+                              }}
+                            >
+                              <span
+                                className="wisdom-finish-circle"
+                                style={{
+                                  background:
+                                    finish.front ||
+                                    finish.carcass ||
+                                    finish.inside ||
+                                    finish.color ||
+                                    finish.hex ||
+                                    "#dddddd",
+                                }}
+                              >
+                                {groupFinishId === finish.id ? (
+                                  <span className="wisdom-finish-check">✓</span>
+                                ) : null}
+                              </span>
+                              <span className="wisdom-finish-label">
+                                {finish.label}
+                              </span>
+                            </button>
+                          ))}
+
+                          {finishCatalog.length > previewFinishes.length ? (
+                            <button
+                              type="button"
+                              className="wisdom-finish-more-choice"
+                              onClick={() =>
+                                setExpandedFinishGroupLabel((current) =>
+                                  current === group.label ? "" : group.label,
+                                )
+                              }
+                            >
+                              <span className="wisdom-finish-more-circle">
+                                {showAll ? "−" : "+" + hiddenCount}
+                              </span>
+                              <span className="wisdom-finish-label">
+                                {showAll ? "Show less" : "Show all"}
+                              </span>
+                            </button>
+                          ) : null}
+                        </div>
+                      </section>
+                    );
+                  })}
+                </>
+              ) : null}
+
+              <section className="wisdom-config-section wisdom-custom-color-section">
+                <div className="wisdom-config-section-head">
+                  <div>
+                    <div className="wisdom-config-section-title">
+                      CUSTOM COLOR
+                    </div>
+                    <div className="wisdom-config-section-note">
+                      {selectedPartGroup
+                        ? "Applies to " + selectedPartGroup.label
+                        : "Applies to the whole furniture"}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="wisdom-custom-color-row">
+                  <input
+                    type="color"
+                    value={customHex}
+                    onChange={(event) =>
+                      handleColorChange(event.target.value)
+                    }
+                    className="wisdom-custom-color-picker"
+                    disabled={readOnly || !editable.finish_color}
+                    aria-label="Custom color"
+                  />
+
+                  <input
+                    type="text"
+                    value={customHex}
+                    onChange={(event) =>
+                      setCustomHex(event.target.value)
+                    }
+                    onBlur={(event) =>
+                      handleColorChange(event.target.value)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        handleColorChange(event.target.value);
+                      }
+                    }}
+                    className="wisdom-custom-color-text"
+                    placeholder="#HexCode"
+                    disabled={readOnly || !editable.finish_color}
+                  />
+                </div>
+              </section>
+              <div
+                className="wisdom-legacy-customize-heading"
+                style={styles.customizeOptionalToolsHeading}
+              >
                 <span style={styles.customizeOptionalToolsTitle}>
                   Optional Tools
                 </span>
@@ -3489,6 +4524,7 @@ export default function Customer3DViewer({
               </div>
 
               <section
+                className="wisdom-legacy-part-editor"
                 style={{
                   ...styles.sidebarSection,
                   ...styles.customizeOptionalSection,
@@ -3578,8 +4614,7 @@ export default function Customer3DViewer({
                 )}
               </section>
 
-              {selectionMode &&
-              selectedGroup.length > 0 &&
+              {selectedGroup.length > 0 &&
               sampleSelectedPart ? (
                 <section
                   style={{
@@ -3682,6 +4717,7 @@ export default function Customer3DViewer({
                 </section>
               ) : (
                 <section
+                  className="wisdom-furniture-size-section"
                   style={{
                     ...styles.sidebarSection,
                     ...styles.customizeSizeSection,
@@ -3754,6 +4790,7 @@ export default function Customer3DViewer({
               )}
 
               <section
+                className="wisdom-legacy-finish-editor"
                 style={{
                   ...styles.sidebarSection,
                   ...styles.customizeFinishSection,
@@ -3903,6 +4940,7 @@ export default function Customer3DViewer({
               </section>
 
               <section
+                className="wisdom-human-size-section"
                 style={{
                   ...styles.sidebarSection,
                   ...styles.customizeHumanSection,
@@ -3927,9 +4965,26 @@ export default function Customer3DViewer({
                     <input
                       type="number"
                       step="0.1"
+                      min={convertMmToUnit(
+                        HUMAN_REFERENCE_MIN_HEIGHT_MM,
+                        unit,
+                      )}
+                      max={convertMmToUnit(
+                        HUMAN_REFERENCE_MAX_HEIGHT_MM,
+                        unit,
+                      )}
                       value={convertMmToUnit(personHeightMm, unit)}
                       onChange={(e) =>
                         setPersonHeightMm(convertUnitToMm(e.target.value, unit))
+                      }
+                      onBlur={() =>
+                        setPersonHeightMm((current) =>
+                          clampNumber(
+                            current,
+                            HUMAN_REFERENCE_MIN_HEIGHT_MM,
+                            HUMAN_REFERENCE_MAX_HEIGHT_MM,
+                          ),
+                        )
                       }
                       style={styles.input}
                     />
@@ -3940,6 +4995,10 @@ export default function Customer3DViewer({
 
             {!readOnly ? (
               <div
+                className={
+                  "wisdom-order-footer" +
+                  (requestDetailsOpen ? " is-open" : "")
+                }
                 style={{
                   ...styles.sidebarFooter,
                   ...(showCustomizeGuide &&
@@ -3948,7 +5007,25 @@ export default function Customer3DViewer({
                     : {}),
                 }}
               >
-                <div style={styles.footerHeader}>
+
+                <button
+                  type="button"
+                  className="wisdom-request-details-toggle"
+                  onClick={() =>
+                    setRequestDetailsOpen((open) => !open)
+                  }
+                  aria-expanded={requestDetailsOpen}
+                >
+                  <span>Request details</span>
+                  <span aria-hidden="true">
+                    {requestDetailsOpen ? "−" : "+"}
+                  </span>
+                </button>
+
+                <div
+                  className="wisdom-order-details-content"
+                  style={styles.footerHeader}
+                >
                   <div>
                     <div style={styles.footerTitle}>Order Details</div>
                     <div style={styles.footerNote}>
@@ -3991,7 +5068,10 @@ export default function Customer3DViewer({
                   </div>
                 </div>
 
-                <div style={styles.footerField}>
+                <div
+                  className="wisdom-order-details-content"
+                  style={styles.footerField}
+                >
                   <div style={styles.uploadHeader}>
                     <label style={styles.footerLabel}>Reference Photos</label>
                     <span style={styles.uploadHint}>
@@ -4053,6 +5133,7 @@ export default function Customer3DViewer({
                 </div>
 
                 <div
+                  className="wisdom-order-details-content"
                   style={{
                     ...styles.footerField,
                     ...styles.notesFooterField,
@@ -4079,6 +5160,7 @@ export default function Customer3DViewer({
 
                 <button
                   type="button"
+                  className="wisdom-add-to-cart-btn"
                   onClick={handleApply}
                   style={styles.applyBtn}
                 >

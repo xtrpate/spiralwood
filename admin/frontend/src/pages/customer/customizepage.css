@@ -2578,3 +2578,495 @@
 }
 
 /* WISDOM CUSTOMIZE CARD FINAL HOVER V1.0.6 END */
+
+
+/* WISDOM CUSTOMIZE GALLERY ROOMLE POLISH V7
+   Furniture preview first: no View action, no card metadata, Customize only. */
+
+.cust-products-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  column-gap: 30px !important;
+  row-gap: 42px !important;
+  align-items: start !important;
+}
+
+.cust-product-card.cust-product-card--roomle {
+  min-width: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+  transform: none !important;
+}
+
+.cust-product-card.cust-product-card--roomle:hover {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.cust-product-image-wrap.cust-product-image-wrap--roomle {
+  width: 100% !important;
+  min-height: 0 !important;
+  aspect-ratio: 4 / 3 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #f7f5f1 !important;
+  overflow: hidden !important;
+}
+
+.cust-product-image-wrap--roomle .cust-roomle-preview-stage {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+  background: #f7f5f1;
+}
+
+.cust-product-image-wrap--roomle img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+
+.cust-roomle-card-action {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px 0 0;
+}
+
+.cust-customize-btn.cust-customize-btn--roomle {
+  width: auto !important;
+  min-width: 118px !important;
+  min-height: 42px !important;
+  padding: 0 24px !important;
+  border: 1px solid #171717 !important;
+  border-radius: 999px !important;
+  background: #ffffff !important;
+  color: #171717 !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  box-shadow: none !important;
+}
+
+.cust-customize-btn.cust-customize-btn--roomle:hover {
+  background: #171717 !important;
+  color: #ffffff !important;
+}
+
+@media (max-width: 1100px) {
+  .cust-products-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .cust-products-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    row-gap: 30px !important;
+  }
+
+  .cust-customize-btn.cust-customize-btn--roomle {
+    min-width: 112px !important;
+    min-height: 40px !important;
+  }
+}
+
+
+/* WISDOM CUSTOMIZE GALLERY CENTER POLISH V8
+   Centered furniture preview + category-only info + square Customize CTA. */
+
+.cust-product-card.cust-product-card--roomle {
+  position: relative !important;
+  display: block !important;
+}
+
+.cust-roomle-category-label {
+  min-height: 24px;
+  margin: 0 0 8px;
+  color: #171717;
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+  text-align: left;
+}
+
+.cust-product-image-wrap.cust-product-image-wrap--roomle {
+  height: 248px !important;
+  min-height: 248px !important;
+  aspect-ratio: auto !important;
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.cust-product-image-wrap--roomle .cust-roomle-preview-stage,
+.cust-product-image-wrap--roomle .cust-viewer-card,
+.cust-product-image-wrap--roomle .cust-viewer-stage,
+.cust-product-image-wrap--roomle .cust-viewer-canvas {
+  width: 100% !important;
+  height: 248px !important;
+  min-height: 248px !important;
+}
+
+.cust-product-image-wrap--roomle .cust-viewer-runtime-snapshot,
+.cust-product-image-wrap--roomle .cust-viewer-canvas canvas {
+  transform: translateY(-7px);
+  transform-origin: center center;
+}
+
+.cust-roomle-card-action {
+  padding: 12px 0 0 !important;
+  justify-content: center !important;
+}
+
+.cust-customize-btn.cust-customize-btn--roomle {
+  min-width: 122px !important;
+  min-height: 40px !important;
+  padding: 0 22px !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  background: #111111 !important;
+  color: #ffffff !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+.cust-customize-btn.cust-customize-btn--roomle:hover {
+  border-color: #000000 !important;
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+@media (max-width: 640px) {
+  .cust-roomle-category-label {
+    margin-bottom: 7px;
+  }
+
+  .cust-product-image-wrap.cust-product-image-wrap--roomle,
+  .cust-product-image-wrap--roomle .cust-roomle-preview-stage,
+  .cust-product-image-wrap--roomle .cust-viewer-card,
+  .cust-product-image-wrap--roomle .cust-viewer-stage,
+  .cust-product-image-wrap--roomle .cust-viewer-canvas {
+    height: 230px !important;
+    min-height: 230px !important;
+  }
+
+  .cust-product-image-wrap--roomle .cust-viewer-runtime-snapshot,
+  .cust-product-image-wrap--roomle .cust-viewer-canvas canvas {
+    transform: translateY(-5px);
+  }
+}
+
+
+/* WISDOM CUSTOMIZE GALLERY CARD POLISH V9
+   Category inside preview box + black box visibility + refine Customize font. */
+
+.cust-product-card.cust-product-card--roomle {
+  position: relative !important;
+  display: block !important;
+  border: 1px solid #111111 !important;
+  background: #ffffff !important;
+  padding: 10px !important;
+}
+
+.cust-roomle-category-label.cust-roomle-category-label--inside {
+  position: absolute !important;
+  top: 10px !important;
+  left: 10px !important;
+  z-index: 3 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  min-height: 22px !important;
+  padding: 4px 8px !important;
+  border: 1px solid #111111 !important;
+  background: rgba(255,255,255,0.96) !important;
+  color: #111111 !important;
+  font-size: 11px !important;
+  line-height: 1.2 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.03em !important;
+  text-transform: uppercase !important;
+}
+
+.cust-product-image-wrap.cust-product-image-wrap--roomle {
+  position: relative !important;
+  overflow: hidden !important;
+  border: 1px solid #111111 !important;
+  background: #f7f5ee !important;
+}
+
+.cust-roomle-card-action {
+  padding: 12px 0 0 !important;
+  justify-content: center !important;
+}
+
+.cust-customize-btn.cust-customize-btn--roomle {
+  min-width: 124px !important;
+  min-height: 40px !important;
+  padding: 0 22px !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  background: #111111 !important;
+  color: #ffffff !important;
+  font-family: "Inter", "Helvetica Neue", Arial, sans-serif !important;
+  font-size: 13px !important;
+  line-height: 1 !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.01em !important;
+  text-transform: none !important;
+  box-shadow: none !important;
+}
+
+.cust-customize-btn.cust-customize-btn--roomle:hover {
+  border-color: #000000 !important;
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+@media (max-width: 640px) {
+  .cust-product-card.cust-product-card--roomle {
+    padding: 8px !important;
+  }
+
+  .cust-roomle-category-label.cust-roomle-category-label--inside {
+    top: 8px !important;
+    left: 8px !important;
+    font-size: 10px !important;
+  }
+}
+
+
+/* WISDOM CUSTOMIZE GALLERY BORDER REMOVE V10
+   Remove only the outer card border while keeping the inner furniture preview box visible. */
+
+.cust-product-card.cust-product-card--roomle {
+  border: none !important;
+}
+
+
+/* WISDOM CUSTOMIZE GALLERY RESTORE OUTSIDE CATEGORY V11
+   Restore the clean V8 card appearance: category outside, no black framing. */
+
+.cust-product-card.cust-product-card--roomle {
+  position: relative !important;
+  display: block !important;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+}
+
+.cust-roomle-category-label {
+  position: static !important;
+  display: block !important;
+  min-height: 24px !important;
+  margin: 0 0 8px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #171717 !important;
+  font-size: 11px !important;
+  line-height: 1.3 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.025em !important;
+  text-align: left !important;
+  text-transform: none !important;
+  box-shadow: none !important;
+}
+
+.cust-roomle-category-label.cust-roomle-category-label--inside {
+  position: static !important;
+  display: block !important;
+  min-height: 24px !important;
+  margin: 0 0 8px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #171717 !important;
+  text-transform: none !important;
+}
+
+.cust-product-image-wrap.cust-product-image-wrap--roomle {
+  border: 0 !important;
+  background: #f7f5f1 !important;
+  box-shadow: none !important;
+}
+
+.cust-roomle-card-action {
+  padding: 12px 0 0 !important;
+  justify-content: center !important;
+}
+
+/* Keep the approved no-radius Customize CTA from V8. */
+.cust-customize-btn.cust-customize-btn--roomle {
+  min-width: 122px !important;
+  min-height: 40px !important;
+  padding: 0 22px !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  background: #111111 !important;
+  color: #ffffff !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  box-shadow: none !important;
+}
+
+.cust-customize-btn.cust-customize-btn--roomle:hover {
+  border-color: #000000 !important;
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+@media (max-width: 640px) {
+  .cust-roomle-category-label {
+    min-height: 22px !important;
+    margin-bottom: 7px !important;
+    font-size: 10px !important;
+  }
+}
+
+
+/* WISDOM CUSTOMER GALLERY CATEGORY INSIDE V12
+   ONLY: category inside top-left + one border around furniture preview.
+   Customize button and all other gallery/configurator styling stay unchanged. */
+
+.cust-product-card.cust-product-card--roomle {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.cust-product-image-wrap.cust-product-image-wrap--roomle {
+  position: relative !important;
+  border: 1px solid #111111 !important;
+  box-shadow: none !important;
+}
+
+.cust-roomle-category-label.cust-roomle-category-label--inside-v12 {
+  position: absolute !important;
+  top: 10px !important;
+  left: 10px !important;
+  z-index: 5 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: #171717 !important;
+  font-size: 11px !important;
+  line-height: 1.3 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.025em !important;
+  text-transform: none !important;
+  pointer-events: none !important;
+}
+
+@media (max-width: 640px) {
+  .cust-roomle-category-label.cust-roomle-category-label--inside-v12 {
+    top: 8px !important;
+    left: 8px !important;
+  }
+}
+
+
+/* WISDOM CATEGORY LABEL BORDER V13
+   Thin border only around the category label. */
+.cust-roomle-category-label.cust-roomle-category-label--inside {
+  display: inline-flex !important;
+  align-items: center !important;
+  width: auto !important;
+  min-height: 22px !important;
+  padding: 3px 7px !important;
+  border: 1px solid #111111 !important;
+  background: rgba(247, 245, 238, 0.96) !important;
+  box-sizing: border-box !important;
+}
+
+
+/* WISDOM CATEGORY BORDER + BUTTON RADIUS V14
+   Exact fix only:
+   - target the actual --inside-v12 category class
+   - give Customize a small 6px radius
+   No other gallery/configurator styling changes. */
+
+.cust-roomle-category-label.cust-roomle-category-label--inside-v12 {
+  display: inline-flex !important;
+  align-items: center !important;
+  width: auto !important;
+  min-height: 22px !important;
+  margin: 0 !important;
+  padding: 3px 7px !important;
+  border: 1px solid #111111 !important;
+  border-radius: 0 !important;
+  background: rgba(247, 245, 238, 0.96) !important;
+  color: #171717 !important;
+  box-sizing: border-box !important;
+}
+
+.cust-customize-btn.cust-customize-btn--roomle {
+  border-radius: 6px !important;
+}
+
+
+/* WISDOM CATEGORY UPPERCASE + SMALL RADIUS V15
+   Exact changes only:
+   - category labels render uppercase
+   - Customize button uses a subtle 4px radius
+   Everything else remains unchanged. */
+
+.cust-roomle-category-label.cust-roomle-category-label--inside-v12 {
+  text-transform: uppercase !important;
+}
+
+.cust-customize-btn.cust-customize-btn--roomle {
+  border-radius: 4px !important;
+}
+
+
+/* WISDOM FURNITURE BORDER SOFTEN V16
+   Match the furniture preview outline to the lighter Search designs textbox.
+   No layout, sizing, category, button, or configurator changes. */
+
+.cust-product-image-wrap.cust-product-image-wrap--roomle {
+  border: 1.5px solid #b5bac0 !important;
+}
+
+
+/* WISDOM CATEGORY + CART LAYER POLISH V17
+   Category is intentionally quieter than V15.
+   Existing gallery dimensions, furniture border and button remain untouched. */
+
+.cust-roomle-category-label.cust-roomle-category-label--inside-v12 {
+  border: 1px solid #b5bac0 !important;
+  background: rgba(247, 245, 238, 0.94) !important;
+  color: #3f4348 !important;
+  font-size: 10px !important;
+  line-height: 1.25 !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.015em !important;
+  text-transform: uppercase !important;
+}
+
+.premium-toast-container {
+  z-index: 2147483000 !important;
+}
+
+
+/* WISDOM CATEGORY SLIGHT BOLD V19
+   Readability-only polish. No border, spacing, position, or color changes. */
+.cust-roomle-category-label.cust-roomle-category-label--inside-v12 {
+  font-weight: 650 !important;
+}

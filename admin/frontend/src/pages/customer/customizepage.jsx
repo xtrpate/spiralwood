@@ -775,7 +775,15 @@ function SkeletonCard() {
 
 function ModalShell({ title, subtitle, onClose, children, wide = false, variant = "" }) {
   return (
-    <div className="cust-modal-backdrop" onClick={onClose}>
+    <div
+      className={
+        "cust-modal-backdrop" +
+        (variant === "customize"
+          ? " cust-modal-backdrop-customize"
+          : "")
+      }
+      onClick={onClose}
+    >
       <div
         className={`cust-modal ${wide ? "cust-modal-wide" : ""} ${variant === "customize" ? "cust-modal-customize" : ""}`}
         onClick={(e) => e.stopPropagation()}
@@ -890,35 +898,6 @@ function useBlueprintDetail(id, open) {
   return { detail, loading, error };
 }
 
-function ViewModal({ product, onClose, onCustomize }) {
-  const { detail, loading, error } = useBlueprintDetail(product?.id, !!product);
-
-  if (!product) return null;
-
-  const blueprint = detail || product;
-
-  return (
-    <ModalShell
-      title={blueprint.title || "Design Preview"}
-      subtitle="Review the design and dimensions before customizing."
-      onClose={onClose}
-      wide
-    >
-      {loading ? (
-        <div className="cust-modal-state">Loading design preview…</div>
-      ) : error ? (
-        <div className="cust-modal-error">{error}</div>
-      ) : (
-        <CustomerTemplateWorkbench
-          blueprint={blueprint}
-          readOnly
-          onViewCustomize={() => onCustomize?.(blueprint)}
-        />
-      )}
-    </ModalShell>
-  );
-}
-
 function CustomizeModal({ product, onClose, onAdd }) {
   const { detail, loading, error } = useBlueprintDetail(product?.id, !!product);
 
@@ -950,8 +929,7 @@ function CustomizeModal({ product, onClose, onAdd }) {
   );
 }
 
-function ProductCard({ product, onView, onCustomize }) {
-  const [isCardHovered, setIsCardHovered] = useState(false);
+function ProductCard({ product, onCustomize }) {
   const profile = detectTemplateProfile(product || {});
   const dimensionConfig = resolveDimensionConfig(
     product,
@@ -961,25 +939,16 @@ function ProductCard({ product, onView, onCustomize }) {
   const dimensions = dimensionConfig.defaultDimensions;
 
   return (
-    <div
-      className={`cust-product-card${
-        isCardHovered ? " cust-product-card--floating" : ""
-      }`}
-      onMouseEnter={() => setIsCardHovered(true)}
-      onMouseLeave={() => setIsCardHovered(false)}
-    >
-      <div className="cust-product-image-wrap">
+    <article className="cust-product-card cust-product-card--roomle">
+      <div className="cust-product-image-wrap cust-product-image-wrap--roomle">
+        <div className="cust-roomle-category-label cust-roomle-category-label--inside-v12">
+          {String(profile.category || "Furniture Template").replace(
+            " Template",
+            " Design",
+          )}
+        </div>
         {product.has_saved_3d ? (
-          <div
-            style={{
-              width: "100%",
-              height: "100%",
-              minHeight: 255,
-              borderRadius: 18,
-              overflow: "hidden",
-              background: "#f7f2ea",
-            }}
-          >
+          <div className="cust-roomle-preview-stage">
             <CustomerBlueprintViewer
               blueprint={product}
               targetDimensionsMm={{
@@ -992,6 +961,7 @@ function ProductCard({ product, onView, onCustomize }) {
               compact
               defaultPreset="iso"
               defaultShowHuman={false}
+              compactHeight={248}
             />
           </div>
         ) : (
@@ -1002,40 +972,17 @@ function ProductCard({ product, onView, onCustomize }) {
         )}
       </div>
 
-      <div className="cust-product-meta">
-        <div className="cust-category">{String(profile.category || "").replace(" Template", " Design")}</div>
-
-        <h3 className="cust-product-title">{product.title}</h3>
-
-        <p className="cust-product-desc">
-          {product.description ||
-            "Custom furniture design available for customization."}
-        </p>
-
-        <div className="cust-dim-summary">
-          {formatMm(dimensions.width_mm)} × {formatMm(dimensions.height_mm)} ×{" "}
-          {formatMm(dimensions.depth_mm)}
-        </div>
-
-        <div className="cust-card-actions">
-          <button
-            type="button"
-            className="cust-view-btn"
-            onClick={() => onView(product)}
-          >
-            View
-          </button>
-
-          <button
-            type="button"
-            className="cust-customize-btn"
-            onClick={() => onCustomize(product)}
-          >
-            Customize
-          </button>
-        </div>
+      <div className="cust-roomle-card-action">
+        <button
+          type="button"
+          className="cust-customize-btn cust-customize-btn--roomle"
+          onClick={() => onCustomize(product)}
+          aria-label={"Customize " + (product.title || "furniture")}
+        >
+          Customize
+        </button>
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -1053,7 +1000,6 @@ export default function CustomizePage() {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
-  const [viewingProduct, setViewingProduct] = useState(null);
   const [customizingProduct, setCustomizingProduct] = useState(null);
   const [toastMessage, setToastMessage] = useState("");
   const [isHiding, setIsHiding] = useState(false);
@@ -1335,7 +1281,6 @@ export default function CustomizePage() {
       <ProductCard
         key={product.id}
         product={product}
-        onView={setViewingProduct}
         onCustomize={(selectedProduct) => {
           if (!requireCustomerLogin(selectedProduct)) return;
           setCustomizingProduct(selectedProduct);
@@ -1359,8 +1304,8 @@ export default function CustomizePage() {
         <div className="cust-page-copy">
           <h1>Customize Your Furniture</h1>
           <p>
-            Choose a design, review the details, and customize the available
-            options to match your space and preferences.
+            Choose a furniture design and customize it to match your space and
+            preferences.
           </p>
         </div>
 
@@ -1388,17 +1333,6 @@ export default function CustomizePage() {
       </div>
 
       <div className="cust-products-grid">{renderedCards}</div>
-
-      {viewingProduct ? (
-        <ViewModal
-          product={viewingProduct}
-          onClose={() => setViewingProduct(null)}
-          onCustomize={(blueprint) => {
-            setViewingProduct(null);
-            setCustomizingProduct(blueprint);
-          }}
-        />
-      ) : null}
 
       {customizingProduct ? (
         <CustomizeModal
