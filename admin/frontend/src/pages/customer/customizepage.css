@@ -1696,6 +1696,84 @@
   }
 }
 
+
+/* WISDOM CUSTOMIZE REFINE BY CATEGORY V6 */
+.cust-toolbar--category-refine {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.cust-category-refine {
+  width: 100%;
+  display: grid;
+  gap: 9px;
+}
+
+.cust-category-refine-label {
+  color: #333333;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cust-category-refine-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cust-category-refine-option {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #bfc3c7;
+  border-radius: 0;
+  background: #ffffff;
+  color: #2f3337;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+
+.cust-category-refine-option:hover {
+  border-color: #111111;
+}
+
+.cust-category-refine-option.active {
+  border-color: #111111;
+  background: #111111;
+  color: #ffffff;
+}
+
+.cust-category-refine-option:focus-visible {
+  outline: 2px solid #111111;
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .cust-toolbar--category-refine {
+    gap: 14px;
+  }
+
+  .cust-category-refine-options {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cust-category-refine-option {
+    width: 100%;
+  }
+}
+
 /* WISDOM CUSTOMER CUSTOMIZE TARGETED UI END */
 /* =========================================================
    WISDOM ZERO-SCROLL CUSTOMIZE V3

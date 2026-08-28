@@ -44,7 +44,8 @@ import {
 
 const navItems = [
   { to: "/", icon: Home, label: "Home" },
-  { to: "/catalog", icon: ShoppingBag, label: "Products" },
+  // WISDOM PRODUCTS MENU -> HOME SHOP CATEGORY V6
+  { to: "/#shop-by-category", icon: ShoppingBag, label: "Products" },
   { to: "/appointment", icon: FileText, label: "Appointment" },
   { to: "/customize", icon: Scissors, label: "Customize" },
   { to: "/cart", icon: ShoppingCart, label: "Cart" },
@@ -214,10 +215,19 @@ export default function CustomerLayout() {
     const params = new URLSearchParams(location.search);
     setHeaderSearch(params.get("q") || "");
 
-    if (location.pathname === "/" && !isAuthOverlayPage) {
+    if (
+      location.pathname === "/" &&
+      !location.hash &&
+      !isAuthOverlayPage
+    ) {
       scrollToLandingTop();
     }
-  }, [location.pathname, location.search, isAuthOverlayPage]);
+  }, [
+    location.pathname,
+    location.search,
+    location.hash,
+    isAuthOverlayPage,
+  ]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -1209,9 +1219,26 @@ export default function CustomerLayout() {
             <NavLink
               key={item.to}
               to={item.to}
-              className={({ isActive }) =>
-                `cust-side-link ${isActive ? "active" : ""}`
-              }
+              className={({ isActive }) => {
+                const productsSectionActive =
+                  item.label === "Products" &&
+                  location.pathname === "/" &&
+                  location.hash === "#shop-by-category";
+
+                const homeSectionActive =
+                  item.label === "Home" &&
+                  location.pathname === "/" &&
+                  !location.hash;
+
+                const active =
+                  item.label === "Products"
+                    ? productsSectionActive
+                    : item.label === "Home"
+                      ? homeSectionActive
+                      : isActive;
+
+                return `cust-side-link ${active ? "active" : ""}`;
+              }}
               onClick={() => setMenuOpen(false)}
             >
               <div className="cust-side-link-left">

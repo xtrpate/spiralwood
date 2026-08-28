@@ -1000,6 +1000,8 @@ export default function CustomizePage() {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
+  // WISDOM CUSTOMIZE REFINE BY CATEGORY V6
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [customizingProduct, setCustomizingProduct] = useState(null);
   const [toastMessage, setToastMessage] = useState("");
   const [isHiding, setIsHiding] = useState(false);
@@ -1262,6 +1264,69 @@ export default function CustomizePage() {
     setIsHiding(false);
   };
 
+
+  const categoryOptions = useMemo(() => {
+    const byId = new Map();
+
+    products.forEach((product) => {
+      const profile = detectTemplateProfile(product || {});
+      const id = String(profile?.id || "generic");
+      const label = String(profile?.category || "Furniture Template").replace(
+        " Template",
+        " Design",
+      );
+
+      if (!byId.has(id)) {
+        byId.set(id, { id, label });
+      }
+    });
+
+    if (categoryFilter !== "all" && !byId.has(categoryFilter)) {
+      const fallbackProfile =
+        TEMPLATE_PROFILES[categoryFilter] || TEMPLATE_PROFILES.generic;
+
+      byId.set(categoryFilter, {
+        id: categoryFilter,
+        label: String(
+          fallbackProfile?.category || "Furniture Template",
+        ).replace(" Template", " Design"),
+      });
+    }
+
+    const preferredOrder = [
+      "table",
+      "cabinet",
+      "chair",
+      "shelf",
+      "generic",
+    ];
+
+    const available = Array.from(byId.values()).sort((a, b) => {
+      const aIndex = preferredOrder.indexOf(a.id);
+      const bIndex = preferredOrder.indexOf(b.id);
+
+      const safeA = aIndex === -1 ? preferredOrder.length : aIndex;
+      const safeB = bIndex === -1 ? preferredOrder.length : bIndex;
+
+      if (safeA !== safeB) return safeA - safeB;
+      return a.label.localeCompare(b.label);
+    });
+
+    return [{ id: "all", label: "All Designs" }, ...available];
+  }, [products, categoryFilter]);
+
+  const filteredProducts = useMemo(() => {
+    if (categoryFilter === "all") return products;
+
+    return products.filter((product) => {
+      const profile = detectTemplateProfile(product || {});
+      return String(profile?.id || "generic") === categoryFilter;
+    });
+  }, [products, categoryFilter]);
+
+  const visibleDesignCount =
+    categoryFilter === "all" ? total : filteredProducts.length;
+
   const renderedCards = useMemo(() => {
     if (loading) {
       return Array.from({ length: 6 }).map((_, index) => (
@@ -1269,15 +1334,17 @@ export default function CustomizePage() {
       ));
     }
 
-    if (!products.length) {
+    if (!filteredProducts.length) {
       return (
         <div className="cust-empty-state">
-          No custom blueprint templates found.
+          {categoryFilter === "all"
+            ? "No custom blueprint templates found."
+            : "No designs found in this category."}
         </div>
       );
     }
 
-    return products.map((product) => (
+    return filteredProducts.map((product) => (
       <ProductCard
         key={product.id}
         product={product}
@@ -1287,7 +1354,7 @@ export default function CustomizePage() {
         }}
       />
     ));
-  }, [loading, products]);
+  }, [loading, filteredProducts, categoryFilter, requireCustomerLogin]);
 
   return (
     <div className="cust-page">
@@ -1312,13 +1379,13 @@ export default function CustomizePage() {
         <div className="cust-page-meta">
           {!loading && (
             <div className="cust-results-info">
-              {total} design{total !== 1 ? "s" : ""} available
+              {visibleDesignCount} design{visibleDesignCount !== 1 ? "s" : ""} available
             </div>
           )}
         </div>
       </div>
 
-      <div className="cust-toolbar">
+      <div className="cust-toolbar cust-toolbar--category-refine">
         <form className="cust-search-shell" onSubmit={handleSearch}>
           <div className="cust-search">
             <Search size={16} />
@@ -1330,6 +1397,31 @@ export default function CustomizePage() {
             />
           </div>
         </form>
+
+        <div
+          className="cust-category-refine"
+          aria-label="Refine furniture designs by category"
+        >
+          <div className="cust-category-refine-label">
+            Refine by Category
+          </div>
+
+          <div className="cust-category-refine-options">
+            {categoryOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={`cust-category-refine-option${
+                  categoryFilter === option.id ? " active" : ""
+                }`}
+                aria-pressed={categoryFilter === option.id}
+                onClick={() => setCategoryFilter(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="cust-products-grid">{renderedCards}</div>
