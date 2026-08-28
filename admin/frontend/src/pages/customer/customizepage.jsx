@@ -1277,8 +1277,10 @@ export default function CustomizePage() {
       );
 
       if (!byId.has(id)) {
-        byId.set(id, { id, label });
+        byId.set(id, { id, label, count: 0 });
       }
+
+      byId.get(id).count += 1;
     });
 
     if (categoryFilter !== "all" && !byId.has(categoryFilter)) {
@@ -1290,6 +1292,7 @@ export default function CustomizePage() {
         label: String(
           fallbackProfile?.category || "Furniture Template",
         ).replace(" Template", " Design"),
+        count: 0,
       });
     }
 
@@ -1312,8 +1315,15 @@ export default function CustomizePage() {
       return a.label.localeCompare(b.label);
     });
 
-    return [{ id: "all", label: "All Designs" }, ...available];
-  }, [products, categoryFilter]);
+    return [
+      {
+        id: "all",
+        label: "All Designs",
+        count: Number(total || products.length || 0),
+      },
+      ...available,
+    ];
+  }, [products, categoryFilter, total]);
 
   const filteredProducts = useMemo(() => {
     if (categoryFilter === "all") return products;
@@ -1385,20 +1395,9 @@ export default function CustomizePage() {
         </div>
       </div>
 
-      <div className="cust-toolbar cust-toolbar--category-refine">
-        <form className="cust-search-shell" onSubmit={handleSearch}>
-          <div className="cust-search">
-            <Search size={16} />
-            <input
-              type="text"
-              placeholder="Search designs..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </form>
-
-        <div
+      {/* WISDOM READY-MADE STYLE DESIGN BROWSER V8.4 */}
+      <div className="cust-design-browser">
+        <aside
           className="cust-category-refine"
           aria-label="Refine furniture designs by category"
         >
@@ -1417,14 +1416,34 @@ export default function CustomizePage() {
                 aria-pressed={categoryFilter === option.id}
                 onClick={() => setCategoryFilter(option.id)}
               >
-                {option.label}
+                <span>{option.label}</span>
+                <span className="cust-category-refine-count">
+                  {Number(option.count || 0)}
+                </span>
               </button>
             ))}
           </div>
-        </div>
-      </div>
+        </aside>
 
-      <div className="cust-products-grid">{renderedCards}</div>
+        <section className="cust-design-results" aria-label="Furniture designs">
+          <form
+            className="cust-search-shell cust-design-search"
+            onSubmit={handleSearch}
+          >
+            <div className="cust-search">
+              <Search size={16} />
+              <input
+                type="text"
+                placeholder="Search designs..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </form>
+
+          <div className="cust-products-grid">{renderedCards}</div>
+        </section>
+      </div>
 
       {customizingProduct ? (
         <CustomizeModal

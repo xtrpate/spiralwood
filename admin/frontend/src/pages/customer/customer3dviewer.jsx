@@ -1440,6 +1440,7 @@ export default function Customer3DViewer({
     const animate = () => {
       animId = requestAnimationFrame(animate);
       orbit.update();
+
       renderer.render(scene, camera);
 
       if (boundsBoxRef.current && !boundsBoxRef.current.isEmpty()) {
@@ -1537,6 +1538,7 @@ export default function Customer3DViewer({
       window.removeEventListener("resize", handleResize);
       cancelAnimationFrame(animId);
       orbit.dispose();
+
       renderer.dispose();
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);
@@ -2734,6 +2736,7 @@ export default function Customer3DViewer({
         rootGroup.add(obj);
         renderedObjectMapRef.current.set(comp.id, obj);
         boundsBox.expandByObject(obj);
+
       } catch (error) {
         console.error("Customer3DViewer render failed:", comp, error);
       }
