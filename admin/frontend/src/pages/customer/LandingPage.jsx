@@ -158,6 +158,51 @@ const scrollToHomepageSection = (id) => {
   });
 };
 
+/* WISDOM HOMEPAGE REFRESH + FAST GLIDE TOP V1.1.0
+   Custom requestAnimationFrame glide for the footer Top control.
+   It intentionally starts promptly and eases as it reaches the hero so the
+   motion stays visible without feeling slow or like an instant teleport. */
+const glideHomepageToTop = () => {
+  const startY = Math.max(
+    0,
+    window.scrollY || document.documentElement.scrollTop || 0,
+  );
+
+  if (startY <= 1) {
+    window.scrollTo(0, 0);
+    return;
+  }
+
+  const duration = Math.min(
+    720,
+    Math.max(460, Math.round(startY * 0.11)),
+  );
+  const startedAt = window.performance.now();
+
+  const easeOutCubic = (progress) =>
+    1 - Math.pow(1 - progress, 3);
+
+  const step = (now) => {
+    const elapsed = now - startedAt;
+    const progress = Math.min(1, elapsed / duration);
+    const eased = easeOutCubic(progress);
+    const nextY = Math.max(
+      0,
+      Math.round(startY * (1 - eased)),
+    );
+
+    window.scrollTo(0, nextY);
+
+    if (progress < 1) {
+      window.requestAnimationFrame(step);
+    } else {
+      window.scrollTo(0, 0);
+    }
+  };
+
+  window.requestAnimationFrame(step);
+};
+
 export default function LandingPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -217,8 +262,52 @@ export default function LandingPage() {
     return () => window.cancelAnimationFrame(frame);
   }, [location.hash]);
 
+  /* WISDOM HOMEPAGE REFRESH + FAST GLIDE TOP V1.1.0
+     On a hard refresh of the plain homepage, browsers can restore the old
+     scroll position after React mounts. Keep / at the canonical hero/top,
+     while explicit section hashes keep their intended deep-link behavior. */
+  useEffect(() => {
+    if (location.pathname !== "/" || location.hash) return undefined;
+
+    const supportsScrollRestoration =
+      "scrollRestoration" in window.history;
+    const previousScrollRestoration = supportsScrollRestoration
+      ? window.history.scrollRestoration
+      : null;
+
+    if (supportsScrollRestoration) {
+      window.history.scrollRestoration = "manual";
+    }
+
+    const forceHomeTop = () => {
+      window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: "auto",
+      });
+    };
+
+    forceHomeTop();
+
+    const frame = window.requestAnimationFrame(forceHomeTop);
+    const timer = window.setTimeout(forceHomeTop, 80);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+
+      if (supportsScrollRestoration && previousScrollRestoration) {
+        window.history.scrollRestoration = previousScrollRestoration;
+      }
+    };
+  }, [location.pathname, location.hash]);
+
   const handleBrowseReadyMade = () => {
     scrollToHomepageSection("shop-by-category");
+  };
+
+  const handleBackToTop = () => {
+    glideHomepageToTop();
   };
 
   const handleHomeCategoryClick = (card) => {
@@ -470,6 +559,55 @@ export default function LandingPage() {
           .wisdom-home-clean-hero__image-wrap:hover
             .wisdom-home-clean-hero__image {
             transform: scale(1.012);
+          }
+
+          /* WISDOM HOMEPAGE REFRESH + FAST GLIDE TOP V1.1.0 */
+          .wisdom-home-back-to-top {
+            width: 100%;
+            min-height: 112px;
+            border: 0;
+            border-top: 1px solid #e8e4df;
+            background: #ffffff;
+            color: #111111;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            padding: 22px 16px 24px;
+            font: inherit;
+            font-size: 0.82rem;
+            font-weight: 500;
+            line-height: 1;
+            cursor: pointer;
+            transition: background-color 180ms ease;
+          }
+
+          .wisdom-home-back-to-top:hover {
+            background: #faf9f7;
+          }
+
+          .wisdom-home-back-to-top__arrow {
+            width: 9px;
+            height: 9px;
+            border-top: 1.25px solid currentColor;
+            border-left: 1.25px solid currentColor;
+            transform: rotate(45deg);
+            transform-origin: center;
+          }
+
+          .wisdom-home-back-to-top:focus-visible {
+            outline: 2px solid #111111;
+            outline-offset: -5px;
+          }
+
+          @media (max-width: 640px) {
+            .wisdom-home-back-to-top {
+              min-height: 92px;
+              padding-top: 18px;
+              padding-bottom: 20px;
+              font-size: 0.78rem;
+            }
           }
 
           @keyframes wisdomHomeCleanCopyIn {
@@ -1657,6 +1795,19 @@ export default function LandingPage() {
           </div>
         </section>
       </div>
+
+      <button
+        type="button"
+        className="wisdom-home-back-to-top"
+        onClick={handleBackToTop}
+        aria-label="Back to top"
+      >
+        <span
+          className="wisdom-home-back-to-top__arrow"
+          aria-hidden="true"
+        />
+        <span>Top</span>
+      </button>
     </div>
   );
 }
