@@ -3593,3 +3593,585 @@
     max-width: none !important;
   }
 }
+
+/* ==========================================================================\n   WISDOM MINI CONFIGURATOR GALLERY V21.0.0\n   Fresh final-cascade gallery implementation from clean ef5abdc baseline.\n   ========================================================================== */
+
+/* Only the browser below the long heading divider moves left, by 12px. */
+@media (min-width: 1101px) {
+  .cust-page .cust-design-browser {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    padding-left: 24px !important;
+    padding-right: 36px !important;
+  }
+}
+
+/* Remove only the horizontal divider below Cabinet Design. */
+.cust-page .cust-category-refine-options {
+  border-bottom: 0 !important;
+  box-shadow: none !important;
+}
+
+.cust-page .cust-category-refine-options::after {
+  content: none !important;
+  display: none !important;
+}
+
+@media (max-width: 1100px) {
+  .cust-page .cust-category-refine {
+    border-bottom: 0 !important;
+  }
+}
+
+.cust-product-card.cust-mini-card-v21 {
+  min-width: 0 !important;
+  display: block !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+  transform: none !important;
+}
+
+/* Screenshot-like mini configurator proportions: small UI chrome, dominant preview. */
+.cust-mini-configurator-v21 {
+  width: 100%;
+  min-width: 0;
+  height: 256px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 100px;
+  grid-template-rows: 232px 24px;
+  grid-template-areas:
+    "tools preview panel"
+    "footer footer footer";
+  border: 1px solid #c4c8cc;
+  background: #ffffff;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.cust-mini-tools-v21 {
+  grid-area: tools;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #fbfbfa;
+  border-right: 1px solid #e7e7e5;
+  color: #53575b;
+  overflow: hidden;
+}
+
+.cust-mini-tools-v21 > span {
+  width: 23px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: grid;
+  place-items: center;
+  border-bottom: 1px solid #eeeeec;
+  box-sizing: border-box;
+}
+
+.cust-mini-tools-v21 .cust-mini-close-v21 {
+  height: 25px;
+  flex-basis: 25px;
+  margin-bottom: 1px;
+  color: #222222;
+  background: #ffffff;
+}
+
+.cust-mini-tools-v21 .cust-mini-tool-gap-v21 {
+  height: 35px;
+  flex-basis: 35px;
+  border-bottom: 0;
+}
+
+.cust-mini-tools-v21 .cust-mini-mm-v21 {
+  font-size: 6px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.cust-mini-preview-v21 {
+  grid-area: preview;
+  position: relative;
+  min-width: 0;
+  height: 232px;
+  overflow: hidden;
+  background: #f7f5f1;
+}
+
+.cust-mini-preview-stage-v21,
+.cust-mini-preview-v21 .cust-viewer-card,
+.cust-mini-preview-v21 .cust-viewer-stage,
+.cust-mini-preview-v21 .cust-viewer-canvas {
+  width: 100% !important;
+  height: 232px !important;
+  min-height: 232px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #f7f5f1 !important;
+  box-shadow: none !important;
+}
+
+.cust-mini-preview-v21 .cust-viewer-runtime-snapshot {
+  width: 100% !important;
+  height: 232px !important;
+  object-fit: contain !important;
+  transform: translateY(-1px) scale(1.1) !important;
+  transform-origin: center center !important;
+}
+
+.cust-mini-preview-v21 .cust-viewer-canvas canvas {
+  transform: scale(1.03) !important;
+  transform-origin: center center !important;
+}
+
+.cust-mini-preview-v21 > img.cust-product-img {
+  width: 100% !important;
+  height: 232px !important;
+  object-fit: contain !important;
+  padding: 12px !important;
+  box-sizing: border-box !important;
+  background: #f7f5f1 !important;
+}
+
+.cust-mini-preview-v21 .cust-mini-category-v21 {
+  top: 7px !important;
+  left: 7px !important;
+  min-height: 16px !important;
+  padding: 2px 5px !important;
+  border: 1px solid #b9bdc1 !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: #34383c !important;
+  font-size: 6.5px !important;
+  line-height: 1.15 !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.02em !important;
+}
+
+.cust-mini-panel-v21 {
+  grid-area: panel;
+  min-width: 0;
+  height: 232px;
+  padding: 6px 6px 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+  border-left: 1px solid #e5e5e3;
+  background: #ffffff;
+  color: #1d1f21;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.cust-mini-panel-section-v21 {
+  min-width: 0;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #efefed;
+}
+
+.cust-mini-panel-section-v21 > strong,
+.cust-mini-size-title-v21 > strong,
+.cust-mini-human-v21 > strong {
+  display: block;
+  overflow: hidden;
+  color: #151719;
+  font-size: 5.7px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: 0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cust-mini-panel-section-v21 > small {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  color: #72767a;
+  font-size: 4.5px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cust-mini-finish-row-v21 {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 3px;
+  white-space: nowrap;
+}
+
+.cust-mini-finish-original-v21,
+.cust-mini-finish-dot-v21,
+.cust-mini-finish-more-v21 {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  border: 1px solid #c9cbcd;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.cust-mini-finish-original-v21 {
+  position: relative;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.cust-mini-finish-original-v21::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 5px;
+  height: 1px;
+  background: #d0d2d4;
+  transform: rotate(-45deg);
+  transform-origin: center;
+}
+
+.cust-mini-finish-dot-v21 {
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+}
+
+.cust-mini-finish-dot-v21--selected {
+  border: 1.5px solid #1b1b1b;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4);
+}
+
+.cust-mini-finish-more-v21 {
+  display: grid;
+  place-items: center;
+  background: #ffffff;
+  color: #333333;
+  font-size: 4.5px;
+  font-weight: 700;
+}
+
+.cust-mini-custom-color-v21 {
+  padding-top: 1px;
+}
+
+.cust-mini-color-field-v21 {
+  height: 16px;
+  margin-top: 3px;
+  display: grid;
+  grid-template-columns: 17px minmax(0, 1fr);
+  gap: 3px;
+  align-items: center;
+  border: 1px solid #d7d8d9;
+  padding: 2px;
+  box-sizing: border-box;
+}
+
+.cust-mini-color-field-v21 > span {
+  width: 12px;
+  height: 10px;
+  display: block;
+  border: 1px solid #d5d6d7;
+}
+
+.cust-mini-color-field-v21 > em {
+  overflow: hidden;
+  color: #55595d;
+  font-size: 4.6px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cust-mini-size-v21 {
+  padding: 3px;
+  border: 1px solid #e0e0de;
+}
+
+.cust-mini-size-title-v21 {
+  display: flex;
+  justify-content: space-between;
+  gap: 3px;
+}
+
+.cust-mini-size-title-v21 > small {
+  flex: 0 0 auto;
+  padding: 1px 2px;
+  background: #f0f1f1;
+  color: #6d7175;
+  font-size: 3.9px;
+  line-height: 1.1;
+}
+
+.cust-mini-size-labels-v21,
+.cust-mini-size-fields-v21 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.cust-mini-size-labels-v21 {
+  margin-top: 2px;
+  color: #6b6f73;
+  font-size: 4px;
+}
+
+.cust-mini-size-fields-v21 > span {
+  min-width: 0;
+  height: 13px;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  border: 1px solid #252525;
+  color: #222222;
+  font-size: 4.3px;
+  box-sizing: border-box;
+}
+
+.cust-mini-human-v21,
+.cust-mini-request-v21 {
+  min-height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
+  padding: 2px 3px;
+  border: 1px solid #ececeb;
+  box-sizing: border-box;
+}
+
+.cust-mini-human-v21 > span,
+.cust-mini-request-v21 {
+  color: #53575b;
+  font-size: 4.2px;
+  line-height: 1.1;
+}
+
+.cust-mini-add-v21 {
+  min-height: 17px;
+  margin-top: auto;
+  display: grid;
+  place-items: center;
+  background: #111111;
+  color: #ffffff;
+  font-size: 4.8px;
+  font-weight: 650;
+}
+
+.cust-mini-footer-v21 {
+  grid-area: footer;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 3px 6px;
+  border-top: 1px solid #e4e4e2;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.cust-mini-footer-v21 > div {
+  min-width: 0;
+  display: grid;
+}
+
+.cust-mini-footer-v21 strong {
+  overflow: hidden;
+  color: #181818;
+  font-size: 5.5px;
+  line-height: 1.1;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cust-mini-footer-v21 small,
+.cust-mini-footer-v21 > span {
+  overflow: hidden;
+  color: #74777a;
+  font-size: 4.2px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cust-mini-card-v21 .cust-roomle-card-action {
+  padding: 11px 0 0 !important;
+  justify-content: center !important;
+}
+
+/* Do not scale the external real Customize action down with the miniature UI. */
+.cust-mini-card-v21 .cust-customize-btn.cust-customize-btn--roomle {
+  min-width: 116px !important;
+  min-height: 38px !important;
+  height: 38px !important;
+  padding: 0 20px !important;
+  border-radius: 4px !important;
+}
+
+@media (max-width: 1280px) and (min-width: 641px) {
+  .cust-mini-configurator-v21 {
+    grid-template-columns: 22px minmax(0, 1fr) 94px;
+  }
+
+  .cust-mini-panel-v21 {
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+}
+
+@media (max-width: 640px) {
+  .cust-mini-configurator-v21 {
+    height: 244px;
+    grid-template-columns: 22px minmax(0, 1fr) 92px;
+    grid-template-rows: 220px 24px;
+  }
+
+  .cust-mini-preview-v21,
+  .cust-mini-preview-stage-v21,
+  .cust-mini-preview-v21 .cust-viewer-card,
+  .cust-mini-preview-v21 .cust-viewer-stage,
+  .cust-mini-preview-v21 .cust-viewer-canvas,
+  .cust-mini-preview-v21 .cust-viewer-runtime-snapshot,
+  .cust-mini-preview-v21 > img.cust-product-img,
+  .cust-mini-panel-v21 {
+    height: 220px !important;
+    min-height: 220px !important;
+  }
+}
+
+/* ==========================================================================
+   WISDOM MINI CONFIGURATOR VISUAL POLISH V21.0.1
+   Exact visual-only fixes requested:
+   1) keep close button at top, vertically center the remaining left tools
+   2) remove selected/highlight styling from right-side preview controls
+   ========================================================================== */
+
+.cust-mini-tools-v21 {
+  position: relative !important;
+  justify-content: center !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.cust-mini-tools-v21 .cust-mini-close-v21 {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 23px !important;
+  height: 25px !important;
+  margin: 0 !important;
+  z-index: 2 !important;
+}
+
+.cust-mini-tools-v21 .cust-mini-tool-gap-v21 {
+  display: none !important;
+}
+
+.cust-mini-finish-dot-v21,
+.cust-mini-finish-dot-v21--selected,
+.cust-mini-finish-original-v21,
+.cust-mini-finish-more-v21 {
+  outline: none !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.cust-mini-finish-dot-v21--selected {
+  border: 1px solid #c9cbcd !important;
+}
+
+.cust-mini-finish-dot-v21--selected svg,
+.cust-mini-finish-dot-v21 svg {
+  display: none !important;
+}
+
+.cust-mini-color-field-v21,
+.cust-mini-size-v21,
+.cust-mini-size-fields-v21 > span {
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.cust-mini-color-field-v21,
+.cust-mini-size-v21 {
+  border-color: #d7d8d9 !important;
+  background: #ffffff !important;
+}
+
+.cust-mini-size-fields-v21 > span {
+  border-color: #cfd1d3 !important;
+  background: #ffffff !important;
+}
+
+/* ==========================================================================
+   WISDOM MINI TOOLBAR SCALE V21.0.2
+
+   Exact requested change only:
+   - make the miniature left toolbar visually smaller like the reference
+   - keep the tool stack vertically centered
+   - keep X at the top
+   - no right panel / furniture / card / data / functionality changes
+   ========================================================================== */
+
+.cust-mini-configurator-v21 {
+  grid-template-columns: 16px minmax(0, 1fr) 100px !important;
+}
+
+.cust-mini-tools-v21 {
+  position: relative !important;
+  width: 16px !important;
+  min-width: 16px !important;
+  justify-content: center !important;
+  align-items: center !important;
+  padding: 0 !important;
+}
+
+.cust-mini-tools-v21 > span {
+  width: 15px !important;
+  height: 17px !important;
+  flex: 0 0 17px !important;
+  min-width: 15px !important;
+  min-height: 17px !important;
+  padding: 0 !important;
+}
+
+.cust-mini-tools-v21 > span svg {
+  width: 8px !important;
+  height: 8px !important;
+  max-width: 8px !important;
+  max-height: 8px !important;
+}
+
+.cust-mini-tools-v21 .cust-mini-close-v21 {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 15px !important;
+  height: 18px !important;
+  min-width: 15px !important;
+  min-height: 18px !important;
+  flex-basis: 18px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.cust-mini-tools-v21 .cust-mini-close-v21 svg {
+  width: 8px !important;
+  height: 8px !important;
+}
+
+.cust-mini-tools-v21 .cust-mini-mm-v21 {
+  font-size: 4.5px !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+}
+
+.cust-mini-tools-v21 .cust-mini-tool-gap-v21 {
+  display: none !important;
+}
