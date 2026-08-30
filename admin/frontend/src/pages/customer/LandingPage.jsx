@@ -1,7 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, Navigate, useLocation } from "react-router-dom";
 import useAuthStore from "../../store/authStore";
 import api from "../../services/api";
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { createFurnitureObject } from "../blueprints/3d/createFurnitureObjects";
+import { createCoffeeTableTemplateComponents } from "../blueprints/data/standardTemplateBuilders";
 import homepageWardrobeHero from "../../assets/homepage/wardrobe-custom-hero.png";
 import homepageFitTable from "../../assets/homepage/editorial/made-to-fit-table.png";
 import homepageStorageWardrobe from "../../assets/homepage/editorial/storage-wardrobe.png";
@@ -9,7 +13,6 @@ import homepageFinishCabinet from "../../assets/homepage/editorial/finish-cabine
 import homepageFinishCabinetWarmOak from "../../assets/homepage/editorial/finish-cabinet-warm-oak.png";
 import homepageFinishCabinetWalnut from "../../assets/homepage/editorial/finish-cabinet-walnut.png";
 import homepageFinishCabinetDarkWalnut from "../../assets/homepage/editorial/finish-cabinet-dark-walnut.png";
-import homepagePreviewTable from "../../assets/homepage/editorial/preview-coffee-table.png";
 
 
 
@@ -202,6 +205,532 @@ const glideHomepageToTop = () => {
 
   window.requestAnimationFrame(step);
 };
+
+/* WISDOM HOMEPAGE ACTUAL 3D TEMPLATE V1.2.3
+   Corrected homepage marketing preview rules:
+   - Uses the exact WISDOM coffee-table template assembly.
+   - No preview card, no frame, no floor, and no furniture shadows.
+   - 3D view: rotate-only with fixed camera distance.
+   - Front / Side / Back: functional view presets that visibly switch.
+   - Framing stays wide enough so the furniture remains fully visible. */
+const HOME_3D_REVIEW_VIEWS = ["3D", "Front", "Side", "Back"];
+
+function HomepageFurniture3DReview() {
+  const hostRef = useRef(null);
+  const cameraRef = useRef(null);
+  const controlsRef = useRef(null);
+  const renderFrameRef = useRef(null);
+  const transitionFrameRef = useRef(null);
+  const viewPositionsRef = useRef({});
+  const centerRef = useRef(new THREE.Vector3());
+  const radiusRef = useRef(1200);
+  const activeViewRef = useRef("3D");
+
+  const [activeView, setActiveView] = useState("3D");
+  const [isUnavailable, setIsUnavailable] = useState(false);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return undefined;
+
+    let renderer = null;
+    let scene = null;
+    let controls = null;
+    let resizeObserver = null;
+    let intersectionObserver = null;
+    let fallbackResize = null;
+    let disposed = false;
+    let isVisible = true;
+
+    try {
+      scene = new THREE.Scene();
+
+      const camera = new THREE.PerspectiveCamera(34, 1, 1, 12000);
+      cameraRef.current = camera;
+
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance",
+      });
+
+      renderer.setPixelRatio(Math.min(Math.max(1, Number(window.devicePixelRatio || 1)), 1.5));
+      renderer.setClearColor(0x000000, 0);
+      renderer.shadowMap.enabled = false;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.02;
+
+      renderer.domElement.setAttribute("aria-hidden", "true");
+      renderer.domElement.style.display = "block";
+      renderer.domElement.style.width = "100%";
+      renderer.domElement.style.height = "100%";
+      renderer.domElement.style.background = "transparent";
+      renderer.domElement.style.border = "0";
+      renderer.domElement.style.outline = "0";
+      renderer.domElement.style.boxShadow = "none";
+      renderer.domElement.style.touchAction = "none";
+
+      host.replaceChildren(renderer.domElement);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.42));
+
+      const hemi = new THREE.HemisphereLight(0xfffcf8, 0xe5cdb5, 0.72);
+      scene.add(hemi);
+
+      const key = new THREE.DirectionalLight(0xfffaf4, 1.5);
+      key.position.set(1200, 1350, 1450);
+      key.castShadow = false;
+      scene.add(key);
+
+      const fill = new THREE.DirectionalLight(0xf6e7d7, 0.42);
+      fill.position.set(-1000, 700, 900);
+      fill.castShadow = false;
+      scene.add(fill);
+
+      const rim = new THREE.DirectionalLight(0xffffff, 0.18);
+      rim.position.set(500, 500, -1200);
+      rim.castShadow = false;
+      scene.add(rim);
+
+      const parts = createCoffeeTableTemplateComponents(
+        0,
+        0,
+        3200,
+        "homepage_coffee_table",
+        "Coffee Table",
+      );
+
+      const minX = Math.min(...parts.map((part) => part.x));
+      const minY = Math.min(...parts.map((part) => part.y));
+      const minZ = Math.min(...parts.map((part) => part.z));
+      const maxX = Math.max(...parts.map((part) => part.x + part.width));
+      const maxY = Math.max(...parts.map((part) => part.y + part.height));
+      const maxZ = Math.max(...parts.map((part) => part.z + part.depth));
+
+      const sourceCenterX = (minX + maxX) / 2;
+      const sourceCenterY = (minY + maxY) / 2;
+      const sourceCenterZ = (minZ + maxZ) / 2;
+
+      const assembly = new THREE.Group();
+      assembly.name = "homepage-wisdom-coffee-table";
+
+      parts.forEach((part) => {
+        const selectableMeshes = [];
+        const object = createFurnitureObject(part, false, false, selectableMeshes);
+
+        object.position.set(
+          part.x + part.width / 2 - sourceCenterX,
+          sourceCenterY - (part.y + part.height / 2),
+          part.z + part.depth / 2 - sourceCenterZ,
+        );
+
+        object.rotation.set(
+          THREE.MathUtils.degToRad(part.rotationX || 0),
+          THREE.MathUtils.degToRad(part.rotationY || 0),
+          THREE.MathUtils.degToRad(part.rotationZ || 0),
+        );
+
+        object.traverse((child) => {
+          if (!child?.isMesh) return;
+          child.castShadow = false;
+          child.receiveShadow = false;
+
+          const materials = Array.isArray(child.material) ? child.material : child.material ? [child.material] : [];
+          materials.forEach((material) => {
+            if (!material) return;
+            if (typeof material.roughness === "number") material.roughness = Math.min(1, Math.max(0.42, material.roughness));
+            if (typeof material.metalness === "number") material.metalness = 0;
+            if (material.map) {
+              material.map.anisotropy = Math.max(1, renderer.capabilities.getMaxAnisotropy?.() || 1);
+              material.map.needsUpdate = true;
+            }
+            material.needsUpdate = true;
+          });
+        });
+
+        assembly.add(object);
+      });
+
+      scene.add(assembly);
+
+      const bounds = new THREE.Box3().setFromObject(assembly);
+      const center = bounds.getCenter(new THREE.Vector3());
+      const size = bounds.getSize(new THREE.Vector3());
+      const sphere = bounds.getBoundingSphere(new THREE.Sphere());
+      const radius = Math.max(1, sphere.radius);
+
+      centerRef.current.copy(center);
+      radiusRef.current = radius;
+
+      controls = new OrbitControls(camera, renderer.domElement);
+      controlsRef.current = controls;
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.06;
+      controls.enablePan = false;
+      controls.enableZoom = false;
+      controls.enableRotate = true;
+      controls.rotateSpeed = 0.75;
+      // Keep the table readable as furniture: allow free horizontal orbit
+      // without letting the camera reach an almost top-down angle where only
+      // the tabletop is visible.
+      controls.minPolarAngle = 0.82;
+      controls.maxPolarAngle = Math.PI / 2 - 0.08;
+      controls.target.copy(center);
+
+      const getFitDistance = (width, height) => {
+        const aspect = Math.max(1, width) / Math.max(1, height);
+        const vFov = THREE.MathUtils.degToRad(camera.fov);
+        const hFov =
+          2 * Math.atan(Math.tan(vFov / 2) * aspect);
+
+        const horizontalSpan = Math.hypot(size.x, size.z);
+        const verticalSpan =
+          size.y + Math.min(size.x, size.z) * 0.68;
+
+        const distanceByWidth =
+          (horizontalSpan / 2) /
+          Math.max(0.15, Math.tan(hFov / 2));
+
+        const distanceByHeight =
+          (verticalSpan / 2) /
+          Math.max(0.15, Math.tan(vFov / 2));
+
+        return Math.max(
+          radius * 1.72,
+          distanceByWidth * 1.08,
+          distanceByHeight * 1.08,
+        );
+      };
+
+      const updateViewPositions = () => {
+        const width = Math.max(1, host.clientWidth || 720);
+        const height = Math.max(1, host.clientHeight || 410);
+
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+
+        const distance = getFitDistance(width, height);
+        const frontBiasY = Math.max(18, size.y * 0.06);
+        const threeDirection = new THREE.Vector3(1.02, 0.30, 1.08).normalize();
+
+        viewPositionsRef.current = {
+          "3D": center.clone().add(threeDirection.clone().multiplyScalar(distance)),
+          Front: center.clone().add(new THREE.Vector3(0, frontBiasY, distance)),
+          Side: center.clone().add(new THREE.Vector3(distance, frontBiasY, 0)),
+          Back: center.clone().add(new THREE.Vector3(0, frontBiasY, -distance)),
+        };
+
+        controls.minDistance = distance;
+        controls.maxDistance = distance;
+      };
+
+      const settleCurrentView = () => {
+        updateViewPositions();
+        const next = viewPositionsRef.current[activeViewRef.current] || viewPositionsRef.current["3D"];
+        if (next) camera.position.copy(next);
+        controls.target.copy(center);
+        controls.enableRotate = activeViewRef.current === "3D";
+        controls.enabled = activeViewRef.current === "3D";
+        controls.update();
+        camera.lookAt(center);
+        renderer.render(scene, camera);
+      };
+
+      settleCurrentView();
+
+      const renderLoop = () => {
+        if (disposed) return;
+        renderFrameRef.current = window.requestAnimationFrame(renderLoop);
+        if (!isVisible || !renderer || !camera) return;
+        if (controls.enabled && activeViewRef.current === "3D" && !transitionFrameRef.current) {
+          controls.update();
+        }
+        renderer.render(scene, camera);
+      };
+
+      renderLoop();
+
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => {
+          if (transitionFrameRef.current) {
+            window.cancelAnimationFrame(transitionFrameRef.current);
+            transitionFrameRef.current = null;
+          }
+          settleCurrentView();
+        });
+        resizeObserver.observe(host);
+      } else {
+        fallbackResize = () => settleCurrentView();
+        window.addEventListener("resize", fallbackResize);
+      }
+
+      if (typeof IntersectionObserver !== "undefined") {
+        intersectionObserver = new IntersectionObserver(([entry]) => {
+          isVisible = Boolean(entry?.isIntersecting);
+        }, { threshold: 0.02 });
+        intersectionObserver.observe(host);
+      }
+
+      return () => {
+        disposed = true;
+
+        if (renderFrameRef.current) {
+          window.cancelAnimationFrame(renderFrameRef.current);
+          renderFrameRef.current = null;
+        }
+        if (transitionFrameRef.current) {
+          window.cancelAnimationFrame(transitionFrameRef.current);
+          transitionFrameRef.current = null;
+        }
+
+        resizeObserver?.disconnect();
+        intersectionObserver?.disconnect();
+        if (fallbackResize) window.removeEventListener("resize", fallbackResize);
+
+        controls?.dispose();
+
+        const geometries = new Set();
+        const materials = new Set();
+        const textures = new Set();
+
+        scene?.traverse((child) => {
+          if (child?.geometry) geometries.add(child.geometry);
+          const list = Array.isArray(child?.material)
+            ? child.material
+            : child?.material
+              ? [child.material]
+              : [];
+          list.forEach((material) => {
+            if (!material) return;
+            materials.add(material);
+            [material.map, material.normalMap, material.roughnessMap, material.metalnessMap, material.bumpMap].forEach((texture) => {
+              if (texture) textures.add(texture);
+            });
+          });
+        });
+
+        textures.forEach((texture) => texture.dispose?.());
+        materials.forEach((material) => material.dispose?.());
+        geometries.forEach((geometry) => geometry.dispose?.());
+        renderer?.dispose();
+
+        if (renderer?.domElement && renderer.domElement.parentNode === host) {
+          host.removeChild(renderer.domElement);
+        }
+
+        cameraRef.current = null;
+        controlsRef.current = null;
+        viewPositionsRef.current = {};
+      };
+    } catch (error) {
+      console.error("Homepage actual 3D template failed:", error);
+      setIsUnavailable(true);
+      try {
+        controls?.dispose();
+        renderer?.dispose();
+      } catch {
+        // Ignore cleanup problems.
+      }
+      return undefined;
+    }
+  }, []);
+
+  const changeView = (nextView) => {
+    if (!HOME_3D_REVIEW_VIEWS.includes(nextView)) return;
+
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    const destination = viewPositionsRef.current[nextView];
+    const center = centerRef.current;
+
+    activeViewRef.current = nextView;
+    setActiveView(nextView);
+
+    if (!camera || !controls || !destination) return;
+
+    if (transitionFrameRef.current) {
+      window.cancelAnimationFrame(transitionFrameRef.current);
+      transitionFrameRef.current = null;
+    }
+
+    controls.enabled = false;
+    controls.enableRotate = false;
+    camera.up.set(0, 1, 0);
+
+    const start = camera.position.clone();
+    const target = destination.clone();
+
+    const finish = () => {
+      camera.position.copy(target);
+      camera.lookAt(center);
+      controls.target.copy(center);
+      controls.enableRotate = nextView === "3D";
+      controls.enabled = nextView === "3D";
+      controls.update();
+      transitionFrameRef.current = null;
+    };
+
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    if (reduceMotion) {
+      finish();
+      return;
+    }
+
+    const startTime = window.performance.now();
+    const duration = 420;
+
+    const animate = (now) => {
+      const progress = Math.min(1, (now - startTime) / duration);
+      const eased = progress < 0.5
+        ? 4 * progress * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+      camera.position.lerpVectors(start, target, eased);
+      camera.lookAt(center);
+
+      if (progress < 1) {
+        transitionFrameRef.current = window.requestAnimationFrame(animate);
+      } else {
+        finish();
+      }
+    };
+
+    transitionFrameRef.current = window.requestAnimationFrame(animate);
+  };
+
+  return (
+    <div className="wisdom-home-actual-3d">
+      <style>{`
+        .wisdom-home-actual-3d {
+          position: relative;
+          width: min(100%, 760px);
+          height: clamp(355px, 31vw, 430px);
+          min-width: 0;
+          margin: 0 auto;
+          background: transparent;
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+          overflow: visible;
+        }
+
+        .wisdom-home-actual-3d__canvas {
+          position: absolute;
+          inset: 0;
+          background: transparent;
+          border: 0;
+          border-radius: 0;
+          outline: 0;
+          box-shadow: none;
+          overflow: hidden;
+        }
+
+        .wisdom-home-actual-3d__canvas canvas {
+          display: block;
+          width: 100%;
+          height: 100%;
+          background: transparent !important;
+          border: 0 !important;
+          border-radius: 0 !important;
+          outline: 0 !important;
+          box-shadow: none !important;
+        }
+
+        .wisdom-home-actual-3d__canvas.is-3d canvas {
+          cursor: grab;
+        }
+
+        .wisdom-home-actual-3d__canvas.is-3d canvas:active {
+          cursor: grabbing;
+        }
+
+        .wisdom-home-actual-3d
+          .wisdom-home-editorial__control.is-view {
+          z-index: 20;
+          pointer-events: auto !important;
+        }
+
+        .wisdom-home-actual-3d button.wisdom-home-editorial__view-option {
+          position: relative;
+          z-index: 21;
+          border: 0;
+          outline: 0;
+          background: transparent;
+          font: inherit;
+          cursor: pointer;
+          pointer-events: auto !important;
+          -webkit-tap-highlight-color: transparent;
+        }
+
+        .wisdom-home-actual-3d button.wisdom-home-editorial__view-option.is-active {
+          background: #111111;
+          color: #ffffff;
+        }
+
+        .wisdom-home-actual-3d button.wisdom-home-editorial__view-option:focus-visible {
+          outline: 2px solid #111111;
+          outline-offset: 2px;
+        }
+
+        .wisdom-home-actual-3d__fallback {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #6b645d;
+          font-size: 0.78rem;
+          text-align: center;
+        }
+
+        @media (max-width: 900px) {
+          .wisdom-home-actual-3d {
+            height: 360px;
+          }
+        }
+
+        @media (max-width: 640px) {
+          .wisdom-home-actual-3d {
+            width: min(100%, 560px);
+            height: 290px;
+          }
+        }
+      `}</style>
+
+      <div
+        ref={hostRef}
+        className={"wisdom-home-actual-3d__canvas" + (activeView === "3D" ? " is-3d" : "")}
+        aria-label="Read-only interactive WISDOM coffee table preview"
+      >
+        {isUnavailable ? (
+          <div className="wisdom-home-actual-3d__fallback">
+            3D preview unavailable in this browser.
+          </div>
+        ) : null}
+      </div>
+
+      <div
+        className="wisdom-home-editorial__control is-view"
+        role="group"
+        aria-label="Furniture preview view"
+      >
+        {HOME_3D_REVIEW_VIEWS.map((view) => (
+          <button
+            key={view}
+            type="button"
+            className={"wisdom-home-editorial__view-option" + (activeView === view ? " is-active" : "")}
+            aria-pressed={activeView === view}
+            onClick={() => changeView(view)}
+          >
+            {view}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -1673,28 +2202,7 @@ export default function LandingPage() {
         <section className="wisdom-home-editorial__section is-reverse">
           <div className="wisdom-home-editorial__inner wisdom-home-editorial-reveal">
             <div className="wisdom-home-editorial__visual">
-              <img
-                src={homepagePreviewTable}
-                alt="Wood coffee table used as an example of a furniture 3D preview"
-                className="wisdom-home-editorial__image is-wide"
-              />
-              <div
-                className="wisdom-home-editorial__control is-view"
-                aria-hidden="true"
-              >
-                <span className="wisdom-home-editorial__view-option is-active">
-                  3D
-                </span>
-                <span className="wisdom-home-editorial__view-option">
-                  Front
-                </span>
-                <span className="wisdom-home-editorial__view-option">
-                  Side
-                </span>
-                <span className="wisdom-home-editorial__view-option">
-                  Back
-                </span>
-              </div>
+              <HomepageFurniture3DReview />
             </div>
 
             <div className="wisdom-home-editorial__copy">

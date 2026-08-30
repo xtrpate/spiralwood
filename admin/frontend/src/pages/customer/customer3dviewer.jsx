@@ -3405,7 +3405,9 @@ export default function Customer3DViewer({
   const handleApply = () => {
     if (typeof onApply !== "function") return;
     setCustomizeProgressStep(6);
-    showCustomizeFeedback("Added to custom cart.");
+    /* WISDOM HOMEPAGE ACTUAL 3D TEMPLATE V1.2.2
+       Parent Customize page already displays the detailed bottom-right
+       custom-cart confirmation. Remove only this duplicate top black effect. */
     onApply({
       quantity: Math.max(1, Number(quantity || 1)),
       comments: String(comments || "").trim(),
