@@ -36,7 +36,7 @@ export default function OversizedDeliveryWarning({
           textTransform: "uppercase",
         }}
       >
-        Oversized Furniture Detected
+        Delivery notice
       </div>
 
       <div
@@ -46,9 +46,9 @@ export default function OversizedDeliveryWarning({
           lineHeight: 1.55,
         }}
       >
-        This design may not fit in the standard delivery truck. A larger
-        truck may be required, and an additional delivery fee will be
-        confirmed by the administrator.
+        This furniture is larger than our standard truck limit. A larger
+        truck may be needed. We will check the delivery and tell you if there
+        is an extra fee.
       </div>
 
       {exceeded.length > 0 ? (
@@ -69,24 +69,13 @@ export default function OversizedDeliveryWarning({
               }}
             >
               {item.label}: {formatMm(item.actual_mm)}
-              {" · "}Standard limit: {formatMm(item.limit_mm)}
+              {" · "}Truck limit: {formatMm(item.limit_mm)}
               {" · "}Over by: {formatMm(item.excess_mm)}
             </div>
           ))}
         </div>
       ) : null}
 
-      <div
-        style={{
-          borderTop: "1px solid #fde68a",
-          paddingTop: 7,
-          color: "#78350f",
-          fontSize: compact ? 10 : 11,
-          fontWeight: 800,
-        }}
-      >
-        Additional delivery fee: Pending admin assessment
-      </div>
     </div>
   );
 }

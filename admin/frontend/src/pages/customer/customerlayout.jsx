@@ -1402,7 +1402,77 @@ export default function CustomerLayout() {
                             {String.fromCharCode(8722)}
                           </button>
 
-                          <span>{quantity}</span>
+                          <input
+                            key={`${item.key}-${quantity}`}
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            className="cust-mini-cart-qty-input"
+                            defaultValue={quantity}
+                            aria-label={`Quantity for ${
+                              item.base_blueprint_title || item.product_name
+                            }`}
+                            title={
+                              !blueprint && Number(item.max_stock) > 0
+                                ? `Available stock: ${Math.floor(
+                                    Number(item.max_stock),
+                                  )}`
+                                : undefined
+                            }
+                            onFocus={(event) =>
+                              event.currentTarget.select()
+                            }
+                            onInput={(event) => {
+                              const digits =
+                                event.currentTarget.value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+
+                              if (event.currentTarget.value !== digits) {
+                                event.currentTarget.value = digits;
+                              }
+                            }}
+                            onBlur={(event) => {
+                              const parsed = Number.parseInt(
+                                event.currentTarget.value,
+                                10,
+                              );
+                              const stockRaw = Number(item.max_stock);
+                              const stockLimit =
+                                !blueprint &&
+                                Number.isFinite(stockRaw) &&
+                                stockRaw > 0
+                                  ? Math.max(1, Math.floor(stockRaw))
+                                  : null;
+                              const requested =
+                                Number.isSafeInteger(parsed) && parsed > 0
+                                  ? parsed
+                                  : quantity;
+                              const nextQuantity = stockLimit
+                                ? Math.min(requested, stockLimit)
+                                : requested;
+
+                              event.currentTarget.value =
+                                String(nextQuantity);
+
+                              if (nextQuantity !== quantity) {
+                                updateQty(
+                                  item.key,
+                                  nextQuantity - quantity,
+                                );
+                              }
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.currentTarget.blur();
+                              } else if (event.key === "Escape") {
+                                event.currentTarget.value =
+                                  String(quantity);
+                                event.currentTarget.blur();
+                              }
+                            }}
+                          />
 
                           <button
                             type="button"

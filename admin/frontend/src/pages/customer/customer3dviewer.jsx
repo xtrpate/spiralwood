@@ -1564,7 +1564,7 @@ export default function Customer3DViewer({
       startY = e.clientY;
     };
     const onPointerUp = (event) => {
-      if (readOnly || doorsPreviewOpen || drawersPreviewOpen) return;
+      if (readOnly) return;
 
       const dragDist = Math.hypot(
         event.clientX - startX,
@@ -2053,7 +2053,15 @@ export default function Customer3DViewer({
   );
 
   const openAllCustomerDoors = useCallback(
-    (targetKey = "", { preserveExisting = false } = {}) => {
+    (
+      targetKey = "",
+      {
+        preserveExisting = false,
+        preserveSelection = false,
+        instant = false,
+        targetAngle = null,
+      } = {},
+    ) => {
     const allSets = buildCustomerDoorPreviewSets(components);
     const requestedKey =
       typeof targetKey === "string" ? targetKey.trim() : "";
@@ -2069,7 +2077,9 @@ export default function Customer3DViewer({
       clearCustomerDoorPreviews();
     }
 
-    setSelectedCompIds([]);
+    if (!preserveSelection) {
+      setSelectedCompIds([]);
+    }
 
     const existingKeys = new Set(
       (doorMotionPreviewRef.current || []).map((preview) => preview.key),
@@ -2210,9 +2220,35 @@ export default function Customer3DViewer({
       return;
     }
 
-    const openAngle = THREE.MathUtils.degToRad(
+    const defaultOpenAngle = THREE.MathUtils.degToRad(
       CUSTOMER_DOOR_PREVIEW_OPEN_DEGREES,
     );
+    const requestedAngle = Number(targetAngle);
+    const openAngle =
+      Number.isFinite(requestedAngle) && requestedAngle > 0
+        ? requestedAngle
+        : defaultOpenAngle;
+
+    const applyDoorPreviewAngle = (preview, angle) => {
+      if (!preview?.pivot) return;
+
+      if (preview.animationFrame) {
+        cancelAnimationFrame(preview.animationFrame);
+        preview.animationFrame = 0;
+      }
+
+      preview.currentAngle = angle;
+
+      const localTurn = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        preview.direction * preview.currentAngle,
+      );
+
+      preview.pivot.quaternion
+        .copy(preview.basePivotQuaternion)
+        .multiply(localTurn);
+      preview.pivot.updateMatrixWorld(true);
+    };
 
     if (keepCurrent) {
       doorMotionPreviewRef.current = [
@@ -2221,14 +2257,25 @@ export default function Customer3DViewer({
       ];
       setDoorsPreviewOpen(false);
       created.forEach((preview) => {
-        animateCustomerDoorPreviewTo(preview, openAngle);
+        if (instant) {
+          applyDoorPreviewAngle(preview, openAngle);
+        } else {
+          animateCustomerDoorPreviewTo(preview, openAngle);
+        }
       });
       return;
     }
 
     doorMotionPreviewRef.current = created;
     setDoorsPreviewOpen(!requestedKey);
-    animateCustomerDoorPreviewsTo(openAngle);
+
+    if (instant) {
+      created.forEach((preview) => {
+        applyDoorPreviewAngle(preview, openAngle);
+      });
+    } else {
+      animateCustomerDoorPreviewsTo(openAngle);
+    }
   }, [
     components,
     clearCustomerDoorPreviews,
@@ -2278,7 +2325,15 @@ export default function Customer3DViewer({
   );
 
   const openAllCustomerDrawers = useCallback(
-    (targetKey = "", { preserveExisting = false } = {}) => {
+    (
+      targetKey = "",
+      {
+        preserveExisting = false,
+        preserveSelection = false,
+        instant = false,
+        targetDistance = null,
+      } = {},
+    ) => {
     const allSets = buildCustomerDrawerPreviewSets(components);
     const requestedKey =
       typeof targetKey === "string" ? targetKey.trim() : "";
@@ -2294,7 +2349,9 @@ export default function Customer3DViewer({
       clearCustomerDrawerPreviews();
     }
 
-    setSelectedCompIds([]);
+    if (!preserveSelection) {
+      setSelectedCompIds([]);
+    }
 
     const existingKeys = new Set(
       (drawerMotionPreviewRef.current || []).map((preview) => preview.key),
@@ -2419,6 +2476,29 @@ export default function Customer3DViewer({
       return;
     }
 
+    const applyDrawerPreviewDistance = (preview, distance) => {
+      if (!preview?.group) return;
+
+      if (preview.animationFrame) {
+        cancelAnimationFrame(preview.animationFrame);
+        preview.animationFrame = 0;
+      }
+
+      const requestedDistance = Number(distance);
+      const safeDistance = Number.isFinite(requestedDistance)
+        ? Math.max(
+            0,
+            Math.min(preview.extensionDistance, requestedDistance),
+          )
+        : preview.extensionDistance;
+
+      preview.currentDistance = safeDistance;
+      preview.group.position
+        .copy(preview.basePosition)
+        .addScaledVector(preview.direction, preview.currentDistance);
+      preview.group.updateMatrixWorld(true);
+    };
+
     if (keepCurrent) {
       drawerMotionPreviewRef.current = [
         ...drawerMotionPreviewRef.current,
@@ -2426,14 +2506,25 @@ export default function Customer3DViewer({
       ];
       setDrawersPreviewOpen(false);
       created.forEach((preview) => {
-        animateCustomerDrawerPreviewTo(preview, 1);
+        if (instant) {
+          applyDrawerPreviewDistance(preview, targetDistance);
+        } else {
+          animateCustomerDrawerPreviewTo(preview, 1);
+        }
       });
       return;
     }
 
     drawerMotionPreviewRef.current = created;
     setDrawersPreviewOpen(!requestedKey);
-    animateCustomerDrawerPreviewsTo(1);
+
+    if (instant) {
+      created.forEach((preview) => {
+        applyDrawerPreviewDistance(preview, targetDistance);
+      });
+    } else {
+      animateCustomerDrawerPreviewsTo(1);
+    }
   }, [
     components,
     clearCustomerDrawerPreviews,
@@ -2657,16 +2748,11 @@ export default function Customer3DViewer({
     toggleCustomerMotionFromComponentId,
   ]);
 
-  // Entering Edit Design must restore the closed/original furniture state.
+  // Open doors and drawers stay in their current visible pose while the
+  // customer edits parts. Their real furniture data is still unchanged.
   useEffect(() => {
     if (!selectionMode) return;
-    clearCustomerDoorPreviews();
-    clearCustomerDrawerPreviews();
-  }, [
-    selectionMode,
-    clearCustomerDoorPreviews,
-    clearCustomerDrawerPreviews,
-  ]);
+  }, [selectionMode]);
 
   useEffect(
     () => () => {
@@ -2681,9 +2767,47 @@ export default function Customer3DViewer({
     const rootGroup = rootGroupRef.current;
     if (!rootGroup) return;
 
-    // Temporary customer motion previews never survive a real design change.
-    clearCustomerDoorPreviews();
-    clearCustomerDrawerPreviews();
+    // Save the visible door pose before rebuilding furniture objects.
+    // The saved pose is restored synchronously below so the customer never
+    // sees the door close and then open again.
+    const savedDoorPreviews = (doorMotionPreviewRef.current || [])
+      .map((preview) => ({
+        key: String(preview?.key || "").trim(),
+        angle: Number(preview?.currentAngle || 0),
+      }))
+      .filter((preview) => preview.key);
+
+    const savedDrawerPreviews = (drawerMotionPreviewRef.current || [])
+      .map((preview) => ({
+        key: String(preview?.key || "").trim(),
+        distance: Number(preview?.currentDistance || 0),
+      }))
+      .filter((preview) => preview.key);
+
+    const allDoorKeys = buildCustomerDoorPreviewSets(components)
+      .map((set) => String(set?.key || "").trim())
+      .filter(Boolean);
+
+    const allDrawerKeys = buildCustomerDrawerPreviewSets(components)
+      .map((set) => String(set?.key || "").trim())
+      .filter(Boolean);
+
+    const restoreAllDoors =
+      savedDoorPreviews.length > 0 &&
+      allDoorKeys.length > 0 &&
+      allDoorKeys.every((key) =>
+        savedDoorPreviews.some((preview) => preview.key === key),
+      );
+
+    const restoreAllDrawers =
+      savedDrawerPreviews.length > 0 &&
+      allDrawerKeys.length > 0 &&
+      allDrawerKeys.every((key) =>
+        savedDrawerPreviews.some((preview) => preview.key === key),
+      );
+
+    clearCustomerDoorPreviews({ updateState: false });
+    clearCustomerDrawerPreviews({ updateState: false });
     renderedObjectMapRef.current.clear();
 
     while (rootGroup.children.length) {
@@ -2860,10 +2984,42 @@ export default function Customer3DViewer({
       dimensionLinesRef.current = dimensionLines;
       rootGroup.add(dimensionLines);
     }
+
+    if (!readOnly && savedDoorPreviews.length > 0) {
+      savedDoorPreviews.forEach((savedPreview, index) => {
+        openAllCustomerDoors(savedPreview.key, {
+          preserveExisting: index > 0,
+          preserveSelection: true,
+          instant: true,
+          targetAngle: savedPreview.angle,
+        });
+      });
+
+      if (restoreAllDoors) {
+        setDoorsPreviewOpen(true);
+      }
+    }
+
+    if (!readOnly && savedDrawerPreviews.length > 0) {
+      savedDrawerPreviews.forEach((savedPreview, index) => {
+        openAllCustomerDrawers(savedPreview.key, {
+          preserveExisting: index > 0,
+          preserveSelection: true,
+          instant: true,
+          targetDistance: savedPreview.distance,
+        });
+      });
+
+      if (restoreAllDrawers) {
+        setDrawersPreviewOpen(true);
+      }
+    }
   }, [
     components,
     clearCustomerDoorPreviews,
     clearCustomerDrawerPreviews,
+    openAllCustomerDoors,
+    openAllCustomerDrawers,
   ]);
 
   useEffect(() => {
@@ -2887,7 +3043,13 @@ export default function Customer3DViewer({
     selectedCompIds.forEach((id) => {
       let target = null;
       rootGroupRef.current.traverse((child) => {
-        if (child.userData?.id === id && !target) target = child;
+        if (
+          child.userData?.id === id &&
+          child.visible !== false &&
+          !target
+        ) {
+          target = child;
+        }
       });
 
       if (target) {
@@ -5012,6 +5174,11 @@ export default function Customer3DViewer({
                     : {}),
                 }}
               >
+
+                <OversizedDeliveryWarning
+                  assessment={deliveryAssessment}
+                  compact
+                />
 
                 <button
                   type="button"
