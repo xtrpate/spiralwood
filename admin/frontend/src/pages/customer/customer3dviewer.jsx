@@ -16,6 +16,7 @@ import {
   RotateCcw,
   Maximize2,
   Camera,
+  Upload,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -933,6 +934,7 @@ export default function Customer3DViewer({
   const historyRef = useRef({ past: [], future: [] });
   const customizeFeedbackTimerRef = useRef(null);
   const finishMenuRef = useRef(null);
+  const referenceDropDepthRef = useRef(0);
   const initialViewFramedRef = useRef(false);
   const viewerRootRef = useRef(null);
   const dimensionLinesRef = useRef(null);
@@ -968,6 +970,7 @@ export default function Customer3DViewer({
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [requestDetailsOpen, setRequestDetailsOpen] = useState(false);
+  const [isReferenceDropActive, setIsReferenceDropActive] = useState(false);
   const [isViewerFullscreen, setIsViewerFullscreen] = useState(false);
 
   const [customizeProgressStep, setCustomizeProgressStep] = useState(
@@ -5188,21 +5191,28 @@ export default function Customer3DViewer({
                   }
                   aria-expanded={requestDetailsOpen}
                 >
-                  <span>Request details</span>
-                  <span aria-hidden="true">
+                  <span style={styles.requestDetailsToggleTitle}>
+                    Request Details
+                  </span>
+
+                  <span
+                    aria-hidden="true"
+                    style={styles.requestDetailsToggleIcon}
+                  >
                     {requestDetailsOpen ? "−" : "+"}
                   </span>
                 </button>
 
                 <div
                   className="wisdom-order-details-content"
-                  style={styles.footerHeader}
+                  style={{
+                    ...styles.footerHeader,
+                    marginTop: 0,
+                    marginBottom: -4,
+                  }}
                 >
                   <div>
-                    <div style={styles.footerTitle}>Order Details</div>
-                    <div style={styles.footerNote}>
-                      Add reference photos or notes if needed.
-                    </div>
+                    <div style={styles.footerTitle}>Quantity</div>
                   </div>
 
                   <div style={styles.qtyBox}>
@@ -5245,14 +5255,89 @@ export default function Customer3DViewer({
                   style={styles.footerField}
                 >
                   <div style={styles.uploadHeader}>
-                    <label style={styles.footerLabel}>Reference Photos</label>
-                    <span style={styles.uploadHint}>
-                      Up to 5 images • JPG / JPEG / PNG / WEBP • 5MB each
+                    <label style={styles.footerLabel}>Reference photos</label>
+                    <span style={styles.fieldPurposeText}>
+                      Optional. Add photos that show the style, color, or
+                      details you want.
                     </span>
                   </div>
 
-                  <label style={styles.uploadButton}>
-                    Upload Photos
+                  <label
+                    style={{
+                      ...styles.uploadDropZone,
+                      ...(isReferenceDropActive
+                        ? styles.uploadDropZoneActive
+                        : {}),
+                    }}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      referenceDropDepthRef.current += 1;
+                      setIsReferenceDropActive(true);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (event.dataTransfer) {
+                        event.dataTransfer.dropEffect = "copy";
+                      }
+                    }}
+                    onDragLeave={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      referenceDropDepthRef.current = Math.max(
+                        0,
+                        referenceDropDepthRef.current - 1,
+                      );
+                      if (referenceDropDepthRef.current === 0) {
+                        setIsReferenceDropActive(false);
+                      }
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+
+                      referenceDropDepthRef.current = 0;
+                      setIsReferenceDropActive(false);
+
+                      const droppedFiles = event.dataTransfer?.files;
+
+                      if (!droppedFiles?.length) return;
+
+                      setCustomizeProgressStep((current) =>
+                        Math.max(current, 5),
+                      );
+
+                      onPickReferencePhotos?.({
+                        target: {
+                          files: droppedFiles,
+                          value: "",
+                        },
+                      });
+
+                      showCustomizeFeedback(
+                        droppedFiles.length === 1
+                          ? "Photo selected."
+                          : "Photos selected.",
+                      );
+                    }}
+                  >
+                    <Upload
+                      size={19}
+                      strokeWidth={1.7}
+                      aria-hidden="true"
+                    />
+
+                    <span style={styles.uploadDropTitle}>
+                      Drag photos here
+                    </span>
+
+                    <span style={styles.uploadDropOr}>or</span>
+
+                    <span style={styles.uploadBrowseText}>
+                      Browse files
+                    </span>
+
                     <input
                       type="file"
                       accept="image/jpeg,image/jpg,image/png,image/webp"
@@ -5264,11 +5349,19 @@ export default function Customer3DViewer({
                         );
                         onPickReferencePhotos?.(event);
                         if (event.target.files?.length) {
-                          showCustomizeFeedback("Photo selected.");
+                          showCustomizeFeedback(
+                            event.target.files.length === 1
+                              ? "Photo selected."
+                              : "Photos selected.",
+                          );
                         }
                       }}
                     />
                   </label>
+
+                  <span style={styles.uploadHint}>
+                    JPG, JPEG, PNG, WEBP • Up to 5 photos • 5MB each
+                  </span>
 
                   {uploadError ? (
                     <div style={styles.uploadError}>{uploadError}</div>
@@ -5312,6 +5405,9 @@ export default function Customer3DViewer({
                   }}
                 >
                   <label style={styles.footerLabel}>{commentsLabel}</label>
+                  <span style={styles.fieldPurposeText}>
+                    Optional. Add special requests or room details.
+                  </span>
                   <textarea
                     rows={2}
                     maxLength={500}
@@ -6511,6 +6607,33 @@ const styles = {
     minHeight: 32,
   },
 
+  requestDetailsToggleTitle: {
+    width: "100%",
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    fontSize: 10.5,
+    lineHeight: 1.15,
+    fontWeight: 700,
+    color: "#111111",
+  },
+
+  requestDetailsToggleIcon: {
+    position: "absolute",
+    right: 10,
+    top: "50%",
+    transform: "translateY(-50%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 11,
+    lineHeight: 1,
+    fontWeight: 700,
+    color: "#111111",
+  },
+
   footerTitle: {
     fontSize: 12.5,
     lineHeight: 1.25,
@@ -6529,31 +6652,52 @@ const styles = {
   },
 
   qtyBox: {
-    display: "flex",
-    alignItems: "center",
+    width: 92,
+    height: 30,
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    alignItems: "stretch",
     gap: 0,
-    border: "1px solid #111111",
+    border: "1px solid #bfbfbf",
+    borderRadius: 10,
     background: "#ffffff",
-    width: 100,
-    height: 32,
+    overflow: "hidden",
     flex: "0 0 auto",
+    boxSizing: "border-box",
   },
 
   qtyBtn: {
-    width: 31,
-    height: 30,
+    width: "100%",
+    minWidth: 0,
+    height: "100%",
+    padding: 0,
+    margin: 0,
     border: 0,
-    background: "#ffffff",
+    borderRadius: 0,
+    background: "transparent",
     color: "#111111",
-    fontSize: 12,
+    fontSize: 11,
+    lineHeight: 1,
+    fontWeight: 400,
+    fontFamily: "inherit",
+    appearance: "none",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     cursor: "pointer",
   },
 
   qtyValue: {
-    minWidth: 38,
+    width: "100%",
+    minWidth: 0,
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
     textAlign: "center",
-    fontSize: 12,
-    fontWeight: 600,
+    fontSize: 11,
+    lineHeight: 1,
+    fontWeight: 500,
     color: "#111111",
   },
 
@@ -6569,7 +6713,7 @@ const styles = {
 
   notesFooterField: {
     height: "auto",
-    gridTemplateRows: "auto auto",
+    gridTemplateRows: "auto auto auto",
     alignContent: "start",
   },
 
@@ -6589,30 +6733,69 @@ const styles = {
     width: "100%",
   },
 
-  uploadHint: {
-    fontSize: 10,
+  fieldPurposeText: {
+    fontSize: 9.5,
+    lineHeight: 1.3,
+    fontWeight: 400,
     color: "#6b7280",
-    fontWeight: 600,
   },
 
-  uploadButton: {
+  uploadHint: {
+    marginTop: 1,
+    fontSize: 9.5,
+    lineHeight: 1.25,
+    color: "#6b7280",
+    fontWeight: 500,
+  },
+
+  uploadDropZone: {
     width: "100%",
-    height: 34,
-    minHeight: 34,
-    padding: "0 12px",
-    border: "1px solid #111111",
+    minHeight: 82,
+    padding: "10px 12px",
+    border: "1px dashed #aeb4bc",
     borderRadius: 0,
-    background: "#ffffff",
-    color: "#111111",
-    fontSize: 11.5,
-    lineHeight: 1,
-    fontWeight: 600,
+    background: "#fafafa",
+    color: "#4b5563",
     cursor: "pointer",
     display: "flex",
+    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
+    gap: 3,
     textAlign: "center",
     boxSizing: "border-box",
+    transition:
+      "border-color 120ms ease, background-color 120ms ease, color 120ms ease",
+  },
+
+  uploadDropZoneActive: {
+    borderColor: "#111111",
+    background: "#f3f4f6",
+    color: "#111111",
+  },
+
+  uploadDropTitle: {
+    marginTop: 1,
+    fontSize: 11,
+    lineHeight: 1.2,
+    fontWeight: 600,
+    color: "inherit",
+  },
+
+  uploadDropOr: {
+    fontSize: 9.5,
+    lineHeight: 1.1,
+    fontWeight: 400,
+    color: "#8a9098",
+  },
+
+  uploadBrowseText: {
+    fontSize: 11,
+    lineHeight: 1.2,
+    fontWeight: 700,
+    color: "#111111",
+    textDecoration: "underline",
+    textUnderlineOffset: 2,
   },
 
   uploadError: {
