@@ -151,6 +151,30 @@ const useAuthStore = create((set, get) => ({
 
   register: async (userData) => {
     const { data } = await api.post("/customer/auth/register", userData);
+
+    return data;
+  },
+
+  invalidateRegistrationEmailOtp: async (email) => {
+    const { data } = await api.post(
+      "/customer/auth/invalidate-registration-email-otp",
+      {
+        email,
+      },
+    );
+
+    return data;
+  },
+
+  changeRegistrationEmail: async (currentEmail, newEmail) => {
+    const { data } = await api.post(
+      "/customer/auth/change-registration-email",
+      {
+        current_email: currentEmail,
+        new_email: newEmail,
+      },
+    );
+
     return data;
   },
 
@@ -162,11 +186,35 @@ const useAuthStore = create((set, get) => ({
     return data;
   },
 
+  invalidateRegistrationPhoneOtp: async (email) => {
+    const { data } = await api.post(
+      "/customer/auth/invalidate-registration-phone-otp",
+      {
+        email,
+      },
+    );
+
+    return data;
+  },
+
+  changeRegistrationPhone: async (email, newPhone) => {
+    const { data } = await api.post(
+      "/customer/auth/change-registration-phone",
+      {
+        email,
+        new_phone: newPhone,
+      },
+    );
+
+    return data;
+  },
+
   verifyPhoneOtp: async (email, otp) => {
     const { data } = await api.post("/customer/auth/verify-phone-otp", {
       email,
       otp,
     });
+
     return data;
   },
 

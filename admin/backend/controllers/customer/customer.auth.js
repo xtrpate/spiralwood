@@ -421,6 +421,175 @@ exports.register = async (req, res) => {
   }
 };
 
+exports.changeRegistrationEmail = async (req, res) => {
+  const { current_email, new_email } = req.body;
+
+  if (!current_email || !new_email) {
+    return res.status(400).json({
+      message: "Current email and new email are required.",
+    });
+  }
+
+  try {
+    const normalizedCurrentEmail = String(current_email).trim().toLowerCase();
+
+    const normalizedNewEmail = String(new_email).trim().toLowerCase();
+
+    if (normalizedCurrentEmail === normalizedNewEmail) {
+      return res.status(400).json({
+        message: "The new email must be different from the current email.",
+      });
+    }
+
+    // Find the currently pending customer account
+    const [users] = await db.query(
+      `
+      SELECT id, name, is_verified
+      FROM users
+      WHERE email = ?
+        AND role = 'customer'
+      LIMIT 1
+      `,
+      [normalizedCurrentEmail],
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        message: "Registration account not found.",
+      });
+    }
+
+    const user = users[0];
+
+    // Email changing is only allowed before email verification.
+    if (user.is_verified) {
+      return res.status(400).json({
+        message:
+          "This email has already been verified. Email cannot be changed during registration.",
+      });
+    }
+
+    // Make sure the new email is not already being used.
+    const [existing] = await db.query(
+      `
+      SELECT id
+      FROM users
+      WHERE email = ?
+      LIMIT 1
+      `,
+      [normalizedNewEmail],
+    );
+
+    if (existing.length > 0) {
+      return res.status(409).json({
+        message: "An account with that email already exists.",
+      });
+    }
+
+    // Generate a new email OTP
+    const emailOtp = generateOtp();
+
+    const emailOtpExpiry = new Date(
+      Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
+    );
+
+    // Update email + replace the existing OTP
+    await db.query(
+      `
+      UPDATE users
+      SET
+        email = ?,
+        otp_code = ?,
+        otp_purpose = 'verify_email',
+        otp_expires = ?
+      WHERE id = ?
+      `,
+      [normalizedNewEmail, emailOtp, emailOtpExpiry, user.id],
+    );
+
+    // Send the new OTP to the new email
+    const firstName = String(user.name || "Customer")
+      .trim()
+      .split(" ")[0];
+
+    await sendOtpEmail(normalizedNewEmail, emailOtp, firstName);
+
+    return res.json({
+      message:
+        "Email changed successfully. A new verification code has been sent.",
+      email: normalizedNewEmail,
+    });
+  } catch (err) {
+    console.error("[change-registration-email]", err);
+
+    return res.status(500).json({
+      message: "Unable to change email. Please try again.",
+    });
+  }
+};
+
+exports.invalidateRegistrationEmailOtp = async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      message: "Email is required.",
+    });
+  }
+
+  try {
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const [users] = await db.query(
+      `
+      SELECT id, is_verified
+      FROM users
+      WHERE email = ?
+        AND role = 'customer'
+      LIMIT 1
+      `,
+      [normalizedEmail],
+    );
+
+    if (!users.length) {
+      return res.status(404).json({
+        message: "Registration account not found.",
+      });
+    }
+
+    const user = users[0];
+
+    if (user.is_verified) {
+      return res.status(400).json({
+        message: "Email is already verified.",
+      });
+    }
+
+    // Invalidate the current email OTP immediately.
+    await db.query(
+      `
+      UPDATE users
+      SET
+        otp_code = NULL,
+        otp_purpose = NULL,
+        otp_expires = NULL
+      WHERE id = ?
+      `,
+      [user.id],
+    );
+
+    return res.json({
+      message: "Current email verification code has been invalidated.",
+    });
+  } catch (err) {
+    console.error("[invalidate-registration-email-otp]", err);
+
+    return res.status(500).json({
+      message: "Unable to invalidate the verification code.",
+    });
+  }
+};
+
 exports.verifyOtp = async (req, res) => {
   const { email, otp } = req.body;
 
@@ -496,6 +665,199 @@ exports.verifyOtp = async (req, res) => {
     return res.status(500).json({
       message: "Server error",
       error: err.message,
+    });
+  }
+};
+
+exports.changeRegistrationPhone = async (req, res) => {
+  const { email, new_phone } = req.body;
+
+  if (!email || !new_phone) {
+    return res.status(400).json({
+      message: "Email and new phone number are required.",
+    });
+  }
+
+  try {
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    let normalizedPhone;
+
+    try {
+      normalizedPhone = normalizePhilippinePhone(new_phone);
+    } catch {
+      return res.status(400).json({
+        message: "Invalid Philippine mobile number.",
+      });
+    }
+
+    const [users] = await db.query(
+      `
+      SELECT
+        id,
+        name,
+        is_verified,
+        phone_verified
+      FROM users
+      WHERE email = ?
+        AND role = 'customer'
+      LIMIT 1
+      `,
+      [normalizedEmail],
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        message: "Registration account not found.",
+      });
+    }
+
+    const user = users[0];
+
+    // Email must already be verified before changing phone.
+    if (!user.is_verified) {
+      return res.status(400).json({
+        message: "Please verify your email first.",
+      });
+    }
+
+    // Phone cannot be changed after phone verification.
+    if (user.phone_verified) {
+      return res.status(400).json({
+        message:
+          "This phone number has already been verified and cannot be changed during registration.",
+      });
+    }
+
+    // Prevent duplicate phone numbers.
+    const [existing] = await db.query(
+      `
+      SELECT id
+      FROM users
+      WHERE phone = ?
+        AND id <> ?
+      LIMIT 1
+      `,
+      [normalizedPhone, user.id],
+    );
+
+    if (existing.length > 0) {
+      return res.status(409).json({
+        message: "This phone number is already registered.",
+      });
+    }
+
+    // Generate a new phone OTP.
+    const phoneOtp = generateOtp();
+
+    const phoneOtpHash = await bcrypt.hash(phoneOtp, 10);
+
+    const phoneOtpExpires = new Date(
+      Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000,
+    );
+
+    // Update the pending phone number and replace the old OTP.
+    await db.query(
+      `
+      UPDATE users
+      SET
+        phone = ?,
+        phone_verified = FALSE,
+        phone_otp_hash = ?,
+        phone_otp_expires = ?
+      WHERE id = ?
+      `,
+      [normalizedPhone, phoneOtpHash, phoneOtpExpires, user.id],
+    );
+
+    // Send the new OTP to the new phone number.
+    await sendSms({
+      phone: normalizedPhone,
+      message:
+        `Your Spiral Wood Services phone verification code is ${phoneOtp}. ` +
+        `It expires in ${OTP_EXPIRY_MINUTES} minutes.`,
+    });
+
+    return res.json({
+      message:
+        "Phone number changed successfully. A new verification code has been sent.",
+      phone: normalizedPhone,
+    });
+  } catch (err) {
+    console.error("[change-registration-phone]", err);
+
+    return res.status(500).json({
+      message: "Unable to change phone number. Please try again.",
+    });
+  }
+};
+
+exports.invalidateRegistrationPhoneOtp = async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      message: "Email is required.",
+    });
+  }
+
+  try {
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const [users] = await db.query(
+      `
+      SELECT
+        id,
+        is_verified,
+        phone_verified
+      FROM users
+      WHERE email = ?
+        AND role = 'customer'
+      LIMIT 1
+      `,
+      [normalizedEmail],
+    );
+
+    if (!users.length) {
+      return res.status(404).json({
+        message: "Registration account not found.",
+      });
+    }
+
+    const user = users[0];
+
+    if (!user.is_verified) {
+      return res.status(400).json({
+        message: "Please verify your email first.",
+      });
+    }
+
+    if (user.phone_verified) {
+      return res.status(400).json({
+        message: "Phone number is already verified.",
+      });
+    }
+
+    // Invalidate the current phone OTP immediately.
+    await db.query(
+      `
+      UPDATE users
+      SET
+        phone_otp_hash = NULL,
+        phone_otp_expires = NULL
+      WHERE id = ?
+      `,
+      [user.id],
+    );
+
+    return res.json({
+      message: "Current phone verification code has been invalidated.",
+    });
+  } catch (err) {
+    console.error("[invalidate-registration-phone-otp]", err);
+
+    return res.status(500).json({
+      message: "Unable to invalidate the verification code.",
     });
   }
 };

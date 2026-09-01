@@ -17,8 +17,33 @@ const {
 ══════════════════════════════════════════════════════════════ */
 router.post("/register", registerLimiter, authController.register);
 
+router.post(
+  "/change-registration-email",
+  otpRequestLimiter,
+  authController.changeRegistrationEmail,
+);
+
+router.post(
+  "/invalidate-registration-email-otp",
+  otpRequestLimiter,
+  authController.invalidateRegistrationEmailOtp,
+);
+
 router.post("/verify-otp", otpLimiter, authController.verifyOtp);
+
 router.post("/resend-otp", otpRequestLimiter, authController.resendOtp);
+
+router.post(
+  "/change-registration-phone",
+  otpRequestLimiter,
+  authController.changeRegistrationPhone,
+);
+
+router.post(
+  "/invalidate-registration-phone-otp",
+  otpRequestLimiter,
+  authController.invalidateRegistrationPhoneOtp,
+);
 
 router.post("/verify-phone-otp", otpLimiter, authController.verifyPhoneOtp);
 
@@ -27,6 +52,7 @@ router.post(
   otpRequestLimiter,
   authController.resendPhoneOtp,
 );
+
 router.post(
   "/forgot-password",
   otpRequestLimiter,

@@ -17,7 +17,13 @@ const calcStrength = (pw) => {
 };
 
 export default function RegisterPage() {
-  const { register, verifyOtp, resendOtp } = useAuthStore();
+  const {
+    register,
+    verifyOtp,
+    resendOtp,
+    changeRegistrationEmail,
+    invalidateRegistrationEmailOtp,
+  } = useAuthStore();
   const navigate = useNavigate();
 
   const [step, setStep] = useState("form");
@@ -32,6 +38,11 @@ export default function RegisterPage() {
   const [otpError, setOtpError] = useState("");
   const [otpLoading, setOtpLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  const [changingEmail, setChangingEmail] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [changeEmailError, setChangeEmailError] = useState("");
+  const [changeEmailLoading, setChangeEmailLoading] = useState(false);
   const otpRefs = useRef([]);
   const recaptchaRef = useRef(null);
 
@@ -184,6 +195,46 @@ export default function RegisterPage() {
     }
   };
 
+  const handleChangeEmail = async () => {
+    const email = newEmail.trim().toLowerCase();
+
+    setChangeEmailError("");
+
+    if (!email) {
+      setChangeEmailError("Please enter your new email address.");
+      return;
+    }
+
+    if (email === registeredEmail.toLowerCase()) {
+      setChangeEmailError("Please enter a different email address.");
+      return;
+    }
+
+    setChangeEmailLoading(true);
+
+    try {
+      const response = await changeRegistrationEmail(registeredEmail, email);
+
+      const updatedEmail = response.email || email;
+
+      setRegisteredEmail(updatedEmail);
+
+      setOtp(["", "", "", "", "", ""]);
+      setOtpError("");
+      setNewEmail("");
+      setChangingEmail(false);
+      setResendCooldown(60);
+
+      otpRefs.current[0]?.focus();
+    } catch (err) {
+      setChangeEmailError(
+        err.response?.data?.message || "Could not change your email right now.",
+      );
+    } finally {
+      setChangeEmailLoading(false);
+    }
+  };
+
   const handleResend = async () => {
     if (resendCooldown > 0) return;
 
@@ -269,77 +320,198 @@ export default function RegisterPage() {
               <div className="step-dot active" />
             </div>
 
-            <div className="auth-card-header">
-              <h2>Verify Email</h2>
-              <p>
-                Enter the 6-digit code sent to
-                <br />
-                <strong>{registeredEmail}</strong>
-              </p>
-            </div>
+            {!changingEmail ? (
+              <>
+                <div className="auth-card-header">
+                  <h2>Verify Email</h2>
+                  <p>
+                    Enter the 6-digit code sent to
+                    <br />
+                    <strong>{registeredEmail}</strong>
+                  </p>
+                </div>
 
-            {otpError && (
-              <div className="alert alert-error" style={{ marginBottom: 16 }}>
-                {otpError}
-              </div>
-            )}
-
-            <div className="otp-inputs" onPaste={handleOtpPaste}>
-              {otp.map((digit, i) => (
-                <input
-                  key={i}
-                  ref={(el) => (otpRefs.current[i] = el)}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={digit}
-                  onChange={(e) => handleOtpChange(i, e.target.value)}
-                  onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                  autoFocus={i === 0}
-                />
-              ))}
-            </div>
-
-            <button
-              className="btn-auth"
-              onClick={handleVerifyOtp}
-              disabled={otpLoading || otp.join("").length < 6}
-            >
-              {otpLoading ? (
-                <>
-                  <svg
-                    className="spinner-icon"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
+                {otpError && (
+                  <div
+                    className="alert alert-error"
+                    style={{ marginBottom: 16 }}
                   >
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                  </svg>
-                  Verifying...
-                </>
-              ) : (
-                "Verify Email"
-              )}
-            </button>
+                    {otpError}
+                  </div>
+                )}
 
-            <div className="otp-resend">
-              {resendCooldown > 0 ? (
-                <span>
-                  Resend code in <strong>{resendCooldown}s</strong>
-                </span>
-              ) : (
-                <>
-                  Didn't receive it?{" "}
-                  <button type="button" onClick={handleResend}>
-                    Resend Code
+                <div className="otp-inputs" onPaste={handleOtpPaste}>
+                  {otp.map((digit, i) => (
+                    <input
+                      key={i}
+                      ref={(el) => (otpRefs.current[i] = el)}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      onChange={(e) => handleOtpChange(i, e.target.value)}
+                      onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                      autoFocus={i === 0}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  className="btn-auth"
+                  onClick={handleVerifyOtp}
+                  disabled={otpLoading || otp.join("").length < 6}
+                >
+                  {otpLoading ? (
+                    <>
+                      <svg
+                        className="spinner-icon"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                      >
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                      </svg>
+                      Verifying...
+                    </>
+                  ) : (
+                    "Verify Email"
+                  )}
+                </button>
+
+                <div className="otp-resend">
+                  {resendCooldown > 0 ? (
+                    <span>
+                      Resend code in <strong>{resendCooldown}s</strong>
+                    </span>
+                  ) : (
+                    <>
+                      Didn't receive it?{" "}
+                      <button type="button" onClick={handleResend}>
+                        Resend Code
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                <div className="auth-switch">
+                  Wrong email?{" "}
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setChangeEmailError("");
+
+                      try {
+                        await invalidateRegistrationEmailOtp(registeredEmail);
+
+                        setOtp(["", "", "", "", "", ""]);
+                        setOtpError("");
+                        setResendCooldown(0);
+
+                        setChangingEmail(true);
+                        setNewEmail("");
+                      } catch (err) {
+                        setChangeEmailError(
+                          err.response?.data?.message ||
+                            "Could not open the change email screen.",
+                        );
+                      }
+                    }}
+                    disabled={changeEmailLoading}
+                  >
+                    Change email
                   </button>
-                </>
-              )}
-            </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="auth-card-header">
+                  <h2>Change Email Address</h2>
+                  <p>
+                    Enter your new email address to receive a new verification
+                    code.
+                  </p>
+                </div>
+
+                <div style={{ marginTop: 16 }}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: 6,
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  >
+                    New Email Address
+                  </label>
+
+                  <input
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="youremail@example.com"
+                    disabled={changeEmailLoading}
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      padding: "11px 12px",
+                      border: "1px solid #ddd",
+                      outline: "none",
+                    }}
+                  />
+
+                  {changeEmailError && (
+                    <div className="alert alert-error" style={{ marginTop: 8 }}>
+                      {changeEmailError}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="btn-auth"
+                    onClick={handleChangeEmail}
+                    disabled={changeEmailLoading}
+                    style={{ marginTop: 10 }}
+                  >
+                    {changeEmailLoading ? "Sending OTP..." : "Send OTP"}
+                  </button>
+
+                  <div className="auth-switch">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setChangeEmailError("");
+
+                        try {
+                          await resendOtp(registeredEmail);
+
+                          setChangingEmail(false);
+                          setNewEmail("");
+
+                          setOtp(["", "", "", "", "", ""]);
+
+                          setOtpError("");
+                          setResendCooldown(60);
+
+                          otpRefs.current[0]?.focus();
+                        } catch (err) {
+                          setChangeEmailError(
+                            err.response?.data?.message ||
+                              "Could not send a new verification code.",
+                          );
+                        }
+                      }}
+                      disabled={changeEmailLoading}
+                    >
+                      Back to Verify Email
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="auth-switch">
               <button
@@ -348,6 +520,9 @@ export default function RegisterPage() {
                   setStep("form");
                   setOtp(["", "", "", "", "", ""]);
                   setOtpError("");
+                  setChangingEmail(false);
+                  setNewEmail("");
+                  setChangeEmailError("");
                 }}
               >
                 Back to Registration
@@ -407,6 +582,7 @@ export default function RegisterPage() {
                     className="no-icon"
                     value={form.first_name}
                     onChange={(e) => set("first_name", e.target.value)}
+                    placeholder="Juan"
                     required
                   />
                 </div>
@@ -420,6 +596,7 @@ export default function RegisterPage() {
                     className="no-icon"
                     value={form.last_name}
                     onChange={(e) => set("last_name", e.target.value)}
+                    placeholder="Dela Cruz"
                     required
                   />
                 </div>
@@ -434,6 +611,7 @@ export default function RegisterPage() {
                   className="no-icon"
                   value={form.email}
                   onChange={(e) => set("email", e.target.value)}
+                  placeholder="youremail@example.com"
                   required
                 />
               </div>
@@ -476,6 +654,7 @@ export default function RegisterPage() {
                   className="no-icon"
                   value={form.address}
                   onChange={(e) => set("address", e.target.value)}
+                  placeholder="e.g. Prenza 1, Marilao, Bulacan"
                   required
                 />
               </div>
@@ -489,6 +668,7 @@ export default function RegisterPage() {
                   className="no-icon"
                   value={form.password}
                   onChange={(e) => set("password", e.target.value)}
+                  placeholder="Enter your password"
                   required
                   style={{ paddingRight: 70 }}
                 />
@@ -530,6 +710,7 @@ export default function RegisterPage() {
                   className="no-icon"
                   value={form.confirm_password}
                   onChange={(e) => set("confirm_password", e.target.value)}
+                  placeholder="Re-enter your password"
                   required
                   style={{ paddingRight: 70 }}
                 />
