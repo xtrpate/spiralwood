@@ -1047,7 +1047,7 @@ export default function CustomCartPage() {
                 cursor: selectedItems.length ? "pointer" : "not-allowed",
               }}
             >
-              Continue with Selected Design
+              Proceed to Quotation
             </button>
           </div>
         </div>

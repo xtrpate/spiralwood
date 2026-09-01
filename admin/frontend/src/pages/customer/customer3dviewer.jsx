@@ -1347,8 +1347,49 @@ export default function Customer3DViewer({
     scene.background = new THREE.Color("#f7f5f1");
     sceneRef.current = scene;
 
+    /* WISDOM SHARED ROOMLE CAMERA SAFE AREA BATCH 1 FINAL STABLE V1.4.5
+       Main Customize and Edit Saved Design both use an overlay Options panel.
+       Give both the same permanent 400px projection safe area. This projection
+       does not depend on sidebarCollapsed, so toggling Options cannot move or
+       recenter the furniture. */
+    const applyCustomizeSafeAreaProjection = (
+      targetCamera,
+      viewportWidth,
+      viewportHeight,
+    ) => {
+      if (!targetCamera) return;
+
+      const safeWidth = Math.max(1, Number(viewportWidth || 1));
+      const safeHeight = Math.max(1, Number(viewportHeight || 1));
+
+      targetCamera.clearViewOffset();
+
+      const usesOverlayOptions = Boolean(
+        mountRef.current?.closest(".cust-modal-customize") ||
+          mountRef.current?.closest(".custom-review-edit-body"),
+      );
+
+      if (!readOnly && usesOverlayOptions && safeWidth > 900) {
+        const sidebarSafeArea = Math.min(400, Math.max(0, safeWidth - 1));
+
+        targetCamera.setViewOffset(
+          safeWidth + sidebarSafeArea,
+          safeHeight,
+          sidebarSafeArea,
+          0,
+          safeWidth,
+          safeHeight,
+        );
+        return;
+      }
+
+      targetCamera.aspect = safeWidth / safeHeight;
+      targetCamera.updateProjectionMatrix();
+    };
+
     const camera = new THREE.PerspectiveCamera(40, w / h, 0.5, 12000);
     camera.position.set(1500, 700, 1500);
+    applyCustomizeSafeAreaProjection(camera, w, h);
     cameraRef.current = camera;
 
     // WISDOM CUSTOMER 3D FURNITURE REALISM V1.0.3
@@ -1433,8 +1474,7 @@ export default function Customer3DViewer({
       const newH = Math.max(1, mountRef.current.clientHeight);
       canvasSizeRef.current = { width: newW, height: newH };
       renderer.setSize(newW, newH);
-      camera.aspect = newW / newH;
-      camera.updateProjectionMatrix();
+      applyCustomizeSafeAreaProjection(camera, newW, newH);
     };
 
     window.addEventListener("resize", handleResize);

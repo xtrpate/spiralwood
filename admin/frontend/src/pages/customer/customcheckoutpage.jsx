@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle2, Pencil, Scissors } from "lucide-react";
+import { CheckCircle2, Pencil, Send } from "lucide-react";
 import { useCustomCart } from "./customcartcontext";
 import { buildAssetUrl } from "../../services/api";
 import api from "../../services/api";
@@ -963,7 +963,7 @@ export default function CustomCheckoutPage() {
                 "Submitting…"
               ) : (
                 <>
-                  <Scissors size={16} /> Submit for Quotation
+                  <Send size={16} /> Submit for Quotation
                 </>
               )}
             </button>
