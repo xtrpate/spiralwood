@@ -646,6 +646,40 @@ function HomepageFurniture3DReview() {
           cursor: grabbing;
         }
 
+        /* WISDOM HOMEPAGE EXPLORE 360 PERSISTENT V1.2.5
+           Remove the floating panel, shift the label farther left, and rely
+           on stronger typography so the guide stays readable without a border
+           or box around it. */
+        .wisdom-home-actual-3d__360-guide {
+          position: absolute;
+          left: clamp(2px, 0.9%, 14px);
+          top: clamp(48px, 11.5%, 72px);
+          z-index: 18;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 4px;
+          max-width: 176px;
+          padding: 0;
+          border-radius: 0;
+          background: none;
+          border: none;
+          box-shadow: none;
+          color: #111111;
+          pointer-events: none;
+          user-select: none;
+          -webkit-user-select: none;
+        }
+
+        .wisdom-home-actual-3d__360-guide-title {
+          font-size: clamp(0.94rem, 0.98vw, 1.08rem);
+          font-weight: 600;
+          line-height: 1.14;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          color: #111111;
+        }
+
         .wisdom-home-actual-3d
           .wisdom-home-editorial__control.is-view {
           z-index: 20;
@@ -710,6 +744,17 @@ function HomepageFurniture3DReview() {
           </div>
         ) : null}
       </div>
+
+      {!isUnavailable ? (
+        <div
+          className="wisdom-home-actual-3d__360-guide"
+          aria-hidden="true"
+        >
+          <span className="wisdom-home-actual-3d__360-guide-title">
+            Explore in 360°
+          </span>
+        </div>
+      ) : null}
 
       <div
         className="wisdom-home-editorial__control is-view"
