@@ -132,12 +132,28 @@ export default function CustomerNotificationBell() {
         aria-label="Notifications"
         title="Notifications"
       >
-        <Bell size={21} />
-        {unreadCount > 0 && (
-          <span className="cust-count-badge">
-            {unreadCount > 9 ? "9+" : unreadCount}
-          </span>
-        )}
+        {/* WISDOM CUSTOMER NOTIFICATION BADGE CART ALIGN V1.2.0
+            Same 28x28 relative icon anchor geometry as the cart badge.
+            Notification behavior remains unchanged. */}
+        <span
+          className="cust-cart-summary-icon-wrap"
+          style={{
+            position: "relative",
+            width: 28,
+            height: 28,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flex: "0 0 28px",
+          }}
+        >
+          <Bell size={21} />
+          {unreadCount > 0 && (
+            <span className="cust-count-badge">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </span>
       </button>
 
       {open && (

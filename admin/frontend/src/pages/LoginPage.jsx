@@ -123,10 +123,16 @@ export default function LoginPage() {
         });
         return; 
       }
+      const isRequestTimeout =
+        err?.code === "ECONNABORTED" ||
+        /timeout.*exceeded/i.test(String(err?.message || ""));
+
       setErrorMessage(
-        err?.message ||
-          err?.response?.data?.message ||
-          "Incorrect email or password.",
+        isRequestTimeout
+          ? "The server is taking longer than expected. Please try again."
+          : err?.response?.data?.message ||
+              err?.message ||
+              "Incorrect email or password.",
       );
     } finally {
       setLoading(false);

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Search, CheckCircle2, Filter, X } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 
+import useAuthStore from "../../store/authStore";
 import api, { buildAssetUrl } from "../../services/api";
 import "./productcatalog.css";
 import { useCart } from "./cartcontext";
@@ -136,6 +137,9 @@ export default function ProductCatalog() {
   const [total, setTotal] = useState(0);
 
   const { addToCart } = useCart();
+  const customerUser = useAuthStore((state) =>
+    state.user?.role === "customer" ? state.user : null,
+  );
 
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState(() => {
@@ -394,6 +398,49 @@ export default function ProductCatalog() {
     setToastMsg(`"${name}" successfully added to your cart!`);
     setIsHiding(false);
     setSelected(null);
+  };
+
+  /* WISDOM PRODUCT QUICK VIEW REFERENCE POLISH V1.0.0 */
+  const handleModalBuyNow = () => {
+    if (!selected) return;
+
+    const stock = Number(selected.stock ?? 0);
+    if (stock <= 0 || selectedUnavailable) {
+      setCartMsg("This item is currently out of stock.");
+      return;
+    }
+
+    const key = `${selected.id}`;
+    const purchaseQty = Math.min(
+      Math.max(1, Number(qty || 1)),
+      Math.max(stock, 1),
+    );
+
+    addToCart({
+      key,
+      product_id: selected.id,
+      product_name: selected.name,
+      unit_price: parseFloat(selected.online_price),
+      production_cost: selected.production_cost ?? 0,
+      quantity: purchaseQty,
+      max_stock: stock,
+      image_url: selected.image_url || null,
+    });
+
+    try {
+      sessionStorage.setItem("cust_selected_keys", JSON.stringify([key]));
+    } catch {
+      // Continue through the existing checkout flow.
+    }
+
+    setSelected(null);
+
+    if (!customerUser) {
+      navigate("/login", { state: { redirectTo: "/checkout" } });
+      return;
+    }
+
+    navigate("/checkout");
   };
 
   const clearFilters = () => {
@@ -1054,7 +1101,17 @@ export default function ProductCatalog() {
           onClick={(e) => e.target === e.currentTarget && setSelected(null)}
         >
           <div className="detail-modal">
+            <button
+              type="button"
+              className="detail-modal-x"
+              onClick={() => setSelected(null)}
+              aria-label="Close product details"
+            >
+              <X size={21} strokeWidth={1.7} />
+            </button>
+
             <div className="detail-modal-left">
+              {/* WISDOM PRODUCT QUICK VIEW CART STEPPER V1.0.3: image remains clickable, white card spacing removed */}
               <button
                 type="button"
                 className="detail-main-image detail-main-image-zoom-trigger"
@@ -1078,11 +1135,13 @@ export default function ProductCatalog() {
                     width: "100%",
                     height: "100%",
                     objectFit: "contain",
-                    padding: "28px",
+                    padding: 0,
                   }}
                 />
 
-                <span className="detail-image-enlarge-label">View larger</span>
+                {/* WISDOM PRODUCT QUICK VIEW FINAL CONTROLS V1.0.2
+                    Entire product image remains the enlargement trigger;
+                    the redundant visible View Larger label is removed. */}
               </button>
 
               {selectedImages.length > 1 ? (
@@ -1206,19 +1265,20 @@ export default function ProductCatalog() {
                 <div className="detail-button-row">
                   <button
                     type="button"
+                    className="detail-buy-btn"
+                    disabled={selectedUnavailable}
+                    onClick={handleModalBuyNow}
+                  >
+                    {selectedUnavailable ? "Unavailable" : "Buy Now"}
+                  </button>
+
+                  <button
+                    type="button"
                     className="detail-add-btn"
                     disabled={selectedUnavailable}
                     onClick={handleModalAddToCart}
                   >
                     {selectedUnavailable ? "Unavailable" : "Add to Cart"}
-                  </button>
-
-                  <button
-                    type="button"
-                    className="detail-close-btn"
-                    onClick={() => setSelected(null)}
-                  >
-                    Close
                   </button>
                 </div>
               </div>

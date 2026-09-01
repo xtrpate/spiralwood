@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
-import { Search, X, CheckCircle2, Smartphone } from "lucide-react";
+import { Search, X, CheckCircle2, Smartphone, Undo2, Redo2, List, Ruler, Box, RotateCcw, Maximize2, Camera } from "lucide-react";
 import { useCustomCart } from "./customcartcontext";
 import { useCart } from "./cartcontext";
 import useAuthStore from "../../store/authStore";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
+import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 import "./customizepage.css";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
 import { saveCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
@@ -738,6 +739,20 @@ const buildStableCustomCartKey = ({
   return `custom_${Number(productId || 0) || "blueprint"}_${hash.toString(36)}`;
 };
 
+const resolveCatalogCategory = (product = {}) => {
+  const numericId = Number(product?.catalog_category_id);
+  const label = String(product?.catalog_category_name || "").trim();
+
+  if (!Number.isInteger(numericId) || numericId <= 0 || !label) {
+    return null;
+  }
+
+  return {
+    id: String(numericId),
+    label,
+  };
+};
+
 function ProductImage({ src, alt }) {
   const [hasError, setHasError] = useState(false);
 
@@ -775,7 +790,15 @@ function SkeletonCard() {
 
 function ModalShell({ title, subtitle, onClose, children, wide = false, variant = "" }) {
   return (
-    <div className="cust-modal-backdrop" onClick={onClose}>
+    <div
+      className={
+        "cust-modal-backdrop" +
+        (variant === "customize"
+          ? " cust-modal-backdrop-customize"
+          : "")
+      }
+      onClick={onClose}
+    >
       <div
         className={`cust-modal ${wide ? "cust-modal-wide" : ""} ${variant === "customize" ? "cust-modal-customize" : ""}`}
         onClick={(e) => e.stopPropagation()}
@@ -890,35 +913,6 @@ function useBlueprintDetail(id, open) {
   return { detail, loading, error };
 }
 
-function ViewModal({ product, onClose, onCustomize }) {
-  const { detail, loading, error } = useBlueprintDetail(product?.id, !!product);
-
-  if (!product) return null;
-
-  const blueprint = detail || product;
-
-  return (
-    <ModalShell
-      title={blueprint.title || "Design Preview"}
-      subtitle="Review the design and dimensions before customizing."
-      onClose={onClose}
-      wide
-    >
-      {loading ? (
-        <div className="cust-modal-state">Loading design preview…</div>
-      ) : error ? (
-        <div className="cust-modal-error">{error}</div>
-      ) : (
-        <CustomerTemplateWorkbench
-          blueprint={blueprint}
-          readOnly
-          onViewCustomize={() => onCustomize?.(blueprint)}
-        />
-      )}
-    </ModalShell>
-  );
-}
-
 function CustomizeModal({ product, onClose, onAdd }) {
   const { detail, loading, error } = useBlueprintDetail(product?.id, !!product);
 
@@ -950,8 +944,205 @@ function CustomizeModal({ product, onClose, onAdd }) {
   );
 }
 
-function ProductCard({ product, onView, onCustomize }) {
-  const [isCardHovered, setIsCardHovered] = useState(false);
+// WISDOM MINI CONFIGURATOR GALLERY V21.0.0
+// Read-only miniature of the real WISDOM configurator for gallery preview.
+// The furniture remains the existing cached compact Three.js render.
+const miniHex = (value, fallback = "#1e293b") => {
+  const raw = String(value || "").trim();
+  return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(raw) ? raw : fallback;
+};
+
+const miniParseObject = (value) => {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+};
+
+const miniSceneComponents = (product = {}) => {
+  const view3d = miniParseObject(product?.view_3d_data);
+  const design = miniParseObject(product?.design_data);
+  const candidates = [
+    ...extractSceneItems(view3d),
+    ...extractSceneItems(design),
+    ...(Array.isArray(product?.components) ? product.components : []),
+  ];
+
+  const seen = new Map();
+  candidates.forEach((component, index) => {
+    if (!component || typeof component !== "object") return;
+    const key = String(
+      component?.id ||
+        component?.partCode ||
+        component?.part_code ||
+        [
+          component?.type,
+          component?.label,
+          component?.x,
+          component?.y,
+          component?.z,
+          index,
+        ].join("|"),
+    );
+    if (!seen.has(key)) seen.set(key, component);
+  });
+
+  return Array.from(seen.values());
+};
+
+const miniPartGroup = (component = {}) => {
+  const text = [
+    component?.type,
+    component?.label,
+    component?.partRole,
+    component?.part_role,
+    component?.category,
+    component?.groupType,
+    component?.groupLabel,
+    component?.partCode,
+  ]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+
+  if (/\btabletop\b|\bcountertop\b|\btop panel\b|\btop\b/.test(text)) return "TOP";
+  if (/\bapron\b/.test(text)) return "APRON";
+  if (/\bleg\b|front_leg|back_leg/.test(text)) return "LEGS";
+  if (/\bdoor\b/.test(text)) return "DOORS";
+  if (/\bdrawer\b/.test(text)) return "DRAWERS";
+  if (/\bshelf\b/.test(text)) return "SHELVES";
+  if (/\bseat\b/.test(text)) return "SEAT";
+  if (/\bbackrest\b|\bback slat\b|\bback panel\b/.test(text)) return "BACK";
+  if (/\bbase\b|\bplinth\b|\brail\b/.test(text)) return "BASE";
+  return "BODY";
+};
+
+const miniFinishInfo = (component = {}) => {
+  const rawFinish = String(
+    component?.finish ||
+      component?.finish_id ||
+      component?.woodFinish ||
+      component?.wood_finish ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+
+  const match = WOOD_FINISHES.find(
+    (finish) =>
+      String(finish?.id || "").toLowerCase() === rawFinish ||
+      String(finish?.label || "").toLowerCase() === rawFinish,
+  );
+
+  const color = miniHex(
+    match?.front ||
+      component?.fill ||
+      component?.color ||
+      component?.finish_color,
+    "#d8b68a",
+  );
+
+  return {
+    id: match?.id || rawFinish || color,
+    label:
+      match?.label ||
+      component?.finish_label ||
+      component?.material ||
+      component?.wood_type ||
+      "Current finish",
+    color,
+  };
+};
+
+const miniFinishChoices = (selected = null) => {
+  const library = WOOD_FINISHES.map((finish) => ({
+    id: finish.id,
+    label: finish.label,
+    color: miniHex(finish.front, "#d8b68a"),
+  }));
+
+  const selectedId = String(selected?.id || "").toLowerCase();
+  const selectedFromLibrary = library.find(
+    (item) => String(item.id || "").toLowerCase() === selectedId,
+  );
+  const selectedItem = selectedFromLibrary || selected || library[0] || null;
+  const remaining = library.filter(
+    (item) => String(item.id || "").toLowerCase() !== String(selectedItem?.id || "").toLowerCase(),
+  );
+
+  return {
+    selected: selectedItem,
+    visible: [selectedItem, ...remaining].filter(Boolean).slice(0, 3),
+    more: Math.max(0, library.length - 3),
+  };
+};
+
+const miniPartSections = (product = {}) => {
+  const groups = new Map();
+
+  miniSceneComponents(product).forEach((component) => {
+    const group = miniPartGroup(component);
+    const finish = miniFinishInfo(component);
+    if (!groups.has(group)) groups.set(group, []);
+    const list = groups.get(group);
+    if (!list.some((item) => String(item.id) === String(finish.id))) list.push(finish);
+  });
+
+  const orderByProfile = {
+    table: ["TOP", "APRON", "LEGS", "SHELVES", "BODY", "BASE"],
+    cabinet: ["BODY", "DOORS", "DRAWERS", "SHELVES", "TOP", "BASE"],
+    shelf: ["BODY", "SHELVES", "TOP", "BASE"],
+    chair: ["SEAT", "BACK", "LEGS", "BODY"],
+    generic: ["BODY", "TOP", "DOORS", "DRAWERS", "SHELVES", "LEGS", "BASE"],
+  };
+
+  const profile = detectTemplateProfile(product || {});
+  const order = orderByProfile[profile?.id] || orderByProfile.generic;
+
+  return order
+    .filter((key) => groups.has(key))
+    .map((key) => ({
+      label: key,
+      selected: groups.get(key)[0],
+    }))
+    .slice(0, 3);
+};
+
+function MiniFinishRow({ selected }) {
+  const choices = miniFinishChoices(selected);
+
+  return (
+    <div className="cust-mini-finish-row-v21">
+      <span className="cust-mini-finish-original-v21" title="Original" />
+      {choices.visible.map((finish, index) => {
+        const isSelected =
+          String(finish?.id || "").toLowerCase() ===
+          String(choices.selected?.id || "").toLowerCase();
+
+        return (
+          <span
+            key={`${finish?.id || finish?.label || "finish"}-${index}`}
+            className={
+              "cust-mini-finish-dot-v21" +
+              (isSelected ? " cust-mini-finish-dot-v21--selected" : "")
+            }
+            style={{ backgroundColor: miniHex(finish?.color, "#d8b68a") }}
+            title={finish?.label || "Finish"}
+          >
+            {isSelected ? <CheckCircle2 size={7} strokeWidth={2.2} /> : null}
+          </span>
+        );
+      })}
+      {choices.more > 0 ? (
+        <span className="cust-mini-finish-more-v21">+{choices.more}</span>
+      ) : null}
+    </div>
+  );
+}
+
+function ProductCard({ product, onCustomize }) {
   const profile = detectTemplateProfile(product || {});
   const dimensionConfig = resolveDimensionConfig(
     product,
@@ -959,83 +1150,149 @@ function ProductCard({ product, onView, onCustomize }) {
     profile,
   );
   const dimensions = dimensionConfig.defaultDimensions;
+  const components = useMemo(() => miniSceneComponents(product), [product]);
+  const parts = useMemo(() => miniPartSections(product), [product]);
+  const wholeSelected = useMemo(
+    () => (components.length ? miniFinishInfo(components[0]) : null),
+    [components],
+  );
+
+  const categoryLabel = String(
+    profile.category || "Furniture Template",
+  ).replace(" Template", " Design");
+
+  const customColor = useMemo(() => {
+    const candidate = components.find((component) =>
+      [component?.fill, component?.color, component?.finish_color].some((value) =>
+        /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(value || "").trim()),
+      ),
+    );
+    return miniHex(
+      candidate?.fill || candidate?.color || candidate?.finish_color,
+      "#1e293b",
+    );
+  }, [components]);
 
   return (
-    <div
-      className={`cust-product-card${
-        isCardHovered ? " cust-product-card--floating" : ""
-      }`}
-      onMouseEnter={() => setIsCardHovered(true)}
-      onMouseLeave={() => setIsCardHovered(false)}
-    >
-      <div className="cust-product-image-wrap">
-        {product.has_saved_3d ? (
-          <div
-            style={{
-              width: "100%",
-              height: "100%",
-              minHeight: 255,
-              borderRadius: 18,
-              overflow: "hidden",
-              background: "#f7f2ea",
-            }}
-          >
-            <CustomerBlueprintViewer
-              blueprint={product}
-              targetDimensionsMm={{
-                widthMm: dimensions.width_mm,
-                heightMm: dimensions.height_mm,
-                depthMm: dimensions.depth_mm,
-              }}
-              readOnly
-              showHumanControls={false}
-              compact
-              defaultPreset="iso"
-              defaultShowHuman={false}
-            />
+    <article className="cust-product-card cust-product-card--roomle cust-mini-card-v21">
+      <div className="cust-mini-configurator-v21">
+        <div className="cust-mini-tools-v21" aria-hidden="true">
+          <span className="cust-mini-close-v21"><X size={10} strokeWidth={1.6} /></span>
+          <span className="cust-mini-tool-gap-v21" />
+          <span><Undo2 size={9} strokeWidth={1.5} /></span>
+          <span><Redo2 size={9} strokeWidth={1.5} /></span>
+          <span><List size={9} strokeWidth={1.5} /></span>
+          <span><Ruler size={9} strokeWidth={1.5} /></span>
+          <span className="cust-mini-mm-v21">mm</span>
+          <span><Box size={9} strokeWidth={1.5} /></span>
+          <span><RotateCcw size={9} strokeWidth={1.5} /></span>
+          <span><Maximize2 size={9} strokeWidth={1.5} /></span>
+          <span><Camera size={9} strokeWidth={1.5} /></span>
+        </div>
+
+        <div className="cust-mini-preview-v21">
+          <div className="cust-roomle-category-label cust-roomle-category-label--inside-v12 cust-mini-category-v21">
+            {categoryLabel}
           </div>
-        ) : (
-          <ProductImage
-            src={product.preview_image_url || product.thumbnail_url}
-            alt={product.title}
-          />
-        )}
-      </div>
 
-      <div className="cust-product-meta">
-        <div className="cust-category">{String(profile.category || "").replace(" Template", " Design")}</div>
-
-        <h3 className="cust-product-title">{product.title}</h3>
-
-        <p className="cust-product-desc">
-          {product.description ||
-            "Custom furniture design available for customization."}
-        </p>
-
-        <div className="cust-dim-summary">
-          {formatMm(dimensions.width_mm)} × {formatMm(dimensions.height_mm)} ×{" "}
-          {formatMm(dimensions.depth_mm)}
+          {product.has_saved_3d ? (
+            <div className="cust-mini-preview-stage-v21">
+              <CustomerBlueprintViewer
+                blueprint={product}
+                targetDimensionsMm={{
+                  widthMm: dimensions.width_mm,
+                  heightMm: dimensions.height_mm,
+                  depthMm: dimensions.depth_mm,
+                }}
+                readOnly
+                showHumanControls={false}
+                compact
+                defaultPreset="iso"
+                defaultShowHuman={false}
+                compactHeight={232}
+              />
+            </div>
+          ) : (
+            <ProductImage
+              src={product.preview_image_url || product.thumbnail_url}
+              alt={product.title}
+            />
+          )}
         </div>
 
-        <div className="cust-card-actions">
-          <button
-            type="button"
-            className="cust-view-btn"
-            onClick={() => onView(product)}
-          >
-            View
-          </button>
+        <aside className="cust-mini-panel-v21" aria-hidden="true">
+          <section className="cust-mini-panel-section-v21">
+            <strong>WHOLE FURNITURE</strong>
+            <small>Apply one wood finish to the complete design</small>
+            <MiniFinishRow selected={wholeSelected} />
+          </section>
 
-          <button
-            type="button"
-            className="cust-customize-btn"
-            onClick={() => onCustomize(product)}
-          >
-            Customize
-          </button>
+          {parts.map((part) => (
+            <section key={part.label} className="cust-mini-panel-section-v21 cust-mini-panel-section-v21--part">
+              <strong>{part.label}</strong>
+              <small>{part.label === "LEGS" ? "4 parts" : "1 part"}</small>
+              <MiniFinishRow selected={part.selected} />
+            </section>
+          ))}
+
+          <section className="cust-mini-panel-section-v21 cust-mini-custom-color-v21">
+            <strong>CUSTOM COLOR</strong>
+            <small>Applies to the whole furniture</small>
+            <div className="cust-mini-color-field-v21">
+              <span style={{ backgroundColor: customColor }} />
+              <em>{customColor}</em>
+            </div>
+          </section>
+
+          <section className="cust-mini-size-v21">
+            <div className="cust-mini-size-title-v21">
+              <strong>Furniture Size (mm)</strong>
+              <small>Keeps proportions</small>
+            </div>
+            <div className="cust-mini-size-labels-v21">
+              <span>Width</span><span>Height</span><span>Depth</span>
+            </div>
+            <div className="cust-mini-size-fields-v21">
+              <span>{Math.round(Number(dimensions.width_mm) || 0)}</span>
+              <span>{Math.round(Number(dimensions.height_mm) || 0)}</span>
+              <span>{Math.round(Number(dimensions.depth_mm) || 0)}</span>
+            </div>
+          </section>
+
+          <div className="cust-mini-human-v21">
+            <strong>Human Size Reference</strong>
+            <span>☑ Show</span>
+          </div>
+
+          <div className="cust-mini-request-v21">
+            <span>Request details</span><strong>+</strong>
+          </div>
+
+          <div className="cust-mini-add-v21">Add to Cart</div>
+        </aside>
+
+        <div className="cust-mini-footer-v21">
+          <div>
+            <strong>{product.title || categoryLabel}</strong>
+            <small>{categoryLabel}</small>
+          </div>
+          <span>
+            {Math.round(Number(dimensions.width_mm) || 0)} × {Math.round(Number(dimensions.height_mm) || 0)} × {Math.round(Number(dimensions.depth_mm) || 0)} mm
+          </span>
         </div>
       </div>
-    </div>
+
+      <div className="cust-roomle-card-action">
+        <button
+          type="button"
+          className="cust-customize-btn cust-customize-btn--roomle"
+          onClick={() => onCustomize(product)}
+          aria-label={"Customize " + (product.title || "furniture")}
+        >
+          Customize
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -1053,7 +1310,8 @@ export default function CustomizePage() {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
-  const [viewingProduct, setViewingProduct] = useState(null);
+  // WISDOM CUSTOMIZE REFINE BY CATEGORY V6
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [customizingProduct, setCustomizingProduct] = useState(null);
   const [toastMessage, setToastMessage] = useState("");
   const [isHiding, setIsHiding] = useState(false);
@@ -1316,6 +1574,52 @@ export default function CustomizePage() {
     setIsHiding(false);
   };
 
+
+  // Business category comes from the category selected when Admin publishes
+  // the blueprint. Template profile detection remains separate for 3D behavior.
+  const categoryOptions = useMemo(() => {
+    const byId = new Map();
+
+    products.forEach((product) => {
+      const category = resolveCatalogCategory(product);
+      if (!category) return;
+
+      if (!byId.has(category.id)) {
+        byId.set(category.id, {
+          id: category.id,
+          label: category.label,
+          count: 0,
+        });
+      }
+
+      byId.get(category.id).count += 1;
+    });
+
+    const available = Array.from(byId.values()).sort((a, b) =>
+      a.label.localeCompare(b.label),
+    );
+
+    return [
+      {
+        id: "all",
+        label: "All Designs",
+        count: Number(total || products.length || 0),
+      },
+      ...available,
+    ];
+  }, [products, total]);
+
+  const filteredProducts = useMemo(() => {
+    if (categoryFilter === "all") return products;
+
+    return products.filter(
+      (product) => resolveCatalogCategory(product)?.id === categoryFilter,
+    );
+  }, [products, categoryFilter]);
+
+  const visibleDesignCount =
+    categoryFilter === "all" ? total : filteredProducts.length;
+
   const renderedCards = useMemo(() => {
     if (loading) {
       return Array.from({ length: 6 }).map((_, index) => (
@@ -1323,26 +1627,27 @@ export default function CustomizePage() {
       ));
     }
 
-    if (!products.length) {
+    if (!filteredProducts.length) {
       return (
         <div className="cust-empty-state">
-          No custom blueprint templates found.
+          {categoryFilter === "all"
+            ? "No custom blueprint templates found."
+            : "No designs found in this category."}
         </div>
       );
     }
 
-    return products.map((product) => (
+    return filteredProducts.map((product) => (
       <ProductCard
         key={product.id}
         product={product}
-        onView={setViewingProduct}
         onCustomize={(selectedProduct) => {
           if (!requireCustomerLogin(selectedProduct)) return;
           setCustomizingProduct(selectedProduct);
         }}
       />
     ));
-  }, [loading, products]);
+  }, [loading, filteredProducts, categoryFilter, requireCustomerLogin]);
 
   return (
     <div className="cust-page">
@@ -1359,46 +1664,69 @@ export default function CustomizePage() {
         <div className="cust-page-copy">
           <h1>Customize Your Furniture</h1>
           <p>
-            Choose a design, review the details, and customize the available
-            options to match your space and preferences.
+            Choose a furniture design and customize it to match your space and
+            preferences.
           </p>
         </div>
 
         <div className="cust-page-meta">
           {!loading && (
             <div className="cust-results-info">
-              {total} design{total !== 1 ? "s" : ""} available
+              {visibleDesignCount} design{visibleDesignCount !== 1 ? "s" : ""} available
             </div>
           )}
         </div>
       </div>
 
-      <div className="cust-toolbar">
-        <form className="cust-search-shell" onSubmit={handleSearch}>
-          <div className="cust-search">
-            <Search size={16} />
-            <input
-              type="text"
-              placeholder="Search designs..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+      {/* WISDOM READY-MADE STYLE DESIGN BROWSER V8.4 */}
+      <div className="cust-design-browser">
+        <aside
+          className="cust-category-refine"
+          aria-label="Refine furniture designs by category"
+        >
+          <div className="cust-category-refine-label">
+            Refine by Category
           </div>
-        </form>
+
+          <div className="cust-category-refine-options">
+            {categoryOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={`cust-category-refine-option${
+                  categoryFilter === option.id ? " active" : ""
+                }`}
+                aria-pressed={categoryFilter === option.id}
+                onClick={() => setCategoryFilter(option.id)}
+              >
+                <span>{option.label}</span>
+                <span className="cust-category-refine-count">
+                  {Number(option.count || 0)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <section className="cust-design-results" aria-label="Furniture designs">
+          <form
+            className="cust-search-shell cust-design-search"
+            onSubmit={handleSearch}
+          >
+            <div className="cust-search">
+              <Search size={16} />
+              <input
+                type="text"
+                placeholder="Search designs..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </form>
+
+          <div className="cust-products-grid">{renderedCards}</div>
+        </section>
       </div>
-
-      <div className="cust-products-grid">{renderedCards}</div>
-
-      {viewingProduct ? (
-        <ViewModal
-          product={viewingProduct}
-          onClose={() => setViewingProduct(null)}
-          onCustomize={(blueprint) => {
-            setViewingProduct(null);
-            setCustomizingProduct(blueprint);
-          }}
-        />
-      ) : null}
 
       {customizingProduct ? (
         <CustomizeModal

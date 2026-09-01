@@ -2937,3 +2937,417 @@ button.detail-thumb.active {
 }
 
 /* WISDOM QUANTITY REMOVE NATIVE SPINNER V1.4.1 END */
+/* WISDOM PRODUCT QUICK VIEW REFERENCE POLISH V1.0.0 */
+.detail-modal {
+  position: relative;
+  overflow: auto;
+  border-radius: 14px !important;
+}
+.detail-modal-x {
+  position: absolute; top: 15px; right: 15px; z-index: 8;
+  width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%;
+  background: rgba(255,255,255,.94); color: #111; display: inline-flex;
+  align-items: center; justify-content: center; cursor: pointer;
+  box-shadow: 0 1px 5px rgba(0,0,0,.07);
+}
+.detail-modal-x:hover { background: #f2f2ef; }
+.detail-modal-x:focus-visible { outline: 2px solid #111; outline-offset: 2px; }
+.detail-modal-left { border-radius: 14px 0 0 14px; overflow: hidden; }
+.detail-main-image { overflow: hidden; border-radius: 11px !important; }
+.detail-thumb { overflow: hidden; border-radius: 9px !important; }
+.detail-modal-right { position: relative; padding-top: 54px !important; }
+.qty-controls {
+  height: 36px !important; min-height: 36px !important;
+  border: 1px solid #e4e4e1 !important; border-radius: 999px !important;
+  background: #f7f7f5 !important; overflow: hidden; gap: 0 !important;
+}
+.qty-btn {
+  width: 34px !important; min-width: 34px !important; height: 34px !important; min-height: 34px !important;
+  padding: 0 !important; border: 0 !important; border-radius: 50% !important;
+  background: transparent !important; color: #303030; font-size: .9rem !important; font-weight: 500 !important;
+}
+.qty-controls .qty-btn:last-child { border: 0 !important; }
+.qty-btn:hover:not(:disabled) { background: #ecece8 !important; }
+.qty-val {
+  width: 38px !important; min-width: 38px !important; height: 34px !important; min-height: 34px !important;
+  padding: 0 !important; font-size: .86rem !important; font-weight: 600 !important;
+  background: transparent !important; appearance: textfield;
+}
+.qty-val::-webkit-outer-spin-button,.qty-val::-webkit-inner-spin-button { margin: 0; -webkit-appearance: none; }
+.detail-qty-block { margin-bottom: 20px !important; }
+.detail-button-row { display: grid !important; grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 12px !important; }
+.detail-buy-btn,.detail-add-btn {
+  width: 100%; min-width: 0; min-height: 44px !important; height: 44px; padding: 0 18px !important;
+  border-radius: 999px !important; font: inherit; font-size: .88rem !important; font-weight: 700 !important;
+  line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap;
+}
+.detail-buy-btn { border: 1px solid #111; background: #111; color: #fff; }
+.detail-buy-btn:hover:not(:disabled) { background: #292929; border-color: #292929; }
+.detail-add-btn { border: 1px solid #111 !important; background: #fff !important; color: #111 !important; }
+.detail-add-btn:hover:not(:disabled) { background: #f2f2ef !important; }
+.detail-buy-btn:disabled,.detail-add-btn:disabled { border-color: #d8d8d5 !important; background: #e8e8e5 !important; color: #777 !important; cursor: not-allowed; }
+@media (max-width:1100px){ .detail-modal-left{border-radius:14px 14px 0 0;} .detail-modal-right{padding-top:54px !important;} }
+@media (max-width:520px){
+  .detail-modal{border-radius:12px !important;}
+  .detail-modal-x{top:10px;right:10px;width:34px;height:34px;}
+  .detail-modal-left{border-radius:12px 12px 0 0;}
+  .detail-button-row{grid-template-columns:1fr !important;gap:8px !important;}
+  .detail-buy-btn,.detail-add-btn{min-height:42px !important;height:42px;}
+}
+
+/* ==========================================================================
+   WISDOM PRODUCT QUICK VIEW SQUARE CONTROLS V1.0.1
+   Final visual correction requested after V1.0.0 preview.
+   - outer modal is square
+   - furniture image frame keeps its subtle radius
+   - top-right close icon is plain
+   - action buttons are square
+   - quantity control is smaller and has no internal separator lines
+   ========================================================================== */
+
+.detail-modal {
+  border-radius: 0 !important;
+}
+
+.detail-modal-left {
+  border-radius: 0 !important;
+}
+
+/* Keep the desired radius ONLY around the furniture image/viewer frame. */
+.detail-main-image {
+  border-radius: 11px !important;
+}
+
+.detail-thumb {
+  border-radius: 8px !important;
+}
+
+/* Plain reference-style X: no circular bubble, no rounded container. */
+.detail-modal-x {
+  width: 34px !important;
+  height: 34px !important;
+  top: 14px !important;
+  right: 14px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.detail-modal-x:hover {
+  background: #f4f4f1 !important;
+  transform: none !important;
+}
+
+/* Smaller compact quantity control. Outer pill remains soft, but the three
+   controls have no individual borders/separators. */
+.qty-controls {
+  height: 32px !important;
+  min-height: 32px !important;
+  border: 1px solid #e2e2df !important;
+  border-radius: 999px !important;
+  background: #f7f7f5 !important;
+  overflow: hidden !important;
+  gap: 0 !important;
+  box-shadow: none !important;
+}
+
+.qty-btn {
+  width: 30px !important;
+  min-width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  font-size: 0.82rem !important;
+  font-weight: 500 !important;
+}
+
+.qty-controls .qty-btn:first-child,
+.qty-controls .qty-btn:last-child {
+  border: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+
+.qty-val {
+  width: 32px !important;
+  min-width: 32px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-radius: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+}
+
+/* Buttons return to Spiral Wood's square design language. */
+.detail-buy-btn,
+.detail-add-btn {
+  min-height: 44px !important;
+  height: 44px !important;
+  border-radius: 0 !important;
+}
+
+@media (max-width: 1100px) {
+  .detail-modal-left {
+    border-radius: 0 !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .detail-modal {
+    border-radius: 0 !important;
+  }
+
+  .detail-modal-left {
+    border-radius: 0 !important;
+  }
+
+  .detail-modal-x {
+    top: 10px !important;
+    right: 10px !important;
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .detail-buy-btn,
+  .detail-add-btn {
+    border-radius: 0 !important;
+  }
+}
+
+/* ==========================================================================
+   WISDOM PRODUCT QUICK VIEW FINAL CONTROLS V1.0.2
+   Final visual tuning requested after V1.0.1.
+   ========================================================================== */
+
+/* Remove the visible frame border around the furniture image while keeping
+   the image itself clickable and retaining the subtle image-area radius. */
+.detail-main-image {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Enlarged-image close control: X only, no visible box/container. */
+.product-image-lightbox-close {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: 0;
+  color: #ffffff !important;
+  padding: 0 !important;
+}
+
+.product-image-lightbox-close:hover {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.product-image-lightbox-close:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 4px;
+}
+
+/* Keep buttons mostly square, with only a tiny softened corner. */
+.detail-buy-btn,
+.detail-add-btn {
+  border-radius: 4px !important;
+}
+
+/* Slightly slimmer and tighter than V1.0.1, while still easy to use. */
+.qty-controls {
+  height: 28px !important;
+  min-height: 28px !important;
+}
+
+.qty-btn {
+  width: 27px !important;
+  min-width: 27px !important;
+  height: 27px !important;
+  min-height: 27px !important;
+  font-size: 0.78rem !important;
+  line-height: 1 !important;
+}
+
+.qty-val {
+  width: 28px !important;
+  min-width: 28px !important;
+  height: 27px !important;
+  min-height: 27px !important;
+  font-size: 0.78rem !important;
+  line-height: 1 !important;
+}
+
+/* Reassert separator-free inner controls. */
+.qty-controls,
+.qty-btn,
+.qty-val,
+.qty-controls .qty-btn:first-child,
+.qty-controls .qty-btn:last-child {
+  box-shadow: none !important;
+}
+
+.qty-btn,
+.qty-val,
+.qty-controls .qty-btn:first-child,
+.qty-controls .qty-btn:last-child {
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+
+@media (max-width: 520px) {
+  .detail-buy-btn,
+  .detail-add-btn {
+    border-radius: 4px !important;
+  }
+
+  .qty-controls {
+    height: 28px !important;
+    min-height: 28px !important;
+  }
+}
+
+/* ==========================================================================
+   WISDOM PRODUCT QUICK VIEW CART STEPPER V1.0.3
+   Exact cart-style quantity proportions + borderless image presentation.
+   ========================================================================== */
+
+/* No white rounded card around the furniture image. */
+.detail-main-image {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.detail-main-image .product-img-fallback {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Mirror the approved mini-cart quantity selector:
+   92x30 outer pill, 30/32/30 inner proportions, no separators. */
+.qty-controls {
+  width: 92px !important;
+  min-width: 92px !important;
+  max-width: 92px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  border: 1px solid #bfbfbf !important;
+  border-radius: 10px !important;
+  background: #ffffff !important;
+  overflow: hidden !important;
+  box-shadow: none !important;
+}
+
+.qty-btn {
+  width: 30px !important;
+  min-width: 30px !important;
+  max-width: 30px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+  font-weight: 400 !important;
+}
+
+.qty-val {
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-align: center !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+  font-weight: 500 !important;
+  appearance: textfield;
+}
+
+.qty-controls .qty-btn:first-child,
+.qty-controls .qty-btn:last-child {
+  border: 0 !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+}
+
+.qty-btn:hover:not(:disabled) {
+  background: #f5f5f5 !important;
+}
+
+.qty-btn:disabled,
+.qty-val:disabled {
+  background: transparent !important;
+}
+
+/* Keep the already-approved slight action-button softness. */
+.detail-buy-btn,
+.detail-add-btn {
+  border-radius: 4px !important;
+}
+
+@media (max-width: 520px) {
+  .qty-controls {
+    width: 90px !important;
+    min-width: 90px !important;
+    max-width: 90px !important;
+    height: 30px !important;
+  }
+
+  .qty-btn {
+    width: 29px !important;
+    min-width: 29px !important;
+    max-width: 29px !important;
+    height: 28px !important;
+  }
+
+  .qty-val {
+    width: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    height: 28px !important;
+  }
+}

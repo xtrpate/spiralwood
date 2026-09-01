@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import { Bell } from "lucide-react";
 import api from "../services/api";
 import useAuthStore from "../store/authStore";
+import staffNotificationBell from "../assets/staff-notification-bell.png";
 import "./NotificationBell.css";
 
 const S = {
@@ -324,7 +325,11 @@ export default function NotificationBell({
   return (
     <>
       <button
-        className={useMonochromeNotification ? "cashier-notification-trigger" : undefined}
+        className={
+          useMonochromeNotification
+            ? `cashier-notification-trigger${compact ? " staff-notification-trigger" : ""}`
+            : undefined
+        }
         style={
           headerCompact
             ? {
@@ -396,27 +401,12 @@ export default function NotificationBell({
           </span>
         ) : compact ? (
           useMonochromeNotification ? (
-            <span
-              style={{
-                width: 20,
-                height: 20,
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                lineHeight: 0,
-                transform: "translateY(-0.5px)",
-              }}
-            >
-              <Bell
-                size={18}
-                strokeWidth={1.65}
-                fill="#FBBF24"
-                style={{
-                  color: "#92400E",
-                  filter: "drop-shadow(0 1px 1px rgba(146,64,14,0.20))",
-                }}
-              />
-            </span>
+            <img
+              className="staff-notification-bell-image"
+              src={staffNotificationBell}
+              alt=""
+              aria-hidden="true"
+            />
           ) : (
             "🔔"
           )
@@ -430,6 +420,11 @@ export default function NotificationBell({
         )}
         {!headerCompact && unreadCount > 0 && (
           <span
+            className={
+              compact && useMonochromeNotification
+                ? "staff-notification-unread-badge"
+                : undefined
+            }
             style={{
               position: "absolute",
               top: -5,

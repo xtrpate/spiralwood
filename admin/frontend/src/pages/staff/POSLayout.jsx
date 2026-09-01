@@ -110,7 +110,7 @@ export default function POSLayout() {
       : isDeliveryRider
         ? "Delivery Staff"
         : isIndoorStaff
-          ? "Indoor Staff"
+          ? "Furniture Specialist"
           : user?.role === "staff"
             ? "Staff"
             : user?.role || "User";

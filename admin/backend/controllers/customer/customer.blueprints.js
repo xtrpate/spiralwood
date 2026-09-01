@@ -586,7 +586,26 @@ exports.getAllBlueprints = async (req, res) => {
         b.source,
         b.created_at,
         b.updated_at,
-        u.name AS creator_name
+        u.name AS creator_name,
+        (
+          SELECT p.category_id
+          FROM products p
+          WHERE p.blueprint_id = b.id
+            AND p.is_published = 1
+            AND p.is_active = 1
+          ORDER BY p.id DESC
+          LIMIT 1
+        ) AS catalog_category_id,
+        (
+          SELECT c.name
+          FROM products p
+          LEFT JOIN categories c ON c.id = p.category_id
+          WHERE p.blueprint_id = b.id
+            AND p.is_published = 1
+            AND p.is_active = 1
+          ORDER BY p.id DESC
+          LIMIT 1
+        ) AS catalog_category_name
       FROM blueprints b
       LEFT JOIN users u ON u.id = b.creator_id
       ${where}
@@ -614,6 +633,8 @@ exports.getAllBlueprints = async (req, res) => {
         preview_template_type: mapped.preview_template_type,
         category: mapped.category,
         category_label: mapped.category_label || mapped.category,
+        catalog_category_id: Number(mapped.catalog_category_id) || null,
+        catalog_category_name: String(mapped.catalog_category_name || "").trim(),
         is_template: mapped.is_template,
         is_gallery: mapped.is_gallery,
         stage: mapped.stage,
@@ -685,7 +706,26 @@ exports.getBlueprintById = async (req, res) => {
     const [rows] = await db.query(
       `SELECT
           b.*,
-          u.name AS creator_name
+          u.name AS creator_name,
+          (
+            SELECT p.category_id
+            FROM products p
+            WHERE p.blueprint_id = b.id
+              AND p.is_published = 1
+              AND p.is_active = 1
+            ORDER BY p.id DESC
+            LIMIT 1
+          ) AS catalog_category_id,
+          (
+            SELECT c.name
+            FROM products p
+            LEFT JOIN categories c ON c.id = p.category_id
+            WHERE p.blueprint_id = b.id
+              AND p.is_published = 1
+              AND p.is_active = 1
+            ORDER BY p.id DESC
+            LIMIT 1
+          ) AS catalog_category_name
        FROM blueprints b
        LEFT JOIN users u ON u.id = b.creator_id
        WHERE b.id = ?
@@ -727,6 +767,10 @@ exports.getBlueprintById = async (req, res) => {
       template_type: blueprint.template_type || blueprint.templateType || "",
       templateType: blueprint.templateType || blueprint.template_type || "",
       category_label: blueprint.category_label || blueprint.category,
+      catalog_category_id: Number(blueprint.catalog_category_id) || null,
+      catalog_category_name: String(
+        blueprint.catalog_category_name || "",
+      ).trim(),
       base_price: Number(blueprint.base_price) || 0,
       dimensions: blueprint.dimensions || {
         width_mm: blueprint.width_mm,

@@ -44,7 +44,8 @@ import {
 
 const navItems = [
   { to: "/", icon: Home, label: "Home" },
-  { to: "/catalog", icon: ShoppingBag, label: "Products" },
+  // WISDOM PRODUCTS MENU -> HOME SHOP CATEGORY V6
+  { to: "/#shop-by-category", icon: ShoppingBag, label: "Products" },
   { to: "/appointment", icon: FileText, label: "Appointment" },
   { to: "/customize", icon: Scissors, label: "Customize" },
   { to: "/cart", icon: ShoppingCart, label: "Cart" },
@@ -214,10 +215,19 @@ export default function CustomerLayout() {
     const params = new URLSearchParams(location.search);
     setHeaderSearch(params.get("q") || "");
 
-    if (location.pathname === "/" && !isAuthOverlayPage) {
+    if (
+      location.pathname === "/" &&
+      !location.hash &&
+      !isAuthOverlayPage
+    ) {
       scrollToLandingTop();
     }
-  }, [location.pathname, location.search, isAuthOverlayPage]);
+  }, [
+    location.pathname,
+    location.search,
+    location.hash,
+    isAuthOverlayPage,
+  ]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -1209,9 +1219,26 @@ export default function CustomerLayout() {
             <NavLink
               key={item.to}
               to={item.to}
-              className={({ isActive }) =>
-                `cust-side-link ${isActive ? "active" : ""}`
-              }
+              className={({ isActive }) => {
+                const productsSectionActive =
+                  item.label === "Products" &&
+                  location.pathname === "/" &&
+                  location.hash === "#shop-by-category";
+
+                const homeSectionActive =
+                  item.label === "Home" &&
+                  location.pathname === "/" &&
+                  !location.hash;
+
+                const active =
+                  item.label === "Products"
+                    ? productsSectionActive
+                    : item.label === "Home"
+                      ? homeSectionActive
+                      : isActive;
+
+                return `cust-side-link ${active ? "active" : ""}`;
+              }}
               onClick={() => setMenuOpen(false)}
             >
               <div className="cust-side-link-left">
@@ -1375,7 +1402,77 @@ export default function CustomerLayout() {
                             {String.fromCharCode(8722)}
                           </button>
 
-                          <span>{quantity}</span>
+                          <input
+                            key={`${item.key}-${quantity}`}
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            className="cust-mini-cart-qty-input"
+                            defaultValue={quantity}
+                            aria-label={`Quantity for ${
+                              item.base_blueprint_title || item.product_name
+                            }`}
+                            title={
+                              !blueprint && Number(item.max_stock) > 0
+                                ? `Available stock: ${Math.floor(
+                                    Number(item.max_stock),
+                                  )}`
+                                : undefined
+                            }
+                            onFocus={(event) =>
+                              event.currentTarget.select()
+                            }
+                            onInput={(event) => {
+                              const digits =
+                                event.currentTarget.value.replace(
+                                  /[^0-9]/g,
+                                  "",
+                                );
+
+                              if (event.currentTarget.value !== digits) {
+                                event.currentTarget.value = digits;
+                              }
+                            }}
+                            onBlur={(event) => {
+                              const parsed = Number.parseInt(
+                                event.currentTarget.value,
+                                10,
+                              );
+                              const stockRaw = Number(item.max_stock);
+                              const stockLimit =
+                                !blueprint &&
+                                Number.isFinite(stockRaw) &&
+                                stockRaw > 0
+                                  ? Math.max(1, Math.floor(stockRaw))
+                                  : null;
+                              const requested =
+                                Number.isSafeInteger(parsed) && parsed > 0
+                                  ? parsed
+                                  : quantity;
+                              const nextQuantity = stockLimit
+                                ? Math.min(requested, stockLimit)
+                                : requested;
+
+                              event.currentTarget.value =
+                                String(nextQuantity);
+
+                              if (nextQuantity !== quantity) {
+                                updateQty(
+                                  item.key,
+                                  nextQuantity - quantity,
+                                );
+                              }
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.currentTarget.blur();
+                              } else if (event.key === "Escape") {
+                                event.currentTarget.value =
+                                  String(quantity);
+                                event.currentTarget.blur();
+                              }
+                            }}
+                          />
 
                           <button
                             type="button"

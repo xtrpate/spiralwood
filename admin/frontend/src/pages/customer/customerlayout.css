@@ -1915,7 +1915,8 @@ a {
 }
 
 .cust-mini-cart-qty button,
-.cust-mini-cart-qty span {
+.cust-mini-cart-qty span,
+.cust-mini-cart-qty-input {
   width: auto !important;
   min-width: 30px !important;
   height: 28px !important;
@@ -1940,9 +1941,24 @@ a {
   color: #111111 !important;
 }
 
-.cust-mini-cart-qty span {
+.cust-mini-cart-qty span,
+.cust-mini-cart-qty-input {
   font-weight: 500 !important;
   color: #111111 !important;
+}
+
+.cust-mini-cart-qty-input {
+  width: 30px !important;
+  min-width: 30px !important;
+  flex: 0 0 30px !important;
+  padding: 0 !important;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  text-align: center !important;
+  font-family: inherit !important;
+  caret-color: #111111;
 }
 
 .cust-mini-cart-qty button:first-child,
@@ -1977,9 +1993,15 @@ a {
   }
 
   .cust-mini-cart-qty button,
-  .cust-mini-cart-qty span {
+  .cust-mini-cart-qty span,
+  .cust-mini-cart-qty-input {
     min-width: 29px !important;
     height: 28px !important;
+  }
+
+  .cust-mini-cart-qty-input {
+    width: 29px !important;
+    flex-basis: 29px !important;
   }
 }
 

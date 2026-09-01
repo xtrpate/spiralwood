@@ -89,3 +89,51 @@
 .cashier-notification-trigger svg {
   color: currentColor !important;
 }
+/* WISDOM Staff compact notification â€” flat yellow bell reference */
+.staff-notification-trigger {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.staff-notification-trigger:hover,
+.staff-notification-trigger:focus,
+.staff-notification-trigger:active {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.staff-notification-bell-image {
+  display: block;
+  width: 20px;
+  height: auto;
+  max-height: 23px;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.staff-notification-unread-badge {
+  top: 0 !important;
+  right: 0 !important;
+  min-width: 14px !important;
+  width: auto !important;
+  height: 14px !important;
+  padding: 0 3px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: #e53030 !important;
+  color: #ffffff !important;
+  font-size: 8.5px !important;
+  font-weight: 700 !important;
+  line-height: 14px !important;
+  box-shadow: none !important;
+  z-index: 2 !important;
+}
