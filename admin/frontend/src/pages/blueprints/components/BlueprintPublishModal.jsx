@@ -11,6 +11,8 @@ export function BlueprintPublishModal({
 }) {
   const [categories, setCategories] = useState([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesError, setCategoriesError] = useState("");
+  const [categoriesRequestKey, setCategoriesRequestKey] = useState(0);
 
   const discardPublishDraft = () => {
     if (publishing) return;
@@ -28,9 +30,14 @@ export function BlueprintPublishModal({
 
     const loadCategories = async () => {
       setCategoriesLoading(true);
+      setCategoriesError("");
 
       try {
-        const { data } = await api.get("/products/categories");
+        const { data } = await api.get("/products/categories", {
+          // This GET may be the first request that wakes a sleeping Render API.
+          // Override only this safe read request instead of changing global API timeouts.
+          timeout: 65000,
+        });
         if (!active) return;
 
         const nextCategories = Array.isArray(data?.categories)
@@ -47,8 +54,12 @@ export function BlueprintPublishModal({
           if (!currentId || stillExists) return current;
           return { ...current, category_id: "" };
         });
-      } catch {
-        if (active) setCategories([]);
+      } catch (error) {
+        if (active) {
+          setCategories([]);
+          setCategoriesError("Unable to load categories. Please try again.");
+        }
+        console.error("Failed to load Product Management categories:", error);
       } finally {
         if (active) setCategoriesLoading(false);
       }
@@ -59,7 +70,7 @@ export function BlueprintPublishModal({
     return () => {
       active = false;
     };
-  }, [setPublishForm]);
+  }, [setPublishForm, categoriesRequestKey]);
 
   return (
     <div
@@ -250,9 +261,11 @@ export function BlueprintPublishModal({
               <option value="">
                 {categoriesLoading
                   ? "Loading categories..."
-                  : categories.length === 0
-                    ? "No product categories available"
-                    : "Select furniture category"}
+                  : categoriesError
+                    ? "Categories unavailable"
+                    : categories.length === 0
+                      ? "No furniture categories are set up"
+                      : "Select furniture category"}
               </option>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>
@@ -260,13 +273,49 @@ export function BlueprintPublishModal({
                 </option>
               ))}
             </select>
-            <div style={{ marginTop: 6, fontSize: 11, color: "#64748b" }}>
-              {categoriesLoading
-                ? "Loading Product Management categories..."
-                : categories.length === 0
-                  ? "No product categories are available in the database."
-                  : "Categories are loaded from the Product Management database."}
-            </div>
+            {categoriesError ? (
+              <div
+                style={{
+                  marginTop: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  fontSize: 11,
+                  color: "#b42318",
+                }}
+              >
+                <span>{categoriesError}</span>
+                <button
+                  type="button"
+                  disabled={publishing || categoriesLoading}
+                  onClick={() => setCategoriesRequestKey((current) => current + 1)}
+                  style={{
+                    flex: "0 0 auto",
+                    minHeight: 28,
+                    padding: "0 10px",
+                    background: "#ffffff",
+                    border: "1px solid #cfd6df",
+                    borderRadius: 2,
+                    color: "#0f172a",
+                    cursor:
+                      publishing || categoriesLoading ? "not-allowed" : "pointer",
+                    fontSize: 11,
+                    fontWeight: 700,
+                  }}
+                >
+                  Try Again
+                </button>
+              </div>
+            ) : (
+              <div style={{ marginTop: 6, fontSize: 11, color: "#64748b" }}>
+                {categoriesLoading
+                  ? "Loading Product Management categories..."
+                  : categories.length === 0
+                    ? "No furniture categories are set up."
+                    : "Categories are loaded from the Product Management database."}
+              </div>
+            )}
           </div>
 
           <div

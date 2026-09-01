@@ -739,6 +739,20 @@ const buildStableCustomCartKey = ({
   return `custom_${Number(productId || 0) || "blueprint"}_${hash.toString(36)}`;
 };
 
+const resolveCatalogCategory = (product = {}) => {
+  const numericId = Number(product?.catalog_category_id);
+  const label = String(product?.catalog_category_name || "").trim();
+
+  if (!Number.isInteger(numericId) || numericId <= 0 || !label) {
+    return null;
+  }
+
+  return {
+    id: String(numericId),
+    label,
+  };
+};
+
 function ProductImage({ src, alt }) {
   const [hasError, setHasError] = useState(false);
 
@@ -1561,55 +1575,29 @@ export default function CustomizePage() {
   };
 
 
+  // Business category comes from the category selected when Admin publishes
+  // the blueprint. Template profile detection remains separate for 3D behavior.
   const categoryOptions = useMemo(() => {
     const byId = new Map();
 
     products.forEach((product) => {
-      const profile = detectTemplateProfile(product || {});
-      const id = String(profile?.id || "generic");
-      const label = String(profile?.category || "Furniture Template").replace(
-        " Template",
-        " Design",
-      );
+      const category = resolveCatalogCategory(product);
+      if (!category) return;
 
-      if (!byId.has(id)) {
-        byId.set(id, { id, label, count: 0 });
+      if (!byId.has(category.id)) {
+        byId.set(category.id, {
+          id: category.id,
+          label: category.label,
+          count: 0,
+        });
       }
 
-      byId.get(id).count += 1;
+      byId.get(category.id).count += 1;
     });
 
-    if (categoryFilter !== "all" && !byId.has(categoryFilter)) {
-      const fallbackProfile =
-        TEMPLATE_PROFILES[categoryFilter] || TEMPLATE_PROFILES.generic;
-
-      byId.set(categoryFilter, {
-        id: categoryFilter,
-        label: String(
-          fallbackProfile?.category || "Furniture Template",
-        ).replace(" Template", " Design"),
-        count: 0,
-      });
-    }
-
-    const preferredOrder = [
-      "table",
-      "cabinet",
-      "chair",
-      "shelf",
-      "generic",
-    ];
-
-    const available = Array.from(byId.values()).sort((a, b) => {
-      const aIndex = preferredOrder.indexOf(a.id);
-      const bIndex = preferredOrder.indexOf(b.id);
-
-      const safeA = aIndex === -1 ? preferredOrder.length : aIndex;
-      const safeB = bIndex === -1 ? preferredOrder.length : bIndex;
-
-      if (safeA !== safeB) return safeA - safeB;
-      return a.label.localeCompare(b.label);
-    });
+    const available = Array.from(byId.values()).sort((a, b) =>
+      a.label.localeCompare(b.label),
+    );
 
     return [
       {
@@ -1619,15 +1607,14 @@ export default function CustomizePage() {
       },
       ...available,
     ];
-  }, [products, categoryFilter, total]);
+  }, [products, total]);
 
   const filteredProducts = useMemo(() => {
     if (categoryFilter === "all") return products;
 
-    return products.filter((product) => {
-      const profile = detectTemplateProfile(product || {});
-      return String(profile?.id || "generic") === categoryFilter;
-    });
+    return products.filter(
+      (product) => resolveCatalogCategory(product)?.id === categoryFilter,
+    );
   }, [products, categoryFilter]);
 
   const visibleDesignCount =
