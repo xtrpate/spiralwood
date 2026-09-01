@@ -3453,11 +3453,18 @@ export default function Customer3DViewer({
           ? Number(overallBounds.height_mm || 0)
           : Number(overallBounds.depth_mm || 0);
 
-    if (parsedMmValue <= 0 || currentValueMm <= 0) {
+    /* WISDOM INPUT VALIDATION BATCH 2 V1.0.0
+       Never rebuild/deform the model from invalid overall dimensions. */
+    if (
+      !Number.isFinite(parsedMmValue) ||
+      parsedMmValue < 1 ||
+      currentValueMm <= 0
+    ) {
       setOverallDrafts((prev) => ({
         ...prev,
         [axis]: String(convertMmToUnit(currentValueMm, unit)),
       }));
+      showCustomizeFeedback("Minimum size is 1 mm.");
       return;
     }
 
@@ -3505,7 +3512,20 @@ export default function Customer3DViewer({
     const parsedMmValue = convertUnitToMm(rawUnitValue, unit);
     const currentValueMm = Number(sampleSelectedPart?.[axis] || 0);
 
-    if (parsedMmValue <= 0 || currentValueMm <= 0) return;
+    /* Invalid part input must never reach commitComponents. Restore the
+       selected part's last valid dimension and show one clear message. */
+    if (
+      !Number.isFinite(parsedMmValue) ||
+      parsedMmValue < 1 ||
+      currentValueMm <= 0
+    ) {
+      setPartDrafts((prev) => ({
+        ...prev,
+        [axis]: String(convertMmToUnit(currentValueMm, unit)),
+      }));
+      showCustomizeFeedback("Minimum size is 1 mm.");
+      return;
+    }
 
     const nextValueMm = Math.max(1, Math.round(parsedMmValue));
     if (nextValueMm === currentValueMm) return;

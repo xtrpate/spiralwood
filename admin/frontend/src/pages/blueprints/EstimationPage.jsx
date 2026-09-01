@@ -590,7 +590,19 @@ const getValidationErrors = ({ items = [], costs = {} } = {}) => {
     if (normalizeText(item.name).length > 255) {
       errors.push(`${label}: Description must not exceed 255 characters.`);
     }
-    if (!Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0) {
+    const numericQuantity = Number(item.quantity);
+    const requiresWholeQuantity =
+      isInventoryItem(item) || isOtherItem(item);
+
+    if (
+      requiresWholeQuantity &&
+      (!Number.isSafeInteger(numericQuantity) || numericQuantity < 1)
+    ) {
+      errors.push(`${label}: Quantity must be a whole number of at least 1.`);
+    } else if (
+      !requiresWholeQuantity &&
+      (!Number.isFinite(numericQuantity) || numericQuantity <= 0)
+    ) {
       errors.push(`${label}: Quantity must be greater than 0.`);
     }
     if (
@@ -1385,16 +1397,43 @@ function EstimateTable({
                     <td style={td}>
                       <input
                         type="number"
-                        min={isAreaUnit(item.unit) ? "0.0001" : "0.01"}
-                        step={isAreaUnit(item.unit) ? "0.0001" : "0.01"}
+                        min={
+                          section === "inventory" || section === "other"
+                            ? "1"
+                            : isAreaUnit(item.unit)
+                              ? "0.0001"
+                              : "0.01"
+                        }
+                        step={
+                          section === "inventory" || section === "other"
+                            ? "1"
+                            : isAreaUnit(item.unit)
+                              ? "0.0001"
+                              : "0.01"
+                        }
                         value={item.quantity}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          const requiresWholeQuantity =
+                            section === "inventory" || section === "other";
+
+                          if (requiresWholeQuantity) {
+                            if (nextValue === "") {
+                              onUpdate(item._row_key, "quantity", "");
+                              return;
+                            }
+
+                            if (!/^[1-9]\d*$/.test(nextValue)) {
+                              return;
+                            }
+                          }
+
                           onUpdate(
                             item._row_key,
                             "quantity",
-                            event.target.value,
-                          )
-                        }
+                            nextValue,
+                          );
+                        }}
                         style={{
                           ...cellInput,
                           ...readOnlyFieldStyle(readOnly),

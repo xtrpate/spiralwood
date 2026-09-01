@@ -31,7 +31,8 @@ const isSavedDecisionComplete = (payload = null) => {
 
   if (
     decision === "fee_required" &&
-    Number(savedDecision.additional_delivery_fee || 0) > 0 &&
+    Number.isFinite(Number(savedDecision.additional_delivery_fee)) &&
+    Number(savedDecision.additional_delivery_fee) >= 0 &&
     hasAssessmentNote(savedDecision)
   ) {
     return true;
@@ -54,10 +55,16 @@ const buildDraftDecision = (form = {}, assessment = null) => {
     .toLowerCase();
   const reason = String(form.reason || "").trim();
   const truckType = String(form.truck_type || "").trim();
-  const parsedFee = Number(form.additional_delivery_fee);
+  const feeText = String(form.additional_delivery_fee ?? "").trim();
+  const parsedFee = feeText === "" ? Number.NaN : Number(feeText);
+  const feeIsValid =
+    feeText !== "" &&
+    Number.isFinite(parsedFee) &&
+    parsedFee >= 0 &&
+    parsedFee <= 1000000;
   const additionalDeliveryFee =
-    decision === "fee_required" && Number.isFinite(parsedFee)
-      ? Math.max(0, parsedFee)
+    decision === "fee_required" && feeIsValid
+      ? Number(parsedFee.toFixed(2))
       : 0;
 
   const complete =
@@ -65,7 +72,7 @@ const buildDraftDecision = (form = {}, assessment = null) => {
     (assessmentStatus === "oversized" &&
       ["fee_required", "no_additional_fee"].includes(decision) &&
       Boolean(reason || truckType) &&
-      (decision !== "fee_required" || additionalDeliveryFee > 0));
+      (decision !== "fee_required" || feeIsValid));
 
   return {
     assessment_status: assessmentStatus,
@@ -681,18 +688,33 @@ export default function OversizedDeliveryEstimatorPanel({
                   <div style={moneyInputWrap}>
                     <span style={moneyPrefix}>₱</span>
                     <input
-                      type="number"
-                      min="0.01"
-                      max="1000000"
-                      step="0.01"
+                      type="text"
+                      inputMode="decimal"
                       value={form.additional_delivery_fee}
-                      onChange={(event) =>
-                        !readOnly &&
+                      onChange={(event) => {
+                        if (readOnly) return;
+
+                        const nextValue = event.target.value;
+                        if (!/^\d*(?:\.\d{0,2})?$/.test(nextValue)) {
+                          return;
+                        }
+
+                        const numericValue =
+                          nextValue === "" ? 0 : Number(nextValue);
+
+                        if (
+                          !Number.isFinite(numericValue) ||
+                          numericValue < 0 ||
+                          numericValue > 1000000
+                        ) {
+                          return;
+                        }
+
                         setForm((current) => ({
                           ...current,
-                          additional_delivery_fee: event.target.value,
-                        }))
-                      }
+                          additional_delivery_fee: nextValue,
+                        }));
+                      }}
                       disabled={readOnly}
                       style={{
                         ...input,

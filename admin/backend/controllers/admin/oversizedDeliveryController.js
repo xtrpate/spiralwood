@@ -442,17 +442,19 @@ exports.saveDecisionByBlueprint = async (req, res) => {
     });
   }
 
+  /* WISDOM INPUT VALIDATION BATCH 2 V1.0.0
+     Additional delivery fee is currency: zero is valid, negatives are not. */
   if (
     requestedDecision === "fee_required" &&
     (
       !Number.isFinite(requestedFee) ||
-      requestedFee <= 0 ||
+      requestedFee < 0 ||
       requestedFee > 1000000
     )
   ) {
     return res.status(400).json({
       message:
-        "Enter a valid additional delivery fee greater than zero.",
+        "Enter a valid additional delivery fee of 0 or more.",
     });
   }
 
