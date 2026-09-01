@@ -13,6 +13,7 @@ import {
   getMotionFeedbackDurations,
 } from "../../components/MotionFeedbackOverlay";
 import { getCustomReferencePhotos } from "../../utils/customReferencePhotoStore";
+import { WOOD_FINISHES } from "../blueprints/data/furnitureTypes";
 
 // Strict parsing prevents blank strings, whitespace, booleans, arrays,
 // and objects from being coerced into a fake numeric coordinate such as 0.
@@ -175,6 +176,138 @@ const getItemDisplayDims = (item = {}) => {
   return { width, height, depth };
 };
 
+
+/* WISDOM CUSTOM CHECKOUT REVIEW BATCH 3 V1.0.5
+   Customer checkout uses the same finish/color resolution pattern as the
+   admin submitted-design Parts & Measurements table. */
+const CHECKOUT_HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+const IMPORTANT_PAYMENT_NOTE =
+  "Custom blueprint requests require a minimum 30% down payment to begin production.";
+const IMPORTANT_QUOTATION_NOTE =
+  "Estimated review and quotation time is 1–3 days.";
+
+const buildCheckoutImportantNote = (value) => {
+  const raw = String(value || "").trim();
+  const paymentNeedle = IMPORTANT_PAYMENT_NOTE.toLowerCase();
+
+  if (!raw || raw.toLowerCase().includes(paymentNeedle)) {
+    return `${IMPORTANT_PAYMENT_NOTE} ${IMPORTANT_QUOTATION_NOTE}`;
+  }
+
+  return raw;
+};
+
+const firstCheckoutText = (...values) => {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+};
+
+const findCheckoutFinish = (finishId) => {
+  const id = String(finishId || "").trim();
+  if (!id || !Array.isArray(WOOD_FINISHES)) return null;
+
+  return (
+    WOOD_FINISHES.find((item) => String(item?.id || "") === id) || null
+  );
+};
+
+const resolveCheckoutPartFinish = (part = {}) => {
+  const solidHex = [part.fill, part.color, part.finish_color]
+    .map((value) => String(value || "").trim())
+    .find((value) => CHECKOUT_HEX_COLOR_RE.test(value));
+
+  if (part?.color_mode === "solid" && solidHex) {
+    return {
+      key: `solid:${solidHex.toLowerCase()}`,
+      label: `Custom color ${solidHex.toUpperCase()}`,
+      color: solidHex,
+    };
+  }
+
+  const finishId = firstCheckoutText(
+    part.finish_id,
+    part.woodFinish,
+    part.finish,
+  );
+  const finishMatch = findCheckoutFinish(finishId);
+
+  if (finishMatch) {
+    const previewColor = firstCheckoutText(
+      finishMatch.color,
+      finishMatch.hex,
+      finishMatch.previewColor,
+      finishMatch.baseColor,
+    );
+
+    return {
+      key: `finish:${finishMatch.id}`,
+      label: finishMatch.label || finishMatch.id,
+      color: CHECKOUT_HEX_COLOR_RE.test(previewColor) ? previewColor : "",
+    };
+  }
+
+  if (finishId) {
+    return {
+      key: `finish:${finishId}`,
+      label: finishId,
+      color: "",
+    };
+  }
+
+  if (solidHex) {
+    return {
+      key: `solid:${solidHex.toLowerCase()}`,
+      label: `Custom color ${solidHex.toUpperCase()}`,
+      color: solidHex,
+    };
+  }
+
+  return { key: "none", label: "Original finish", color: "" };
+};
+
+const formatCheckoutPartName = (component = {}, index = 0) =>
+  component?.label ||
+  component?.name ||
+  component?.type ||
+  `Part ${index + 1}`;
+
+const formatCheckoutPartMm = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0
+    ? `${Math.round(number).toLocaleString("en-PH")} mm`
+    : "—";
+};
+
+const getCheckoutPartRows = (item = {}) => {
+  const editorSnapshot = parseCartEditorSnapshot(item?.editor_snapshot);
+  const components = Array.isArray(editorSnapshot?.components)
+    ? editorSnapshot.components
+    : Array.isArray(item?.components)
+      ? item.components
+      : [];
+
+  return components.map((component, index) => ({
+    key:
+      component?.id ||
+      component?.technicalId ||
+      component?.partCode ||
+      `checkout-part-${index}`,
+    name: formatCheckoutPartName(component, index),
+    width: formatCheckoutPartMm(component?.width),
+    height: formatCheckoutPartMm(component?.height),
+    depth: formatCheckoutPartMm(component?.depth),
+    material:
+      firstCheckoutText(component?.material, component?.wood_type) ||
+      firstCheckoutText(item?.wood_type) ||
+      "—",
+    finish: resolveCheckoutPartFinish(component),
+  }));
+};
+
 export default function CustomCheckoutPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
@@ -194,6 +327,7 @@ export default function CustomCheckoutPage() {
   const [submitFeedbackStatus, setSubmitFeedbackStatus] = useState("loading");
   const [error, setError] = useState("");
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [partsModalItem, setPartsModalItem] = useState(null);
 
   const [checkoutNote, setCheckoutNote] = useState("");
 
@@ -337,6 +471,16 @@ export default function CustomCheckoutPage() {
         0,
       ),
     [checkoutItems],
+  );
+
+  const displayedCheckoutNote = useMemo(
+    () => buildCheckoutImportantNote(checkoutNote),
+    [checkoutNote],
+  );
+
+  const partsModalRows = useMemo(
+    () => (partsModalItem ? getCheckoutPartRows(partsModalItem) : []),
+    [partsModalItem],
   );
 
   const handleSubmit = async (e) => {
@@ -563,6 +707,7 @@ export default function CustomCheckoutPage() {
                   : Number(
                       item?.customization_snapshot?.reference_photo_count || 0,
                     );
+                const checkoutParts = getCheckoutPartRows(item);
 
                 return (
                   <div key={item.key} className="custom-final-review-grid">
@@ -606,18 +751,43 @@ export default function CustomCheckoutPage() {
                           </h4>
                         </div>
 
-                        <button
-                          type="button"
-                          className="custom-final-review-edit-btn"
-                          onClick={() =>
-                            navigate(
-                              `/custom-cart?edit=${encodeURIComponent(item.key)}`,
-                            )
-                          }
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "flex-end",
+                            gap: 8,
+                            flexWrap: "wrap",
+                          }}
                         >
-                          <Pencil size={15} />
-                          Edit Design
-                        </button>
+                          {checkoutParts.length ? (
+                            <button
+                              type="button"
+                              className="custom-final-review-edit-btn"
+                              onClick={() => setPartsModalItem(item)}
+                              style={{
+                                background: "#111111",
+                                color: "#ffffff",
+                                borderColor: "#111111",
+                              }}
+                            >
+                              View Parts ({checkoutParts.length})
+                            </button>
+                          ) : null}
+
+                          <button
+                            type="button"
+                            className="custom-final-review-edit-btn"
+                            onClick={() =>
+                              navigate(
+                                `/custom-cart?edit=${encodeURIComponent(item.key)}&returnTo=custom-checkout`,
+                              )
+                            }
+                          >
+                            <Pencil size={15} />
+                            Edit Design
+                          </button>
+                        </div>
                       </div>
 
                       <div className="custom-final-review-specs">
@@ -935,7 +1105,7 @@ export default function CustomCheckoutPage() {
               </label>
             </div>
 
-            {checkoutNote && (
+            {displayedCheckoutNote && (
               <div
                 style={{
                   background: "#fefce8",
@@ -950,7 +1120,9 @@ export default function CustomCheckoutPage() {
               >
                 <strong>📌 Important Note:</strong>
                 <br />
-                <span style={{ whiteSpace: "pre-wrap" }}>{checkoutNote}</span>
+                <span style={{ whiteSpace: "pre-wrap" }}>
+                  {displayedCheckoutNote}
+                </span>
               </div>
             )}
 
@@ -970,6 +1142,226 @@ export default function CustomCheckoutPage() {
           </div>
         </div>
       </div>
+
+      {partsModalItem ? (
+        <div
+          role="presentation"
+          onClick={() => setPartsModalItem(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 12000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+            background: "rgba(0, 0, 0, 0.55)",
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Parts and Measurements"
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "min(1120px, 96vw)",
+              maxHeight: "84vh",
+              display: "flex",
+              flexDirection: "column",
+              background: "#ffffff",
+              border: "1px solid #d1d5db",
+              boxShadow: "0 20px 55px rgba(0,0,0,0.22)",
+            }}
+          >
+            <div
+              style={{
+                minHeight: 64,
+                padding: "14px 16px",
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: 14,
+                borderBottom: "1px solid #e5e7eb",
+              }}
+            >
+              <div>
+                <strong style={{ display: "block", fontSize: 16 }}>
+                  Parts &amp; Measurements
+                </strong>
+                <span
+                  style={{
+                    display: "block",
+                    marginTop: 3,
+                    fontSize: 12,
+                    color: "#6b7280",
+                  }}
+                >
+                  Saved dimensions, material, and finish for every furniture
+                  part.
+                </span>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{ fontSize: 12, color: "#6b7280" }}>
+                  {partsModalRows.length}{" "}
+                  {partsModalRows.length === 1 ? "part" : "parts"}
+                </span>
+
+                <button
+                  type="button"
+                  aria-label="Close parts"
+                  onClick={() => setPartsModalItem(null)}
+                  style={{
+                    width: 34,
+                    height: 34,
+                    border: "1px solid #d1d5db",
+                    background: "#ffffff",
+                    color: "#111827",
+                    fontSize: 22,
+                    lineHeight: 1,
+                    cursor: "pointer",
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <div
+              style={{
+                overflow: "auto",
+                padding: 16,
+              }}
+            >
+              <table
+                style={{
+                  width: "100%",
+                  minWidth: 820,
+                  borderCollapse: "collapse",
+                  tableLayout: "fixed",
+                  fontSize: 12,
+                }}
+              >
+                <thead>
+                  <tr style={{ background: "#f8f8f8" }}>
+                    {[
+                      ["Part", "24%"],
+                      ["Width", "11%"],
+                      ["Height", "11%"],
+                      ["Depth", "11%"],
+                      ["Material", "18%"],
+                      ["Finish / Color", "25%"],
+                    ].map(([label, width]) => (
+                      <th
+                        key={label}
+                        style={{
+                          width,
+                          padding: "10px 12px",
+                          textAlign: "left",
+                          color: "#4b5563",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                          borderBottom: "1px solid #e5e7eb",
+                        }}
+                      >
+                        {label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {partsModalRows.map((part) => (
+                    <tr key={part.key}>
+                      <td
+                        style={{
+                          padding: "11px 12px",
+                          borderBottom: "1px solid #e5e7eb",
+                          color: "#111827",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {part.name}
+                      </td>
+                      <td
+                        style={{
+                          padding: "11px 12px",
+                          borderBottom: "1px solid #e5e7eb",
+                        }}
+                      >
+                        {part.width}
+                      </td>
+                      <td
+                        style={{
+                          padding: "11px 12px",
+                          borderBottom: "1px solid #e5e7eb",
+                        }}
+                      >
+                        {part.height}
+                      </td>
+                      <td
+                        style={{
+                          padding: "11px 12px",
+                          borderBottom: "1px solid #e5e7eb",
+                        }}
+                      >
+                        {part.depth}
+                      </td>
+                      <td
+                        style={{
+                          padding: "11px 12px",
+                          borderBottom: "1px solid #e5e7eb",
+                        }}
+                      >
+                        {part.material}
+                      </td>
+                      <td
+                        style={{
+                          padding: "11px 12px",
+                          borderBottom: "1px solid #e5e7eb",
+                        }}
+                      >
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 7,
+                            minWidth: 0,
+                          }}
+                        >
+                          {part.finish?.color ? (
+                            <i
+                              aria-hidden="true"
+                              style={{
+                                width: 13,
+                                height: 13,
+                                flexShrink: 0,
+                                display: "inline-block",
+                                border: "1px solid #cbd5e1",
+                                backgroundColor: part.finish.color,
+                              }}
+                            />
+                          ) : null}
+                          <span>{part.finish?.label || "—"}</span>
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <MotionFeedbackOverlay
         open={loading}
