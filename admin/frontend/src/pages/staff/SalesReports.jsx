@@ -106,6 +106,7 @@ export default function SalesReports() {
   const [data, setData] = useState(null);
   const [filters, setFilters] = useState({
     source: "all",
+    payment: "all",
     period: "daily",
     from: "",
     to: "",
@@ -140,6 +141,7 @@ export default function SalesReports() {
   const transactions = data?.transactions || [];
   const paymentBreakdown = data?.payment_breakdown || [];
   const products = data?.top_products || [];
+  const isCashierReport = data?.report_scope === "cashier";
 
   const chartData = useMemo(
     () =>
@@ -163,16 +165,25 @@ export default function SalesReports() {
     <div style={{ paddingBottom: 40 }}>
       <div style={headerRow}>
         <div>
-          <h1 style={pageTitle}>Sales Report</h1>
+          <h1 style={pageTitle}>
+            {isCashierReport ? "My Sales Report" : "Sales Report"}
+          </h1>
           <p style={pageSubtitle}>
-            Review verified payments, balances, and sales activity.
+            {isCashierReport
+              ? "Review only the verified payments and orders processed under your cashier account."
+              : "Review verified payments, balances, and sales activity."}
           </p>
         </div>
 
       </div>
 
       <div style={noticeBox}>
-        <strong>Verified payments only.</strong> Blueprint down payments and remaining balances are recorded as separate payment transactions.
+        <strong>
+          {isCashierReport ? "Your cashier transactions only." : "Verified payments only."}
+        </strong>{" "}
+        {isCashierReport
+          ? "Only verified payments processed under your account are included. Blueprint down payments and remaining balances stay as separate transactions."
+          : "Blueprint down payments and remaining balances are recorded as separate payment transactions."}
       </div>
 
       <div style={filterCard}>
@@ -191,6 +202,23 @@ export default function SalesReports() {
               <option value="all">All Sources</option>
               <option value="online">Website Orders</option>
               <option value="walk_in">Walk-in Orders</option>
+            </select>
+          </FilterField>
+
+          <FilterField label="Payment Type">
+            <select
+              style={input}
+              value={filters.payment}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  payment: event.target.value,
+                }))
+              }
+            >
+              <option value="all">All Payments</option>
+              <option value="cash">Cash</option>
+              <option value="online">Online</option>
             </select>
           </FilterField>
 
@@ -263,7 +291,11 @@ export default function SalesReports() {
             <MetricCard
               label="Order Value"
               value={money(totals.gross_order_value)}
-              note="Total value of orders included in this report"
+              note={
+                isCashierReport
+                  ? "Full value of orders with payments you processed"
+                  : "Total value of orders included in this report"
+              }
             />
             <MetricCard
               label="Collected Payments"
@@ -275,7 +307,15 @@ export default function SalesReports() {
               value={money(totals.outstanding_balance)}
               note="Unpaid balance on orders included in this report"
             />
-            <MetricCard label="Orders Included" value={totals.total_orders || 0} note="Orders included in the selected report period" />
+            <MetricCard
+              label="Orders Included"
+              value={totals.total_orders || 0}
+              note={
+                isCashierReport
+                  ? "Unique orders tied to your processed payments"
+                  : "Orders included in the selected report period"
+              }
+            />
           </div>
 
           <div style={chartGrid}>
@@ -358,7 +398,11 @@ export default function SalesReports() {
           <section style={card}>
             <SectionHeader
               title="Payment Transactions"
-              subtitle="Verified payments recorded during the selected period."
+              subtitle={
+                isCashierReport
+                  ? "Verified payments processed under your cashier account during the selected period."
+                  : "Verified payments recorded during the selected period."
+              }
             />
             <div style={tableScroll}>
               <table style={table}>

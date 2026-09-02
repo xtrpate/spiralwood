@@ -17,19 +17,55 @@ const buildSourceFilter = (rawSource, alias = "o") => {
   throw error;
 };
 
+const REPORT_SOURCE_OFFSET = "+00:00";
+const REPORT_LOCAL_OFFSET = "+08:00";
+
+const toReportLocalTime = (expression) =>
+  `CONVERT_TZ(${expression}, '${REPORT_SOURCE_OFFSET}', '${REPORT_LOCAL_OFFSET}')`;
+
+const reportLocalNowSql = () =>
+  `CONVERT_TZ(UTC_TIMESTAMP(), '${REPORT_SOURCE_OFFSET}', '${REPORT_LOCAL_OFFSET}')`;
+
+const buildPaymentFilter = (rawPayment, alias = "pt") => {
+  const payment = normalize(rawPayment || "all");
+  if (!payment || payment === "all") {
+    return { sql: "1=1", params: [] };
+  }
+
+  if (payment === "cash") {
+    return {
+      sql: `LOWER(${alias}.payment_method) IN ('cash', 'cod', 'cop')`,
+      params: [],
+    };
+  }
+
+  if (payment === "online") {
+    return {
+      sql: `LOWER(${alias}.payment_method) IN ('paymongo', 'gcash', 'bank_transfer')`,
+      params: [],
+    };
+  }
+
+  const error = new Error("Invalid payment type filter.");
+  error.statusCode = 400;
+  throw error;
+};
+
 const buildDateFilter = ({ period, from, to }, expression) => {
   const start = String(from || "").trim();
   const end = String(to || "").trim();
+  const localExpression = toReportLocalTime(expression);
+  const localNow = reportLocalNowSql();
 
   if (start || end) {
     const clauses = [];
     const params = [];
     if (start) {
-      clauses.push(`DATE(${expression}) >= ?`);
+      clauses.push(`DATE(${localExpression}) >= ?`);
       params.push(start);
     }
     if (end) {
-      clauses.push(`DATE(${expression}) <= ?`);
+      clauses.push(`DATE(${localExpression}) <= ?`);
       params.push(end);
     }
     return { sql: clauses.join(" AND "), params };
@@ -41,33 +77,41 @@ const buildDateFilter = ({ period, from, to }, expression) => {
 
   if (normalizedPeriod === "weekly") {
     return {
-      sql: `YEARWEEK(${expression}, 1) = YEARWEEK(CURDATE(), 1)`,
+      sql: `YEARWEEK(${localExpression}, 1) = YEARWEEK(${localNow}, 1)`,
       params: [],
     };
   }
   if (normalizedPeriod === "monthly") {
     return {
-      sql: `YEAR(${expression}) = YEAR(CURDATE()) AND MONTH(${expression}) = MONTH(CURDATE())`,
+      sql: `YEAR(${localExpression}) = YEAR(${localNow}) AND MONTH(${localExpression}) = MONTH(${localNow})`,
       params: [],
     };
   }
   if (normalizedPeriod === "yearly") {
-    return { sql: `YEAR(${expression}) = YEAR(CURDATE())`, params: [] };
+    return {
+      sql: `YEAR(${localExpression}) = YEAR(${localNow})`,
+      params: [],
+    };
   }
-  return { sql: `DATE(${expression}) = CURDATE()`, params: [] };
+  return {
+    sql: `DATE(${localExpression}) = DATE(${localNow})`,
+    params: [],
+  };
 };
 
 const buildPeriodExpression = (period, expression) => {
+  const localExpression = toReportLocalTime(expression);
+
   switch (normalize(period)) {
     case "weekly":
-      return `DATE_SUB(DATE(${expression}), INTERVAL WEEKDAY(${expression}) DAY)`;
+      return `DATE_SUB(DATE(${localExpression}), INTERVAL WEEKDAY(${localExpression}) DAY)`;
     case "monthly":
-      return `DATE_FORMAT(${expression}, '%Y-%m-01')`;
+      return `DATE_FORMAT(${localExpression}, '%Y-%m-01')`;
     case "yearly":
-      return `DATE_FORMAT(${expression}, '%Y-01-01')`;
+      return `DATE_FORMAT(${localExpression}, '%Y-01-01')`;
     case "daily":
     default:
-      return `DATE(${expression})`;
+      return `DATE(${localExpression})`;
   }
 };
 
@@ -94,23 +138,85 @@ exports.getReports = async (req, res) => {
   try {
     const { period = "daily" } = req.query;
     const source = buildSourceFilter(req.query.source, "o");
+    const payment = buildPaymentFilter(req.query.payment, "pt");
     const orderDate = buildDateFilter(req.query, "o.created_at");
     const paymentDateExpression = "COALESCE(pt.verified_at, pt.created_at)";
     const paymentDate = buildDateFilter(req.query, paymentDateExpression);
 
-    const orderWhereSql = [
-      "o.status <> 'cancelled'",
-      source.sql,
-      orderDate.sql,
-    ].join(" AND ");
-    const orderParams = [...source.params, ...orderDate.params];
+    const isCashierScope = req.user?.role === "staff";
+    const cashierId = Number(req.user?.id);
+
+    if (
+      isCashierScope &&
+      (!Number.isSafeInteger(cashierId) || cashierId <= 0)
+    ) {
+      return res.status(401).json({ message: "Invalid cashier session." });
+    }
+
+    const ownerSql = isCashierScope ? "pt.verified_by = ?" : "1=1";
+    const ownerParams = isCashierScope ? [cashierId] : [];
 
     const paymentWhereSql = [
       "LOWER(pt.status) = 'verified'",
+      "o.status <> 'cancelled'",
       source.sql,
+      payment.sql,
       paymentDate.sql,
+      ownerSql,
     ].join(" AND ");
-    const paymentParams = [...source.params, ...paymentDate.params];
+    const paymentParams = [
+      ...source.params,
+      ...payment.params,
+      ...paymentDate.params,
+      ...ownerParams,
+    ];
+
+    // Cashier order-level figures must come only from orders connected to a
+    // verified payment the logged-in cashier actually processed in this report
+    // period. Admin keeps the existing order-created-period behavior unless a
+    // payment category is selected.
+    const scopedPayment = buildPaymentFilter(req.query.payment, "pt_scope");
+    const scopedPaymentDate = buildDateFilter(
+      req.query,
+      "COALESCE(pt_scope.verified_at, pt_scope.created_at)",
+    );
+    const usePaymentScopedOrders =
+      isCashierScope ||
+      !["", "all"].includes(normalize(req.query.payment || "all"));
+
+    const orderWhereParts = [
+      "o.status <> 'cancelled'",
+      "COALESCE(o.total, 0) > 0",
+      source.sql,
+    ];
+    const orderParams = [...source.params];
+
+    if (usePaymentScopedOrders) {
+      const scopedOwnerSql = isCashierScope
+        ? "pt_scope.verified_by = ?"
+        : "1=1";
+
+      orderWhereParts.push(`EXISTS (
+        SELECT 1
+        FROM payment_transactions pt_scope
+        WHERE pt_scope.order_id = o.id
+          AND LOWER(pt_scope.status) = 'verified'
+          AND ${scopedPayment.sql}
+          AND ${scopedPaymentDate.sql}
+          AND ${scopedOwnerSql}
+      )`);
+
+      orderParams.push(
+        ...scopedPayment.params,
+        ...scopedPaymentDate.params,
+        ...(isCashierScope ? [cashierId] : []),
+      );
+    } else {
+      orderWhereParts.push(orderDate.sql);
+      orderParams.push(...orderDate.params);
+    }
+
+    const orderWhereSql = orderWhereParts.join(" AND ");
 
     const [[orderTotals]] = await db.query(
       `SELECT
@@ -169,9 +275,8 @@ exports.getReports = async (req, res) => {
       paymentParams,
     );
 
-    // Product figures remain order pipeline figures and are explicitly
-    // labelled Gross Order Value in the UI; partial blueprint collections
-    // are never allocated artificially across individual products.
+    // Product values stay order values. For cashier users, the included orders
+    // are already restricted to orders with payments processed by that cashier.
     const [productRows] = await db.query(
       `SELECT
          oi.product_name,
@@ -245,8 +350,6 @@ exports.getReports = async (req, res) => {
       total_orders: Number(orderTotals?.total_orders || 0),
       gross_order_value: Number(orderTotals?.gross_order_value || 0),
       actual_collected: Number(collectionTotals?.actual_collected || 0),
-      // Compatibility alias: grand_total now correctly represents actual
-      // verified collections, not all non-cancelled order totals.
       grand_total: Number(collectionTotals?.actual_collected || 0),
       outstanding_balance: Number(orderTotals?.outstanding_balance || 0),
       total_discount: Number(orderTotals?.total_discount || 0),
@@ -255,6 +358,13 @@ exports.getReports = async (req, res) => {
     };
 
     res.json({
+      report_scope: isCashierScope ? "cashier" : "all",
+      report_owner: isCashierScope
+        ? {
+            id: cashierId,
+            name: String(req.user?.name || "Current cashier"),
+          }
+        : null,
       totals,
       summary: summaryRows,
       payment_breakdown: paymentRows,
