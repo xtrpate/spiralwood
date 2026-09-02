@@ -288,12 +288,45 @@ exports.register = async (req, res) => {
     email,
     phone,
     address,
+    address_lat,
+    address_lng,
     password,
     recaptcha_token,
   } = req.body;
 
   if (!first_name || !last_name || !email || !phone || !address || !password) {
-    return res.status(400).json({ message: "All fields are required." });
+    return res.status(400).json({
+      message: "All fields are required.",
+    });
+  }
+
+  if (
+    address_lat === undefined ||
+    address_lat === null ||
+    address_lat === "" ||
+    address_lng === undefined ||
+    address_lng === null ||
+    address_lng === ""
+  ) {
+    return res.status(400).json({
+      message: "A valid delivery location pin is required.",
+    });
+  }
+
+  const parsedLat = Number(address_lat);
+  const parsedLng = Number(address_lng);
+
+  if (
+    !Number.isFinite(parsedLat) ||
+    !Number.isFinite(parsedLng) ||
+    parsedLat < -90 ||
+    parsedLat > 90 ||
+    parsedLng < -180 ||
+    parsedLng > 180
+  ) {
+    return res.status(400).json({
+      message: "Invalid delivery location coordinates.",
+    });
   }
 
   if (password.length < 8) {
@@ -350,6 +383,8 @@ exports.register = async (req, res) => {
     password,
     phone,
     address,
+    address_lat,
+    address_lng,
     role,
     is_verified,
     otp_code,
@@ -363,7 +398,7 @@ exports.register = async (req, res) => {
   )
   VALUES
   (
-    ?, ?, ?, ?, ?, 'customer',
+    ?, ?, ?, ?, ?, ?, ?, 'customer',
     FALSE,
     ?, 'verify_email', ?,
     FALSE,
@@ -378,6 +413,8 @@ exports.register = async (req, res) => {
         hashed,
         normalizedPhone,
         address,
+        parsedLat,
+        parsedLng,
         emailOtp,
         emailOtpExpiry,
         phoneOtpHash,

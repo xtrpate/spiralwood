@@ -219,7 +219,10 @@ export default function LocationPicker({
             lat: parseFloat(top.lat),
             lng: parseFloat(top.lon),
           };
-          if (Number.isFinite(topLatLng.lat) && Number.isFinite(topLatLng.lng)) {
+          if (
+            Number.isFinite(topLatLng.lat) &&
+            Number.isFinite(topLatLng.lng)
+          ) {
             onChange(topLatLng);
             setFlyTarget(topLatLng);
           }
@@ -382,7 +385,7 @@ export default function LocationPicker({
         </label>
       )}
 
-      <div style={{ position: "relative" }}>
+      <div style={{ position: "relative", zIndex: 1000 }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input
             type="text"
@@ -430,7 +433,7 @@ export default function LocationPicker({
           <ul
             style={{
               position: "absolute",
-              zIndex: 20,
+              zIndex: 9999,
               top: "100%",
               left: 0,
               right: 0,
@@ -495,6 +498,8 @@ export default function LocationPicker({
 
       <div
         style={{
+          position: "relative",
+          zIndex: 1,
           height,
           borderRadius: 10,
           overflow: "hidden",
@@ -547,8 +552,8 @@ export default function LocationPicker({
             <>
               ⚠️ Your detected location is only accurate to about{" "}
               {Math.round(locAccuracy)} meters — this is common on
-              desktop/Wi-Fi. Please <strong>drag the pin</strong> to your
-              exact delivery point.
+              desktop/Wi-Fi. Please <strong>drag the pin</strong> to your exact
+              delivery point.
             </>
           ) : (
             <>Estimated accuracy: about {Math.round(locAccuracy)} meters</>

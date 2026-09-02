@@ -4,6 +4,7 @@ import ReCAPTCHA from "react-google-recaptcha";
 
 import "./authpages.css";
 import useAuthStore from "../../store/authStore";
+import LocationPicker from "../../components/LocationPicker";
 
 const calcStrength = (pw) => {
   let score = 0;
@@ -52,6 +53,8 @@ export default function RegisterPage() {
     email: "",
     phone: "",
     address: "",
+    address_lat: null,
+    address_lng: null,
     password: "",
     confirm_password: "",
     agreed: false,
@@ -66,14 +69,27 @@ export default function RegisterPage() {
     return () => clearTimeout(t);
   }, [resendCooldown]);
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
+  const handleNext = (e) => {
+    e?.preventDefault();
     setError("");
 
     const nameRegex = /^[a-zA-Z\s\-]+$/;
 
-    if (!nameRegex.test(form.first_name) || !nameRegex.test(form.last_name)) {
-      return setError("Names must contain only letters");
+    if (
+      !nameRegex.test(form.first_name.trim()) ||
+      !nameRegex.test(form.last_name.trim())
+    ) {
+      return setError("Names must contain only letters.");
+    }
+
+    if (!form.email.trim()) {
+      return setError("Email address is required.");
+    }
+
+    if (form.phone.length !== 10) {
+      return setError(
+        "Phone number must be exactly 10 digits after the +63 prefix.",
+      );
     }
 
     if (form.password !== form.confirm_password) {
@@ -83,6 +99,7 @@ export default function RegisterPage() {
     if (form.password.length < 8) {
       return setError("Password must be at least 8 characters.");
     }
+
     const hasLetters = /[A-Za-z]/.test(form.password);
     const hasNumbers = /[0-9]/.test(form.password);
     const hasSpecial = /[^A-Za-z0-9]/.test(form.password);
@@ -93,15 +110,25 @@ export default function RegisterPage() {
       );
     }
 
+    setError("");
+    setStep("address");
+  };
+
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setError("");
+
+    if (!form.address.trim()) {
+      return setError("Please enter your delivery address.");
+    }
+
+    if (form.address_lat === null || form.address_lng === null) {
+      return setError("Please place the pin at your exact delivery location.");
+    }
+
     if (!form.agreed) {
       return setError(
         "Please agree to the Terms of Service and Privacy Policy to continue.",
-      );
-    }
-
-    if (form.phone.length !== 10) {
-      return setError(
-        "Phone number must be exactly 10 digits after the +63 prefix.",
       );
     }
 
@@ -110,6 +137,7 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
+
     try {
       await register({
         first_name: form.first_name,
@@ -117,6 +145,8 @@ export default function RegisterPage() {
         email: form.email,
         phone: "0" + form.phone,
         address: form.address,
+        address_lat: form.address_lat,
+        address_lng: form.address_lng,
         password: form.password,
         recaptcha_token: captchaToken,
       });
@@ -129,8 +159,10 @@ export default function RegisterPage() {
         err.response?.data?.message || "Registration failed. Please try again.",
       );
 
-      // reset captcha on error
-      if (recaptchaRef.current) recaptchaRef.current.reset();
+      if (recaptchaRef.current) {
+        recaptchaRef.current.reset();
+      }
+
       setCaptchaToken("");
     } finally {
       setLoading(false);
@@ -316,8 +348,21 @@ export default function RegisterPage() {
             </button>
 
             <div className="step-indicator">
-              <div className="step-dot done" />
-              <div className="step-dot active" />
+              <div
+                className={`step-dot ${
+                  step === "form"
+                    ? "active"
+                    : step === "address"
+                      ? "done"
+                      : "done"
+                }`}
+              />
+
+              <div
+                className={`step-dot ${
+                  step === "address" ? "active" : step === "otp" ? "done" : ""
+                }`}
+              />
             </div>
 
             {!changingEmail ? (
@@ -570,238 +615,315 @@ export default function RegisterPage() {
             </button>
           </div>
 
-          <form className="auth-form" onSubmit={handleRegister}>
-            {error && <div className="alert alert-error">{error}</div>}
+          {step === "form" ? (
+            <form className="auth-form" onSubmit={handleNext}>
+              {error && <div className="alert alert-error">{error}</div>}
 
-            <div className="form-row">
-              <div className="field">
-                <label>First Name *</label>
-                <div className="field-input-wrap">
-                  <input
-                    type="text"
-                    className="no-icon"
-                    value={form.first_name}
-                    onChange={(e) => set("first_name", e.target.value)}
-                    placeholder="Juan"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="field">
-                <label>Last Name *</label>
-                <div className="field-input-wrap">
-                  <input
-                    type="text"
-                    className="no-icon"
-                    value={form.last_name}
-                    onChange={(e) => set("last_name", e.target.value)}
-                    placeholder="Dela Cruz"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="field">
-              <label>Email Address *</label>
-              <div className="field-input-wrap">
-                <input
-                  type="email"
-                  className="no-icon"
-                  value={form.email}
-                  onChange={(e) => set("email", e.target.value)}
-                  placeholder="youremail@example.com"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="field">
-              <label>Phone Number *</label>
-              <div className="field-input-wrap">
-                <div className="phone-input-group">
-                  <div className="phone-prefix">
-                    <span>🇵🇭</span> +63
-                  </div>
-                  <input
-                    type="tel"
-                    className="no-icon"
-                    placeholder="9XXXXXXXXX"
-                    value={form.phone}
-                    maxLength={10}
-                    onChange={(e) => {
-                      // 1. Remove non-numeric characters
-                      let val = e.target.value.replace(/\D/g, "");
-                      // 2. If they accidentally start typing 0, slice it off so it starts with 9
-                      if (val.length > 0 && val[0] === "0") val = val.slice(1);
-                      // 3. Limit to 10 digits
-                      if (val.length > 10) val = val.slice(0, 10);
-
-                      set("phone", val);
-                    }}
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="field">
-              <label>Home Address *</label>
-              <div className="field-input-wrap">
-                <input
-                  type="text"
-                  className="no-icon"
-                  value={form.address}
-                  onChange={(e) => set("address", e.target.value)}
-                  placeholder="e.g. Prenza 1, Marilao, Bulacan"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="field">
-              <label>Password *</label>
-              <div className="field-input-wrap">
-                <input
-                  type={showPw ? "text" : "password"}
-                  className="no-icon"
-                  value={form.password}
-                  onChange={(e) => set("password", e.target.value)}
-                  placeholder="Enter your password"
-                  required
-                  style={{ paddingRight: 70 }}
-                />
-                <button
-                  type="button"
-                  className="pw-toggle"
-                  onClick={() => setShowPw((prev) => !prev)}
-                >
-                  {showPw ? "Hide" : "Show"}
-                </button>
-              </div>
-
-              {form.password && (
-                <div className="pw-strength">
-                  <div className="pw-strength-bar">
-                    <div
-                      className="pw-strength-fill"
-                      style={{
-                        width: `${(strength.score / 4) * 100}%`,
-                        background: strength.color,
-                      }}
+              <div className="form-row">
+                <div className="field">
+                  <label>First Name *</label>
+                  <div className="field-input-wrap">
+                    <input
+                      type="text"
+                      className="no-icon"
+                      value={form.first_name}
+                      onChange={(e) => set("first_name", e.target.value)}
+                      placeholder="Juan"
+                      required
                     />
                   </div>
-                  <span
-                    className="pw-strength-label"
-                    style={{ color: strength.color }}
-                  >
-                    {strength.label}
-                  </span>
                 </div>
-              )}
-            </div>
 
-            <div className="field">
-              <label>Confirm Password *</label>
-              <div className="field-input-wrap">
-                <input
-                  type={showCPw ? "text" : "password"}
-                  className="no-icon"
-                  value={form.confirm_password}
-                  onChange={(e) => set("confirm_password", e.target.value)}
-                  placeholder="Re-enter your password"
-                  required
-                  style={{ paddingRight: 70 }}
-                />
-                <button
-                  type="button"
-                  className="pw-toggle"
-                  onClick={() => setShowCPw((prev) => !prev)}
-                >
-                  {showCPw ? "Hide" : "Show"}
-                </button>
+                <div className="field">
+                  <label>Last Name *</label>
+                  <div className="field-input-wrap">
+                    <input
+                      type="text"
+                      className="no-icon"
+                      value={form.last_name}
+                      onChange={(e) => set("last_name", e.target.value)}
+                      placeholder="Dela Cruz"
+                      required
+                    />
+                  </div>
+                </div>
               </div>
 
-              {form.confirm_password && (
-                <div
+              <div className="field">
+                <label>Email Address *</label>
+                <div className="field-input-wrap">
+                  <input
+                    type="email"
+                    className="no-icon"
+                    value={form.email}
+                    onChange={(e) => set("email", e.target.value)}
+                    placeholder="youremail@example.com"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="field">
+                <label>Phone Number *</label>
+                <div className="field-input-wrap">
+                  <div className="phone-input-group">
+                    <div className="phone-prefix">
+                      <span>🇵🇭</span> +63
+                    </div>
+
+                    <input
+                      type="tel"
+                      className="no-icon"
+                      placeholder="9XXXXXXXXX"
+                      value={form.phone}
+                      maxLength={10}
+                      onChange={(e) => {
+                        let val = e.target.value.replace(/\D/g, "");
+
+                        if (val.length > 0 && val[0] === "0") {
+                          val = val.slice(1);
+                        }
+
+                        if (val.length > 10) {
+                          val = val.slice(0, 10);
+                        }
+
+                        set("phone", val);
+                      }}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="field">
+                <label>Password *</label>
+                <div className="field-input-wrap">
+                  <input
+                    type={showPw ? "text" : "password"}
+                    className="no-icon"
+                    value={form.password}
+                    onChange={(e) => set("password", e.target.value)}
+                    placeholder="Enter your password"
+                    required
+                    style={{ paddingRight: 70 }}
+                  />
+
+                  <button
+                    type="button"
+                    className="pw-toggle"
+                    onClick={() => setShowPw((prev) => !prev)}
+                  >
+                    {showPw ? "Hide" : "Show"}
+                  </button>
+                </div>
+
+                {form.password && (
+                  <div className="pw-strength">
+                    <div className="pw-strength-bar">
+                      <div
+                        className="pw-strength-fill"
+                        style={{
+                          width: `${(strength.score / 4) * 100}%`,
+                          background: strength.color,
+                        }}
+                      />
+                    </div>
+
+                    <span
+                      className="pw-strength-label"
+                      style={{ color: strength.color }}
+                    >
+                      {strength.label}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="field">
+                <label>Confirm Password *</label>
+
+                <div className="field-input-wrap">
+                  <input
+                    type={showCPw ? "text" : "password"}
+                    className="no-icon"
+                    value={form.confirm_password}
+                    onChange={(e) => set("confirm_password", e.target.value)}
+                    placeholder="Re-enter your password"
+                    required
+                    style={{ paddingRight: 70 }}
+                  />
+
+                  <button
+                    type="button"
+                    className="pw-toggle"
+                    onClick={() => setShowCPw((prev) => !prev)}
+                  >
+                    {showCPw ? "Hide" : "Show"}
+                  </button>
+                </div>
+
+                {form.confirm_password && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color:
+                        form.password === form.confirm_password
+                          ? "var(--auth-success)"
+                          : "var(--auth-error)",
+                      marginTop: 4,
+                    }}
+                  >
+                    {form.password === form.confirm_password
+                      ? "Passwords match"
+                      : "Passwords do not match"}
+                  </div>
+                )}
+              </div>
+
+              <button type="submit" className="btn-auth">
+                Next
+              </button>
+            </form>
+          ) : step === "address" ? (
+            <form className="auth-form" onSubmit={handleRegister}>
+              {error && <div className="alert alert-error">{error}</div>}
+
+              <div className="auth-card-header">
+                <h2>Delivery Address</h2>
+                <p>Set your default delivery address and exact location.</p>
+              </div>
+
+              <div className="field">
+                <div className="field-input-wrap">
+                  <LocationPicker
+                    label="Home Address"
+                    addressValue={form.address}
+                    onAddressChange={(text) => set("address", text)}
+                    value={
+                      form.address_lat !== null && form.address_lng !== null
+                        ? {
+                            lat: Number(form.address_lat),
+                            lng: Number(form.address_lng),
+                          }
+                        : null
+                    }
+                    onChange={(latlng) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        address_lat: latlng?.lat ?? null,
+                        address_lng: latlng?.lng ?? null,
+                      }))
+                    }
+                    reverseGeocodeOnPin={true}
+                    height={320}
+                  />
+                </div>
+              </div>
+
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "#666",
+                  marginTop: 8,
+                  lineHeight: 1.5,
+                }}
+              >
+                Search for your address, choose a matching result, then make
+                sure the map pin is placed at your exact delivery location.
+              </p>
+
+              <div className="terms-check">
+                <input
+                  type="checkbox"
+                  id="terms"
+                  checked={form.agreed}
+                  onChange={(e) => set("agreed", e.target.checked)}
+                />
+
+                <label htmlFor="terms">
+                  I agree to the{" "}
+                  <a href="/terms" target="_blank" rel="noreferrer">
+                    Terms of Service
+                  </a>{" "}
+                  and{" "}
+                  <a href="/privacy" target="_blank" rel="noreferrer">
+                    Privacy Policy
+                  </a>
+                  .
+                </label>
+              </div>
+
+              <div
+                style={{
+                  margin: "14px 0",
+                }}
+                className="recaptcha-wrap"
+              >
+                <ReCAPTCHA
+                  ref={recaptchaRef}
+                  sitekey={process.env.REACT_APP_RECAPTCHA_SITE_KEY}
+                  onChange={(token) => setCaptchaToken(token || "")}
+                  onExpired={() => setCaptchaToken("")}
+                />
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  marginTop: 10,
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn-auth"
+                  onClick={() => {
+                    setError("");
+                    setStep("form");
+                  }}
                   style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color:
-                      form.password === form.confirm_password
-                        ? "var(--auth-success)"
-                        : "var(--auth-error)",
-                    marginTop: 4,
+                    background: "#fff",
+                    color: "#111",
+                    border: "1px solid #ccc",
                   }}
                 >
-                  {form.password === form.confirm_password
-                    ? "Passwords match"
-                    : "Passwords do not match"}
-                </div>
-              )}
-            </div>
+                  Back
+                </button>
 
-            <div className="terms-check">
-              <input
-                type="checkbox"
-                id="terms"
-                checked={form.agreed}
-                onChange={(e) => set("agreed", e.target.checked)}
-              />
-              <label htmlFor="terms">
-                I agree to the{" "}
-                <a href="/terms" target="_blank" rel="noreferrer">
-                  Terms of Service
-                </a>{" "}
-                and{" "}
-                <a href="/privacy" target="_blank" rel="noreferrer">
-                  Privacy Policy
-                </a>
-                . I understand I need to verify my email before I can log in.
-              </label>
-            </div>
-
-            <div style={{ margin: "14px 0" }} className="recaptcha-wrap">
-              <ReCAPTCHA
-                ref={recaptchaRef}
-                sitekey={process.env.REACT_APP_RECAPTCHA_SITE_KEY}
-                onChange={(token) => setCaptchaToken(token || "")}
-                onExpired={() => setCaptchaToken("")}
-              />
-            </div>
-
-            <button
-              type="submit"
-              className={`btn-auth ${!form.agreed || !captchaToken || loading ? "btn-auth-disabled" : ""}`}
-              disabled={loading || !form.agreed || !captchaToken}
-              title={
-                !form.agreed
-                  ? "Please agree to the Terms of Service and Privacy Policy first."
-                  : ""
-              }
-            >
-              {loading ? (
-                <>
-                  <svg
-                    className="spinner-icon"
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                  >
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                  </svg>
-                  Creating account...
-                </>
-              ) : (
-                "Create Account"
-              )}
-            </button>
-          </form>
+                <button
+                  type="submit"
+                  className={`btn-auth ${
+                    !form.agreed || !captchaToken || loading
+                      ? "btn-auth-disabled"
+                      : ""
+                  }`}
+                  disabled={loading || !form.agreed || !captchaToken}
+                >
+                  {loading ? (
+                    <>
+                      <svg
+                        className="spinner-icon"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                      >
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                      </svg>
+                      Creating account...
+                    </>
+                  ) : (
+                    "Create Account"
+                  )}
+                </button>
+              </div>
+            </form>
+          ) : null}
 
           <div className="auth-switch">
             Already have an account?{" "}
