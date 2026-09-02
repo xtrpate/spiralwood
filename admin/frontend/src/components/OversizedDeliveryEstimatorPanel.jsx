@@ -13,10 +13,7 @@ const mm = (value) =>
   })} mm`;
 
 const hasAssessmentNote = (decision = {}) =>
-  Boolean(
-    String(decision.reason || "").trim() ||
-      String(decision.truck_type || "").trim(),
-  );
+  Boolean(String(decision.reason || "").trim());
 
 const isSavedDecisionComplete = (payload = null) => {
   const assessment = payload?.assessment;
@@ -54,7 +51,6 @@ const buildDraftDecision = (form = {}, assessment = null) => {
     .trim()
     .toLowerCase();
   const reason = String(form.reason || "").trim();
-  const truckType = String(form.truck_type || "").trim();
   const feeText = String(form.additional_delivery_fee ?? "").trim();
   const parsedFee = feeText === "" ? Number.NaN : Number(feeText);
   const feeIsValid =
@@ -71,7 +67,7 @@ const buildDraftDecision = (form = {}, assessment = null) => {
     assessmentStatus === "standard" ||
     (assessmentStatus === "oversized" &&
       ["fee_required", "no_additional_fee"].includes(decision) &&
-      Boolean(reason || truckType) &&
+      Boolean(reason) &&
       (decision !== "fee_required" || feeIsValid));
 
   return {
@@ -79,7 +75,6 @@ const buildDraftDecision = (form = {}, assessment = null) => {
     decision,
     additional_delivery_fee: additionalDeliveryFee,
     reason,
-    truck_type: truckType,
     complete,
   };
 };
@@ -97,9 +92,7 @@ const isDraftSameAsSaved = (draft = {}, saved = {}) => {
     String(draft.decision || "").trim().toLowerCase() === savedDecision &&
     Number(draft.additional_delivery_fee || 0) === savedFee &&
     String(draft.reason || "").trim() ===
-      String(saved.reason || "").trim() &&
-    String(draft.truck_type || "").trim() ===
-      String(saved.truck_type || "").trim()
+      String(saved.reason || "").trim()
   );
 };
 
@@ -115,7 +108,6 @@ export default function OversizedDeliveryEstimatorPanel({
     decision: "pending",
     additional_delivery_fee: "",
     reason: "",
-    truck_type: "",
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -144,8 +136,9 @@ export default function OversizedDeliveryEstimatorPanel({
           Number(savedDecision.additional_delivery_fee || 0) > 0
             ? String(savedDecision.additional_delivery_fee)
             : "",
-        reason: String(savedDecision.reason || ""),
-        truck_type: String(savedDecision.truck_type || ""),
+        reason: String(
+          savedDecision.reason || savedDecision.truck_type || "",
+        ),
       });
     } catch (requestError) {
       const statusCode = Number(requestError?.response?.status || 0);
@@ -346,7 +339,7 @@ export default function OversizedDeliveryEstimatorPanel({
         active: true,
         readyForQuote: false,
         message:
-          "Complete the oversized-delivery decision, then click Save Estimate.",
+          "Complete the oversized-delivery decision, then save the estimate.",
       };
     }
 
@@ -355,7 +348,7 @@ export default function OversizedDeliveryEstimatorPanel({
         active: true,
         readyForQuote: false,
         message:
-          "Click Save Estimate to save the quotation and delivery fee together.",
+          "Save the estimate to save the quotation and delivery fee together.",
       };
     }
 
@@ -385,9 +378,22 @@ export default function OversizedDeliveryEstimatorPanel({
 
   useEffect(() => {
     if (typeof onGateChange === "function") {
-      onGateChange(gate);
+      onGateChange({
+        ...gate,
+        dirty: Boolean(
+          payload?.estimation?.id &&
+            assessmentStatus === "oversized" &&
+            !draftMatchesSaved
+        ),
+      });
     }
-  }, [gate, onGateChange]);
+  }, [
+    assessmentStatus,
+    draftMatchesSaved,
+    gate,
+    onGateChange,
+    payload?.estimation?.id,
+  ]);
 
 
   if (notApplicable) {
@@ -428,8 +434,8 @@ export default function OversizedDeliveryEstimatorPanel({
             <div style={warningTitle}>Delivery Capacity</div>
             <p style={warningText}>
               {totalOrderedUnits > 1
-                ? "The ordered quantity fits within the estimated standard truck capacity. No additional delivery arrangement is required."
-                : "This design fits within the standard truck capacity. No additional delivery arrangement is required."}
+                ? "The ordered quantity fits within the estimated standard truck capacity. No additional delivery fee is required."
+                : "This design fits within the standard truck capacity. No additional delivery fee is required."}
             </p>
           </div>
           <div style={savedBadge}>Standard fit</div>
@@ -510,8 +516,8 @@ export default function OversizedDeliveryEstimatorPanel({
           <div style={warningTitle}>Delivery Capacity Review</div>
           <p style={warningText}>
             {hasQuantityCapacityIssue
-              ? "The ordered quantity exceeds the estimated standard truck capacity. Confirm the delivery arrangement and any additional fee before sending the quotation."
-              : "This design exceeds the standard truck capacity. Confirm the delivery arrangement and any additional fee before sending the quotation."}
+              ? "The ordered quantity exceeds the estimated standard truck capacity. Review the delivery requirements and any additional fee before sending the quotation."
+              : "This design exceeds the standard truck capacity. Review the delivery requirements and any additional fee before sending the quotation."}
           </p>
         </div>
 
@@ -651,7 +657,7 @@ export default function OversizedDeliveryEstimatorPanel({
             <div style={subHeading}>Delivery Decision</div>
 
             <div style={fieldGrid}>
-              <div style={{ gridColumn: "1 / -1" }}>
+              <div style={{ width: "100%", maxWidth: 520 }}>
                 <label style={label}>Decision</label>
                 <select
                   value={form.decision}
@@ -683,7 +689,7 @@ export default function OversizedDeliveryEstimatorPanel({
               </div>
 
               {form.decision === "fee_required" && (
-                <div>
+                <div style={{ width: "100%", maxWidth: 260 }}>
                   <label style={label}>Additional Delivery Fee</label>
                   <div style={moneyInputWrap}>
                     <span style={moneyPrefix}>₱</span>
@@ -727,31 +733,16 @@ export default function OversizedDeliveryEstimatorPanel({
                 </div>
               )}
 
-              <div>
-                <label style={label}>Delivery Arrangement</label>
-                <input
-                  value={form.truck_type}
-                  maxLength={100}
-                  onChange={(event) =>
-                    !readOnly &&
-                    setForm((current) => ({
-                      ...current,
-                      truck_type: event.target.value,
-                    }))
-                  }
-                  disabled={readOnly}
-                  style={{
-                    ...input,
-                    ...(readOnly ? disabledInput : {}),
-                  }}
-                  placeholder="e.g. 14-foot truck or third-party delivery vehicle"
-                />
-              </div>
-
-              <div style={{ gridColumn: "1 / -1" }}>
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  width: "100%",
+                  maxWidth: 760,
+                }}
+              >
                 <label style={label}>Assessment Notes</label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   maxLength={500}
                   value={form.reason}
                   onChange={(event) =>
@@ -767,7 +758,7 @@ export default function OversizedDeliveryEstimatorPanel({
                     resize: "vertical",
                     ...(readOnly ? disabledInput : {}),
                   }}
-                  placeholder="Describe the delivery requirement and explain the fee decision."
+                  placeholder="Describe the delivery requirement, vehicle needs if any, and explain the fee decision."
                 />
               </div>
             </div>
@@ -790,8 +781,8 @@ export default function OversizedDeliveryEstimatorPanel({
                   {readOnly
                     ? "This delivery decision is locked because the quotation has already been sent or finalized."
                     : estimation?.id
-                      ? "Changes to the delivery decision will be saved when you click Save Estimate."
-                      : "The estimate and delivery decision will be created together when you click Save Estimate."}
+                      ? "Changes to the delivery decision will be saved with the estimate."
+                      : "The estimate and delivery decision will be created together when you save."}
                 </span>
               </div>
             </div>
@@ -960,8 +951,10 @@ const formSection = {
 
 const fieldGrid = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-  gap: 16,
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 520px))",
+  gap: 14,
+  justifyContent: "start",
+  alignItems: "start",
 };
 
 const label = {
@@ -974,8 +967,8 @@ const label = {
 
 const input = {
   width: "100%",
-  minHeight: 42,
-  padding: "10px 12px",
+  minHeight: 38,
+  padding: "8px 10px",
   border: "1px solid #d2d2d6",
   borderRadius: 4,
   boxSizing: "border-box",

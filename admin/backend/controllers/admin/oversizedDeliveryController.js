@@ -435,10 +435,10 @@ exports.saveDecisionByBlueprint = async (req, res) => {
     });
   }
 
-  if (!reason && !truckType) {
+  if (!reason) {
     return res.status(400).json({
       message:
-        "Enter a reason or truck type for the oversized-delivery decision.",
+        "Assessment notes are required for the oversized-delivery decision.",
     });
   }
 
