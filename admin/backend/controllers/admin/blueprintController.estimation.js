@@ -78,12 +78,12 @@ const checkQuotationInventoryReadiness = async (
       return;
     }
 
-    if (!Number.isFinite(quantity) || quantity <= 0) {
+    if (!Number.isSafeInteger(quantity) || quantity < 1) {
       issues.push({
         code: "INVALID_INVENTORY_QUANTITY",
         material_id: materialId,
         item_index: index,
-        message: `Required Inventory Material row ${index + 1} must have a quantity greater than 0.`,
+        message: `Required Inventory Material row ${index + 1} must have a whole-number quantity of at least 1.`,
       });
       return;
     }

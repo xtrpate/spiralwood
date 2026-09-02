@@ -368,8 +368,18 @@ export default function CustomCartPage() {
     setEditSaving(false);
 
     const params = new URLSearchParams(location.search);
+    const returnTo = String(params.get("returnTo") || "").trim();
+
+    /* Only the known checkout route is allowed as a return target.
+       Save, X, and backdrop close all use this same close path. */
+    if (returnTo === "custom-checkout") {
+      navigate("/custom-checkout", { replace: true });
+      return;
+    }
+
     if (params.has("edit")) {
       params.delete("edit");
+      params.delete("returnTo");
       const nextSearch = params.toString();
       const nextUrl =
         location.pathname + (nextSearch ? "?" + nextSearch : "");
@@ -1047,7 +1057,7 @@ export default function CustomCartPage() {
                 cursor: selectedItems.length ? "pointer" : "not-allowed",
               }}
             >
-              Continue with Selected Design
+              Proceed to Quotation
             </button>
           </div>
         </div>

@@ -148,7 +148,22 @@ function validateEstimationItems(items = []) {
       );
     }
 
-    if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1000000) {
+    const requiresWholeQuantity =
+      sourceType === "inventory_material" || sourceType === "other";
+
+    if (
+      requiresWholeQuantity &&
+      (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 1000000)
+    ) {
+      throw createValidationError(
+        `${rowLabel}: Quantity must be a whole number of at least 1.`,
+      );
+    }
+
+    if (
+      !requiresWholeQuantity &&
+      (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1000000)
+    ) {
       throw createValidationError(
         `${rowLabel}: Quantity must be greater than 0 and within the allowed range.`,
       );

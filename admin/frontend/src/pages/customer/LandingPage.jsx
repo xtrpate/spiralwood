@@ -1202,6 +1202,27 @@ export default function LandingPage() {
             }
           }
 
+          /* WISDOM HOMEPAGE LAPTOP BALANCE BATCH 1 STABLE V1.4.5 */
+          @media (min-width: 1081px) and (max-width: 1536px) {
+            .wisdom-home-clean-hero {
+              padding-left: clamp(30px, 3.6vw, 56px);
+              padding-right: clamp(30px, 3.6vw, 56px);
+            }
+
+            .wisdom-home-clean-hero__inner {
+              grid-template-columns: minmax(340px, 0.9fr) minmax(0, 1.1fr);
+              gap: clamp(34px, 4vw, 62px);
+            }
+
+            .wisdom-home-clean-hero__copy {
+              max-width: 530px;
+            }
+
+            .wisdom-home-clean-hero__visual {
+              justify-self: center;
+            }
+          }
+
           @media (max-width: 1080px) {
             .wisdom-home-clean-hero {
               min-height: auto;
@@ -2007,6 +2028,34 @@ export default function LandingPage() {
           .wisdom-home-editorial__secondary:hover {
             background: #ffffff;
             color: #111111;
+          }
+
+          /* WISDOM HOMEPAGE LAPTOP BALANCE BATCH 1 STABLE V1.4.5 */
+          @media (min-width: 1021px) and (max-width: 1536px) {
+            .wisdom-home-editorial__inner {
+              width: min(100% - 40px, 1400px);
+              min-height: clamp(540px, 66vh, 670px);
+              grid-template-columns: minmax(0, 1fr) minmax(320px, 0.82fr);
+              gap: clamp(36px, 4.4vw, 68px);
+              padding: clamp(62px, 6vw, 88px) 0;
+            }
+
+            .wisdom-home-editorial__section.is-reverse
+              .wisdom-home-editorial__inner {
+              grid-template-columns: minmax(320px, 0.82fr) minmax(0, 1fr);
+            }
+
+            .wisdom-home-editorial__visual {
+              min-height: 350px;
+            }
+
+            .wisdom-home-editorial__copy {
+              width: min(100%, 490px);
+            }
+
+            .wisdom-home-editorial__image {
+              max-height: 500px;
+            }
           }
 
           @media (max-width: 1020px) {

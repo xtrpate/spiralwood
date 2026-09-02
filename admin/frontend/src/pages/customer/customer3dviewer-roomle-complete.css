@@ -1205,3 +1205,90 @@
     flex-basis: 44px;
   }
 }
+
+/* WISDOM SHARED ROOMLE OVERLAY VIEWPORT BATCH 1 FINAL STABLE V1.4.5
+   Both the full-screen Customize workspace and the Edit Saved Design workspace
+   keep a full-width Three.js stage. The 400px Options panel overlays the right
+   side instead of resizing the stage. Hide/Show therefore cannot change canvas
+   width or recenter the furniture. */
+@media (min-width: 901px) {
+  .cust-modal-customize .wisdom-roomle-configurator,
+  .custom-review-edit-body .wisdom-roomle-configurator {
+    position: relative !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100% !important;
+    min-height: 0 !important;
+  }
+
+  .cust-modal-customize
+    .wisdom-roomle-configurator.wisdom-sidebar-collapsed,
+  .custom-review-edit-body
+    .wisdom-roomle-configurator.wisdom-sidebar-collapsed {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .cust-modal-customize .wisdom-roomle-stage,
+  .custom-review-edit-body .wisdom-roomle-stage {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .cust-modal-customize .wisdom-roomle-sidebar,
+  .custom-review-edit-body .wisdom-roomle-sidebar {
+    position: absolute !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 400px !important;
+    max-width: 400px !important;
+    z-index: 110 !important;
+  }
+
+  .cust-modal-customize
+    .wisdom-sidebar-collapsed
+    .wisdom-roomle-sidebar,
+  .custom-review-edit-body
+    .wisdom-sidebar-collapsed
+    .wisdom-roomle-sidebar {
+    width: 0 !important;
+    max-width: 0 !important;
+    min-width: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    border-left: 0 !important;
+  }
+
+  .cust-modal-customize .wisdom-roomle-sidebar-toggle-visible,
+  .custom-review-edit-body .wisdom-roomle-sidebar-toggle-visible {
+    right: 410px !important;
+    z-index: 130 !important;
+  }
+
+  .cust-modal-customize
+    .wisdom-sidebar-collapsed
+    .wisdom-roomle-sidebar-toggle-visible,
+  .custom-review-edit-body
+    .wisdom-sidebar-collapsed
+    .wisdom-roomle-sidebar-toggle-visible {
+    right: 12px !important;
+  }
+
+  /* WISDOM EDIT SAVED DESIGN MODAL SIZE CONTRACT V1.4.5
+     This editor is contained rather than full-screen, so give it a concrete
+     height. Inside that height it uses the exact same overlay behavior. */
+  .custom-review-edit-body .wisdom-roomle-root.is-customize {
+    width: 100% !important;
+    height: clamp(560px, calc(94vh - 118px), 760px) !important;
+    min-height: 560px !important;
+  }
+
+  .custom-review-edit-body .wisdom-roomle-configurator,
+  .custom-review-edit-body .wisdom-roomle-stage,
+  .custom-review-edit-body .customer-3d-viewer-canvas-wrap {
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+}
