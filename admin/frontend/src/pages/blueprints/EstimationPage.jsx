@@ -631,9 +631,9 @@ const getValidationErrors = ({ items = [], costs = {} } = {}) => {
     }
     if (
       !isInventoryItem(item) &&
-      (!Number.isFinite(Number(item.unit_cost)) || Number(item.unit_cost) <= 0)
+      (!Number.isFinite(Number(item.unit_cost)) || Number(item.unit_cost) < 0.01)
     ) {
-      errors.push(`${label}: Rate must be greater than 0.`);
+      errors.push(`${label}: Rate must be at least 0.01.`);
     }
     if (
       isInventoryItem(item) &&
@@ -996,11 +996,11 @@ const getInventoryAvailability = (item = {}, material = null) => {
     ? Math.max(0, reorderValue)
     : 0;
 
-  if (!Number.isFinite(requiredValue) || requiredValue <= 0) {
+  if (!Number.isSafeInteger(requiredValue) || requiredValue < 1) {
     return {
       state: "invalid",
       label: "Enter quantity",
-      detail: "Required quantity must be greater than 0.",
+      detail: "Required quantity must be a whole number of at least 1.",
       unit,
       available,
       required: requiredValue,
@@ -1070,10 +1070,10 @@ const getQuotationInventoryIssues = (inventoryItems = [], rawMaterials = []) => 
       return;
     }
 
-    if (!Number.isFinite(quantity) || quantity <= 0) {
+    if (!Number.isSafeInteger(quantity) || quantity < 1) {
       issues.push({
         code: "INVALID_INVENTORY_QUANTITY",
-        message: `Required material row ${index + 1} needs a quantity greater than 0.`,
+        message: `Required material row ${index + 1} needs a whole-number quantity of at least 1.`,
       });
       return;
     }
@@ -1432,6 +1432,12 @@ function EstimateTable({
                               ? "0.0001"
                               : "0.01"
                         }
+                        inputMode={
+                          section === "inventory" || section === "other"
+                            ? "numeric"
+                            : "decimal"
+                        }
+                        required={!readOnly}
                         value={item.quantity}
                         onChange={(event) => {
                           const nextValue = event.target.value;
@@ -1494,8 +1500,9 @@ function EstimateTable({
                       <td style={td}>
                         <input
                           type="number"
-                          min="0"
+                          min={isInventory ? "0" : "0.01"}
                           step="0.01"
+                          required={!readOnly && !isInventory}
                           value={item.unit_cost}
                           onChange={(event) =>
                             onUpdate(

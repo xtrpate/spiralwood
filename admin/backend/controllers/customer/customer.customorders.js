@@ -473,6 +473,11 @@ const normalizeCustomOrderItem = (row = {}) => {
       toTrimmedStringOrNull(custom.finish_color),
     door_style: toTrimmedStringOrNull(custom.door_style),
     hardware: toTrimmedStringOrNull(custom.hardware),
+    assembly_choice: ["included", "none"].includes(
+      String(custom.assembly_choice || "").trim().toLowerCase(),
+    )
+      ? String(custom.assembly_choice).trim().toLowerCase()
+      : null,
 
     width: toPositiveNumberOrNull(custom.width),
     height: toPositiveNumberOrNull(custom.height),
@@ -507,6 +512,7 @@ exports.createCustomOrder = async (req, res) => {
     delivery_lat,
     delivery_lng,
     notes,
+    assembly_choice,
     design_review_confirmed,
   } = parsedBody;
 
@@ -526,6 +532,17 @@ exports.createCustomOrder = async (req, res) => {
     return res.status(400).json({
       message:
         "Please review and confirm the exact custom design before submitting the request.",
+    });
+  }
+
+  const cleanAssemblyChoice = String(assembly_choice || "")
+    .trim()
+    .toLowerCase();
+
+  if (!["included", "none"].includes(cleanAssemblyChoice)) {
+    return res.status(400).json({
+      message:
+        "Please choose whether you want the free assembly service before submitting the request.",
     });
   }
 
@@ -607,6 +624,7 @@ exports.createCustomOrder = async (req, res) => {
       color: toTrimmedStringOrNull(item.color || item.finish_color),
       door_style: toTrimmedStringOrNull(item.door_style),
       hardware: toTrimmedStringOrNull(item.hardware),
+      assembly_choice: cleanAssemblyChoice,
 
       width: toPositiveNumberOrNull(item.width),
       height: toPositiveNumberOrNull(item.height),
@@ -718,6 +736,7 @@ exports.createCustomOrder = async (req, res) => {
         color: item.color,
         door_style: item.door_style,
         hardware: item.hardware,
+        assembly_choice: item.assembly_choice,
         width: item.width,
         height: item.height,
         depth: item.depth,

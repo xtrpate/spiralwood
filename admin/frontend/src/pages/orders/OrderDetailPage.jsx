@@ -1952,6 +1952,16 @@ export default function OrderDetailPage() {
                           label="Quantity"
                           value={String(item.quantity || 1)}
                         />
+                        <MiniInfo
+                          label="Assembly"
+                          value={
+                            item.requested_assembly_choice === "included"
+                              ? "Included (Free)"
+                              : item.requested_assembly_choice === "none"
+                                ? "Not Requested"
+                                : "Not specified"
+                          }
+                        />
                       </div>
 
                       {item.requested_comments ? (

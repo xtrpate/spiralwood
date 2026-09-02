@@ -103,6 +103,11 @@ const normalizeCustomRequestItem = (item = {}) => {
       customization?.finish_color || customization?.color || "",
     requested_door_style: customization?.door_style || "",
     requested_hardware: customization?.hardware || "",
+    requested_assembly_choice: ["included", "none"].includes(
+      normalize(customization?.assembly_choice),
+    )
+      ? normalize(customization?.assembly_choice)
+      : "",
     requested_width: Number(customization?.width) || 0,
     requested_height: Number(customization?.height) || 0,
     requested_depth: Number(customization?.depth) || 0,
@@ -199,6 +204,11 @@ const buildCustomRequestBlueprintPayload = ({
       customization?.finish_color || customization?.color || "",
     requested_door_style: customization?.door_style || "",
     requested_hardware: customization?.hardware || "",
+    requested_assembly_choice: ["included", "none"].includes(
+      normalize(customization?.assembly_choice),
+    )
+      ? normalize(customization?.assembly_choice)
+      : "",
     requested_width: Number(customization?.width) || 0,
     requested_height: Number(customization?.height) || 0,
     requested_depth: Number(customization?.depth) || 0,

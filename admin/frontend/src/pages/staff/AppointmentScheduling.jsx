@@ -97,6 +97,17 @@ const toYMD = (dateObj) => {
   )}-${String(dateObj.getDate()).padStart(2, "0")}`;
 };
 
+const getAppointmentFilterDateYMD = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  const directMatch = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (directMatch) return directMatch[1];
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "" : toYMD(parsed);
+};
+
 const getStartOfWeek = (d) => {
   const date = new Date(d);
   const day = date.getDay();
@@ -627,6 +638,7 @@ export default function AppointmentScheduling() {
   const [focusedAppointmentId, setFocusedAppointmentId] = useState(null);
   const [adminSearch, setAdminSearch] = useState("");
   const [adminServiceFilter, setAdminServiceFilter] = useState("all");
+  const [adminDateFilter, setAdminDateFilter] = useState("");
   const [adminActiveTab, setAdminActiveTab] = useState("new");
 
   const [form, setForm] = useState({
@@ -1035,6 +1047,15 @@ export default function AppointmentScheduling() {
       return false;
     }
 
+    if (
+      adminDateFilter &&
+      getAppointmentFilterDateYMD(
+        appointment.preferred_date || appointment.scheduled_date,
+      ) !== adminDateFilter
+    ) {
+      return false;
+    }
+
     const keyword = adminSearch.trim().toLowerCase();
     if (!keyword) return true;
 
@@ -1071,7 +1092,9 @@ export default function AppointmentScheduling() {
             : 0;
 
   const hasAdminFilters =
-    Boolean(adminSearch.trim()) || adminServiceFilter !== "all";
+    Boolean(adminSearch.trim()) ||
+    adminServiceFilter !== "all" ||
+    Boolean(adminDateFilter);
 
   const renderRequestRefCell = (appointment) => (
     <td style={tdStyle}>
@@ -1303,12 +1326,25 @@ export default function AppointmentScheduling() {
                 <option value="installation">Installation</option>
               </select>
 
+              <input
+                type="date"
+                value={adminDateFilter}
+                onChange={(event) => setAdminDateFilter(event.target.value)}
+                style={{
+                  ...adminFilterSelectStyle,
+                  width: 156,
+                  minWidth: 156,
+                }}
+                aria-label="Filter appointments by date"
+              />
+
               <button
                 type="button"
                 style={btnGhost}
                 onClick={() => {
                   setAdminSearch("");
                   setAdminServiceFilter("all");
+                  setAdminDateFilter("");
                 }}
               >
                 Reset

@@ -171,10 +171,10 @@ function validateEstimationItems(items = []) {
 
     if (
       sourceType !== "inventory_material" &&
-      (!Number.isFinite(unitCost) || unitCost <= 0 || unitCost > 100000000)
+      (!Number.isFinite(unitCost) || unitCost < 0.01 || unitCost > 100000000)
     ) {
       throw createValidationError(
-        `${rowLabel}: Rate must be greater than 0 and within the allowed range.`,
+        `${rowLabel}: Rate must be at least 0.01 and within the allowed range.`,
       );
     }
 

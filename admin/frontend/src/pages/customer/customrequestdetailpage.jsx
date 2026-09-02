@@ -2557,6 +2557,14 @@ export default function CustomRequestDetailPage() {
                                   Qty {Math.max(1, Number(item.quantity || 1))}
                                 </span>
 
+                                {item.assembly_choice ? (
+                                  <span className="custom-spec-tag">
+                                    {item.assembly_choice === "included"
+                                      ? "Assembly Included (Free)"
+                                      : "No Assembly Requested"}
+                                  </span>
+                                ) : null}
+
                                 {item.wood_type && (
                                   <span className="custom-spec-tag">
                                     {prettifyText(item.wood_type, item.wood_type)}
