@@ -70,7 +70,7 @@ const CUSTOMIZE_GUIDE_STEPS = [
     label: "Choose Finish",
     title: "Choose a finish",
     instruction:
-      "Choose the wood finish or color you want. You can apply it to the full design or only the selected part.",
+      "Choose one of the available wood finishes. You can apply it to the full design or only the selected part.",
   },
   {
     label: "Review Design",
@@ -285,41 +285,6 @@ const toCustomerPartTitle = (value = "") =>
     .trim()
     .replace(/\b\w/g, (match) => match.toUpperCase());
 
-const isCustomerFixedDrawerStructure = (component = {}) => {
-  const type = String(component?.type || "").trim().toLowerCase();
-  const role = String(component?.partRole || component?.part_role || "")
-    .trim()
-    .toLowerCase();
-  const text = [
-    component?.type,
-    component?.label,
-    component?.name,
-    component?.partRole,
-    component?.part_role,
-    component?.partCode,
-    component?.technicalId,
-    component?.category,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .trim()
-    .toLowerCase();
-
-  const fixedShelfLike =
-    role === "shelf" ||
-    role.endsWith("_shelf") ||
-    type === "wr_shelf" ||
-    type === "wr_top_shelf" ||
-    type.endsWith("_shelf");
-
-  const fixedDrawerTopLike =
-    /\bdrawer\s+chest\s+top\b/.test(text) ||
-    /\bdrawer\s+cabinet\s+top\b/.test(text) ||
-    /\bdrawer\s+unit\s+top\b/.test(text);
-
-  return fixedShelfLike || fixedDrawerTopLike;
-};
-
 const getCustomerPartGroupLabel = (component = {}) => {
   const text = [
     component?.type,
@@ -338,11 +303,6 @@ const getCustomerPartGroupLabel = (component = {}) => {
     .toLowerCase();
 
   if (!text) return "Other Parts";
-
-  if (isCustomerFixedDrawerStructure(component)) {
-    if (text.includes("shelf")) return "Shelves";
-    return "Top";
-  }
 
   if (
     text.includes("handle") ||
@@ -921,144 +881,6 @@ const buildCustomerDrawerPreviewSets = (items = []) => {
     .filter((set) => set.movableMembers.length > 0 && set.reference);
 };
 
-const CUSTOMER_INDIVIDUAL_EDIT_GROUPS = new Set([
-  "Drawers",
-  "Doors",
-  "Shelves",
-]);
-
-const customerIdsMatch = (left = [], right = []) => {
-  if (!Array.isArray(left) || !Array.isArray(right)) return false;
-  if (left.length !== right.length) return false;
-  const a = [...left].map(String).sort();
-  const b = [...right].map(String).sort();
-  return a.every((value, index) => value === b[index]);
-};
-
-const getCustomerTargetLabel = (prefix, index, component = {}) => {
-  const source = toCustomerPartTitle(
-    component?.label || component?.name || component?.type || "",
-  );
-
-  if (prefix === "Door" && /\b(left|right)\b/i.test(source)) return source;
-  if (source && new RegExp("^" + prefix + "\\s*\\d+$", "i").test(source)) {
-    return source;
-  }
-
-  return prefix + " " + (index + 1);
-};
-
-const buildCustomerEditTargets = (items = [], groups = []) => {
-  const components = Array.isArray(items) ? items : [];
-  const targets = [];
-  const claimedIds = new Set();
-
-  const pushTarget = ({ key, groupLabel, label, mode, ids, dimensionEditable }) => {
-    const safeIds = [...new Set((ids || []).map(String).filter(Boolean))];
-    if (!safeIds.length) return;
-
-    safeIds.forEach((id) => claimedIds.add(id));
-    targets.push({
-      key,
-      groupLabel,
-      label,
-      mode,
-      ids: safeIds,
-      dimensionEditable: Boolean(dimensionEditable),
-    });
-  };
-
-  buildCustomerDrawerPreviewSets(components).forEach((set, index) => {
-    const ids = (set?.movableMembers || []).map((item) => String(item?.id || ""));
-    if (!ids.length) return;
-    pushTarget({
-      key: "drawer:" + String(set?.key || index),
-      groupLabel: "Drawers",
-      label: getCustomerTargetLabel("Drawer", index, set?.reference || {}),
-      mode: "individual",
-      ids,
-      // Multi-board drawers need coordinated cabinet-safe resizing in #4/#5.
-      dimensionEditable: ids.length === 1,
-    });
-  });
-
-  buildCustomerDoorPreviewSets(components).forEach((set, index) => {
-    const ids = (set?.members || []).map((item) => String(item?.id || ""));
-    if (!ids.length) return;
-    pushTarget({
-      key: "door:" + String(set?.key || index),
-      groupLabel: "Doors",
-      label: getCustomerTargetLabel("Door", index, set?.reference || {}),
-      mode: "individual",
-      ids,
-      dimensionEditable: ids.length === 1,
-    });
-  });
-
-  const shelfGroup = (groups || []).find((group) => group?.label === "Shelves");
-  (shelfGroup?.ids || []).forEach((id, index) => {
-    const safeId = String(id || "");
-    if (!safeId || claimedIds.has(safeId)) return;
-    const component = components.find((item) => String(item?.id) === safeId) || {};
-    pushTarget({
-      key: "shelf:" + safeId,
-      groupLabel: "Shelves",
-      label: getCustomerTargetLabel("Shelf", index, component),
-      mode: "individual",
-      ids: [safeId],
-      dimensionEditable: true,
-    });
-  });
-
-  (groups || []).forEach((group) => {
-    const groupLabel = String(group?.label || "Other Parts");
-    let remainingIds = (group?.ids || [])
-      .map(String)
-      .filter((id) => id && !claimedIds.has(id));
-
-    if (!remainingIds.length) return;
-
-    if (CUSTOMER_INDIVIDUAL_EDIT_GROUPS.has(groupLabel)) {
-      // Drawer pieces are exposed only when the existing drawer resolver can
-      // prove they belong to one functional drawer module. Unknown raw drawer
-      // boards stay protected instead of becoming accidental single-part edits.
-      if (groupLabel === "Drawers") return;
-
-      remainingIds.forEach((id, index) => {
-        const component = components.find((item) => String(item?.id) === id) || {};
-        const prefix =
-          groupLabel === "Drawers"
-            ? "Drawer"
-            : groupLabel === "Doors"
-              ? "Door"
-              : "Shelf";
-        pushTarget({
-          key: groupLabel.toLowerCase() + ":" + id,
-          groupLabel,
-          label: getCustomerTargetLabel(prefix, index, component),
-          mode: "individual",
-          ids: [id],
-          dimensionEditable: true,
-        });
-      });
-      return;
-    }
-
-    pushTarget({
-      key: "group:" + groupLabel,
-      groupLabel,
-      label: groupLabel,
-      mode: "group",
-      ids: remainingIds,
-      // Adviser-approved group resizing is currently limited to matching legs.
-      // Other structural groups stay grouped but size-locked until safe rules exist.
-      dimensionEditable: groupLabel === "Legs",
-    });
-  });
-
-  return targets;
-};
-
 export default function Customer3DViewer({
   initialComponents = [],
   initialDimensions = null,
@@ -1121,10 +943,6 @@ export default function Customer3DViewer({
     normalizeViewerComponents(initialComponents),
   );
   const [selectedCompIds, setSelectedCompIds] = useState([]);
-  const [previewCompIds, setPreviewCompIds] = useState([]);
-  const highlightedCompIds = selectedCompIds.length
-    ? selectedCompIds
-    : previewCompIds;
   const [doorsPreviewOpen, setDoorsPreviewOpen] = useState(false);
   const [drawersPreviewOpen, setDrawersPreviewOpen] = useState(false);
 
@@ -1142,7 +960,6 @@ export default function Customer3DViewer({
   const [personHeightMm, setPersonHeightMm] = useState(1700);
   const [selectionMode, setSelectionMode] = useState(false);
   const [activeView, setActiveView] = useState("3D");
-  const [customHex, setCustomHex] = useState("#1e293b");
   const [finishMenuOpen, setFinishMenuOpen] = useState(false);
   const [showMeasurements, setShowMeasurements] = useState(true);
   const [partListVisible, setPartListVisible] = useState(false);
@@ -1277,11 +1094,6 @@ export default function Customer3DViewer({
       return String(a.label || "").localeCompare(String(b.label || ""));
     });
   }, [components]);
-
-  const editTargets = useMemo(
-    () => buildCustomerEditTargets(components, partGroups),
-    [components, partGroups],
-  );
 
   const pushHistorySnapshot = useCallback((snapshot) => {
     historyRef.current.past.push(cloneDeep(snapshot));
@@ -1443,14 +1255,6 @@ export default function Customer3DViewer({
         group.ids.some((id) => selectedCompIds.includes(id)),
       ) || null,
     [partGroups, selectedCompIds],
-  );
-
-  const selectedEditTarget = useMemo(
-    () =>
-      editTargets.find((target) =>
-        customerIdsMatch(target?.ids || [], selectedCompIds),
-      ) || null,
-    [editTargets, selectedCompIds],
   );
 
   useEffect(() => {
@@ -1786,9 +1590,8 @@ export default function Customer3DViewer({
 
   // 👉 SEPARATE EFFECT FOR SELECTION CLICKS
   useEffect(() => {
-    if (readOnly || !selectionMode) return undefined;
     if (!rendererRef.current || !cameraRef.current || !rootGroupRef.current)
-      return undefined;
+      return;
     const renderer = rendererRef.current;
     const camera = cameraRef.current;
     const rootGroup = rootGroupRef.current;
@@ -1818,38 +1621,28 @@ export default function Customer3DViewer({
       raycaster.setFromCamera(mouse, camera);
       const intersects = raycaster.intersectObjects(rootGroup.children, true);
 
-      let clickedId = "";
-
-      for (const hit of intersects) {
-        let obj = hit.object;
+      if (intersects.length > 0) {
+        let obj = intersects[0].object;
         while (obj && !obj.userData?.id && obj.parent) {
           obj = obj.parent;
         }
 
-        const candidateId = String(obj?.userData?.id || "").trim();
-        if (candidateId && components.some((c) => String(c?.id) === candidateId)) {
-          clickedId = candidateId;
-          break;
+        if (obj?.userData?.id) {
+          const clickedId = obj.userData.id;
+          const target = components.find((c) => c.id === clickedId);
+          if (target) {
+            const semanticGroup = partGroups.find((group) =>
+              group.ids.includes(clickedId),
+            );
+            setSelectedCompIds(
+              semanticGroup?.ids?.length
+                ? semanticGroup.ids
+                : [clickedId],
+            );
+          }
         }
-      }
-
-      const editTarget = clickedId
-        ? editTargets.find((target) =>
-            (target?.ids || []).some((id) => String(id) === clickedId),
-          )
-        : null;
-
-      if (editTarget?.ids?.length) {
-        setPreviewCompIds([]);
-        setSelectedCompIds(editTarget.ids);
-        showCustomizeFeedback(
-          editTarget.dimensionEditable
-            ? editTarget.label + " selected."
-            : editTarget.label + " selected as a group. Size editing is locked for safety.",
-        );
       } else {
-        setSelectedCompIds([]);
-        setPreviewCompIds([]); // Empty space or a protected/unavailable component.
+        setSelectedCompIds([]); // Clicked empty space
       }
     };
 
@@ -1864,8 +1657,7 @@ export default function Customer3DViewer({
     selectionMode,
     readOnly,
     components,
-    editTargets,
-    showCustomizeFeedback,
+    partGroups,
     doorsPreviewOpen,
     drawersPreviewOpen,
   ]);
@@ -3288,9 +3080,9 @@ export default function Customer3DViewer({
     });
     selectionHelpersRef.current = [];
 
-    if (!highlightedCompIds.length) return;
+    if (!selectedCompIds.length) return;
 
-    highlightedCompIds.forEach((id) => {
+    selectedCompIds.forEach((id) => {
       let target = null;
       rootGroupRef.current.traverse((child) => {
         if (
@@ -3312,7 +3104,7 @@ export default function Customer3DViewer({
         selectionHelpersRef.current.push(helper);
       }
     });
-  }, [highlightedCompIds, components]);
+  }, [selectedCompIds, components]);
 
   // BUILD THE PERSON
   useEffect(() => {
@@ -3714,13 +3506,7 @@ export default function Customer3DViewer({
   };
 
   const commitPartDimension = (axis, rawUnitValue) => {
-    if (
-      !isCustomizable ||
-      readOnly ||
-      !selectedGroup.length ||
-      !selectedEditTarget?.dimensionEditable
-    )
-      return;
+    if (!isCustomizable || readOnly || !selectedGroup.length) return;
 
     const parsedMmValue = convertUnitToMm(rawUnitValue, unit);
     const currentValueMm = Number(sampleSelectedPart?.[axis] || 0);
@@ -3804,37 +3590,6 @@ export default function Customer3DViewer({
           woodFinish: finishId || "",
           finish_color: previewHex || c.finish_color || "",
           color_mode: finishId ? "wood" : "",
-        };
-      }),
-    );
-  };
-
-  const handleColorChange = (hex) => {
-    if (!isCustomizable || readOnly || !editable.finish_color) return;
-    if (isHexColor(hex)) {
-      setCustomizeProgressStep((current) => Math.max(current, 5));
-      showCustomizeFeedback("Color applied. Review your design.");
-    } else {
-      setCustomizeProgressStep((current) => Math.max(current, 4));
-    }
-    setCustomHex(hex);
-
-    const targetIds = selectedCompIds.length
-      ? selectedCompIds
-      : components.map((c) => c.id);
-
-    commitComponents((prev) =>
-      prev.map((c) => {
-        if (!targetIds.includes(c.id)) return c;
-        return {
-          ...c,
-          fill: hex,
-          color: hex,
-          finish_color: hex,
-          finish: "",
-          finish_id: "",
-          woodFinish: "",
-          color_mode: "solid",
         };
       }),
     );
@@ -4768,9 +4523,6 @@ export default function Customer3DViewer({
                     const groupSelected = group.ids.some((id) =>
                       selectedCompIds.includes(id),
                     );
-                    const groupHighlighted = group.ids.some((id) =>
-                      highlightedCompIds.includes(id),
-                    );
 
                     const showAll = expandedFinishGroupLabel === group.label;
                     const previewFinishes = getFinishPreviewChoices(
@@ -4790,7 +4542,7 @@ export default function Customer3DViewer({
                         key={group.label}
                         className={
                           "wisdom-config-section wisdom-config-part-section" +
-                          (groupHighlighted ? " is-selected" : "")
+                          (groupSelected ? " is-selected" : "")
                         }
                       >
                         <div className="wisdom-config-section-head wisdom-config-section-head-static">
@@ -4798,11 +4550,10 @@ export default function Customer3DViewer({
                             type="button"
                             className="wisdom-config-part-title-btn"
                             onClick={() => {
-                              setSelectedCompIds([]);
-                              setPreviewCompIds(group.ids || []);
+                              setSelectedCompIds(group.ids || []);
                               showCustomizeFeedback(
-                                String(group.label || "Furniture parts") +
-                                  " highlighted. Use Edit Design to change it.",
+                                String(group.label || "Furniture part") +
+                                  " selected.",
                               );
                             }}
                           >
@@ -4815,9 +4566,9 @@ export default function Customer3DViewer({
                             </span>
                           </button>
 
-                          {groupHighlighted ? (
+                          {groupSelected ? (
                             <span className="wisdom-config-selected-pill">
-                              {groupSelected ? "Selected" : "Highlighted"}
+                              Selected
                             </span>
                           ) : null}
                         </div>
@@ -4835,6 +4586,7 @@ export default function Customer3DViewer({
                               (!groupFinishId ? " is-active" : "")
                             }
                             onClick={() => {
+                              setSelectedCompIds(group.ids || []);
                               handleFinishChange("", group.ids || []);
                             }}
                           >
@@ -4857,6 +4609,7 @@ export default function Customer3DViewer({
                                   : "")
                               }
                               onClick={() => {
+                                setSelectedCompIds(group.ids || []);
                                 handleFinishChange(
                                   finish.id,
                                   group.ids || [],
@@ -4910,52 +4663,6 @@ export default function Customer3DViewer({
                 </>
               ) : null}
 
-              <section className="wisdom-config-section wisdom-custom-color-section">
-                <div className="wisdom-config-section-head">
-                  <div>
-                    <div className="wisdom-config-section-title">
-                      CUSTOM COLOR
-                    </div>
-                    <div className="wisdom-config-section-note">
-                      {selectedPartGroup
-                        ? "Applies to " + selectedPartGroup.label
-                        : "Applies to the whole furniture"}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="wisdom-custom-color-row">
-                  <input
-                    type="color"
-                    value={customHex}
-                    onChange={(event) =>
-                      handleColorChange(event.target.value)
-                    }
-                    className="wisdom-custom-color-picker"
-                    disabled={readOnly || !editable.finish_color}
-                    aria-label="Custom color"
-                  />
-
-                  <input
-                    type="text"
-                    value={customHex}
-                    onChange={(event) =>
-                      setCustomHex(event.target.value)
-                    }
-                    onBlur={(event) =>
-                      handleColorChange(event.target.value)
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        handleColorChange(event.target.value);
-                      }
-                    }}
-                    className="wisdom-custom-color-text"
-                    placeholder="#HexCode"
-                    disabled={readOnly || !editable.finish_color}
-                  />
-                </div>
-              </section>
               <div
                 className="wisdom-legacy-customize-heading"
                 style={styles.customizeOptionalToolsHeading}
@@ -5012,54 +4719,43 @@ export default function Customer3DViewer({
                 {selectionMode ? (
                   <>
                     <div style={styles.helperText}>
-                      Editing mode is on. Legs and structural parts stay
-                      grouped. Only supported drawers, doors, and shelves can
-                      be selected individually.
+                      Editing mode is on. Select a part in the 3D preview, or
+                      choose one from the list below.
                     </div>
 
                     <select
-                      value={selectedEditTarget?.key || ""}
+                      value={
+                        selectedCompIds.length
+                          ? String(
+                              partGroups.findIndex((group) =>
+                                group.ids.some((id) =>
+                                  selectedCompIds.includes(id),
+                                ),
+                              ),
+                            )
+                          : ""
+                      }
                       onChange={(e) => {
-                        const targetKey = String(e.target.value || "").trim();
-                        const target = editTargets.find(
-                          (item) => item.key === targetKey,
-                        );
-
-                        if (!target?.ids?.length) {
+                        const index = Number(e.target.value);
+                        if (!Number.isInteger(index) || index < 0) {
                           setSelectedCompIds([]);
-                          setPreviewCompIds([]);
                           return;
                         }
 
-                        setPreviewCompIds([]);
-                        setSelectedCompIds(target.ids);
-                        showCustomizeFeedback(
-                          target.dimensionEditable
-                            ? target.label + " selected."
-                            : target.label + " selected as a group. Size editing is locked for safety.",
-                        );
+                        const group = partGroups[index];
+                        setSelectedCompIds(group?.ids || []);
+                        if (group?.ids?.length) {
+                          showCustomizeFeedback("Furniture part selected.");
+                        }
                       }}
                       style={styles.partGroupSelect}
                     >
                       <option value="">Choose a furniture part</option>
-                      {partGroups.map((group) => {
-                        const groupTargets = editTargets.filter(
-                          (target) => target.groupLabel === group.label,
-                        );
-                        if (!groupTargets.length) return null;
-
-                        return (
-                          <optgroup key={`edit_${group.label}`} label={group.label}>
-                            {groupTargets.map((target) => (
-                              <option key={target.key} value={target.key}>
-                                {target.mode === "group" && target.ids.length > 1
-                                  ? target.label + " (" + target.ids.length + " parts)"
-                                  : target.label}
-                              </option>
-                            ))}
-                          </optgroup>
-                        );
-                      })}
+                      {partGroups.map((group, index) => (
+                        <option key={`${group.label}_${index}`} value={index}>
+                          {group.label} ({group.ids.length})
+                        </option>
+                      ))}
                     </select>
                   </>
                 ) : (
@@ -5082,10 +4778,7 @@ export default function Customer3DViewer({
                 >
                   <div style={styles.sectionRow}>
                     <label style={styles.label}>
-                      {selectedEditTarget?.mode === "group"
-                        ? "Selected Group: " + selectedEditTarget.label
-                        : "Selected Part: " +
-                          (selectedEditTarget?.label || "Furniture part")}
+                      Selected Parts: {selectedGroup.length}
                     </label>
 
                     <button
@@ -5105,7 +4798,6 @@ export default function Customer3DViewer({
                       <input
                         type="number"
                         value={partDrafts.width}
-                        disabled={!selectedEditTarget?.dimensionEditable}
                         onChange={(e) =>
                           setPartDrafts((prev) => ({
                             ...prev,
@@ -5131,7 +4823,6 @@ export default function Customer3DViewer({
                       <input
                         type="number"
                         value={partDrafts.height}
-                        disabled={!selectedEditTarget?.dimensionEditable}
                         onChange={(e) =>
                           setPartDrafts((prev) => ({
                             ...prev,
@@ -5157,7 +4848,6 @@ export default function Customer3DViewer({
                       <input
                         type="number"
                         value={partDrafts.depth}
-                        disabled={!selectedEditTarget?.dimensionEditable}
                         onChange={(e) =>
                           setPartDrafts((prev) => ({
                             ...prev,
@@ -5265,7 +4955,7 @@ export default function Customer3DViewer({
                 }}
               >
                 <div style={styles.sectionRow}>
-                  <label style={styles.label}>Finish & Color</label>
+                  <label style={styles.label}>Wood Finish</label>
                   {selectedGroup.length > 0 ? (
                     <span style={styles.pill}>Applies to selection</span>
                   ) : null}
@@ -5299,7 +4989,7 @@ export default function Customer3DViewer({
                           }}
                         />
                         <span style={styles.finishOptionLabel}>
-                          {activeWoodFinish?.label || "Original / Custom"}
+                          {activeWoodFinish?.label || "Original"}
                         </span>
                       </span>
 
@@ -5332,7 +5022,7 @@ export default function Customer3DViewer({
                               }}
                             />
                             <span style={styles.finishOptionLabel}>
-                              Original / Custom
+                              Original
                             </span>
                           </span>
                         </button>
@@ -5377,28 +5067,6 @@ export default function Customer3DViewer({
                   </div>
                 </div>
 
-                <div style={styles.colorPickerRow}>
-                  <input
-                    type="color"
-                    value={customHex}
-                    onChange={(e) => handleColorChange(e.target.value)}
-                    style={styles.colorPicker}
-                    disabled={readOnly || !editable.finish_color}
-                  />
-
-                  <input
-                    type="text"
-                    value={customHex}
-                    onChange={(e) => setCustomHex(e.target.value)}
-                    onBlur={(e) => handleColorChange(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleColorChange(e.target.value);
-                    }}
-                    placeholder="#HexCode"
-                    style={{ ...styles.input, fontFamily: "monospace" }}
-                    disabled={readOnly || !editable.finish_color}
-                  />
-                </div>
               </section>
 
               <section
