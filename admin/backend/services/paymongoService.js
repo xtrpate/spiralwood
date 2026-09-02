@@ -1,6 +1,24 @@
 const axios = require("axios");
 
 const PAYMONGO_URL = "https://api.paymongo.com/v1/checkout_sessions";
+
+const formatPhilippinePhoneForPayMongo = (phone) => {
+  const value = String(phone || "").replace(/\D/g, "");
+
+  if (value.startsWith("639") && value.length === 12) {
+    return `0${value.slice(2)}`;
+  }
+
+  if (value.startsWith("09") && value.length === 11) {
+    return value;
+  }
+
+  if (value.startsWith("9") && value.length === 10) {
+    return `0${value}`;
+  }
+
+  return String(phone || "");
+};
 const MIN_TIMEOUT_MS = 5000;
 const MAX_TIMEOUT_MS = 30000;
 
@@ -58,7 +76,7 @@ exports.createCheckoutSession = async ({
         billing: {
           name: customer?.name || "",
           email: customer?.email || "",
-          phone: customer?.phone || "",
+          phone: formatPhilippinePhoneForPayMongo(customer?.phone),
         },
         send_email_receipt: false,
         show_description: true,
