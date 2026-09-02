@@ -2629,12 +2629,9 @@ exports.assignStaff = async (req, res) => {
 
 /**
  * PATCH /orders/:id/reassign-staff
- * Transfers pending production tasks to a new primary indoor staff member.
- * Rejects the whole operation if any task is in_progress or blocked.
- * Completed tasks and their history are never touched. Operates per
- * eligible task row rather than assuming a single existing assignee, so it
- * also correctly resolves a packet whose pending tasks are currently split
- * across more than one assignee.
+ * Transfers pending and explicitly on-hold production tasks to a new primary
+ * indoor staff member. An actively in-progress step must be put on hold first.
+ * Completed tasks and their historical ownership are never touched.
  */
 exports.reassignStaff = async (req, res) => {
   const parseStrictPositiveInt = (value) => {
@@ -2753,7 +2750,8 @@ exports.reassignStaff = async (req, res) => {
     }
 
     const [packet] = await conn.query(
-      `SELECT id, task_role, status, assigned_to, assigned_by, order_id, blueprint_id
+      `SELECT id, task_role, status, assigned_to, assigned_by, order_id, blueprint_id,
+              accepted_at, completed_at
        FROM project_tasks
        WHERE order_id = ?
        ORDER BY id
@@ -2819,15 +2817,15 @@ exports.reassignStaff = async (req, res) => {
       });
     }
 
-    const blockingRow = packet.find((row) =>
-      ["in_progress", "blocked"].includes(normalize(row.status)),
+    const activeRow = packet.find(
+      (row) => normalize(row.status) === "in_progress",
     );
-    if (blockingRow) {
+    if (activeRow) {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
         message:
-          "Active or blocked production steps must be resolved before staff can be reassigned.",
+          "Put the active production step on hold before reassigning the remaining work.",
       });
     }
 
@@ -2845,7 +2843,8 @@ exports.reassignStaff = async (req, res) => {
 
     const eligibleRows = packet.filter(
       (row) =>
-        normalize(row.status) === "pending" && row.assigned_to !== newStaffId,
+        ["pending", "blocked"].includes(normalize(row.status)) &&
+        row.assigned_to !== newStaffId,
     );
 
     if (eligibleRows.length === 0) {
@@ -2853,7 +2852,7 @@ exports.reassignStaff = async (req, res) => {
       transactionActive = false;
       return res.status(200).json({
         message:
-          "The selected staff member is already assigned to all remaining pending production steps.",
+          "The selected staff member is already assigned to all remaining production steps.",
       });
     }
 
@@ -2861,9 +2860,9 @@ exports.reassignStaff = async (req, res) => {
     for (const row of eligibleRows) {
       const [result] = await conn.query(
         `UPDATE project_tasks
-         SET assigned_to = ?, assigned_by = ?, accepted_at = NULL, updated_at = NOW()
-         WHERE id = ? AND status = 'pending' AND assigned_to = ?`,
-        [newStaffId, req.user.id, row.id, row.assigned_to],
+         SET assigned_to = ?, assigned_by = ?, updated_at = NOW()
+         WHERE id = ? AND status = ? AND assigned_to = ?`,
+        [newStaffId, req.user.id, row.id, row.status, row.assigned_to],
       );
       totalAffected += result.affectedRows;
     }
@@ -2891,11 +2890,13 @@ exports.reassignStaff = async (req, res) => {
       staffNameById = new Map(nameRows.map((row) => [row.id, row.name]));
     }
 
+    const orderLabel = order.order_number || "Order #" + orderId;
+
     await createNotification(conn, {
       userId: newStaffId,
       type: "assignment",
       title: "Production Steps Reassigned to You",
-      message: `You have been assigned ${eligibleRows.length} remaining production step(s) for ${order.order_number || `Order #${orderId}`}.`,
+      message: `You have been assigned ${eligibleRows.length} remaining production step(s) for ${orderLabel}. Any on-hold step remains on hold until you resume it.`,
       targetType: "task",
       targetId: eligibleRows[0].id,
       targetOrderId: orderId,
@@ -2904,8 +2905,9 @@ exports.reassignStaff = async (req, res) => {
     const lostByStaff = new Map();
     for (const row of eligibleRows) {
       if (!row.assigned_to) continue;
-      if (!lostByStaff.has(row.assigned_to))
+      if (!lostByStaff.has(row.assigned_to)) {
         lostByStaff.set(row.assigned_to, []);
+      }
       lostByStaff.get(row.assigned_to).push(row.task_role);
     }
 
@@ -2917,7 +2919,7 @@ exports.reassignStaff = async (req, res) => {
         userId: oldStaffId,
         type: "assignment",
         title: "Reassigned Off Production Steps",
-        message: `You have been reassigned off ${roles.length} pending production step(s) for ${order.order_number || `Order #${orderId}`}. Your completed work remains on record.`,
+        message: `You have been reassigned off ${roles.length} remaining production step(s) for ${orderLabel}. Your completed work remains on record.`,
         targetType: "task",
         targetId: firstLostRow ? firstLostRow.id : null,
         targetOrderId: orderId,
@@ -2931,6 +2933,7 @@ exports.reassignStaff = async (req, res) => {
       previous_staff_id: row.assigned_to,
       previous_staff_name: staffNameById.get(row.assigned_to) || null,
       previous_assigned_by: row.assigned_by,
+      accepted_at: row.accepted_at || null,
     }));
 
     const completedTasksPreserved = packet
@@ -2941,6 +2944,7 @@ exports.reassignStaff = async (req, res) => {
         status: row.status,
         assigned_staff_id: row.assigned_to,
         assigned_staff_name: staffNameById.get(row.assigned_to) || null,
+        completed_at: row.completed_at || null,
       }));
 
     const auditRecord = {
@@ -2966,10 +2970,10 @@ exports.reassignStaff = async (req, res) => {
     };
 
     const responseBody = {
-      message: `${eligibleRows.length} production step(s) reassigned successfully.`,
+      message: eligibleRows.length + " production step(s) reassigned successfully.",
       transferred_task_ids: eligibleRows.map((row) => row.id),
       preserved_completed_task_ids: completedTasksPreserved.map(
-        (t) => t.task_id,
+        (task) => task.task_id,
       ),
     };
 
@@ -3054,10 +3058,24 @@ exports.updateTaskStatus = async (req, res) => {
     const orderId = parseInt(req.params.id);
     const taskId = parseInt(req.params.taskId);
     const { status } = req.body;
+    const holdReason = String(req.body?.hold_reason || "").trim();
 
     const valid = ["pending", "in_progress", "completed", "blocked"];
     if (!valid.includes(status)) {
       return res.status(400).json({ message: "Invalid task status." });
+    }
+
+    if (status === "blocked") {
+      if (!holdReason) {
+        return res.status(400).json({
+          message: "A reason is required before putting production work on hold.",
+        });
+      }
+      if (holdReason.length > 500) {
+        return res.status(400).json({
+          message: "Hold reason must be 500 characters or fewer.",
+        });
+      }
     }
 
     const [[task]] = await pool.query(
@@ -3098,11 +3116,16 @@ exports.updateTaskStatus = async (req, res) => {
           ? null
           : task.completed_at;
 
+    let acceptedAt = task.accepted_at || null;
+    if (!acceptedAt && nextStatus === "in_progress") {
+      acceptedAt = new Date();
+    }
+
     const [result] = await pool.query(
       `UPDATE project_tasks
-       SET status = ?, completed_at = ?, is_read = 1, updated_at = NOW()
+       SET status = ?, completed_at = ?, accepted_at = ?, is_read = 1, updated_at = NOW()
        WHERE id = ? AND order_id = ? AND status = ?`,
-      [status, completedAt, taskId, orderId, task.status],
+      [status, completedAt, acceptedAt, taskId, orderId, task.status],
     );
 
     if (result.affectedRows !== 1) {
@@ -3114,10 +3137,34 @@ exports.updateTaskStatus = async (req, res) => {
 
     req.auditRecord = {
       id: taskId,
-      old: { status: currentStatus },
-      new: { status: nextStatus },
+      old: {
+        status: currentStatus,
+        accepted_at: task.accepted_at || null,
+        completed_at: task.completed_at || null,
+      },
+      new: {
+        status: nextStatus,
+        accepted_at: acceptedAt,
+        completed_at: completedAt,
+        ...(nextStatus === "blocked" ? { hold_reason: holdReason } : {}),
+      },
     };
-    res.json({ message: "Task status updated successfully." });
+
+    res.json({
+      message:
+        nextStatus === "blocked"
+          ? "Production step put on hold."
+          : nextStatus === "in_progress" && currentStatus === "blocked"
+            ? "Production step resumed."
+            : "Task status updated successfully.",
+      task: {
+        id: taskId,
+        status: nextStatus,
+        accepted_at: acceptedAt,
+        completed_at: completedAt,
+        hold_reason: nextStatus === "blocked" ? holdReason : null,
+      },
+    });
   } catch (err) {
     console.error("orders.updateTaskStatus:", err);
     res.status(500).json({ message: "Failed to update task status." });

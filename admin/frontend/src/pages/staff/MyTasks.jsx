@@ -19,7 +19,7 @@ const FILTERS = [
   { key: "all", label: "All" },
   { key: "assigned", label: "Assigned" },
   { key: "in_progress", label: "In Production" },
-  { key: "blocked", label: "Blocked" },
+  { key: "blocked", label: "On Hold" },
   { key: "ready", label: "Ready" },
 ];
 
@@ -46,7 +46,7 @@ const STEP_STATUS_META = {
     bg: "#ffffff",
     color: "#991b1b",
     border: "#d8a3a3",
-    label: "Blocked",
+    label: "On Hold",
   },
 };
 
@@ -67,7 +67,7 @@ const ORDER_STATUS_META = {
     bg: "#ffffff",
     color: "#991b1b",
     border: "#d8a3a3",
-    label: "Blocked",
+    label: "On Hold",
   },
   ready: {
     bg: "#18181b",
@@ -156,6 +156,9 @@ export default function MyTasks() {
   const [expandedOrderKey, setExpandedOrderKey] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [focusedTaskId, setFocusedTaskId] = useState(null);
+  const [holdTarget, setHoldTarget] = useState(null);
+  const [holdReason, setHoldReason] = useState("");
+  const [holdSaving, setHoldSaving] = useState(false);
 
   const loadTasks = async () => {
     setLoading(true);
@@ -164,14 +167,10 @@ export default function MyTasks() {
       const { data } = await api.get("/tasks");
       const safeList = Array.isArray(data) ? data : [];
 
-      const visible =
-        user?.role === "admin"
-          ? safeList
-          : safeList.filter(
-              (task) => Number(task.assigned_to) === Number(user?.id),
-            );
-
-      setTasks(visible);
+      // The backend already scopes staff to complete production packets.
+      // Do not filter rows again here: prior completed steps may belong to a
+      // previous staff member and are required for correct sequence/progress.
+      setTasks(safeList);
     } catch (err) {
       toast.error(
         err?.response?.data?.message || "Failed to load production work.",
@@ -185,11 +184,16 @@ export default function MyTasks() {
     loadTasks();
   }, []); // eslint-disable-line
 
-  const updateTaskStatus = async (taskId, status) => {
+  const updateTaskStatus = async (taskId, status, options = {}) => {
     try {
       setBusyId(taskId);
 
-      const { data } = await api.put(`/tasks/${taskId}/status`, { status });
+      const payload = { status };
+      if (status === "blocked") {
+        payload.hold_reason = String(options.holdReason || "").trim();
+      }
+
+      const { data } = await api.put(`/tasks/${taskId}/status`, payload);
 
       setTasks((previous) =>
         previous.map((task) =>
@@ -198,17 +202,61 @@ export default function MyTasks() {
                 ...task,
                 ...(data?.task || {}),
                 status,
+                hold_reason:
+                  status === "blocked"
+                    ? payload.hold_reason
+                    : status === "in_progress"
+                      ? null
+                      : task.hold_reason,
               }
             : task,
         ),
       );
+
+      if (data?.message) toast.success(data.message);
+      return true;
     } catch (err) {
       toast.error(
         err?.response?.data?.message || "Failed to update production step.",
       );
+      return false;
     } finally {
       setBusyId(null);
     }
+  };
+
+  const openHoldDialog = (task) => {
+    if (!task) return;
+    setHoldTarget(task);
+    setHoldReason("");
+  };
+
+  const closeHoldDialog = () => {
+    if (holdSaving) return;
+    setHoldTarget(null);
+    setHoldReason("");
+  };
+
+  const submitHold = async () => {
+    const reason = holdReason.trim();
+    if (!reason) {
+      toast.error("Please enter a reason before putting this work on hold.");
+      return;
+    }
+    if (reason.length > 500) {
+      toast.error("Hold reason must be 500 characters or fewer.");
+      return;
+    }
+
+    setHoldSaving(true);
+    const saved = await updateTaskStatus(holdTarget.id, "blocked", {
+      holdReason: reason,
+    });
+    if (saved) {
+      setHoldTarget(null);
+      setHoldReason("");
+    }
+    setHoldSaving(false);
   };
 
   const groupedOrders = useMemo(() => {
@@ -427,7 +475,7 @@ export default function MyTasks() {
           emphasized
         />
         <SummaryCard
-          label="Blocked"
+          label="On Hold"
           value={summary.blocked}
           danger={summary.blocked > 0}
         />
@@ -609,6 +657,11 @@ export default function MyTasks() {
                             step.task &&
                             Number(focusedTaskId) === Number(step.task.id);
 
+                          const isOwnedByCurrentUser =
+                            user?.role === "admin" ||
+                            (step.task &&
+                              Number(step.task.assigned_to) === Number(user?.id));
+
                           return (
                             <div
                               key={step.stepLabel}
@@ -636,10 +689,29 @@ export default function MyTasks() {
                                   <div style={stepHint}>
                                     Waiting for task assignment
                                   </div>
+                                ) : !isOwnedByCurrentUser ? (
+                                  <div style={stepHint}>
+                                    {step.status === "completed"
+                                      ? `Completed by ${step.task.assigned_to_name || "previous staff"}`
+                                      : `Assigned to ${step.task.assigned_to_name || "another staff member"}`}
+                                  </div>
                                 ) : step.status === "pending" &&
                                   !canStartThisStep ? (
                                   <div style={stepHint}>
                                     Finish {previousStep} first
+                                  </div>
+                                ) : null}
+
+                                {step.status === "blocked" &&
+                                step.task?.hold_reason ? (
+                                  <div
+                                    style={{
+                                      ...stepHint,
+                                      color: "#991b1b",
+                                      marginTop: 4,
+                                    }}
+                                  >
+                                    Hold reason: {step.task.hold_reason}
                                   </div>
                                 ) : null}
                               </div>
@@ -656,7 +728,7 @@ export default function MyTasks() {
                                   {stepMeta.label}
                                 </span>
 
-                                {step.task ? (
+                                {step.task && isOwnedByCurrentUser ? (
                                   <div style={stepActions}>
                                     {step.status === "pending" &&
                                     canStartThisStep ? (
@@ -705,12 +777,7 @@ export default function MyTasks() {
 
                                         <button
                                           type="button"
-                                          onClick={() =>
-                                            updateTaskStatus(
-                                              step.task.id,
-                                              "blocked",
-                                            )
-                                          }
+                                          onClick={() => openHoldDialog(step.task)}
                                           disabled={busyId === step.task.id}
                                           style={
                                             busyId === step.task.id
@@ -720,7 +787,7 @@ export default function MyTasks() {
                                         >
                                           {busyId === step.task.id
                                             ? "Saving..."
-                                            : "Report Blocker"}
+                                            : "Put on Hold"}
                                         </button>
                                       </>
                                     ) : null}
@@ -743,7 +810,7 @@ export default function MyTasks() {
                                       >
                                         {busyId === step.task.id
                                           ? "Saving..."
-                                          : "Resume"}
+                                          : "Resume Work"}
                                       </button>
                                     ) : null}
                                   </div>
@@ -767,6 +834,129 @@ export default function MyTasks() {
           </div>
         )}
       </section>
+
+      {holdTarget ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            background: "rgba(0, 0, 0, 0.48)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={closeHoldDialog}
+        >
+          <div
+            style={{
+              width: 520,
+              maxWidth: "100%",
+              background: "#ffffff",
+              border: "1px solid #d4d4d8",
+              padding: 22,
+              boxSizing: "border-box",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3
+              style={{
+                margin: 0,
+                fontSize: 19,
+                color: "#18181b",
+                lineHeight: 1.25,
+              }}
+            >
+              Put production step on hold
+            </h3>
+            <p
+              style={{
+                margin: "7px 0 18px",
+                color: "#71717a",
+                fontSize: 12.5,
+                lineHeight: 1.5,
+              }}
+            >
+              {holdTarget.task_role || holdTarget.title}. Add a short reason so
+              the admin and any reassigned staff can see why work paused.
+            </p>
+
+            <label
+              htmlFor="production-hold-reason"
+              style={{
+                display: "block",
+                marginBottom: 6,
+                color: "#3f3f46",
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+            >
+              Reason for putting this work on hold *
+            </label>
+            <textarea
+              id="production-hold-reason"
+              value={holdReason}
+              maxLength={500}
+              autoFocus
+              onChange={(event) => setHoldReason(event.target.value)}
+              placeholder="Example: Cutting machine unavailable. Work will continue tomorrow."
+              style={{
+                width: "100%",
+                minHeight: 110,
+                resize: "vertical",
+                border: "1px solid #d4d4d8",
+                padding: 10,
+                boxSizing: "border-box",
+                fontFamily: "inherit",
+                fontSize: 12.5,
+                color: "#18181b",
+                outline: "none",
+              }}
+            />
+            <div
+              style={{
+                marginTop: 5,
+                textAlign: "right",
+                color: "#71717a",
+                fontSize: 10.5,
+              }}
+            >
+              {holdReason.length}/500
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 8,
+                marginTop: 18,
+              }}
+            >
+              <button
+                type="button"
+                onClick={closeHoldDialog}
+                disabled={holdSaving}
+                style={secondaryButton}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitHold}
+                disabled={holdSaving || !holdReason.trim()}
+                style={
+                  holdSaving || !holdReason.trim()
+                    ? disabledButton
+                    : dangerButton
+                }
+              >
+                {holdSaving ? "Saving..." : "Put on Hold"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
