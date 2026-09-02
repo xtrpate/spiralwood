@@ -202,6 +202,30 @@ const isFilledItem = (item = {}) =>
     normalizeText(item.note),
   );
 
+const buildEditableEstimateSignature = (rows = [], editableCosts = {}) =>
+  JSON.stringify({
+    items: rows.filter(isFilledItem).map((item) => ({
+      component_id: item.component_id ? Number(item.component_id) : null,
+      raw_material_id: item.raw_material_id
+        ? Number(item.raw_material_id)
+        : null,
+      name: normalizeText(item.name),
+      quantity: Number(item.quantity || 0),
+      unit: normalizeText(item.unit || "pc") || "pc",
+      unit_cost: Number(item.unit_cost || 0),
+      note: normalizeText(item.note),
+      source_key: normalizeText(item.source_key),
+      source_type:
+        normalizeText(item.source_type || "") ||
+        (item.raw_material_id ? "inventory_material" : "other"),
+    })),
+    labor_cost: Number(editableCosts.labor_cost || 0),
+    overhead_cost: Number(editableCosts.overhead_cost || 0),
+    tax_rate: Number(editableCosts.tax_rate || 0),
+    discount: Number(editableCosts.discount || 0),
+    notes: normalizeText(editableCosts.notes),
+  });
+
 const isInventoryItem = (item = {}) =>
   String(item.source_type || "")
     .trim()
@@ -607,9 +631,9 @@ const getValidationErrors = ({ items = [], costs = {} } = {}) => {
     }
     if (
       !isInventoryItem(item) &&
-      (!Number.isFinite(Number(item.unit_cost)) || Number(item.unit_cost) <= 0)
+      (!Number.isFinite(Number(item.unit_cost)) || Number(item.unit_cost) < 0.01)
     ) {
-      errors.push(`${label}: Rate must be greater than 0.`);
+      errors.push(`${label}: Rate must be at least 0.01.`);
     }
     if (
       isInventoryItem(item) &&
@@ -972,11 +996,11 @@ const getInventoryAvailability = (item = {}, material = null) => {
     ? Math.max(0, reorderValue)
     : 0;
 
-  if (!Number.isFinite(requiredValue) || requiredValue <= 0) {
+  if (!Number.isSafeInteger(requiredValue) || requiredValue < 1) {
     return {
       state: "invalid",
       label: "Enter quantity",
-      detail: "Required quantity must be greater than 0.",
+      detail: "Required quantity must be a whole number of at least 1.",
       unit,
       available,
       required: requiredValue,
@@ -1041,15 +1065,15 @@ const getQuotationInventoryIssues = (inventoryItems = [], rawMaterials = []) => 
     if (!Number.isSafeInteger(materialId) || materialId <= 0) {
       issues.push({
         code: "INVENTORY_MATERIAL_NOT_SELECTED",
-        message: `Required Inventory Material row ${index + 1} needs an inventory item.`,
+        message: `Required material row ${index + 1} needs an inventory item.`,
       });
       return;
     }
 
-    if (!Number.isFinite(quantity) || quantity <= 0) {
+    if (!Number.isSafeInteger(quantity) || quantity < 1) {
       issues.push({
         code: "INVALID_INVENTORY_QUANTITY",
-        message: `Required Inventory Material row ${index + 1} needs a quantity greater than 0.`,
+        message: `Required material row ${index + 1} needs a whole-number quantity of at least 1.`,
       });
       return;
     }
@@ -1173,7 +1197,7 @@ function EstimateTable({
             disabled={readOnly}
             style={readOnly ? { ...btnAdd, ...btnDisabled } : btnAdd}
           >
-            {section === "inventory" ? "Add Required Material" : "Add Additional Item"}
+            {section === "inventory" ? "Add Material" : "Add Additional Item"}
           </button>
         )}
       </div>
@@ -1184,7 +1208,7 @@ function EstimateTable({
             <tr style={tableHeadRow}>
               <th style={{ ...th, width: "5%" }}>No.</th>
               <th style={{ ...th, width: isInventory ? "30%" : "28%" }}>
-                {isInventory ? "Inventory Material" : "Description"}
+                {isInventory ? "Material" : "Description"}
               </th>
               {isInventory && (
                 <th style={{ ...th, width: "13%" }}>Available</th>
@@ -1275,9 +1299,6 @@ function EstimateTable({
                             {rawMaterials.map((material) => (
                               <option key={material.id} value={material.id}>
                                 {material.name}
-                                {getInventoryPhysicalSpec(material)
-                                  ? ` — ${getInventoryPhysicalSpec(material)}`
-                                  : ""}
                               </option>
                             ))}
                           </select>
@@ -1411,6 +1432,12 @@ function EstimateTable({
                               ? "0.0001"
                               : "0.01"
                         }
+                        inputMode={
+                          section === "inventory" || section === "other"
+                            ? "numeric"
+                            : "decimal"
+                        }
+                        required={!readOnly}
                         value={item.quantity}
                         onChange={(event) => {
                           const nextValue = event.target.value;
@@ -1473,8 +1500,9 @@ function EstimateTable({
                       <td style={td}>
                         <input
                           type="number"
-                          min="0"
+                          min={isInventory ? "0" : "0.01"}
                           step="0.01"
+                          required={!readOnly && !isInventory}
                           value={item.unit_cost}
                           onChange={(event) =>
                             onUpdate(
@@ -1848,10 +1876,12 @@ export default function EstimationPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [savedDraftSignature, setSavedDraftSignature] = useState(null);
   const [activeEstimateTab, setActiveEstimateTab] = useState("request");
   const [deliveryGate, setDeliveryGate] = useState({
     active: true,
     readyForQuote: false,
+    dirty: false,
     message: "Wait for the delivery capacity review to finish loading.",
   });
 
@@ -1859,8 +1889,10 @@ export default function EstimationPage() {
     setDeliveryGate({
       active: true,
       readyForQuote: false,
+      dirty: false,
       message: "Wait for the delivery capacity review to finish loading.",
     });
+    setSavedDraftSignature(null);
   }, [id]);
 
   const parsedDesign = useMemo(
@@ -2052,9 +2084,53 @@ export default function EstimationPage() {
     [inventoryItems, rawMaterials],
   );
 
+  const currentDraftSignature = useMemo(
+    () => buildEditableEstimateSignature(items, costs),
+    [items, costs],
+  );
+
+  useEffect(() => {
+    if (
+      loading ||
+      !estimation?.id ||
+      savedDraftSignature !== null
+    ) {
+      return;
+    }
+
+    setSavedDraftSignature(currentDraftSignature);
+  }, [
+    currentDraftSignature,
+    estimation?.id,
+    loading,
+    savedDraftSignature,
+  ]);
+
+  const hasUnsavedChanges =
+    Boolean(
+      estimation?.id &&
+        savedDraftSignature !== null &&
+        currentDraftSignature !== savedDraftSignature,
+    ) || Boolean(deliveryGate.dirty);
 
   const quotationGateReasons = useMemo(() => {
     const reasons = [];
+
+    if (!estimation?.id) {
+      reasons.push({
+        key: "save",
+        title: "Save estimate first",
+        message:
+          "Save the estimate before sending the quotation to the customer.",
+      });
+    } else if (hasUnsavedChanges) {
+      reasons.push({
+        key: "save",
+        title: "Save changes first",
+        message:
+          "Save your latest estimate changes before sending the quotation.",
+      });
+    }
 
     if (quotationInventoryIssues.length > 0) {
       reasons.push({
@@ -2077,7 +2153,12 @@ export default function EstimationPage() {
     }
 
     return reasons;
-  }, [quotationInventoryIssues, deliveryGate]);
+  }, [
+    quotationInventoryIssues,
+    deliveryGate,
+    estimation?.id,
+    hasUnsavedChanges,
+  ]);
 
   const isSendQuotationBlocked = quotationGateReasons.length > 0;
   const visibleQuotationGateReasons =
@@ -2138,6 +2219,17 @@ export default function EstimationPage() {
     String(estimation?.status || "").toLowerCase() === "approved";
   const isSent = String(estimation?.status || "").toLowerCase() === "sent";
   const isReadOnly = isApproved || isSent;
+  const saveDisabled =
+    saving ||
+    isReadOnly ||
+    (Boolean(estimation?.id) && !hasUnsavedChanges);
+  const saveButtonLabel = saving
+    ? "Saving..."
+    : estimation?.id
+      ? hasUnsavedChanges
+        ? "Save Changes"
+        : "Saved"
+      : "Save Estimate";
   const validUntil = new Date(
     estimation?.updated_at || estimation?.created_at || Date.now(),
   );
@@ -2341,7 +2433,7 @@ export default function EstimationPage() {
                 ? Number(currentDeliveryDraft.additional_delivery_fee || 0)
                 : 0,
             reason: String(currentDeliveryDraft.reason || "").trim(),
-            truck_type: String(currentDeliveryDraft.truck_type || "").trim(),
+            truck_type: "",
           },
         );
 
@@ -2370,11 +2462,32 @@ export default function EstimationPage() {
       }
 
       if (saved) {
+        const normalizedSavedItems = reconcileLoadedItems(
+          saved.items || [],
+          preferredAutoItems,
+        );
+        const normalizedSavedCosts = {
+          labor_cost: Number(saved.labor_cost ?? costs.labor_cost ?? 0),
+          overhead_cost: Number(
+            saved.overhead_cost ?? costs.overhead_cost ?? 0,
+          ),
+          tax_rate: Number(saved.tax_rate ?? costs.tax_rate ?? 12),
+          discount: Number(saved.discount ?? costs.discount ?? 0),
+          notes: String(saved.notes ?? costs.notes ?? ""),
+        };
+
         setEstimation(saved);
-        setItems(reconcileLoadedItems(saved.items || [], preferredAutoItems));
-        setCosts((current) => ({
+        setItems(normalizedSavedItems);
+        setCosts(normalizedSavedCosts);
+        setSavedDraftSignature(
+          buildEditableEstimateSignature(
+            normalizedSavedItems,
+            normalizedSavedCosts,
+          ),
+        );
+        setDeliveryGate((current) => ({
           ...current,
-          discount: Number(saved.discount ?? current.discount),
+          dirty: false,
         }));
       }
 
@@ -2416,6 +2529,10 @@ export default function EstimationPage() {
   const handleSendQuote = async () => {
     if (!estimation?.id) {
       toast.error("Save the estimate first before sending the quotation.");
+      return;
+    }
+    if (hasUnsavedChanges) {
+      toast.error("Save your latest changes before sending the quotation.");
       return;
     }
     const validationErrors = getValidationErrors({ items, costs });
@@ -2545,9 +2662,9 @@ export default function EstimationPage() {
     };
 
     let y = 51;
-    y = addSection("Blueprint Components", blueprintItems, y);
+    y = addSection("Furniture Parts", blueprintItems, y);
     if (!inventoryTrackingOnly) {
-      y = addSection("Required Inventory Materials", inventoryItems, y);
+      y = addSection("Required Materials", inventoryItems, y);
     }
     y = addSection("Additional Items", otherItems, y);
 
@@ -2557,9 +2674,9 @@ export default function EstimationPage() {
     }
 
     const summaryRows = [
-      ["Blueprint Components", money(blueprintSubtotal)],
+      ["Furniture Parts", money(blueprintSubtotal)],
       ...(!inventoryTrackingOnly
-        ? [["Required Inventory Materials", money(inventorySubtotal)]]
+        ? [["Required Materials", money(inventorySubtotal)]]
         : []),
       ["Additional Items", money(otherSubtotal)],
       ["Labor", money(laborCost)],
@@ -2655,14 +2772,16 @@ export default function EstimationPage() {
             <button
               type="button"
               onClick={handleSendQuote}
-              disabled={approving || isSendQuotationBlocked}
+              disabled={
+                approving || isSendQuotationBlocked || isSent
+              }
               title={
                 isSendQuotationBlocked
                   ? quotationGateReasons.map((reason) => reason.message).join(" ")
                   : "Send quotation to customer"
               }
               style={
-                !estimation?.id || approving || isSent
+                approving || isSendQuotationBlocked || isSent
                   ? { ...btnGhost, ...btnDisabled }
                   : btnPrimary
               }
@@ -2677,14 +2796,14 @@ export default function EstimationPage() {
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || isReadOnly}
+            disabled={saveDisabled}
             style={
-              saving || isReadOnly
+              saveDisabled
                 ? { ...btnPrimary, ...btnDisabled }
                 : btnPrimary
             }
           >
-            {saving ? "Saving..." : "Save Estimate"}
+            {saveButtonLabel}
           </button>
         </div>
       </div>
@@ -2907,7 +3026,7 @@ export default function EstimationPage() {
       <ProductionSnapshotPanel snapshot={productionSnapshot} />
 
       <EstimateTable
-        title="Blueprint Components"
+        title="Furniture Parts"
         helper="Review the generated components, quantities, and rates."
         section="blueprint"
         rows={blueprintItems}
@@ -2922,7 +3041,7 @@ export default function EstimationPage() {
 
       {activeEstimateTab === "materials" && (
       <EstimateTable
-        title="Required Inventory Materials"
+        title="Required Materials"
         helper="Select the materials and quantities required for production."
         section="inventory"
         rows={inventoryItems}
@@ -3070,9 +3189,9 @@ export default function EstimationPage() {
           </div>
           <div style={{ padding: 24 }}>
             {[
-              ["Blueprint Components", blueprintSubtotal],
+              ["Furniture Parts", blueprintSubtotal],
               ...(!inventoryTrackingOnly
-                ? [["Required Inventory Materials", inventorySubtotal]]
+                ? [["Required Materials", inventorySubtotal]]
                 : []),
               ["Additional Items", otherSubtotal],
               ["Labor", laborCost],

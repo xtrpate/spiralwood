@@ -211,7 +211,7 @@ exports.getStaff = async (req, res) => {
            SELECT COUNT(*)
            FROM project_tasks pt
            WHERE pt.assigned_to = u.id
-             AND pt.status IN ('pending', 'in_progress')
+             AND pt.status IN ('pending', 'in_progress', 'blocked')
          ) AS active_tasks
        FROM users u
        WHERE u.role = 'staff'
@@ -256,27 +256,115 @@ exports.getUnreadCount = async (req, res) => {
 exports.getTasks = async (req, res) => {
   try {
     let query = `
-      SELECT t.*, 
-             assignee.name AS assigned_to_name, 
-             assigner.name AS assigned_by_name, 
+      SELECT t.*,
+             assignee.name AS assigned_to_name,
+             assigner.name AS assigned_by_name,
              o.order_number,
-             o.delivery_address
+             o.delivery_address,
+             COALESCE(customer.name, o.walkin_customer_name, 'Walk-in Customer') AS customer_name
       FROM project_tasks t
       LEFT JOIN users assignee ON t.assigned_to = assignee.id
       LEFT JOIN users assigner ON t.assigned_by = assigner.id
       LEFT JOIN orders o ON t.order_id = o.id
+      LEFT JOIN users customer ON o.customer_id = customer.id
     `;
     const queryParams = [];
 
     if (req.user.role !== "admin") {
-      query += ` WHERE t.assigned_to = ?`;
-      queryParams.push(parseInt(req.user.id));
+      const staffId = parseInt(req.user.id, 10);
+
+      // Staff need the whole order packet so production sequence/progress stays
+      // correct after reassignment. An order belongs in My Production Work while
+      // this staff member owns at least one unfinished step. Once the whole
+      // packet is completed, only the staff member who completed Packing keeps
+      // the finished packet in Ready/history.
+      query += `
+        WHERE (
+          (
+            t.order_id IS NOT NULL
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM project_tasks owned
+                WHERE owned.order_id = t.order_id
+                  AND owned.assigned_to = ?
+                  AND owned.status IN ('pending', 'in_progress', 'blocked')
+              )
+              OR (
+                NOT EXISTS (
+                  SELECT 1
+                  FROM project_tasks unfinished
+                  WHERE unfinished.order_id = t.order_id
+                    AND unfinished.status <> 'completed'
+                )
+                AND EXISTS (
+                  SELECT 1
+                  FROM project_tasks final_step
+                  WHERE final_step.order_id = t.order_id
+                    AND LOWER(TRIM(final_step.task_role)) = 'packing'
+                    AND final_step.assigned_to = ?
+                    AND final_step.status = 'completed'
+                )
+              )
+            )
+          )
+          OR (t.order_id IS NULL AND t.assigned_to = ?)
+        )
+      `;
+      queryParams.push(staffId, staffId, staffId);
     }
 
     query += ` ORDER BY t.created_at DESC`;
 
-    // ── FIXED: Switched to .query ──
     const [tasks] = await db.query(query, queryParams);
+
+    // Hold reasons are intentionally stored in audit_logs instead of adding
+    // another project_tasks column. Only the latest reason for a task that is
+    // currently blocked/on hold is exposed to the UI.
+    const blockedTaskIds = tasks
+      .filter((task) => normalize(task.status) === "blocked")
+      .map((task) => Number(task.id))
+      .filter((id) => Number.isInteger(id) && id > 0);
+
+    if (blockedTaskIds.length > 0) {
+      const placeholders = blockedTaskIds.map(() => "?").join(", ");
+      const [auditRows] = await db.query(
+        `SELECT record_id, new_values
+         FROM audit_logs
+         WHERE table_name = 'project_tasks'
+           AND record_id IN (${placeholders})
+         ORDER BY id DESC`,
+        blockedTaskIds,
+      );
+
+      const reasonByTaskId = new Map();
+
+      for (const row of auditRows) {
+        const recordId = Number(row.record_id);
+        if (!Number.isInteger(recordId) || reasonByTaskId.has(recordId)) continue;
+
+        let nextValues = row.new_values;
+        if (typeof nextValues === "string") {
+          try {
+            nextValues = JSON.parse(nextValues);
+          } catch {
+            nextValues = null;
+          }
+        }
+
+        const holdReason = String(nextValues?.hold_reason || "").trim();
+        if (normalize(nextValues?.status) === "blocked" && holdReason) {
+          reasonByTaskId.set(recordId, holdReason);
+        }
+      }
+
+      for (const task of tasks) {
+        if (normalize(task.status) === "blocked") {
+          task.hold_reason = reasonByTaskId.get(Number(task.id)) || null;
+        }
+      }
+    }
+
     res.json(tasks);
   } catch (err) {
     console.error("[pos.tasks GET /]", err);
@@ -679,15 +767,28 @@ exports.acceptTask = async (req, res) => {
 /* ── Update Task Status ── */
 exports.updateTaskStatus = async (req, res) => {
   const { status } = req.body;
-  const taskId = parseInt(req.params.id); // Parsed ID here
+  const taskId = parseInt(req.params.id);
+  const holdReason = String(req.body?.hold_reason || "").trim();
 
   const validStatuses = ["pending", "in_progress", "completed", "blocked"];
   if (!validStatuses.includes(status)) {
     return res.status(400).json({ message: "Invalid status." });
   }
 
+  if (status === "blocked") {
+    if (!holdReason) {
+      return res.status(400).json({
+        message: "A reason is required before putting production work on hold.",
+      });
+    }
+    if (holdReason.length > 500) {
+      return res.status(400).json({
+        message: "Hold reason must be 500 characters or fewer.",
+      });
+    }
+  }
+
   try {
-    // ── FIXED: Switched to .query ──
     const [rows] = await db.query(
       `SELECT pt.id, pt.title, pt.status, pt.assigned_to, pt.assigned_by,
               pt.accepted_at, pt.completed_at, pt.order_id, pt.task_role,
@@ -753,12 +854,18 @@ exports.updateTaskStatus = async (req, res) => {
       nextAcceptedAt = new Date();
     }
 
-    // ── FIXED: Switched to .query ──
     const [result] = await db.query(
       `UPDATE project_tasks
        SET status = ?, completed_at = ?, accepted_at = ?, is_read = 1, updated_at = NOW()
        WHERE id = ? AND status = ? AND assigned_to = ?`,
-      [status, completedAt, nextAcceptedAt, taskId, existing.status, existing.assigned_to],
+      [
+        status,
+        completedAt,
+        nextAcceptedAt,
+        taskId,
+        existing.status,
+        existing.assigned_to,
+      ],
     );
 
     if (result.affectedRows !== 1) {
@@ -786,10 +893,12 @@ exports.updateTaskStatus = async (req, res) => {
         status,
         accepted_at: nextAcceptedAt,
         completed_at: completedAt,
+        ...(status === "blocked" ? { hold_reason: holdReason } : {}),
         changed_fields: [
           "status",
           acceptedAtChanged && "accepted_at",
           completedAtChanged && "completed_at",
+          status === "blocked" && "hold_reason",
         ].filter(Boolean),
       },
     };
@@ -797,7 +906,9 @@ exports.updateTaskStatus = async (req, res) => {
     if (existing.assigned_by && status !== "blocked") {
       const statusTitle =
         status === "in_progress"
-          ? "Task Started"
+          ? existing.status === "blocked"
+            ? "Production Work Resumed"
+            : "Task Started"
           : status === "completed"
             ? "Task Completed"
             : "Task Returned to Pending";
@@ -812,7 +923,13 @@ exports.updateTaskStatus = async (req, res) => {
         type: "task_update",
         title: statusTitle,
         message: `${req.user.name || "A staff member"} ${
-          status === "completed" ? "completed" : status === "in_progress" ? "started" : "returned"
+          status === "completed"
+            ? "completed"
+            : status === "in_progress"
+              ? existing.status === "blocked"
+                ? "resumed"
+                : "started"
+              : "returned"
         } ${existing.task_role || existing.title} for ${orderLabel}.`,
         targetType: "task",
         targetId: existing.id,
@@ -824,7 +941,6 @@ exports.updateTaskStatus = async (req, res) => {
 
     try {
       if (existing.order_id && existing.assigned_by) {
-        // ── FIXED: Switched to .query ──
         const [packetRows] = await db.query(
           `SELECT id, task_role, status
            FROM project_tasks
@@ -851,10 +967,6 @@ exports.updateTaskStatus = async (req, res) => {
           return missingSteps.length === 0 && incompleteSteps.length === 0;
         };
 
-        // packetRows already reflects this request's committed UPDATE, so to
-        // reconstruct the state immediately before this request, substitute
-        // this row's pre-image status back in — every other row is untouched
-        // by this request and already reflects its true prior state.
         const rowsBeforeThisRequest = packetRows.map((row) =>
           Number(row.id) === taskId
             ? { ...row, status: existing.status }
@@ -871,12 +983,12 @@ exports.updateTaskStatus = async (req, res) => {
           await createNotificationSafe(db, {
             userId: parseInt(existing.assigned_by),
             type: "task_blocked",
-            title: "Task Blocked",
-            message: `${req.user.name || "A staff member"} reported a blocker on ${existing.task_role} for ${
+            title: "Production Work Put on Hold",
+            message: `${req.user.name || "A staff member"} put ${existing.task_role} on hold for ${
               existing.order_number
                 ? `Order ${existing.order_number}`
                 : `Order #${existing.order_id}`
-            }. Review the task before production continues.`,
+            }. Reason: ${holdReason}`,
             targetType: "task",
             targetId: existing.id,
             targetOrderId: existing.order_id,
@@ -932,7 +1044,24 @@ exports.updateTaskStatus = async (req, res) => {
         );
       }
     }
-    res.json({ message: "Task status updated successfully." });
+
+    const responseMessage =
+      status === "blocked"
+        ? "Production step put on hold."
+        : status === "in_progress" && existing.status === "blocked"
+          ? "Production step resumed."
+          : "Task status updated successfully.";
+
+    res.json({
+      message: responseMessage,
+      task: {
+        id: taskId,
+        status,
+        accepted_at: nextAcceptedAt,
+        completed_at: completedAt,
+        hold_reason: status === "blocked" ? holdReason : null,
+      },
+    });
   } catch (err) {
     console.error("[pos.tasks PUT /:id/status]", err);
     res.status(500).json({ message: "Server error." });

@@ -130,6 +130,7 @@ const PAYMENT_STYLE = {
 const TASK_STYLE = {
   pending: { bg: "#ffffff", color: "#52525b", border: "#d4d4d8" },
   in_progress: { bg: "#f4f4f5", color: "#18181b", border: "#e4e4e7" },
+  blocked: { bg: "#fff7ed", color: "#a16207", border: "#fde68a" },
   completed: { bg: "#0a0a0a", color: "#ffffff", border: "#0a0a0a" },
 };
 
@@ -968,7 +969,7 @@ export default function OrderDetailPage() {
   const hasBlueprintTasks = blueprintTasks.length > 0;
 
   const activeBlueprintTasks = blueprintTasks.filter((task) =>
-    ["pending", "in_progress"].includes(normalize(task?.status)),
+    ["pending", "in_progress", "blocked"].includes(normalize(task?.status)),
   );
 
   const completedBlueprintTasks = blueprintTasks.filter(
@@ -1003,11 +1004,16 @@ export default function OrderDetailPage() {
   const allBlueprintTasksCompleted =
     incompleteRequiredBlueprintTaskRoles.length === 0;
 
-  const hasInProgressOrBlockedTask = blueprintTasks.some((task) =>
-    ["in_progress", "blocked"].includes(normalize(task?.status)),
+  // A task that is actively being worked on must be put on hold first.
+  // Pending and On Hold work can then move together to the replacement staff.
+  const hasInProgressTask = blueprintTasks.some(
+    (task) => normalize(task?.status) === "in_progress",
   );
-  const pendingCountByStaffId = blueprintTasks.reduce((acc, task) => {
-    if (normalize(task?.status) === "pending" && task?.assigned_to) {
+  const remainingCountByStaffId = blueprintTasks.reduce((acc, task) => {
+    if (
+      ["pending", "blocked"].includes(normalize(task?.status)) &&
+      task?.assigned_to
+    ) {
       acc[task.assigned_to] = (acc[task.assigned_to] || 0) + 1;
     }
     return acc;
@@ -1015,7 +1021,7 @@ export default function OrderDetailPage() {
   const transferPreviewCount = reassignStaffId
     ? blueprintTasks.filter(
         (task) =>
-          normalize(task?.status) === "pending" &&
+          ["pending", "blocked"].includes(normalize(task?.status)) &&
           String(task?.assigned_to || "") !== String(reassignStaffId),
       ).length
     : 0;
@@ -1946,6 +1952,16 @@ export default function OrderDetailPage() {
                           label="Quantity"
                           value={String(item.quantity || 1)}
                         />
+                        <MiniInfo
+                          label="Assembly"
+                          value={
+                            item.requested_assembly_choice === "included"
+                              ? "Included (Free)"
+                              : item.requested_assembly_choice === "none"
+                                ? "Not Requested"
+                                : "Not specified"
+                          }
+                        />
                       </div>
 
                       {item.requested_comments ? (
@@ -2661,9 +2677,11 @@ export default function OrderDetailPage() {
                   {blueprintTasks.map((task) => {
                     const taskStatus = normalize(task.status);
                     const taskTone = getTone(TASK_STYLE, taskStatus);
-                    const isActive = ["pending", "in_progress"].includes(
-                      taskStatus,
-                    );
+                    const isActive = [
+                      "pending",
+                      "in_progress",
+                      "blocked",
+                    ].includes(taskStatus);
 
                     return (
                       <div key={task.id} style={taskCard}>
@@ -2686,7 +2704,7 @@ export default function OrderDetailPage() {
                               border: `1px solid ${taskTone.border}`,
                             }}
                           >
-                            {titleCase(task.status)}
+                            {taskStatus === "blocked" ? "On Hold" : titleCase(task.status)}
                           </span>
                         </div>
 
@@ -3164,16 +3182,20 @@ export default function OrderDetailPage() {
                   key={t.id}
                   style={{ fontSize: 13, color: "#52525b", marginBottom: 4 }}
                 >
-                  {t.task_role}: <strong>{t.status}</strong>
+                  {t.task_role}:{" "}
+                  <strong>
+                    {normalize(t.status) === "blocked"
+                      ? "On Hold"
+                      : titleCase(t.status)}
+                  </strong>
                   {t.assigned_to_name ? ` — ${t.assigned_to_name}` : ""}
                 </div>
               ))}
             </div>
 
-            {hasInProgressOrBlockedTask && (
+            {hasInProgressTask && (
               <div style={{ ...alertWarning, marginTop: 16 }}>
-                Active or blocked production steps must be resolved before staff
-                can be reassigned.
+                Put the active production step on hold before reassigning staff.
               </div>
             )}
 
@@ -3183,16 +3205,16 @@ export default function OrderDetailPage() {
                 value={reassignStaffId}
                 onChange={(e) => setReassignStaffId(e.target.value)}
                 style={inputFull}
-                disabled={hasInProgressOrBlockedTask}
+                disabled={hasInProgressTask}
               >
                 <option value="">— Select Staff —</option>
                 {reassignableStaff.map((staff) => {
-                  const pending = pendingCountByStaffId[staff.id] || 0;
+                  const remaining = remainingCountByStaffId[staff.id] || 0;
                   return (
                     <option key={staff.id} value={staff.id}>
                       {staff.name}
-                      {pending > 0
-                        ? ` — owns ${pending} pending step${pending === 1 ? "" : "s"}`
+                      {remaining > 0
+                        ? ` — owns ${remaining} remaining step${remaining === 1 ? "" : "s"}`
                         : ""}
                     </option>
                   );
@@ -3203,14 +3225,15 @@ export default function OrderDetailPage() {
             {reassignStaffId && (
               <div style={{ marginTop: 8, fontSize: 12, color: "#52525b" }}>
                 {transferPreviewCount > 0
-                  ? `${transferPreviewCount} pending step${transferPreviewCount === 1 ? "" : "s"} will transfer to this staff member.`
-                  : "This staff member already owns every remaining pending step. Submitting will make no changes."}
+                  ? `${transferPreviewCount} remaining production step${transferPreviewCount === 1 ? "" : "s"} will transfer to this staff member. On Hold work stays On Hold until resumed.`
+                  : "This staff member already owns every remaining production step. Submitting will make no changes."}
               </div>
             )}
 
             <div style={{ marginTop: 12, fontSize: 12, color: "#71717a" }}>
               Completed steps remain attributed to their original staff member.
-              Due dates are unchanged.
+              On Hold steps remain on hold for the new staff until resumed. Due
+              dates are unchanged.
             </div>
 
             <div style={modalActions}>
@@ -3219,9 +3242,7 @@ export default function OrderDetailPage() {
               </button>
               <button
                 onClick={handleReassignStaff}
-                disabled={
-                  reassigning || hasInProgressOrBlockedTask || !reassignStaffId
-                }
+                disabled={reassigning || hasInProgressTask || !reassignStaffId}
                 style={btnPrimary}
               >
                 {reassigning ? "Reassigning..." : "Reassign Staff"}

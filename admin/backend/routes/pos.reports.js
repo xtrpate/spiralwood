@@ -3,13 +3,16 @@ const express = require("express");
 const router = express.Router();
 
 // 1. Import your auth middleware
-const { authenticate, authorize } = require("../middleware/auth");
+const {
+  authenticate,
+  requireCashierOrAdmin,
+} = require("../middleware/auth");
 
 // 2. Import the controller we updated in the last step
 const posReportsController = require("../controllers/staff/pos.reports");
 
 // 3. Define the access level
-const posAccess = [authenticate, authorize("admin", "staff")];
+const posAccess = [authenticate, requireCashierOrAdmin];
 
 /* ══════════════════════════════════════════════════════════════
    STAFF/POS REPORTS ROUTES

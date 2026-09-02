@@ -21,19 +21,74 @@ const buildChannelFilter = (rawChannel, alias = "o") => {
   return { sql: `${alias}.type = ?`, params: [channel] };
 };
 
+const REPORT_SOURCE_OFFSET = "+00:00";
+const REPORT_LOCAL_OFFSET = "+08:00";
+
+const toReportLocalTime = (expression) =>
+  `CONVERT_TZ(${expression}, '${REPORT_SOURCE_OFFSET}', '${REPORT_LOCAL_OFFSET}')`;
+
+const reportLocalNowSql = () =>
+  `CONVERT_TZ(UTC_TIMESTAMP(), '${REPORT_SOURCE_OFFSET}', '${REPORT_LOCAL_OFFSET}')`;
+
+const buildPaymentFilter = (rawPayment, alias = "pt") => {
+  const payment = normalize(rawPayment);
+  if (!payment || payment === "all") {
+    return { sql: "1=1", params: [] };
+  }
+
+  if (payment === "cash") {
+    return {
+      sql: `LOWER(${alias}.payment_method) IN ('cash', 'cod', 'cop')`,
+      params: [],
+    };
+  }
+
+  if (payment === "online") {
+    return {
+      sql: `LOWER(${alias}.payment_method) IN ('paymongo', 'gcash', 'bank_transfer')`,
+      params: [],
+    };
+  }
+
+  const error = new Error("Invalid payment type filter.");
+  error.statusCode = 400;
+  throw error;
+};
+
+const buildOrderPaymentFilter = (rawPayment, orderAlias = "o") => {
+  const payment = normalize(rawPayment);
+  if (!payment || payment === "all") {
+    return { sql: "1=1", params: [] };
+  }
+
+  const transactionFilter = buildPaymentFilter(payment, "pt_filter");
+  return {
+    sql: `EXISTS (
+      SELECT 1
+      FROM payment_transactions pt_filter
+      WHERE pt_filter.order_id = ${orderAlias}.id
+        AND LOWER(pt_filter.status) = 'verified'
+        AND ${transactionFilter.sql}
+    )`,
+    params: transactionFilter.params,
+  };
+};
+
 const buildDateFilter = ({ from, to, period }, expression) => {
   const start = String(from || "").trim();
   const end = String(to || "").trim();
+  const localExpression = toReportLocalTime(expression);
+  const localNow = reportLocalNowSql();
 
   if (start || end) {
     const clauses = [];
     const params = [];
     if (start) {
-      clauses.push(`DATE(${expression}) >= ?`);
+      clauses.push(`DATE(${localExpression}) >= ?`);
       params.push(start);
     }
     if (end) {
-      clauses.push(`DATE(${expression}) <= ?`);
+      clauses.push(`DATE(${localExpression}) <= ?`);
       params.push(end);
     }
     return { sql: clauses.join(" AND "), params };
@@ -44,32 +99,40 @@ const buildDateFilter = ({ from, to, period }, expression) => {
     : "monthly";
 
   if (normalizedPeriod === "daily") {
-    return { sql: `DATE(${expression}) = CURDATE()`, params: [] };
+    return {
+      sql: `DATE(${localExpression}) = DATE(${localNow})`,
+      params: [],
+    };
   }
   if (normalizedPeriod === "weekly") {
     return {
-      sql: `YEARWEEK(${expression}, 1) = YEARWEEK(CURDATE(), 1)`,
+      sql: `YEARWEEK(${localExpression}, 1) = YEARWEEK(${localNow}, 1)`,
       params: [],
     };
   }
   if (normalizedPeriod === "yearly") {
-    return { sql: `YEAR(${expression}) = YEAR(CURDATE())`, params: [] };
+    return {
+      sql: `YEAR(${localExpression}) = YEAR(${localNow})`,
+      params: [],
+    };
   }
 
   return {
-    sql: `YEAR(${expression}) = YEAR(CURDATE()) AND MONTH(${expression}) = MONTH(CURDATE())`,
+    sql: `YEAR(${localExpression}) = YEAR(${localNow}) AND MONTH(${localExpression}) = MONTH(${localNow})`,
     params: [],
   };
 };
 
 const getFilters = (query) => {
   const channel = buildChannelFilter(query.channel, "o");
+  const payment = buildPaymentFilter(query.payment, "pt");
+  const orderPayment = buildOrderPaymentFilter(query.payment, "o");
   const orderDate = buildDateFilter(query, "o.created_at");
   const paymentDate = buildDateFilter(
     query,
     "COALESCE(pt.verified_at, pt.created_at)",
   );
-  return { channel, orderDate, paymentDate };
+  return { channel, payment, orderPayment, orderDate, paymentDate };
 };
 
 const estimatedProfitSql = `COALESCE((
@@ -93,22 +156,33 @@ const lifetimeCollectedSql = `COALESCE((
 
 exports.getReport = async (req, res) => {
   try {
-    const { channel, orderDate, paymentDate } = getFilters(req.query);
+    const { channel, payment, orderPayment, orderDate, paymentDate } =
+      getFilters(req.query);
 
     const orderWhereSql = [
       "o.status <> 'cancelled'",
       "COALESCE(o.total, 0) > 0",
       channel.sql,
+      orderPayment.sql,
       orderDate.sql,
     ].join(" AND ");
-    const orderParams = [...channel.params, ...orderDate.params];
+    const orderParams = [
+      ...channel.params,
+      ...orderPayment.params,
+      ...orderDate.params,
+    ];
 
     const paymentWhereSql = [
       "LOWER(pt.status) = 'verified'",
       channel.sql,
+      payment.sql,
       paymentDate.sql,
     ].join(" AND ");
-    const paymentParams = [...channel.params, ...paymentDate.params];
+    const paymentParams = [
+      ...channel.params,
+      ...payment.params,
+      ...paymentDate.params,
+    ];
 
     const [[orderSummary]] = await pool.query(
       `SELECT
@@ -164,6 +238,7 @@ exports.getReport = async (req, res) => {
            WHERE pt_period.order_id = o.id
              AND LOWER(pt_period.status) = 'verified'
              AND ${paymentDate.sql.split("pt.").join("pt_period.")}
+             AND ${buildPaymentFilter(req.query.payment, "pt_period").sql}
          ), 0) AS collected_this_period,
          ${lifetimeCollectedSql} AS lifetime_collected,
          GREATEST(COALESCE(o.total, 0) - ${lifetimeCollectedSql}, 0) AS remaining_balance,
@@ -183,11 +258,13 @@ exports.getReport = async (req, res) => {
             FROM payment_transactions pt_method
            WHERE pt_method.order_id = o.id
              AND LOWER(pt_method.status) = 'verified'
+             AND ${buildPaymentFilter(req.query.payment, "pt_method").sql}
          ) AS collected_payment_methods,
          (SELECT MAX(COALESCE(pt_last.verified_at, pt_last.created_at))
             FROM payment_transactions pt_last
            WHERE pt_last.order_id = o.id
              AND LOWER(pt_last.status) = 'verified'
+             AND ${buildPaymentFilter(req.query.payment, "pt_last").sql}
          ) AS last_payment_at,
          (SELECT d.status
             FROM deliveries d
@@ -206,6 +283,7 @@ exports.getReport = async (req, res) => {
              FROM payment_transactions pt
              WHERE pt.order_id = o.id
                AND LOWER(pt.status) = 'verified'
+               AND ${buildPaymentFilter(req.query.payment, "pt").sql}
                AND ${paymentDate.sql}
            )
          )

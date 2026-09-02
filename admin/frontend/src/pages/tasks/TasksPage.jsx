@@ -1,5 +1,5 @@
 // src/pages/tasks/TasksPage.jsx
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
@@ -47,7 +47,7 @@ const STATUS_META = {
     border: "#bbf7d0",
   },
   blocked: {
-    label: "Blocked",
+    label: "On Hold",
     bg: "#fef2f2",
     color: "#b91c1c",
     border: "#fecaca",
@@ -77,6 +77,181 @@ const PRODUCTION_ASSIGN_BLANK = {
   note: "",
 };
 
+const PRODUCTION_STATUS_META = {
+  pending: {
+    label: "Assigned",
+    bg: "#fffbeb",
+    color: "#a16207",
+    border: "#fde68a",
+  },
+  in_progress: {
+    label: "In Production",
+    bg: "#eff6ff",
+    color: "#1d4ed8",
+    border: "#bfdbfe",
+  },
+  blocked: {
+    label: "On Hold",
+    bg: "#fef2f2",
+    color: "#b91c1c",
+    border: "#fecaca",
+  },
+  completed: {
+    label: "Completed",
+    bg: "#ecfdf5",
+    color: "#15803d",
+    border: "#bbf7d0",
+  },
+};
+
+const normalizeProductionKey = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_");
+
+const productionTime = (value) => {
+  if (!value) return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const buildProductionOrderGroups = (taskList = []) => {
+  const requiredKeys = new Set(REQUIRED_PRODUCTION_ROLES.map(normalizeProductionKey));
+  const buckets = new Map();
+
+  taskList.forEach((task) => {
+    if (!requiredKeys.has(normalizeProductionKey(task?.task_role))) return;
+    if (!task?.order_id && !task?.order_number) return;
+
+    const key = task.order_id
+      ? `order:${task.order_id}`
+      : `number:${task.order_number}`;
+
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        key,
+        orderId: task.order_id || null,
+        orderNumber: task.order_number || "",
+        customerName: task.customer_name || "Walk-in Customer",
+        rawTasks: [],
+      });
+    }
+
+    const bucket = buckets.get(key);
+    bucket.rawTasks.push(task);
+    if (!bucket.orderId && task.order_id) bucket.orderId = task.order_id;
+    if (!bucket.orderNumber && task.order_number) bucket.orderNumber = task.order_number;
+    if (task.customer_name) bucket.customerName = task.customer_name;
+  });
+
+  return Array.from(buckets.values())
+    .map((order) => {
+      const steps = REQUIRED_PRODUCTION_ROLES.map((stepLabel) => {
+        const task =
+          order.rawTasks.find(
+            (row) =>
+              normalizeProductionKey(row?.task_role) ===
+              normalizeProductionKey(stepLabel),
+          ) || null;
+        return {
+          stepLabel,
+          task,
+          status: normalizeProductionKey(task?.status || "pending"),
+        };
+      });
+
+      const completedCount = steps.filter(
+        (step) => step.status === "completed" && step.task,
+      ).length;
+      const complete =
+        completedCount === REQUIRED_PRODUCTION_ROLES.length &&
+        steps.every((step) => Boolean(step.task));
+      const onHold = steps.some((step) => step.status === "blocked");
+      const hasStarted = steps.some((step) =>
+        ["in_progress", "blocked", "completed"].includes(step.status),
+      );
+      const hasInProgress = steps.some((step) => step.status === "in_progress");
+
+      let overallStatus = "pending";
+      if (complete) overallStatus = "completed";
+      else if (onHold) overallStatus = "blocked";
+      else if (hasInProgress || hasStarted) overallStatus = "in_progress";
+
+      const unfinishedTasks = steps
+        .filter((step) => step.task && step.status !== "completed")
+        .map((step) => step.task);
+      const currentTasks = unfinishedTasks.length
+        ? unfinishedTasks
+        : steps.filter((step) => step.task).map((step) => step.task);
+
+      const currentStaff = Array.from(
+        new Map(
+          currentTasks
+            .filter((task) => task.assigned_to)
+            .map((task) => [
+              String(task.assigned_to),
+              {
+                id: String(task.assigned_to),
+                name: task.assigned_to_name || "Assigned staff",
+              },
+            ]),
+        ).values(),
+      );
+
+      const assignedTimes = order.rawTasks
+        .map((task) => productionTime(task.created_at))
+        .filter(Boolean);
+      const startedTimes = order.rawTasks
+        .map((task) => productionTime(task.accepted_at))
+        .filter(Boolean);
+      const dueTimes = unfinishedTasks
+        .map((task) => productionTime(task.due_date))
+        .filter(Boolean);
+      const fallbackDueTimes = order.rawTasks
+        .map((task) => productionTime(task.due_date))
+        .filter(Boolean);
+      const completedTimes = order.rawTasks
+        .map((task) => productionTime(task.completed_at))
+        .filter(Boolean);
+      const latestTimes = order.rawTasks
+        .flatMap((task) => [
+          productionTime(task.updated_at),
+          productionTime(task.created_at),
+        ])
+        .filter(Boolean);
+
+      const assignedAt = assignedTimes.length ? Math.min(...assignedTimes) : 0;
+      const startedAt = startedTimes.length ? Math.min(...startedTimes) : 0;
+      const dueAt = dueTimes.length
+        ? Math.min(...dueTimes)
+        : fallbackDueTimes.length
+          ? Math.max(...fallbackDueTimes)
+          : 0;
+      const completedAt = completedTimes.length ? Math.max(...completedTimes) : 0;
+      const latestAt = latestTimes.length ? Math.max(...latestTimes) : 0;
+      const overdue = Boolean(!complete && dueAt && dueAt < Date.now());
+
+      return {
+        ...order,
+        steps,
+        completedCount,
+        complete,
+        overdue,
+        overallStatus,
+        currentStaff,
+        currentStaffLabel:
+          currentStaff.map((person) => person.name).join(", ") || "Not assigned",
+        assignedAt: assignedAt ? new Date(assignedAt).toISOString() : null,
+        startedAt: startedAt ? new Date(startedAt).toISOString() : null,
+        dueDate: dueAt ? new Date(dueAt).toISOString() : null,
+        completedAt: completedAt ? new Date(completedAt).toISOString() : null,
+        latestAt,
+      };
+    })
+    .sort((a, b) => b.latestAt - a.latestAt || Number(b.orderId || 0) - Number(a.orderId || 0));
+};
+
 export default function TasksPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
@@ -95,6 +270,10 @@ export default function TasksPage() {
   const [saving, setSaving] = useState(false);
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterRole, setFilterRole] = useState("all");
+  const [filterStaff, setFilterStaff] = useState("all");
+  const [dueFrom, setDueFrom] = useState("");
+  const [dueTo, setDueTo] = useState("");
+  const [detailsOrderKey, setDetailsOrderKey] = useState(null);
   const [search, setSearch] = useState("");
   const [searchParams, setSearchParams] = useSearchParams();
   const [focusedTaskId, setFocusedTaskId] = useState(null);
@@ -330,20 +509,24 @@ export default function TasksPage() {
     }
   };
 
-  // Notification navigation focus support: reads ?focus_task_id= set
-  // by NotificationBell, clears any filter that would hide
-  // the record, scrolls it into view, highlights it briefly, and opens
-  // its existing view modal. Fails safely (no crash, one-time toast) if
-  // the task no longer exists — never guesses a record from anything
-  // other than this query param.
+
+  const productionOrderGroups = useMemo(
+    () => buildProductionOrderGroups(tasks),
+    [tasks],
+  );
+
+  // Notification navigation focus support: opens the containing production
+  // order instead of exposing an individual step in the main list.
   useEffect(() => {
     const focusId = searchParams.get("focus_task_id");
     if (!focusId || loading) return;
 
     const numericId = Number(focusId);
-    const match = tasks.find((t) => Number(t.id) === numericId);
+    const matchedOrder = productionOrderGroups.find((order) =>
+      order.rawTasks.some((task) => Number(task.id) === numericId),
+    );
 
-    if (!match) {
+    if (!matchedOrder) {
       toast.error("That task could not be found. It may have been removed.");
       const next = new URLSearchParams(searchParams);
       next.delete("focus_task_id");
@@ -353,13 +536,18 @@ export default function TasksPage() {
 
     setFilterStatus("all");
     setFilterRole("all");
+    setFilterStaff("all");
+    setDueFrom("");
+    setDueTo("");
     setSearch("");
-    setFocusedTaskId(match.id);
-    openView(match);
+    setFocusedTaskId(numericId);
+    setDetailsOrderKey(matchedOrder.key);
 
     const scrollTimer = setTimeout(() => {
       document
-        .getElementById(`task-row-${match.id}`)
+        .getElementById(
+          `production-order-${matchedOrder.orderId || matchedOrder.key}`,
+        )
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 50);
 
@@ -373,7 +561,7 @@ export default function TasksPage() {
       clearTimeout(scrollTimer);
       clearTimeout(highlightTimer);
     };
-  }, [searchParams, loading, tasks]);
+  }, [searchParams, loading, productionOrderGroups, setSearchParams]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -425,28 +613,84 @@ export default function TasksPage() {
     }
   };
 
-  // Filters
-  const filtered = tasks.filter((t) => {
-    const mStatus = filterStatus === "all" || t.status === filterStatus;
-    const mRole = filterRole === "all" || t.task_role === filterRole;
-    const mSearch =
-      !search ||
-      t.title.toLowerCase().includes(search.toLowerCase()) ||
-      t.assigned_to_name.toLowerCase().includes(search.toLowerCase()) ||
-      (t.order_number || "").toLowerCase().includes(search.toLowerCase());
-    return mStatus && mRole && mSearch;
-  });
+  // Order-level production filters. Five required task rows remain available
+  // inside Details but are intentionally not repeated in the main list.
+  const productionStaffOptions = useMemo(() => {
+    const byId = new Map();
+    productionOrderGroups.forEach((order) => {
+      order.currentStaff.forEach((person) => byId.set(person.id, person));
+    });
+    return Array.from(byId.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
+    );
+  }, [productionOrderGroups]);
+
+  const filteredOrders = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const fromTime = dueFrom
+      ? new Date(`${dueFrom}T00:00:00`).getTime()
+      : null;
+    const toTime = dueTo
+      ? new Date(`${dueTo}T23:59:59.999`).getTime()
+      : null;
+
+    return productionOrderGroups.filter((order) => {
+      const statusMatches =
+        filterStatus === "all" ||
+        (filterStatus === "overdue"
+          ? order.overdue
+          : order.overallStatus === filterStatus);
+
+      const staffMatches =
+        filterStaff === "all" ||
+        order.currentStaff.some((person) => person.id === filterStaff);
+
+      const dueTime = productionTime(order.dueDate);
+      const dueMatches =
+        (!fromTime || (dueTime && dueTime >= fromTime)) &&
+        (!toTime || (dueTime && dueTime <= toTime));
+
+      const searchMatches =
+        !query ||
+        [
+          order.orderId,
+          order.orderNumber,
+          order.customerName,
+          order.currentStaffLabel,
+        ].some((value) =>
+          String(value || "")
+            .toLowerCase()
+            .includes(query),
+        );
+
+      return statusMatches && staffMatches && dueMatches && searchMatches;
+    });
+  }, [
+    productionOrderGroups,
+    search,
+    filterStatus,
+    filterStaff,
+    dueFrom,
+    dueTo,
+  ]);
 
   const stats = {
-    total: tasks.length,
-    pending: tasks.filter((t) => t.status === "pending").length,
-    in_progress: tasks.filter((t) => t.status === "in_progress").length,
-    completed: tasks.filter((t) => t.status === "completed").length,
-    blocked: tasks.filter((t) => t.status === "blocked").length,
+    total: productionOrderGroups.length,
+    pending: productionOrderGroups.filter(
+      (order) => order.overallStatus === "pending",
+    ).length,
+    in_progress: productionOrderGroups.filter(
+      (order) => order.overallStatus === "in_progress",
+    ).length,
+    blocked: productionOrderGroups.filter(
+      (order) => order.overallStatus === "blocked",
+    ).length,
+    overdue: productionOrderGroups.filter((order) => order.overdue).length,
+    completed: productionOrderGroups.filter((order) => order.complete).length,
   };
 
-  const isOverdue = (t) =>
-    t.due_date && t.status !== "completed" && new Date(t.due_date) < new Date();
+  const selectedProductionOrder =
+    productionOrderGroups.find((order) => order.key === detailsOrderKey) || null;
 
   const eligibleProductionOrders = orders.filter((item) => {
     const normalizedStatus = String(item?.status || "")
@@ -838,11 +1082,12 @@ export default function TasksPage() {
       {/* ── Summary ────────────────────────────────────────────────────────── */}
       <div style={S.statRow}>
         {[
-          { label: "Total", value: stats.total, color: "#18181b" },
-          { label: "Pending", value: stats.pending, color: "#52525b" },
-          { label: "In progress", value: stats.in_progress, color: "#18181b" },
-          { label: "Completed", value: stats.completed, color: "#18181b" },
-          { label: "Blocked", value: stats.blocked, color: "#b91c1c" },
+          { label: "Production orders", value: stats.total, color: "#18181b" },
+          { label: "Assigned", value: stats.pending, color: "#52525b" },
+          { label: "In production", value: stats.in_progress, color: "#18181b" },
+          { label: "On hold", value: stats.blocked, color: "#b91c1c" },
+          { label: "Overdue", value: stats.overdue, color: "#b91c1c" },
+          { label: "Completed", value: stats.completed, color: "#15803d" },
         ].map((item) => (
           <div key={item.label} style={S.stat}>
             <div style={S.statLbl}>{item.label}</div>
@@ -853,15 +1098,17 @@ export default function TasksPage() {
         ))}
       </div>
 
-      {/* ── Tasks panel ────────────────────────────────────────────────────── */}
+      {/* ── Production orders panel ────────────────────────────────────────── */}
       <section style={S.panel}>
         <div style={S.panelHeader}>
           <div>
-            <h2 style={S.panelTitle}>Tasks</h2>
-            <p style={S.panelHint}>Review staff assignments and task progress.</p>
+            <h2 style={S.panelTitle}>Production Orders</h2>
+            <p style={S.panelHint}>
+              One row per order. Open Details to review the five production steps.
+            </p>
           </div>
           <span style={S.countText}>
-            {filtered.length.toLocaleString("en-PH")} shown
+            {filteredOrders.length.toLocaleString("en-PH")} shown
           </span>
         </div>
 
@@ -885,39 +1132,57 @@ export default function TasksPage() {
             <input
               type="search"
               style={S.input}
-              placeholder="Search tasks, staff, or order"
+              placeholder="Search order ID, customer, or staff"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search tasks"
+              onChange={(event) => setSearch(event.target.value)}
+              aria-label="Search production orders"
             />
           </div>
 
           <select
             style={{ ...S.select, width: 160 }}
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            aria-label="Filter tasks by status"
+            onChange={(event) => setFilterStatus(event.target.value)}
+            aria-label="Filter production orders by status"
           >
             <option value="all">All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="in_progress">In progress</option>
+            <option value="pending">Assigned</option>
+            <option value="in_progress">In production</option>
+            <option value="blocked">On hold</option>
+            <option value="overdue">Overdue</option>
             <option value="completed">Completed</option>
-            <option value="blocked">Blocked</option>
           </select>
 
           <select
-            style={{ ...S.select, width: 180 }}
-            value={filterRole}
-            onChange={(e) => setFilterRole(e.target.value)}
-            aria-label="Filter tasks by role"
+            style={{ ...S.select, width: 190 }}
+            value={filterStaff}
+            onChange={(event) => setFilterStaff(event.target.value)}
+            aria-label="Filter production orders by current staff"
           >
-            <option value="all">All roles</option>
-            {TASK_ROLE_FILTERS.map((role) => (
-              <option key={role} value={role}>
-                {role}
+            <option value="all">All staff</option>
+            {productionStaffOptions.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.name}
               </option>
             ))}
           </select>
+
+          <input
+            type="date"
+            style={{ ...S.select, width: 150, paddingRight: 8 }}
+            value={dueFrom}
+            onChange={(event) => setDueFrom(event.target.value)}
+            aria-label="Due date from"
+            title="Due date from"
+          />
+          <input
+            type="date"
+            style={{ ...S.select, width: 150, paddingRight: 8 }}
+            value={dueTo}
+            onChange={(event) => setDueTo(event.target.value)}
+            aria-label="Due date to"
+            title="Due date to"
+          />
 
           <button
             type="button"
@@ -926,6 +1191,9 @@ export default function TasksPage() {
               setSearch("");
               setFilterStatus("all");
               setFilterRole("all");
+              setFilterStaff("all");
+              setDueFrom("");
+              setDueTo("");
             }}
           >
             Reset
@@ -933,23 +1201,22 @@ export default function TasksPage() {
         </div>
 
         <div style={S.tableScroll}>
-          <table style={S.table}>
+          <table style={{ ...S.table, minWidth: 1120 }}>
             <thead>
               <tr>
-                <th style={{ ...S.th, width: "32%" }}>Task</th>
-                <th style={{ ...S.th, width: "18%" }}>Staff</th>
-                <th style={{ ...S.th, width: "17%" }}>Due</th>
-                <th style={{ ...S.th, width: "12%" }}>Status</th>
-                <th style={{ ...S.th, width: "21%", textAlign: "left" }}>
-                  Actions
-                </th>
+                <th style={{ ...S.th, width: "17%" }}>Order</th>
+                <th style={{ ...S.th, width: "18%" }}>Customer</th>
+                <th style={{ ...S.th, width: "18%" }}>Current Staff</th>
+                <th style={{ ...S.th, width: "22%" }}>Schedule</th>
+                <th style={{ ...S.th, width: "15%" }}>Progress</th>
+                <th style={{ ...S.th, width: "10%" }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     style={{
                       ...S.td,
                       textAlign: "center",
@@ -957,13 +1224,13 @@ export default function TasksPage() {
                       color: "#71717a",
                     }}
                   >
-                    Loading tasks...
+                    Loading production orders...
                   </td>
                 </tr>
-              ) : filtered.length === 0 ? (
+              ) : filteredOrders.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     style={{
                       ...S.td,
                       textAlign: "center",
@@ -971,34 +1238,27 @@ export default function TasksPage() {
                       color: "#71717a",
                     }}
                   >
-                    {tasks.length === 0
-                      ? "No tasks available yet."
-                      : "No tasks match the current filters."}
+                    {productionOrderGroups.length === 0
+                      ? "No production orders are assigned yet."
+                      : "No production orders match the current filters."}
                   </td>
                 </tr>
               ) : (
-                filtered.map((t) => {
-                  const sm = STATUS_META[t.status] || STATUS_META.pending;
-                  const overdue = isOverdue(t);
-                  const descriptionIsRepeated =
-                    isRepeatedProductionDescription(t);
-                  const normalizedTitle = String(t.title || "").toLowerCase();
-                  const normalizedRole = String(t.task_role || "").toLowerCase();
-                  const titleHasRole =
-                    normalizedRole && normalizedTitle.includes(normalizedRole);
-                  const titleHasOrder =
-                    t.order_number &&
-                    normalizedTitle.includes(
-                      String(t.order_number).toLowerCase(),
-                    );
+                filteredOrders.map((order) => {
+                  const meta =
+                    PRODUCTION_STATUS_META[order.overallStatus] ||
+                    PRODUCTION_STATUS_META.pending;
+                  const focused = order.rawTasks.some(
+                    (task) => Number(task.id) === Number(focusedTaskId),
+                  );
 
                   return (
                     <tr
-                      key={t.id}
-                      id={`task-row-${t.id}`}
+                      key={order.key}
+                      id={`production-order-${order.orderId || order.key}`}
                       style={{
                         ...S.tr,
-                        ...(focusedTaskId === t.id
+                        ...(focused
                           ? {
                               boxShadow: "inset 3px 0 0 #18181b",
                               background: "#fafafa",
@@ -1007,136 +1267,80 @@ export default function TasksPage() {
                       }}
                     >
                       <td style={S.td}>
-                        <div style={S.primary}>{t.title}</div>
-                        {t.description && !descriptionIsRepeated && (
-                          <div style={{ ...S.secondary, maxWidth: 560 }}>
-                            {t.description}
-                          </div>
-                        )}
-                        <div
-                          style={{
-                            ...S.secondary,
-                            display: "flex",
-                            gap: 10,
-                            flexWrap: "wrap",
-                          }}
-                        >
-                          {!titleHasRole && t.task_role && (
-                            <span>{t.task_role}</span>
-                          )}
-                          {!titleHasOrder && t.order_number && (
-                            <span>Order #{t.order_number}</span>
-                          )}
-                          {!t.is_read && (
-                            <span
-                              style={{
-                                color: "#18181b",
-                                fontWeight: 600,
-                              }}
-                            >
-                              New
-                            </span>
-                          )}
+                        <div style={S.primary}>
+                          {order.orderNumber
+                            ? `#${order.orderNumber}`
+                            : `Order #${order.orderId}`}
+                        </div>
+                        <div style={S.secondary}>
+                          Order ID: {order.orderId || "—"}
                         </div>
                       </td>
 
                       <td style={S.td}>
                         <div style={{ ...S.primary, fontWeight: 500 }}>
-                          {t.assigned_to_name || "Not assigned"}
+                          {order.customerName || "Walk-in Customer"}
                         </div>
                       </td>
 
                       <td style={S.td}>
-                        <div
-                          style={{
-                            color: overdue ? "#b91c1c" : "#3f3f46",
-                          }}
-                        >
-                          {formatTaskDateTime(t.due_date)}
+                        <div style={{ ...S.primary, fontWeight: 500 }}>
+                          {order.currentStaffLabel}
                         </div>
-                        {overdue && (
+                        {order.currentStaff.length > 1 ? (
+                          <div style={S.secondary}>
+                            Split remaining work
+                          </div>
+                        ) : null}
+                      </td>
+
+                      <td style={S.td}>
+                        <div style={{ fontSize: 11.5, lineHeight: 1.5 }}>
+                          <div>
+                            <strong style={{ fontWeight: 600 }}>Started:</strong>{" "}
+                            {order.startedAt
+                              ? formatTaskDateTime(order.startedAt)
+                              : "Not started"}
+                          </div>
                           <div
                             style={{
-                              ...S.secondary,
-                              color: "#b91c1c",
-                              fontWeight: 500,
+                              color: order.overdue ? "#b91c1c" : "#3f3f46",
                             }}
                           >
-                            Overdue
+                            <strong style={{ fontWeight: 600 }}>Due:</strong>{" "}
+                            {formatTaskDateTime(order.dueDate)}
                           </div>
-                        )}
+                          {order.overdue ? (
+                            <div
+                              style={{
+                                ...S.secondary,
+                                color: "#b91c1c",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Overdue
+                            </div>
+                          ) : null}
+                        </div>
                       </td>
 
                       <td style={S.td}>
-                        <span style={S.tag(sm.bg, sm.color, sm.border)}>
-                          {sm.label}
+                        <div style={{ ...S.primary, marginBottom: 6 }}>
+                          {order.completedCount} / {REQUIRED_PRODUCTION_ROLES.length}
+                        </div>
+                        <span style={S.tag(meta.bg, meta.color, meta.border)}>
+                          {meta.label}
                         </span>
                       </td>
 
-                      <td style={{ ...S.td, textAlign: "right" }}>
-                        <div style={S.rowActions}>
-                          <button
-                            type="button"
-                            style={{ ...S.btn, ...S.btnGray }}
-                            onClick={() => openView(t)}
-                          >
-                            Details
-                          </button>
-
-                          {isAdmin &&
-                            REQUIRED_PRODUCTION_ROLES.includes(t.task_role) &&
-                            t.order_id && (
-                              <button
-                                type="button"
-                                style={{ ...S.btn, ...S.btnPrim }}
-                                onClick={() =>
-                                  navigate(`/admin/orders/${t.order_id}`)
-                                }
-                              >
-                                Open order
-                              </button>
-                            )}
-
-                          {isAdmin &&
-                            !REQUIRED_PRODUCTION_ROLES.includes(t.task_role) && (
-                              <>
-                                <button
-                                  type="button"
-                                  style={{ ...S.btn, ...S.btnGray }}
-                                  onClick={() => openEdit(t)}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  style={{ ...S.btn, ...S.btnRed }}
-                                  onClick={() => handleDelete(t.id)}
-                                >
-                                  Delete
-                                </button>
-                              </>
-                            )}
-
-                          {!isAdmin && t.status !== "completed" && (
-                            <select
-                              style={{
-                                ...S.select,
-                                minHeight: 34,
-                                fontSize: 11.5,
-                              }}
-                              value={t.status}
-                              onChange={(e) =>
-                                handleStatusUpdate(t.id, e.target.value)
-                              }
-                              aria-label="Update task status"
-                            >
-                              <option value="pending">Pending</option>
-                              <option value="in_progress">In progress</option>
-                              <option value="completed">Completed</option>
-                              <option value="blocked">Blocked</option>
-                            </select>
-                          )}
-                        </div>
+                      <td style={S.td}>
+                        <button
+                          type="button"
+                          style={{ ...S.btn, ...S.btnGray }}
+                          onClick={() => setDetailsOrderKey(order.key)}
+                        >
+                          Details
+                        </button>
                       </td>
                     </tr>
                   );
@@ -1146,6 +1350,178 @@ export default function TasksPage() {
           </table>
         </div>
       </section>
+
+      {selectedProductionOrder ? (
+        <div style={S.overlay} onClick={() => setDetailsOrderKey(null)}>
+          <div
+            style={{ ...S.modal, width: 920 }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={S.mTitle}>Production order details</div>
+
+            <div
+              style={{
+                ...S.infoBox,
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 12,
+              }}
+            >
+              <div>
+                <div style={S.label}>Order</div>
+                <div style={S.primary}>
+                  {selectedProductionOrder.orderNumber
+                    ? `#${selectedProductionOrder.orderNumber}`
+                    : `Order #${selectedProductionOrder.orderId}`}
+                </div>
+                <div style={S.secondary}>
+                  ID {selectedProductionOrder.orderId || "—"}
+                </div>
+              </div>
+              <div>
+                <div style={S.label}>Customer</div>
+                <div style={S.primary}>
+                  {selectedProductionOrder.customerName || "Walk-in Customer"}
+                </div>
+              </div>
+              <div>
+                <div style={S.label}>Current staff</div>
+                <div style={S.primary}>
+                  {selectedProductionOrder.currentStaffLabel}
+                </div>
+              </div>
+              <div>
+                <div style={S.label}>Progress</div>
+                <div style={S.primary}>
+                  {selectedProductionOrder.completedCount} of {REQUIRED_PRODUCTION_ROLES.length} completed
+                </div>
+              </div>
+              <div>
+                <div style={S.label}>Assigned</div>
+                <div style={S.primary}>
+                  {formatTaskDateTime(selectedProductionOrder.assignedAt)}
+                </div>
+              </div>
+              <div>
+                <div style={S.label}>Started</div>
+                <div style={S.primary}>
+                  {selectedProductionOrder.startedAt
+                    ? formatTaskDateTime(selectedProductionOrder.startedAt)
+                    : "Not started"}
+                </div>
+              </div>
+              <div>
+                <div style={S.label}>Due</div>
+                <div
+                  style={{
+                    ...S.primary,
+                    color: selectedProductionOrder.overdue
+                      ? "#b91c1c"
+                      : "#18181b",
+                  }}
+                >
+                  {formatTaskDateTime(selectedProductionOrder.dueDate)}
+                  {selectedProductionOrder.overdue ? " · Overdue" : ""}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ ...S.tableScroll, maxHeight: 430, minHeight: 0 }}>
+              <table style={{ ...S.table, minWidth: 800 }}>
+                <thead>
+                  <tr>
+                    <th style={S.th}>Production Step</th>
+                    <th style={S.th}>Staff</th>
+                    <th style={S.th}>Status</th>
+                    <th style={S.th}>Dates</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedProductionOrder.steps.map((step) => {
+                    const meta = STATUS_META[step.status] || STATUS_META.pending;
+                    const task = step.task;
+                    return (
+                      <tr key={step.stepLabel} style={S.tr}>
+                        <td style={S.td}>
+                          <div style={S.primary}>{step.stepLabel}</div>
+                          {step.status === "blocked" && task?.hold_reason ? (
+                            <div
+                              style={{
+                                ...S.secondary,
+                                color: "#991b1b",
+                                maxWidth: 320,
+                              }}
+                            >
+                              Hold reason: {task.hold_reason}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td style={S.td}>
+                          {task?.assigned_to_name || "Not assigned"}
+                        </td>
+                        <td style={S.td}>
+                          <span style={S.tag(meta.bg, meta.color, meta.border)}>
+                            {task ? meta.label : "Not assigned"}
+                          </span>
+                        </td>
+                        <td style={S.td}>
+                          {task ? (
+                            <div style={{ fontSize: 11, lineHeight: 1.55 }}>
+                              <div>Assigned: {formatTaskDateTime(task.created_at)}</div>
+                              <div>
+                                Started: {task.accepted_at ? formatTaskDateTime(task.accepted_at) : "Not started"}
+                              </div>
+                              <div>Due: {formatTaskDateTime(task.due_date)}</div>
+                              <div>
+                                Completed: {task.completed_at ? formatTaskDateTime(task.completed_at) : "—"}
+                              </div>
+                            </div>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 8,
+                marginTop: 18,
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                {isAdmin &&
+                selectedProductionOrder.orderId &&
+                !selectedProductionOrder.complete ? (
+                  <button
+                    type="button"
+                    style={{ ...S.btn, ...S.btnPrim }}
+                    onClick={() =>
+                      navigate(`/admin/orders/${selectedProductionOrder.orderId}`)
+                    }
+                  >
+                    Reassign staff
+                  </button>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                style={{ ...S.btn, ...S.btnGray }}
+                onClick={() => setDetailsOrderKey(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* ── Production Order Picker ───────────────────────────────────────── */}
       {productionOrderPickerOpen && (

@@ -327,6 +327,7 @@ export default function CustomCheckoutPage() {
   const [submitFeedbackStatus, setSubmitFeedbackStatus] = useState("loading");
   const [error, setError] = useState("");
   const [reviewConfirmed, setReviewConfirmed] = useState(false);
+  const [assemblyChoice, setAssemblyChoice] = useState("");
   const [partsModalItem, setPartsModalItem] = useState(null);
 
   const [checkoutNote, setCheckoutNote] = useState("");
@@ -453,6 +454,7 @@ export default function CustomCheckoutPage() {
 
       setCheckoutItems([{ ...matchedItem, quantity: safeQuantity }]);
       setReviewConfirmed(false);
+      setAssemblyChoice("");
       setSelectionReady(true);
     } catch {
       navigate("/custom-cart", { replace: true });
@@ -489,6 +491,11 @@ export default function CustomCheckoutPage() {
 
     if (checkoutItems.length !== 1) {
       setError("Select exactly one custom design for this request.");
+      return;
+    }
+
+    if (!assemblyChoice) {
+      setError("Please choose an assembly option before submitting.");
       return;
     }
 
@@ -601,6 +608,7 @@ export default function CustomCheckoutPage() {
           delivery_lat: validDeliveryPin.lat,
           delivery_lng: validDeliveryPin.lng,
           notes: form.notes,
+          assembly_choice: assemblyChoice,
           design_review_confirmed: true,
         }),
       );
@@ -1075,7 +1083,124 @@ export default function CustomCheckoutPage() {
                 </span>
               </div>
 
-              <p className="summary-note" style={{ marginTop: 10 }}>
+              <div
+                style={{
+                  marginTop: 14,
+                  paddingTop: 14,
+                  borderTop: "1px solid #e5e5e5",
+                }}
+              >
+                <div
+                  className="summary-row"
+                  style={{ alignItems: "center", marginBottom: 10 }}
+                >
+                  <span>Assembly</span>
+                  <strong style={{ fontSize: 12 }}>
+                    {assemblyChoice
+                      ? assemblyChoice === "included"
+                        ? "Included (Free)"
+                        : "Not Requested"
+                      : "Select one"}
+                  </strong>
+                </div>
+
+                <div
+                  role="radiogroup"
+                  aria-label="Assembly preference"
+                  style={{ display: "grid", gap: 8 }}
+                >
+                  <label
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "flex-start",
+                      padding: "11px 12px",
+                      border:
+                        assemblyChoice === "included"
+                          ? "1px solid #111"
+                          : "1px solid #d9d9d9",
+                      background:
+                        assemblyChoice === "included" ? "#fafafa" : "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="assembly_choice"
+                      value="included"
+                      checked={assemblyChoice === "included"}
+                      onChange={() => {
+                        setAssemblyChoice("included");
+                        setError("");
+                      }}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span>
+                      <strong style={{ display: "block", fontSize: 12.5 }}>
+                        Include free assembly
+                      </strong>
+                      <span
+                        style={{
+                          display: "block",
+                          marginTop: 2,
+                          fontSize: 11,
+                          color: "#666",
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        Our team will assemble your furniture at no additional
+                        cost.
+                      </span>
+                    </span>
+                  </label>
+
+                  <label
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "flex-start",
+                      padding: "11px 12px",
+                      border:
+                        assemblyChoice === "none"
+                          ? "1px solid #111"
+                          : "1px solid #d9d9d9",
+                      background:
+                        assemblyChoice === "none" ? "#fafafa" : "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="assembly_choice"
+                      value="none"
+                      checked={assemblyChoice === "none"}
+                      onChange={() => {
+                        setAssemblyChoice("none");
+                        setError("");
+                      }}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span>
+                      <strong style={{ display: "block", fontSize: 12.5 }}>
+                        No assembly needed
+                      </strong>
+                      <span
+                        style={{
+                          display: "block",
+                          marginTop: 2,
+                          fontSize: 11,
+                          color: "#666",
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        I do not need assembly service for this request.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              <p className="summary-note" style={{ marginTop: 12 }}>
                 Your design will be reviewed before the quotation and payment
                 are confirmed.
               </p>
@@ -1129,7 +1254,12 @@ export default function CustomCheckoutPage() {
             <button
               className="place-order-btn"
               onClick={handleSubmit}
-              disabled={loading || !checkoutItems.length || !reviewConfirmed}
+              disabled={
+                loading ||
+                !checkoutItems.length ||
+                !assemblyChoice ||
+                !reviewConfirmed
+              }
             >
               {loading ? (
                 "Submitting…"

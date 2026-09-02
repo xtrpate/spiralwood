@@ -11,6 +11,12 @@ const CHANNELS = [
   { key: "walkin", label: "Walk-in" },
 ];
 
+const PAYMENT_TYPES = [
+  { key: "", label: "All Payments" },
+  { key: "cash", label: "Cash" },
+  { key: "online", label: "Online" },
+];
+
 const PERIODS = [
   { value: "daily", label: "Today" },
   { value: "weekly", label: "This Week" },
@@ -157,6 +163,7 @@ export default function SalesReportPage() {
   const navigate = useNavigate();
 
   const [channel, setChannel] = useState("");
+  const [payment, setPayment] = useState("");
   const [period, setPeriod] = useState("monthly");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -175,7 +182,7 @@ export default function SalesReportPage() {
     setError("");
 
     try {
-      const params = { channel };
+      const params = { channel, payment };
 
       if (period === "custom") {
         params.from = from;
@@ -194,7 +201,7 @@ export default function SalesReportPage() {
     } finally {
       setLoading(false);
     }
-  }, [channel, from, period, to]);
+  }, [channel, from, payment, period, to]);
 
   useEffect(() => {
     if (period !== "custom") load();
@@ -280,6 +287,8 @@ export default function SalesReportPage() {
 
   const channelLabel =
     CHANNELS.find((item) => item.key === channel)?.label || "All Channels";
+  const paymentLabel =
+    PAYMENT_TYPES.find((item) => item.key === payment)?.label || "All Payments";
 
   const exportPDF = () => {
     if (!data) return;
@@ -382,7 +391,8 @@ export default function SalesReportPage() {
     doc.setFontSize(8);
     doc.setTextColor(82, 82, 91);
     doc.text(`Channel: ${pdfText(channelLabel)}`, marginX, 31);
-    doc.text(`Period: ${pdfText(reportDateRangeLabel)}`, marginX + 72, 31);
+    doc.text(`Payment: ${pdfText(paymentLabel)}`, marginX + 72, 31);
+    doc.text(`Period: ${pdfText(reportDateRangeLabel)}`, marginX + 145, 31);
 
     doc.setFontSize(7.2);
     doc.setTextColor(113, 113, 122);
@@ -610,6 +620,20 @@ export default function SalesReportPage() {
             >
               {CHANNELS.map((item) => (
                 <option key={item.key} value={item.key}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="sales-filter-field">
+            <span className="sales-filter-label">Payment Type</span>
+            <select
+              value={payment}
+              onChange={(event) => setPayment(event.target.value)}
+            >
+              {PAYMENT_TYPES.map((item) => (
+                <option key={item.key || "all"} value={item.key}>
                   {item.label}
                 </option>
               ))}
