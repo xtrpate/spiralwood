@@ -614,10 +614,15 @@ export default function DeliveryManagement() {
             const assemblyChoice = normalize(
               delivery.requested_assembly_choice,
             );
-            const assemblyRequired =
-              isBlueprintDelivery && assemblyChoice === "included";
-            const assemblyNotRequired =
-              isBlueprintDelivery && assemblyChoice === "none";
+            const isStandardDelivery =
+              normalize(delivery.order_type) === "standard";
+            const hasAssemblyChoice = ["included", "none"].includes(
+              assemblyChoice,
+            );
+            const assemblyRequired = assemblyChoice === "included";
+            const assemblyNotRequired = assemblyChoice === "none";
+            const showAssemblyInstruction =
+              isBlueprintDelivery || (isStandardDelivery && hasAssemblyChoice);
             const isStandardCodDelivery =
               !isBlueprintDelivery &&
               normalize(delivery.order_type) === "standard" &&
@@ -753,9 +758,9 @@ export default function DeliveryManagement() {
                   </span>
                 </div>
 
-                {isBlueprintDelivery && (
+                {showAssemblyInstruction && (
                   <div
-                    aria-label="Custom furniture assembly instruction"
+                    aria-label="Furniture assembly instruction"
                     style={{
                       marginTop: 12,
                       padding: "10px 12px",

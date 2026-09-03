@@ -865,9 +865,10 @@ exports.getOne = async (req, res) => {
 
     const items = rawItems.map(normalizeCustomRequestItem);
 
-    const customRequestItems = items.filter((item) =>
-      Boolean(item.customization),
-    );
+    const customRequestItems =
+      normalize(order.order_type) === "blueprint"
+        ? items.filter((item) => Boolean(item.customization))
+        : [];
 
     const [paymentTransactions] = await pool.query(
       `SELECT 

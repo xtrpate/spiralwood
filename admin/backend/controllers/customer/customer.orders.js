@@ -123,6 +123,7 @@ exports.createOrder = async (req, res) => {
       delivery_lng,
       payment_method,
       notes,
+      assembly_choice,
     } = req.body;
     // NOTE: client-submitted unit_price, subtotal, total, and product_name
     // are intentionally never read from req.body — the server recomputes
@@ -160,6 +161,25 @@ exports.createOrder = async (req, res) => {
     // so no address is required there.
     const cleanDeliveryAddress = String(delivery_address || "").trim();
     const DELIVERY_REQUIRED_METHODS = ["cod", "paymongo"];
+    const isDeliveryOrder = DELIVERY_REQUIRED_METHODS.includes(
+      normalizedPaymentMethod,
+    );
+    const cleanAssemblyChoice = String(assembly_choice || "")
+      .trim()
+      .toLowerCase();
+
+    if (
+      isDeliveryOrder &&
+      !["included", "none"].includes(cleanAssemblyChoice)
+    ) {
+      await conn.rollback();
+      return res.status(400).json({
+        message: "Please choose an assembly option before placing the order.",
+      });
+    }
+
+    const storedAssemblyChoice = isDeliveryOrder ? cleanAssemblyChoice : null;
+
     if (
       DELIVERY_REQUIRED_METHODS.includes(normalizedPaymentMethod) &&
       !cleanDeliveryAddress
@@ -346,18 +366,26 @@ exports.createOrder = async (req, res) => {
 
     const order_id = orderRes.insertId;
 
+    const readyMadeCustomizationJson = storedAssemblyChoice
+      ? JSON.stringify({
+          assembly_choice: storedAssemblyChoice,
+          source: "ready_made_checkout",
+        })
+      : null;
+
     for (const item of validatedItems) {
       await conn.query(
         `INSERT INTO order_items
           (order_id, product_id,
-           product_name, quantity, unit_price)
-         VALUES (?,?,?,?,?)`,
+           product_name, quantity, unit_price, customization_json)
+         VALUES (?,?,?,?,?,?)`,
         [
           order_id,
           item.product_id,
           item.product_name,
           item.quantity,
           item.unit_price,
+          readyMadeCustomizationJson,
         ],
       );
 
@@ -394,6 +422,7 @@ exports.createOrder = async (req, res) => {
         status: "pending",
         payment_status,
         payment_method: normalizedPaymentMethod,
+        assembly_choice: storedAssemblyChoice,
         total,
         item_count: validatedItems.reduce(
           (sum, item) => sum + Number(item.quantity || 0),

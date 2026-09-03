@@ -1348,6 +1348,22 @@ export default function OrderDetailPage() {
 
   const hasCustomRequestItems = customRequestItems.length > 0;
   const orderItems = Array.isArray(order?.items) ? order.items : [];
+  const readyMadeAssemblyChoice =
+    normalize(order?.order_type) === "standard"
+      ? normalize(
+          orderItems.find((item) =>
+            ["included", "none"].includes(
+              normalize(item?.requested_assembly_choice),
+            ),
+          )?.requested_assembly_choice,
+        )
+      : "";
+  const readyMadeAssemblyLabel =
+    readyMadeAssemblyChoice === "included"
+      ? "Included (Free)"
+      : readyMadeAssemblyChoice === "none"
+        ? "Not Requested"
+        : "";
   const shouldShowOrderItems =
     !hasCustomRequestItems ||
     orderItems.some(
@@ -1811,6 +1827,9 @@ export default function OrderDetailPage() {
                   "—"
                 }
               />
+              {readyMadeAssemblyLabel ? (
+                <InfoRow label="Assembly" value={readyMadeAssemblyLabel} />
+              ) : null}
               <InfoRow label="Channel" value={channelMeta.label} />
             </Section>
           </div>

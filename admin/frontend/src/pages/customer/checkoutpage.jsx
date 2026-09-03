@@ -103,6 +103,7 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [checkoutFeedbackStatus, setCheckoutFeedbackStatus] =
     useState("loading");
+  const [assemblyChoice, setAssemblyChoice] = useState("");
 
   const [checkoutNote, setCheckoutNote] = useState("");
   useEffect(() => {
@@ -250,6 +251,7 @@ export default function CheckoutPage() {
       }
 
       setCheckoutItems(matchedItems);
+      setAssemblyChoice("");
       setSelectionReady(true);
     } catch {
       sessionStorage.removeItem("cust_selected_keys");
@@ -321,6 +323,11 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (form.payment_method !== "cop" && !assemblyChoice) {
+      toast.error("Please choose an assembly option before placing your order.");
+      return;
+    }
+
     if (
       form.payment_method !== "cop" &&
       !String(form.delivery_address || "").trim()
@@ -355,6 +362,7 @@ export default function CheckoutPage() {
       isPickup ? "" : String(form.delivery_address || "").trim(),
     );
     formData.append("payment_method", String(form.payment_method || "").trim());
+    formData.append("assembly_choice", isPickup ? "" : assemblyChoice);
     formData.append("notes", String(form.notes || "").trim());
     formData.append("subtotal", String(subtotal));
     formData.append("total", String(total));
@@ -998,6 +1006,117 @@ export default function CheckoutPage() {
                 <span style={{ color: "#111111", fontWeight: 700 }}>Free</span>
               </div>
 
+              <div
+                style={{
+                  margin: "14px 0",
+                  paddingTop: 14,
+                  borderTop: "1px solid #e5e5e5",
+                }}
+              >
+                <div
+                  className="summary-row"
+                  style={{ alignItems: "center", marginBottom: 10 }}
+                >
+                  <span>Assembly</span>
+                  <strong style={{ fontSize: 12 }}>
+                    {assemblyChoice
+                      ? assemblyChoice === "included"
+                        ? "Included (Free)"
+                        : "Not Requested"
+                      : "Select one"}
+                  </strong>
+                </div>
+
+                <div
+                  role="radiogroup"
+                  aria-label="Assembly preference"
+                  style={{ display: "grid", gap: 8 }}
+                >
+                  <label
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "flex-start",
+                      padding: "11px 12px",
+                      border:
+                        assemblyChoice === "included"
+                          ? "1px solid #111"
+                          : "1px solid #d9d9d9",
+                      background:
+                        assemblyChoice === "included" ? "#fafafa" : "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="ready_made_assembly_choice"
+                      value="included"
+                      checked={assemblyChoice === "included"}
+                      onChange={() => setAssemblyChoice("included")}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span>
+                      <strong style={{ display: "block", fontSize: 12.5 }}>
+                        Include free assembly
+                      </strong>
+                      <span
+                        style={{
+                          display: "block",
+                          marginTop: 2,
+                          fontSize: 11,
+                          color: "#666",
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        Our delivery team will assemble your ready-made furniture
+                        at no additional cost.
+                      </span>
+                    </span>
+                  </label>
+
+                  <label
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      alignItems: "flex-start",
+                      padding: "11px 12px",
+                      border:
+                        assemblyChoice === "none"
+                          ? "1px solid #111"
+                          : "1px solid #d9d9d9",
+                      background:
+                        assemblyChoice === "none" ? "#fafafa" : "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="ready_made_assembly_choice"
+                      value="none"
+                      checked={assemblyChoice === "none"}
+                      onChange={() => setAssemblyChoice("none")}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span>
+                      <strong style={{ display: "block", fontSize: 12.5 }}>
+                        No assembly needed
+                      </strong>
+                      <span
+                        style={{
+                          display: "block",
+                          marginTop: 2,
+                          fontSize: 11,
+                          color: "#666",
+                          lineHeight: 1.35,
+                        }}
+                      >
+                        I do not need assembly service for this order.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+
               <div className="summary-row">
                 <span>Total</span>
                 <span style={{ color: "#111111", fontWeight: 800 }}>
@@ -1042,6 +1161,7 @@ export default function CheckoutPage() {
               disabled={
                 loading ||
                 !checkoutItems.length ||
+                (showAddressSection && !assemblyChoice) ||
                 (showAddressSection && !hasDeliveryPin)
               }
             >

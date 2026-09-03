@@ -146,6 +146,38 @@ function getItemSubtotal(item) {
   return Number(item?.quantity || 0) * Number(item?.unit_price || 0);
 }
 
+function getReadyMadeAssemblyChoice(order) {
+  if (
+    String(order?.order_type || "")
+      .trim()
+      .toLowerCase() !== "standard"
+  ) {
+    return "";
+  }
+
+  for (const item of Array.isArray(order?.items) ? order.items : []) {
+    let customization = item?.customization_json;
+
+    if (typeof customization === "string") {
+      try {
+        customization = JSON.parse(customization);
+      } catch {
+        customization = null;
+      }
+    }
+
+    const choice = String(
+      item?.assembly_choice || customization?.assembly_choice || "",
+    )
+      .trim()
+      .toLowerCase();
+
+    if (["included", "none"].includes(choice)) return choice;
+  }
+
+  return "";
+}
+
 function TrackingList({ order }) {
   if (order.status === "cancelled") {
     return (
@@ -252,6 +284,14 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
   const pm = PAY_STATUS_META[order?.payment_status] || {
     label: order?.payment_status || "—",
   };
+
+  const readyMadeAssemblyChoice = getReadyMadeAssemblyChoice(order);
+  const readyMadeAssemblyLabel =
+    readyMadeAssemblyChoice === "included"
+      ? "Included (Free)"
+      : readyMadeAssemblyChoice === "none"
+        ? "Not Requested"
+        : "";
 
   return (
     <div className="om-backdrop" onClick={onClose}>
@@ -492,6 +532,13 @@ function OrderModal({ orderId, onClose, onConfirmOrder, onCancelOrder }) {
                           "—"}
                       </strong>
                     </div>
+
+                    {readyMadeAssemblyLabel ? (
+                      <div className="om-detail-row">
+                        <span>Assembly</span>
+                        <strong>{readyMadeAssemblyLabel}</strong>
+                      </div>
+                    ) : null}
 
                     <div className="om-detail-row">
                       <span>Payment Status</span>

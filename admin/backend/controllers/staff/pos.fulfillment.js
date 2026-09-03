@@ -394,9 +394,22 @@ exports.getDeliveries = async (req, res) => {
         o.order_type,
         o.remaining_payment_method,
 
-        CASE
-          WHEN LOWER(COALESCE(o.order_type, '')) = 'blueprint' THEN (
-            SELECT CASE
+        (
+          SELECT CASE
+            WHEN JSON_VALID(oi_assembly.customization_json) = 1 THEN
+              LOWER(
+                JSON_UNQUOTE(
+                  JSON_EXTRACT(
+                    oi_assembly.customization_json,
+                    '$.assembly_choice'
+                  )
+                )
+              )
+            ELSE NULL
+          END
+          FROM order_items oi_assembly
+          WHERE oi_assembly.order_id = o.id
+            AND CASE
               WHEN JSON_VALID(oi_assembly.customization_json) = 1 THEN
                 LOWER(
                   JSON_UNQUOTE(
@@ -407,26 +420,10 @@ exports.getDeliveries = async (req, res) => {
                   )
                 )
               ELSE NULL
-            END
-            FROM order_items oi_assembly
-            WHERE oi_assembly.order_id = o.id
-              AND CASE
-                WHEN JSON_VALID(oi_assembly.customization_json) = 1 THEN
-                  LOWER(
-                    JSON_UNQUOTE(
-                      JSON_EXTRACT(
-                        oi_assembly.customization_json,
-                        '$.assembly_choice'
-                      )
-                    )
-                  )
-                ELSE NULL
-              END IN ('included', 'none')
-            ORDER BY oi_assembly.id ASC
-            LIMIT 1
-          )
-          ELSE NULL
-        END AS requested_assembly_choice,
+            END IN ('included', 'none')
+          ORDER BY oi_assembly.id ASC
+          LIMIT 1
+        ) AS requested_assembly_choice,
 
         o.delivery_lat,
         o.delivery_lng,
@@ -609,7 +606,7 @@ exports.createDelivery = async (req, res) => {
 
       const [[lockedOrder]] = await scheduleConn.query(
         `
-        SELECT id, status, order_type
+        SELECT id, status, order_type, type
         FROM orders
         WHERE id = ?
         LIMIT 1
@@ -629,6 +626,10 @@ exports.createDelivery = async (req, res) => {
       const lockedIsBlueprintOrder =
         normalizeText(lockedOrder.order_type || "").toLowerCase() ===
         "blueprint";
+      const lockedIsOnlineStandardOrder =
+        normalizeText(lockedOrder.order_type || "").toLowerCase() ===
+          "standard" &&
+        normalizeText(lockedOrder.type || "").toLowerCase() === "online";
 
       if (
         ["cancelled", "delivered", "completed"].includes(lockedOrderStatus)
@@ -725,6 +726,29 @@ exports.createDelivery = async (req, res) => {
           return res.status(409).json({
             message:
               "The order changed while the delivery was being scheduled. Please refresh and try again.",
+          });
+        }
+      } else if (
+        lockedIsOnlineStandardOrder &&
+        lockedOrderStatus === "confirmed"
+      ) {
+        const [orderStatusUpdate] = await scheduleConn.query(
+          `
+          UPDATE orders
+          SET status = 'shipping'
+          WHERE id = ?
+            AND status = 'confirmed'
+            AND LOWER(COALESCE(order_type, '')) = 'standard'
+            AND LOWER(COALESCE(type, '')) = 'online'
+          `,
+          [orderId],
+        );
+
+        if (Number(orderStatusUpdate.affectedRows || 0) !== 1) {
+          await scheduleConn.rollback();
+          return res.status(409).json({
+            message:
+              "The Ready-Made order changed while the delivery was being scheduled. Please refresh and try again.",
           });
         }
       }
