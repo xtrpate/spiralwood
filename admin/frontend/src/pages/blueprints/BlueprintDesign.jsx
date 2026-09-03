@@ -277,7 +277,11 @@ export default function BlueprintDesign() {
           ? event.target.closest("a[href]")
           : null;
 
-      if (!element || element.target === "_blank" || element.hasAttribute("download")) {
+      if (
+        !element ||
+        element.target === "_blank" ||
+        element.hasAttribute("download")
+      ) {
         return;
       }
 
@@ -635,6 +639,26 @@ export default function BlueprintDesign() {
           return attrs ? normalizeComponent({ ...c, ...attrs }) : c;
         }),
       );
+    },
+    [editorMode, components, pushHistory],
+  );
+
+  const handleBatchAddComponents = useCallback(
+    (newComponents) => {
+      if (editorMode !== "editable") return;
+
+      pushHistory(components);
+
+      const normalized = newComponents.map((c) => normalizeComponent(c));
+      setComponents((prev) => [...prev, ...normalized]);
+
+      // Auto-select the newly generated AI assembly
+      const newIds = normalized.map((c) => c.id);
+      if (newIds.length > 0) {
+        setSelectedId(newIds[newIds.length - 1]);
+        setSelectedIds(newIds);
+        setEdit3DId(newIds[newIds.length - 1]);
+      }
     },
     [editorMode, components, pushHistory],
   );
@@ -2134,6 +2158,7 @@ export default function BlueprintDesign() {
             transformMode={transformMode}
             setTransformMode={setTransformMode}
             addComponent={addComponent}
+            onBatchAdd={handleBatchAddComponents}
             activeBuildLabel={activeChairBuild?.label || ""}
             selectedComp={selectedComp}
             selectionSummary={selectionInspectorSummary3D}

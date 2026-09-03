@@ -1,5 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import api from "../../../../services/api";
 import { WOOD_FINISHES } from "../../data/furnitureTypes";
+import {
+  buildFurnitureTemplateParts,
+  buildDiningChairParts,
+} from "../../data/templateComponents";
 import { applyWoodFinish, isWoodLikeMaterial } from "../../data/componentUtils";
 import {
   MATERIAL_SUGGESTIONS,
@@ -12,7 +17,12 @@ import {
   createHardwareRequirement,
   getHardwareTypeLabel,
 } from "../../data/hardwareMetadata";
-import { displayToMm, formatDim, formatDims, mmToDisplay } from "../../data/utils";
+import {
+  displayToMm,
+  formatDim,
+  formatDims,
+  mmToDisplay,
+} from "../../data/utils";
 import S from "../../styles/blueprintStyles";
 import { VIEWER_UI } from "../viewerUi";
 import {
@@ -88,10 +98,7 @@ function ContourEditorCard({
     ? woodworkingProfile.contourPointsMm
     : [];
 
-  const safeIndex = Math.max(
-    0,
-    Math.min(points.length - 1, activeIndex),
-  );
+  const safeIndex = Math.max(0, Math.min(points.length - 1, activeIndex));
   const safeEdgeIndex = Math.max(
     0,
     Math.min(points.length - 1, activeEdgeIndex),
@@ -103,26 +110,21 @@ function ContourEditorCard({
     safeEdgeIndex,
     18,
   );
-  const allEdgeNotches = Array.isArray(
-    woodworkingProfile?.profileEdgeNotches,
-  )
+  const allEdgeNotches = Array.isArray(woodworkingProfile?.profileEdgeNotches)
     ? woodworkingProfile.profileEdgeNotches
     : [];
   const activeEdgeNotches = allEdgeNotches.filter(
     (item) => Number(item.edgeIndex) === safeEdgeIndex,
   );
   const activeNotch =
-    activeEdgeNotches.find(
-      (item) => item.id === activeNotchId,
-    ) ||
+    activeEdgeNotches.find((item) => item.id === activeNotchId) ||
     activeEdgeNotches[0] ||
     null;
   const activeNotchStatus = activeNotch
     ? getProfileEdgeNotchStatus(selectedComp, activeNotch)
     : null;
 
-  const disabled =
-    editorMode !== "editable" || isLocked(selectedComp);
+  const disabled = editorMode !== "editable" || isLocked(selectedComp);
 
   const viewWidth = 240;
   const viewHeight = 160;
@@ -131,12 +133,8 @@ function ContourEditorCard({
   const usableHeight = viewHeight - padding * 2;
 
   const toScreen = ([u, v]) => [
-    padding +
-      (u / Math.max(1, woodworkingProfile.u) + 0.5) *
-        usableWidth,
-    padding +
-      (0.5 - v / Math.max(1, woodworkingProfile.v)) *
-        usableHeight,
+    padding + (u / Math.max(1, woodworkingProfile.u) + 0.5) * usableWidth,
+    padding + (0.5 - v / Math.max(1, woodworkingProfile.v)) * usableHeight,
   ];
 
   const pointerToLocal = (event) => {
@@ -146,19 +144,11 @@ function ContourEditorCard({
     const rect = svg.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
 
-    const x =
-      ((event.clientX - rect.left) / rect.width) * viewWidth;
-    const y =
-      ((event.clientY - rect.top) / rect.height) * viewHeight;
+    const x = ((event.clientX - rect.left) / rect.width) * viewWidth;
+    const y = ((event.clientY - rect.top) / rect.height) * viewHeight;
 
-    const normalizedU = Math.max(
-      0,
-      Math.min(1, (x - padding) / usableWidth),
-    );
-    const normalizedV = Math.max(
-      0,
-      Math.min(1, (y - padding) / usableHeight),
-    );
+    const normalizedU = Math.max(0, Math.min(1, (x - padding) / usableWidth));
+    const normalizedV = Math.max(0, Math.min(1, (y - padding) / usableHeight));
 
     return [
       (normalizedU - 0.5) * woodworkingProfile.u,
@@ -167,10 +157,7 @@ function ContourEditorCard({
   };
 
   const screenPoints = points.map(toScreen);
-  const curvePathPoints = getContourCurvePathPointsMm(
-    selectedComp,
-    18,
-  );
+  const curvePathPoints = getContourCurvePathPointsMm(selectedComp, 18);
   const curveScreenPoints = curvePathPoints.map(toScreen);
 
   const edgeInfos = points.map((_, index) =>
@@ -195,9 +182,7 @@ function ContourEditorCard({
 
       if (
         resetFilletForCurves &&
-        nextCurves.some(
-          (value) => Math.abs(Number(value) || 0) > 1e-6,
-        )
+        nextCurves.some((value) => Math.abs(Number(value) || 0) > 1e-6)
       ) {
         // V3 keeps circular edges mathematically clean. Corner fillet remains
         // available whenever all custom contour edges are straight.
@@ -208,10 +193,7 @@ function ContourEditorCard({
     if (Array.isArray(nextNotches)) {
       attrs.profileEdgeNotches = nextNotches;
 
-      if (
-        resetFilletForNotches &&
-        nextNotches.length > 0
-      ) {
+      if (resetFilletForNotches && nextNotches.length > 0) {
         // V4B boundary notches define their own hard inside corners.
         attrs.profileFilletRadius = 0;
       }
@@ -221,16 +203,8 @@ function ContourEditorCard({
   };
 
   const commitPointMm = (index, nextU, nextV) => {
-    const nextPoints = updateContourPointMm(
-      selectedComp,
-      index,
-      nextU,
-      nextV,
-    );
-    const nextCurves = resetContourCurvesAroundPoint(
-      selectedComp,
-      index,
-    );
+    const nextPoints = updateContourPointMm(selectedComp, index, nextU, nextV);
+    const nextCurves = resetContourCurvesAroundPoint(selectedComp, index);
 
     commitContour({
       nextPoints,
@@ -256,8 +230,7 @@ function ContourEditorCard({
       safeEdgeIndex,
       nextBulgeMm,
     );
-    const willCurve =
-      Math.abs(Number(nextBulgeMm) || 0) > 0.01;
+    const willCurve = Math.abs(Number(nextBulgeMm) || 0) > 0.01;
     const nextNotches = willCurve
       ? allEdgeNotches.filter(
           (item) => Number(item.edgeIndex) !== safeEdgeIndex,
@@ -298,10 +271,7 @@ function ContourEditorCard({
       return;
     }
 
-    const created = createProfileEdgeNotch(
-      selectedComp,
-      safeEdgeIndex,
-    );
+    const created = createProfileEdgeNotch(selectedComp, safeEdgeIndex);
     if (!created) return;
 
     const nextNotches = [...allEdgeNotches, created];
@@ -330,10 +300,7 @@ function ContourEditorCard({
   const deleteActiveNotch = () => {
     if (!activeNotch) return;
 
-    const nextNotches = deleteProfileEdgeNotch(
-      selectedComp,
-      activeNotch.id,
-    );
+    const nextNotches = deleteProfileEdgeNotch(selectedComp, activeNotch.id);
 
     commitContour({ nextNotches });
     setActiveNotchId("");
@@ -353,10 +320,7 @@ function ContourEditorCard({
     const dx = endU - startU;
     const dy = endV - startV;
     const chord = Math.max(0.001, Math.hypot(dx, dy));
-    const midpoint = [
-      (startU + endU) / 2,
-      (startV + endV) / 2,
-    ];
+    const midpoint = [(startU + endU) / 2, (startV + endV) / 2];
     const normal = [-dy / chord, dx / chord];
 
     const signedDistance =
@@ -367,14 +331,8 @@ function ContourEditorCard({
   };
 
   const insertAfterActive = () => {
-    const nextPoints = insertContourPointAfter(
-      selectedComp,
-      safeIndex,
-    );
-    const nextCurves = insertContourCurveAfter(
-      selectedComp,
-      safeIndex,
-    );
+    const nextPoints = insertContourPointAfter(selectedComp, safeIndex);
+    const nextCurves = insertContourCurveAfter(selectedComp, safeIndex);
 
     if (!Array.isArray(nextPoints)) return;
 
@@ -385,23 +343,14 @@ function ContourEditorCard({
     });
     setActiveNotchId("");
 
-    const nextIndex = Math.min(
-      safeIndex + 1,
-      nextPoints.length - 1,
-    );
+    const nextIndex = Math.min(safeIndex + 1, nextPoints.length - 1);
     setActiveIndex(nextIndex);
     setActiveEdgeIndex(nextIndex);
   };
 
   const deleteActive = () => {
-    const nextPoints = deleteContourPointAt(
-      selectedComp,
-      safeIndex,
-    );
-    const nextCurves = deleteContourCurveAt(
-      selectedComp,
-      safeIndex,
-    );
+    const nextPoints = deleteContourPointAt(selectedComp, safeIndex);
+    const nextCurves = deleteContourCurveAt(selectedComp, safeIndex);
 
     if (!Array.isArray(nextPoints)) return;
 
@@ -412,10 +361,7 @@ function ContourEditorCard({
     });
     setActiveNotchId("");
 
-    const nextIndex = Math.max(
-      0,
-      Math.min(safeIndex, nextPoints.length - 1),
-    );
+    const nextIndex = Math.max(0, Math.min(safeIndex, nextPoints.length - 1));
     setActiveIndex(nextIndex);
     setActiveEdgeIndex(
       Math.max(0, Math.min(safeEdgeIndex, nextPoints.length - 1)),
@@ -441,15 +387,11 @@ function ContourEditorCard({
     : null;
 
   const edgeLabel = activeEdgeInfo
-    ? `P${activeEdgeInfo.index + 1} → P${
-        activeEdgeInfo.nextIndex + 1
-      }`
+    ? `P${activeEdgeInfo.index + 1} → P${activeEdgeInfo.nextIndex + 1}`
     : "—";
 
   const radiusValue =
-    activeEdgeInfo?.radiusMm == null
-      ? 0
-      : Math.round(activeEdgeInfo.radiusMm);
+    activeEdgeInfo?.radiusMm == null ? 0 : Math.round(activeEdgeInfo.radiusMm);
 
   return (
     <div style={{ marginTop: 8 }}>
@@ -472,9 +414,9 @@ function ContourEditorCard({
           lineHeight: 1.45,
         }}
       >
-        Drag blue points for straight contour geometry. Click an edge, then
-        drag the purple arc handle to curve that edge. Exact point, bulge,
-        and radius values remain available below.
+        Drag blue points for straight contour geometry. Click an edge, then drag
+        the purple arc handle to curve that edge. Exact point, bulge, and radius
+        values remain available below.
       </div>
 
       <svg
@@ -513,9 +455,7 @@ function ContourEditorCard({
 
         {curveScreenPoints.length >= 3 ? (
           <polygon
-            points={curveScreenPoints
-              .map(([x, y]) => `${x},${y}`)
-              .join(" ")}
+            points={curveScreenPoints.map(([x, y]) => `${x},${y}`).join(" ")}
             fill="rgba(96, 165, 250, 0.13)"
             stroke="#93c5fd"
             strokeWidth="1.6"
@@ -579,22 +519,14 @@ function ContourEditorCard({
 
                 setActiveIndex(index);
                 setActiveEdgeIndex(index);
-                event.currentTarget.setPointerCapture?.(
-                  event.pointerId,
-                );
+                event.currentTarget.setPointerCapture?.(event.pointerId);
               }}
-              onPointerMove={(event) =>
-                handlePointPointerMove(event, index)
-              }
+              onPointerMove={(event) => handlePointPointerMove(event, index)}
               onPointerUp={(event) =>
-                event.currentTarget.releasePointerCapture?.(
-                  event.pointerId,
-                )
+                event.currentTarget.releasePointerCapture?.(event.pointerId)
               }
               onPointerCancel={(event) =>
-                event.currentTarget.releasePointerCapture?.(
-                  event.pointerId,
-                )
+                event.currentTarget.releasePointerCapture?.(event.pointerId)
               }
             />
           );
@@ -613,20 +545,14 @@ function ContourEditorCard({
             }}
             onPointerDown={(event) => {
               if (disabled) return;
-              event.currentTarget.setPointerCapture?.(
-                event.pointerId,
-              );
+              event.currentTarget.setPointerCapture?.(event.pointerId);
             }}
             onPointerMove={handleCurvePointerMove}
             onPointerUp={(event) =>
-              event.currentTarget.releasePointerCapture?.(
-                event.pointerId,
-              )
+              event.currentTarget.releasePointerCapture?.(event.pointerId)
             }
             onPointerCancel={(event) =>
-              event.currentTarget.releasePointerCapture?.(
-                event.pointerId,
-              )
+              event.currentTarget.releasePointerCapture?.(event.pointerId)
             }
           />
         ) : null}
@@ -657,10 +583,8 @@ function ContourEditorCard({
                 index === safeIndex ? "#60a5fa" : "#334155"
               }`,
               borderRadius: 0,
-              background:
-                index === safeIndex ? "#172554" : "#0f172a",
-              color:
-                index === safeIndex ? "#dbeafe" : "#94a3b8",
+              background: index === safeIndex ? "#172554" : "#0f172a",
+              color: index === safeIndex ? "#dbeafe" : "#94a3b8",
               fontSize: 8,
               fontWeight: 800,
               cursor: disabled ? "not-allowed" : "pointer",
@@ -751,13 +675,13 @@ function ContourEditorCard({
             lineHeight: 1.4,
           }}
         >
-          Positive / negative bulge chooses which side of the selected
-          edge curves outward. Purple handle = draggable arc control.
+          Positive / negative bulge chooses which side of the selected edge
+          curves outward. Purple handle = draggable arc control.
         </div>
 
         <label style={{ fontSize: 8, color: "#94a3b8" }}>
-          Curve Bulge (mm) — current:{" "}
-          {Math.round(activeEdgeInfo?.bulgeMm || 0)}mm
+          Curve Bulge (mm) — current: {Math.round(activeEdgeInfo?.bulgeMm || 0)}
+          mm
         </label>
         <input
           type="range"
@@ -766,9 +690,7 @@ function ContourEditorCard({
           step="1"
           value={Math.round(activeEdgeInfo?.bulgeMm || 0)}
           disabled={disabled || !activeEdgeInfo}
-          onChange={(event) =>
-            commitEdgeBulge(Number(event.target.value) || 0)
-          }
+          onChange={(event) => commitEdgeBulge(Number(event.target.value) || 0)}
           style={{
             width: "100%",
             accentColor: "#8b5cf6",
@@ -781,9 +703,7 @@ function ContourEditorCard({
           max={Math.round(activeEdgeInfo?.maxBulgeMm || 1)}
           value={Math.round(activeEdgeInfo?.bulgeMm || 0)}
           disabled={disabled || !activeEdgeInfo}
-          onChange={(event) =>
-            commitEdgeBulge(Number(event.target.value) || 0)
-          }
+          onChange={(event) => commitEdgeBulge(Number(event.target.value) || 0)}
           style={inputStyle}
         />
 
@@ -817,13 +737,7 @@ function ContourEditorCard({
             disabled={disabled || !activeEdgeInfo}
             onClick={() =>
               commitEdgeBulge(
-                Math.max(
-                  10,
-                  Math.min(
-                    60,
-                    activeEdgeInfo?.maxBulgeMm || 10,
-                  ),
-                ),
+                Math.max(10, Math.min(60, activeEdgeInfo?.maxBulgeMm || 10)),
               )
             }
             style={{
@@ -861,13 +775,7 @@ function ContourEditorCard({
             disabled={disabled || !activeEdgeInfo}
             onClick={() =>
               commitEdgeBulge(
-                -Math.max(
-                  10,
-                  Math.min(
-                    60,
-                    activeEdgeInfo?.maxBulgeMm || 10,
-                  ),
-                ),
+                -Math.max(10, Math.min(60, activeEdgeInfo?.maxBulgeMm || 10)),
               )
             }
             style={{
@@ -895,8 +803,8 @@ function ContourEditorCard({
           Chord {Math.round(activeEdgeInfo?.chordMm || 0)}mm ·{" "}
           {activeEdgeInfo?.isCurved
             ? `radius ${Math.round(activeEdgeInfo.radiusMm)}mm`
-            : "straight edge"}.
-          Adding an arc resets Custom Contour corner fillet to 0 and removes
+            : "straight edge"}
+          . Adding an arc resets Custom Contour corner fillet to 0 and removes
           any notch on that same edge.
         </div>
       </div>
@@ -929,9 +837,8 @@ function ContourEditorCard({
           }}
         >
           Rectangular boundary cut from the selected straight contour edge.
-          Offset is measured from P{safeEdgeIndex + 1} toward P{
-            activeEdgeInfo?.nextIndex + 1 || 1
-          }.
+          Offset is measured from P{safeEdgeIndex + 1} toward P
+          {activeEdgeInfo?.nextIndex + 1 || 1}.
         </div>
 
         {activeEdgeInfo?.isCurved ? (
@@ -953,8 +860,7 @@ function ContourEditorCard({
             <button
               type="button"
               disabled={
-                disabled ||
-                allEdgeNotches.length >= MAX_PROFILE_EDGE_NOTCHES
+                disabled || allEdgeNotches.length >= MAX_PROFILE_EDGE_NOTCHES
               }
               onClick={addEdgeNotch}
               style={{
@@ -967,8 +873,7 @@ function ContourEditorCard({
                 fontSize: 8,
                 fontWeight: 800,
                 cursor:
-                  disabled ||
-                  allEdgeNotches.length >= MAX_PROFILE_EDGE_NOTCHES
+                  disabled || allEdgeNotches.length >= MAX_PROFILE_EDGE_NOTCHES
                     ? "not-allowed"
                     : "pointer",
               }}
@@ -998,19 +903,13 @@ function ContourEditorCard({
                         height: 25,
                         padding: "0 6px",
                         border: `1px solid ${
-                          activeNotch?.id === notch.id
-                            ? "#f59e0b"
-                            : "#334155"
+                          activeNotch?.id === notch.id ? "#f59e0b" : "#334155"
                         }`,
                         borderRadius: 0,
                         background:
-                          activeNotch?.id === notch.id
-                            ? "#451a03"
-                            : "#0f172a",
+                          activeNotch?.id === notch.id ? "#451a03" : "#0f172a",
                         color:
-                          activeNotch?.id === notch.id
-                            ? "#fef3c7"
-                            : "#94a3b8",
+                          activeNotch?.id === notch.id ? "#fef3c7" : "#94a3b8",
                         fontSize: 8,
                         fontWeight: 800,
                       }}
@@ -1025,17 +924,13 @@ function ContourEditorCard({
                     marginBottom: 7,
                     padding: 7,
                     border: `1px solid ${
-                      activeNotchStatus?.valid
-                        ? "#365314"
-                        : "#7f1d1d"
+                      activeNotchStatus?.valid ? "#365314" : "#7f1d1d"
                     }`,
                     borderRadius: 0,
                     background: activeNotchStatus?.valid
                       ? "rgba(54, 83, 20, 0.12)"
                       : "rgba(127, 29, 29, 0.12)",
-                    color: activeNotchStatus?.valid
-                      ? "#d9f99d"
-                      : "#fecaca",
+                    color: activeNotchStatus?.valid ? "#d9f99d" : "#fecaca",
                     fontSize: 8,
                     lineHeight: 1.4,
                   }}
@@ -1064,10 +959,7 @@ function ContourEditorCard({
                       disabled={disabled}
                       onChange={(event) =>
                         updateActiveNotch({
-                          offset: Math.max(
-                            0,
-                            Number(event.target.value) || 0,
-                          ),
+                          offset: Math.max(0, Number(event.target.value) || 0),
                         })
                       }
                       style={inputStyle}
@@ -1086,10 +978,7 @@ function ContourEditorCard({
                       disabled={disabled}
                       onChange={(event) =>
                         updateActiveNotch({
-                          width: Math.max(
-                            1,
-                            Number(event.target.value) || 1,
-                          ),
+                          width: Math.max(1, Number(event.target.value) || 1),
                         })
                       }
                       style={inputStyle}
@@ -1109,10 +998,7 @@ function ContourEditorCard({
                     disabled={disabled}
                     onChange={(event) =>
                       updateActiveNotch({
-                        depth: Math.max(
-                          1,
-                          Number(event.target.value) || 1,
-                        ),
+                        depth: Math.max(1, Number(event.target.value) || 1),
                       })
                     }
                     style={inputStyle}
@@ -1164,8 +1050,8 @@ function ContourEditorCard({
           }}
         >
           {allEdgeNotches.length}/{MAX_PROFILE_EDGE_NOTCHES} boundary notches.
-          Point insert/delete/reset clears indexed notches to avoid attaching
-          a saved notch to the wrong contour edge.
+          Point insert/delete/reset clears indexed notches to avoid attaching a
+          saved notch to the wrong contour edge.
         </div>
       </div>
 
@@ -1188,10 +1074,7 @@ function ContourEditorCard({
             color: "#dbeafe",
             fontSize: 8,
             fontWeight: 800,
-            cursor:
-              disabled || points.length >= 24
-                ? "not-allowed"
-                : "pointer",
+            cursor: disabled || points.length >= 24 ? "not-allowed" : "pointer",
           }}
         >
           + Point
@@ -1209,10 +1092,7 @@ function ContourEditorCard({
             color: "#fca5a5",
             fontSize: 8,
             fontWeight: 800,
-            cursor:
-              disabled || points.length <= 3
-                ? "not-allowed"
-                : "pointer",
+            cursor: disabled || points.length <= 3 ? "not-allowed" : "pointer",
           }}
         >
           Delete
@@ -1245,9 +1125,9 @@ function ContourEditorCard({
           lineHeight: 1.4,
         }}
       >
-        {points.length} contour points · minimum 3 · maximum 24.
-        Moving a point straightens its two adjacent curved edges.
-        Invalid self-crossing arc edits are ignored.
+        {points.length} contour points · minimum 3 · maximum 24. Moving a point
+        straightens its two adjacent curved edges. Invalid self-crossing arc
+        edits are ignored.
       </div>
     </div>
   );
@@ -1272,17 +1152,13 @@ function CutoutEditorCard({
     setActiveIndex(0);
   }, [selectedComp?.id]);
 
-  const safeIndex = Math.max(
-    0,
-    Math.min(cutouts.length - 1, activeIndex),
-  );
+  const safeIndex = Math.max(0, Math.min(cutouts.length - 1, activeIndex));
   const activeCutout = cutouts[safeIndex] || null;
   const activeStatus = activeCutout
     ? getUniversalMachiningCutoutStatus(selectedComp, activeCutout)
     : null;
 
-  const disabled =
-    editorMode !== "editable" || isLocked(selectedComp);
+  const disabled = editorMode !== "editable" || isLocked(selectedComp);
 
   const viewWidth = 240;
   const viewHeight = 160;
@@ -1291,12 +1167,8 @@ function CutoutEditorCard({
   const usableHeight = viewHeight - padding * 2;
 
   const toScreen = ([u, v]) => [
-    padding +
-      (u / Math.max(1, woodworkingProfile.u) + 0.5) *
-        usableWidth,
-    padding +
-      (0.5 - v / Math.max(1, woodworkingProfile.v)) *
-        usableHeight,
+    padding + (u / Math.max(1, woodworkingProfile.u) + 0.5) * usableWidth,
+    padding + (0.5 - v / Math.max(1, woodworkingProfile.v)) * usableHeight,
   ];
 
   const pointerToLocal = (event) => {
@@ -1306,19 +1178,11 @@ function CutoutEditorCard({
     const rect = svg.getBoundingClientRect();
     if (!rect.width || !rect.height) return null;
 
-    const x =
-      ((event.clientX - rect.left) / rect.width) * viewWidth;
-    const y =
-      ((event.clientY - rect.top) / rect.height) * viewHeight;
+    const x = ((event.clientX - rect.left) / rect.width) * viewWidth;
+    const y = ((event.clientY - rect.top) / rect.height) * viewHeight;
 
-    const normalizedU = Math.max(
-      0,
-      Math.min(1, (x - padding) / usableWidth),
-    );
-    const normalizedV = Math.max(
-      0,
-      Math.min(1, (y - padding) / usableHeight),
-    );
+    const normalizedU = Math.max(0, Math.min(1, (x - padding) / usableWidth));
+    const normalizedV = Math.max(0, Math.min(1, (y - padding) / usableHeight));
 
     return [
       (normalizedU - 0.5) * woodworkingProfile.u,
@@ -1348,11 +1212,7 @@ function CutoutEditorCard({
     if (!activeCutout) return;
 
     commitCutouts(
-      updateUniversalMachiningCutout(
-        selectedComp,
-        activeCutout.id,
-        attrs,
-      ),
+      updateUniversalMachiningCutout(selectedComp, activeCutout.id, attrs),
     );
   };
 
@@ -1376,9 +1236,7 @@ function CutoutEditorCard({
     );
 
     commitCutouts(nextCutouts);
-    setActiveIndex(
-      Math.max(0, Math.min(safeIndex, nextCutouts.length - 1)),
-    );
+    setActiveIndex(Math.max(0, Math.min(safeIndex, nextCutouts.length - 1)));
   };
 
   const handleCutoutPointerMove = (event, index) => {
@@ -1409,14 +1267,8 @@ function CutoutEditorCard({
     10,
     Math.floor(Math.min(woodworkingProfile.u, woodworkingProfile.v) * 0.9),
   );
-  const maxRectWidth = Math.max(
-    10,
-    Math.floor(woodworkingProfile.u * 0.9),
-  );
-  const maxRectHeight = Math.max(
-    10,
-    Math.floor(woodworkingProfile.v * 0.9),
-  );
+  const maxRectWidth = Math.max(10, Math.floor(woodworkingProfile.u * 0.9));
+  const maxRectHeight = Math.max(10, Math.floor(woodworkingProfile.v * 0.9));
 
   return (
     <div
@@ -1466,9 +1318,7 @@ function CutoutEditorCard({
       >
         {outerPoints.length >= 3 ? (
           <polygon
-            points={outerPoints
-              .map(([x, y]) => `${x},${y}`)
-              .join(" ")}
+            points={outerPoints.map(([x, y]) => `${x},${y}`).join(" ")}
             fill="rgba(148, 163, 184, 0.12)"
             stroke="#94a3b8"
             strokeWidth="1.5"
@@ -1489,9 +1339,7 @@ function CutoutEditorCard({
           return (
             <polygon
               key={cutout.id}
-              points={points
-                .map(([x, y]) => `${x},${y}`)
-                .join(" ")}
+              points={points.map(([x, y]) => `${x},${y}`).join(" ")}
               fill={
                 status.valid
                   ? active
@@ -1500,11 +1348,7 @@ function CutoutEditorCard({
                   : "rgba(248, 113, 113, 0.28)"
               }
               stroke={
-                status.valid
-                  ? active
-                    ? "#38bdf8"
-                    : "#7dd3fc"
-                  : "#f87171"
+                status.valid ? (active ? "#38bdf8" : "#7dd3fc") : "#f87171"
               }
               strokeWidth={active ? 2.4 : 1.5}
               style={{
@@ -1513,22 +1357,14 @@ function CutoutEditorCard({
               onPointerDown={(event) => {
                 if (disabled) return;
                 setActiveIndex(index);
-                event.currentTarget.setPointerCapture?.(
-                  event.pointerId,
-                );
+                event.currentTarget.setPointerCapture?.(event.pointerId);
               }}
-              onPointerMove={(event) =>
-                handleCutoutPointerMove(event, index)
-              }
+              onPointerMove={(event) => handleCutoutPointerMove(event, index)}
               onPointerUp={(event) =>
-                event.currentTarget.releasePointerCapture?.(
-                  event.pointerId,
-                )
+                event.currentTarget.releasePointerCapture?.(event.pointerId)
               }
               onPointerCancel={(event) =>
-                event.currentTarget.releasePointerCapture?.(
-                  event.pointerId,
-                )
+                event.currentTarget.releasePointerCapture?.(event.pointerId)
               }
             />
           );
@@ -1610,10 +1446,8 @@ function CutoutEditorCard({
                     index === safeIndex ? "#38bdf8" : "#334155"
                   }`,
                   borderRadius: 0,
-                  background:
-                    index === safeIndex ? "#0c4a6e" : "#0f172a",
-                  color:
-                    index === safeIndex ? "#e0f2fe" : "#94a3b8",
+                  background: index === safeIndex ? "#0c4a6e" : "#0f172a",
+                  color: index === safeIndex ? "#e0f2fe" : "#94a3b8",
                   fontSize: 8,
                   fontWeight: 800,
                   cursor: disabled ? "not-allowed" : "pointer",
@@ -1692,8 +1526,7 @@ function CutoutEditorCard({
           {activeCutout?.type === "round" ? (
             <div style={{ marginBottom: 8 }}>
               <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                Diameter (mm) — current:{" "}
-                {Math.round(activeCutout.diameter)}mm
+                Diameter (mm) — current: {Math.round(activeCutout.diameter)}mm
               </label>
               <input
                 type="range"
@@ -1723,10 +1556,7 @@ function CutoutEditorCard({
                 disabled={disabled}
                 onChange={(event) =>
                   updateActive({
-                    diameter: Math.max(
-                      1,
-                      Number(event.target.value) || 1,
-                    ),
+                    diameter: Math.max(1, Number(event.target.value) || 1),
                   })
                 }
                 style={inputStyle}
@@ -1773,10 +1603,7 @@ function CutoutEditorCard({
                   disabled={disabled}
                   onChange={(event) =>
                     updateActive({
-                      width: Math.max(
-                        1,
-                        Number(event.target.value) || 1,
-                      ),
+                      width: Math.max(1, Number(event.target.value) || 1),
                     })
                   }
                   style={inputStyle}
@@ -1815,10 +1642,7 @@ function CutoutEditorCard({
                   disabled={disabled}
                   onChange={(event) =>
                     updateActive({
-                      height: Math.max(
-                        1,
-                        Number(event.target.value) || 1,
-                      ),
+                      height: Math.max(1, Number(event.target.value) || 1),
                     })
                   }
                   style={inputStyle}
@@ -1840,10 +1664,7 @@ function CutoutEditorCard({
               color: "#fca5a5",
               fontSize: 8,
               fontWeight: 800,
-              cursor:
-                disabled || !activeCutout
-                  ? "not-allowed"
-                  : "pointer",
+              cursor: disabled || !activeCutout ? "not-allowed" : "pointer",
             }}
           >
             Delete This Cutout
@@ -1872,7 +1693,8 @@ function CutoutEditorCard({
           lineHeight: 1.4,
         }}
       >
-        {cutouts.length}/{MAX_PROFILE_CUTOUTS} cutouts · exact millimeter sizes are saved with this part.
+        {cutouts.length}/{MAX_PROFILE_CUTOUTS} cutouts · exact millimeter sizes
+        are saved with this part.
       </div>
     </div>
   );
@@ -1895,8 +1717,7 @@ function WoodworkingOperationsCard({
 
   const machiningComp =
     getMachiningProxyComponent(selectedComp) || selectedComp;
-  const machiningDescriptor =
-    getUniversalMachiningDescriptor(selectedComp);
+  const machiningDescriptor = getUniversalMachiningDescriptor(selectedComp);
   const surfaceLabels = getMachiningSurfaceLabels(
     machiningDescriptor?.plane || "xy",
   );
@@ -1904,9 +1725,7 @@ function WoodworkingOperationsCard({
     selectedComp?.woodworkingOperations,
   );
   const active =
-    operations.find((item) => item.id === activeId) ||
-    operations[0] ||
-    null;
+    operations.find((item) => item.id === activeId) || operations[0] || null;
   const dims = getOperationProfileDimensions(machiningComp);
   const operationOuterPoints =
     getUniversalMachiningOuterPoints(selectedComp, {
@@ -1914,52 +1733,33 @@ function WoodworkingOperationsCard({
       cornerSegments: 10,
       filletSegments: 10,
     }) || [];
-  const operationCutoutPolygons = getUniversalMachiningCutouts(
-    selectedComp,
-  )
+  const operationCutoutPolygons = getUniversalMachiningCutouts(selectedComp)
     .filter(
-      (cutout) =>
-        getUniversalMachiningCutoutStatus(selectedComp, cutout).valid,
+      (cutout) => getUniversalMachiningCutoutStatus(selectedComp, cutout).valid,
     )
     .map((cutout) =>
-      getProfileCutoutLocalPoints(
-        cutout,
-        cutout.type === "round" ? 48 : 4,
-      ),
+      getProfileCutoutLocalPoints(cutout, cutout.type === "round" ? 48 : 4),
     );
   const status = active
-    ? getUniversalMachiningOperationStatus(
-        selectedComp,
-        active,
-        {
-          outerPoints: operationOuterPoints,
-          cutoutPolygons: operationCutoutPolygons,
-        },
-      )
+    ? getUniversalMachiningOperationStatus(selectedComp, active, {
+        outerPoints: operationOuterPoints,
+        cutoutPolygons: operationCutoutPolygons,
+      })
     : null;
-  const disabled =
-    editorMode !== "editable" || isLocked(selectedComp);
+  const disabled = editorMode !== "editable" || isLocked(selectedComp);
 
   const commit = (nextOperations) => {
     onChange(selectedComp.id, {
-      woodworkingOperations: normalizeWoodworkingOperations(
-        nextOperations,
-      ),
+      woodworkingOperations: normalizeWoodworkingOperations(nextOperations),
     });
   };
 
   const addOperation = () => {
-    if (
-      disabled ||
-      operations.length >= MAX_WOODWORKING_OPERATIONS
-    ) {
+    if (disabled || operations.length >= MAX_WOODWORKING_OPERATIONS) {
       return;
     }
 
-    const created = createWoodworkingOperation(
-      machiningComp,
-      draftType,
-    );
+    const created = createWoodworkingOperation(machiningComp, draftType);
     const next = [...operations, created];
     commit(next);
     setActiveId(created.id);
@@ -1967,21 +1767,12 @@ function WoodworkingOperationsCard({
 
   const updateActive = (attrs) => {
     if (!active) return;
-    commit(
-      updateWoodworkingOperation(
-        operations,
-        active.id,
-        attrs,
-      ),
-    );
+    commit(updateWoodworkingOperation(operations, active.id, attrs));
   };
 
   const removeActive = () => {
     if (!active) return;
-    const next = deleteWoodworkingOperation(
-      operations,
-      active.id,
-    );
+    const next = deleteWoodworkingOperation(operations, active.id);
     commit(next);
     setActiveId(next[0]?.id || "");
   };
@@ -2002,16 +1793,10 @@ function WoodworkingOperationsCard({
   const preview = (() => {
     if (!active) return null;
 
-    const footprint = getWoodworkingOperationFootprint(
-      machiningComp,
-      active,
-    );
+    const footprint = getWoodworkingOperationFootprint(machiningComp, active);
 
     if (footprint.shape === "circle") {
-      const [cx, cy] = toScreen(
-        footprint.centerU,
-        footprint.centerV,
-      );
+      const [cx, cy] = toScreen(footprint.centerU, footprint.centerV);
       const [rx] = toScreen(
         footprint.centerU + footprint.radius,
         footprint.centerV,
@@ -2034,14 +1819,8 @@ function WoodworkingOperationsCard({
       );
     }
 
-    const [left, top] = toScreen(
-      footprint.minU,
-      footprint.maxV,
-    );
-    const [right, bottom] = toScreen(
-      footprint.maxU,
-      footprint.minV,
-    );
+    const [left, top] = toScreen(footprint.minU, footprint.maxV);
+    const [right, bottom] = toScreen(footprint.maxU, footprint.minV);
 
     return (
       <rect
@@ -2098,9 +1877,7 @@ function WoodworkingOperationsCard({
         <select
           value={draftType}
           disabled={disabled}
-          onChange={(event) =>
-            setDraftType(event.target.value)
-          }
+          onChange={(event) => setDraftType(event.target.value)}
           style={inputStyle}
         >
           {WOODWORKING_OPERATION_TYPES.map((item) => (
@@ -2112,10 +1889,7 @@ function WoodworkingOperationsCard({
 
         <button
           type="button"
-          disabled={
-            disabled ||
-            operations.length >= MAX_WOODWORKING_OPERATIONS
-          }
+          disabled={disabled || operations.length >= MAX_WOODWORKING_OPERATIONS}
           onClick={addOperation}
           style={{
             minWidth: 70,
@@ -2152,19 +1926,11 @@ function WoodworkingOperationsCard({
                   height: 26,
                   padding: "0 6px",
                   border: `1px solid ${
-                    active?.id === item.id
-                      ? "#f59e0b"
-                      : "#334155"
+                    active?.id === item.id ? "#f59e0b" : "#334155"
                   }`,
                   borderRadius: 0,
-                  background:
-                    active?.id === item.id
-                      ? "#451a03"
-                      : "#0f172a",
-                  color:
-                    active?.id === item.id
-                      ? "#fef3c7"
-                      : "#94a3b8",
+                  background: active?.id === item.id ? "#451a03" : "#0f172a",
+                  color: active?.id === item.id ? "#fef3c7" : "#94a3b8",
                   fontSize: 8,
                   fontWeight: 800,
                 }}
@@ -2203,22 +1969,17 @@ function WoodworkingOperationsCard({
             style={{
               padding: 7,
               marginBottom: 8,
-              border: `1px solid ${
-                status?.valid ? "#365314" : "#7f1d1d"
-              }`,
+              border: `1px solid ${status?.valid ? "#365314" : "#7f1d1d"}`,
               borderRadius: 0,
               background: status?.valid
                 ? "rgba(54,83,20,0.12)"
                 : "rgba(127,29,29,0.12)",
-              color: status?.valid
-                ? "#d9f99d"
-                : "#fecaca",
+              color: status?.valid ? "#d9f99d" : "#fecaca",
               fontSize: 8,
               lineHeight: 1.4,
             }}
           >
-            {status?.valid ? "VALID" : "CHECK"} ·{" "}
-            {status?.message}
+            {status?.valid ? "VALID" : "CHECK"} · {status?.message}
           </div>
 
           <div
@@ -2230,9 +1991,7 @@ function WoodworkingOperationsCard({
             }}
           >
             {getOperationLabel(active?.type)} ·{" "}
-            {active?.surface === "face_b"
-              ? "Face B"
-              : "Face A"}
+            {active?.surface === "face_b" ? "Face B" : "Face A"}
           </div>
 
           <div
@@ -2244,9 +2003,7 @@ function WoodworkingOperationsCard({
             }}
           >
             <div>
-              <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                Surface
-              </label>
+              <label style={{ fontSize: 8, color: "#94a3b8" }}>Surface</label>
               <select
                 value={active?.surface || "face_a"}
                 disabled={disabled}
@@ -2274,10 +2031,7 @@ function WoodworkingOperationsCard({
                 disabled={disabled}
                 onChange={(event) =>
                   updateActive({
-                    depth: Math.max(
-                      0.1,
-                      Number(event.target.value) || 0.1,
-                    ),
+                    depth: Math.max(0.1, Number(event.target.value) || 0.1),
                   })
                 }
                 style={inputStyle}
@@ -2296,9 +2050,7 @@ function WoodworkingOperationsCard({
                 }}
               >
                 <div>
-                  <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                    Edge
-                  </label>
+                  <label style={{ fontSize: 8, color: "#94a3b8" }}>Edge</label>
                   <select
                     value={active.edge}
                     disabled={disabled}
@@ -2327,10 +2079,7 @@ function WoodworkingOperationsCard({
                     disabled={disabled}
                     onChange={(event) =>
                       updateActive({
-                        width: Math.max(
-                          1,
-                          Number(event.target.value) || 1,
-                        ),
+                        width: Math.max(1, Number(event.target.value) || 1),
                       })
                     }
                     style={inputStyle}
@@ -2348,8 +2097,7 @@ function WoodworkingOperationsCard({
               >
                 <div>
                   <label style={{ fontSize: 8, color: "#94a3b8" }}>
-                    {active.edge === "left" ||
-                    active.edge === "right"
+                    {active.edge === "left" || active.edge === "right"
                       ? "Offset From Bottom (mm)"
                       : "Offset From Left (mm)"}
                   </label>
@@ -2361,10 +2109,7 @@ function WoodworkingOperationsCard({
                     disabled={disabled}
                     onChange={(event) =>
                       updateActive({
-                        offset: Math.max(
-                          0,
-                          Number(event.target.value) || 0,
-                        ),
+                        offset: Math.max(0, Number(event.target.value) || 0),
                       })
                     }
                     style={inputStyle}
@@ -2383,10 +2128,7 @@ function WoodworkingOperationsCard({
                     disabled={disabled}
                     onChange={(event) =>
                       updateActive({
-                        length: Math.max(
-                          1,
-                          Number(event.target.value) || 1,
-                        ),
+                        length: Math.max(1, Number(event.target.value) || 1),
                       })
                     }
                     style={inputStyle}
@@ -2540,12 +2282,8 @@ function WoodworkingOperationsCard({
                     }
                     style={inputStyle}
                   >
-                    <option value="u">
-                      Along {dims.uAxis}
-                    </option>
-                    <option value="v">
-                      Along {dims.vAxis}
-                    </option>
+                    <option value="u">Along {dims.uAxis}</option>
+                    <option value="v">Along {dims.vAxis}</option>
                   </select>
                 </div>
                 <div>
@@ -2560,10 +2298,7 @@ function WoodworkingOperationsCard({
                     disabled={disabled}
                     onChange={(event) =>
                       updateActive({
-                        width: Math.max(
-                          1,
-                          Number(event.target.value) || 1,
-                        ),
+                        width: Math.max(1, Number(event.target.value) || 1),
                       })
                     }
                     style={inputStyle}
@@ -2583,10 +2318,7 @@ function WoodworkingOperationsCard({
                   disabled={disabled}
                   onChange={(event) =>
                     updateActive({
-                      length: Math.max(
-                        1,
-                        Number(event.target.value) || 1,
-                      ),
+                      length: Math.max(1, Number(event.target.value) || 1),
                     })
                   }
                   style={inputStyle}
@@ -2654,7 +2386,9 @@ function WoodworkingOperationsCard({
           lineHeight: 1.4,
         }}
       >
-        {operations.length}/{MAX_WOODWORKING_OPERATIONS} operations · {getMachiningPlaneLabel(dims.plane)} · thickness {Math.round(dims.thickness)} mm.
+        {operations.length}/{MAX_WOODWORKING_OPERATIONS} operations ·{" "}
+        {getMachiningPlaneLabel(dims.plane)} · thickness{" "}
+        {Math.round(dims.thickness)} mm.
       </div>
     </div>
   );
@@ -2691,10 +2425,7 @@ function WoodFinishPicker({
     if (!open || typeof document === "undefined") return undefined;
 
     const handleOutsideClick = (event) => {
-      if (
-        menuRef.current &&
-        !menuRef.current.contains(event.target)
-      ) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
         setOpen(false);
       }
     };
@@ -2874,19 +2605,14 @@ function WoodFinishPicker({
                   background: isActive
                     ? "rgba(30,41,59,.98)"
                     : optionButtonStyle.background,
-                  fontWeight: isActive
-                    ? 800
-                    : optionButtonStyle.fontWeight,
+                  fontWeight: isActive ? 800 : optionButtonStyle.fontWeight,
                 }}
               >
                 <span
                   aria-hidden="true"
                   style={{
                     ...swatchStyle,
-                    background: getWoodFinishSwatchColor(
-                      finish,
-                      "#d9c2a5",
-                    ),
+                    background: getWoodFinishSwatchColor(finish, "#d9c2a5"),
                   }}
                 />
                 <span>{finish.label}</span>
@@ -2924,9 +2650,7 @@ const getPartFunctionChoice = (component = {}) => {
     .trim()
     .toLowerCase();
 
-  return ["auto", "normal", "door", "drawer"].includes(value)
-    ? value
-    : "auto";
+  return ["auto", "normal", "door", "drawer"].includes(value) ? value : "auto";
 };
 
 const getDoorHingeChoice = (component = {}) => {
@@ -2952,14 +2676,471 @@ const createManualMotionGroupId = (partFunction = "part") => {
   return `manual-${partFunction}-${timestamp}-${random}`;
 };
 
+const buildAiReferenceCatalog = () => {
+  const catalog = [];
+
+  const addTemplate = (templateType, rawParts) => {
+    const parts = Array.isArray(rawParts)
+      ? rawParts
+      : Array.isArray(rawParts?.parts)
+        ? rawParts.parts
+        : [];
+
+    if (!parts.length) return;
+
+    const validParts = parts.filter(
+      (part) =>
+        part &&
+        part.type &&
+        Number(part.width) > 0 &&
+        Number(part.height) > 0 &&
+        Number(part.depth) > 0,
+    );
+
+    if (!validParts.length) return;
+
+    const minX = Math.min(...validParts.map((part) => Number(part.x) || 0));
+
+    const minY = Math.min(...validParts.map((part) => Number(part.y) || 0));
+
+    const minZ = Math.min(...validParts.map((part) => Number(part.z) || 0));
+
+    validParts.forEach((part) => {
+      catalog.push({
+        templateType,
+
+        // REAL renderer component type.
+        type: String(part.type),
+
+        partCode: String(part.partCode || ""),
+        label: String(part.label || part.type),
+
+        width: Number(part.width),
+        height: Number(part.height),
+        depth: Number(part.depth),
+
+        // Example local position from the real template.
+        localX: (Number(part.x) || 0) - minX,
+        localY: (Number(part.y) || 0) - minY,
+        localZ: (Number(part.z) || 0) - minZ,
+      });
+    });
+  };
+
+  const tableParts = buildFurnitureTemplateParts({
+    templateType: "template_dining_table",
+    buildId: "ai-reference-table",
+    originX: 0,
+    originZ: 0,
+    canvasH: 5000,
+    groupLabel: "AI Reference Table",
+  });
+
+  addTemplate("template_dining_table", tableParts);
+
+  const chairBuild = buildDiningChairParts({
+    buildId: "ai-reference-chair",
+    originX: 0,
+    originZ: 0,
+    canvasH: 5000,
+    groupLabel: "AI Reference Chair",
+  });
+
+  addTemplate("template_dining_chair", chairBuild);
+
+  return catalog;
+};
+
+const buildAiFurnitureParts = ({
+  data,
+  canvasW = 6400,
+  canvasH = 3200,
+  canvasD = 5200,
+  prompt = "",
+}) => {
+  const assemblies = Array.isArray(data?.assemblies) ? data.assemblies : [];
+
+  if (!assemblies.length) {
+    throw new Error("AI returned no furniture assemblies.");
+  }
+
+  const allParts = [];
+
+  const buildTemplate = ({ assembly, buildId, groupLabel }) => {
+    const templateType = String(assembly?.templateType || "").trim();
+
+    if (templateType === "template_dining_chair") {
+      const built = buildDiningChairParts({
+        buildId,
+        originX: 0,
+        originZ: 0,
+        canvasH,
+        groupLabel,
+      });
+
+      return Array.isArray(built?.parts) ? built.parts : [];
+    }
+
+    const built = buildFurnitureTemplateParts({
+      templateType,
+      buildId,
+      originX: 0,
+      originZ: 0,
+      canvasH,
+      groupLabel,
+    });
+
+    return Array.isArray(built) ? built : [];
+  };
+
+  /*
+   * Create one furniture piece from
+   * your existing template system.
+   */
+  const buildOneAssembly = ({ assembly, assemblyIndex, copyIndex }) => {
+    const templateType = String(assembly?.templateType || "").trim();
+
+    const buildId = `ai-${assemblyIndex}-${copyIndex}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 7)}`;
+
+    const label = String(assembly?.furnitureType || templateType || "Furniture")
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
+    const groupLabel = `${label} ${copyIndex + 1}`;
+
+    const parts = buildTemplate({
+      assembly,
+      buildId,
+      groupLabel,
+    });
+
+    if (!parts.length) {
+      return [];
+    }
+
+    /*
+     * Find the native template bounds.
+     */
+    let minX = Infinity;
+    let minY = Infinity;
+    let minZ = Infinity;
+
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let maxZ = -Infinity;
+
+    parts.forEach((part) => {
+      const x = Number(part.x) || 0;
+
+      const y = Number(part.y) || 0;
+
+      const z = Number(part.z) || 0;
+
+      const width = Math.max(1, Number(part.width) || 1);
+
+      const height = Math.max(1, Number(part.height) || 1);
+
+      const depth = Math.max(1, Number(part.depth) || 1);
+
+      minX = Math.min(minX, x);
+
+      minY = Math.min(minY, y);
+
+      minZ = Math.min(minZ, z);
+
+      maxX = Math.max(maxX, x + width);
+
+      maxY = Math.max(maxY, y + height);
+
+      maxZ = Math.max(maxZ, z + depth);
+    });
+
+    const baseWidth = Math.max(1, maxX - minX);
+
+    const baseHeight = Math.max(1, maxY - minY);
+
+    const baseDepth = Math.max(1, maxZ - minZ);
+
+    const requestedWidth =
+      Number(assembly?.width) > 0 ? Number(assembly.width) : null;
+
+    const requestedHeight =
+      Number(assembly?.height) > 0 ? Number(assembly.height) : null;
+
+    const requestedDepth =
+      Number(assembly?.depth) > 0 ? Number(assembly.depth) : null;
+
+    const targetWidth = requestedWidth || baseWidth;
+
+    const targetHeight = requestedHeight || baseHeight;
+
+    const targetDepth = requestedDepth || baseDepth;
+
+    const scaleX = targetWidth / baseWidth;
+
+    const scaleY = targetHeight / baseHeight;
+
+    const scaleZ = targetDepth / baseDepth;
+
+    return {
+      parts,
+      buildId,
+      groupLabel,
+      targetWidth,
+      targetHeight,
+      targetDepth,
+      scaleX,
+      scaleY,
+      scaleZ,
+      minX,
+      minY,
+      minZ,
+    };
+  };
+
+  /*
+   * Build all requested assemblies first.
+   */
+  const builtAssemblies = assemblies.flatMap((assembly, assemblyIndex) => {
+    const quantity = Math.max(1, Math.round(Number(assembly?.quantity) || 1));
+
+    return Array.from({ length: quantity }, (_, copyIndex) =>
+      buildOneAssembly({
+        assembly,
+        assemblyIndex,
+        copyIndex,
+      }),
+    ).filter(Boolean);
+  });
+
+  if (!builtAssemblies.length) {
+    return [];
+  }
+
+  /*
+   * Detect a dining table.
+   */
+  const tableAssemblyIndex = builtAssemblies.findIndex((item) =>
+    String(item?.groupLabel || "")
+      .toLowerCase()
+      .includes("table"),
+  );
+
+  /*
+   * If we have a table and chairs,
+   * arrange chairs around the table.
+   */
+  const hasTable = tableAssemblyIndex >= 0;
+
+  const hasMultipleAssemblies = builtAssemblies.length > 1;
+
+  const floorY = canvasH - 40;
+
+  if (hasTable && hasMultipleAssemblies) {
+    const table = builtAssemblies[tableAssemblyIndex];
+
+    const tableWidth = table.targetWidth;
+
+    const tableDepth = table.targetDepth;
+
+    const tableX = canvasW / 2 - tableWidth / 2;
+
+    const tableZ = canvasD / 2 - tableDepth / 2;
+
+    let chairIndex = 0;
+
+    return builtAssemblies.flatMap((built, index) => {
+      const isTable = index === tableAssemblyIndex;
+
+      if (isTable) {
+        return built.parts.map((part, partIndex) => ({
+          ...part,
+
+          id: `ai-table-${Date.now()}-${partIndex}-${Math.random()
+            .toString(36)
+            .slice(2, 7)}`,
+
+          groupId: built.buildId,
+
+          groupLabel: built.groupLabel,
+
+          groupType: "furniture",
+
+          templateType: "template_dining_table",
+
+          x: tableX + ((Number(part.x) || 0) - built.minX) * built.scaleX,
+
+          y:
+            floorY -
+            built.targetHeight +
+            ((Number(part.y) || 0) - built.minY) * built.scaleY,
+
+          z: tableZ + ((Number(part.z) || 0) - built.minZ) * built.scaleZ,
+
+          width: Math.max(1, (Number(part.width) || 1) * built.scaleX),
+
+          height: Math.max(1, (Number(part.height) || 1) * built.scaleY),
+
+          depth: Math.max(1, (Number(part.depth) || 1) * built.scaleZ),
+
+          locked: false,
+        }));
+      }
+
+      /*
+       * Treat the remaining assemblies
+       * as chairs.
+       */
+      const chair = built;
+
+      const chairWidth = chair.targetWidth;
+
+      const chairDepth = chair.targetDepth;
+
+      const clearance = 120;
+
+      const positions = [
+        {
+          x: tableX + tableWidth / 2 - chairWidth / 2,
+
+          z: tableZ - chairDepth - clearance,
+
+          rotationY: 0,
+        },
+
+        {
+          x: tableX + tableWidth / 2 - chairWidth / 2,
+
+          z: tableZ + tableDepth + clearance,
+
+          rotationY: Math.PI,
+        },
+
+        {
+          x: tableX - chairWidth - clearance,
+
+          z: tableZ + tableDepth / 2 - chairDepth / 2,
+
+          rotationY: Math.PI / 2,
+        },
+
+        {
+          x: tableX + tableWidth + clearance,
+
+          z: tableZ + tableDepth / 2 - chairDepth / 2,
+
+          rotationY: -Math.PI / 2,
+        },
+      ];
+
+      /*
+       * For additional chairs, use
+       * evenly spaced positions on the
+       * long sides.
+       */
+      const position = positions[chairIndex % positions.length];
+
+      chairIndex += 1;
+
+      return chair.parts.map((part, partIndex) => ({
+        ...part,
+
+        id: `ai-chair-${chairIndex}-${Date.now()}-${partIndex}-${Math.random()
+          .toString(36)
+          .slice(2, 7)}`,
+
+        groupId: chair.buildId,
+
+        groupLabel: chair.groupLabel,
+
+        groupType: "chair",
+
+        templateType: "template_dining_chair",
+
+        x: position.x + ((Number(part.x) || 0) - chair.minX) * chair.scaleX,
+
+        y:
+          floorY -
+          chair.targetHeight +
+          ((Number(part.y) || 0) - chair.minY) * chair.scaleY,
+
+        z: position.z + ((Number(part.z) || 0) - chair.minZ) * chair.scaleZ,
+
+        width: Math.max(1, (Number(part.width) || 1) * chair.scaleX),
+
+        height: Math.max(1, (Number(part.height) || 1) * chair.scaleY),
+
+        depth: Math.max(1, (Number(part.depth) || 1) * chair.scaleZ),
+
+        rotationY: position.rotationY || 0,
+
+        locked: false,
+      }));
+    });
+  }
+
+  /*
+   * Normal single-furniture case.
+   */
+  return builtAssemblies.flatMap((built, index) => {
+    const totalWidth = built.targetWidth;
+
+    const originX = canvasW / 2 - totalWidth / 2;
+
+    const originZ = canvasD / 2 - built.targetDepth / 2;
+
+    return built.parts.map((part, partIndex) => ({
+      ...part,
+
+      id: `ai-${index}-${Date.now()}-${partIndex}-${Math.random()
+        .toString(36)
+        .slice(2, 7)}`,
+
+      groupId: built.buildId,
+
+      groupLabel: built.groupLabel,
+
+      groupType: built.groupLabel?.toLowerCase().includes("chair")
+        ? "chair"
+        : "furniture",
+
+      templateType: built.parts?.[0]?.sourceTemplateType || undefined,
+
+      x: originX + ((Number(part.x) || 0) - built.minX) * built.scaleX,
+
+      y:
+        floorY -
+        built.targetHeight +
+        ((Number(part.y) || 0) - built.minY) * built.scaleY,
+
+      z: originZ + ((Number(part.z) || 0) - built.minZ) * built.scaleZ,
+
+      width: Math.max(1, (Number(part.width) || 1) * built.scaleX),
+
+      height: Math.max(1, (Number(part.height) || 1) * built.scaleY),
+
+      depth: Math.max(1, (Number(part.depth) || 1) * built.scaleZ),
+
+      locked: false,
+    }));
+  });
+};
+
 export function PropertiesPanel({
   selectedComp: committedSelectedComp,
   liveSelectedComp = null,
+  canvasW,
+  canvasH,
+  canvasD,
   selectedIds = [],
   selectedComponents = [],
   selectionSummary = null,
   isLocked,
   onChange,
+  addComponent,
+  onBatchAdd,
   onResizeDimension = null,
   resizeAnchors = {
     width: "center",
@@ -2978,11 +3159,15 @@ export function PropertiesPanel({
   const partFunction = getPartFunctionChoice(selectedComp);
   const doorHinge = getDoorHingeChoice(selectedComp);
 
-  const [hardwareDraftType, setHardwareDraftType] =
-    useState("concealed_hinge");
+  const [hardwareDraftType, setHardwareDraftType] = useState("concealed_hinge");
   const [hardwareDraftName, setHardwareDraftName] = useState("");
   const [hardwareDraftQuantity, setHardwareDraftQuantity] = useState(1);
   const [hardwareDraftNote, setHardwareDraftNote] = useState("");
+
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const aiReferenceCatalog = useMemo(() => buildAiReferenceCatalog(), []);
 
   useEffect(() => {
     setHardwareDraftType("concealed_hinge");
@@ -3075,18 +3260,10 @@ export function PropertiesPanel({
     : [];
 
   const getMotionGroupIdForUi = (component = {}) =>
-    String(
-      component?.motionGroupId ??
-        component?.motion_group_id ??
-        "",
-    ).trim();
+    String(component?.motionGroupId ?? component?.motion_group_id ?? "").trim();
 
   const getMotionFunctionForUi = (component = {}) =>
-    String(
-      component?.partFunction ??
-        component?.part_function ??
-        "auto",
-    )
+    String(component?.partFunction ?? component?.part_function ?? "auto")
       .trim()
       .toLowerCase();
 
@@ -3125,14 +3302,10 @@ export function PropertiesPanel({
     selectionHasAnyMovingGroup;
 
   const savedMotionReferenceId =
-    motionSelection
-      .map(getMotionReferenceIdForUi)
-      .find(Boolean) || "";
+    motionSelection.map(getMotionReferenceIdForUi).find(Boolean) || "";
 
   const motionReferencePart =
-    motionSelection.find(
-      (item) => item.id === savedMotionReferenceId,
-    ) ||
+    motionSelection.find((item) => item.id === savedMotionReferenceId) ||
     selectedComp ||
     firstMotionMember ||
     null;
@@ -3182,12 +3355,8 @@ export function PropertiesPanel({
       ? "1px solid rgba(96,165,250,.98)"
       : "1px solid rgba(71,85,105,.76)",
     borderRadius: 0,
-    background: active
-      ? "rgba(37,99,235,.36)"
-      : "rgba(15,23,42,.58)",
-    boxShadow: active
-      ? "inset 0 0 0 1px rgba(191,219,254,.10)"
-      : "none",
+    background: active ? "rgba(37,99,235,.36)" : "rgba(15,23,42,.58)",
+    boxShadow: active ? "inset 0 0 0 1px rgba(191,219,254,.10)" : "none",
     color: active ? "#f8fafc" : "#cbd5e1",
     fontSize: 9,
     fontWeight: 800,
@@ -3233,10 +3402,7 @@ export function PropertiesPanel({
     });
 
     onChange(selectedComp.id, {
-      hardwareRequirements: [
-        ...getHardwareRequirements(),
-        requirement,
-      ],
+      hardwareRequirements: [...getHardwareRequirements(), requirement],
     });
 
     setHardwareDraftName("");
@@ -3459,11 +3625,138 @@ export function PropertiesPanel({
         >
           Tools
         </button>
+
+        {/* 👉 NEW: Generate Tab Button */}
+        <button
+          type="button"
+          onClick={() => onChangeInspectorTab?.("generate")}
+          style={{
+            ...VIEWER_UI.inspectorTabBtn,
+            ...(activeInspectorTab === "generate"
+              ? VIEWER_UI.inspectorTabBtnActive
+              : {}),
+          }}
+        >
+          Generate✨
+        </button>
       </div>
 
       <div style={VIEWER_UI.inspectorTabBody}>
         {showSmartBuildTab ? (
           renderSmartBuild
+        ) : activeInspectorTab === "generate" ? (
+          /* 👉 NEW: Generate Tab Content */
+          <div style={inspectorSectionStyle}>
+            <div
+              style={{
+                ...inspectorSectionTitleStyle,
+                color: "#dbeafe",
+                fontSize: 11,
+              }}
+            >
+              ✨ AI Furniture Generator
+            </div>
+            <div
+              style={{
+                marginBottom: 14,
+                color: "#8fa3bd",
+                fontSize: 9.5,
+                lineHeight: 1.45,
+              }}
+            >
+              Describe the furniture you want to build. The AI will generate the
+              3D components automatically.
+            </div>
+
+            <textarea
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              placeholder="e.g., Create a 1600x800mm mahogany dining table with 4 sturdy legs"
+              style={{
+                ...inputStyle,
+                minHeight: 120,
+                resize: "vertical",
+                marginBottom: 12,
+                lineHeight: 1.4,
+                padding: 10,
+              }}
+            />
+
+            <button
+              type="button"
+              disabled={!aiPrompt.trim() || isGenerating}
+              onClick={async () => {
+                if (!aiPrompt.trim()) return;
+
+                setIsGenerating(true);
+
+                try {
+                  const { data } = await api.post(
+                    "/ai/generate",
+                    {
+                      prompt: aiPrompt.trim(),
+                      referenceParts: aiReferenceCatalog,
+                    },
+                    {
+                      timeout: 120000,
+                    },
+                  );
+
+                  console.log("AI PLAN:", data);
+
+                  const generatedParts = buildAiFurnitureParts({
+                    data,
+                    canvasW,
+                    canvasH,
+                    canvasD,
+                    prompt: aiPrompt.trim(),
+                  });
+
+                  if (!generatedParts.length) {
+                    throw new Error(
+                      "The AI understood the request, but the application could not build the requested furniture.",
+                    );
+                  }
+
+                  console.log(
+                    `AI BUILDER CREATED ${generatedParts.length} PARTS`,
+                    generatedParts,
+                  );
+
+                  onBatchAdd(generatedParts);
+
+                  setAiPrompt("");
+                } catch (error) {
+                  console.error("AI generation failed:", error);
+
+                  console.error("Backend response:", error?.response?.data);
+
+                  alert(
+                    error?.response?.data?.message ||
+                      error?.message ||
+                      "Failed to generate furniture.",
+                  );
+                } finally {
+                  setIsGenerating(false);
+                }
+              }}
+              style={{
+                width: "100%",
+                minHeight: 38,
+                background: "linear-gradient(90deg, #2563eb 0%, #7c3aed 100%)",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: 2,
+                fontSize: 11,
+                fontWeight: 800,
+                cursor:
+                  !aiPrompt.trim() || isGenerating ? "not-allowed" : "pointer",
+                opacity: !aiPrompt.trim() || isGenerating ? 0.6 : 1,
+              }}
+            >
+              {isGenerating ? "Gemini is building..." : "Generate 3D Model"}
+            </button>
+          </div>
         ) : selectionSummary?.partCount > 1 ? (
           <>
             <div
@@ -3472,10 +3765,17 @@ export function PropertiesPanel({
                 padding: 12,
                 background:
                   "linear-gradient(180deg, rgba(17,31,53,.92) 0%, rgba(11,20,36,.92) 100%)",
-                borderColor: "rgba(89,112,143,.72)",
+                border: "1px solid rgba(89,112,143,.72)",
+                borderLeft: "2px solid rgba(96,165,250,.28)",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
                 <div style={{ minWidth: 0 }}>
                   <div
                     style={{
@@ -3576,7 +3876,14 @@ export function PropertiesPanel({
               >
                 <div style={infoCardStyle}>
                   <div style={S.floatingLabel}>Parts</div>
-                  <div style={{ marginTop: 4, color: "#e5eefc", fontSize: 12, fontWeight: 800 }}>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      color: "#e5eefc",
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
                     {selectionSummary.partCount}
                   </div>
                 </div>
@@ -3585,7 +3892,10 @@ export function PropertiesPanel({
                   <div
                     style={{
                       marginTop: 4,
-                      color: selectionSummary.lockedCount > 0 ? "#fca5a5" : "#e5eefc",
+                      color:
+                        selectionSummary.lockedCount > 0
+                          ? "#fca5a5"
+                          : "#e5eefc",
                       fontSize: 12,
                       fontWeight: 800,
                     }}
@@ -3802,8 +4112,8 @@ export function PropertiesPanel({
                     lineHeight: 1.4,
                   }}
                 >
-                  The selection contains different moving groups. Choose Door
-                  or Drawer to create one new group from the selected parts.
+                  The selection contains different moving groups. Choose Door or
+                  Drawer to create one new group from the selected parts.
                 </div>
               ) : null}
 
@@ -3829,7 +4139,8 @@ export function PropertiesPanel({
                 padding: 12,
                 background:
                   "linear-gradient(180deg, rgba(17,31,53,.92) 0%, rgba(11,20,36,.92) 100%)",
-                borderColor: "rgba(89,112,143,.72)",
+                border: "1px solid rgba(89,112,143,.72)",
+                borderLeft: "2px solid rgba(96,165,250,.28)",
               }}
             >
               <div
@@ -3998,8 +4309,7 @@ export function PropertiesPanel({
                           partFunction: value,
                           motionGroupId: "",
                           motionReferencePartId: "",
-                          doorHinge:
-                            value === "door" ? doorHinge : "auto",
+                          doorHinge: value === "door" ? doorHinge : "auto",
                         });
                       }}
                       style={{
@@ -4112,8 +4422,8 @@ export function PropertiesPanel({
                       lineHeight: 1.4,
                     }}
                   >
-                    Auto uses the existing part data. Choose Left or Right
-                    when the hinge side needs to be fixed.
+                    Auto uses the existing part data. Choose Left or Right when
+                    the hinge side needs to be fixed.
                   </div>
                 </div>
               ) : null}
@@ -4311,7 +4621,9 @@ export function PropertiesPanel({
                   <label style={S.floatingLabel}>Profile Face</label>
                   <select
                     value={selectedComp.profilePlane || "auto"}
-                    disabled={editorMode !== "editable" || isLocked(selectedComp)}
+                    disabled={
+                      editorMode !== "editable" || isLocked(selectedComp)
+                    }
                     onChange={(e) =>
                       onChange(selectedComp.id, {
                         profilePlane: e.target.value,
@@ -4319,10 +4631,18 @@ export function PropertiesPanel({
                     }
                     style={inputStyle}
                   >
-                    <option value="auto">Auto - thinnest dimension is thickness</option>
-                    <option value="xy">Front / Back profile (Width × Height)</option>
-                    <option value="xz">Top / Bottom profile (Width × Depth)</option>
-                    <option value="yz">Left / Right profile (Depth × Height)</option>
+                    <option value="auto">
+                      Auto - thinnest dimension is thickness
+                    </option>
+                    <option value="xy">
+                      Front / Back profile (Width × Height)
+                    </option>
+                    <option value="xz">
+                      Top / Bottom profile (Width × Depth)
+                    </option>
+                    <option value="yz">
+                      Left / Right profile (Depth × Height)
+                    </option>
                   </select>
                 </div>
 
@@ -4335,17 +4655,15 @@ export function PropertiesPanel({
                   }}
                 >
                   Active profile: {woodworkingProfile.plane.toUpperCase()} ·
-                  thickness {Math.round(woodworkingProfile.thickness)} mm.
-                  2D and 3D use this same saved profile.
+                  thickness {Math.round(woodworkingProfile.thickness)} mm. 2D
+                  and 3D use this same saved profile.
                 </div>
 
                 {supportsProfileFillet(woodworkingProfile.kind) ? (
                   <div style={{ marginBottom: 10 }}>
                     <label style={S.floatingLabel}>
                       Corner Fillet Radius (mm) — current:{" "}
-                      {Math.round(
-                        woodworkingProfile.profileFilletRadius || 0,
-                      )}
+                      {Math.round(woodworkingProfile.profileFilletRadius || 0)}
                       mm
                     </label>
                     <input
@@ -4353,9 +4671,7 @@ export function PropertiesPanel({
                       min="0"
                       max={Math.max(
                         0,
-                        Math.floor(
-                          woodworkingProfile.limits.filletRadiusMax,
-                        ),
+                        Math.floor(woodworkingProfile.limits.filletRadiusMax),
                       )}
                       step="1"
                       value={Math.round(
@@ -4367,18 +4683,13 @@ export function PropertiesPanel({
                       onChange={(e) => {
                         const maxRadius = Math.max(
                           0,
-                          Math.floor(
-                            woodworkingProfile.limits.filletRadiusMax,
-                          ),
+                          Math.floor(woodworkingProfile.limits.filletRadiusMax),
                         );
 
                         onChange(selectedComp.id, {
                           profileFilletRadius: Math.max(
                             0,
-                            Math.min(
-                              maxRadius,
-                              Number(e.target.value) || 0,
-                            ),
+                            Math.min(maxRadius, Number(e.target.value) || 0),
                           ),
                         });
                       }}
@@ -4392,9 +4703,7 @@ export function PropertiesPanel({
                       min="0"
                       max={Math.max(
                         0,
-                        Math.floor(
-                          woodworkingProfile.limits.filletRadiusMax,
-                        ),
+                        Math.floor(woodworkingProfile.limits.filletRadiusMax),
                       )}
                       step="1"
                       value={Math.round(
@@ -4406,18 +4715,13 @@ export function PropertiesPanel({
                       onChange={(e) => {
                         const maxRadius = Math.max(
                           0,
-                          Math.floor(
-                            woodworkingProfile.limits.filletRadiusMax,
-                          ),
+                          Math.floor(woodworkingProfile.limits.filletRadiusMax),
                         );
 
                         onChange(selectedComp.id, {
                           profileFilletRadius: Math.max(
                             0,
-                            Math.min(
-                              maxRadius,
-                              Number(e.target.value) || 0,
-                            ),
+                            Math.min(maxRadius, Number(e.target.value) || 0),
                           ),
                         });
                       }}
@@ -4449,9 +4753,7 @@ export function PropertiesPanel({
                           profileRadius: Math.max(
                             0,
                             Math.min(
-                              Math.floor(
-                                woodworkingProfile.limits.radiusMax,
-                              ),
+                              Math.floor(woodworkingProfile.limits.radiusMax),
                               Number(e.target.value) || 0,
                             ),
                           ),
@@ -4479,9 +4781,7 @@ export function PropertiesPanel({
                           profileRadius: Math.max(
                             0,
                             Math.min(
-                              Math.floor(
-                                woodworkingProfile.limits.radiusMax,
-                              ),
+                              Math.floor(woodworkingProfile.limits.radiusMax),
                               Number(e.target.value) || 0,
                             ),
                           ),
@@ -4503,9 +4803,7 @@ export function PropertiesPanel({
                       min="0"
                       max={Math.max(
                         0,
-                        Math.floor(
-                          woodworkingProfile.limits.chamferMax,
-                        ),
+                        Math.floor(woodworkingProfile.limits.chamferMax),
                       )}
                       step="1"
                       value={Math.round(woodworkingProfile.chamferSize)}
@@ -4517,9 +4815,7 @@ export function PropertiesPanel({
                           chamferSize: Math.max(
                             0,
                             Math.min(
-                              Math.floor(
-                                woodworkingProfile.limits.chamferMax,
-                              ),
+                              Math.floor(woodworkingProfile.limits.chamferMax),
                               Number(e.target.value) || 0,
                             ),
                           ),
@@ -4535,9 +4831,7 @@ export function PropertiesPanel({
                       min="0"
                       max={Math.max(
                         0,
-                        Math.floor(
-                          woodworkingProfile.limits.chamferMax,
-                        ),
+                        Math.floor(woodworkingProfile.limits.chamferMax),
                       )}
                       step="1"
                       value={Math.round(woodworkingProfile.chamferSize)}
@@ -4549,9 +4843,7 @@ export function PropertiesPanel({
                           chamferSize: Math.max(
                             0,
                             Math.min(
-                              Math.floor(
-                                woodworkingProfile.limits.chamferMax,
-                              ),
+                              Math.floor(woodworkingProfile.limits.chamferMax),
                               Number(e.target.value) || 0,
                             ),
                           ),
@@ -4595,9 +4887,7 @@ export function PropertiesPanel({
                         min="1"
                         max={Math.max(
                           1,
-                          Math.floor(
-                            woodworkingProfile.limits.notchSpanMax,
-                          ),
+                          Math.floor(woodworkingProfile.limits.notchSpanMax),
                         )}
                         step="1"
                         value={Math.round(woodworkingProfile.notchWidth)}
@@ -4627,9 +4917,7 @@ export function PropertiesPanel({
                         min="1"
                         max={Math.max(
                           1,
-                          Math.floor(
-                            woodworkingProfile.limits.notchSpanMax,
-                          ),
+                          Math.floor(woodworkingProfile.limits.notchSpanMax),
                         )}
                         step="1"
                         value={Math.round(woodworkingProfile.notchWidth)}
@@ -4663,9 +4951,7 @@ export function PropertiesPanel({
                         min="1"
                         max={Math.max(
                           1,
-                          Math.floor(
-                            woodworkingProfile.limits.notchDepthMax,
-                          ),
+                          Math.floor(woodworkingProfile.limits.notchDepthMax),
                         )}
                         step="1"
                         value={Math.round(woodworkingProfile.notchDepth)}
@@ -4695,9 +4981,7 @@ export function PropertiesPanel({
                         min="1"
                         max={Math.max(
                           1,
-                          Math.floor(
-                            woodworkingProfile.limits.notchDepthMax,
-                          ),
+                          Math.floor(woodworkingProfile.limits.notchDepthMax),
                         )}
                         step="1"
                         value={Math.round(woodworkingProfile.notchDepth)}
@@ -4747,10 +5031,7 @@ export function PropertiesPanel({
                         onChange(selectedComp.id, {
                           profileOvalRoundness: Math.max(
                             0,
-                            Math.min(
-                              100,
-                              Number(e.target.value) || 0,
-                            ),
+                            Math.min(100, Number(e.target.value) || 0),
                           ),
                         })
                       }
@@ -4774,10 +5055,7 @@ export function PropertiesPanel({
                         onChange(selectedComp.id, {
                           profileOvalRoundness: Math.max(
                             0,
-                            Math.min(
-                              100,
-                              Number(e.target.value) || 0,
-                            ),
+                            Math.min(100, Number(e.target.value) || 0),
                           ),
                         })
                       }
@@ -4801,10 +5079,7 @@ export function PropertiesPanel({
                   <div style={{ marginBottom: 10 }}>
                     <label style={S.floatingLabel}>
                       Top Width (%) — current:{" "}
-                      {Math.round(
-                        woodworkingProfile.profileTopRatio * 100,
-                      )}
-                      %
+                      {Math.round(woodworkingProfile.profileTopRatio * 100)}%
                     </label>
                     <input
                       type="range"
@@ -4821,10 +5096,7 @@ export function PropertiesPanel({
                         onChange(selectedComp.id, {
                           profileTopRatio: Math.max(
                             0.05,
-                            Math.min(
-                              1,
-                              (Number(e.target.value) || 5) / 100,
-                            ),
+                            Math.min(1, (Number(e.target.value) || 5) / 100),
                           ),
                         })
                       }
@@ -4848,10 +5120,7 @@ export function PropertiesPanel({
                         onChange(selectedComp.id, {
                           profileTopRatio: Math.max(
                             0.05,
-                            Math.min(
-                              1,
-                              (Number(e.target.value) || 5) / 100,
-                            ),
+                            Math.min(1, (Number(e.target.value) || 5) / 100),
                           ),
                         })
                       }
@@ -4880,7 +5149,8 @@ export function PropertiesPanel({
             ) : null}
 
             {/* WISDOM UNIVERSAL PART MACHINING V2.0.1 */}
-            {!isWoodworkingProfile && selectedComp?.type !== "reference_proxy" ? (
+            {!isWoodworkingProfile &&
+            selectedComp?.type !== "reference_proxy" ? (
               <div style={inspectorSectionStyle}>
                 <div style={inspectorSectionTitleStyle}>Machining</div>
 
@@ -4903,7 +5173,9 @@ export function PropertiesPanel({
                       <label style={S.floatingLabel}>Machining Direction</label>
                       <select
                         value={selectedComp.machiningPlane || "auto"}
-                        disabled={editorMode !== "editable" || isLocked(selectedComp)}
+                        disabled={
+                          editorMode !== "editable" || isLocked(selectedComp)
+                        }
                         onChange={(event) =>
                           onChange(selectedComp.id, {
                             machiningPlane: event.target.value,
@@ -4911,7 +5183,9 @@ export function PropertiesPanel({
                         }
                         style={inputStyle}
                       >
-                        <option value="auto">Auto - use the thinnest dimension</option>
+                        <option value="auto">
+                          Auto - use the thinnest dimension
+                        </option>
                         <option value="xy">Front / Back</option>
                         <option value="xz">Top / Bottom</option>
                         <option value="yz">Left / Right</option>
@@ -4926,7 +5200,9 @@ export function PropertiesPanel({
                         lineHeight: 1.45,
                       }}
                     >
-                      Active direction: {getMachiningPlaneLabel(machiningProfile?.plane || "xy")}. The actual rendered board surface is used for the 3D cut.
+                      Active direction:{" "}
+                      {getMachiningPlaneLabel(machiningProfile?.plane || "xy")}.
+                      The actual rendered board surface is used for the 3D cut.
                     </div>
 
                     <CutoutEditorCard
@@ -4953,7 +5229,8 @@ export function PropertiesPanel({
             {!isWoodworkingProfile && (
               <div style={{ marginBottom: 6 }}>
                 <label style={S.floatingLabel}>
-                  Corner Radius (mm) — current: {selectedComp.cornerRadius ?? 0}mm
+                  Corner Radius (mm) — current: {selectedComp.cornerRadius ?? 0}
+                  mm
                 </label>
                 <input
                   type="range"
@@ -4988,7 +5265,7 @@ export function PropertiesPanel({
                 />
               </div>
             )}
-{isRoundedBox && (
+            {isRoundedBox && (
               <>
                 <div style={infoCardStyle}>
                   <div>
@@ -5410,9 +5687,7 @@ export function PropertiesPanel({
               />
             </div>
 
-            <div style={inspectorSectionTitleStyle}>
-              Material & Finish
-            </div>
+            <div style={inspectorSectionTitleStyle}>Material & Finish</div>
 
             <div style={{ marginBottom: 6 }}>
               <label style={S.floatingLabel}>Fill Color</label>
@@ -5455,9 +5730,7 @@ export function PropertiesPanel({
                   customColor={selectedComp.fill || "#d9c2a5"}
                   disabled={editorMode !== "editable" || isLocked(selectedComp)}
                   onChange={(finishId) =>
-                    applyStyleChange(
-                      applyWoodFinish(selectedComp, finishId),
-                    )
+                    applyStyleChange(applyWoodFinish(selectedComp, finishId))
                   }
                 />
               </div>
@@ -5520,9 +5793,7 @@ export function PropertiesPanel({
                       {edge.label}
                     </span>
                     <select
-                      value={
-                        selectedComp.edgeTreatments?.[edge.key] || "none"
-                      }
+                      value={selectedComp.edgeTreatments?.[edge.key] || "none"}
                       disabled={
                         editorMode !== "editable" || isLocked(selectedComp)
                       }
@@ -5575,9 +5846,11 @@ export function PropertiesPanel({
                 lineHeight: 1.45,
               }}
             >
-              Hardware saved on this part:
-              {" "}
-              <b>{selectedComp.partCode || selectedComp.label || "Selected Part"}</b>.
+              Hardware saved on this part:{" "}
+              <b>
+                {selectedComp.partCode || selectedComp.label || "Selected Part"}
+              </b>
+              .
             </div>
 
             {getHardwareRequirements().length > 0 ? (
@@ -5638,13 +5911,11 @@ export function PropertiesPanel({
                           fontSize: 8,
                           fontWeight: 800,
                           cursor:
-                            editorMode !== "editable" ||
-                            isLocked(selectedComp)
+                            editorMode !== "editable" || isLocked(selectedComp)
                               ? "not-allowed"
                               : "pointer",
                           opacity:
-                            editorMode !== "editable" ||
-                            isLocked(selectedComp)
+                            editorMode !== "editable" || isLocked(selectedComp)
                               ? 0.45
                               : 1,
                         }}
@@ -5666,8 +5937,7 @@ export function PropertiesPanel({
                         <select
                           value={item.type || "other"}
                           disabled={
-                            editorMode !== "editable" ||
-                            isLocked(selectedComp)
+                            editorMode !== "editable" || isLocked(selectedComp)
                           }
                           onChange={(e) =>
                             updateHardwareRequirement(item.id, {
@@ -5677,10 +5947,7 @@ export function PropertiesPanel({
                           style={inputStyle}
                         >
                           {HARDWARE_TYPE_OPTIONS.map((option) => (
-                            <option
-                              key={option.value}
-                              value={option.value}
-                            >
+                            <option key={option.value} value={option.value}>
                               {option.label}
                             </option>
                           ))}
@@ -5696,8 +5963,7 @@ export function PropertiesPanel({
                           step="1"
                           value={item.quantity || 1}
                           disabled={
-                            editorMode !== "editable" ||
-                            isLocked(selectedComp)
+                            editorMode !== "editable" || isLocked(selectedComp)
                           }
                           onChange={(e) =>
                             updateHardwareRequirement(item.id, {
@@ -5721,8 +5987,7 @@ export function PropertiesPanel({
                         value={item.name || ""}
                         maxLength={150}
                         disabled={
-                          editorMode !== "editable" ||
-                          isLocked(selectedComp)
+                          editorMode !== "editable" || isLocked(selectedComp)
                         }
                         onChange={(e) =>
                           updateHardwareRequirement(item.id, {
@@ -5740,8 +6005,7 @@ export function PropertiesPanel({
                         maxLength={500}
                         rows={2}
                         disabled={
-                          editorMode !== "editable" ||
-                          isLocked(selectedComp)
+                          editorMode !== "editable" || isLocked(selectedComp)
                         }
                         onChange={(e) =>
                           updateHardwareRequirement(item.id, {
@@ -5858,9 +6122,7 @@ export function PropertiesPanel({
                   value={hardwareDraftName}
                   maxLength={150}
                   placeholder={getHardwareTypeLabel(hardwareDraftType)}
-                  disabled={
-                    editorMode !== "editable" || isLocked(selectedComp)
-                  }
+                  disabled={editorMode !== "editable" || isLocked(selectedComp)}
                   onChange={(e) => setHardwareDraftName(e.target.value)}
                   style={inputStyle}
                 />
@@ -5873,9 +6135,7 @@ export function PropertiesPanel({
                   maxLength={500}
                   rows={2}
                   placeholder="Example: 100 mm from top and bottom"
-                  disabled={
-                    editorMode !== "editable" || isLocked(selectedComp)
-                  }
+                  disabled={editorMode !== "editable" || isLocked(selectedComp)}
                   onChange={(e) => setHardwareDraftNote(e.target.value)}
                   style={{
                     ...inputStyle,
@@ -5888,9 +6148,7 @@ export function PropertiesPanel({
 
               <button
                 type="button"
-                disabled={
-                  editorMode !== "editable" || isLocked(selectedComp)
-                }
+                disabled={editorMode !== "editable" || isLocked(selectedComp)}
                 onClick={addHardwareRequirement}
                 style={{
                   width: "100%",
@@ -5902,13 +6160,11 @@ export function PropertiesPanel({
                   fontSize: 9,
                   fontWeight: 800,
                   cursor:
-                    editorMode !== "editable" ||
-                    isLocked(selectedComp)
+                    editorMode !== "editable" || isLocked(selectedComp)
                       ? "not-allowed"
                       : "pointer",
                   opacity:
-                    editorMode !== "editable" ||
-                    isLocked(selectedComp)
+                    editorMode !== "editable" || isLocked(selectedComp)
                       ? 0.45
                       : 1,
                 }}

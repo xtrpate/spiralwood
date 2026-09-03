@@ -49,7 +49,7 @@ export default function LoginPage() {
       if (code === "EMAIL_NOT_VERIFIED") {
         navigate("/verify-otp", {
           state: { email: emailFromServer || form.email },
-          fromLogin: true
+          fromLogin: true,
         });
         return;
       }

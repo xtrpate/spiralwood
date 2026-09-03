@@ -25,6 +25,7 @@ const mgmt = require("../controllers/admin/managementController");
 const website = require("../controllers/admin/websiteController");
 const warrantyController = require("../controllers/admin/warrantyController");
 const supportController = require("../controllers/admin/supportController");
+const aiController = require("../controllers/admin/aiController");
 
 // ── Auth guards ───────────────────────────────────────────────────────────────
 const adminOnly = [authenticate, authorize("admin")];
@@ -620,5 +621,7 @@ router.post(
   logAction("reject_custom_request", "orders"),
   orders.rejectCustomRequest,
 );
+
+router.post("/ai/generate", adminStaff, aiController.generateFurniture);
 
 module.exports = router;

@@ -90,18 +90,12 @@ const getPartFunction = (component = {}) => {
     .trim()
     .toLowerCase();
 
-  return ["auto", "normal", "door", "drawer"].includes(value)
-    ? value
-    : "auto";
+  return ["auto", "normal", "door", "drawer"].includes(value) ? value : "auto";
 };
 
 // WISDOM MANUAL MOVING GROUPS V1.1.0
 const getMotionGroupId = (component = {}) =>
-  String(
-    component?.motionGroupId ??
-      component?.motion_group_id ??
-      "",
-  ).trim();
+  String(component?.motionGroupId ?? component?.motion_group_id ?? "").trim();
 
 const getMotionReferencePartId = (component = {}) =>
   String(
@@ -118,11 +112,7 @@ const resolveManualMotionSet = (
   const functionType = getPartFunction(component);
   const groupId = getMotionGroupId(component);
 
-  if (
-    !component?.id ||
-    !groupId ||
-    functionType !== expectedFunction
-  ) {
+  if (!component?.id || !groupId || functionType !== expectedFunction) {
     return {
       groupId: "",
       members: component?.id ? [component] : [],
@@ -147,15 +137,11 @@ const resolveManualMotionSet = (
 
   const referenceId =
     getMotionReferencePartId(component) ||
-    members
-      .map(getMotionReferencePartId)
-      .find(Boolean) ||
+    members.map(getMotionReferencePartId).find(Boolean) ||
     component.id;
 
   const reference =
-    members.find((item) => item.id === referenceId) ||
-    component ||
-    members[0];
+    members.find((item) => item.id === referenceId) || component || members[0];
 
   return {
     groupId,
@@ -359,10 +345,7 @@ const resolveDrawerPreviewKey = (component = {}) => {
   if (!component?.id) return "";
 
   const motionGroupId = getMotionGroupId(component);
-  if (
-    getPartFunction(component) === "drawer" &&
-    motionGroupId
-  ) {
+  if (getPartFunction(component) === "drawer" && motionGroupId) {
     return `motion:${motionGroupId}`;
   }
 
@@ -536,6 +519,7 @@ function ThreeDViewer({
   transformMode,
   setTransformMode,
   addComponent,
+  onBatchAdd,
   activeBuildLabel,
   selectedComp,
   selectionSummary = null,
@@ -1721,9 +1705,7 @@ function ThreeDViewer({
 
     const originals =
       preview?.originals ||
-      (preview?.original
-        ? [{ object: preview.original, visible: true }]
-        : []);
+      (preview?.original ? [{ object: preview.original, visible: true }] : []);
 
     originals.forEach(({ object, visible }) => {
       if (object) {
@@ -1820,34 +1802,24 @@ function ThreeDViewer({
       );
 
       const members =
-        manualSet.members.length > 0
-          ? manualSet.members
-          : [component];
+        manualSet.members.length > 0 ? manualSet.members : [component];
 
-      const referenceComponent =
-        manualSet.reference || component;
+      const referenceComponent = manualSet.reference || component;
 
       const memberEntries = members.map((member) => ({
         member,
         entry: entryMapRef.current.get(member.id),
       }));
 
-      if (
-        memberEntries.some(
-          ({ entry }) => !entry?.obj?.parent,
-        )
-      ) {
+      if (memberEntries.some(({ entry }) => !entry?.obj?.parent)) {
         return false;
       }
 
-      const parent =
-        memberEntries[0]?.entry?.obj?.parent || null;
+      const parent = memberEntries[0]?.entry?.obj?.parent || null;
 
       if (
         !parent ||
-        memberEntries.some(
-          ({ entry }) => entry.obj.parent !== parent,
-        )
+        memberEntries.some(({ entry }) => entry.obj.parent !== parent)
       ) {
         return false;
       }
@@ -1874,10 +1846,7 @@ function ThreeDViewer({
           .trim()
           .toLowerCase();
 
-        return (
-          value.startsWith("l") ||
-          value.startsWith("r")
-        );
+        return value.startsWith("l") || value.startsWith("r");
       });
 
       const hingeSide = explicitHingeComponent
@@ -1893,20 +1862,12 @@ function ThreeDViewer({
             .startsWith("r")
           ? "right"
           : "left"
-        : resolveDoorPreviewHingeSide(
-            referenceComponent,
-            sourceComponents,
-          );
+        : resolveDoorPreviewHingeSide(referenceComponent, sourceComponents);
 
-      const width = Math.max(
-        1,
-        Number(referenceComponent?.width || 1),
-      );
+      const width = Math.max(1, Number(referenceComponent?.width || 1));
 
       const localHingeOffset = new THREE.Vector3(
-        hingeSide === "right"
-          ? width / 2
-          : -width / 2,
+        hingeSide === "right" ? width / 2 : -width / 2,
         0,
         0,
       );
@@ -1916,18 +1877,13 @@ function ThreeDViewer({
         .add(
           localHingeOffset
             .clone()
-            .applyQuaternion(
-              referenceOriginal.quaternion,
-            ),
+            .applyQuaternion(referenceOriginal.quaternion),
         );
 
       const pivot = new THREE.Group();
-      pivot.name =
-        `door-preview-pivot-${manualSet.groupId || component.id}`;
+      pivot.name = `door-preview-pivot-${manualSet.groupId || component.id}`;
       pivot.position.copy(hingePosition);
-      pivot.quaternion.copy(
-        referenceOriginal.quaternion,
-      );
+      pivot.quaternion.copy(referenceOriginal.quaternion);
 
       parent.add(pivot);
       parent.updateMatrixWorld(true);
@@ -1940,8 +1896,7 @@ function ThreeDViewer({
         const original = entry.obj;
         const clone = original.clone(true);
 
-        clone.name =
-          `door-preview-clone-${member.id}`;
+        clone.name = `door-preview-clone-${member.id}`;
 
         clone.traverse((child) => {
           child.userData = {
@@ -1980,13 +1935,10 @@ function ThreeDViewer({
       });
 
       const transform = transformRef.current;
-      const outlineGroup =
-        selectionOutlineGroupRef.current;
+      const outlineGroup = selectionOutlineGroupRef.current;
 
       const transformVisible =
-        typeof transform?.visible === "boolean"
-          ? transform.visible
-          : true;
+        typeof transform?.visible === "boolean" ? transform.visible : true;
 
       const outlineVisible =
         typeof outlineGroup?.visible === "boolean"
@@ -2006,13 +1958,10 @@ function ThreeDViewer({
         originals,
         clones,
         pivot,
-        basePivotQuaternion:
-          referenceOriginal.quaternion.clone(),
-        direction:
-          hingeSide === "right" ? 1 : -1,
+        basePivotQuaternion: referenceOriginal.quaternion.clone(),
+        direction: hingeSide === "right" ? 1 : -1,
         currentAngle: 0,
-        componentSignature:
-          getDoorPreviewComponentsSignature(members),
+        componentSignature: getDoorPreviewComponentsSignature(members),
         transform,
         transformVisible,
         outlineGroup,
@@ -2021,11 +1970,7 @@ function ThreeDViewer({
 
       setDoorPreviewOpenId(component.id);
 
-      animateDoorPreviewTo(
-        THREE.MathUtils.degToRad(
-          DOOR_PREVIEW_OPEN_DEGREES,
-        ),
-      );
+      animateDoorPreviewTo(THREE.MathUtils.degToRad(DOOR_PREVIEW_OPEN_DEGREES));
 
       return true;
     },
@@ -2074,15 +2019,13 @@ function ThreeDViewer({
     const preview = doorPreviewRef.current;
     if (!preview) return;
 
-    const previewMemberIds =
-      preview.memberIds?.length
-        ? preview.memberIds
-        : [preview.id];
+    const previewMemberIds = preview.memberIds?.length
+      ? preview.memberIds
+      : [preview.id];
 
-    const previewDoorIsSelected =
-      activeSelectionIds3D.some((id) =>
-        previewMemberIds.includes(id),
-      );
+    const previewDoorIsSelected = activeSelectionIds3D.some((id) =>
+      previewMemberIds.includes(id),
+    );
 
     // When another object is selected while the door stays open,
     // restore normal editor visuals for that new selection.
@@ -2102,13 +2045,12 @@ function ThreeDViewer({
   const openDoorPreviewComponentSignature = useMemo(() => {
     if (!doorPreviewOpenId) return "";
 
-    const previewMemberIds =
-      doorPreviewRef.current?.memberIds?.length
-        ? doorPreviewRef.current.memberIds
-        : [doorPreviewOpenId];
+    const previewMemberIds = doorPreviewRef.current?.memberIds?.length
+      ? doorPreviewRef.current.memberIds
+      : [doorPreviewOpenId];
 
-    const openMembers = (components || []).filter(
-      (item) => previewMemberIds.includes(item.id),
+    const openMembers = (components || []).filter((item) =>
+      previewMemberIds.includes(item.id),
     );
 
     return getDoorPreviewComponentsSignature(openMembers);
@@ -2307,18 +2249,14 @@ function ThreeDViewer({
 
       const manualReferenceId =
         getMotionReferencePartId(component) ||
-        drawerSet.movableMembers
-          .map(getMotionReferencePartId)
-          .find(Boolean) ||
+        drawerSet.movableMembers.map(getMotionReferencePartId).find(Boolean) ||
         "";
 
       const frontMember =
         drawerSet.movableMembers.find(
           (item) => item.id === manualReferenceId,
         ) ||
-        drawerSet.movableMembers.find(
-          isDrawerPreviewFrontComponent,
-        ) ||
+        drawerSet.movableMembers.find(isDrawerPreviewFrontComponent) ||
         component;
 
       const frontEntry =
@@ -3984,6 +3922,9 @@ function ThreeDViewer({
       <PropertiesPanel
         selectedComp={selectedComp}
         liveSelectedComp={liveSelectedComp}
+        canvasW={canvasW}
+        canvasH={canvasH}
+        canvasD={canvasD}
         selectedIds={selectedIds}
         selectedComponents={(components || []).filter((item) =>
           activeSelectionIds3D.includes(item.id),
@@ -3991,6 +3932,8 @@ function ThreeDViewer({
         selectionSummary={selectionSummary}
         isLocked={isLocked}
         onChange={onUpdateComp}
+        addComponent={addComponent}
+        onBatchAdd={onBatchAdd}
         onResizeDimension={handleResizeDimensionChange}
         resizeAnchors={resizeAnchors}
         onResizeAnchorChange={handleResizeAnchorChange}
