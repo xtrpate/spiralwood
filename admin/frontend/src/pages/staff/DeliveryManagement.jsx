@@ -611,6 +611,13 @@ export default function DeliveryManagement() {
             // original standard/walk-in/COD/COP behavior when false.
             const isBlueprintDelivery =
               normalize(delivery.order_type) === "blueprint";
+            const assemblyChoice = normalize(
+              delivery.requested_assembly_choice,
+            );
+            const assemblyRequired =
+              isBlueprintDelivery && assemblyChoice === "included";
+            const assemblyNotRequired =
+              isBlueprintDelivery && assemblyChoice === "none";
             const isStandardCodDelivery =
               !isBlueprintDelivery &&
               normalize(delivery.order_type) === "standard" &&
@@ -745,6 +752,48 @@ export default function DeliveryManagement() {
                     {formatStatus(delivery.status)}
                   </span>
                 </div>
+
+                {isBlueprintDelivery && (
+                  <div
+                    aria-label="Custom furniture assembly instruction"
+                    style={{
+                      marginTop: 12,
+                      padding: "10px 12px",
+                      border: "1px solid #d4d4d8",
+                      background: assemblyRequired ? "#fff7ed" : "#fafafa",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 800,
+                        letterSpacing: "0.8px",
+                        textTransform: "uppercase",
+                        color: assemblyRequired ? "#9a3412" : "#27272a",
+                      }}
+                    >
+                      {assemblyRequired
+                        ? "Assembly Required"
+                        : assemblyNotRequired
+                          ? "No Assembly Required"
+                          : "Assembly Not Specified"}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 12,
+                        lineHeight: 1.45,
+                        color: "#52525b",
+                      }}
+                    >
+                      {assemblyRequired
+                        ? "Customer requested free assembly."
+                        : assemblyNotRequired
+                          ? "Customer declined assembly service."
+                          : "Confirm the assembly requirement before departure."}
+                    </div>
+                  </div>
+                )}
 
                 <div className="rider-details-grid">
                   <InfoCard

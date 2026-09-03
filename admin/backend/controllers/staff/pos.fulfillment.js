@@ -393,6 +393,41 @@ exports.getDeliveries = async (req, res) => {
         o.payment_status,
         o.order_type,
         o.remaining_payment_method,
+
+        CASE
+          WHEN LOWER(COALESCE(o.order_type, '')) = 'blueprint' THEN (
+            SELECT CASE
+              WHEN JSON_VALID(oi_assembly.customization_json) = 1 THEN
+                LOWER(
+                  JSON_UNQUOTE(
+                    JSON_EXTRACT(
+                      oi_assembly.customization_json,
+                      '$.assembly_choice'
+                    )
+                  )
+                )
+              ELSE NULL
+            END
+            FROM order_items oi_assembly
+            WHERE oi_assembly.order_id = o.id
+              AND CASE
+                WHEN JSON_VALID(oi_assembly.customization_json) = 1 THEN
+                  LOWER(
+                    JSON_UNQUOTE(
+                      JSON_EXTRACT(
+                        oi_assembly.customization_json,
+                        '$.assembly_choice'
+                      )
+                    )
+                  )
+                ELSE NULL
+              END IN ('included', 'none')
+            ORDER BY oi_assembly.id ASC
+            LIMIT 1
+          )
+          ELSE NULL
+        END AS requested_assembly_choice,
+
         o.delivery_lat,
         o.delivery_lng,
         o.created_at AS order_created_at,
@@ -564,7 +599,91 @@ exports.createDelivery = async (req, res) => {
 
     const finalNotes = notes || null;
 
-    const [result] = await db.query(
+    let result;
+    let delivery;
+    let scheduleConn;
+
+    try {
+      scheduleConn = await db.getConnection();
+      await scheduleConn.beginTransaction();
+
+      const [[lockedOrder]] = await scheduleConn.query(
+        `
+        SELECT id, status, order_type
+        FROM orders
+        WHERE id = ?
+        LIMIT 1
+        FOR UPDATE
+        `,
+        [orderId],
+      );
+
+      if (!lockedOrder) {
+        await scheduleConn.rollback();
+        return res.status(404).json({ message: "Order not found" });
+      }
+
+      const lockedOrderStatus = normalizeText(
+        lockedOrder.status || "",
+      ).toLowerCase();
+      const lockedIsBlueprintOrder =
+        normalizeText(lockedOrder.order_type || "").toLowerCase() ===
+        "blueprint";
+
+      if (
+        ["cancelled", "delivered", "completed"].includes(lockedOrderStatus)
+      ) {
+        await scheduleConn.rollback();
+        return res.status(409).json({
+          message: "This order can no longer be scheduled for delivery.",
+        });
+      }
+
+      if (lockedIsBlueprintOrder) {
+        if (lockedOrderStatus !== "production") {
+          await scheduleConn.rollback();
+          return res.status(409).json({
+            message:
+              "Blueprint delivery can only be scheduled after the order reaches Production.",
+          });
+        }
+
+        const lockedReadiness = await getBlueprintDeliveryReadiness(
+          scheduleConn,
+          orderId,
+        );
+        if (!lockedReadiness.ok) {
+          await scheduleConn.rollback();
+          return res.status(409).json({
+            message: lockedReadiness.message,
+          });
+        }
+      }
+
+      const [[lockedExistingDelivery]] = await scheduleConn.query(
+        `
+        SELECT id, status
+        FROM deliveries
+        WHERE order_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+        FOR UPDATE
+        `,
+        [orderId],
+      );
+
+      if (lockedExistingDelivery) {
+        await scheduleConn.rollback();
+        return res.status(409).json({
+          message:
+            normalizeText(lockedExistingDelivery.status).toLowerCase() ===
+            "failed"
+              ? "This order has a failed delivery. Use Reschedule on the latest failed attempt."
+              : "A delivery already exists for this order.",
+        });
+      }
+
+      [result] = await scheduleConn.query(
       `
       INSERT INTO deliveries (
         order_id,
@@ -580,10 +699,37 @@ exports.createDelivery = async (req, res) => {
       )
       VALUES (?, ?, ?, NOW(), ?, NULL, ?, 'scheduled', ?, NULL)
       `,
-      [orderId, driverId, req.user.id, scheduledDate, address, finalNotes],
-    );
+        [
+          orderId,
+          driverId,
+          req.user.id,
+          scheduledDate,
+          address,
+          finalNotes,
+        ],
+      );
 
-    const [[delivery]] = await db.query(
+      if (lockedIsBlueprintOrder) {
+        const [orderStatusUpdate] = await scheduleConn.query(
+          `
+          UPDATE orders
+          SET status = 'shipping'
+          WHERE id = ?
+            AND status = 'production'
+          `,
+          [orderId],
+        );
+
+        if (Number(orderStatusUpdate.affectedRows || 0) !== 1) {
+          await scheduleConn.rollback();
+          return res.status(409).json({
+            message:
+              "The order changed while the delivery was being scheduled. Please refresh and try again.",
+          });
+        }
+      }
+
+      [[delivery]] = await scheduleConn.query(
       `
       SELECT
         d.id,
@@ -617,8 +763,25 @@ exports.createDelivery = async (req, res) => {
       WHERE d.id = ?
       LIMIT 1
       `,
-      [result.insertId],
-    );
+        [result.insertId],
+      );
+
+      await scheduleConn.commit();
+    } catch (scheduleErr) {
+      if (scheduleConn) {
+        try {
+          await scheduleConn.rollback();
+        } catch (rollbackErr) {
+          console.error(
+            "POST /api/pos/deliveries scheduling rollback error:",
+            rollbackErr,
+          );
+        }
+      }
+      throw scheduleErr;
+    } finally {
+      if (scheduleConn) scheduleConn.release();
+    }
 
     req.auditRecord = {
       id: result.insertId,
@@ -1079,12 +1242,17 @@ exports.updateDeliveryStatus = async (req, res) => {
       const linkedOrderStatus = normalizeText(order.status).toLowerCase();
 
       if (requestedStatus === "in_transit" && currentStatus === "scheduled") {
-        if (linkedOrderStatus !== "production") {
+        // New Blueprint delivery schedules enter Shipping as soon as the
+        // rider is assigned. Production remains accepted only for legacy
+        // scheduled deliveries created before that synchronization rule.
+        if (
+          !["production", "shipping"].includes(linkedOrderStatus)
+        ) {
           await conn.rollback();
           cleanupFreshUpload(req.file);
           return res.status(409).json({
             message:
-              "This Blueprint order is not ready to leave Production yet.",
+              "This Blueprint order is not ready to start delivery.",
           });
         }
 

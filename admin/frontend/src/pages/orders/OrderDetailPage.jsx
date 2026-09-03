@@ -1304,7 +1304,7 @@ export default function OrderDetailPage() {
         ? ONLINE_STANDARD_PICKUP_TIMELINE
         : isOnlineStandardDeliveryOrder
           ? ONLINE_STANDARD_DELIVERY_TIMELINE
-          : hasBlueprintFlow
+          : isBlueprintOrder || hasBlueprintFlow
             ? isWalkInOrder && !hasDeliveryRequirement
               ? WALKIN_BLUEPRINT_TIMELINE
               : BLUEPRINT_TIMELINE
@@ -1430,6 +1430,22 @@ export default function OrderDetailPage() {
               <h1 style={pageTitle}>
                 Order #{String(order.id).padStart(5, "0")}
               </h1>
+
+              {order?.order_number ? (
+                <span
+                  aria-label="Order reference number"
+                  style={{
+                    ...pill,
+                    background: "#ffffff",
+                    color: "#18181b",
+                    border: "1px solid #d4d4d8",
+                    fontFamily: "monospace",
+                    letterSpacing: "0.2px",
+                  }}
+                >
+                  {order.order_number}
+                </span>
+              ) : null}
 
               <span
                 style={{

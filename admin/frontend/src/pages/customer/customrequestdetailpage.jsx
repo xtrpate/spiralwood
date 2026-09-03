@@ -836,6 +836,26 @@ export default function CustomRequestDetailPage() {
     .toLowerCase();
 
   const deliveryDetailsForCustomer = requestData?.delivery_details || null;
+
+  const customerAssemblyChoice = String(
+    (Array.isArray(requestData?.items) ? requestData.items : []).find((item) =>
+      ["included", "none"].includes(
+        String(item?.assembly_choice || "")
+          .trim()
+          .toLowerCase(),
+      ),
+    )?.assembly_choice || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  const customerAssemblyLabel =
+    customerAssemblyChoice === "included"
+      ? "Included (Free)"
+      : customerAssemblyChoice === "none"
+        ? "Not Requested"
+        : "Not specified";
+
   const customerOrderStatusForDelivery = String(requestData?.status || "")
     .trim()
     .toLowerCase();
@@ -2749,6 +2769,11 @@ export default function CustomRequestDetailPage() {
                     <div className="crd-delivery-column-v5 is-confirmation">
                       <div className="crd-delivery-column-title-v5">
                         Delivery confirmation
+                      </div>
+
+                      <div className="crd-delivery-confirmation-row-v5">
+                        <span>Assembly</span>
+                        <strong>{customerAssemblyLabel}</strong>
                       </div>
 
                       <div className="crd-delivery-confirmation-row-v5">
