@@ -2580,7 +2580,7 @@ export default function EstimationPage() {
   const handleGenerateContract = () => {
     if (!isApproved || !blueprint?.order_id) {
       toast.error(
-        "Only a customer-approved quotation linked to an order can generate a contract.",
+        "Only a customer-approved quotation linked to an order can create a Project Agreement.",
       );
       return;
     }
@@ -2766,7 +2766,7 @@ export default function EstimationPage() {
                   : btnPrimary
               }
             >
-              Generate Contract
+              Create Project Agreement
             </button>
           ) : (
             <button

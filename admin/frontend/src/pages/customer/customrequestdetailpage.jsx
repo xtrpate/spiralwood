@@ -86,8 +86,8 @@ const CUSTOMER_JOURNEY_STEPS = [
   },
   {
     key: "approval-payment",
-    label: "Approval and payment",
-    description: "You approve the quotation and complete the required payment.",
+    label: "Agreement and payment",
+    description: "You review the Project Agreement, accept it, and complete the required payment.",
   },
   {
     key: "production",
@@ -108,6 +108,8 @@ const getCustomerJourneyState = ({
   deliveryStatus = "",
   balanceDue = 0,
   verifiedPaymentTotal = 0,
+  hasProjectAgreement = false,
+  projectAgreementAccepted = false,
 } = {}) => {
   const order = String(orderStatus || "").trim().toLowerCase();
   const estimation = String(estimationStatus || "").trim().toLowerCase();
@@ -203,22 +205,36 @@ const getCustomerJourneyState = ({
       "You can use Message our team below if you need to add more details.";
   } else if (estimation === "approved") {
     currentIndex = 3;
-    title =
-      verifiedTotal > 0
-        ? "Your payment has been recorded"
-        : "Your quotation is approved";
-    description =
-      verifiedTotal > 0
-        ? "Your approved quotation and verified payment are recorded. We will continue preparing your project for production."
-        : "Your quotation is approved. Complete the required down payment so your project can continue.";
-    if (payment === "unpaid" || verifiedTotal <= 0) {
-      actionTitle = "Action needed";
-      actionText =
-        "Choose a payment method and complete the required down payment below.";
-    } else {
+    if (!hasProjectAgreement) {
+      title = "Your quotation is approved";
+      description =
+        "Our team is preparing your Project Agreement using the approved quotation and project details.";
       actionTitle = "No action needed";
-      actionText =
-        "Your payment is recorded. We will update you when the next project stage begins.";
+      actionText = "We will notify you when the Project Agreement is ready to review.";
+    } else if (!projectAgreementAccepted) {
+      title = "Review your Project Agreement";
+      description =
+        "Review the project terms and warranty below before payment becomes available.";
+      actionTitle = "Action needed";
+      actionText = "Review and accept the Project Agreement below.";
+    } else {
+      title =
+        verifiedTotal > 0
+          ? "Your payment has been recorded"
+          : "Your Project Agreement is accepted";
+      description =
+        verifiedTotal > 0
+          ? "Your accepted Project Agreement and verified payment are recorded. We will continue preparing your project for production."
+          : "Your Project Agreement is accepted. Complete the required down payment so your project can continue.";
+      if (payment === "unpaid" || verifiedTotal <= 0) {
+        actionTitle = "Action needed";
+        actionText =
+          "Choose a payment method and complete the required down payment below.";
+      } else {
+        actionTitle = "No action needed";
+        actionText =
+          "Your payment is recorded. We will update you when the next project stage begins.";
+      }
     }
   } else {
     currentIndex = 1;
@@ -592,6 +608,9 @@ export default function CustomRequestDetailPage() {
   const [error, setError] = useState("");
   const [previewItem, setPreviewItem] = useState(null);
   const [decisionLoading, setDecisionLoading] = useState("");
+  const [agreementChecked, setAgreementChecked] = useState(false);
+  const [agreementConfirmOpen, setAgreementConfirmOpen] = useState(false);
+  const [agreementAccepting, setAgreementAccepting] = useState(false);
 
   const [discussionMessage, setDiscussionMessage] = useState("");
   const [discussionFiles, setDiscussionFiles] = useState([]);
@@ -747,6 +766,8 @@ export default function CustomRequestDetailPage() {
     : "Not selected yet";
 
   const latestEstimation = requestData?.latest_estimation || null;
+  const projectAgreement = requestData?.project_agreement || null;
+  const projectAgreementAccepted = Boolean(projectAgreement?.signed_at);
 
   const additionalDeliveryFee = Math.max(
     0,
@@ -816,6 +837,7 @@ export default function CustomRequestDetailPage() {
   const hasPendingPaymentTransaction =
     Number(paymentSummary.total_pending || 0) > 0;
   const canChooseMethod =
+    projectAgreementAccepted &&
     requestData?.payment_status === "unpaid" &&
     Number(verifiedPaymentTotal || 0) <= 0 &&
     !hasPendingPaymentTransaction &&
@@ -994,6 +1016,8 @@ export default function CustomRequestDetailPage() {
     deliveryStatus: deliveryStatusForRemainingMethod,
     balanceDue,
     verifiedPaymentTotal,
+    hasProjectAgreement: Boolean(projectAgreement),
+    projectAgreementAccepted,
   });
 
   const submittedItemProgressLabel = getSubmittedItemProgressLabel({
@@ -1105,6 +1129,33 @@ export default function CustomRequestDetailPage() {
       );
     } finally {
       setDecisionLoading("");
+    }
+  };
+
+  const handleAcceptProjectAgreement = async () => {
+    if (!requestData?.id || !projectAgreement?.id || projectAgreementAccepted) {
+      return;
+    }
+    if (!agreementChecked) {
+      toast.error("Review the Project Agreement and check the acknowledgement first.");
+      return;
+    }
+
+    setAgreementAccepting(true);
+    try {
+      const res = await api.post(
+        `/customer/custom-orders/${requestData.id}/project-agreement/accept`,
+      );
+      setAgreementConfirmOpen(false);
+      setAgreementChecked(false);
+      await loadRequestDetail(false);
+      toast.success(res.data?.message || "Project Agreement accepted successfully.");
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Failed to accept Project Agreement.",
+      );
+    } finally {
+      setAgreementAccepting(false);
     }
   };
 
@@ -1774,6 +1825,189 @@ export default function CustomRequestDetailPage() {
               !quotationActionBlocked &&
               !quotationIntegrityWarning &&
               estimationStatusKey === "approved" ? (
+                <div className="checkout-section wisdom-request-agreement-v201">
+                  <div className="checkout-section-header">
+                    <div className="checkout-section-num">PA</div>
+                    <h3>Project Agreement</h3>
+                    <span
+                      className="crd-status-pill"
+                      style={{
+                        marginLeft: "auto",
+                        background: projectAgreementAccepted ? "#f0fdf4" : "#fffbeb",
+                        color: projectAgreementAccepted ? "#166534" : "#92400e",
+                      }}
+                    >
+                      {projectAgreementAccepted
+                        ? "Accepted & Locked"
+                        : projectAgreement
+                          ? "Awaiting Acceptance"
+                          : "Preparing"}
+                    </span>
+                  </div>
+
+                  <div className="checkout-section-body">
+                    {!projectAgreement ? (
+                      <div className="crd-info-box pending">
+                        Your quotation is approved. Spiral Wood Services is preparing your
+                        Project Agreement. Payment will become available after you review and
+                        accept the agreement.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="crd-panel crd-panel-soft" style={{ marginBottom: 16 }}>
+                          <h4>Agreement summary</h4>
+                          <DetailValue label="Approved project amount">
+                            {formatMoney(quotedTotal)}
+                          </DetailValue>
+                          <DetailValue label="Minimum down payment (30%)">
+                            {formatMoney(downPaymentDue)}
+                          </DetailValue>
+                        </div>
+
+                        <div className="crd-panel" style={{ marginBottom: 16 }}>
+                          <h4>Terms and conditions</h4>
+                          <div
+                            style={{
+                              whiteSpace: "pre-wrap",
+                              lineHeight: 1.65,
+                              color: "#3f3f46",
+                              fontSize: 14,
+                            }}
+                          >
+                            {projectAgreement.terms || "Project Agreement terms are not available."}
+                          </div>
+                        </div>
+
+                        <div className="crd-panel" style={{ marginBottom: 16 }}>
+                          <h4>Warranty coverage</h4>
+                          <div
+                            style={{
+                              whiteSpace: "pre-wrap",
+                              lineHeight: 1.65,
+                              color: "#3f3f46",
+                              fontSize: 14,
+                            }}
+                          >
+                            {projectAgreement.warranty_terms || "Warranty terms are not available."}
+                          </div>
+                        </div>
+
+                        {projectAgreementAccepted ? (
+                          <div className="crd-info-box" style={{ background: "#f0fdf4" }}>
+                            <div className="crd-info-title">Electronically accepted and locked</div>
+                            <p style={{ margin: "8px 0 0" }}>
+                              Accepted on {formatDate(projectAgreement.signed_at)}. The accepted
+                              Project Agreement can no longer be changed silently.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="crd-panel">
+                            <label
+                              style={{
+                                display: "flex",
+                                gap: 10,
+                                alignItems: "flex-start",
+                                cursor: "pointer",
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={agreementChecked}
+                                onChange={(event) => setAgreementChecked(event.target.checked)}
+                                style={{ marginTop: 4 }}
+                              />
+                              <span>
+                                I have reviewed the approved quotation, Project Agreement terms,
+                                payment terms, and warranty coverage.
+                              </span>
+                            </label>
+
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={!agreementChecked || agreementAccepting}
+                              onClick={() => setAgreementConfirmOpen(true)}
+                              style={{ marginTop: 16 }}
+                            >
+                              Accept
+                            </button>
+                          </div>
+                        )}
+
+                        {agreementConfirmOpen && !projectAgreementAccepted ? (
+                          <div
+                            role="presentation"
+                            style={{
+                              position: "fixed",
+                              inset: 0,
+                              background: "rgba(0,0,0,0.48)",
+                              zIndex: 9999,
+                              display: "grid",
+                              placeItems: "center",
+                              padding: 20,
+                            }}
+                          >
+                            <div
+                              role="dialog"
+                              aria-modal="true"
+                              aria-labelledby="confirm-project-agreement-title"
+                              style={{
+                                width: "min(520px, 100%)",
+                                background: "#fff",
+                                border: "1px solid #e4e4e7",
+                                padding: 24,
+                                boxShadow: "0 18px 50px rgba(0,0,0,0.18)",
+                              }}
+                            >
+                              <h3 id="confirm-project-agreement-title" style={{ marginTop: 0 }}>
+                                Confirm Agreement
+                              </h3>
+                              <p style={{ lineHeight: 1.6, color: "#52525b" }}>
+                                You are about to electronically accept this Project Agreement for
+                                {" "}{formatMoney(quotedTotal)}. The minimum down payment after
+                                acceptance is {formatMoney(downPaymentDue)}.
+                              </p>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "flex-end",
+                                  gap: 10,
+                                  marginTop: 20,
+                                }}
+                              >
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary"
+                                  disabled={agreementAccepting}
+                                  onClick={() => setAgreementConfirmOpen(false)}
+                                >
+                                  Back
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  disabled={agreementAccepting}
+                                  onClick={handleAcceptProjectAgreement}
+                                >
+                                  {agreementAccepting ? "Confirming..." : "Confirm"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              {quotationAvailable &&
+              latestEstimation &&
+              !quotationActionBlocked &&
+              !quotationIntegrityWarning &&
+              estimationStatusKey === "approved" &&
+              projectAgreementAccepted ? (
                 <div className="checkout-section wisdom-request-payment-v11">
                   <div className="checkout-section-header">
                     <div className="checkout-section-num">03</div>

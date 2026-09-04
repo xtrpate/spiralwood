@@ -922,10 +922,10 @@ export default function ContractsPage() {
         : "Must match the approved estimation",
     },
     {
-      label: "Down Payment",
-      ok: paymentReady,
+      label: "Payment",
+      ok: estimationEligible,
       value: estimationEligible
-        ? `${formatCurrencyUI(verifiedPaymentTotal)} verified of ${formatCurrencyUI(requiredDownPayment)} required`
+        ? `Not required yet · 30% due after customer acceptance (${formatCurrencyUI(requiredDownPayment)})`
         : "Waiting for approved estimation",
     },
     {
@@ -955,7 +955,6 @@ export default function ContractsPage() {
     estimationEligible &&
     orderTotalAmount > 0 &&
     totalsMatch &&
-    paymentReady &&
     contractTermsReady &&
     warrantyTermsReady;
 
@@ -987,33 +986,33 @@ export default function ContractsPage() {
     }
 
     if (!orderTypeValid) {
-      toast.error("Contracts can only be generated for blueprint orders.");
+      toast.error("Project Agreements can only be created for blueprint orders.");
       return;
     }
 
     if (!orderStatusConfirmed) {
       toast.error(
-        `Order must be exactly "confirmed" to generate a contract (current status: "${currentOrderStatus || "unknown"}").`,
+        `Order must be exactly "confirmed" to create a Project Agreement (current status: "${currentOrderStatus || "unknown"}").`,
       );
       return;
     }
 
     if (!hasCustomerId) {
       toast.error(
-        "This order has no linked customer account; a contract requires a registered customer.",
+        "This order has no linked customer account; a Project Agreement requires a registered customer.",
       );
       return;
     }
 
     if (hasExistingContract) {
-      toast.error("A contract already exists for this order.");
+      toast.error("A Project Agreement already exists for this order.");
       return;
     }
 
     if (lifecycleIntegrityWarning) {
       toast.error(
         titleCase(lifecycleIntegrityReason) ||
-          "This order has a lifecycle integrity conflict and requires manual review before a contract can be generated.",
+          "This order has a lifecycle integrity conflict and requires manual review before a Project Agreement can be created.",
       );
       return;
     }
@@ -1032,7 +1031,7 @@ export default function ContractsPage() {
 
     if (!canonicalBlueprintId) {
       toast.error(
-        "A linked blueprint is required before generating a contract.",
+        "A linked blueprint is required before creating a Project Agreement.",
       );
       return;
     }
@@ -1054,14 +1053,14 @@ export default function ContractsPage() {
     if (!estimationEligible) {
       toast.error(
         estimationError ||
-          "Only a saved, approved estimation can proceed to contract generation.",
+          "Only a customer-approved quotation can proceed to Project Agreement creation.",
       );
       return;
     }
 
     if (!(orderTotalAmount > 0)) {
       toast.error(
-        "Order total must be finalized before generating a contract.",
+        "Order total must be finalized before creating a Project Agreement.",
       );
       return;
     }
@@ -1071,15 +1070,8 @@ export default function ContractsPage() {
       return;
     }
 
-    if (!paymentReady) {
-      toast.error(
-        "At least 30% verified down payment is required before generating a contract.",
-      );
-      return;
-    }
-
     if (!contractTermsReady) {
-      toast.error("Contract terms are required.");
+      toast.error("Project Agreement terms are required.");
       return;
     }
 
@@ -1091,7 +1083,7 @@ export default function ContractsPage() {
     if (!canSubmit) {
       // Defensive final backstop — every specific condition above should
       // already have caught the reason.
-      toast.error("This contract cannot be generated right now.");
+      toast.error("This Project Agreement cannot be created right now.");
       return;
     }
 
@@ -1111,7 +1103,7 @@ export default function ContractsPage() {
 
       const { data } = await api.post("/contracts", payload);
 
-      toast.success(data?.message || "Contract generated.");
+      toast.success(data?.message || "Project Agreement created.");
       setModal(false);
       resetForm();
       load();
@@ -1119,7 +1111,7 @@ export default function ContractsPage() {
       // Preserve the modal and the user's entered terms on failure — do
       // not reset the form or imply a contract was generated.
       toast.error(
-        err?.response?.data?.message || "Failed to generate contract.",
+        err?.response?.data?.message || "Failed to create Project Agreement.",
       );
     } finally {
       setSaving(false);
@@ -1130,20 +1122,20 @@ export default function ContractsPage() {
     <div className="contracts-page">
       <header className="contracts-page-header">
         <div>
-          <h1>Contracts</h1>
-          <p>Create, download, and review contracts for approved custom furniture orders.</p>
+          <h1>Project Agreements</h1>
+          <p>Create and review Project Agreements after the customer approves the quotation.</p>
         </div>
         <button
           type="button"
           className="contracts-btn contracts-btn-primary contracts-create-btn"
           onClick={() => setModal(true)}
         >
-          Create Contract
+          Create Project Agreement
         </button>
       </header>
 
       <section className="contracts-summary" aria-label="Contract summary">
-        <SummaryCard label="Total Contracts" value={contracts.length} />
+        <SummaryCard label="Total Agreements" value={contracts.length} />
         <SummaryCard label="Issued This Month" value={contractsThisMonth} />
       </section>
 
@@ -1157,8 +1149,8 @@ export default function ContractsPage() {
       <section className="contracts-records-card">
         <div className="contracts-records-toolbar">
           <div>
-            <h2>Contract Records</h2>
-            <p>Review issued contracts and access related order details.</p>
+            <h2>Project Agreement Records</h2>
+            <p>Review Project Agreements and access related order details.</p>
           </div>
           <div className="contracts-records-controls">
             <div className="contracts-search-wrap">
@@ -1222,7 +1214,7 @@ export default function ContractsPage() {
           <table className="contracts-table">
             <thead>
               <tr>
-                <th>Contract No.</th>
+                <th>Agreement No.</th>
                 <th>Customer</th>
                 <th>Order Ref.</th>
                 <th>Blueprint Ref.</th>
@@ -1321,10 +1313,10 @@ export default function ContractsPage() {
           <div className="contracts-modal" role="dialog" aria-modal="true" aria-labelledby="create-contract-title">
             <div className="contracts-modal-header">
               <div>
-                <h2 id="create-contract-title">Create Contract</h2>
+                <h2 id="create-contract-title">Create Project Agreement</h2>
                 <p>
                   Select an eligible blueprint order. The system will confirm the customer,
-                  approved estimation, and required payment before the contract is generated.
+                  approved quotation and order total before the Project Agreement is created.
                 </p>
               </div>
               <button
@@ -1364,12 +1356,12 @@ export default function ContractsPage() {
                       </option>
                     ))}
                   </select>
-                  <small>Only confirmed blueprint orders without an existing contract are listed.</small>
+                  <small>Only confirmed blueprint orders with a customer-approved quotation and no existing Project Agreement are listed.</small>
                 </label>
 
                 {availableOrders.length === 0 && (
                   <div className="contracts-alert contracts-alert-neutral">
-                    There are no confirmed blueprint orders available for a new contract.
+                    There are no eligible approved blueprint orders available for a new Project Agreement.
                   </div>
                 )}
 
@@ -1402,7 +1394,7 @@ export default function ContractsPage() {
 
                 {lifecycleIntegrityWarning && (
                   <div className="contracts-alert contracts-alert-error">
-                    This order has a blueprint workflow conflict and requires review before a contract can be created.
+                    This order has a blueprint workflow conflict and requires review before a Project Agreement can be created.
                   </div>
                 )}
               </section>
@@ -1412,7 +1404,7 @@ export default function ContractsPage() {
                   <div className="contracts-section-heading">
                     <span>2</span>
                     <div>
-                      <h3>Contract Readiness</h3>
+                      <h3>Project Agreement Readiness</h3>
                       <p>All required checks must be complete before generation.</p>
                     </div>
                   </div>
@@ -1469,7 +1461,7 @@ export default function ContractsPage() {
                   className="contracts-btn contracts-btn-primary"
                   disabled={!canSubmit}
                 >
-                  {saving ? "Generating Contract..." : "Generate Contract"}
+                  {saving ? "Creating..." : "Create Project Agreement"}
                 </button>
               </div>
             </form>

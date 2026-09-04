@@ -202,7 +202,7 @@ exports.generateContract = async (req, res) => {
       await conn.rollback();
       transactionActive = false;
       return res.status(400).json({
-        message: "Contracts can only be generated for blueprint orders.",
+        message: "Project Agreements can only be created for blueprint orders.",
       });
     }
 
@@ -277,17 +277,11 @@ exports.generateContract = async (req, res) => {
       });
     }
 
-    // ── Gate E: verified payment — payment_transactions only ─────────
+    // ── Gate E: Project Agreement financial snapshot ─────────────
+    // The agreement is created AFTER quotation approval but BEFORE the
+    // initial payment. The 30% amount is stored as a server-derived term;
+    // payment itself is not required at agreement-creation time.
     const requiredDownPayment = calcDownPaymentAmount(estimationGrandTotal);
-    const verifiedPaymentTotal = Number(lifecycle.verified_payment_total || 0);
-
-    if (verifiedPaymentTotal < requiredDownPayment - 0.01) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(400).json({
-        message: `Blueprint orders require at least a 30% verified down payment before a contract can be generated (required ${requiredDownPayment}, verified ${verifiedPaymentTotal}).`,
-      });
-    }
 
     // ── Gate F: duplicate prevention ──────────────────────────────────
     // Checked twice: once from the resolver's own contract lookup, and
@@ -337,7 +331,7 @@ exports.generateContract = async (req, res) => {
       transactionActive = false;
       return res.status(400).json({
         message:
-          "Could not resolve a customer name for this order; contract cannot be generated.",
+          "Could not resolve a customer name for this order; Project Agreement cannot be created.",
       });
     }
 
@@ -363,33 +357,10 @@ exports.generateContract = async (req, res) => {
       ],
     );
 
-    // ── Guarded order UPDATE — the ONE canonical locked order only,
-    // never a blanket blueprint_id match. affectedRows is checked so the
-    // contract just inserted can never be left without its matching
-    // order transition if the locked row's state somehow no longer
-    // matches by the time this runs. ──────────────────────────────────
-    const [orderUpdateResult] = await conn.query(
-      `UPDATE orders
-       SET status = 'contract_released'
-       WHERE id = ?
-         AND order_type = 'blueprint'
-         AND status = 'confirmed'`,
-      [order.id],
-    );
-
-    if (orderUpdateResult.affectedRows === 0) {
-      await conn.rollback();
-      transactionActive = false;
-      return res.status(409).json({
-        message:
-          "Order status changed before the contract could be finalized. Please refresh and try again.",
-        integrity_reason: "ORDER_STATE_CHANGED",
-      });
-    }
-
-    // Contract insert and order-status update are the atomic core — both
-    // succeed or both roll back together. No notification, audit, or PDF
-    // side effect happens before this commit.
+    // Creating the Project Agreement does NOT advance the order.
+    // The order remains confirmed while the customer reviews/accepts it.
+    // contract_released is reached only after acceptance plus the required
+    // verified down payment.
     await conn.commit();
     transactionActive = false;
 
@@ -399,17 +370,19 @@ exports.generateContract = async (req, res) => {
       new: {
         order_id: order.id,
         blueprint_id: blueprint.id,
-        order_status: "contract_released",
-        contract_generated: true,
+        order_status: order.status,
+        project_agreement_created: true,
+        signed_at: null,
         is_non_refundable: false,
         warranty_terms_present: Boolean(warranty_terms),
-        changed_fields: ["order_status", "contract"],
+        changed_fields: ["project_agreement"],
       },
     };
 
-    res
-      .status(201)
-      .json({ message: "Contract generated.", id: insertResult.insertId });
+    res.status(201).json({
+      message: "Project Agreement created. The customer must review and accept it before payment.",
+      id: insertResult.insertId,
+    });
   } catch (err) {
     // conn may be null here if pool.getConnection() itself failed — no
     // rollback is attempted in that case, since there is nothing to roll

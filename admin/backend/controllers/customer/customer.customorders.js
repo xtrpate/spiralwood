@@ -1162,6 +1162,20 @@ exports.getCustomOrderById = async (req, res) => {
     // themselves under lock). Never derived from order.payment_status.
     const canonicalOrderStatus = normalize(order.status);
     const hasRealContract = Boolean(lifecycle.contract);
+    const projectAgreementAccepted = Boolean(lifecycle.contract?.signed_at);
+    const projectAgreement = lifecycle.contract
+      ? {
+          id: lifecycle.contract.id,
+          order_id: lifecycle.contract.order_id,
+          blueprint_id: lifecycle.contract.blueprint_id,
+          terms: lifecycle.contract.materials_used || "",
+          warranty_terms: lifecycle.contract.warranty_terms || "",
+          down_payment: Number(lifecycle.contract.down_payment || downPaymentDue || 0),
+          signed_at: lifecycle.contract.signed_at || null,
+          created_at: lifecycle.contract.created_at || null,
+          updated_at: lifecycle.contract.updated_at || null,
+        }
+      : null;
     const blueprintArchivedForPayment = lifecycle.blueprint
       ? isBlueprintArchived(lifecycle.blueprint)
       : false;
@@ -1253,21 +1267,26 @@ exports.getCustomOrderById = async (req, res) => {
       paymentActionMessage =
         "Approve your quotation first before submitting a payment.";
     } else if (canonicalOrderStatus === "confirmed") {
-      if (hasRealContract) {
-        paymentStage = "unavailable";
+      if (!hasRealContract) {
+        paymentStage = "awaiting_agreement";
         paymentActionMessage =
-          "Please contact support if you need assistance with payment.";
+          "Your quotation is approved. Our team is preparing your Project Agreement.";
+      } else if (!projectAgreementAccepted) {
+        paymentStage = "awaiting_agreement_acceptance";
+        paymentActionMessage =
+          "Review and accept your Project Agreement before choosing a payment method.";
       } else if (!hasVerifiedDownPayment) {
         canSubmitInitialDownPayment = true;
         paymentStage = "initial";
-        paymentActionMessage = "Submit your 30% down payment proof to proceed.";
-      } else {
-        paymentStage = "awaiting_contract";
         paymentActionMessage =
-          "Your initial payment is verified. We're preparing your contract next.";
+          "Your Project Agreement is accepted. Complete the required 30% down payment to proceed.";
+      } else {
+        paymentStage = "awaiting_release";
+        paymentActionMessage =
+          "Your Project Agreement is accepted and the required payment is verified. We're preparing your project for production.";
       }
     } else if (REMAINING_BALANCE_STAGES.has(canonicalOrderStatus)) {
-      if (!hasRealContract || !hasVerifiedDownPayment) {
+      if (!hasRealContract || !projectAgreementAccepted || !hasVerifiedDownPayment) {
         paymentStage = "unavailable";
         paymentActionMessage =
           "Please contact support if you need assistance with payment.";
@@ -1317,6 +1336,7 @@ exports.getCustomOrderById = async (req, res) => {
       quotation_action_blocked: quotationActionBlocked,
       quotation_integrity_warning: quotationIntegrityWarning,
       quotation_message: quotationMessage,
+      project_agreement: projectAgreement,
       payment_transactions: normalizedPayments,
       discussion: discussionData.messages,
       delivery_details: customerDeliveryDetails,
@@ -1333,6 +1353,8 @@ exports.getCustomOrderById = async (req, res) => {
         can_submit_remaining_balance: canSubmitRemainingBalance,
         payment_stage: paymentStage,
         payment_action_message: paymentActionMessage,
+        project_agreement_required: estimationApprovedForPayment,
+        project_agreement_accepted: projectAgreementAccepted,
         // PHASE 5 — Blueprint Rider Final Cash Collection
         remaining_payment_method: order.remaining_payment_method || null,
         delivery_status: deliveryStatus,
@@ -1514,6 +1536,213 @@ const normalizeLifecycleEstimation = async (conn, estimation) => {
       subtotal: Number(row.subtotal || 0),
     })),
   };
+};
+
+exports.acceptProjectAgreement = async (req, res) => {
+  const orderId = parseStrictPositiveInt(req.params.id);
+
+  if (!orderId) {
+    return res.status(400).json({ message: "Invalid custom request ID." });
+  }
+
+  let conn = null;
+  let transactionActive = false;
+  let connectionReusable = true;
+
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const [ownedOrders] = await conn.execute(
+      `SELECT id
+       FROM orders
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId, req.user.id],
+    );
+
+    if (!ownedOrders.length) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Custom request not found." });
+    }
+
+    const lifecycle = await resolveLifecycleByOrder(conn, {
+      orderId,
+      lockOrder: true,
+      lockBlueprint: true,
+    });
+
+    if (
+      lifecycle.status !== "OK" ||
+      !lifecycle.order ||
+      !lifecycle.blueprint ||
+      !lifecycle.estimation
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    const order = lifecycle.order;
+    const estimation = lifecycle.estimation;
+    const agreement = lifecycle.contract;
+
+    if (normalize(order.order_type) !== "blueprint") {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    if (isBlueprintArchived(lifecycle.blueprint)) {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    if (!agreement) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Your Project Agreement has not been prepared yet.",
+      });
+    }
+
+    if (normalize(estimation.status) !== "approved") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "The quotation must be approved before accepting the Project Agreement.",
+      });
+    }
+
+    const currentStatus = normalize(order.status);
+    const alreadyAccepted = Boolean(agreement.signed_at);
+
+    if (!alreadyAccepted && currentStatus !== "confirmed") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "This Project Agreement can no longer be accepted from the current order stage.",
+      });
+    }
+
+    if (!alreadyAccepted) {
+      const [acceptResult] = await conn.execute(
+        `UPDATE contracts
+         SET signed_at = NOW(),
+             updated_at = NOW()
+         WHERE id = ?
+           AND order_id = ?
+           AND customer_id = ?
+           AND signed_at IS NULL`,
+        [agreement.id, order.id, req.user.id],
+      );
+
+      if (acceptResult.affectedRows !== 1) {
+        await conn.rollback();
+        transactionActive = false;
+        return res.status(409).json({
+          message: "This Project Agreement was already updated. Please refresh and try again.",
+        });
+      }
+    }
+
+    const requiredDownPayment = calcDownPaymentAmount(
+      Number(estimation.grand_total || 0),
+    );
+    const verifiedTotal = Number(lifecycle.verified_payment_total || 0);
+    let released = false;
+
+    if (
+      currentStatus === "confirmed" &&
+      verifiedTotal >= Math.max(0, requiredDownPayment - 0.01)
+    ) {
+      const [releaseResult] = await conn.execute(
+        `UPDATE orders
+         SET status = 'contract_released', updated_at = NOW()
+         WHERE id = ?
+           AND customer_id = ?
+           AND order_type = 'blueprint'
+           AND status = 'confirmed'`,
+        [order.id, req.user.id],
+      );
+      released = releaseResult.affectedRows === 1;
+    }
+
+    const [[acceptedRow]] = await conn.execute(
+      `SELECT signed_at FROM contracts WHERE id = ? LIMIT 1`,
+      [agreement.id],
+    );
+
+    if (!alreadyAccepted) {
+      const [[creatorRow]] = await conn.execute(
+        `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
+        [lifecycle.blueprint.id],
+      );
+
+      await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+        type: "project_agreement_accepted",
+        title: "Project Agreement Accepted",
+        message: `Customer accepted the Project Agreement for ${order.order_number}.`,
+        targetType: "order",
+        targetId: order.id,
+        targetOrderId: order.id,
+      });
+    }
+
+    await conn.commit();
+    transactionActive = false;
+
+    if (!alreadyAccepted) {
+      await writeAuditLogSafe({
+        userId: req.user.id,
+        action: "accept_project_agreement",
+        tableName: "contracts",
+        recordId: agreement.id,
+        oldValues: { signed_at: null },
+        newValues: {
+          signed_at: acceptedRow?.signed_at || true,
+          order_id: order.id,
+          released_after_existing_payment: released,
+        },
+        ipAddress: req.ip || null,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: alreadyAccepted
+        ? "Project Agreement is already accepted."
+        : "Project Agreement accepted successfully.",
+      signed_at: acceptedRow?.signed_at || agreement.signed_at || null,
+      order_status: released ? "contract_released" : order.status,
+    });
+  } catch (err) {
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+        transactionActive = false;
+      } catch (rollbackErr) {
+        console.error(
+          "[customer.customorders ACCEPT PROJECT AGREEMENT] rollback failed:",
+          rollbackErr.message || rollbackErr,
+        );
+        connectionReusable = false;
+      }
+    }
+    console.error("[customer.customorders ACCEPT PROJECT AGREEMENT]", err);
+    return res.status(500).json({ message: "Failed to accept Project Agreement." });
+  } finally {
+    if (conn) {
+      if (connectionReusable) conn.release();
+      else conn.destroy();
+    }
+  }
 };
 
 exports.acceptEstimation = async (req, res) => {
@@ -2305,10 +2534,13 @@ exports.submitDownPayment = async (req, res) => {
       });
     }
 
-    if (lifecycle.contract) {
+    if (!lifecycle.contract || !lifecycle.contract.signed_at) {
       await conn.rollback();
       transactionActive = false;
-      return sendLifecycleConflict(res);
+      return res.status(400).json({
+        message:
+          "Review and accept the Project Agreement before submitting the 30% down payment.",
+      });
     }
 
     const estimationGrandTotal = Number(estimation.grand_total || 0);
@@ -3100,6 +3332,17 @@ exports.verifyPayment = async (req, res) => {
 
     const lockedOrder = lifecycle.order;
 
+    // New payment sessions can only be created after acceptance. A
+    // contract-less legacy session may still be verified for backward
+    // compatibility, but an existing unsigned agreement is never payable.
+    if (lifecycle.contract && !lifecycle.contract.signed_at) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Accept the Project Agreement before payment can be verified.",
+      });
+    }
+
     // 👉 FIX 1: Explicitly check the DB row inside the lock, because lifecycle.order hides the session ID column
     const [[lockedCheck]] = await conn.execute(
       `SELECT paymongo_session_id FROM orders WHERE id = ?`,
@@ -3131,16 +3374,31 @@ exports.verifyPayment = async (req, res) => {
       [lockedOrder.id, downPaymentAmount, session.id],
     );
 
-    // 5. UPDATE THE ORDER
-    await conn.execute(
+    // 5. UPDATE THE ORDER. New-flow orders move to contract_released as
+    // soon as the accepted agreement and required 30% payment are both true.
+    // A legacy PayMongo session without an agreement remains confirmed.
+    const releaseAfterVerification = Boolean(lifecycle.contract?.signed_at);
+    const [orderPaymentUpdate] = await conn.execute(
       `UPDATE orders
        SET payment_status = 'partial',
+           status = CASE
+             WHEN ? = 1 AND status = 'confirmed' THEN 'contract_released'
+             ELSE status
+           END,
            payment_url = NULL,
            paymongo_session_id = NULL,
            updated_at = NOW()
        WHERE id = ?`,
-      [lockedOrder.id],
+      [releaseAfterVerification ? 1 : 0, lockedOrder.id],
     );
+
+    if (orderPaymentUpdate.affectedRows !== 1) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "This order's payment state changed. Please refresh and try again.",
+      });
+    }
 
     // 6. Receipt — created inside this same transaction, after the
     // payment transaction is verified and the order is updated, before
@@ -3241,6 +3499,15 @@ exports.createPayMongoCheckout = async (req, res) => {
       return res.status(400).json({
         message:
           "The quotation must be approved before submitting a down payment.",
+      });
+    }
+
+    if (!lifecycle.contract || !lifecycle.contract.signed_at) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "Review and accept the Project Agreement before starting payment.",
       });
     }
 
@@ -3495,6 +3762,15 @@ exports.selectPaymentMethod = async (req, res) => {
       return res.status(400).json({
         message:
           "The quotation must be approved before choosing a payment method.",
+      });
+    }
+
+    if (!lifecycle.contract || !lifecycle.contract.signed_at) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "Review and accept the Project Agreement before choosing a payment method.",
       });
     }
 
