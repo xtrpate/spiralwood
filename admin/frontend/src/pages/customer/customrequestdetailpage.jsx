@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Check, MapPin } from "lucide-react";
 import api, { buildAssetUrl } from "../../services/api";
+import { downloadProjectAgreementPdf } from "../../utils/projectAgreementPdf";
 import CustomerTemplateWorkbench from "./CustomerTemplateWorkbench";
 import CustomerBlueprintViewer from "./CustomerBlueprintViewer";
 import "./customizepage.css";
@@ -855,6 +856,32 @@ export default function CustomRequestDetailPage() {
     !hasPendingPaymentTransaction &&
     !paymentMethodChangeLocked;
 
+  // Customer-facing contract snapshot. These are read-only values from the
+  // approved quotation + submitted design already returned for this request.
+  const agreementNumber = projectAgreement?.id
+    ? `CNT-${String(projectAgreement.id).padStart(5, "0")}`
+    : "Preparing";
+  const agreementProjectItem = Array.isArray(requestData?.items)
+    ? requestData.items[0] || null
+    : null;
+  const agreementProjectName =
+    agreementProjectItem?.base_blueprint_title ||
+    agreementProjectItem?.product_name ||
+    "Custom Furniture";
+  const agreementDimensions =
+    Number(agreementProjectItem?.width || 0) > 0 ||
+    Number(agreementProjectItem?.height || 0) > 0 ||
+    Number(agreementProjectItem?.depth || 0) > 0
+      ? `${agreementProjectItem?.width || "—"} × ${agreementProjectItem?.height || "—"} × ${agreementProjectItem?.depth || "—"} ${agreementProjectItem?.unit || "mm"}`
+      : "Not specified";
+  const agreementVisibleItems = Array.isArray(latestEstimation?.items)
+    ? latestEstimation.items
+    : [];
+  const agreementRemainingAfterDownPayment = Math.max(
+    0,
+    quotedTotal - downPaymentDue,
+  );
+
   // PHASE 5 — Blueprint Rider Final Cash Collection. The backend
   // (selectRemainingPaymentMethod / getCustomOrderById) re-derives and
   // locks every one of these conditions itself; these are display-only.
@@ -1168,6 +1195,28 @@ export default function CustomRequestDetailPage() {
       );
     } finally {
       setAgreementAccepting(false);
+    }
+  };
+
+  const handleDownloadProjectAgreement = () => {
+    if (!projectAgreement || !latestEstimation) {
+      toast.error("The contract is not ready to download yet.");
+      return;
+    }
+
+    try {
+      downloadProjectAgreementPdf({
+        agreement: projectAgreement,
+        order: requestData,
+        estimation: latestEstimation,
+        projectItem: agreementProjectItem,
+        customerName: projectAgreement.customer_name || "Customer",
+        authorizedByName: "Spiral Wood Services",
+      });
+      toast.success("Contract PDF downloaded.");
+    } catch (err) {
+      console.error("[Customer Contract PDF]", err);
+      toast.error("Failed to generate contract PDF.");
     }
   };
 
@@ -1894,13 +1943,128 @@ export default function CustomRequestDetailPage() {
                     ) : (
                       <>
                         <div className="crd-panel crd-panel-soft" style={{ marginBottom: 16 }}>
-                          <h4>Agreement summary</h4>
-                          <DetailValue label="Approved project amount">
+                          <h4>Contract Details</h4>
+                          <DetailValue label="Contract Number">
+                            {agreementNumber}
+                          </DetailValue>
+                          <DetailValue label="Order">
+                            {requestData?.order_number || "#" + String(requestData?.id || "").padStart(5, "0")}
+                          </DetailValue>
+                          <DetailValue label="Customer">
+                            {projectAgreement.customer_name || "WISDOM Customer"}
+                          </DetailValue>
+                          <DetailValue label="Issued">
+                            {formatDate(projectAgreement.created_at)}
+                          </DetailValue>
+                        </div>
+
+                        <div className="crd-panel" style={{ marginBottom: 16 }}>
+                          <h4>Furniture Details</h4>
+                          <DetailValue label="Furniture">
+                            {agreementProjectName}
+                          </DetailValue>
+                          <DetailValue label="Quantity">
+                            {Number(agreementProjectItem?.quantity || 1)}
+                          </DetailValue>
+                          <DetailValue label="Dimensions">
+                            {agreementDimensions}
+                          </DetailValue>
+                          <DetailValue label="Wood">
+                            {prettifyText(agreementProjectItem?.wood_type, "Not specified")}
+                          </DetailValue>
+                          <DetailValue label="Finish">
+                            {prettifyText(
+                              agreementProjectItem?.finish_color || agreementProjectItem?.color,
+                              "Not specified",
+                            )}
+                          </DetailValue>
+                          <DetailValue label="Assembly">
+                            {String(agreementProjectItem?.assembly_choice || "").toLowerCase() === "included"
+                              ? "Included"
+                              : String(agreementProjectItem?.assembly_choice || "").toLowerCase() === "none"
+                                ? "Not included"
+                                : "Not specified"}
+                          </DetailValue>
+                        </div>
+
+                        {agreementVisibleItems.length > 0 ? (
+                          <div className="crd-panel" style={{ marginBottom: 16 }}>
+                            <h4>Scope of Work</h4>
+                            <div style={{ border: "1px solid #e4e4e7" }}>
+                              {agreementVisibleItems.map((item, index) => (
+                                <div
+                                  key={item.id || "agreement-scope-" + index}
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "1fr auto auto",
+                                    gap: 10,
+                                    padding: "10px 12px",
+                                    borderBottom:
+                                      index === agreementVisibleItems.length - 1
+                                        ? 0
+                                        : "1px solid #eeeeef",
+                                    fontSize: 13,
+                                  }}
+                                >
+                                  <span>{item.description || "Item " + (index + 1)}</span>
+                                  <span>Qty {Number(item.quantity || 0) || "—"}</span>
+                                  <strong>{formatMoney(item.subtotal || 0)}</strong>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="crd-panel crd-panel-soft" style={{ marginBottom: 16 }}>
+                          <h4>Cost Summary</h4>
+                          <DetailValue label="Materials">
+                            {formatMoney(latestEstimation.material_cost || 0)}
+                          </DetailValue>
+                          <DetailValue label="Labor">
+                            {formatMoney(latestEstimation.labor_cost || 0)}
+                          </DetailValue>
+                          <DetailValue label="Logistics">
+                            {formatMoney(latestEstimation.overhead_cost || 0)}
+                          </DetailValue>
+                          {additionalDeliveryFee > 0 ? (
+                            <DetailValue label="Delivery Fee">
+                              {formatMoney(additionalDeliveryFee)}
+                            </DetailValue>
+                          ) : null}
+                          {Number(latestEstimation.discount || 0) > 0 ? (
+                            <DetailValue label="Discount">
+                              {formatMoney(latestEstimation.discount || 0)}
+                            </DetailValue>
+                          ) : null}
+                          <DetailValue label="VAT">
+                            {formatMoney(latestEstimation.tax || 0)}
+                          </DetailValue>
+                          <DetailValue label="Total Price">
                             {formatMoney(quotedTotal)}
                           </DetailValue>
-                          <DetailValue label="Minimum down payment (30%)">
+                        </div>
+
+                        <div className="crd-panel crd-panel-soft" style={{ marginBottom: 16 }}>
+                          <h4>Payment Terms</h4>
+                          <DetailValue label="Down Payment (30%)">
                             {formatMoney(downPaymentDue)}
                           </DetailValue>
+                          <DetailValue label="Remaining Balance">
+                            {formatMoney(agreementRemainingAfterDownPayment)}
+                          </DetailValue>
+                          <p style={{ margin: "10px 0 0", lineHeight: 1.6, color: "#52525b", fontSize: 13 }}>
+                            Production starts after the 30% down payment is verified. The remaining balance must be fully paid before the order is completed.
+                          </p>
+
+                          <div style={{ marginTop: 14 }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={handleDownloadProjectAgreement}
+                            >
+                              Download Contract PDF
+                            </button>
+                          </div>
                         </div>
 
                         <div className="crd-panel" style={{ marginBottom: 16 }}>
@@ -1935,7 +2099,7 @@ export default function CustomRequestDetailPage() {
                           <div className="crd-info-box" style={{ background: "#f0fdf4" }}>
                             <div className="crd-info-title">Agreement Accepted</div>
                             <p style={{ margin: "8px 0 0" }}>
-                              Accepted on {formatDate(projectAgreement.signed_at)}.
+                              Accepted on {formatDate(projectAgreement.signed_at)} through your WISDOM Customer Account.
                             </p>
 
                             {canCancelUnpaidProject ? (

@@ -1174,6 +1174,7 @@ exports.getCustomOrderById = async (req, res) => {
           id: lifecycle.contract.id,
           order_id: lifecycle.contract.order_id,
           blueprint_id: lifecycle.contract.blueprint_id,
+          customer_name: lifecycle.contract.customer_name || null,
           terms: lifecycle.contract.materials_used || "",
           warranty_terms: lifecycle.contract.warranty_terms || "",
           down_payment: Number(lifecycle.contract.down_payment || downPaymentDue || 0),

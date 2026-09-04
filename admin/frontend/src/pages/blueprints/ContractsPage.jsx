@@ -2,41 +2,38 @@ import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import api from "../../services/api";
 import toast from "react-hot-toast";
-import jsPDF from "jspdf";
+import { downloadProjectAgreementPdf } from "../../utils/projectAgreementPdf";
 import "./ContractsPage.css";
 
-const DEFAULT_TERMS = `1. SCOPE OF WORK
-Spiral Wood Services will fabricate and deliver the custom woodwork based on the approved blueprint and approved project estimation linked to this contract.
+const DEFAULT_TERMS = `1. PROJECT WORK
+Spiral Wood Services will build the furniture based on the approved design and quotation.
 
-2. PAYMENT TERMS
-A verified down payment equal to 30% of the approved contract amount is required before fabrication begins. The remaining balance is due upon delivery and acceptance of the finished product.
+2. PAYMENT
+Production starts after the required 30% down payment is verified. The remaining balance must be fully paid before the order is completed.
 
-3. DELIVERY AND INSTALLATION
-The expected completion and delivery schedule will be confirmed after the required down payment is received. Customer-requested changes or circumstances beyond reasonable control may require a schedule adjustment.
+3. CHANGES
+Any requested change after the contract is accepted must be reviewed first. Approved changes may affect the price or completion date.
 
-4. CHANGES AND REVISIONS
-Changes requested after fabrication begins may result in additional charges or schedule adjustments. Any change must be agreed upon before the revised work proceeds.
+4. CANCELLATION
+Before any payment is verified, the customer may cancel an eligible project through WISDOM. After a payment is verified or production starts, the customer must contact Spiral Wood Services. Cancellation does not remove existing payment or acceptance records.
 
-5. OWNERSHIP
-Ownership of the finished product transfers to the customer after full payment of the contract amount.
+5. DELIVERY
+The completion and delivery schedule is confirmed after the required down payment is received. Delays outside the reasonable control of Spiral Wood Services may affect the schedule.
 
-6. GOVERNING LAW
-This agreement is governed by the laws of the Republic of the Philippines.`;
+6. OWNERSHIP
+Ownership of the finished furniture transfers to the customer after full payment.
 
-const DEFAULT_WARRANTY = `The finished product is covered by a one (1) year warranty from the date of delivery for defects in materials and workmanship under normal use.
+7. GOVERNING LAW
+This contract is governed by the laws of the Republic of the Philippines.`;
 
-The warranty does not cover damage caused by misuse, neglect, unauthorized modifications, accidents, natural disasters, or other external causes.
+const DEFAULT_WARRANTY = `The furniture is covered by a one (1) year warranty from the delivery date for defects in materials and workmanship under normal use.
 
-To request warranty service, the customer must contact Spiral Wood Services and provide proof of purchase together with documentation of the reported defect.`;
+The warranty does not cover misuse, neglect, unauthorized changes, accidents, natural disasters, or damage caused by outside factors.
+
+For warranty service, contact Spiral Wood Services and provide proof of purchase with details or photos of the reported problem.`;
 
 const formatCurrencyUI = (value) =>
   `₱ ${Number(value || 0).toLocaleString("en-PH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-
-const formatCurrencyPdf = (value) =>
-  `PHP ${Number(value || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -57,17 +54,6 @@ const formatDate = (value) => {
   });
 };
 
-const formatDatePdf = (value) => {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-PH", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-};
-
 const formatPersonName = (value) =>
   String(value || "")
     .trim()
@@ -81,94 +67,6 @@ const titleCase = (value) =>
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\b\w/g, (char) => char.toUpperCase()) || "—";
-
-const cleanContractHeading = (value) =>
-  String(value || "")
-    .replace(/_/g, " ")
-    .replace(/\s*[&/]\s*/g, " AND ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-function parseNumberedSections(text = "") {
-  const normalizedText = String(text || "")
-    .replace(/\r/g, "")
-    .trim();
-  if (!normalizedText) return [];
-
-  const regex =
-    /(^|\n)(\d+)\.\s*([A-Z][A-Z0-9 &/(),.-]+)\n([\s\S]*?)(?=\n\d+\.\s*[A-Z][A-Z0-9 &/(),.-]+\n|$)/g;
-
-  const sections = [];
-  let match;
-
-  while ((match = regex.exec(normalizedText)) !== null) {
-    sections.push({
-      number: match[2],
-      title: match[3].trim(),
-      body: match[4].trim(),
-    });
-  }
-
-  if (sections.length) return sections;
-
-  return [
-    {
-      number: "1",
-      title: "TERMS AND CONDITIONS",
-      body: normalizedText,
-    },
-  ];
-}
-
-function splitParagraphs(text = "") {
-  return String(text || "")
-    .replace(/\r/g, "")
-    .split(/\n{2,}/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-function buildWrappedParagraphs(doc, text = "", maxWidth = 170) {
-  const paragraphs = splitParagraphs(text);
-  if (!paragraphs.length) return [];
-
-  return paragraphs.map((paragraph) => {
-    const wrappedLines = [];
-
-    paragraph.split("\n").forEach((rawLine) => {
-      const line = rawLine.trim();
-
-      if (!line) {
-        wrappedLines.push("");
-        return;
-      }
-
-      wrappedLines.push(...doc.splitTextToSize(line, maxWidth));
-    });
-
-    return wrappedLines;
-  });
-}
-
-function estimateTextBlockHeight(
-  doc,
-  text,
-  maxWidth,
-  lineHeight = 4,
-  paragraphGap = 1.6,
-) {
-  const paragraphs = buildWrappedParagraphs(doc, text, maxWidth);
-  if (!paragraphs.length) return lineHeight;
-
-  let height = 0;
-
-  paragraphs.forEach((lines, index) => {
-    height += Math.max(lines.length, 1) * lineHeight;
-    if (index < paragraphs.length - 1) height += paragraphGap;
-  });
-
-  return height;
-}
 
 function isPositiveIntegerString(value) {
   const text = String(value ?? "").trim();
@@ -418,225 +316,60 @@ export default function ContractsPage() {
     setEstimationError("");
   };
 
-  const printContract = (c) => {
+  const printContract = async (c) => {
     try {
-      const doc = new jsPDF({ unit: "mm", format: "a4" });
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 18;
-      const contentWidth = pageWidth - margin * 2;
-      const bottomLimit = pageHeight - 20;
-      const contractNumber = `CNT-${String(c.id).padStart(5, "0")}`;
-      const customerDisplayName = formatPersonName(c.customer_name) || "Customer";
-      const authorizedPersonDisplayName =
-        formatPersonName(c.issued_by_name || "System Administrator") ||
-        "System Administrator";
-      let y = 18;
+      let orderInfo = null;
+      let approvedEstimation = null;
 
-      const drawContinuationHeader = () => {
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(8.5);
-        doc.setTextColor(35, 35, 35);
-        doc.text("SPIRAL WOOD SERVICES", margin, 14);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(7.5);
-        doc.setTextColor(105, 105, 105);
-        doc.text(contractNumber, pageWidth - margin, 14, { align: "right" });
-        doc.setDrawColor(220, 220, 220);
-        doc.setLineWidth(0.25);
-        doc.line(margin, 17, pageWidth - margin, 17);
-        y = 24;
-      };
-
-      const addPage = () => {
-        doc.addPage();
-        drawContinuationHeader();
-      };
-
-      const ensureSpace = (needed = 10) => {
-        if (y + needed > bottomLimit) addPage();
-      };
-
-      const drawParagraphBlock = (
-        text,
-        x,
-        maxWidth,
-        lineHeight = 4.1,
-        paragraphGap = 2,
-        fontSize = 9,
-      ) => {
-        const paragraphs = buildWrappedParagraphs(doc, text, maxWidth);
-        paragraphs.forEach((lines, index) => {
-          const needed = Math.max(lines.length, 1) * lineHeight + paragraphGap;
-          ensureSpace(needed + 1);
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(fontSize);
-          doc.setTextColor(45, 45, 45);
-          if (lines.length) doc.text(lines, x, y);
-          y += Math.max(lines.length, 1) * lineHeight;
-          if (index < paragraphs.length - 1) y += paragraphGap;
-        });
-      };
-
-      const drawSection = (number, title, body) => {
-        const cleanTitle = cleanContractHeading(title);
-        const estimatedBodyHeight = estimateTextBlockHeight(
-          doc,
-          body,
-          contentWidth,
-          4.1,
-          2,
-        );
-        ensureSpace(7 + estimatedBodyHeight);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.setTextColor(20, 20, 20);
-        doc.text(`${number}. ${cleanTitle}`, margin, y);
-        y += 5.5;
-        drawParagraphBlock(body, margin, contentWidth, 4.1, 2, 9);
-        y += 2.5;
-      };
-
-      doc.setTextColor(30, 30, 30);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.text("SPIRAL WOOD SERVICES", margin, y);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      doc.setTextColor(100, 100, 100);
-      doc.text(contractNumber, pageWidth - margin, y, { align: "right" });
-      y += 8;
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(17);
-      doc.setTextColor(15, 15, 15);
-      doc.text("Custom Furniture Agreement", margin, y);
-      y += 6;
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8.5);
-      doc.setTextColor(95, 95, 95);
-      doc.text(`Issued ${formatDatePdf(c.created_at)}`, margin, y);
-      y += 5;
-
-      doc.setDrawColor(205, 205, 205);
-      doc.setLineWidth(0.3);
-      doc.line(margin, y, pageWidth - margin, y);
-      y += 8;
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10.5);
-      doc.setTextColor(25, 25, 25);
-      doc.text("Agreement Overview", margin, y);
-      y += 6;
-
-      const leftX = margin;
-      const rightX = 109;
-      const labelColor = [105, 105, 105];
-      const valueColor = [25, 25, 25];
-
-      const overviewRows = [
-        ["Customer", customerDisplayName, "Order Reference", `#${String(c.order_id).padStart(5, "0")}`],
-        ["Authorized Representative", authorizedPersonDisplayName, "Blueprint Reference", c.blueprint_id ? `BP-${String(c.blueprint_id).padStart(5, "0")}` : "Not available"],
-        ["Contract Amount", formatCurrencyPdf(c.total_amount || 0), "Contract Number", contractNumber],
-      ];
-
-      overviewRows.forEach(([leftLabel, leftValue, rightLabel, rightValue]) => {
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(7.6);
-        doc.setTextColor(...labelColor);
-        doc.text(leftLabel, leftX, y);
-        doc.text(rightLabel, rightX, y);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(9);
-        doc.setTextColor(...valueColor);
-        doc.text(String(leftValue || "—"), leftX, y + 4.2);
-        doc.text(String(rightValue || "—"), rightX, y + 4.2);
-        y += 11;
-      });
-
-      doc.setDrawColor(230, 230, 230);
-      doc.line(margin, y - 1, pageWidth - margin, y - 1);
-      y += 6;
-
-      const intro =
-        `This agreement is made between Spiral Wood Services and ${customerDisplayName} for the custom furniture project identified above. The approved blueprint, project estimation, payment requirements, and terms below form part of this agreement.`;
-      drawParagraphBlock(intro, margin, contentWidth, 4.1, 2, 9);
-      y += 5;
-
-      const contractTermsText =
-        String(c.materials_used || "").trim() || DEFAULT_TERMS;
-      const terms = parseNumberedSections(contractTermsText);
-      const warrantyText = c.warranty_terms || DEFAULT_WARRANTY;
-
-      terms.forEach((section, index) => {
-        drawSection(index + 1, section.title, section.body);
-      });
-
-      drawSection(terms.length + 1, "WARRANTY", warrantyText);
-      drawSection(
-        terms.length + 2,
-        "ACCEPTANCE",
-        "By signing below, both parties confirm that they have reviewed and accepted the terms of this agreement.",
-      );
-
-      ensureSpace(43);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(10.5);
-      doc.setTextColor(25, 25, 25);
-      doc.text("Signatures", margin, y);
-      y += 8;
-
-      const sigLeft = margin;
-      const sigRight = 111;
-      const sigWidth = 70;
-      doc.setFontSize(8.5);
-      doc.setFont("helvetica", "bold");
-      doc.text("Authorized Representative", sigLeft, y);
-      doc.text("Customer", sigRight, y);
-      y += 7;
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8.5);
-      doc.text(authorizedPersonDisplayName, sigLeft, y);
-      doc.text(customerDisplayName, sigRight, y);
-      y += 7;
-
-      doc.setDrawColor(90, 90, 90);
-      doc.setLineWidth(0.25);
-      doc.line(sigLeft, y, sigLeft + sigWidth, y);
-      doc.line(sigRight, y, sigRight + sigWidth, y);
-      y += 4;
-      doc.setFontSize(7.5);
-      doc.setTextColor(110, 110, 110);
-      doc.text("Signature", sigLeft, y);
-      doc.text("Signature", sigRight, y);
-      y += 10;
-
-      doc.setDrawColor(90, 90, 90);
-      doc.line(sigLeft, y, sigLeft + 38, y);
-      doc.line(sigRight, y, sigRight + 38, y);
-      y += 4;
-      doc.setTextColor(110, 110, 110);
-      doc.text("Date", sigLeft, y);
-      doc.text("Date", sigRight, y);
-
-      const pageCount = doc.getNumberOfPages();
-      for (let page = 1; page <= pageCount; page += 1) {
-        doc.setPage(page);
-        doc.setDrawColor(225, 225, 225);
-        doc.setLineWidth(0.2);
-        doc.line(margin, pageHeight - 14, pageWidth - margin, pageHeight - 14);
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(7);
-        doc.setTextColor(115, 115, 115);
-        doc.text(`Spiral Wood Services | ${contractNumber}`, margin, pageHeight - 9);
-        doc.text(`Page ${page} of ${pageCount}`, pageWidth - margin, pageHeight - 9, { align: "right" });
+      try {
+        const { data } = await api.get(`/orders/${c.order_id}`);
+        orderInfo = data || null;
+      } catch (orderErr) {
+        // The PDF remains downloadable from the immutable contract record even
+        // if a related order lookup is temporarily unavailable.
       }
 
-      doc.save(`contract_${contractNumber}.pdf`);
+      if (c.blueprint_id) {
+        try {
+          const { data } = await api.get(
+            `/blueprints/${c.blueprint_id}/estimation`,
+          );
+          if (
+            data &&
+            !data.integrity_warning &&
+            !data.is_recovery_draft &&
+            data.persisted !== false &&
+            normalize(data.status) === "approved"
+          ) {
+            approvedEstimation = data;
+          }
+        } catch (estimationErr) {
+          // Same fallback principle as the order lookup above.
+        }
+      }
+
+      downloadProjectAgreementPdf({
+        agreement: {
+          ...c,
+          terms: c.materials_used || "",
+          total_amount: Number(c.total_amount || 0),
+        },
+        order: orderInfo || {
+          id: c.order_id,
+          blueprint_id: c.blueprint_id,
+          customer_name: c.customer_name,
+          customer_email: c.customer_email,
+        },
+        estimation: approvedEstimation,
+        customerName: formatPersonName(c.customer_name) || "Customer",
+        customerEmail: c.customer_email || "",
+        authorizedByName:
+          formatPersonName(c.issued_by_name || "System Administrator") ||
+          "System Administrator",
+      });
       toast.success("Contract PDF downloaded.");
     } catch (err) {
+      console.error("[ContractsPage PDF]", err);
       toast.error("Failed to generate contract PDF.");
     }
   };
@@ -818,6 +551,62 @@ export default function ContractsPage() {
   // disagree at a cent boundary.
   const requiredDownPayment = Number(
     (approvedEstimationTotal * 0.3).toFixed(2),
+  );
+
+  // Contract document preview — read-only values derived from the same
+  // canonical order + approved estimation already used by the readiness gates.
+  const agreementPreviewItem =
+    (Array.isArray(selectedOrderInfo?.custom_request_items)
+      ? selectedOrderInfo.custom_request_items[0]
+      : null) ||
+    (Array.isArray(selectedOrderInfo?.items)
+      ? selectedOrderInfo.items.find(
+          (item) => item?.customization || item?.requested_base_blueprint_title,
+        ) || selectedOrderInfo.items[0]
+      : null);
+  const agreementPreviewItems = (Array.isArray(estimationResponse?.items)
+    ? estimationResponse.items
+    : []
+  ).filter(
+    (item) =>
+      !item?.raw_material_id &&
+      normalize(item?.source_type || item?.sourceType) !== "inventory_material",
+  );
+  const agreementPreviewWidth = Number(
+    agreementPreviewItem?.requested_width || agreementPreviewItem?.width || 0,
+  );
+  const agreementPreviewHeight = Number(
+    agreementPreviewItem?.requested_height || agreementPreviewItem?.height || 0,
+  );
+  const agreementPreviewDepth = Number(
+    agreementPreviewItem?.requested_depth || agreementPreviewItem?.depth || 0,
+  );
+  const agreementPreviewUnit =
+    agreementPreviewItem?.requested_unit || agreementPreviewItem?.unit || "mm";
+  const agreementPreviewDimensions =
+    agreementPreviewWidth > 0 ||
+    agreementPreviewHeight > 0 ||
+    agreementPreviewDepth > 0
+      ? `${agreementPreviewWidth || "—"} × ${agreementPreviewHeight || "—"} × ${agreementPreviewDepth || "—"} ${agreementPreviewUnit}`
+      : "Not specified";
+  const agreementPreviewName =
+    agreementPreviewItem?.requested_base_blueprint_title ||
+    agreementPreviewItem?.display_name ||
+    agreementPreviewItem?.product_name ||
+    selectedOrderInfo?.blueprint_title ||
+    "Custom Furniture";
+  const agreementPreviewWood =
+    agreementPreviewItem?.requested_wood_type ||
+    agreementPreviewItem?.wood_type ||
+    "Not specified";
+  const agreementPreviewFinish =
+    agreementPreviewItem?.requested_finish_color ||
+    agreementPreviewItem?.finish_color ||
+    agreementPreviewItem?.color ||
+    "Not specified";
+  const agreementRemainingBalance = Math.max(
+    0,
+    approvedEstimationTotal - requiredDownPayment,
   );
 
   const totalsMatch =
@@ -1417,12 +1206,75 @@ export default function ContractsPage() {
                 </section>
               )}
 
+              {form.order_id && selectedOrderInfo && estimationEligible && (
+                <section className="contracts-form-section">
+                  <div className="contracts-section-heading">
+                    <span>3</span>
+                    <div>
+                      <h3>Contract Preview</h3>
+                      <p>Confirm the main details before creating the contract.</p>
+                    </div>
+                  </div>
+
+                  <div className="contracts-readiness-grid">
+                    <ReadinessItem
+                      label="Furniture"
+                      ok={Boolean(agreementPreviewName)}
+                      value={agreementPreviewName}
+                    />
+                    <ReadinessItem
+                      label="Dimensions"
+                      ok={agreementPreviewDimensions !== "Not specified"}
+                      value={agreementPreviewDimensions}
+                    />
+                    <ReadinessItem
+                      label="Wood"
+                      ok={agreementPreviewWood !== "Not specified"}
+                      value={titleCase(agreementPreviewWood)}
+                    />
+                    <ReadinessItem
+                      label="Finish"
+                      ok={agreementPreviewFinish !== "Not specified"}
+                      value={titleCase(agreementPreviewFinish)}
+                    />
+                    <ReadinessItem
+                      label="Total Price"
+                      ok={approvedEstimationTotal > 0}
+                      value={formatCurrencyUI(approvedEstimationTotal)}
+                    />
+                    <ReadinessItem
+                      label="Down Payment"
+                      ok={requiredDownPayment > 0}
+                      value={`30% · ${formatCurrencyUI(requiredDownPayment)}`}
+                    />
+                  </div>
+
+                  {agreementPreviewItems.length > 0 && (
+                    <div style={{ marginTop: 14 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 7 }}>Scope of Work</div>
+                      <div style={{ border: "1px solid #e4e4e7" }}>
+                        {agreementPreviewItems.map((item, index) => (
+                          <div
+                            key={item.id || "agreement-item-" + index}
+                            style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 12, padding: "9px 11px", borderBottom: index === agreementPreviewItems.length - 1 ? 0 : "1px solid #eeeeef", fontSize: 11 }}
+                          >
+                            <span>{item.description || item.name || "Item " + (index + 1)}</span>
+                            <span>Qty {Number(item.quantity || 0) || "—"}</span>
+                            <strong>{formatCurrencyUI(item.subtotal || 0)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
+
               <section className="contracts-form-section">
                 <div className="contracts-section-heading">
-                  <span>3</span>
+                  <span>4</span>
                   <div>
                     <h3>Agreement Content</h3>
-                    <p>Review the standard project and warranty terms before generating the PDF.</p>
+                    <p>Review the contract terms and warranty before creating the contract.</p>
                   </div>
                 </div>
 
