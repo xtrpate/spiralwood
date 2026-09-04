@@ -20,6 +20,10 @@ const {
   ensureReceiptForVerifiedPayment,
 } = require("../../services/blueprintReceiptService");
 const {
+  releaseBlueprintMaterialsForCancellation,
+  BlueprintMaterialReleaseError,
+} = require("../../services/blueprintMaterialReleaseService");
+const {
   roundMoney,
   calcDownPaymentAmount,
   parseDecimalToCentsStrict,
@@ -948,6 +952,8 @@ exports.getCustomOrderById = async (req, res) => {
           total,
           down_payment,
           payment_proof,
+          cancellation_reason,
+          cancelled_at,
           created_at,
           updated_at
        FROM orders
@@ -1536,6 +1542,246 @@ const normalizeLifecycleEstimation = async (conn, estimation) => {
       subtotal: Number(row.subtotal || 0),
     })),
   };
+};
+
+exports.cancelUnpaidProject = async (req, res) => {
+  const orderId = parseStrictPositiveInt(req.params.id);
+  const reason = String(req.body?.reason || "").trim();
+
+  if (!orderId) {
+    return res.status(400).json({ message: "Invalid custom request ID." });
+  }
+
+  if (reason.length > 500) {
+    return res.status(400).json({
+      message: "Cancellation reason must be 500 characters or fewer.",
+    });
+  }
+
+  let conn = null;
+  let transactionActive = false;
+  let connectionReusable = true;
+
+  try {
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+    transactionActive = true;
+
+    const [ownedOrders] = await conn.execute(
+      `SELECT id
+       FROM orders
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId, req.user.id],
+    );
+
+    if (!ownedOrders.length) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(404).json({ message: "Custom request not found." });
+    }
+
+    const lifecycle = await resolveLifecycleByOrder(conn, {
+      orderId,
+      lockOrder: true,
+      lockBlueprint: true,
+      lockEstimation: true,
+      lockContext: true,
+    });
+
+    if (
+      lifecycle.status !== "OK" ||
+      !lifecycle.order ||
+      !lifecycle.blueprint ||
+      !lifecycle.estimation
+    ) {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    const order = lifecycle.order;
+    const blueprint = lifecycle.blueprint;
+    const estimation = lifecycle.estimation;
+    const agreement = lifecycle.contract;
+
+    if (normalize(order.order_type) !== "blueprint") {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    if (isBlueprintArchived(blueprint)) {
+      await conn.rollback();
+      transactionActive = false;
+      return sendLifecycleConflict(res);
+    }
+
+    if (normalize(order.status) !== "confirmed") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "This project can no longer be cancelled directly from the customer page.",
+      });
+    }
+
+    if (normalize(estimation.status) !== "approved") {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "Only a project with an approved quotation can use this cancellation flow.",
+      });
+    }
+
+    if (!agreement?.signed_at) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message: "The Project Agreement must be accepted before using this cancellation flow.",
+      });
+    }
+
+    if (Number(lifecycle.verified_payment_total || 0) > 0) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "A verified payment already exists for this project. Please contact Spiral Wood Services for cancellation assistance.",
+      });
+    }
+
+    if (lifecycle.has_pending_payment_transaction) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(400).json({
+        message:
+          "A payment is already awaiting review. Please wait for it to be resolved before cancelling this project.",
+      });
+    }
+
+    if (order.paymongo_session_id || order.payment_url) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message:
+          "An online payment session is still active. Please contact Spiral Wood Services before cancelling this project.",
+      });
+    }
+
+    const materialReleaseResult = await releaseBlueprintMaterialsForCancellation(
+      conn,
+      {
+        orderId: order.id,
+        actorUserId: req.user.id,
+        releaseReason:
+          reason || "Customer cancelled the project before any verified payment.",
+      },
+    );
+
+    const cancellationReason =
+      reason || "Cancelled by customer before any verified payment.";
+
+    const [updateResult] = await conn.execute(
+      `UPDATE orders
+       SET status = 'cancelled',
+           cancellation_reason = ?,
+           cancelled_at = NOW(),
+           updated_at = NOW()
+       WHERE id = ?
+         AND customer_id = ?
+         AND order_type = 'blueprint'
+         AND status = 'confirmed'`,
+      [cancellationReason, order.id, req.user.id],
+    );
+
+    if (updateResult.affectedRows !== 1) {
+      await conn.rollback();
+      transactionActive = false;
+      return res.status(409).json({
+        message: "This project's state changed. Please refresh and try again.",
+      });
+    }
+
+    const [[creatorRow]] = await conn.execute(
+      `SELECT creator_id FROM blueprints WHERE id = ? LIMIT 1`,
+      [blueprint.id],
+    );
+
+    await insertNotificationSafe(conn, creatorRow?.creator_id || null, {
+      type: "custom_project_cancelled",
+      title: "Project Cancelled by Customer",
+      message: `Customer cancelled ${order.order_number} before any verified payment.`,
+      targetType: "order",
+      targetId: order.id,
+      targetOrderId: order.id,
+    });
+
+    await conn.commit();
+    transactionActive = false;
+
+    await writeAuditLogSafe({
+      userId: req.user.id,
+      action: "cancel_unpaid_custom_project",
+      tableName: "orders",
+      recordId: order.id,
+      oldValues: {
+        status: order.status,
+        verified_payment_total: Number(lifecycle.verified_payment_total || 0),
+      },
+      newValues: {
+        status: "cancelled",
+        project_agreement_id: agreement.id,
+        project_agreement_signed_at: agreement.signed_at,
+        cancellation_reason: cancellationReason,
+        cancelled_before_payment: true,
+        material_release_reason: materialReleaseResult?.reason || null,
+        released_material_reservation_ids:
+          materialReleaseResult?.reservation_ids || [],
+      },
+      ipAddress: req.ip || null,
+    });
+
+    return res.json({
+      message: "Project cancelled successfully.",
+      status: "cancelled",
+      cancellation_reason: cancellationReason,
+    });
+  } catch (err) {
+    if (conn && transactionActive) {
+      try {
+        await conn.rollback();
+        transactionActive = false;
+      } catch (rollbackErr) {
+        console.error(
+          "[customer.customorders CANCEL PROJECT] rollback failed:",
+          rollbackErr.message || rollbackErr,
+        );
+        connectionReusable = false;
+      }
+    }
+
+    if (err instanceof BlueprintMaterialReleaseError) {
+      return res.status(err.statusCode || 409).json({
+        message: err.message,
+        integrity_reason: err.code,
+        ...(err.details ? { details: err.details } : {}),
+      });
+    }
+
+    console.error("[customer.customorders CANCEL PROJECT]", err);
+    return res.status(500).json({ message: "Failed to cancel project." });
+  } finally {
+    if (conn) {
+      if (connectionReusable) {
+        conn.release();
+      } else {
+        conn.destroy();
+      }
+    }
+  }
 };
 
 exports.acceptProjectAgreement = async (req, res) => {

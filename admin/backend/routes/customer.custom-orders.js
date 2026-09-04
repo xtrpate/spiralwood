@@ -284,6 +284,13 @@ router.post(
 );
 
 router.post(
+  "/:id/cancel",
+  authenticate,
+  requireCustomer,
+  customOrderController.cancelUnpaidProject,
+);
+
+router.post(
   "/:id/down-payment",
   authenticate,
   requireCustomer,

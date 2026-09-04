@@ -611,6 +611,9 @@ export default function CustomRequestDetailPage() {
   const [agreementChecked, setAgreementChecked] = useState(false);
   const [agreementConfirmOpen, setAgreementConfirmOpen] = useState(false);
   const [agreementAccepting, setAgreementAccepting] = useState(false);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancellingProject, setCancellingProject] = useState(false);
 
   const [discussionMessage, setDiscussionMessage] = useState("");
   const [discussionFiles, setDiscussionFiles] = useState([]);
@@ -837,6 +840,15 @@ export default function CustomRequestDetailPage() {
   const hasPendingPaymentTransaction =
     Number(paymentSummary.total_pending || 0) > 0;
   const canChooseMethod =
+    projectAgreementAccepted &&
+    requestData?.payment_status === "unpaid" &&
+    Number(verifiedPaymentTotal || 0) <= 0 &&
+    !hasPendingPaymentTransaction &&
+    !paymentMethodChangeLocked;
+
+  const canCancelUnpaidProject =
+    orderStatusKey === "confirmed" &&
+    String(latestEstimation?.status || "").trim().toLowerCase() === "approved" &&
     projectAgreementAccepted &&
     requestData?.payment_status === "unpaid" &&
     Number(verifiedPaymentTotal || 0) <= 0 &&
@@ -1156,6 +1168,33 @@ export default function CustomRequestDetailPage() {
       );
     } finally {
       setAgreementAccepting(false);
+    }
+  };
+
+  const handleCancelUnpaidProject = async () => {
+    if (!requestData?.id || !canCancelUnpaidProject) {
+      toast.error(
+        "This project can no longer be cancelled directly from this page.",
+      );
+      return;
+    }
+
+    setCancellingProject(true);
+    try {
+      const res = await api.post(
+        `/customer/custom-orders/${requestData.id}/cancel`,
+        { reason: String(cancelReason || "").trim() },
+      );
+      setCancelConfirmOpen(false);
+      setCancelReason("");
+      await loadRequestDetail(false);
+      toast.success(res.data?.message || "Project cancelled successfully.");
+    } catch (err) {
+      toast.error(
+        err.response?.data?.message || "Failed to cancel project.",
+      );
+    } finally {
+      setCancellingProject(false);
     }
   };
 
@@ -1894,11 +1933,120 @@ export default function CustomRequestDetailPage() {
 
                         {projectAgreementAccepted ? (
                           <div className="crd-info-box" style={{ background: "#f0fdf4" }}>
-                            <div className="crd-info-title">Electronically accepted and locked</div>
+                            <div className="crd-info-title">Agreement Accepted</div>
                             <p style={{ margin: "8px 0 0" }}>
-                              Accepted on {formatDate(projectAgreement.signed_at)}. The accepted
-                              Project Agreement can no longer be changed silently.
+                              Accepted on {formatDate(projectAgreement.signed_at)}.
                             </p>
+
+                            {canCancelUnpaidProject ? (
+                              <div style={{ marginTop: 14 }}>
+                                <button
+                                  type="button"
+                                  className="crd-danger-btn"
+                                  disabled={cancellingProject}
+                                  onClick={() => setCancelConfirmOpen(true)}
+                                >
+                                  Cancel Project
+                                </button>
+                              </div>
+                            ) : null}
+
+                            {orderStatusKey === "cancelled" ? (
+                              <div
+                                className="crd-info-box"
+                                style={{ marginTop: 14, background: "#fef2f2" }}
+                              >
+                                <div className="crd-info-title">Transaction cancelled</div>
+                                <p style={{ margin: "8px 0 0" }}>
+                                  This project will not proceed. The accepted Project Agreement
+                                  remains in your transaction history.
+                                  {requestData?.cancellation_reason
+                                    ? ` Reason: ${requestData.cancellation_reason}`
+                                    : ""}
+                                </p>
+                              </div>
+                            ) : null}
+
+                            {cancelConfirmOpen && canCancelUnpaidProject ? (
+                              <div
+                                role="presentation"
+                                style={{
+                                  position: "fixed",
+                                  inset: 0,
+                                  background: "rgba(0, 0, 0, 0.42)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  padding: 20,
+                                  zIndex: 1200,
+                                }}
+                                onMouseDown={(event) => {
+                                  if (event.target === event.currentTarget && !cancellingProject) {
+                                    setCancelConfirmOpen(false);
+                                  }
+                                }}
+                              >
+                                <div
+                                  role="dialog"
+                                  aria-modal="true"
+                                  aria-labelledby="cancel-project-title"
+                                  style={{
+                                    width: "min(500px, 100%)",
+                                    background: "#ffffff",
+                                    border: "1px solid #d4d4d8",
+                                    padding: 24,
+                                  }}
+                                >
+                                  <h3 id="cancel-project-title" style={{ margin: 0 }}>
+                                    Cancel Project
+                                  </h3>
+                                  <p style={{ margin: "10px 0 16px", lineHeight: 1.6 }}>
+                                    No payment has been verified. Cancelling will stop this
+                                    project from proceeding. Your accepted Project Agreement
+                                    will remain in the transaction history.
+                                  </p>
+
+                                  <label style={{ display: "grid", gap: 8 }}>
+                                    <span>Reason (optional)</span>
+                                    <textarea
+                                      rows={3}
+                                      maxLength={500}
+                                      value={cancelReason}
+                                      disabled={cancellingProject}
+                                      onChange={(event) => setCancelReason(event.target.value)}
+                                      placeholder="Tell us why you are cancelling"
+                                      style={{ width: "100%", boxSizing: "border-box", resize: "vertical" }}
+                                    />
+                                  </label>
+
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      justifyContent: "flex-end",
+                                      gap: 10,
+                                      marginTop: 20,
+                                    }}
+                                  >
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary"
+                                      disabled={cancellingProject}
+                                      onClick={() => setCancelConfirmOpen(false)}
+                                    >
+                                      Back
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="crd-danger-btn"
+                                      disabled={cancellingProject}
+                                      onClick={handleCancelUnpaidProject}
+                                    >
+                                      {cancellingProject ? "Confirming..." : "Confirm"}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
                           </div>
                         ) : (
                           <div className="crd-panel">
@@ -2006,6 +2154,7 @@ export default function CustomRequestDetailPage() {
               latestEstimation &&
               !quotationActionBlocked &&
               !quotationIntegrityWarning &&
+              orderStatusKey !== "cancelled" &&
               estimationStatusKey === "approved" &&
               projectAgreementAccepted ? (
                 <div className="checkout-section wisdom-request-payment-v11">
