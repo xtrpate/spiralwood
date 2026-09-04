@@ -8,7 +8,7 @@ const normalize = (value) =>
     .toLowerCase();
 
 const VALID_CHANNELS = new Set(["online", "walkin"]);
-const VALID_PERIODS = new Set(["daily", "weekly", "monthly", "yearly"]);
+const VALID_PERIODS = new Set(["daily", "weekly", "monthly", "yearly", "all"]);
 
 const buildChannelFilter = (rawChannel, alias = "o") => {
   const channel = normalize(rawChannel);
@@ -97,6 +97,13 @@ const buildDateFilter = ({ from, to, period }, expression) => {
   const normalizedPeriod = VALID_PERIODS.has(normalize(period))
     ? normalize(period)
     : "monthly";
+
+  if (normalizedPeriod === "all") {
+    return {
+      sql: "1=1",
+      params: [],
+    };
+  }
 
   if (normalizedPeriod === "daily") {
     return {

@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api, { buildAssetUrl } from "../../services/api";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import * as XLSX from "xlsx-js-style";
 import toast from "react-hot-toast";
 import {
   Package2,
@@ -106,18 +105,55 @@ const productReportStatus = (value) =>
 
 const productReportYesNo = (value) => (Number(value) === 1 ? "Yes" : "No");
 
-const exportProductReportPdf = ({ rows, scopeLabel, filterLabel }) => {
-  const doc = new jsPDF({
-    orientation: "landscape",
-    unit: "mm",
-    format: "a4",
-  });
-
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const marginX = 14;
-  const footerY = pageHeight - 7;
+const exportProductReportExcel = ({ rows, scopeLabel, filterLabel }) => {
+  const wb = XLSX.utils.book_new();
+  const excelData = [];
   const generatedAt = new Date();
+
+  // 👉 1. Simple bold black text for Section Titles (No background, no merge)
+  const titleStyle = { font: { bold: true, color: { rgb: "000000" } } };
+
+  // 👉 2. Black background with white text for Table Headers
+  const tableHeaderStyle = {
+    font: { bold: true, color: { rgb: "FFFFFF" } },
+    fill: { fgColor: { rgb: "000000" } },
+    border: {
+      top: { style: "thin", color: { rgb: "000000" } },
+      bottom: { style: "thin", color: { rgb: "000000" } },
+      left: { style: "thin", color: { rgb: "000000" } },
+      right: { style: "thin", color: { rgb: "000000" } },
+    },
+  };
+
+  // 👉 3. Alternating row colors (White and Light Grey)
+  const cellStyleLight = {
+    border: {
+      top: { style: "thin", color: { rgb: "000000" } },
+      bottom: { style: "thin", color: { rgb: "000000" } },
+      left: { style: "thin", color: { rgb: "000000" } },
+      right: { style: "thin", color: { rgb: "000000" } },
+    },
+  };
+
+  const cellStyleDark = {
+    fill: { fgColor: { rgb: "F3F4F6" } }, // Light Gray background
+    border: {
+      top: { style: "thin", color: { rgb: "000000" } },
+      bottom: { style: "thin", color: { rgb: "000000" } },
+      left: { style: "thin", color: { rgb: "000000" } },
+      right: { style: "thin", color: { rgb: "000000" } },
+    },
+  };
+
+  // Helper functions to apply styles
+  const t = (text) => ({ v: text, s: titleStyle });
+  const th = (text) => ({ v: text, s: tableHeaderStyle });
+
+  // Determines if the row should be white or grey based on its index
+  const c = (val, rowIndex) => ({
+    v: val ?? "",
+    s: rowIndex % 2 === 0 ? cellStyleLight : cellStyleDark,
+  });
 
   const readyMade = rows.filter((row) => row.type !== "blueprint");
   const blueprints = rows.filter((row) => row.type === "blueprint");
@@ -133,270 +169,164 @@ const exportProductReportPdf = ({ rows, scopeLabel, filterLabel }) => {
     ).length,
   };
 
-  doc.setProperties({
-    title: `Spiral Wood Services Product Report - ${scopeLabel}`,
-    subject: "Product catalog, pricing, inventory, and availability report",
-    author: "Spiral Wood Services",
-    creator: "WISDOM",
-  });
+  // 1. Report Metadata
+  excelData.push([
+    t("SPIRAL WOOD SERVICES - PRODUCT CATALOG & INVENTORY REPORT"),
+  ]);
+  excelData.push([
+    { v: "Scope:", s: titleStyle },
+    productReportPdfText(scopeLabel),
+  ]);
+  excelData.push([
+    { v: "Filters:", s: titleStyle },
+    productReportPdfText(filterLabel || "None"),
+  ]);
+  excelData.push([
+    { v: "Generated:", s: titleStyle },
+    generatedAt.toLocaleString("en-PH"),
+  ]);
+  excelData.push([]);
 
-  const tableBase = {
-    theme: "striped",
-    margin: { left: marginX, right: marginX, bottom: 15 },
-    styles: {
-      font: "helvetica",
-      fontSize: 7.1,
-      cellPadding: 2.2,
-      textColor: [45, 49, 55],
-      lineColor: [225, 228, 232],
-      lineWidth: 0.1,
-      valign: "middle",
-    },
-    headStyles: {
-      fillColor: [24, 24, 27],
-      textColor: [255, 255, 255],
-      fontStyle: "bold",
-      lineColor: [24, 24, 27],
-    },
-    alternateRowStyles: {
-      fillColor: [248, 248, 249],
-    },
-  };
-
-  const ensureSpace = (currentY, minimumHeight = 34) => {
-    if (currentY + minimumHeight <= pageHeight - 17) return currentY;
-    doc.addPage();
-    return 17;
-  };
-
-  const addSectionTitle = (number, title, y) => {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9.5);
-    doc.setTextColor(24, 24, 27);
-    doc.text(`${number}. ${title.toUpperCase()}`, marginX, y);
-    return y + 4;
-  };
-
-  const addPageFooter = () => {
-    const pageCount = doc.internal.getNumberOfPages();
-    const generatedLabel = productReportPdfText(
-      generatedAt.toLocaleString("en-PH", {
-        year: "numeric",
-        month: "short",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-    );
-
-    for (let page = 1; page <= pageCount; page += 1) {
-      doc.setPage(page);
-      doc.setDrawColor(225, 228, 232);
-      doc.line(marginX, footerY - 4, pageWidth - marginX, footerY - 4);
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(6.8);
-      doc.setTextColor(120, 120, 120);
-      doc.text(
-        `Internal Product Report | Generated ${generatedLabel}`,
-        marginX,
-        footerY,
-      );
-      doc.text(`Page ${page} of ${pageCount}`, pageWidth - marginX, footerY, {
-        align: "right",
-      });
-    }
-  };
-
-  doc.setTextColor(17, 17, 17);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text("SPIRAL WOOD SERVICES", marginX, 16);
-
-  doc.setFontSize(11);
-  doc.text("PRODUCT CATALOG & INVENTORY REPORT", marginX, 23);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(82, 82, 91);
-  doc.text(`Scope: ${productReportPdfText(scopeLabel)}`, marginX, 31);
-  doc.text(
-    `Filters: ${productReportPdfText(filterLabel || "None")}`,
-    marginX + 70,
-    31,
+  // 2. Catalog Overview
+  excelData.push([t("1. CATALOG OVERVIEW")]);
+  excelData.push(
+    [
+      "Products",
+      "Ready-made",
+      "Blueprints",
+      "Active",
+      "Published",
+      "Low / Out of Stock",
+    ].map(th),
   );
+  excelData.push(
+    [
+      String(summary.total),
+      String(summary.readyMade),
+      String(summary.blueprints),
+      String(summary.active),
+      String(summary.published),
+      String(summary.needsAttention),
+    ].map((val) => c(val, 0)),
+  ); // Pass 0 for the first row to be white
+  excelData.push([]);
 
-  doc.setFontSize(7.2);
-  doc.setTextColor(113, 113, 122);
-  doc.text(
-    "Internal product catalog report covering pricing, inventory, publishing, and product availability.",
-    marginX,
-    37,
-  );
+  let sectionNum = 2;
 
-  doc.setDrawColor(24, 24, 27);
-  doc.setLineWidth(0.4);
-  doc.line(marginX, 41, pageWidth - marginX, 41);
-
-  let currentY = addSectionTitle(1, "Catalog Overview", 49);
-
-  autoTable(doc, {
-    ...tableBase,
-    startY: currentY,
-    head: [
-      [
-        "Products",
-        "Ready-made",
-        "Blueprints",
-        "Active",
-        "Published",
-        "Low / Out of Stock",
-      ],
-    ],
-    body: [
-      [
-        String(summary.total),
-        String(summary.readyMade),
-        String(summary.blueprints),
-        String(summary.active),
-        String(summary.published),
-        String(summary.needsAttention),
-      ],
-    ],
-    styles: {
-      ...tableBase.styles,
-      halign: "center",
-      fontSize: 8,
-      cellPadding: 3.2,
-    },
-    bodyStyles: {
-      fontStyle: "bold",
-      textColor: [24, 24, 27],
-    },
-  });
-
-  currentY = doc.lastAutoTable.finalY + 9;
-
+  // 3. Ready-Made Catalog & Pricing
   if (readyMade.length > 0) {
-    currentY = ensureSpace(currentY, 54);
-    currentY = addSectionTitle(2, "Ready-made Catalog & Pricing", currentY);
-
-    autoTable(doc, {
-      ...tableBase,
-      startY: currentY,
-      head: [
-        [
-          "Product",
-          "Barcode",
-          "Category",
-          "Price",
-          "Production Cost",
-          "Profit",
-          "Published",
-          "Active",
-        ],
-      ],
-      body: readyMade.map((row) => [
-        productReportPdfText(row.name),
-        productReportPdfText(row.barcode || "-"),
-        productReportPdfText(row.category || "-"),
-        productReportMoney(row.price),
-        productReportMoney(row.production_cost),
-        productReportMoney(row.profit_margin),
-        productReportYesNo(row.is_published),
-        productReportYesNo(row.is_active),
-      ]),
-      columnStyles: {
-        3: { halign: "right" },
-        4: { halign: "right" },
-        5: { halign: "right" },
-        6: { halign: "center" },
-        7: { halign: "center" },
-      },
-    });
-
-    currentY = doc.lastAutoTable.finalY + 9;
-    currentY = ensureSpace(currentY, 48);
-    currentY = addSectionTitle(3, "Ready-made Inventory Status", currentY);
-
-    autoTable(doc, {
-      ...tableBase,
-      startY: currentY,
-      head: [
-        [
-          "Product",
-          "Barcode",
-          "Stock",
-          "Reorder Point",
-          "Stock Status",
-          "Homepage New Product",
-          "Active",
-        ],
-      ],
-      body: readyMade.map((row) => [
-        productReportPdfText(row.name),
-        productReportPdfText(row.barcode || "-"),
-        Number(row.stock || 0).toLocaleString("en-PH"),
-        Number(row.reorder_point || 0).toLocaleString("en-PH"),
-        productReportPdfText(productReportStatus(row.stock_status)),
-        productReportYesNo(row.is_featured),
-        productReportYesNo(row.is_active),
-      ]),
-      columnStyles: {
-        2: { halign: "right" },
-        3: { halign: "right" },
-        5: { halign: "center" },
-        6: { halign: "center" },
-      },
-    });
-
-    currentY = doc.lastAutoTable.finalY + 9;
-  }
-
-  if (blueprints.length > 0) {
-    currentY = ensureSpace(currentY, 46);
-    currentY = addSectionTitle(
-      readyMade.length > 0 ? 4 : 2,
-      "Blueprint Product Catalog",
-      currentY,
+    excelData.push([t(`${sectionNum}. READY-MADE CATALOG & PRICING`)]);
+    excelData.push(
+      [
+        "Product",
+        "Barcode",
+        "Category",
+        "Price",
+        "Production Cost",
+        "Profit",
+        "Published",
+        "Active",
+      ].map(th),
     );
-
-    autoTable(doc, {
-      ...tableBase,
-      startY: currentY,
-      head: [
+    readyMade.forEach((row, idx) => {
+      excelData.push(
         [
-          "Product",
-          "Barcode",
-          "Category",
-          "Blueprint Source",
-          "Pricing",
-          "Inventory",
-          "Published",
-          "Active",
-        ],
-      ],
-      body: blueprints.map((row) => [
-        productReportPdfText(row.name),
-        productReportPdfText(row.barcode || "-"),
-        productReportPdfText(row.category || "-"),
-        row.blueprint_source_id
-          ? `#${row.blueprint_source_id}`
-          : "Archived source",
-        "After estimation",
-        "Made to order",
-        productReportYesNo(row.is_published),
-        productReportYesNo(row.is_active),
-      ]),
-      columnStyles: {
-        3: { halign: "center" },
-        6: { halign: "center" },
-        7: { halign: "center" },
-      },
+          productReportPdfText(row.name),
+          productReportPdfText(row.barcode || "-"),
+          productReportPdfText(row.category || "-"),
+          productReportMoney(row.price),
+          productReportMoney(row.production_cost),
+          productReportMoney(row.profit_margin),
+          productReportYesNo(row.is_published),
+          productReportYesNo(row.is_active),
+        ].map((val) => c(val, idx)),
+      ); // idx creates the alternating striping
+    });
+    excelData.push([]);
+    sectionNum++;
+
+    // 4. Ready-Made Inventory Status
+    excelData.push([t(`${sectionNum}. READY-MADE INVENTORY STATUS`)]);
+    excelData.push(
+      [
+        "Product",
+        "Barcode",
+        "Stock",
+        "Reorder Point",
+        "Stock Status",
+        "Homepage New Product",
+        "Active",
+      ].map(th),
+    );
+    readyMade.forEach((row, idx) => {
+      excelData.push(
+        [
+          productReportPdfText(row.name),
+          productReportPdfText(row.barcode || "-"),
+          Number(row.stock || 0),
+          Number(row.reorder_point || 0),
+          productReportPdfText(productReportStatus(row.stock_status)),
+          productReportYesNo(row.is_featured),
+          productReportYesNo(row.is_active),
+        ].map((val) => c(val, idx)),
+      );
+    });
+    excelData.push([]);
+    sectionNum++;
+  }
+
+  // 5. Blueprint Product Catalog
+  if (blueprints.length > 0) {
+    excelData.push([t(`${sectionNum}. BLUEPRINT PRODUCT CATALOG`)]);
+    excelData.push(
+      [
+        "Product",
+        "Barcode",
+        "Category",
+        "Blueprint Source",
+        "Pricing",
+        "Inventory",
+        "Published",
+        "Active",
+      ].map(th),
+    );
+    blueprints.forEach((row, idx) => {
+      excelData.push(
+        [
+          productReportPdfText(row.name),
+          productReportPdfText(row.barcode || "-"),
+          productReportPdfText(row.category || "-"),
+          row.blueprint_source_id
+            ? `#${row.blueprint_source_id}`
+            : "Archived source",
+          "After estimation",
+          "Made to order",
+          productReportYesNo(row.is_published),
+          productReportYesNo(row.is_active),
+        ].map((val) => c(val, idx)),
+      );
     });
   }
 
-  addPageFooter();
+  const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+  // Dynamic Auto-Fit Columns
+  const colWidths = [];
+  excelData.forEach((row) => {
+    row.forEach((cell, colIndex) => {
+      const cellValue = cell && cell.v ? String(cell.v) : "";
+      const textLength = cellValue.length;
+      if (!colWidths[colIndex] || colWidths[colIndex].wch < textLength + 3) {
+        colWidths[colIndex] = { wch: textLength + 3 };
+      }
+    });
+  });
+
+  ws["!cols"] = colWidths.map((col) => ({
+    wch: Math.min(Math.max(col.wch, 12), 65),
+  }));
+
+  XLSX.utils.book_append_sheet(wb, ws, "Product Report");
 
   const dateStamp = [
     generatedAt.getFullYear(),
@@ -404,11 +334,12 @@ const exportProductReportPdf = ({ rows, scopeLabel, filterLabel }) => {
     String(generatedAt.getDate()).padStart(2, "0"),
   ].join("-");
 
-  doc.save(
+  XLSX.writeFile(
+    wb,
     `spiral-wood-product-report-${scopeLabel
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")}-${dateStamp}.pdf`,
+      .replace(/^-|-$/g, "")}-${dateStamp}.xlsx`,
   );
 };
 
@@ -844,7 +775,7 @@ export default function ProductsPage() {
         return;
       }
 
-      exportProductReportPdf({
+      exportProductReportExcel({
         rows,
         scopeLabel:
           exportScope === "filtered" ? "Current filters" : "All products",
@@ -1368,8 +1299,8 @@ export default function ProductsPage() {
               Export product report
             </h2>
             <p style={{ ...dialogText, marginBottom: 16 }}>
-              Create a PDF report using the same internal report format as the
-              Sales Report.
+              Create an Excel report using the same internal report format as
+              the Sales Report.
             </p>
 
             <div style={exportScopeList}>
@@ -1409,7 +1340,7 @@ export default function ProductsPage() {
             </div>
 
             <div style={exportContents}>
-              <div style={exportContentsLabel}>Included in PDF</div>
+              <div style={exportContentsLabel}>Included in Excel</div>
               <div style={exportContentsText}>
                 Catalog summary, ready-made pricing, inventory status, Blueprint
                 products, publishing, and availability.
@@ -1439,7 +1370,7 @@ export default function ProductsPage() {
                 disabled={exporting}
               >
                 <FileDown size={14} strokeWidth={1.8} aria-hidden="true" />
-                {exporting ? "Preparing..." : "Export PDF"}
+                {exporting ? "Preparing..." : "Export Excel"}
               </button>
             </div>
           </div>
